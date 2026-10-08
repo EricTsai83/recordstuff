@@ -109,7 +109,7 @@ export interface SettingsStatus {
    * The state it says, which the page reads out once as it begins: starting and the countdown share the busy tone,
    * and each countdown second changes the title, so neither tells a new state.
    */
-  phase?: RecordingState["type"] | "quitting";
+  phase?: RecordingState["type"] | "quitting" | "saving";
   title: string;
   /** What to do about an attention state; empty while ready, and while the lock `hint` explains a busy one. */
   detail: string;

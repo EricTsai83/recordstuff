@@ -263,6 +263,27 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
   });
 });
 
+describe("saves in the background (2026-10-09)", () => {
+  const en = { ...mac, language: "en" as const };
+  it("names each save in every state, slow ones as such, without taking Start recording's place", () => {
+    const saving = [{ file: "2026-10-09 10-00-00.mp4", slow: false }, { file: "Demo.mp4", slow: true }];
+    for (const state of [{ type: "idle" }, { type: "recording", startedAt: "2026-10-09T00:00:00Z" }] as RecordingState[]) {
+      const m = trayModel(state, { ...en, saving });
+      expect(labels(m.menu)).toEqual(expect.arrayContaining(["Saving 2026-10-09 10-00-00.mp4…", "Still saving Demo.mp4. The drive may not be responding."]));
+      expect(m.tooltip).toContain("Still saving Demo.mp4. The drive may not be responding.");
+    }
+    expect(enabledActions(trayModel({ type: "idle" }, { ...en, saving }).menu)).toContain("start");
+  });
+
+  it("offers quitting without waiting only while a quit waits for saves alone, and keeps it usable during the quit", () => {
+    expect(enabledActions(trayModel({ type: "idle" }, en).menu)).not.toContain("quitWithoutWaiting");
+    const quitting = trayModel({ type: "idle" }, { ...en, quitting: true, quitStep: "media", quitWithoutWaiting: true });
+    expect(enabledActions(quitting.menu)).toEqual(["quitWithoutWaiting", "quit"]);
+    const item = quitting.menu.find(entry => entry.kind === "item" && entry.action === "quitWithoutWaiting");
+    expect(item).toMatchObject({ label: "Quit Without Waiting for the Save", toolTip: "The recording is kept as it is and reported when RecordStuff opens again." });
+  });
+});
+
 describe("notification text", () => {
   it("frame-rate downgrade names both numbers", () => {
     expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");

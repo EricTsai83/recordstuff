@@ -34,7 +34,7 @@ import {
   type TrayIcon,
   type TrayMenuItem,
 } from "./tray-model";
-import type { AppAction, AppContext } from "../app/ui-model";
+import { abbreviateHome, type AppAction, type AppContext } from "../app/ui-model";
 import { APP_NAME } from "../lib/app-name";
 import type { EarlyStop } from "../../shared/session-record";
 
@@ -265,6 +265,12 @@ export class AppTray {
   }
 
   /** The click selects the Recording tab even in an open window, where the warning is shown. */
+  /** A save outlived the watchdog: its drive may have stopped answering (2026-10-09). */
+  notifySavingSlow(dir: string): void {
+    const folder = abbreviateHome(dir, this.options.context().homeDir);
+    this.show({ title: APP_NAME, body: translate("Still saving to {folder}. The drive may not be responding.", this.language, { folder }) });
+  }
+
   notifyCaptureWarning(body: string): void {
     this.show({ title: APP_NAME, body }, () => this.options.onAction("openRecordingSettings"));
   }

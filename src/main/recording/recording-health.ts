@@ -20,6 +20,11 @@ export interface RecordingHealth {
   writerBacklogBytes: number;
   /** A generic start failure waits at most this long for queued writer work before classifying it. */
   startDrainMs: number;
+  /**
+   * A save still running after this, in the background once capture stopped, is said to be slow (a drive that stopped
+   * answering): logged and told once. It is never abandoned, since a slow drive that is still working finishes it.
+   */
+  saveSlowMs: number;
 }
 
 const MIB = 1024 * 1024;
@@ -32,4 +37,5 @@ export const RECORDING_HEALTH: Readonly<RecordingHealth> = {
   stallFailMs: 30_000,
   writerBacklogBytes: 64 * MIB,
   startDrainMs: 2000,
+  saveSlowMs: 30_000,
 };

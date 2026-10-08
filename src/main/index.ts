@@ -364,9 +364,15 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     settled: () => settled(), language: () => settings.language, quit: () => quitCoordinator.quit(),
     confirm: options => { focusApp(); return dialog.showMessageBox(options); },
   });
-  const toggle = (): void => { if (!quit.requested) recorder.toggle(); };
+  /**
+   * Quit Without Waiting for the Save was chosen: from that moment nothing may start, whatever the ordinary quit
+   * does meanwhile (a deferral reopens admission), since the exit that follows would end a new recording unsaved.
+   */
+  let exitingWithoutSaves = false;
+  const quitInProgress = (): boolean => quit.requested || exitingWithoutSaves;
+  const toggle = (): void => { if (!quitInProgress()) recorder.toggle(); };
   /** Settings that touch a session (quality, shortcut) change only here. */
-  const settled = (): boolean => !quit.requested && preferencesUnlocked(recorder.state);
+  const settled = (): boolean => !quitInProgress() && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
     globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
     openSettings: () => runAction("openSettings", "settings shortcut"),
@@ -399,6 +405,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
   let captureDegraded = false;
   const captureWarning = () => translate("Could not confirm the resolution cap. The recording may be larger.", settings.language);
+  /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */
+  const savingContext = (): Pick<AppContext, "saving" | "quitWithoutWaiting"> => {
+    const saving = recorder.saving.map(({ recordingPath, slow }) => ({ file: path.basename(recordingPath).replace(/\.recording(\.[^.]+)$/i, "$1"), slow }));
+    const { quitting, quitStep, quitDeferred } = quit.context();
+    const heldBySaves = recorder.waitingOnlyForSaves && ((quitting && quitStep === "media") || quitDeferred === "media");
+    return { ...(saving.length ? { saving } : {}), ...(heldBySaves ? { quitWithoutWaiting: true } : {}) };
+  };
   const appContext = (): AppContext => ({
     ...(captureDegraded ? { captureWarning: captureWarning() } : {}),
     recordingResults: recordingResults.all,
@@ -423,6 +436,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
     ...quit.context(),
+    ...savingContext(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
   const settingsWindow = new SettingsWindow({
@@ -433,7 +447,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
     activated: () => { library.watch(); void library.refresh(); },
-    quitRequested: () => quit.requested,
+    quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
     rename: (id, name) => library.rename(id, name),
@@ -469,7 +483,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     onToggle: toggle,
     // A click on an earlier banner obeys the quit gate, as every other way in does (`handleAction`).
     showSaved: file => {
-      if (quit.requested) { log(`notification: show saved ${file} ignored while quitting`); return; }
+      if (quitInProgress()) { log(`notification: show saved ${file} ignored while quitting`); return; }
       void showRecording(file).catch((cause: unknown) => log(`notification: show saved ${file} failed: ${stackOf(cause)}`));
     },
     permissionAction: () => {
@@ -593,7 +607,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
   });
   const actionHandler = createActionHandler({
-    quitRequested: () => quit.requested, settled, platform: process.platform, log, refresh: refreshUi,
+    quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
     showLastRecording: () => showRecording(), hideSettings,
@@ -601,6 +615,21 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     resolutionCapChanged: () => { captureDegraded = false; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },
     quit: () => quitCoordinator.quit(),
+    quitWithoutWaiting: () => {
+      if (exitingWithoutSaves) return;
+      if (!recorder.waitingOnlyForSaves) { log("quit without waiting: refused; recording work other than saves is pending"); return; }
+      // Closed before anything is awaited, and never reopened: the flushes below take seconds.
+      exitingWithoutSaves = true;
+      refreshUi();
+      log(`quit: without waiting for ${recorder.saving.length} save(s) in the background; their sentinels report them at the next launch`);
+      // Each bounded: the drive the saves wait on may hold the file-system threads these writes need too.
+      void (async () => {
+        await flushBeforeExit({ flush: () => Promise.all([settings.flush(), settingsWindow.flush(), library.flushTrash(),
+          recordingResults.flush(QUIT_METADATA_WAIT_MS)]).then(() => undefined) }, QUIT_METADATA_WAIT_MS);
+        await flushBeforeExit(log);
+        app.exit(0);
+      })();
+    },
     relaunch: () => quitCoordinator.relaunch(),
     openExternal: url => shell.openExternal(url),
     revealFile: file => shell.showItemInFolder(file),
@@ -635,6 +664,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         permissionNotices.stateChanged(event.state);
         return;
       }
+      case "saving":
+        refreshUi();
+        return;
+      case "savingSlow":
+        // Told once the recording that may be running now has ended, as the other capture notices are.
+        captureNotices.hold("save slow", () => tray.notifySavingSlow(event.dir));
+        return;
       case "saved":
         savedNotification.schedule(event.path, event.stoppedEarly);
         void library.refreshIfWatched();

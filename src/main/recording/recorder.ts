@@ -149,7 +149,20 @@ export type RecorderEvent =
   | { type: "failed"; code: ErrorCode; detail: string; partialPath?: never; preflight: true }
   | { type: "permissionRequested"; needsRelaunch: boolean }
   /** No media existed: the temporary file is removed and idle returns without a failure. */
-  | { type: "cancelled"; reason: CancelReason; session: SessionTrace };
+  | { type: "cancelled"; reason: CancelReason; session: SessionTrace }
+  /** Recordings being saved after capture stopped changed: one began or ended, or became slow (`Recorder.saving`). */
+  | { type: "saving"; saving: readonly SavingRecording[] }
+  /** A save outlived `saveSlowMs`: its drive may have stopped answering. Told once per save. */
+  | { type: "savingSlow"; dir: string; session: SessionTrace };
+
+/** A recording whose capture stopped and whose file is still being finished in the background. */
+export interface SavingRecording {
+  sessionId: string;
+  /** The temporary `.recording.mp4` being finished. */
+  recordingPath: string;
+  /** It outlived `saveSlowMs`. */
+  slow: boolean;
+}
 
 export interface PermissionStatus {
   granted: boolean;
@@ -280,6 +293,8 @@ export class Recorder {
    */
   private hungChecks = new Map<string, Promise<void>>();
   private readonly workChanged = new Set<() => void>();
+  /** Recordings whose capture stopped, still being finished (`saving`); the idle state no longer waits for them. */
+  private readonly savings = new Map<string, SavingRecording & { slowTimer: ReturnType<typeof setTimeout> }>();
   /** Shared by every caller while media stays pending, so repeated quits add no listeners. */
   private mediaSettled: Promise<void> | undefined;
   private readonly listeners = new Set<(event: RecorderEvent) => void>();
@@ -329,6 +344,19 @@ export class Recorder {
    */
   get mediaPending(): boolean {
     return this.session !== undefined || this.pendingWork > 0;
+  }
+
+  /** Recordings still being saved after their capture stopped, oldest first. */
+  get saving(): readonly SavingRecording[] {
+    return [...this.savings.values()].map(({ sessionId, recordingPath, slow }) => ({ sessionId, recordingPath, slow }));
+  }
+
+  /**
+   * Quit waits only for saves: no session, and no other recording work (a failure's cleanup, a cancel). Quitting
+   * without them leaves their sentinels, so the next launch reports each as possibly incomplete with its file kept.
+   */
+  get waitingOnlyForSaves(): boolean {
+    return this.session === undefined && this.savings.size > 0 && this.pendingWork === this.savings.size;
   }
 
   /** Resolves once `mediaPending` is false, at once when it already is; the same test quit waits on. */
@@ -787,7 +815,13 @@ export class Recorder {
           session.hostStoppedAt = this.monotonic();
           this.clearTimer(session);
           session.finalizing = true;
+          // Every chunk is the writer's now: the recording is over, and saving it goes on in the background, owned like
+          // any other recording work (quit waits for it), while the next recording may already start (2026-10-09).
+          this.session = undefined;
+          this.closeOverlay(session);
+          // Owned before idle is told: a quit that the idle state wakes must find the save still pending.
           void this.track(() => this.finalize(session));
+          this.settle({ type: "idle" });
         } else {
           void this.fail(session.id, "capture_failed", "capture host ended capture without a stop request");
         }
@@ -992,30 +1026,63 @@ export class Recorder {
     return Math.round(this.monotonic() - since);
   }
 
+  /**
+   * Saves a recording whose capture stopped, in the background: the state is idle already. Listed in `saving` while it
+   * runs, said to be slow once it outlives `saveSlowMs`, and never abandoned for being slow. Its outcome is reported
+   * like any session's, without touching the state, which may belong to the next recording by then.
+   */
   private async finalize(session: Session): Promise<void> {
+    const writer = session.writer;
+    if (!writer) return;
+    const slowTimer = setTimeout(() => {
+      const entry = this.savings.get(session.id);
+      if (!entry) return;
+      this.deps.log(`recorder: session ${session.id} still saving to ${session.dir} after ${this.health.saveSlowMs} ms; the drive may not be responding`);
+      entry.slow = true;
+      this.emit({ type: "saving", saving: this.saving });
+      this.emit({ type: "savingSlow", dir: session.dir, session: this.trace(session) });
+    }, this.health.saveSlowMs);
+    this.savings.set(session.id, { sessionId: session.id, recordingPath: writer.recordingPath ?? "", slow: false, slowTimer });
+    this.emit({ type: "saving", saving: this.saving });
+    try {
+      await this.save(session, writer);
+    } finally {
+      this.endSaving(session);
+    }
+  }
+
+  /** The save has an outcome: it leaves `saving` before that outcome is told. Idempotent. */
+  private endSaving(session: Session): void {
+    const entry = this.savings.get(session.id);
+    if (!entry) return;
+    clearTimeout(entry.slowTimer);
+    this.savings.delete(session.id);
+    this.emit({ type: "saving", saving: this.saving });
+  }
+
+  private async save(session: Session, writer: RecorderWriter): Promise<void> {
     await session.writes;
     const drainedAt = this.monotonic();
-    if (this.session !== session || !session.writer) return;
     let finalPath: string;
     try {
-      finalPath = await session.writer.finish();
+      finalPath = await writer.finish();
     } catch (cause) {
       // The writer already removed the empty file: a stop that ended a cancelled start before its first frame recorded
       // nothing, which is what the cancel asked for.
       const reason = session.stopOnStart;
-      if (reason && cause instanceof Error && cause.cause === NO_MEDIA_DETAIL && this.session === session) {
+      this.endSaving(session);
+      if (reason && cause instanceof Error && cause.cause === NO_MEDIA_DETAIL) {
         this.deps.log(`recorder: session ${session.id} cancelled (${reason}) after record was sent; capture stopped before its first frame`);
-        this.session = undefined;
-        this.settle({ type: "idle" });
         this.emit({ type: "cancelled", reason, session: this.trace(session) });
         await session.sentinel.clear();
         return;
       }
       // Zero confirmed bytes arrive here as capture_start_failed; disk errors keep their code.
-      await this.fail(session.id, errorCodeOf(cause, "output_write_failed"), messageOf(cause));
+      const code = errorCodeOf(cause, "output_write_failed"), detail = messageOf(cause);
+      this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
+      await this.reportFailure(session, code, detail, this.deps.now().toISOString());
       return;
     }
-    if (this.session !== session) return;
     let checkpointMs: number | undefined;
     const checkpointAt = this.monotonic();
     const checkpoint = session.sentinel.complete(finalPath);
@@ -1023,8 +1090,7 @@ export class Recorder {
     const early = session.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[session.stoppedEarly]})` : "";
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt, checkpointMs);
-    this.session = undefined;
-    this.settle({ type: "idle" });
+    this.endSaving(session);
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
     await session.sentinel.clear();
   }
@@ -1176,6 +1242,22 @@ export class Recorder {
     this.settle({ type: "idle", ...idleFlags });
     /** The idle this failure set; any later settle, folder change or failure replaces it, and with it the flag's owner. */
     const flaggedIdle = this.idleState;
+    const opened = await this.reportFailure(session, code, detail, occurredAt);
+    // A folder that answered only after the opening deadline (a drive waking, a slow share) is usable: the flag this
+    // failure set would otherwise go on saying it is unavailable until another folder is chosen. Only while the flag is
+    // still this failure's: a newer attempt, even one that failed on its own folder, decides (review pass 1, F1).
+    if (opened && idleFlags.outputDirUnavailable && !this.session && this.idleState === flaggedIdle) {
+      this.deps.log(`recorder: session ${session.id} the output folder answered after the failure; it is usable again`);
+      this.outputDirChanged();
+    }
+  }
+
+  /**
+   * The failure's report and its file's outcome: the partial kept, or why not, then the failed event and the
+   * sentinel's removal. Resolves whether the session's folder opening finished after all. It never touches the state:
+   * a failure ends its session first, and a save in the background has no session left to end.
+   */
+  private async reportFailure(session: Session, code: ErrorCode, detail: string, occurredAt: string): Promise<boolean> {
     if (code === "capture_start_failed") {
       const retained = await this.retainedWriteError(session);
       if (retained) {
@@ -1212,13 +1294,7 @@ export class Recorder {
     });
     this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
     await session.sentinel.clear();
-    // A folder that answered only after the opening deadline (a drive waking, a slow share) is usable: the flag this
-    // failure set would otherwise go on saying it is unavailable until another folder is chosen. Only while the flag is
-    // still this failure's: a newer attempt, even one that failed on its own folder, decides (review pass 1, F1).
-    if (opened && idleFlags.outputDirUnavailable && !this.session && this.idleState === flaggedIdle) {
-      this.deps.log(`recorder: session ${session.id} the output folder answered after the failure; it is usable again`);
-      this.outputDirChanged();
-    }
+    return opened;
   }
 
   private async publishFailure(result: RecordingFailure): Promise<void> {

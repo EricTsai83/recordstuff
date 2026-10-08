@@ -56,6 +56,8 @@ export interface ActionDeps {
   /** Applies the saved appearance to the native theme. */
   applyAppearance(): void;
   quit(): void;
+  /** Exits now when only saves in the background hold the quit; their sentinels report them at the next launch. */
+  quitWithoutWaiting(): void;
   relaunch(): void;
   openExternal(url: string): Promise<void>;
   revealFile(file: string): void;
@@ -147,7 +149,7 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
   }
 
   async function handleAction(action: AppAction): Promise<boolean | void> {
-    if (deps.quitRequested() && action !== "quit") return false;
+    if (deps.quitRequested() && action !== "quit" && action !== "quitWithoutWaiting") return false;
     if (typeof action !== "string" && "recordingFile" in action) {
       const { id, action: verb } = action.recordingFile;
       // A drag belongs to the window it starts in (settings-window.ts).
@@ -218,6 +220,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "cancelCountdown":
         recorder.cancelCountdown("menu");
         return;
+      case "quitWithoutWaiting":
+        deps.quitWithoutWaiting();
+        return true;
       case "quit":
         // A request, as Relaunch is: a quit deferred for a save or refused says so itself. Settings' Quit has no
         // checked value to compare, so without this answer it read as a failed link (settings-window.ts `apply`).

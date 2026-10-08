@@ -854,7 +854,8 @@ describe("Recorder review fixes", () => {
     const retry = ctx.recorder.shutdown();
     await vi.advanceTimersByTimeAsync(13_000);
     expect(await retry).toBe(false);
-    expect(ctx.recorder.state.type).toBe("stopping");
+    // The recording is over: idle, while its save still holds quit (2026-10-09).
+    expect([ctx.recorder.state.type, ctx.recorder.mediaPending, ctx.recorder.waitingOnlyForSaves]).toEqual(["idle", true, true]);
     expect(ctx.events.some((e) => e.type === "failed")).toBe(false);
     releaseFinish!();
     await flush();
@@ -891,7 +892,7 @@ describe("Recorder review fixes", () => {
     expect(settled).toBe(true);
   });
 
-  it("settles media work after a normal save, not at the idle state that precedes the finish's return", async () => {
+  it("returns to idle once capture stopped, and settles media work only once the save in the background is done", async () => {
     const ctx = setup();
     await startRecording(ctx);
     const writer = ctx.writers[0]!;
@@ -902,13 +903,50 @@ describe("Recorder review fixes", () => {
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
-    expect(ctx.recorder.state.type).toBe("stopping");
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.recorder.saving).toEqual([{ sessionId: "s1", recordingPath: writer.recordingPath, slow: false }]);
     expect(settled).toBe(false);
     releaseFinish();
     await flush();
     expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(settled).toBe(true);
     expect(ctx.recorder.mediaPending).toBe(false);
+  });
+
+  it("saves in the background: the next recording may start, a slow save is told once, and its outcome leaves the state alone", async () => {
+    let id = 0;
+    const logs: string[] = [];
+    // The second recording sends no media for the test's 90 s: its stall guard is not the subject here.
+    const ctx = setup({ log: (message) => logs.push(message), deps: { newSessionId: () => `s${++id}`, health: { stallWarnMs: 1e9, stallFailMs: 2e9 } } });
+    await startRecording(ctx);
+    const first = ctx.writers[0]!;
+    let failFinish!: (error: Error) => void;
+    first.finish = () => new Promise((_resolve, reject) => { failFinish = reject; });
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    // The next recording starts while the first is still being saved.
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s2"));
+    ctx.host.emit(chunk("s2", 0));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.recorder.waitingOnlyForSaves).toBe(false);
+    // Slow: told once, never given up on.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(ctx.recorder.saving).toEqual([{ sessionId: "s1", recordingPath: first.recordingPath, slow: true }]);
+    expect(ctx.events.filter(event => event.type === "savingSlow")).toEqual([{ type: "savingSlow", dir: "/out", session: expect.objectContaining({ id: "s1" }) }]);
+    expect(logs).toContain("recorder: session s1 still saving to /out after 30000 ms; the drive may not be responding");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ctx.events.filter(event => event.type === "savingSlow")).toHaveLength(1);
+    // The save fails: reported with its partial file, while the second recording goes on.
+    failFinish(Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO" }));
+    await flush();
+    expect(ctx.recorder.saving).toEqual([]);
+    expect(ctx.events.filter(event => event.type === "failed")).toEqual([expect.objectContaining({ code: "output_write_failed", session: expect.objectContaining({ id: "s1" }) })]);
+    expect(ctx.recorder.state.type).toBe("recording");
   });
 
   it("a same-second name collision gets a -2 suffix instead of failing (pass-2 finding 6)", async () => {

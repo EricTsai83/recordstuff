@@ -46,6 +46,8 @@ export type AppAction =
   | "changeOutputDir"
   | "revealLog"
   | "quit"
+  /** A quit held only by saves in the background: exit now, leaving them to be reported at the next launch. */
+  | "quitWithoutWaiting"
   | "clearAppData"
   | "retryShortcuts"
   | "checkUpdates"
@@ -117,6 +119,10 @@ export interface AppContext {
    * next state change or quit, or until what held it has finished.
    */
   quitDeferred?: QuitDeferral;
+  /** Recordings saved in the background after their capture stopped (2026-10-09); `slow` past the save watchdog. */
+  saving?: readonly { file: string; slow: boolean }[];
+  /** A quit, running or deferred, waits only for those saves, so quitting without waiting for them is offered. */
+  quitWithoutWaiting?: boolean;
   /** An uncaught exception's error box waits for recording work to settle (plan 056). */
   errorBoxHeld?: boolean;
   /** When the view is built; failure rows are grouped by day relative to it. Tests pin it. */

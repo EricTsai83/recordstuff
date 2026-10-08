@@ -31,6 +31,7 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     resolutionCapChanged: vi.fn(),
     applyAppearance: vi.fn(),
     quit: vi.fn(),
+    quitWithoutWaiting: vi.fn(),
     relaunch: vi.fn(),
     openExternal: vi.fn(async () => {}),
     revealFile: vi.fn(),
@@ -55,6 +56,9 @@ describe("createActionHandler", () => {
     expect(deps.library.act).not.toHaveBeenCalled();
     expect(await act("quit")).toBe(true);
     expect(deps.quit).toHaveBeenCalledOnce();
+    // The way out of a quit held by saves in the background is offered while that quit runs.
+    expect(await act("quitWithoutWaiting")).toBe(true);
+    expect(deps.quitWithoutWaiting).toHaveBeenCalledOnce();
   });
 
   it("hides the interface without stopping or quitting a recording", async () => {

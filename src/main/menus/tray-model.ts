@@ -97,9 +97,17 @@ function fitTooltip(platform: NodeJS.Platform, text: string): string {
   if (platform !== "win32" || text.length <= WINDOWS_TOOLTIP_MAX) return text;
   return `${text.slice(0, WINDOWS_TOOLTIP_MAX - 1).trimEnd()}…`;
 }
-/** Quit alone ends the menu: Show log moved to RecordStuff → General (2026-10-04). */
-function appGroup(language: Language): TrayMenuItem[] {
-  return [item(t("Quit RecordStuff", language), "quit")];
+/**
+ * Quit alone ends the menu: Show log moved to RecordStuff → General (2026-10-04). While a quit waits only for saves in
+ * the background, the way out without them stands beside it (2026-10-09).
+ */
+function appGroup(ctx: AppContext): TrayMenuItem[] {
+  const language = ctx.language;
+  return [
+    ...(ctx.quitWithoutWaiting ? [item(t("Quit Without Waiting for the Save", language), "quitWithoutWaiting",
+      t("The recording is kept as it is and reported when RecordStuff opens again.", language))] : []),
+    item(t("Quit RecordStuff", language), "quit"),
+  ];
 }
 function permissionActions(needsRelaunch: boolean, language: Language): TrayMenuItem[] {
   const hint = t(
@@ -127,12 +135,14 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
   // Unread failures get their own group after the state; reviewed ones live in the window's Failures tab.
   const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
   const windows = windowsGroup(ctx);
-  const app = appGroup(language);
+  const app = appGroup(ctx);
   const shortcut = registeredShortcut(ctx);
   // What a notification alone may not have told (plan 056): they sit with the state, in every state.
   const notes = [
     ...(ctx.errorBoxHeld ? [text("An unexpected error occurred. See the log for details.")] : []),
     ...(ctx.quitDeferred ? [text(QUIT_DEFERRED[ctx.quitDeferred])] : []),
+    // Saves go on in the background whatever the state, a new recording's included (2026-10-09).
+    ...(ctx.saving ?? []).map(({ file, slow }) => t(slow ? "Still saving {file}. The drive may not be responding." : "Saving {file}…", language, { file })),
   ];
   /** After the state's own lines and before its actions, so Stop and Start keep their places. */
   const withNotes = (group: TrayMenuItem[]): TrayMenuItem[] => {
@@ -148,7 +158,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       // The state and what it holds back, nothing about clicking: what a click does is the user's choice (2026-10-04).
       tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
       // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
-      menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" ? { ...entry, enabled: false } : entry) : menu,
+      menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" && entry.action !== "quitWithoutWaiting" ? { ...entry, enabled: false } : entry) : menu,
     };
   };
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.

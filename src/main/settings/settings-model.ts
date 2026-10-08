@@ -563,7 +563,8 @@ function projectResult(result: RecordingResult, state: RecordingState, ctx: AppC
  * leaves the explanation to the lock `hint`.
  */
 export function settingsStatus(state: RecordingState, ctx: AppContext): SettingsStatus {
-  const status = { ...statusText(state, ctx), phase: ctx.quitting ? "quitting" as const : state.type };
+  const text = statusText(state, ctx);
+  const status = { ...text, phase: ctx.quitting ? "quitting" as const : text.phase ?? state.type };
   if (ctx.quitting) return status;
   const id = statusActionId(state, ctx);
   // Keep an optional recovery action for access that may already have been granted.
@@ -616,6 +617,10 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
   const resolution = displayResolution(ctx.displays, ctx.display);
   // The Screen row below says why and offers the way back; the card only names the problem.
   if (!resolution.ok) return { tone: "attention", title: t("Selected display is unavailable", language), detail: "" };
+  // A save in the background (2026-10-09) locks nothing, so the card names it with no lock hint below.
+  const saving = ctx.saving?.[0];
+  if (saving) return { tone: "busy", phase: "saving", detail: "",
+    title: t(saving.slow ? "Still saving {file}. The drive may not be responding." : "Saving {file}…", language, { file: saving.file }) };
   // Nothing to say while ready: the page shows no card then, and the menu bar icon is where recording starts.
   return { tone: "ready", title: t("Ready to record", language), detail: "" };
 }

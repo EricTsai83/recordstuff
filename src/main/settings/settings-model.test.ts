@@ -786,6 +786,15 @@ it("explains a Settings shortcut that is not registered, not only a retry button
 });
 
 describe("the status card", () => {
+  it("names a save in the background while idle, slow or not, and locks nothing (2026-10-09)", () => {
+    const view = settingsView(idle, { ...context, saving: [{ file: "Demo.mp4", slow: false }] });
+    expect(view.status).toMatchObject({ tone: "busy", phase: "saving", title: "Saving Demo.mp4…", detail: "" });
+    expect(view.hint).toBe("");
+    expect(settingsView(idle, { ...context, saving: [{ file: "Demo.mp4", slow: true }] }).status?.title)
+      .toBe("Still saving Demo.mp4. The drive may not be responding.");
+    // A problem that stops the next recording still comes first.
+    expect(settingsView({ type: "idle", outputDirUnavailable: true }, { ...context, saving: [{ file: "Demo.mp4", slow: false }] }).status?.tone).toBe("attention");
+  });
   it("has nothing to say while ready, whatever the click and the shortcut: the page shows no card then", () => {
     for (const ctx of [context, { ...context, trayClick: "menu" as const }, { ...context, hotkey: { ...context.hotkey, registered: false } }, { ...context, platform: "win32" as const, language: "zh-TW" as const }]) {
       expect(settingsView(idle, ctx).status).toEqual({ tone: "ready", phase: "idle", title: t("Ready to record", ctx.language), detail: "" });
