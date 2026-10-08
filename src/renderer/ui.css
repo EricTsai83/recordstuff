@@ -1328,10 +1328,21 @@
   .library-layout {
     margin-left: auto;
   }
+  /* A day out of view skips layout and paint: resizing or zooming the window (a title-bar double-click animates through
+     dozens of widths) then lays out only the visible days instead of every card in the library. The clip margin keeps
+     the cards' state lines, drawn 5px outside each card, from being cut at the day's edge. */
+  .library-day {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
+    overflow-clip-margin: 8px;
+  }
+  /* At most three cards a row, growing with the window; a window too narrow for three 272px cards holds two, then one.
+     A column is never narrower than a third of the row (less its two gaps), so a fourth never fits. 272px is the
+     narrowest card whose picture still holds the hover preview's fixed frame picture, its time and the risen bar. */
   .library-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, max(272px, calc((100% - 40px) / 3))), 1fr));
+    gap: 26px 20px;
   }
   .clip {
     position: relative;
@@ -2022,9 +2033,6 @@
     }
     .controls {
       max-width: 55%;
-    }
-    .library-grid {
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     }
     .library-head {
       flex-wrap: wrap;
