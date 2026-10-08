@@ -30,7 +30,7 @@ stateDiagram-v2
 ## 開始流程
 
 1. `Recorder.start()` 確認 idle、沒有 session，執行 OS preflight；建立 session id、品質與倒數快照，進入 starting 狀態（tray 顯示沙漏）。
-2. `ensureWritableDir()` 只自動建立預設資料夾，自訂資料夾必須存在；實際寫入並刪除 probe，空間低於 200 MiB 時拒絕開始；查詢剩餘空間本身失敗時只記 log 並繼續開始，與錄影中的防護一致。不可用就報錯，不換到其他資料夾。
+2. `ensureWritableDir()` 只自動建立預設資料夾，自訂資料夾必須存在；實際寫入並刪除 probe，空間低於 200 MiB 時拒絕開始；查詢剩餘空間本身失敗時只記 log 並繼續開始，與錄影中的防護一致。不可用就報錯，不換到其他資料夾。檢查到該次嘗試的期限仍未返回時（網路磁碟不再回應），會佔住主程序四條檔案系統執行緒之一，因此同一資料夾的新嘗試改為等待同一個檢查，在它返回前不另起新的檢查。
 3. 先寫入該 session 的中斷 sentinel 並記下暫存檔路徑，再以本地時間 `YYYY-MM-DD HH-mm-ss` 開啟 `.recording.mp4`。`wx` 防止同名暫存檔覆蓋；遇 EEXIST 時改寫 sentinel 並改試 `-2` 至 `-10`。檔名是按下開始當下的本地時間，因此有倒數時會比第一個影格早「準備時間加倒數」。
 4. 等待 host ready 並送 start。有倒數時此時就建立 overlay 視窗，讓第一個數字準時出現。Main 依保存的螢幕偏好選來源；主螢幕與指定螢幕都必須唯一、精確配對 id，列舉後重新確認拓樸，最多嘗試三次，並搭配 `audio: "loopback"`。
 5. Renderer 檢查 MP4 MIME、要求畫面與音訊；沒有音軌或音軌已 ended 就釋放 stream 並回錯誤。

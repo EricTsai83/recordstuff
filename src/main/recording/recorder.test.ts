@@ -710,6 +710,41 @@ describe("Recorder review fixes", () => {
     expect(ctx.host.started).toEqual([]);
   });
 
+  it("waits on a folder check that outlived its deadline instead of starting another, until it answers", async () => {
+    const logs: string[] = [];
+    const checks: Array<() => void> = [];
+    const ensureWritableDir = vi.fn(() => new Promise<void>((resolve) => { checks.push(resolve); }));
+    const ctx = setup({ ensureWritableDir, log: (message) => logs.push(message) });
+    ctx.recorder.toggle();
+    await vi.advanceTimersByTimeAsync(8000);
+    // Retried while the volume still does not answer: no second check holds another file-system thread.
+    ctx.recorder.toggle();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(ensureWritableDir).toHaveBeenCalledTimes(1);
+    expect(logs).toContain("recorder: session s1 waits on the earlier check of /out, still unanswered");
+    // Both attempts are reported at their deadline; their cleanup waits on the same check.
+    expect(ctx.events.filter(event => event.type === "failureStatus" && event.result.outcome === "pending")
+      .map(event => event.type === "failureStatus" && event.result.code)).toEqual(["output_open_failed", "output_open_failed"]);
+    // Once it answers, the next attempt checks the folder afresh.
+    checks[0]!();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ensureWritableDir).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps waiting on each hung folder's check while the user switches between folders", async () => {
+    let folder = "/a";
+    const ensureWritableDir = vi.fn((_dir: string) => new Promise<void>(() => undefined));
+    const ctx = setup({ deps: { outputDir: () => folder, ensureWritableDir } });
+    for (const next of ["/a", "/b", "/a", "/b"]) {
+      folder = next;
+      ctx.recorder.toggle();
+      await vi.advanceTimersByTimeAsync(8000);
+    }
+    expect(ensureWritableDir.mock.calls.map(([dir]) => dir)).toEqual(["/a", "/b"]);
+  });
+
   it("a writer opened after the deadline is abandoned, not used", async () => {
     let resolveOpen: ((w: FakeWriter) => void) | undefined;
     const late = new FakeWriter(path.join("/out", "late.recording.mp4"), path.join("/out", "late.mp4"));
@@ -742,11 +777,14 @@ describe("Recorder review fixes", () => {
   it("leaves a newer attempt's unavailable folder alone when an older one's late check then writes (review pass 1, F1)", async () => {
     let settleFirst: (() => void) | undefined;
     let calls = 0;
-    const ctx = setup({ ensureWritableDir: () => ++calls === 1
+    // The folder was changed between the attempts: the second checks its own and fails there.
+    let folder = "/out";
+    const ctx = setup({ deps: { outputDir: () => folder }, ensureWritableDir: () => ++calls === 1
       ? new Promise<void>((resolve) => { settleFirst = resolve; })
       : Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })) });
     ctx.recorder.toggle();
     await vi.advanceTimersByTimeAsync(8000);
+    folder = "/other";
     // The second attempt fails on its own, while the first one's cleanup still waits for its check.
     ctx.recorder.toggle();
     await flush();

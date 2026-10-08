@@ -273,6 +273,12 @@ export class Recorder {
   private pendingWork = 0;
   private shuttingDown: Promise<boolean> | undefined;
   private quitAdmission = false;
+  /**
+   * Folder checks that outlived their attempt's deadline (a network volume that stopped answering), by folder. Each
+   * holds one of the main process's four file-system threads until the volume answers, and with all four held the
+   * settings, history, sentinel and log writes queue behind them; a new attempt on that folder waits on it instead.
+   */
+  private hungChecks = new Map<string, Promise<void>>();
   private readonly workChanged = new Set<() => void>();
   /** Shared by every caller while media stays pending, so repeated quits add no listeners. */
   private mediaSettled: Promise<void> | undefined;
@@ -595,8 +601,14 @@ export class Recorder {
       sentinel: new SessionSentinelTracker(this.deps.sentinels, { id, startedAt }, this.deps.log),
     };
     this.session = session;
+    let check: Promise<void> | undefined;
+    let checked = false;
     session.opening = Promise.resolve().then(async () => {
-      await this.deps.ensureWritableDir(dir);
+      const hung = this.hungChecks.get(dir);
+      if (hung) this.deps.log(`recorder: session ${session.id} waits on the earlier check of ${dir}, still unanswered`);
+      check = hung ?? this.deps.ensureWritableDir(dir);
+      void check.then(() => { checked = true; }, () => { checked = true; });
+      await check;
       if (this.session !== session) return;
       if (this.deps.freeSpace) {
         // Advisory, as during recording: a lookup that fails must not refuse a folder the probe just wrote to.
@@ -615,6 +627,7 @@ export class Recorder {
     catch (cause) { this.deps.log(`recorder: session ${session.id} start hook failed: ${messageOf(cause)}`); }
     this.setState({ type: "starting" });
     session.timer = setTimeout(() => {
+      if (check && !checked) this.rememberHungCheck(dir, check);
       if (this.cancelMarked(session, "opening the folder timed out")) return;
       void this.fail(session.id, "output_open_failed", `opening ${dir} did not finish within ${this.deps.startTimeoutMs} ms`,
         { outputDirUnavailable: true });
@@ -669,6 +682,14 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} ${cause} after cancel (${reason}) was requested${detail === undefined ? "" : `: ${detail}`}`);
     this.cancel(session, reason);
     return true;
+  }
+
+  /** `check` of `dir` outlived its deadline: later attempts on the folder wait on it until it answers. */
+  private rememberHungCheck(dir: string, check: Promise<void>): void {
+    if (this.hungChecks.get(dir) === check) return;
+    this.hungChecks.set(dir, check);
+    const forget = (): void => { if (this.hungChecks.get(dir) === check) this.hungChecks.delete(dir); };
+    void check.then(forget, forget);
   }
 
   /**
