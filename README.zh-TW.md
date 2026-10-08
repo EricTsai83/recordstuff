@@ -9,13 +9,13 @@
 ## 下載
 
 <!-- release-download:start -->
-下載 **[RecordStuff 1.7.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v1.7.0/RecordStuff-1.7.0-arm64-selfsigned.dmg)**（127,479,403 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v1.7.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.7.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
+下載 **[RecordStuff 1.8.0：macOS Apple silicon（arm64）](https://github.com/EricTsai83/recordstuff/releases/download/v1.8.0/RecordStuff-1.8.0-arm64-selfsigned.dmg)**（133,180,131 bytes）。[英文發行說明](https://github.com/EricTsai83/recordstuff/releases/tag/v1.8.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v1.8.0/SHA256SUMS) · [最新版本](https://github.com/EricTsai83/recordstuff/releases/latest)。
 
-SHA-256：`c0558d1b7c7e34d61da7faf2743ea9e750f4e5e214158cf73f3dea9f968f8702`。
+SHA-256：`4d2783aedbaa3185ff0ea54c88aca543c133a6ca1a0a42c2cb23921c79576db4`。
 
-Windows：**[RecordStuff 1.7.0：Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v1.7.0/RecordStuff-1.7.0-x64-unsigned-setup.exe)**（100,340,338 bytes），未簽章、由 CI 建置；錄影尚未在 Windows 實機上驗證。
+Windows：**[RecordStuff 1.8.0：Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v1.8.0/RecordStuff-1.8.0-x64-unsigned-setup.exe)**（102,736,217 bytes），未簽章、由 CI 建置；錄影尚未在 Windows 實機上驗證。
 
-SHA-256：`82b51abb658f57dbadb5b7fe9f3e8d49bc4c81f9ebf17c6cbd8bdcb43f374716`。
+SHA-256：`fabea0f445c6415ed13a10d48b31775f794be3e78899fa0f7344b5a9ebb101c9`。
 <!-- release-download:end -->
 
 - **macOS**：把 RecordStuff 拖到 Applications。若被阻擋，開啟「系統設定 → 隱私權與安全性」並點「強制打開」（[Apple 說明](https://support.apple.com/102445)）。
