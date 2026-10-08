@@ -35,3 +35,9 @@ it("ends a shell that stops answering, and drops its late answer", async () => {
   await expect(server.read(100)).rejects.toThrow("timed out after 100 ms");
   expect((await server.read()).trim()).toBe("9 1 new");
 });
+
+it("keeps a row whose command line contains the end text, as the shell's own row does", async () => {
+  server = fake(`process.stdout.write("5 1 electron.exe\\r\\n7 1 powershell.exe -Command ... \\"<<<process-table-end $request\\" ...\\r\\n<<<process-table-end " + request + "\\r\\n");`);
+  const rows = (await server.read()).trim().split("\n");
+  expect(rows).toEqual(["5 1 electron.exe", "7 1 powershell.exe -Command ... \"<<<process-table-end $request\" ..."]);
+});

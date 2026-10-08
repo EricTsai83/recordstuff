@@ -8,14 +8,18 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 const READ_TIMEOUT_MS = 30_000;
-/** Each answer ends with this line and the request's number, so a late answer is never taken for a newer one. */
+/**
+ * Each answer ends with a line of exactly this and the request's number, so a late answer is never taken for a newer
+ * one. Only a whole line counts: the shell's own command line, a row of the very table, contains the text too.
+ */
 const END = "<<<process-table-end";
+const END_LINE = /^<<<process-table-end (\d+)$/;
 
 /** The PowerShell loop: one table per line read on stdin, as `pid ppid commandline` lines, then the end line. */
 export const WINDOWS_SERVER_SCRIPT = [
   "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
   "while ($null -ne ($request = [Console]::In.ReadLine())) {",
-  "  try { Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine | ForEach-Object {",
+  "  try { Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine -ErrorAction Stop | ForEach-Object {",
   "    \"$($_.ProcessId) $($_.ParentProcessId) $(($_.CommandLine -replace '[\\r\\n]+', ' '))\" } }",
   `  catch { "ERROR $($_.Exception.Message)" }`,
   `  "${END} $request"`,
@@ -48,16 +52,18 @@ export class ProcessTableServer {
 
   private start(): ChildProcessWithoutNullStreams {
     const child = spawn(this.command, [...this.args], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { if (this.child === child) this.receive(chunk); });
-    // Nothing reads stderr's meaning, but an unread pipe could fill and stall the shell.
-    child.stderr.resume();
     const ended = (error: Error): void => {
       if (this.child !== child) return;
       this.child = undefined;
       this.waiting?.reject(error);
       this.waiting = undefined;
     };
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { if (this.child === child) this.receive(chunk); });
+    // A request written as the shell ends fails on the pipe (EPIPE): that read fails, and the next starts a new shell.
+    child.stdin.on("error", error => { if (this.child === child) { ended(error); this.stop(); } });
+    // Nothing reads stderr's meaning, but an unread pipe could fill and stall the shell.
+    child.stderr.resume();
     child.on("error", error => ended(error));
     child.on("exit", (code, signal) => ended(new Error(`process table shell ended (code ${code}, signal ${signal})`)));
     // The worker may exit while the shell idles: it must not hold the worker open.
@@ -65,6 +71,7 @@ export class ProcessTableServer {
     for (const stream of [child.stdin, child.stdout, child.stderr]) (stream as unknown as { unref?: () => void }).unref?.();
     this.child = child;
     this.buffer = "";
+    this.lines = [];
     return child;
   }
 
@@ -87,22 +94,26 @@ export class ProcessTableServer {
     });
   }
 
+  /** Lines since the last end line; an end line for an earlier, timed-out request drops what came before it. */
+  private lines: string[] = [];
+
   private receive(chunk: string): void {
     this.buffer += chunk;
-    const waiting = this.waiting;
-    if (!waiting) { this.buffer = ""; return; }
-    const marker = `${END} ${waiting.id}`;
-    const at = this.buffer.indexOf(marker);
-    if (at < 0) return;
-    const rows = this.buffer.slice(0, at);
-    this.buffer = this.buffer.slice(at + marker.length).replace(/^\r?\n/, "");
-    this.waiting = undefined;
-    // An answer to an earlier, timed-out request ends with its own number, so it is dropped with what precedes ours.
-    const earlier = rows.lastIndexOf(END);
-    const own = earlier < 0 ? rows : rows.slice(rows.indexOf("\n", earlier) + 1);
-    const error = /^ERROR (.*)$/m.exec(own);
-    if (error) waiting.reject(new Error(`process table query failed: ${error[1]}`));
-    else waiting.resolve(own);
+    let newline: number;
+    while ((newline = this.buffer.indexOf("\n")) >= 0) {
+      const line = this.buffer.slice(0, newline).replace(/\r$/, "");
+      this.buffer = this.buffer.slice(newline + 1);
+      const end = END_LINE.exec(line);
+      if (!end) { this.lines.push(line); continue; }
+      const rows = this.lines;
+      this.lines = [];
+      const waiting = this.waiting;
+      if (!waiting || Number(end[1]) !== waiting.id) continue;
+      this.waiting = undefined;
+      const error = rows.find(row => row.startsWith("ERROR "));
+      if (error) waiting.reject(new Error(`process table query failed: ${error.slice("ERROR ".length)}`));
+      else waiting.resolve(rows.join("\n") + "\n");
+    }
   }
 }
 
