@@ -5,7 +5,8 @@
  * Settings use a separate sandboxed window; capture keeps its hidden host.
  */
 import { createPreferenceActions } from "./settings/preferences";
-import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./app/quit-feedback";
+import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
+import { QuitStatus } from "./app/quit-status";
 import { installQuitCoordinator } from "./app/quit-coordinator";
 import { prepareDataCleanup, releaseFailedCleanup, waitForDataCleanup } from "./app/data-cleanup";
 import { DataCleanupRequest } from "./app/data-cleanup-request";
@@ -343,15 +344,21 @@ async function main(): Promise<void> {
 
   // One toggle for both entry points (plan 016): the global shortcut and the tray icon's left click, when it is
   // set to record, call the same `toggle`, whose state guards decide.
-  /** A quit is running: every action but quit is ignored until it exits or is declined. */
-  let quitRequested = false;
+  /** A quit in progress: what it holds back, and what the tray and the window say about it. */
+  const quit = new QuitStatus({
+    holdNotices: held => { savedNotification.setQuitting(held); captureNotices.setQuitting(held); },
+    resumeAdmission: () => recorder.resumeAdmission(),
+    // Work held back while the quit made the app unsettled applies now, not at the next recording.
+    flushHeld: () => { updates.flush(); shortcuts.flush(); },
+    refresh: () => refreshUi(),
+  });
   const clearData = new DataCleanupRequest({
     settled: () => settled(), language: () => settings.language, quit: () => quitCoordinator.quit(),
     confirm: options => { focusApp(); return dialog.showMessageBox(options); },
   });
-  const toggle = (): void => { if (!quitRequested) recorder.toggle(); };
+  const toggle = (): void => { if (!quit.requested) recorder.toggle(); };
   /** Settings that touch a session (quality, shortcut) change only here. */
-  const settled = (): boolean => !quitRequested && preferencesUnlocked(recorder.state);
+  const settled = (): boolean => !quit.requested && preferencesUnlocked(recorder.state);
   const shortcuts = new AppShortcuts({
     globalShortcut, platform: process.platform, toggle, settled, store: settings, log,
     openSettings: () => runAction("openSettings", "settings shortcut"),
@@ -382,42 +389,6 @@ async function main(): Promise<void> {
   // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
-  /** A quit waits for recording work or a history save; set shortly after it starts so a quick exit shows nothing. */
-  let quitting = false;
-  /** What that quit waits on, so the tray and the window name it (`AppContext.quitStep`). */
-  let quitStep: QuitDeferral = "media";
-  let quitFeedback: ReturnType<typeof setTimeout> | undefined;
-  /** What held the last deferred quit, while the tray still says so (plan 056). */
-  let quitDeferred: QuitDeferral | undefined;
-  /** Each deferral clears only its own line: a later quit may have replaced it. */
-  let deferralToken = 0;
-  const clearQuitDeferred = (refresh = true): void => {
-    deferralToken += 1;
-    if (quitDeferred === undefined) return;
-    quitDeferred = undefined;
-    if (refresh) refreshUi();
-  };
-  /** Everything a quit holds back; `endQuitting` releases exactly these when the app stays open. */
-  const beginQuitting = (): void => {
-    quitRequested = true;
-    savedNotification.setQuitting(true);
-    captureNotices.setQuitting(true);
-    // Pending cleanup can hold quit for the stop deadline, and a history save for its wait; the tray says so meanwhile.
-    clearTimeout(quitFeedback);
-    quitFeedback = setTimeout(() => { quitting = true; refreshUi(); }, 300);
-  };
-  const endQuitting = (): void => {
-    quitRequested = false;
-    recorder.resumeAdmission();
-    savedNotification.setQuitting(false);
-    captureNotices.setQuitting(false);
-    clearTimeout(quitFeedback);
-    quitFeedback = undefined;
-    if (quitting) { quitting = false; refreshUi(); }
-    // Work held back while the quit made the app unsettled applies now, not at the next recording.
-    updates.flush();
-    shortcuts.flush();
-  };
   let captureDegraded = false;
   const captureWarning = () => translate("Could not confirm the resolution cap. The recording may be larger.", settings.language);
   const appContext = (): AppContext => ({
@@ -443,8 +414,7 @@ async function main(): Promise<void> {
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
-    ...(quitting ? { quitting, quitStep } : {}),
-    ...(quitDeferred ? { quitDeferred } : {}),
+    ...quit.context(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
   const settingsWindow = new SettingsWindow({
@@ -455,7 +425,7 @@ async function main(): Promise<void> {
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
     activated: () => { library.watch(); void library.refresh(); },
-    quitRequested: () => quitRequested,
+    quitRequested: () => quit.requested,
     opened: () => appMenu.windowOpened(),
     // Recordings waiting to go to the Trash go now: nothing is left to undo them from.
     closed: () => { library.unwatch(); void library.flushTrash(); appMenu.windowClosed(); },
@@ -492,7 +462,7 @@ async function main(): Promise<void> {
     onToggle: toggle,
     // A click on an earlier banner obeys the quit gate, as every other way in does (`handleAction`).
     showSaved: file => {
-      if (quitRequested) { log(`notification: show saved ${file} ignored while quitting`); return; }
+      if (quit.requested) { log(`notification: show saved ${file} ignored while quitting`); return; }
       void showRecording(file).catch((cause: unknown) => log(`notification: show saved ${file} failed: ${stackOf(cause)}`));
     },
     permissionAction: () => {
@@ -616,7 +586,7 @@ async function main(): Promise<void> {
     failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
   });
   const actionHandler = createActionHandler({
-    quitRequested: () => quitRequested, settled, platform: process.platform, log, refresh: refreshUi,
+    quitRequested: () => quit.requested, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
     showLastRecording: () => showRecording(), hideSettings,
@@ -640,7 +610,7 @@ async function main(): Promise<void> {
     switch (event.type) {
       case "state": {
         // renderUi below draws the cleared line.
-        clearQuitDeferred(false);
+        quit.clearDeferred(false);
         if (preferencesUnlocked(event.state)) {
           displayMedia.settle();
           host.destroy();
@@ -747,7 +717,6 @@ async function main(): Promise<void> {
     log,
   });
   let historyPrompt = false;
-  let quitDeferral: QuitDeferral = "media";
   /** The last quit was refused because the Clear local app data prompt is open: its answer decides the quit. */
   let cleanupPromptOpen = false;
   /** The metadata writes the last quit waited on; a line about them clears once they finish. */
@@ -757,13 +726,10 @@ async function main(): Promise<void> {
     shutdown: async () => {
       cleanupPromptOpen = clearData.confirming;
       if (cleanupPromptOpen) return false;
-      quitDeferral = quitStep = "media";
-      clearQuitDeferred();
-      beginQuitting();
+      quit.begin();
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
-      quitDeferral = quitStep = "metadata";
-      if (quitting) refreshUi();
+      quit.metadata();
       const pending = new Set(["settings", "window size", "trash", "log"]);
       const flushes = ([["settings", settings.flush()], ["window size", settingsWindow.flush()], ["trash", library.flushTrash()], ["log", log.flush()]] as const)
         .map(([name, flush]) => flush.then(() => { pending.delete(name); }));
@@ -781,15 +747,11 @@ async function main(): Promise<void> {
       }
       clearData.cancel();
       recordingResults.resume();
-      endQuitting();
-      log(`quit deferred: ${quitDeferral === "media" ? "recording work" : "a preference or log write"} is still pending`);
-      showQuitFeedback(quitDeferral);
+      quit.end();
+      log(`quit deferred: ${quit.step === "media" ? "recording work" : "a preference or log write"} is still pending`);
+      showQuitFeedback(quit.step);
       // Refused, hidden by Focus or muted while the display is shared, the banner may never be seen (plan 056).
-      quitDeferred = quitDeferral;
-      const token = deferralToken;
-      refreshUi();
-      void (quitDeferral === "media" ? recorder.whenMediaSettled() : metadataWritten)
-        .then(() => { if (token === deferralToken) clearQuitDeferred(); }, () => undefined);
+      quit.defer(quit.step === "media" ? recorder.whenMediaSettled() : metadataWritten);
     },
     // Media is safe here; unsaved reminders need a durable save or explicit consent.
     history: async () => {
@@ -818,7 +780,7 @@ async function main(): Promise<void> {
     resume: () => {
       const wasClearing = clearData.requested;
       clearData.cancel();
-      endQuitting();
+      quit.end();
       // Staying at the history prompt, or a history step that threw, leaves failure-history retries paused.
       recordingResults.resume();
       if (wasClearing) {
@@ -842,8 +804,7 @@ async function main(): Promise<void> {
   reopen = watchReopen({ events: app, platform: process.platform, open: () => handleAction("openSettings"), log, now: () => performance.now() });
 
   app.on("will-quit", () => {
-    // A modal quit prompt can hold the feedback timer past its 300 ms; it must not render a destroyed tray.
-    clearTimeout(quitFeedback);
+    quit.dispose();
     reopen?.stop();
     updates.dispose();
     savedNotification.dispose();
