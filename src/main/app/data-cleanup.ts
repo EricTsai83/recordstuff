@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { messageOf } from "../lib/errors";
 
 export const CLEANUP_MARKER = ".data-cleanup.json";
 export interface CleanupPlan {
@@ -161,26 +162,52 @@ export async function prepareDataCleanup(plan: CleanupPlan): Promise<void> {
   }
 }
 
+interface CleanupStatus { pid: number; status: "waiting" | "committed" | "failed"; error?: unknown }
+
+/** The marker's status, or undefined when there is none; a marker that cannot be read or validated throws. */
+async function readCleanupStatus(marker: string): Promise<CleanupStatus | undefined> {
+  let value: { version?: unknown; pid?: unknown; status?: unknown; error?: unknown };
+  try { value = JSON.parse(await fs.readFile(marker, "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new Error(`Could not read local data cleanup status: ${String(error)}`);
+  }
+  if (!value || value.version !== 1 || !["waiting", "committed", "failed"].includes(String(value.status)) || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0)
+    throw new Error("Invalid local data cleanup status");
+  return { pid: Number(value.pid), status: value.status as CleanupStatus["status"], error: value.error };
+}
+
+/** Whether `pid` still runs; a process this user may not signal counts as running. */
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; }
+}
+
 /** A new instance must not create settings/cache while the previous one clears them. */
 export async function waitForDataCleanup(userData: string): Promise<void> {
   const marker = path.join(userData, CLEANUP_MARKER);
   const deadline = Date.now() + 65_000;
   for (;;) {
-    let value: { version?: unknown; pid?: unknown; status?: unknown; error?: unknown };
-    try { value = JSON.parse(await fs.readFile(marker, "utf8")); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw new Error(`Could not read local data cleanup status: ${String(error)}`);
-    }
-    if (!value || value.version !== 1 || !["waiting", "committed", "failed"].includes(String(value.status)) || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0)
-      throw new Error("Invalid local data cleanup status");
+    const value = await readCleanupStatus(marker);
+    if (!value) return;
     if (value.status === "failed") throw new Error(`Local data cleanup failed: ${String(value.error)}`);
-    try { process.kill(Number(value.pid), 0); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      throw new Error("Local data cleanup was interrupted; the data was kept where possible");
-    }
+    if (!processAlive(value.pid)) throw new Error("Local data cleanup was interrupted; the data was kept where possible");
     if (Date.now() >= deadline) throw new Error("Local data cleanup is still running");
     await new Promise<void>(resolve => setTimeout(resolve, 100));
   }
+}
+
+/**
+ * After `waitForDataCleanup` reported a failed or interrupted cleanup and the user was told, remove its
+ * marker so this launch can continue. Never while a live helper could still be deleting the profile, and
+ * never for a marker that cannot be validated: both throw and keep the marker.
+ */
+export async function releaseFailedCleanup(userData: string): Promise<void> {
+  const marker = path.join(userData, CLEANUP_MARKER);
+  const value = await readCleanupStatus(marker).catch((cause: unknown) => {
+    throw new Error(`${messageOf(cause)}; original marker retained`);
+  });
+  if (!value) return;
+  if (value.status !== "failed" && processAlive(value.pid)) throw new Error("Cleanup helper is still active");
+  await fs.unlink(marker).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
 }

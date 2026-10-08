@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { CLEANUP_MARKER, cleanupWorkerSource, prepareDataCleanup, waitForDataCleanup, type CleanupPlan } from "./data-cleanup";
+import { CLEANUP_MARKER, cleanupWorkerSource, prepareDataCleanup, releaseFailedCleanup, waitForDataCleanup, type CleanupPlan } from "./data-cleanup";
 
 let directory: string, plan: CleanupPlan;
 const children: ChildProcess[] = [];
@@ -137,5 +137,31 @@ it("startup detects an interrupted or failed cleanup, rather than overwriting it
   await expect(waitForDataCleanup(plan.userData)).rejects.toThrow(/interrupted/);
   await fs.writeFile(marker(), JSON.stringify({ version: 1, pid: owner.pid, status: "failed", error: "permission denied" }));
   await expect(waitForDataCleanup(plan.userData)).rejects.toThrow(/permission denied/);
+  expect(await readSettings()).toBe("settings");
+});
+
+it("startup releases only a marker whose helper has stopped, and keeps one it cannot trust", async () => {
+  // No marker: nothing to release.
+  await releaseFailedCleanup(plan.userData);
+  // A live helper may still be deleting: the marker stays.
+  const owner = parent();
+  await fs.writeFile(marker(), JSON.stringify({ version: 1, pid: owner.pid, status: "committed" }));
+  await expect(releaseFailedCleanup(plan.userData)).rejects.toThrow(/still active/);
+  await fs.access(marker());
+  // A failed helper has stopped, even if its pid now belongs to another process.
+  await fs.writeFile(marker(), JSON.stringify({ version: 1, pid: owner.pid, status: "failed", error: "permission denied" }));
+  await releaseFailedCleanup(plan.userData);
+  await expect(fs.access(marker())).rejects.toMatchObject({ code: "ENOENT" });
+  // An interrupted helper is gone.
+  const exited = new Promise<void>(resolve => owner.once("exit", () => resolve())); owner.kill(); await exited;
+  await fs.writeFile(marker(), JSON.stringify({ version: 1, pid: owner.pid, status: "waiting" }));
+  await releaseFailedCleanup(plan.userData);
+  await expect(fs.access(marker())).rejects.toMatchObject({ code: "ENOENT" });
+  // Unreadable or invalid: kept, with a reason instead of a bare parse error.
+  for (const content of ["{not json", JSON.stringify({ version: 2, pid: 1, status: "failed" })]) {
+    await fs.writeFile(marker(), content);
+    await expect(releaseFailedCleanup(plan.userData)).rejects.toThrow(/original marker retained/);
+    await fs.access(marker());
+  }
   expect(await readSettings()).toBe("settings");
 });

@@ -7,7 +7,7 @@
 import { createPreferenceActions } from "./settings/preferences";
 import { createHistoryQuit, createQuitFeedback, type QuitDeferral } from "./app/quit-feedback";
 import { installQuitCoordinator } from "./app/quit-coordinator";
-import { CLEANUP_MARKER, prepareDataCleanup, waitForDataCleanup } from "./app/data-cleanup";
+import { prepareDataCleanup, releaseFailedCleanup, waitForDataCleanup } from "./app/data-cleanup";
 import { DataCleanupRequest } from "./app/data-cleanup-request";
 import { RecordingResultStore } from "./recording/recording-result-store";
 import { RecordingResults } from "./recording/recording-result";
@@ -166,15 +166,7 @@ async function start(): Promise<void> {
     dialog.showErrorBox(translate("Could not clear local app data", DEFAULT_LANGUAGE),
       `${translate("Local data cleanup did not finish. Some app data may remain. Your recordings were kept. You can retry from Settings or remove the remaining app data manually.", DEFAULT_LANGUAGE)}\n\n${String(cause)}`);
     // Never resume while a live helper could still be deleting this profile.
-    const marker = path.join(app.getPath("userData"), CLEANUP_MARKER);
-    const status = JSON.parse(await fs.readFile(marker, "utf8")) as { version?: number; pid?: number; status?: string };
-    if (status.version !== 1 || !Number.isSafeInteger(status.pid) || Number(status.pid) <= 0 || !["waiting", "committed", "failed"].includes(String(status.status)))
-      throw new Error("Invalid local data cleanup status; original marker retained");
-    if (status.status !== "failed") {
-      try { if (status.pid) { process.kill(status.pid, 0); throw new Error("Cleanup helper is still active"); } }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-    }
-    await fs.unlink(marker);
+    await releaseFailedCleanup(app.getPath("userData"));
   }
 
   // Acquire the userData lock only after the helper finishes: otherwise it
