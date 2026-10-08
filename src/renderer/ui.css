@@ -60,7 +60,7 @@
   --text-xs--line-height: 1.45;
 }
 
-/* Shared reference palette: stone-neutral surfaces and the same red primary in both themes.
+/* Shared reference palette: stone surfaces in the light theme, neutral grey in the dark, and the same red primary.
    The shadcn colour tokens retain the supplied OKLCH values. App-specific selections and quiet actions reuse those
    roles; recording, warning and media surfaces keep their distinct status meanings. */
 @theme inline {
@@ -152,6 +152,10 @@
   --permission-card-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent);
   --permission-icon-ring: color-mix(in srgb, var(--primary) 10%, transparent);
   --permission-link-ink: var(--destructive-ink);
+  /* A faint grain baked into each plane's own background rather than an overlay above the content, which would re-blend
+     every animated frame. A file, not a data URL: the renderer's CSP allows images from 'self' only. Opaque planes that
+     sit over the page (the sidebar, the head) repeat it, or they read flatter than the page around them. */
+  --surface-grain: url("./assets/surface-grain.svg?no-inline");
 
   --shadow-2xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.20);
   --shadow-xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 8px 10px -1px hsl(0 0% 0% / 0.08);
@@ -163,7 +167,8 @@
   --shadow-2xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.04);
   color-scheme: light dark;
   --radius: 0.75rem;
-  --background: oklch(0.9699 0.0013 106.4238);
+  /* One near-white plane for the sidebar and the content; raised controls keep the white --card. */
+  --background: oklch(0.9912 0.0013 106.4238);
   --foreground: oklch(0.2161 0.0061 56.0434);
   --card: oklch(1.0000 0 0);
   --card-foreground: oklch(0.2161 0.0061 56.0434);
@@ -186,11 +191,12 @@
   --accent-foreground: oklch(0.2161 0.0061 56.0434);
   --destructive: oklch(0.6368 0.2078 25.3313);
   /* Hairlines between rows; --input is a control's own border. */
-  --border: oklch(0.9232 0.0026 48.7171);
+  --border: oklch(0.9380 0.0026 48.7171);
   --input: oklch(0.9232 0.0026 48.7171);
   --ring: oklch(0.5858 0.2220 17.5846);
   /* Navigation belongs to the window backdrop; the content is the raised card surface. */
-  --sidebar: var(--background);
+  /* The sidebar sits a clear step below the content's near-white plane. */
+  --sidebar: oklch(0.9640 0.0020 84);
   /* Keep hover feedback a step deeper than the sidebar surface. */
   --sidebar-accent: color-mix(in oklch, var(--sidebar) 50%, var(--sidebar-border));
   /* Recording: the status title (4.5:1, plan 067), the status mark's tile and halo, and its card. */
@@ -227,7 +233,6 @@
   --media-icon-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
-  --settings-content-shadow: 0 2px 8px rgb(0 0 0 / 0.04), -3px 0 12px rgb(0 0 0 / 0.035);
   /* The Screen row's arrangement: each screen a dark bezel around a slate wallpaper with white ink, as in both themes
      a monitor looks the same; the primary one's menu bar is a white strip. */
   --display-wallpaper: radial-gradient(120% 90% at 12% 0%, oklch(0.82 0.08 215 / 0.9), transparent 58%),
@@ -253,7 +258,7 @@
   --sidebar-selected-foreground: color-mix(in oklab, var(--sidebar-primary) 95%, var(--sidebar-foreground));
   --sidebar-primary-foreground: oklch(1.0000 0 0);
   --sidebar-accent-foreground: oklch(0.2161 0.0061 56.0434);
-  --sidebar-border: oklch(0.9232 0.0026 48.7171);
+  --sidebar-border: oklch(0.9380 0.0026 48.7171);
   --sidebar-ring: oklch(0.5858 0.2220 17.5846);
   /* A companion ink for small error labels; the reference destructive fill stays exact. */
   --destructive-ink: oklch(0.5200 0.1700 25.3313);
@@ -278,27 +283,29 @@
   --permission-card-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
   --permission-icon-ring: rgb(255 255 255 / 0.1);
   --permission-link-ink: #ff9aa0;
-  --background: oklch(0.2161 0.0061 56.0434);
+  /* The plane is the darkest surface; raised controls (--card) and popovers sit a step above it. */
+  --background: oklch(0.1700 0 0);
   --foreground: oklch(0.9848 0.0013 106.4233);
-  --card: oklch(0.1469 0.0041 49.2499);
+  --card: oklch(0.2161 0 0);
   --card-foreground: oklch(0.9848 0.0013 106.4233);
-  --popover: oklch(0.1469 0.0041 49.2499);
+  --popover: oklch(0.2161 0 0);
   --popover-foreground: oklch(0.9848 0.0013 106.4233);
-  /* The same red primary over the dark stone surfaces. */
+  /* The same red primary over neutral grey surfaces; a warm tint reads as red in the dark. */
   --primary: oklch(0.5858 0.2220 17.5846);
   --selection: color-mix(in srgb, var(--primary) 10%, transparent);
   --primary-foreground: oklch(1.0000 0 0);
-  --secondary: oklch(0.2685 0.0063 34.2976);
+  --secondary: oklch(0.2450 0 0);
   --secondary-foreground: oklch(0.9848 0.0013 106.4233);
-  --muted: oklch(0.2685 0.0063 34.2976);
-  --muted-foreground: oklch(0.7161 0.0091 56.2590);
-  --accent: oklch(0.2685 0.0063 34.2976);
+  --muted: oklch(0.2450 0 0);
+  --muted-foreground: oklch(0.7161 0 0);
+  --accent: oklch(0.2450 0 0);
   --accent-foreground: oklch(0.9848 0.0013 106.4233);
   --destructive: oklch(0.3958 0.1331 25.7230);
-  --border: oklch(0.2685 0.0063 34.2976);
-  --input: oklch(0.2685 0.0063 34.2976);
+  --border: oklch(0.2550 0 0);
+  --input: oklch(0.2685 0 0);
   --ring: oklch(0.5858 0.2220 17.5846);
-  --sidebar: var(--background);
+  /* In the dark theme the sidebar is the deeper surface and the content a step lighter. */
+  --sidebar: oklch(0.1350 0 0);
   --sidebar-accent: var(--accent);
   --recording: #f87171;
   --recording-mark: var(--indicator);
@@ -321,7 +328,7 @@
   --sidebar-selected-foreground: color-mix(in oklab, var(--sidebar-primary) 85%, var(--sidebar-foreground));
   --sidebar-primary-foreground: oklch(1.0000 0 0);
   --sidebar-accent-foreground: oklch(0.9848 0.0013 106.4233);
-  --sidebar-border: oklch(0.2685 0.0063 34.2976);
+  --sidebar-border: oklch(0.2550 0 0);
   --sidebar-ring: oklch(0.5858 0.2220 17.5846);
   /* A companion ink for small error labels; the reference destructive fill stays exact. */
   --destructive-ink: oklch(0.7400 0.1400 25.7230);
@@ -346,6 +353,12 @@
   --shadow-xl: 0px 8px 16px 0px hsl(0 0% 0% / 0.30), 0px 8px 10px -1px hsl(0 0% 0% / 0.30);
   --shadow-2xl: 0px 8px 16px 0px hsl(0 0% 0% / 0.75);
 }
+/* Increased contrast keeps every plane a flat colour. */
+@media (prefers-contrast: more) {
+  :root {
+    --surface-grain: none;
+  }
+}
 @layer base {
   /* Base UI's popups hide their own scroll bar with this class; its style tag is not rendered under the CSP
      (electron.vite.config.ts). */
@@ -358,7 +371,7 @@
   :root {
     font: 16px/1.45 var(--font-sans);
     color: var(--foreground);
-    background: var(--background);
+    background: var(--background) var(--surface-grain) 0 0 / 256px 256px;
     -webkit-font-smoothing: antialiased;
   }
   * {
@@ -558,13 +571,17 @@
     min-width: 0;
     min-height: 0;
     position: relative;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--settings-content-shadow);
+    /* The viewport only cuts the page straight across. The panel reaches into the column gap so its scroll clip
+       leaves room for focus lines drawn just outside the page's content. */
+    --settings-shadow-gutter: 16px;
     overflow: clip;
+    overflow-clip-margin: var(--settings-shadow-gutter);
   }
   .settings-panel {
     min-height: 0;
     overflow: auto;
+    margin-left: calc(-1 * var(--settings-shadow-gutter));
+    padding-left: var(--settings-shadow-gutter);
     /* The space after the card scrolls into view only at the end of an overflowing page. */
     padding-bottom: 24px;
     scroll-padding-block: 36px 46px;
@@ -611,10 +628,7 @@
     --content-x: var(--main-right);
     container: settings-card / inline-size;
     min-height: 100%;
-    background: var(--card);
-    color: var(--card-foreground);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xs);
+    color: var(--foreground);
     overflow: clip;
     padding: 0 var(--content-x) 44px;
   }
@@ -1190,21 +1204,21 @@
     pointer-events: none;
     position: absolute;
     inset: auto 0 0;
-    background: linear-gradient(transparent, var(--card));
+    background: linear-gradient(transparent, var(--background));
     backdrop-filter: blur(4px);
     mask-image: linear-gradient(transparent, var(--mask-opaque) 65%);
     transition: opacity 120ms ease-out;
   }
   .scroll-hint-top {
     inset: 0 0 auto;
-    background: linear-gradient(var(--card), transparent);
+    background: linear-gradient(var(--background), transparent);
     mask-image: linear-gradient(var(--mask-opaque) 35%, transparent);
   }
   @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     .scroll-hint {
       backdrop-filter: none;
       mask-image: none;
-      background: var(--card);
+      background: var(--background) var(--surface-grain) 0 0 / 256px 256px;
       border-top: 1px solid var(--border);
     }
     .scroll-hint-top {
@@ -1303,7 +1317,7 @@
     height: 9px;
     border-radius: 50%;
     background: var(--muted-foreground);
-    box-shadow: 0 0 0 2px var(--card);
+    box-shadow: 0 0 0 2px var(--background);
   }
   .result-outcome {
     display: block;
@@ -1990,15 +2004,16 @@
       display: grid;
       grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
       grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-      column-gap: 22px;
+      column-gap: 12px;
     }
-    /* The existing drag surface blends into the window backdrop; navigation has no raised shell. */
+    /* The existing drag surface shares the window's plane; a hairline is all that divides it from the page. */
     .sidebar-background {
       display: block;
       grid-column: 1;
       grid-row: 1 / -1;
-      margin: calc(-1 * var(--main-top)) -11px 0 -20px;
-      background: var(--sidebar);
+      margin: calc(-1 * var(--main-top)) -12px 0 -20px;
+      background: var(--sidebar) var(--surface-grain) 0 0 / 256px 256px;
+      border-right: 1px solid var(--sidebar-border);
     }
     /* The brand is already above, so the card says its state with a light before the title instead of the mark. */
     .status-mark {
