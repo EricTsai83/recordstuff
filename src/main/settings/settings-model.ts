@@ -456,8 +456,8 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
       { id: "show", label: t("Show log", ctx.language), enabled: true, checked: false, action: "revealLog" },
     ]), kind: "actions" },
     { ...group("localData", t("Local app data", ctx.language), unlocked, [
-      { id: "clear", label: t("Clear local app data and quit…", ctx.language), enabled: unlocked, checked: false, action: "clearAppData" },
-    ], t("Clears settings, failure history, cache, logs and old data backups. Recordings are kept. RecordStuff will quit; reopen it to start with default settings.", ctx.language)), kind: "actions" },
+      { id: "clear", label: t("Clear and quit…", ctx.language), enabled: unlocked, checked: false, action: "clearAppData" },
+    ], t("Clears settings, failure history, cache, logs and old backups. Recordings are kept.", ctx.language)), kind: "actions" },
     { ...group("about", t("Built by Eric Tsai", ctx.language), true, [
       { id: "website", label: t("Official website", ctx.language), enabled: true, checked: false, action: "openWebsite" },
       { id: "source", label: t("GitHub source", ctx.language), enabled: true, checked: false, action: "openSource" },

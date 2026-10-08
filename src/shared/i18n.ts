@@ -13,8 +13,8 @@ export function documentLanguage(language: Language | undefined): string {
 
 export const ZH_TW = {
   "Local app data": "本機 App 資料",
-  "Clear local app data and quit…": "清除本機 App 資料並結束…",
-  "Clears settings, failure history, cache, logs and old data backups. Recordings are kept. RecordStuff will quit; reopen it to start with default settings.": "清除設定、失敗紀錄、快取、log 與舊資料備份，錄影檔會保留。App 將結束，重新開啟後使用預設設定。",
+  "Clear and quit…": "清除並結束…",
+  "Clears settings, failure history, cache, logs and old backups. Recordings are kept.": "清除設定、失敗紀錄、快取、log 與舊備份，錄影檔會保留。",
   "Clear local app data?": "要清除本機 App 資料嗎？",
   "RecordStuff will quit, then permanently clear settings, failure history, cache, logs and old data backups. Recordings and your output folder are kept. This does not uninstall the app or reset system permissions.": "RecordStuff 會結束，然後永久清除設定、失敗紀錄、快取、log 與舊資料備份。錄影檔與儲存資料夾會保留。這不會移除 App 或重設系統權限。",
   "Clear data and quit": "清除資料並結束",
@@ -246,7 +246,7 @@ export const ZH_TW = {
   "Diagnostic tools": "診斷工具",
   "Reset and cleanup": "重設與清理",
   "Clear local app data": "清除本機 App 資料",
-  "This permanently deletes the listed app data and cannot be undone.": "上述 App 資料會永久刪除，無法復原。",
+  "This cannot be undone, and RecordStuff will quit.": "此動作無法復原，完成後 App 會結束。",
   Expand: "展開",
   Collapse: "收合",
   "Open RecordStuff": "開啟 RecordStuff",

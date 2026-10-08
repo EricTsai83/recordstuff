@@ -537,7 +537,7 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
       )}
       {group.id === "localData" && (
         <p id="settings-data-cleanup-warning" className="note cleanup-warning">
-          {model.text("This permanently deletes the listed app data and cannot be undone.")}
+          {model.text("This cannot be undone, and RecordStuff will quit.")}
         </p>
       )}
       {group.kind !== "actions" && actions.length > 0 && (

@@ -45,7 +45,7 @@ describe("settingsView", () => {
     expect(settingsAction(idle, { ...context, quitting: true }, "localData", "clear")).toBeUndefined();
     expect(settingsAction(idle, context, "localData", "deleteRecordings")).toBeUndefined();
     const zh = group(idle, { ...context, language: "zh-TW" }, "localData")!;
-    expect(zh.choices[0]?.label).toBe("清除本機 App 資料並結束…");
+    expect(zh.choices[0]?.label).toBe("清除並結束…");
     expect(zh.note ?? zh.info).toContain("錄影檔會保留");
   });
   it("titles the capture warning by what it is about and puts the macOS notification permission behind the ⓘ", () => {
