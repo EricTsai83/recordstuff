@@ -165,7 +165,7 @@ The page's window-message callback checks source/marker/port before creating the
 | Function/method | Contract |
 | --- | --- |
 | isListedName | A video the tab lists: `.mp4`, `.m4v` or `.mov`, not hidden, not a `.recording.mp4` still being written |
-| isFolderName / listsAgain | A subfolder the tab may offer: not hidden, not ending in an extension (a package); whether a recursive watch event's relative path can change the listing (a listed name in the folder or a direct subfolder, or a possible subfolder) |
+| isFolderName / listsAgain | A subfolder the tab may offer: not hidden, not ending in an extension (a package); whether a recursive watch event's relative path can change the listing (a listed name in the folder or a direct subfolder, or a possible subfolder); `relists` decides an event: a possible subfolder only if listed or now a folder, so the watched folder's own name, which FSEvents reports with a type that varies by macOS, lists nothing |
 | stampedTime | The local time in the app's own `YYYY-MM-DD HH-MM-SS[-n].mp4` name, or undefined for any other name |
 | fileId | A stable id for a path (a truncated SHA-256), so the page holds ids, never paths, and keeps a card across listings |
 | parseRange | One `bytes=` range within a size; undefined without a header, null for a range that cannot be served (416) |

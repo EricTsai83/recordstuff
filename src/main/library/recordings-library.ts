@@ -159,6 +159,21 @@ export function listsAgain(name: string): boolean {
   return parts.length === 2 && isFolderName(parts[0]!) && isListedName(parts[1]!);
 }
 
+/**
+ * Whether an event the recursive watch reports, by its path under `dir`, lists the folder again: a listed name in it or a
+ * direct subfolder (`listsAgain`), an event with no name, and a possible subfolder only if it is listed (it went or was
+ * renamed) or is now a folder (it was made). FSEvents also names the watched folder itself, under its own name, with a type
+ * that differs from one macOS to another (2026-10-09 CI): no such folder is inside it, so that event lists nothing, while a
+ * subfolder of the same name is still followed (review pass 1, F5).
+ */
+export async function relists(dir: string, name: string, folders: readonly LibraryFolder[]): Promise<boolean> {
+  if (!name) return true;
+  if (!listsAgain(name)) return false;
+  if (/[\\/]/.test(name) || isListedName(name)) return true;
+  if (folders.some(entry => entry.name === name)) return true;
+  return fs.stat(path.join(dir, name)).then(stat => stat.isDirectory(), () => false);
+}
+
 /** Changes whenever the file's bytes do, as far as its size and modification time tell. */
 function fileVersion(stat: { size: number; mtimeMs: number }): string {
   return `${stat.size}-${Math.round(stat.mtimeMs)}`;
@@ -365,14 +380,15 @@ export class RecordingsLibrary {
     try {
       // Recursive, for the subfolders' videos (2026-10-09): FSEvents and Windows watch a tree natively, and `listsAgain`
       // drops everything deeper than the tab looks.
-      const own = path.basename(dir);
-      handle = watchFolder(dir, { persistent: false, recursive: true }, (event, name) => {
+      handle = watchFolder(dir, { persistent: false, recursive: true }, (_event, name) => {
         const watcher = this.watcher;
-        // FSEvents also reports the watched folder itself, as a change under its own name, as it settles after being made;
-        // a subfolder of the same name appears, goes or is renamed as a rename (review pass 1, F5).
-        if (watcher?.handle !== handle || (name && (!listsAgain(String(name)) || (event === "change" && String(name) === own)))) return;
-        clearTimeout(watcher.settle);
-        watcher.settle = setTimeout(() => { watcher.settle = undefined; void this.refresh(); }, WATCH_SETTLE_MS);
+        if (watcher?.handle !== handle) return;
+        const settle = (): void => {
+          if (this.watcher !== watcher) return;
+          clearTimeout(watcher.settle);
+          watcher.settle = setTimeout(() => { watcher.settle = undefined; void this.refresh(); }, WATCH_SETTLE_MS);
+        };
+        void relists(dir, name ? String(name) : "", this.current.folders ?? []).then(again => { if (again) settle(); });
       });
     } catch (cause) {
       this.cannotWatch(dir, cause);

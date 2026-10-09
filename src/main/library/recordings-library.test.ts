@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, relists, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "../recording/recorder";
 
 let dir: string;
@@ -655,6 +655,19 @@ describe("folders (plan 071)", () => {
     expect(["a.recording.mp4", "notes.txt", ".hidden", "Demos/notes.txt", "Demos/Deeper/a.mp4", "Lib.imovielibrary/a.mp4", ".x/a.mp4"].some(listsAgain)).toBe(false);
     expect(["Demos", "Project v1.2", "Mr. Smith"].every(isFolderName)).toBe(true);
     expect([".hidden", "Foo.app", "iMovie Library.imovielibrary"].some(isFolderName)).toBe(false);
+  });
+  it("lists again for a change that can change the listing, never for the watched folder's own name (2026-10-09 CI)", async () => {
+    folder("Demos");
+    const own = path.basename(dir);
+    expect(await Promise.all([
+      relists(dir, "", []), relists(dir, "a.mp4", []), relists(dir, "Demos/a.mp4", []), relists(dir, "Demos", []),
+      // A listed category that went is listed again; one that never existed, or the folder's own name, is not.
+      relists(dir, "Gone", [{ name: "Gone", empty: true }]), relists(dir, "Nothing", []), relists(dir, own, []),
+      relists(dir, "a.recording.mp4", []), relists(dir, "Demos/Deeper/a.mp4", []),
+    ])).toEqual([true, true, true, true, true, false, false, false, false]);
+    // A subfolder of the same name as the folder itself is still followed (review pass 1, F5).
+    folder(own);
+    expect(await relists(dir, own, [])).toBe(true);
   });
   it("while watched, follows a video added in a subfolder", async () => {
     folder("Demos");

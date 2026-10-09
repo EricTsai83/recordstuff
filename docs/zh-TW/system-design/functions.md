@@ -166,7 +166,7 @@
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `isListedName(name)` | 分頁會列出的影片：`.mp4`、`.m4v` 或 `.mov`，非隱藏檔，也不是仍在寫入的 `.recording.mp4` |
-| `isFolderName(name)` / `listsAgain(name)` | 分頁可提供的子資料夾：非隱藏、不以副檔名結尾（套件）；recursive 監看事件的相對路徑是否可能改變清單（資料夾本身或直接子資料夾裡列出的名稱，或可能是子資料夾的名稱） |
+| `isFolderName(name)` / `listsAgain(name)` | 分頁可提供的子資料夾：非隱藏、不以副檔名結尾（套件）；recursive 監看事件的相對路徑是否可能改變清單（資料夾本身或直接子資料夾裡列出的名稱，或可能是子資料夾的名稱）；`relists(dir, name, folders)` 決定一個事件：可能是子資料夾的名稱只有在已列出或現在確實是資料夾時才重新列出，因此 FSEvents 以各版 macOS 不同類型回報的資料夾自身名稱不會觸發 |
 | `stampedTime(name)` | App 自己的 `YYYY-MM-DD HH-MM-SS[-n].mp4` 檔名所記的本地時間；其他檔名為 undefined |
 | `fileId(path)` | 路徑的穩定 id（截短的 SHA-256），頁面只拿 id、不拿路徑，重新列出時卡片得以保留 |
 | `parseRange(header, size)` | size 內的單一 `bytes=` 範圍；沒有 header 為 undefined，無法提供的範圍為 null（416） |
