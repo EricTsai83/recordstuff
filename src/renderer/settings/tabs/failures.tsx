@@ -60,7 +60,7 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
     >
       <CollapsibleTrigger
         id={`${id}-summary`}
-        className="result-summary outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+        className="result-summary outline-none focus-visible:border-ring/80 focus-visible:ring-[0.5px] focus-visible:ring-ring/80"
         onKeyDown={(event) => {
           if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key))
             return;
@@ -160,7 +160,7 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
           hidden={!technical}
           onOpenChange={() => model.draw()}
         >
-          <CollapsibleTrigger className="technical-summary outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30">
+          <CollapsibleTrigger className="technical-summary outline-none focus-visible:border-ring/80 focus-visible:ring-[0.5px] focus-visible:ring-ring/80">
             {model.text("Technical details")}
             <ChevronDown className="technical-chevron" aria-hidden="true" />
           </CollapsibleTrigger>

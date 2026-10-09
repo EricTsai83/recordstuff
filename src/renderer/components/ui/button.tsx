@@ -4,12 +4,12 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring/80 focus-visible:ring-[0.5px] focus-visible:ring-ring/80 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         media:
-          "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:border-media-foreground focus-visible:ring-media-foreground/30 [&_svg]:drop-shadow-(--media-icon-shadow)",
+          "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:border-media-foreground focus-visible:ring-media-foreground/80 [&_svg]:drop-shadow-(--media-icon-shadow)",
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
         outline:
           "border-border hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30",
@@ -19,7 +19,7 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         // The outline frame of every other action, in red ink; the primary fill is already the brand red.
         destructive:
-          "border-destructive-ink/50 text-destructive-ink hover:border-destructive-ink hover:bg-destructive/10 aria-expanded:bg-destructive/10 focus-visible:border-destructive-ink focus-visible:ring-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "border-destructive-ink/50 text-destructive-ink hover:border-destructive-ink hover:bg-destructive/10 aria-expanded:bg-destructive/10 focus-visible:border-destructive-ink focus-visible:ring-destructive/80 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/80",
         // Every text link: ink at rest, the brand red with an underline under the pointer.
         link: "text-foreground decoration-current underline-offset-4 hover:underline hover:text-primary hover:[&>svg]:text-primary",
       },
