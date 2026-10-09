@@ -68,11 +68,11 @@ const UI: PhaseSpec = { ...pnpm("background UI and integration", "test:ui"), blo
 /** Recipes: each runs the same leaf checks as the composites it replaces, with one build of identical inputs. */
 export const RECIPES: readonly Recipe[] = [
   {
-    name: "check", purpose: "Logic-only app change: the baseline phase breakdown", replaces: "pnpm check",
+    name: "check", purpose: "Broad: a shared or cross-module app change, or a final revision; one module's logic uses pnpm test:scope", replaces: "pnpm check",
     phases: CHECK,
   },
   {
-    name: "settings", purpose: "Settings layout, controls, persistence, window lifecycle or settings IPC/preload, in the background (no desktop)",
+    name: "settings", purpose: "Broad: Settings changes reaching shared components, several tabs or no scope, and final runs, in the background (no desktop); one tab or behavior uses pnpm test:scope",
     replaces: "pnpm acceptance:regression",
     phases: [...CHECK, UI],
   },

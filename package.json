@@ -61,6 +61,7 @@
     "preview:ui": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/preview-ui.mts",
     "acceptance:tray": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-tray.mts",
     "test:ui": "playwright test --project=background",
+    "test:scope": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-scope.mts",
     "test:ui:drills": "playwright test --project=drills"
   },
   "devDependencies": {
