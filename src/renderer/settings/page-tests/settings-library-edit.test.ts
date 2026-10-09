@@ -128,7 +128,10 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   expect(sheet()!.querySelector(".clip-rename-error")!.textContent).toBe("A name cannot contain / \\ : * ? \" < > |.");
   expect(choose).not.toHaveBeenCalledWith("recordingFile:b", expect.objectContaining({ action: "rename" }));
+  // An input method's Enter while composing picks its characters; it renames nothing (2026-10-09).
   enter(input(), "Taken");
+  input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+  expect(choose).not.toHaveBeenCalledWith("recordingFile:b", expect.objectContaining({ action: "rename" }));
   input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await vi.waitFor(() => expect(sheet()!.querySelector(".clip-rename-error")!.textContent).toBe("A file with this name is already in the folder."));
   expect(Boolean(sheet()?.hasAttribute("data-open"))).toBe(true);

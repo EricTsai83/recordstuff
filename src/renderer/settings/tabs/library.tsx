@@ -831,7 +831,7 @@ export function RenameDialog() {
               aria-invalid={Boolean(rename?.error)}
               onInput={(event) => model.renameDraft(event.currentTarget.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !isComposing(event)) {
                   event.preventDefault();
                   void model.submitRename();
                 }
