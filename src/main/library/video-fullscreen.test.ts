@@ -9,11 +9,15 @@ const electron = vi.hoisted(() => {
     simple = false;
     destroyed = false;
     loaded: { file: string; query: Record<string, string> } | undefined;
+    bounds: unknown;
+    readonly sent: Array<[string, unknown]> = [];
     readonly contentsEvents = new Map<string, (...args: unknown[]) => void>();
-    readonly webContents = { setWindowOpenHandler: () => {}, on: (event: string, listener: (...args: unknown[]) => void) => { this.contentsEvents.set(event, listener); } };
+    readonly webContents = { setWindowOpenHandler: () => {}, on: (event: string, listener: (...args: unknown[]) => void) => { this.contentsEvents.set(event, listener); },
+      send: (channel: string, value: unknown) => { this.sent.push([channel, value]); } };
     constructor(readonly options: Record<string, unknown>) { FakeWindow.instances.push(this); }
     on(event: string, listener: () => void): this { this.events.set(event, listener); return this; }
     setOpacity(value: number): void { this.opacity = value; }
+    setBounds(bounds: unknown): void { this.bounds = bounds; }
     getOpacity(): number { return this.opacity; }
     show(): void { this.shown = true; }
     focus(): void {}
@@ -128,6 +132,64 @@ describe("a recording played full screen in a window of its own (2026-10-05)", (
     vi.advanceTimersByTime(50);
     void video.play({ src: "c", state, display, language: "en" });
     expect([leaving.destroyed, secondClosed.mock.calls.length]).toEqual([true, 0]);
+  });
+
+  it("keeps a page loaded hidden while the player's window is open, hands it the next request, and loads another after", async () => {
+    const video = create();
+    video.prepare();
+    // A moment later, not to slow the player's window opening.
+    expect(electron.FakeWindow.instances).toHaveLength(0);
+    vi.advanceTimersByTime(1000);
+    const standby = electron.FakeWindow.instances[0]!;
+    expect([standby.options.show, standby.opacity, standby.loaded]).toEqual([false, 0, { file: "/r/video.html", query: { standby: "1" } }]);
+    // Asked again while one waits: still one.
+    video.prepare();
+    vi.advanceTimersByTime(1000);
+    expect(electron.FakeWindow.instances).toHaveLength(1);
+    standby.contentsEvents.get("did-finish-load")!();
+    const playing = video.play({ src: "recordstuff-media://video/abc?v=1", state, display, language: "zh-TW", title: "今天" });
+    // No new window: the waiting one covers this display and is told what to play.
+    expect(electron.FakeWindow.instances).toHaveLength(1);
+    expect([standby.bounds, standby.sent]).toEqual([display, [["video:load", { src: "recordstuff-media://video/abc?v=1", state, language: "zh-TW", title: "今天" }]]]);
+    await ready(standby);
+    expect([standby.simple, standby.shown]).toEqual([true, true]);
+    vi.advanceTimersByTime(200);
+    await exit(standby, state);
+    await expect(playing).resolves.toEqual(state);
+    vi.advanceTimersByTime(200);
+    expect(standby.destroyed).toBe(true);
+    // The next one waits again, until the player's window goes.
+    vi.advanceTimersByTime(1000);
+    const next = electron.FakeWindow.instances[1]!;
+    expect([next.destroyed, next.loaded?.query]).toEqual([false, { standby: "1" }]);
+    video.close();
+    vi.advanceTimersByTime(5000);
+    expect([next.destroyed, electron.FakeWindow.instances.length]).toEqual([true, 2]);
+  });
+
+  it("creates its window as before when the waiting page has not loaded, or off macOS, where none waits", async () => {
+    const video = create();
+    video.prepare();
+    vi.advanceTimersByTime(1000);
+    const loading = electron.FakeWindow.instances[0]!;
+    void video.play({ src: "s", state, display, language: "en" });
+    const fresh = electron.FakeWindow.instances[1]!;
+    expect([loading.destroyed, fresh.loaded?.query.src, loading.sent]).toEqual([true, "s", []]);
+    // A page that died while waiting is not handed a request.
+    video.close();
+    electron.FakeWindow.instances.length = 0;
+    video.prepare();
+    vi.advanceTimersByTime(1000);
+    const dead = electron.FakeWindow.instances[0]!;
+    dead.contentsEvents.get("did-finish-load")!();
+    dead.contentsEvents.get("render-process-gone")!({}, { reason: "crashed" });
+    void video.play({ src: "t", state, display, language: "en" });
+    expect(electron.FakeWindow.instances[1]!.loaded?.query.src).toBe("t");
+    electron.FakeWindow.instances.length = 0;
+    const windows = create("win32");
+    windows.prepare();
+    vi.advanceTimersByTime(5000);
+    expect(electron.FakeWindow.instances).toHaveLength(0);
   });
 
   it("closes a window whose page died, ending the request and giving focus back (review pass 1, F2)", async () => {

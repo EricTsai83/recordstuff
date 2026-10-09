@@ -196,6 +196,8 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
     override maximize(): void { record("window:maximize", label(this)); }
     override moveTop(): void { record("window:moveTop", label(this)); }
     override setFullScreen(flag: boolean): void { record("window:setFullScreen", { window: label(this), flag }); states.get(this)!.fullScreen = flag; }
+    // Recorded, then applied: a window made earlier (the full-screen page waiting on macOS) is placed by this, not by its creation.
+    override setBounds(bounds: Partial<ElectronModule.Rectangle>, animate?: boolean): void { record("window:setBounds", { id: this.id, bounds }); super.setBounds(bounds, animate); }
     override setSimpleFullScreen(flag: boolean): void { record("window:setSimpleFullScreen", { window: label(this), flag }); states.get(this)!.simpleFullScreen = flag; }
     override setKiosk(flag: boolean): void { record("window:setKiosk", { window: label(this), flag }); }
     override setVisibleOnAllWorkspaces(visible: boolean): void { record("window:setVisibleOnAllWorkspaces", { window: label(this), visible }); }

@@ -9,9 +9,13 @@
  * On macOS the window takes the simple fullscreen while still hidden and already the screen's size, so nothing
  * grows and no Space opens; the menu bar and the Dock step aside while it shows. Elsewhere it is created
  * fullscreen. Only one plays at a time; a new request ends the one before.
+ *
+ * While the player's window is open, a page waits loaded and hidden on macOS (`prepare`), and a request hands it the
+ * recording instead of creating a window and loading a page: 140 ms of the 200 between the click and the first frame
+ * on 2026-10-10. Without one ready, a request creates its window as before.
  */
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Rectangle } from "electron";
-import { VIDEO_CHANNELS, VIDEO_QUERY, VIDEO_TIMING, playbackState, type PlaybackState } from "../../shared/video-player";
+import { VIDEO_CHANNELS, VIDEO_QUERY, VIDEO_TIMING, playbackState, type PlaybackState, type VideoLoad } from "../../shared/video-player";
 import type { Language } from "../../shared/i18n";
 
 export interface VideoFullScreenOptions {
@@ -43,29 +47,112 @@ interface Playing {
   fade?: ReturnType<typeof setInterval>;
   /** Gives the window it played for its focus back once closed: not when main ended it, to hide it or for a newer one. */
   returnFocus: boolean;
+  /**
+   * Where the wait between the request and the picture went, in ms since `play` began; logged once faded in. A warm
+   * page was created and loaded before the request, so it has neither step.
+   */
+  timing: { began: number; warm: boolean; created?: number; loaded?: number; ready?: number; shown?: number; steps: number; longestStep: number };
+}
+
+/** A page loaded and hidden for the next request: creating a window and loading its page took 140 ms of the 200. */
+interface Standby {
+  window: BrowserWindow;
+  loaded: boolean;
 }
 
 export class VideoFullScreen {
   private playing: Playing | undefined;
   /** One the viewer left, still fading out: main's own end or a new play takes it away at once (review 2026-10-05). */
   private leaving: Playing | undefined;
+  /** While the player's window is open (`prepare` until `close`), a page waits hidden for the next request. */
+  private warm = false;
+  private standby: Standby | undefined;
+  private standbyTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: VideoFullScreenOptions) {
     const sender = (event: IpcMainInvokeEvent): Playing | undefined => {
       const playing = this.playing;
       return playing && !playing.window.isDestroyed() && event.sender === playing.window.webContents ? playing : undefined;
     };
-    ipcMain.handle(VIDEO_CHANNELS.ready, event => { const playing = sender(event); if (playing) this.show(playing); });
+    ipcMain.handle(VIDEO_CHANNELS.ready, event => {
+      const playing = sender(event);
+      if (!playing) return;
+      playing.timing.ready ??= performance.now() - playing.timing.began;
+      this.show(playing);
+    });
     ipcMain.handle(VIDEO_CHANNELS.exit, (event, state: unknown) => {
       const playing = sender(event);
       if (playing) this.end(playing, playbackState(state));
     });
   }
 
+  /**
+   * The player's window is open, so a request may come: a page is loaded hidden a moment later (not to slow the
+   * window's own opening) and kept until `close`, then again after each play. macOS only: elsewhere the window is
+   * created full screen on its display, which a page loaded beforehand could not follow.
+   */
+  prepare(): void {
+    if (this.options.platform !== "darwin") return;
+    this.warm = true;
+    if (this.standby || this.standbyTimer || this.playing) return;
+    this.standbyTimer = setTimeout(() => {
+      this.standbyTimer = undefined;
+      if (!this.warm || this.standby || this.playing) return;
+      const window = this.createWindow();
+      const standby: Standby = { window, loaded: false };
+      this.standby = standby;
+      window.webContents.on("did-finish-load", () => { standby.loaded = true; });
+      window.on("closed", () => { if (this.standby === standby) this.standby = undefined; });
+      this.load(window, { [VIDEO_QUERY.standby]: "1" });
+    }, VIDEO_TIMING.standbyDelayMs);
+  }
+
   /** Plays until the viewer leaves; resolves with where the video was then, or undefined if it closed some other way. */
   play(request: VideoFullScreenRequest): Promise<PlaybackState | undefined> {
     this.disposeAll();
+    const began = performance.now();
     const { display, state } = request;
+    const mac = this.options.platform === "darwin";
+    // A page still loading is no quicker than a new one, and is let go.
+    const standby = this.standby?.loaded && !this.standby.window.isDestroyed() ? this.standby : undefined;
+    if (standby) this.standby = undefined;
+    this.disposeStandby();
+    const window = standby?.window ?? this.createWindow(display);
+    if (standby) window.setBounds(display);
+    return new Promise(resolve => {
+      const playing: Playing = { window, resolve, shown: false, returnFocus: true,
+        timing: { began, warm: Boolean(standby), steps: 0, longestStep: 0, ...(standby ? {} : { created: performance.now() - began }) } };
+      this.playing = playing;
+      if (!standby) window.webContents.on("did-finish-load", () => { playing.timing.loaded ??= performance.now() - began; });
+      const timeout = setTimeout(() => this.show(playing), VIDEO_TIMING.readyTimeoutMs);
+      window.on("closed", () => {
+        clearTimeout(timeout);
+        clearInterval(playing.fade);
+        if (this.playing === playing) this.playing = undefined;
+        if (this.leaving === playing) this.leaving = undefined;
+        playing.resolve(undefined);
+        if (playing.returnFocus) request.closed?.();
+        // The next request finds a page waiting again, while the player's window is open.
+        if (this.warm) this.prepare();
+      });
+      // Closed while it covers the screen (by quitting): the menu bar and the Dock come back first.
+      window.on("close", () => { if (mac && window.isSimpleFullScreen()) window.setSimpleFullScreen(false); });
+      const load: VideoLoad = { src: request.src, state, language: request.language, ...(request.title ? { title: request.title } : {}) };
+      if (standby) window.webContents.send(VIDEO_CHANNELS.load, load);
+      else this.load(window, {
+        [VIDEO_QUERY.src]: load.src,
+        [VIDEO_QUERY.time]: String(state.time),
+        [VIDEO_QUERY.playing]: state.playing ? "1" : "0",
+        [VIDEO_QUERY.volume]: String(state.volume),
+        [VIDEO_QUERY.muted]: state.muted ? "1" : "0",
+        [VIDEO_QUERY.language]: load.language,
+        ...(load.title ? { [VIDEO_QUERY.title]: load.title } : {}),
+      });
+    });
+  }
+
+  /** Hidden, black and at opacity 0: `show` covers the screen with it once its page has drawn the first frame. */
+  private createWindow(display?: Rectangle): BrowserWindow {
     const mac = this.options.platform === "darwin";
     const window = new BrowserWindow({
       ...display,
@@ -93,42 +180,33 @@ export class VideoFullScreen {
       if (mac && window.isSimpleFullScreen()) window.setSimpleFullScreen(false);
       window.destroy();
     });
-    return new Promise(resolve => {
-      const playing: Playing = { window, resolve, shown: false, returnFocus: true };
-      this.playing = playing;
-      const timeout = setTimeout(() => this.show(playing), VIDEO_TIMING.readyTimeoutMs);
-      window.on("closed", () => {
-        clearTimeout(timeout);
-        clearInterval(playing.fade);
-        if (this.playing === playing) this.playing = undefined;
-        if (this.leaving === playing) this.leaving = undefined;
-        playing.resolve(undefined);
-        if (playing.returnFocus) request.closed?.();
-      });
-      // Closed while it covers the screen (by quitting): the menu bar and the Dock come back first.
-      window.on("close", () => { if (mac && window.isSimpleFullScreen()) window.setSimpleFullScreen(false); });
-      const query = {
-        [VIDEO_QUERY.src]: request.src,
-        [VIDEO_QUERY.time]: String(state.time),
-        [VIDEO_QUERY.playing]: state.playing ? "1" : "0",
-        [VIDEO_QUERY.volume]: String(state.volume),
-        [VIDEO_QUERY.muted]: state.muted ? "1" : "0",
-        [VIDEO_QUERY.language]: request.language,
-        ...(request.title ? { [VIDEO_QUERY.title]: request.title } : {}),
-      };
-      const loading = this.options.devUrl
-        ? window.loadURL(`${this.options.devUrl}?${new URLSearchParams(query).toString()}`)
-        : window.loadFile(this.options.htmlPath, { query });
-      void loading.catch((cause: unknown) => {
-        this.options.log(`video fullscreen: load failed: ${String(cause)}`);
-        if (!window.isDestroyed()) window.destroy();
-      });
+    return window;
+  }
+
+  private load(window: BrowserWindow, query: Record<string, string>): void {
+    const loading = this.options.devUrl
+      ? window.loadURL(`${this.options.devUrl}?${new URLSearchParams(query).toString()}`)
+      : window.loadFile(this.options.htmlPath, { query });
+    void loading.catch((cause: unknown) => {
+      this.options.log(`video fullscreen: load failed: ${String(cause)}`);
+      if (!window.isDestroyed()) window.destroy();
     });
   }
 
-  /** The window it plays in, if any: the settings window ends it when it closes or hides itself. */
+  /** The waiting page and its timer, gone. */
+  private disposeStandby(): void {
+    clearTimeout(this.standbyTimer);
+    this.standbyTimer = undefined;
+    const standby = this.standby;
+    this.standby = undefined;
+    if (standby && !standby.window.isDestroyed()) standby.window.destroy();
+  }
+
+  /** The window it plays in, if any, and the page waiting: the settings window ends both when it closes or hides itself. */
   close(): void {
+    this.warm = false;
     this.disposeAll();
+    this.disposeStandby();
   }
 
   /** The one playing and the one fading out, both gone at once. */
@@ -164,7 +242,17 @@ export class VideoFullScreen {
     if (this.options.platform === "darwin") window.setSimpleFullScreen(true);
     window.show();
     window.focus();
-    this.fade(playing, 1);
+    playing.timing.shown = performance.now() - playing.timing.began;
+    this.fade(playing, 1, () => this.logTiming(playing));
+  }
+
+  /** Diagnostics only: which step a slow or uneven entry spent its time in. */
+  private logTiming(playing: Playing): void {
+    const { timing } = playing;
+    const ms = (value: number | undefined): string => value === undefined ? "?" : String(Math.round(value));
+    this.options.log(`video fullscreen timing: ${timing.warm ? "warm page" : `new window ${ms(timing.created)} ms, page ${ms(timing.loaded)} ms`}, ` +
+      `first frame ${timing.ready === undefined ? "never (shown on timeout)" : `${ms(timing.ready)} ms`}, shown ${ms(timing.shown)} ms, ` +
+      `faded in ${ms(performance.now() - timing.began)} ms in ${timing.steps} steps, longest step ${ms(timing.longestStep)} ms`);
   }
 
   /** Hands the state back at once, fades out, and closes. */
@@ -183,8 +271,13 @@ export class VideoFullScreen {
     const { window } = playing;
     const from = window.getOpacity();
     const startedAt = Date.now();
+    let last = performance.now();
     playing.fade = setInterval(() => {
       if (window.isDestroyed()) { clearInterval(playing.fade); return; }
+      const now = performance.now();
+      playing.timing.steps++;
+      playing.timing.longestStep = Math.max(playing.timing.longestStep, now - last);
+      last = now;
       const progress = Math.min(1, (Date.now() - startedAt) / VIDEO_TIMING.fadeMs);
       window.setOpacity(from + (to - from) * progress);
       if (progress < 1) return;

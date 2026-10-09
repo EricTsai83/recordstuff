@@ -114,7 +114,7 @@ export interface SettingsWindowOptions {
   /** Starts dragging a listed recording out of the page; false when it is no longer listed. */
   drag?: (contents: WebContents, id: string) => Promise<boolean>;
   /** Plays a listed recording full screen in a window of its own (video-fullscreen.ts). */
-  fullScreen?: Pick<VideoFullScreen, "play" | "close">;
+  fullScreen?: Pick<VideoFullScreen, "play" | "close"> & Partial<Pick<VideoFullScreen, "prepare">>;
   /**
    * A quit has begun. `context().quitting` says so only 300 ms later, for the tray's sake; what this window opens
    * itself, rather than through `act`, which refuses at once, asks this.
@@ -300,6 +300,8 @@ export class SettingsWindow {
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
     this.options.opened?.();
+    // A video played full screen from this window starts from a page already loaded (video-fullscreen.ts).
+    this.options.fullScreen?.prepare?.();
     if (process.platform === "darwin") app.focus({ steal: true });
     this.options.activated?.();
     const existing = this.window;

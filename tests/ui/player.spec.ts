@@ -68,6 +68,19 @@ async function openCard(index: number): Promise<void> {
 }
 const item = async (index: number): Promise<{ id: string; title: string; day: string; time: string; duration: string }> =>
   read(page, `window.settings.read().then(v => v.library.items[${index}])`);
+/**
+ * On macOS the full-screen page waits loaded and hidden while Settings is open (video-fullscreen.ts), so a click finds
+ * it, as a user's a second after opening the window would; its window's id, or undefined where none waits.
+ */
+const standby = async (): Promise<number | undefined> => {
+  if (process.platform !== "darwin") return undefined;
+  let id: number | undefined;
+  await eventually(async () => {
+    id = await app.evaluate(h => { const window = h.videoWindow(); return window && !window.isVisible() && !window.webContents.isLoading() ? window.id : undefined; });
+    return id !== undefined;
+  }, 5000);
+  return id;
+};
 
 test("track clicks keep the seek position through media updates before release", async () => {
   await openCard(0);
@@ -118,6 +131,7 @@ test("the seek bar accepts clicks near the top and bottom edges of its pointer a
     }
   };
   await checkEdges(page);
+  await standby();
   const waiting = app.page("video.html");
   await page.locator("#player-fullscreen").click();
   const full = await waiting;
@@ -297,6 +311,7 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
   await page.waitForTimeout(150);
   // Where the player was when full screen was asked for: the full-screen page must start there.
   const handed = (await playback(page, ".player .pc > video")).time;
+  const waitingId = await standby();
   const fullWaiting = app.page("video.html");
   await page.locator("#player-fullscreen").click();
   const full = await fullWaiting;
@@ -306,10 +321,12 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
     labels: [...document.querySelectorAll("button")].map(b => b.getAttribute("aria-label")).sort(), native: document.getElementById("video").controls }))()`);
   const geometry = await app.evaluate((h, _a, electron) => {
     const settings = h.settingsWindow(), video = h.videoWindow();
-    // What production asked for when it made the window: a hidden window is fitted to the work area by the OS (Windows'
-    // taskbar), so its own bounds are not the request.
-    const created = h.boundary.calls.filter((call: { kind: string }) => call.kind === "window:create").at(-1)!.detail as { bounds: unknown; fullscreen: boolean };
-    return { requested: created.bounds, fullscreenOption: created.fullscreen, display: electron.screen.getDisplayMatching(settings.getBounds()).bounds,
+    // What production asked for when it made or last placed the window: a hidden window is fitted to the work area by
+    // the OS (Windows' taskbar), so its own bounds are not the request. A page that waited was placed as it was asked for.
+    const own = h.boundary.calls.filter((call: { kind: string; detail?: unknown }) => (call.detail as { id?: number } | undefined)?.id === video.id);
+    const created = own.filter((call: { kind: string }) => call.kind === "window:create").at(-1)!.detail as { bounds: unknown; fullscreen: boolean };
+    const placed = own.filter((call: { kind: string }) => call.kind === "window:create" || call.kind === "window:setBounds").at(-1)!.detail as { bounds: unknown };
+    return { id: video.id, requested: placed.bounds, fullscreenOption: created.fullscreen, display: electron.screen.getDisplayMatching(settings.getBounds()).bounds,
       state: h.boundary.windowState(video) as { simpleFullScreen: boolean; fullScreen: boolean; visible: boolean } };
   });
   const handedOver = fullPlayback.time >= handed - 0.3 && fullPlayback.time <= handed + 1.5;
@@ -318,6 +335,7 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
     && JSON.stringify(geometry.requested) === JSON.stringify(geometry.display)
     && (process.platform === "darwin" ? geometry.state.simpleFullScreen : geometry.fullscreenOption === true && geometry.state.fullScreen) && geometry.state.visible,
   `P11 the full-screen window is asked to cover the display, its page has the recording's name, the same controls and the time handed over, still playing ${JSON.stringify({ ...fullState, handed, ...fullPlayback, ...geometry })}`).toBe(true);
+  expect.soft(geometry.id, "P11 on macOS the page that waited loaded is the one that plays: no window is made after the click").toBe(waitingId ?? geometry.id);
   const viewport = await read<{ width: number; height: number }>(full, "({ width: innerWidth, height: innerHeight })");
   await full.mouse.move(viewport.width / 2, viewport.height - 40);
   await full.waitForTimeout(250);
@@ -339,6 +357,7 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
   // A double-click on the picture plays full screen; Escape on its page leaves.
   await page.waitForTimeout(1100);
   const again = await centre(page, ".player .pc > video", false);
+  await standby();
   const secondWaiting = app.page("video.html");
   await page.mouse.dblclick(again.x, again.y);
   const second = await secondWaiting;

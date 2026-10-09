@@ -2,14 +2,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 /** The fullscreen page (video.ts): loaded fresh for each case, with the query main gives it. */
-async function load(query: string): Promise<{ video: HTMLVideoElement; ready: ReturnType<typeof vi.fn>; exit: ReturnType<typeof vi.fn>; order: string[] }> {
+async function load(query: string, onLoad: (listener: (load: unknown) => void) => void = () => {}): Promise<{ video: HTMLVideoElement; ready: ReturnType<typeof vi.fn>; exit: ReturnType<typeof vi.fn>; order: string[] }> {
   vi.resetModules();
   document.body.innerHTML = '<div id="root"></div>';
   history.replaceState(null, "", `/video.html?${query}`);
   const order: string[] = [];
   const ready = vi.fn(() => { order.push("ready"); });
   const exit = vi.fn(() => { order.push("exit"); });
-  window.video = { ready, exit };
+  window.video = { ready, exit, onLoad };
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => { order.push("play"); });
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => { order.push("pause"); });
   await import("./video");
@@ -62,6 +62,25 @@ it("leaves on the platform's close chord, as the app's other window closes on it
   const windows = await load("src=s&t=0&play=0&vol=1&mute=0&lang=en");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, cancelable: true }));
   expect(windows.exit).toHaveBeenCalledOnce();
+});
+
+it("loaded in standby, draws nothing until main says what to play, then plays it as a page loaded for it would", async () => {
+  let send: ((load: unknown) => void) | undefined;
+  await load("standby=1", listener => { send = listener; });
+  expect(document.getElementById("video")).toBeNull();
+  // What main did not send is ignored.
+  send!({ src: "s", state: { time: -1, playing: true, volume: 1, muted: false }, language: "en" });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(document.getElementById("video")).toBeNull();
+  send!({ src: "recordstuff-media://video/a", state: { time: 0, playing: false, volume: 0.25, muted: true }, language: "zh-TW", title: "今天" });
+  await vi.waitFor(() => expect(document.getElementById("video")).not.toBeNull());
+  const video = document.getElementById("video") as HTMLVideoElement;
+  expect([video.getAttribute("src"), video.volume, video.muted, document.querySelector(".pc-title")!.textContent, document.documentElement.lang])
+    .toEqual(["recordstuff-media://video/a", 0.25, true, "今天", "zh-Hant"]);
+  // Once: a second message does not replace what plays.
+  send!({ src: "recordstuff-media://video/b", state: { time: 0, playing: false, volume: 1, muted: false }, language: "en" });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect((document.getElementById("video") as HTMLVideoElement).getAttribute("src")).toBe("recordstuff-media://video/a");
 });
 
 it("reads in the language main gives it, for assistive technology too", async () => {

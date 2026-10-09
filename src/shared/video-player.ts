@@ -48,8 +48,10 @@ export function isFullScreenChoice(value: unknown): value is FullScreenChoice {
     && playbackState((value as { state?: unknown }).state));
 }
 
-/** The fullscreen page's two messages; the preload spells them out (channels.test.ts). */
+/** The fullscreen page's messages; the preload spells them out (channels.test.ts). */
 export const VIDEO_CHANNELS = {
+  /** Main to a page loaded in standby: the recording to play, as a page loaded for it reads from its query. */
+  load: "video:load",
   /** The first frame at the starting time is drawn: the window may fade in. */
   ready: "video:ready",
   /** The viewer left (Escape, ⌘W, a double-click, F or the exit button), with where the video is now. */
@@ -57,7 +59,25 @@ export const VIDEO_CHANNELS = {
 } as const;
 
 /** Query parameters the fullscreen page is loaded with. */
-export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang", title: "title" } as const;
+export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang", title: "title", standby: "standby" } as const;
+
+/** What a page loaded in standby is sent to play; main's own values, never a page's. */
+export interface VideoLoad {
+  src: string;
+  state: PlaybackState;
+  language: string;
+  title?: string;
+}
+
+/** A load from another process, or undefined. */
+export function videoLoad(value: unknown): VideoLoad | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const { src, state, language, title } = value as Record<string, unknown>;
+  const playback = playbackState(state);
+  if (typeof src !== "string" || !src || !playback || typeof language !== "string") return undefined;
+  if (title !== undefined && typeof title !== "string") return undefined;
+  return { src, state: playback, language, ...(title ? { title } : {}) };
+}
 
 export const VIDEO_TIMING = {
   /** The window's fade in and out. */
@@ -66,10 +86,14 @@ export const VIDEO_TIMING = {
   readyTimeoutMs: 2000,
   /** The player's controls and the pointer hide after the pointer has rested this long while a video plays. */
   idleMs: 2000,
+  /** After the player's window opens, or a full screen ends, before a page is loaded hidden for the next one. */
+  standbyDelayMs: 1000,
 } as const;
 
 /** What the fullscreen preload exposes. */
 export interface VideoBridge {
   ready(): void;
   exit(state: PlaybackState): void;
+  /** A page loaded in standby hears here what to play; main sends it once, if at all. */
+  onLoad(listener: (load: unknown) => void): void;
 }

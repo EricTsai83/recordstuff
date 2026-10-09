@@ -31,7 +31,7 @@ it("settings preload uses exactly the settings channels main handles and sends",
 it("fullscreen video preload uses exactly the channels main handles for it", async () => {
   await import("./video");
   const bridge = electron.exposed.video;
-  bridge.ready(); bridge.exit({ time: 1, playing: false, volume: 1, muted: false });
+  bridge.ready(); bridge.exit({ time: 1, playing: false, volume: 1, muted: false }); bridge.onLoad(() => {});
   expect([...electron.used].sort()).toEqual(Object.values(VIDEO_CHANNELS).sort());
 });
 

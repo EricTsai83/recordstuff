@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Minimize } from "lucide-react";
 import { Player } from "../player/player";
 import { ControlTooltip } from "../components/control-tooltip";
@@ -6,8 +6,10 @@ import { Button } from "../components/ui/button";
 import { documentLanguage, translate, isLanguage } from "../../shared/i18n";
 import {
   VIDEO_QUERY,
+  videoLoad,
   type PlaybackState,
   type VideoBridge,
+  type VideoLoad,
 } from "../../shared/video-player";
 import { browserPlatform, isCloseChord } from "../lib/shortcut-capture";
 import { playbackOf } from "../player/player-state";
@@ -18,27 +20,56 @@ declare global {
     video?: VideoBridge;
   }
 }
-export function VideoApp() {
-  const query = useRef(new URLSearchParams(location.search)).current,
-    queried = query.get(VIDEO_QUERY.language),
-    language = isLanguage(queried) ? queried : "en";
-  const video = useRef<HTMLVideoElement | null>(null),
-    ready = useRef(false),
-    left = useRef(false),
-    frames = useRef<number[]>([]),
-    listeners = useRef<Array<() => void>>([]);
+/** The recording a page loaded for it reads from its query. */
+function queried(query: URLSearchParams): VideoLoad {
   const number = (key: string, fallback: number): number => {
     const raw = query.get(key)?.trim(),
       value = raw ? Number(raw) : NaN;
     return Number.isFinite(value) ? value : fallback;
   };
+  const title = query.get(VIDEO_QUERY.title);
+  return {
+    src: query.get(VIDEO_QUERY.src) ?? "",
+    state: {
+      time: Math.max(0, number(VIDEO_QUERY.time, 0)),
+      playing: query.get(VIDEO_QUERY.playing) === "1",
+      volume: Math.min(1, Math.max(0, number(VIDEO_QUERY.volume, 1))),
+      muted: query.get(VIDEO_QUERY.muted) === "1",
+    },
+    language: query.get(VIDEO_QUERY.language) ?? "en",
+    ...(title ? { title } : {}),
+  };
+}
+
+/**
+ * A page loaded for its recording plays it at once; one loaded in standby (video-fullscreen.ts) draws nothing,
+ * on the black window, until main sends what to play.
+ */
+export function VideoApp() {
+  const [load, setLoad] = useState<VideoLoad | undefined>(() => {
+    const query = new URLSearchParams(location.search);
+    return query.get(VIDEO_QUERY.standby) === "1" ? undefined : queried(query);
+  });
   useDarkClass();
-  const start = useRef<PlaybackState>({
-    time: Math.max(0, number(VIDEO_QUERY.time, 0)),
-    playing: query.get(VIDEO_QUERY.playing) === "1",
-    volume: Math.min(1, Math.max(0, number(VIDEO_QUERY.volume, 1))),
-    muted: query.get(VIDEO_QUERY.muted) === "1",
-  }).current;
+  useEffect(() => {
+    if (load) return;
+    // Main sends once; a second or unreadable message is ignored.
+    window.video?.onLoad((value) => {
+      const next = videoLoad(value);
+      if (next) setLoad((current) => current ?? next);
+    });
+  }, [load]);
+  return load ? <VideoPage load={load} /> : null;
+}
+
+function VideoPage({ load }: { load: VideoLoad }) {
+  const language = isLanguage(load.language) ? load.language : "en";
+  const video = useRef<HTMLVideoElement | null>(null),
+    ready = useRef(false),
+    left = useRef(false),
+    frames = useRef<number[]>([]),
+    listeners = useRef<Array<() => void>>([]);
+  const start = useRef<PlaybackState>(load.state).current;
   const sayReady = useCallback(() => {
     if (ready.current) return;
     ready.current = true;
@@ -123,8 +154,8 @@ export function VideoApp() {
   return (
     <Player
       id="video"
-      source={query.get(VIDEO_QUERY.src) ?? ""}
-      title={query.get(VIDEO_QUERY.title) ?? ""}
+      source={load.src}
+      title={load.title ?? ""}
       language={language}
       videoRef={assign}
       onError={sayReady}

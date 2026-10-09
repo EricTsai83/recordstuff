@@ -148,7 +148,7 @@ beforeEach(() => {
 describe("settings window lifecycle", () => {
   it("plays a listed recording full screen in a window of its own and answers with where the video was (2026-10-05)", async () => {
     const played: Array<{ src: string; display: unknown; closed?: () => void }> = [];
-    const fullScreen = { close: vi.fn(), play: vi.fn(async (request: { src: string; display: unknown; closed?: () => void }) => {
+    const fullScreen = { close: vi.fn(), prepare: vi.fn(), play: vi.fn(async (request: { src: string; display: unknown; closed?: () => void }) => {
       played.push(request);
       return { time: 42, playing: true, volume: 0.5, muted: false };
     }) };
@@ -157,6 +157,8 @@ describe("settings window lifecycle", () => {
     s.live.library = { dir: "/Users/eric/Movies/RecordStuff", loading: false, failed: false,
       files: [{ id: "abc", path: "/Users/eric/Movies/RecordStuff/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
     s.panel.show();
+    // Opening the window has a full-screen page loaded for it ahead of the request (video-fullscreen.ts).
+    expect(fullScreen.prepare).toHaveBeenCalledOnce();
     const window = s.window();
     const state = { time: 3, playing: true, volume: 0.5, muted: false };
     const result = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state }) as { applied: boolean; playback?: unknown; view: any };
@@ -183,7 +185,7 @@ describe("settings window lifecycle", () => {
     const requested = await s.choose(s.event(), "recordingFile:abc", { action: "fullscreen", state });
     expect([requested.applied, fullScreen.play.mock.calls.length]).toEqual([false, 1]);
     quitRequested = false;
-    // Its window closing ends a video still playing for it.
+    // Its window closing ends a video still playing for it, and the page waiting for the next.
     window.close();
     expect(fullScreen.close).toHaveBeenCalled();
   });
