@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打字不卡、清單跟得上：在 React 裡篩選本機清單時，該用 useDeferredValue 還是 debounce</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 560px; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>打字不卡、清單跟得上：在 React 裡篩選本機清單時，該用 useDeferredValue 還是 debounce</h1>
+
+<p class="deck">搜尋框邊打字邊篩選清單，是最常見的互動之一，也是最容易在資料變多後開始卡頓的地方。本文說明這個問題真正的成本在哪裡，比較「每個按鍵都立刻篩選」、debounce 與 React 的 <code>useDeferredValue</code> 三種做法，說明為什麼在「清單已經在記憶體裡、成本主要是重畫」的前提下，<code>useDeferredValue</code> 是較好的預設，以及它在什麼情況下會讓你踩到坑。範例來自一個選單列錄影 App 的錄影檔搜尋。</p>
+
+<h2>這篇文章要回答的問題</h2>
+
+<p>一個介面上有一個輸入框和一份清單，輸入框的內容決定清單顯示哪些項目。使用者連續打字時，我們希望兩件事同時成立：</p>
+
+<ol>
+  <li><strong>輸入框永遠立即回應。</strong>每個按鍵都馬上出現在框裡，游標不會頓住，中文輸入法的選字視窗不會延遲。</li>
+  <li><strong>清單盡快反映最新的搜尋字。</strong>不需要和輸入框同步到同一毫秒，但不應該明顯落後，也不應該顯示錯的結果太久。</li>
+</ol>
+
+<p>資料少時，兩者自然同時成立。問題出在清單變長、每張卡片變複雜之後：每打一個字都要重畫整份清單，重畫的時間開始和打字的速度搶同一條主執行緒。於是可遷移的問題是：<strong>當「依輸入重畫清單」變貴時，怎麼讓輸入保持優先，又不讓清單無謂地延遲？</strong></p>
+
+<h2>先確認前提：成本到底在哪裡</h2>
+
+<p>選做法之前，先看清楚每個按鍵到底觸發了什麼工作。以本文的範例來說，情境如下：</p>
+
+<ul>
+  <li><strong>資料已經在記憶體裡。</strong>App 的 main process 一次把所有錄影的清單（標題、時間、大小、縮圖網址）送到頁面；搜尋只是在頁面上比對標題，不會為了搜尋去打 API、讀檔或做行程間通訊。</li>
+  <li><strong>比對本身很便宜。</strong>每個按鍵對每支錄影做一次「標題轉小寫、找子字串」。幾千次這種字串操作，在現代電腦上通常遠低於一毫秒。</li>
+  <li><strong>真正貴的是重畫。</strong>每張卡片有縮圖、時間、長度、選單按鈕。搜尋字從「很多結果」變成「很少結果」再變回來時，React 要把幾百、幾千張卡片卸載再掛回 DOM，這比比對貴上好幾個數量級。</li>
+</ul>
+
+<p>這三點就是後面所有判斷的前提。注意第二點：常見的「把每個標題預先轉成小寫存起來」這種優化，在這裡幾乎沒有效果，因為它優化的是本來就不貴的那一段。先找出成本在哪，再決定要優化什麼，比任何單一技巧都重要。</p>
+
+<h2>天真做法：每個按鍵都同步篩選並重畫</h2>
+
+<p>最直接的寫法，是讓清單直接讀輸入框的值：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">function</span> <span class="f">Library</span><span class="o">(</span><span class="o">{</span> items <span class="o">}</span><span class="o">:</span> <span class="o">{</span> items<span class="o">:</span> <span class="t">Recording</span><span class="o">[</span><span class="o">]</span> <span class="o">}</span><span class="o">)</span> <span class="o">{</span>
+  <span class="k">const</span> <span class="o">[</span>query<span class="o">,</span> setQuery<span class="o">]</span> <span class="o">=</span> <span class="f">useState</span><span class="o">(</span><span class="s">""</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">const</span> shown <span class="o">=</span> items<span class="o">.</span><span class="p">filter</span><span class="o">(</span><span class="o">(</span>item<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">matches</span><span class="o">(</span>item<span class="o">,</span> query<span class="o">)</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">return</span> <span class="o">(</span>
+    <span class="o">&lt;</span><span class="o">&gt;</span>
+      <span class="o">&lt;</span>input value<span class="o">=</span><span class="o">{</span>query<span class="o">}</span> onChange<span class="o">=</span><span class="o">{</span><span class="o">(</span>event<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">setQuery</span><span class="o">(</span>event<span class="o">.</span><span class="p">target</span><span class="o">.</span><span class="p">value</span><span class="o">)</span><span class="o">}</span> /<span class="o">&gt;</span>
+      <span class="o">&lt;</span><span class="t">CardList</span> items<span class="o">=</span><span class="o">{</span>shown<span class="o">}</span> /<span class="o">&gt;</span>
+    <span class="o">&lt;</span>/<span class="o">&gt;</span>
+  <span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>每個按鍵都是一次「緊急」更新：React 必須在同一次 render 裡把新的字畫進輸入框，<em>同時</em>把整份清單重算、重畫完，才能把控制權還給瀏覽器。清單一旦重畫要花 50 毫秒，使用者每打一個字就會感覺輸入框卡 50 毫秒；連續打字時，按鍵會排隊，最後一口氣出現。這個症狀很好辨認：輸入框「跟不上手」，而不是清單慢。</p>
+
+<h2>常見解法一：debounce</h2>
+
+<p>debounce 的意思是「停止打字 N 毫秒之後，才用最後的值做一次工作」。套在搜尋上，就是讓清單讀一個延遲更新的值：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> <span class="o">[</span>query<span class="o">,</span> setQuery<span class="o">]</span> <span class="o">=</span> <span class="f">useState</span><span class="o">(</span><span class="s">""</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> <span class="o">[</span>listQuery<span class="o">,</span> setListQuery<span class="o">]</span> <span class="o">=</span> <span class="f">useState</span><span class="o">(</span><span class="s">""</span><span class="o">)</span><span class="o">;</span>
+<span class="f">useEffect</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> timer <span class="o">=</span> <span class="f">setTimeout</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">setListQuery</span><span class="o">(</span>query<span class="o">)</span><span class="o">,</span> <span class="n">250</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">return</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">clearTimeout</span><span class="o">(</span>timer<span class="o">)</span><span class="o">;</span>
+<span class="o">}</span><span class="o">,</span> <span class="o">[</span>query<span class="o">]</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> shown <span class="o">=</span> items<span class="o">.</span><span class="p">filter</span><span class="o">(</span><span class="o">(</span>item<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">matches</span><span class="o">(</span>item<span class="o">,</span> listQuery<span class="o">)</span><span class="o">)</span><span class="o">;</span></code></pre>
+
+<p>它確實讓輸入框在打字途中不卡，但付出三個代價：</p>
+
+<ul>
+  <li><strong>固定延遲，跟機器快慢無關。</strong>就算只有二十支錄影、重畫只要兩毫秒，清單也一律晚 250 毫秒才更新。快的電腦和小的清單，都被迫承受為慢的情況設計的延遲。</li>
+  <li><strong>計時器到期後，重畫照樣會卡。</strong>debounce 只是把重畫往後挪，並沒有讓重畫變得可中斷。使用者停頓 250 毫秒後又繼續打字，剛好撞上那次重畫，輸入框一樣會頓一下。</li>
+  <li><strong>多了要自己管理的狀態。</strong>計時器、清理、兩份狀態的同步，都是額外的程式碼與錯誤來源。</li>
+</ul>
+
+<p>debounce 真正擅長的，是讓「每次觸發都有固定外部成本」的工作少做幾次，例如每次搜尋都要打一次 API。它減少的是<em>呼叫次數</em>，不是<em>每次重畫的阻塞</em>。</p>
+
+<h2>另一個模型：把更新分成緊急與不緊急</h2>
+
+<p>React 18 之後的並行渲染（concurrent rendering）提供了另一種思路：同一個輸入，可以觸發兩種優先順序不同的更新。輸入框顯示新字是<strong>緊急</strong>的，必須立即完成；清單反映新字是<strong>不緊急</strong>的，可以在背景做，而且被更新的輸入打斷時可以放棄重來。</p>
+
+<p><code>useDeferredValue</code> 就是把一個值變成「不緊急版本」的 hook：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> <span class="o">[</span>query<span class="o">,</span> setQuery<span class="o">]</span> <span class="o">=</span> <span class="f">useState</span><span class="o">(</span><span class="s">""</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> listQuery <span class="o">=</span> <span class="f">useDeferredValue</span><span class="o">(</span>query<span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> shown <span class="o">=</span> <span class="f">useMemo</span><span class="o">(</span>
+  <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> items<span class="o">.</span><span class="p">filter</span><span class="o">(</span><span class="o">(</span>item<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">matches</span><span class="o">(</span>item<span class="o">,</span> listQuery<span class="o">)</span><span class="o">)</span><span class="o">,</span>
+  <span class="o">[</span>items<span class="o">,</span> listQuery<span class="o">]</span><span class="o">,</span>
+<span class="o">)</span><span class="o">;</span></code></pre>
+
+<p>使用者打一個字時，實際發生的是兩次 render：</p>
+
+<ol>
+  <li><strong>緊急 render。</strong><code>query</code> 是新的字，但 <code>listQuery</code> 仍然回傳<em>上一次</em>的值。因為清單的輸入沒變（<code>useMemo</code> 直接回傳上次的結果，卡片元件也因為 props 沒變而略過），這次 render 幾乎只更新輸入框，很快就完成。</li>
+  <li><strong>背景 render。</strong>React 接著以低優先順序、用新的 <code>listQuery</code> 重畫清單。這次 render 可以被中斷：如果使用者在途中又打了一個字，React 會放棄算到一半的結果，先處理新的緊急更新，再用最新的字重新開始背景 render。</li>
+</ol>
+
+<div class="table-scroll"><table class="table-wide">
+  <thead><tr><th>壓力</th><th>debounce 怎麼回應</th><th><code>useDeferredValue</code> 怎麼回應</th></tr></thead>
+  <tbody>
+    <tr><td>輸入框要立即回應</td><td>打字途中不重畫，但計時器到期那次重畫仍會阻塞</td><td>緊急 render 不碰清單；背景 render 可被打斷，輸入永遠優先</td></tr>
+    <tr><td>清單不要無謂地延遲</td><td>固定晚 N 毫秒，連小清單也一樣</td><td>沒有固定延遲：機器快、清單小時幾乎同步，慢時才落後</td></tr>
+    <tr><td>連續打字時不要做白工</td><td>只在停頓後算一次（這是它的強項）</td><td>過時的背景 render 會被丟棄，只完成最後那次</td></tr>
+    <tr><td>程式碼與狀態要簡單</td><td>計時器、清理、兩份狀態</td><td>一行 hook，加上把清單計算 memo 起來</td></tr>
+  </tbody>
+</table></div>
+
+<p>這正是 React 官方文件對兩者的區分：deferred value 和 React 的排程深度整合，延遲多久由裝置的實際速度決定，背景工作可以中斷；debounce 和 throttle 仍然適合用來減少網路請求這類「每次都有外部成本」的工作。</p>
+
+<div class="callout">
+<p><strong>前提：慢的那一段必須能被略過。</strong><code>useDeferredValue</code> 本身不會讓重畫變快，它只是把重畫移到背景。如果清單元件在緊急 render 裡也照樣整個重畫（沒有 <code>memo</code>、或每次都產生新的陣列與函式 props），緊急 render 一樣慢，輸入框一樣卡。把清單的計算放進以 deferred 值為依賴的 <code>useMemo</code>，並讓卡片元件在 props 不變時略過 render，是這個模式能生效的前提。</p>
+</div>
+
+<h2>為什麼在這個前提下它是較好的預設</h2>
+
+<p>把論證收斂成五句話：</p>
+
+<ul>
+  <li><strong>前提：</strong>資料已在記憶體中，每個按鍵沒有網路或磁碟成本，主要成本是 React 重畫清單，而且執行在支援並行渲染的 React 上。</li>
+  <li><strong>問題：</strong>同步篩選讓輸入與重畫搶同一條主執行緒，清單變長時輸入框跟不上手。</li>
+  <li><strong>對應：</strong><code>useDeferredValue</code> 把重畫移到可中斷的背景 render，輸入的緊急 render 只做很少的事。</li>
+  <li><strong>選擇：</strong>相較於 debounce，它沒有固定延遲、不會在計時器到期時整段阻塞、也不需要自己管理計時器。</li>
+  <li><strong>界線：</strong>一旦每個按鍵都會觸發外部成本，或慢的不是 React 重畫，這個結論就會反轉（見下一節）。</li>
+</ul>
+
+<h2>什麼時候不該用它</h2>
+
+<ul>
+  <li><strong>每個按鍵都會打 API 或讀檔。</strong><code>useDeferredValue</code> 不會減少請求次數：背景 render 被丟棄之前，可能已經觸發了請求。這時應該用 debounce（或 throttle）減少呼叫次數，並用 <code>AbortController</code> 取消過時的請求；兩者可以並用，debounce 管請求，deferred 管畫面。</li>
+  <li><strong>慢的是 JavaScript 計算，不是 render。</strong>例如每次都要對上萬筆資料做模糊比對或排序。背景 render 雖然可中斷，但單一次同步計算本身不可中斷。這時應該先降低計算成本（建索引），或移到 Web Worker。</li>
+  <li><strong>DOM 節點本身就太多。</strong>上萬張卡片同時存在時，就算沒有搜尋，捲動和版面計算也會慢。這時需要虛擬化清單（只畫看得到的部分）。在這種規模下，延後顯示解決不了根本問題。</li>
+  <li><strong>你自己擁有觸發更新的那一行。</strong>如果篩選結果是你用 <code>setState</code> 寫入的另一份狀態，直接把那次 <code>setState</code> 包進 <code>startTransition</code> 通常更直接。<code>useDeferredValue</code> 適合「你只拿到一個值，管不到它是怎麼被設定的」的情況，例如從外部 store 或父元件 props 來的值。</li>
+  <li><strong>清單小而簡單。</strong>二十個純文字項目，同步篩選就夠了。加上 deferred value 不會壞事，但也沒有可見的好處；這不是必須優化的地方。</li>
+</ul>
+
+<h2>它帶來的新規則：清單會短暫落後於輸入</h2>
+
+<p>採用 <code>useDeferredValue</code> 之後，畫面上會同時存在兩個「現在」：輸入框顯示最新的字，清單可能還停在上一個字。對使用者來說這通常無害，但對程式碼來說，任何「設定搜尋字之後，立刻假設清單已經更新」的邏輯都會出錯。</p>
+
+<p>範例 App 就踩到了這個坑。錄影存檔後的通知被點擊時，App 要打開錄影檔分頁、清除搜尋，然後把焦點移到那段錄影的卡片上並捲到它。流程是：清除搜尋字、重畫、立刻對那張卡片呼叫 <code>focus()</code>。問題是：</p>
+
+<ul>
+  <li>這個 App 的頁面以外部 store 搭配 <code>flushSync</code> 同步重畫。同步（最高優先）的更新正是緊急更新，所以 <code>useDeferredValue</code> 在這次 render 回傳的仍是<em>舊的</em>搜尋字。</li>
+  <li>如果那段錄影剛好被舊搜尋字篩掉，這次 render 之後，DOM 裡根本還沒有那張卡片，<code>focus()</code> 安靜地什麼也沒做。</li>
+  <li>背景 render 稍後把卡片畫出來，但沒有人重新聚焦或捲動。使用者點了通知，看到的卻是沒有目標的清單。</li>
+</ul>
+
+<p>修正的原則是：<strong>使用者在打字時，延後是好的；程式主動改變搜尋並馬上要用到結果時，就不要延後。</strong>做法是讓這種程式化的重設，在那一次 render 直接使用即時的值：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// 由程式清除搜尋、要立刻聚焦結果時設為 true；使用者再打字時設回 false。</span>
+<span class="k">const</span> deferredQuery <span class="o">=</span> <span class="f">useDeferredValue</span><span class="o">(</span>store<span class="o">.</span><span class="p">query</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> listQuery <span class="o">=</span> store<span class="o">.</span><span class="p">queryNow</span> <span class="o">?</span> store<span class="o">.</span><span class="p">query</span> <span class="o">:</span> deferredQuery<span class="o">;</span>
+<span class="k">const</span> shown <span class="o">=</span> <span class="f">useMemo</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">filter</span><span class="o">(</span>items<span class="o">,</span> listQuery<span class="o">)</span><span class="o">,</span> <span class="o">[</span>items<span class="o">,</span> listQuery<span class="o">]</span><span class="o">)</span><span class="o">;</span></code></pre>
+
+<p>這次重畫會是同步的，清單很長時可能稍慢一點；但它只發生在少見的「從通知跳到某段錄影」路徑上，正確地跳到目標比那幾十毫秒重要。其他同類情況也適用同一條規則：鍵盤在搜尋結果間移動的選取、搜尋後自動選取第一筆、測試裡「輸入後立刻檢查清單」的斷言，都需要意識到清單可能還沒跟上。</p>
+
+<div class="callout warning">
+<p><strong>用真正的瀏覽器驗證時序。</strong>這個問題在以 happy-dom 執行的頁面測試裡重現不出來：那個環境的排程和真正的瀏覽器不同，拿掉修正後測試照樣通過。最後是在 Chromium 裡用 Playwright 寫測試：先搜尋一個不存在的字讓清單變空，再模擬通知進入，斷言焦點落在那張卡片上。只有這個測試在拿掉修正時會失敗。和渲染排程有關的修正，要在真正的渲染引擎裡證明。</p>
+</div>
+
+<h2>回到範例：這個 App 實際的選擇</h2>
+
+<p>錄影檔分頁的情況完全符合前提：清單由 main process 一次送到頁面，搜尋只比對標題，沒有任何 I/O；卡片元件以 <code>memo</code> 比較 props，清單計算以 deferred 搜尋字為依賴放在 <code>useMemo</code> 裡。所以搜尋改用 <code>useDeferredValue</code>，而不是 debounce。另外兩個常被提起的優化則刻意沒做：</p>
+
+<ul>
+  <li><strong>預先算好小寫標題：</strong>比對不是成本所在，省下的時間量測不到。</li>
+  <li><strong>虛擬化清單：</strong>目前的規模（幾十到幾百支錄影）還不需要；每天一組的區塊已用 <code>content-visibility: auto</code> 讓畫面外的部分不參與排版。真的出現上千支錄影、而且量測顯示捲動或清空搜尋時明顯卡頓，才值得引入。</li>
+</ul>
+
+<h2>帶走的判斷問題</h2>
+
+<p>下次遇到「輸入驅動清單」的介面，可以依序問自己：</p>
+
+<ol>
+  <li>每個按鍵會不會觸發網路、磁碟或行程間通訊？會的話，先用 debounce／throttle 減少次數，並取消過時的請求。</li>
+  <li>不會的話，慢的是什麼？是 React 重畫、純計算，還是 DOM 節點太多？分別對應 <code>useDeferredValue</code>、降低計算成本或 Web Worker、虛擬化。</li>
+  <li>採用 <code>useDeferredValue</code> 時，清單的計算和子元件能不能在緊急 render 裡被略過？不能的話，它不會有效果。</li>
+  <li>有沒有程式碼在改變搜尋之後，立刻假設清單已經更新？那些路徑需要即時的值，或在結果出現後再行動。</li>
+  <li>驗證時序相關的行為時，測試環境的排程是否和真正的瀏覽器一致？不一致時，用真正的瀏覽器測。</li>
+</ol>
+
+<section class="sources">
+<h2>延伸閱讀</h2>
+<ul>
+  <li><a href="https://react.dev/reference/react/useDeferredValue">React 文件：useDeferredValue</a>（含與 debounce、throttle 的比較）</li>
+  <li><a href="https://react.dev/reference/react/useTransition">React 文件：useTransition</a></li>
+  <li><a href="https://react.dev/reference/react-dom/flushSync">React 文件：flushSync</a></li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

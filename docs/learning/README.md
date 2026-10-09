@@ -10,3 +10,4 @@ Standalone HTML articles that teach transferable design patterns, using this pro
 | --- | --- |
 | [事件迴圈裡的磁碟工作：三個可遷移的設計模式](disk-work-in-an-event-loop.html) | 非同步 I/O 與執行緒的取捨、建立資源前先寫意圖紀錄、用 promise 鏈做有上限的並行；以計畫 036／037／038 的設計為例 |
 | [錄影到底錄得好不好：螢幕錄影工具的品質量測入門](measuring-screen-recording-quality.html) | 錄影管線與基本名詞、固定測試素材、ffprobe／ffmpeg 量測、每個完整性與效能指標、五種判定狀態、音質診斷、為什麼 30／60 fps 與位元率等範圍表現不同、分層觀察與對照實驗、證據層級與精簡測試的原則；以計畫 030／041 與音質修正為例 |
+| [打字不卡、清單跟得上：在 React 裡篩選本機清單時，該用 useDeferredValue 還是 debounce](deferred-search-in-react.html) | 先找出輸入驅動清單的成本在哪、同步篩選的失敗模式、debounce 的固定延遲與阻塞、useDeferredValue 的緊急／背景兩次 render 與 memo 前提、不適用的情況（I/O、純計算、DOM 過多、自己擁有 setState），以及清單短暫落後輸入時程式化聚焦的陷阱；以錄影檔分類搜尋為例 |
