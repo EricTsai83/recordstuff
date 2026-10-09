@@ -85,6 +85,15 @@ describe("createActionHandler", () => {
     });
   });
 
+  it("opens the download page for this platform when an update is available, Releases otherwise", async () => {
+    const { deps, act } = harness({ platform: "win32", updates: { check: vi.fn(async () => {}), state: { kind: "available", version: "9.0.0" } } } as Partial<ActionDeps>);
+    expect(await act("openUpdate")).toBe(true);
+    expect(deps.openExternal).toHaveBeenLastCalledWith("https://record.ericts.com/download?platform=windows");
+    (deps.updates as { state: { kind: string } }).state = { kind: "failed" };
+    expect(await act("openUpdate")).toBe(true);
+    expect(deps.openExternal).toHaveBeenLastCalledWith("https://github.com/EricTsai83/recordstuff/releases");
+  });
+
   it("answers a raced update click as handled without opening anything", async () => {
     const { deps, act } = harness({ settled: () => false });
     expect(await act("openUpdate")).toBe(true);

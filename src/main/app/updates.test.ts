@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { API_URL, DAY_MS, DOWNLOAD_URL, FEED_URL, RELEASES_URL, UpdateChecker, feedVersion, fetchVersion, githubVersion, isNewer } from "./updates";
+import { API_URL, DAY_MS, DOWNLOAD_URL, FEED_URL, RELEASES_URL, UpdateChecker, downloadPageUrl, feedVersion, fetchVersion, githubVersion, isNewer } from "./updates";
 import { stableVersion } from "../../shared/version";
 import fs from "node:fs";
 const feed = { version: "0.2.0", tag: "v0.2.0", platform: "darwin-arm64", architecture: "arm64", publishedAt: "2026-09-20T00:00:00Z", downloadUrl: DOWNLOAD_URL, releaseUrl: `${RELEASES_URL}/tag/v0.2.0`, dmg: { name: "RecordStuff-0.2.0-arm64-selfsigned.dmg", size: 123, sha256: "a".repeat(64) } };
@@ -52,6 +52,14 @@ describe("the website's release feed", () => {
     const origin = /^export const SITE_ORIGIN = "([^"]+)";$/m.exec(site)?.[1];
     const download = /^export const DOWNLOAD_URL = `\$\{SITE_ORIGIN\}([^`]*)`;$/m.exec(site)?.[1];
     expect([origin && download !== undefined ? `${origin}${download}` : site, FEED_URL.startsWith(`${origin}/`)]).toEqual([DOWNLOAD_URL, true]);
+  });
+});
+describe("download page", () => {
+  it("names the app's platform for the page to show first", () => {
+    expect(downloadPageUrl("darwin")).toBe(`${DOWNLOAD_URL}?platform=mac`);
+    expect(downloadPageUrl("win32")).toBe(`${DOWNLOAD_URL}?platform=windows`);
+    // No platform the page offers: it chooses as it does for any visitor.
+    expect(downloadPageUrl("linux")).toBe(DOWNLOAD_URL);
   });
 });
 describe("network", () => {

@@ -284,7 +284,7 @@ try {
     await scenario('newer'); await action('checkUpdates');
     const s = await until(s => s.update.kind === 'available', 'available version');
     assert(menuAction(s, 'openUpdate').label.includes(s.update.kind === 'available' ? s.update.version : 'missing'));
-    await action('openUpdate'); assert.deepEqual((await snapshot()).opened.slice(s.opened.length), ['https://record.ericts.com/download']);
+    await action('openUpdate'); assert.deepEqual((await snapshot()).opened.slice(s.opened.length), ['https://record.ericts.com/download?platform=mac']);
     // A manual result is shown in the panel, never announced, and counts as told.
     const shown = s.update.kind === 'available' ? s.update.version : 'missing';
     // The told version is saved after the result is shown; wait for the write instead of racing it.

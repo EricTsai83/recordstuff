@@ -15,7 +15,7 @@ import type { RecordingResults } from "../recording/recording-result";
 import type { RecordingsLibrary } from "../library/recordings-library";
 import type { SettingsStore } from "../settings/settings";
 import type { SettingsWindow } from "../settings/settings-window";
-import { DOWNLOAD_URL, RELEASES_URL, SOURCE_URL, WEBSITE_URL, type UpdateChecker } from "../app/updates";
+import { RELEASES_URL, SOURCE_URL, WEBSITE_URL, downloadPageUrl, type UpdateChecker } from "../app/updates";
 import { translate } from "../../shared/i18n";
 
 export interface ActionDeps {
@@ -207,7 +207,7 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         // Recording locks the button; a click that raced the lock opened nothing, which is not a failure.
         if (!deps.settled()) return true;
         try {
-          await deps.openExternal(deps.updates.state.kind === "available" ? DOWNLOAD_URL : RELEASES_URL);
+          await deps.openExternal(deps.updates.state.kind === "available" ? downloadPageUrl(deps.platform) : RELEASES_URL);
           return true;
         } catch (error) { log(`settings: update link failed: ${String(error)}`); return false; }
       case "start":

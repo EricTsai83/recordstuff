@@ -16,7 +16,7 @@ export function instrumentUpdateAcceptance(source: string, runDir: string): stri
     'fetch: (signal) => acceptance.fetch(signal),');
   // Remove only the now-unused production imports from this throwaway copy.
   source = replaceOnce(source, '  net,\n', '');
-  source = replaceOnce(source, 'UpdateChecker, fetchVersion, DOWNLOAD_URL', 'UpdateChecker, DOWNLOAD_URL');
+  source = replaceOnce(source, 'UpdateChecker, fetchVersion, downloadPageUrl', 'UpdateChecker, downloadPageUrl');
   source = replaceOnce(source, '  updates.flush();\n  log(`ready;',
     '  attachAcceptance(acceptance, { recorder, updates, settings, tray, handleAction });\n  updates.flush();\n  log(`ready;');
   // The fixture intercepts this exact lazy call; stop if production bypasses it.

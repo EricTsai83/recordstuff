@@ -9,6 +9,14 @@ export const DOWNLOAD_URL = `${WEBSITE_URL}/download`;
 export const FEED_URL = `${WEBSITE_URL}/release.json`;
 export const API_URL = "https://api.github.com/repos/EricTsai83/recordstuff/releases/latest";
 export const DAY_MS = 86_400_000;
+/**
+ * The download page as the app opens it. `?platform=` names this app's own platform, which the page shows ahead of
+ * a remembered choice or its guess from the browser; the feed's `downloadUrl` stays the bare DOWNLOAD_URL.
+ */
+export function downloadPageUrl(platform: string): string {
+  const name = platform === "darwin" ? "mac" : platform === "win32" ? "windows" : undefined;
+  return name ? `${DOWNLOAD_URL}?platform=${name}` : DOWNLOAD_URL;
+}
 export type UpdateResult = { kind: "current"; checkedAt: number } | { kind: "available"; version: string } |
   { kind: "failed" };
 export type UpdateState = { kind: "idle" } | { kind: "checking"; previous?: UpdateResult } | UpdateResult;

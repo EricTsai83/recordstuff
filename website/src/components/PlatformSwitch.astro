@@ -3,8 +3,10 @@
  * macOS / Windows switch for pages that cover both: blocks marked
  * data-only="mac" or data-only="windows" are hidden by global.css while the
  * other platform is chosen. The choice comes from the URL fragment (an id
- * listed in `windowsIds` or `macIds`), then the visitor's last choice, then
- * the system; without scripting the switch stays hidden and both show.
+ * listed in `windowsIds` or `macIds`), then `?platform=mac|windows` (the app
+ * names its own platform when it opens the download page), then the visitor's
+ * last choice, then the system; without scripting the switch stays hidden and
+ * both show. Neither the fragment nor the parameter is remembered.
  */
 import AppleMark from "./AppleMark.astro";
 import WindowsMark from "./WindowsMark.astro";
@@ -36,6 +38,10 @@ const { macIds, windowsIds } = Astro.props;
       if (control.dataset.macIds.split(" ").includes(id)) return "mac";
       return undefined;
     };
+    const named = () => {
+      const platform = new URLSearchParams(location.search).get("platform");
+      return platform === "mac" || platform === "windows" ? platform : undefined;
+    };
     const set = (platform) => {
       root.dataset.platform = platform;
       control.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.choice === platform)));
@@ -45,7 +51,7 @@ const { macIds, windowsIds } = Astro.props;
     let stored;
     try { stored = localStorage.getItem(KEY); } catch { /* storage blocked: fall back to the system */ }
     const system = navigator.userAgentData?.platform || navigator.userAgent;
-    set(owner(location.hash) || (stored === "mac" || stored === "windows" ? stored : /Windows/i.test(system) ? "windows" : "mac"));
+    set(owner(location.hash) || named() || (stored === "mac" || stored === "windows" ? stored : /Windows/i.test(system) ? "windows" : "mac"));
     control.hidden = false;
     control.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-choice]");
@@ -54,9 +60,12 @@ const { macIds, windowsIds } = Astro.props;
       if (platform !== root.dataset.platform) switched();
       set(platform);
       try { localStorage.setItem(KEY, platform); } catch { /* the choice just isn't remembered */ }
-      // A fragment into the other platform would switch back on reload.
-      const linked = owner(location.hash);
-      if (linked && linked !== platform) history.replaceState(null, "", location.pathname + location.search);
+      // A fragment or parameter naming the other platform would switch back on reload.
+      const url = new URL(location.href);
+      const linked = owner(url.hash);
+      if (linked && linked !== platform) url.hash = "";
+      if (named() && named() !== platform) url.searchParams.delete("platform");
+      if (url.href !== location.href) history.replaceState(null, "", url);
     });
     addEventListener("hashchange", () => {
       const linked = owner(location.hash);

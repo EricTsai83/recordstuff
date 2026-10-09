@@ -53,7 +53,7 @@ import { holdEarlyReopens, watchReopen, type EarlyReopens, type ReopenWatcher } 
 import { holdSessionEnd } from "./app/session-end";
 import { SettingsStore } from "./settings/settings";
 import { parseAutoRecord, runAutoRecord } from "./recording/autorecord";
-import { UpdateChecker, fetchVersion, DOWNLOAD_URL } from "./app/updates";
+import { UpdateChecker, fetchVersion, downloadPageUrl } from "./app/updates";
 import { createActionHandler } from "./actions/actions";
 import { AppTray } from "./menus/tray";
 import { AppMenu } from "./menus/app-menu";
@@ -392,7 +392,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       if (!settings.notifications) return false;
       tray.notifyUpdateAvailable(version, () => {
         if (!settled()) { log("updates: notification click ignored while recording or quitting"); return; }
-        shell.openExternal(DOWNLOAD_URL).catch((error: unknown) => log(`updates: download link failed: ${String(error)}`));
+        shell.openExternal(downloadPageUrl(process.platform)).catch((error: unknown) => log(`updates: download link failed: ${String(error)}`));
       });
       return true;
     },
