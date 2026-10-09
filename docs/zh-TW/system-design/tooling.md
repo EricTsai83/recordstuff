@@ -16,6 +16,7 @@
 | pnpm check | typecheck、完整 Vitest、build |
 | pnpm test:changed | 開發中使用：直接或經其他模組 import 到未 commit 變更的 Vitest 檔案，加上以讀檔而非 import 檢查原始碼的模組邊界與樣式守門測試。變更 `package.json`、lockfile、`vitest.config.ts`、`tsconfig` 或共用測試 setup 時跑全部檔案。只 spawn 或讀取該檔的測試不會被選到，需指名執行（`pnpm test <路徑>`）。不取代[測試政策](../testing.md)要求的檢查 |
 | `pnpm test:ui` | 背景 UI 與整合套件（[詳見](#背景-ui-套件)）：Playwright 驅動隱藏的離屏 Electron，載入正式 `out/` 的頁面、preload 與 main，OS 效果換成會記錄的 adapter，因此不需桌面回合，維護者可以繼續工作。build 後執行；缺少建置或測試片段，或建置比原始碼舊（`electron-vite build` 寫在 `out/.build-inputs.json` 的紀錄已不符 `src/`、`build/`、`resources/` 或建置設定）時為 blocked（exit 2）。圖、trace 與 log 在 `test-results/ui/`、`test-results/ui-summary.json` 與 `playwright-report/`。不需另外下載瀏覽器 |
+| `pnpm test:scope -- <scope 或測試檔>…` | 聚焦的本機檢查（[聚焦測試 scope](#聚焦測試-scope)）：typecheck、選到的 Vitest 檔案、只有選到 UI 案例且 `out/` 過期時才建置，接著跑選到的背景案例。`--list` 列出 scope；`--dry-run` 印出檔案、案例、建置判斷與指令，不執行任何東西。未知 scope、不存在的檔案與空的選取以 exit 2 結束。通過時是該 scope 的證據，不是完整回歸 |
 | `pnpm test:ui:drills` | 背景 host 自身的清理演練：啟動失敗、斷言失敗、逾時、main 卡住、renderer 崩潰、圍堵違規與 SIGINT，逐一證明該失敗時失敗，且不留下任何程序 |
 | pnpm icons | PNG／ICO（系統匣圖示與 Windows App 圖示 `build/icon.ico`）、DMG 背景圖（1x／2x）；macOS 額外產 native ICNS |
 | pnpm log | 追蹤 macOS log |
@@ -417,6 +418,14 @@ pnpm acceptance:regression
 先執行 TypeScript、Vitest 與 build，再以這份建置執行背景套件（`pnpm test:ui`）；`&&` 在第一個失敗處停止。沒有任何東西到達桌面：設定、快捷鍵、播放器與倒數案例都在隱藏的離屏視窗執行（[背景 UI 套件](#背景-ui-套件)），因此不需準備交接。其快捷鍵整合重複「設定 callback → 頁面上的平台關閉鍵 → Tray 重開」，檢查只有一個設定視窗且正式程式要求顯示與聚焦、註冊（adapter 的）仍在、偏好沒有改寫，也沒有開始錄影或產生影片。
 
 這是正式 main／preload／renderer 的整合回歸；快捷鍵註冊、Tray、視窗啟用與通知邊界受控，不能聲稱測過 OS 全域送鍵、視窗啟用或實際 Tray 點擊。原生對應是 `pnpm acceptance:recipe -- native-ui`（視窗框、啟用、真正的註冊被拒、真實視窗狀態與全螢幕）、原生入口與應用程式選單用 `pnpm acceptance:settings-shortcut -- --observe`，實際 Tray 點擊用 `pnpm acceptance:tray`；真實錄影仍用 `pnpm start:app` 與 `pnpm acceptance`，後者會正常結束測試 App。實體拔插螢幕、VoiceOver 聽感及使用者理解仍需人工。已通過的案例若程式、環境或測試條件沒有相關變更，不要求使用者反覆重測。
+
+### 聚焦測試 scope
+
+`pnpm test:scope`（[test-scope.mts](../../../scripts/test-scope.mts)，plan 070）從 [test-scopes.mts](../../../scripts/lib/runner/test-scopes.mts) 的 scope 目錄執行單一工作的檢查。每個 scope 描述一項行為與負責它的測試：Vitest 過濾條件（檔案、資料夾或檔名前綴），以及整份或依 Playwright tag 選取的背景 spec。Scope 有 `recording-settings`、`general`、`library` 與 `failures`（各對應一個設定分頁）、`layout`（共用元件、主題、縮放、視窗外框與完整視覺矩陣）、`player`、`countdown`、`shortcut`、`settings-bridge`（preload、IPC、持久化、啟動），以及只有單元測試的 `recording` 與 `tooling`。也可以在 scope 旁邊或改為直接指定測試檔。選取會合併且不重複：任何 scope 整份選取的 spec 就保持整份，否則 tag 相加；一次 Playwright 執行帶入所有選到的檔案，並以一個比對檔案、標題與 tag 的 `--grep` 選取，絕不依標題措辭選取。
+
+各階段依序執行，遇到第一個未通過的就停止，並沿用配方 runner 的 process group 與清理：`pnpm typecheck`（三個專案都跑，因為檔案的 import 會延伸到檔案之外；`--no-typecheck` 會省略並註明）、對過濾條件執行 `vitest run`、只有選到 UI 案例且 `out/` 不是目前原始碼的建置時才 `pnpm build`，接著對選到的檔案執行 `playwright test --project=background`。dry run 以 `vitest list --filesOnly` 與 `playwright test --list` 列出，兩者都不載入 App，也不執行套件的 global setup。執行時印出每個階段與總時間；聚焦執行不寫報告檔。Exit 0 通過、1 失敗、2 為用法錯誤或套件 blocked（global setup 拒絕缺少或過期的 `out/`），中斷後為 130/143。
+
+Tag 寫在案例上（`{ tag: "@general" }`）；scope 目錄測試（[test-scopes.test.ts](../../../scripts/lib/runner/test-scopes.test.ts)）會在 scope 指向不存在的檔案、該 spec 沒有任何案例帶的 tag、比對不到任何測試的單元過濾條件，或有背景 spec 不屬於任何 scope 時失敗。混合型 spec（`settings-panel`、`settings-layout`、`components`）新增案例時，要加上它負責的每個 scope 的 tag；新增 spec 時要在目錄中為它找位置。設定矩陣是每種語言、外觀、尺寸與分頁各一個案例，另加最小尺寸下的播放器與卡片選單（[覆蓋紀錄](../verification/history-2026-10.md#plan-070-結案--2026-10-10)）。
 
 ### 驗證配方與計時
 

@@ -62,14 +62,14 @@ App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新�
 | 常見修改 | 起點 |
 | --- | --- |
 | 僅文件 | 檢查受影響連結／錨點、指令與翻譯；`git diff --check`。不啟動 App、不錄影 |
-| 局部文案／外觀 | diff 與受影響介面檢視；具型別訊息改動加型別檢查，有幫助時才跑聚焦 UI 案例。不預設完整套件或建置 |
-| 獨立 App 邏輯／局部重構 | 相關測試，TypeScript 加 `pnpm typecheck`；有具體風險時才擴大檢查 |
+| 局部文案／外觀 | diff 與受影響介面檢視；具型別訊息改動加型別檢查，有幫助時才跑聚焦 UI 案例（`pnpm test:scope -- <scope>`）。不預設完整套件或建置 |
+| 獨立 App 邏輯／局部重構 | 相關測試，TypeScript 加 `pnpm typecheck`（`pnpm test:scope -- <測試檔>` 兩者都跑）；有具體風險時才擴大檢查 |
 | 共用／大範圍 App 行為 | `pnpm check`（TypeScript、Vitest、正式建置），加規則中依影響選取的檢查 |
-| 低風險流程以外的設定／快捷鍵整合 | `pnpm acceptance:regression`，已包含 `pnpm check`；檢視受影響 UI／截圖 |
+| 低風險流程以外的設定／快捷鍵整合 | 以 `pnpm test:scope` 跑受影響的 scope；涉及共用元件、多個分頁、沒有 scope 描述的內容，以及最終執行時，跑已包含 `pnpm check` 的 `pnpm acceptance:regression`；檢視受影響 UI／截圖 |
 | 錄影行為 | `pnpm check`，再用新 `pnpm start:app` 產物執行[錄影 smoke 案例](acceptance.md)。`pnpm acceptance` 自動開始／停止／存檔／verify，播放另行觀察 |
 | 網站 | `pnpm site:check`；視覺修改檢視受影響頁面 |
 
-每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm typecheck`、`pnpm test`（單一檔案或模組資料夾用 `pnpm test <路徑>`，只跑未 commit 變更影響到的檔案用 `pnpm test:changed`）或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑，相同輸入也不建置兩次（[選定一次並對每個版本驗證一次](testing.md#選定一次並對每個版本驗證一次)）。每次推送到 main，以及每個改動不只是文件或網站的 pull request，GitHub Actions 都會在 macOS 與 Windows runner 上執行 `pnpm check` 與 `pnpm test:ui`（[check.yml](../../.github/workflows/check.yml)），Windows job 另外建置未簽章的安裝檔並安裝、解除安裝一次。這會在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。網站由 [website.yml](../../.github/workflows/website.yml) 負責：改動 `website/**`、`scripts/lib/release/release-manifest*.mts`、`src/shared/version.ts` 或該 workflow 的 pull request，會在不使用 secrets 的情況下執行網站測試、`astro check`、離線 manifest 檢查、離線建置與離線連結檢查。線上 manifest 驗證與外部連結只由 `pnpm site:check` 以及合併後 Vercel 的正式建置檢查。
+每次修改都執行 `git diff --check`。開發中可按需單獨執行 `pnpm test:scope`（[聚焦 scope](testing.md#聚焦-scope)）、`pnpm typecheck`、`pnpm test`（單一檔案或模組資料夾用 `pnpm test <路徑>`，只跑未 commit 變更影響到的檔案用 `pnpm test:changed`）或 `pnpm build`；最終版本已被成功組合指令涵蓋的檢查不重跑，相同輸入也不建置兩次（[選定一次並對每個版本驗證一次](testing.md#選定一次並對每個版本驗證一次)）。每次推送到 main，以及每個改動不只是文件或網站的 pull request，GitHub Actions 都會在 macOS 與 Windows runner 上執行 `pnpm check` 與 `pnpm test:ui`（[check.yml](../../.github/workflows/check.yml)），Windows job 另外建置未簽章的安裝檔並安裝、解除安裝一次。這會在打 release tag 之前先攔下型別、測試或建置的錯誤，但不證明擷取可用。網站由 [website.yml](../../.github/workflows/website.yml) 負責：改動 `website/**`、`scripts/lib/release/release-manifest*.mts`、`src/shared/version.ts` 或該 workflow 的 pull request，會在不使用 secrets 的情況下執行網站測試、`astro check`、離線 manifest 檢查、離線建置與離線連結檢查。線上 manifest 驗證與外部連結只由 `pnpm site:check` 以及合併後 Vercel 的正式建置檢查。
 
 [驗收指南](acceptance.md)定義共用案例、收尾及報告；[工具指南](system-design/tooling.md)說明簽章、FFmpeg／ffprobe、媒體分析與專用 runner。完整 App 驗收保存錄影、還原設定並確認退出後，讓受測 App 保持關閉。開發期間已授權按需停止錄影、退出、重啟或重建 RecordStuff，不需另行確認。
 
