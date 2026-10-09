@@ -4,6 +4,23 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plan 070 closure — 2026-10-10
+
+A focused entry point for the local edit–verify cycle ([focused scopes](../testing.md#focused-scopes), [tooling](../system-design/tooling.md#focused-test-scopes)), at the maintainer's request after 071.
+
+- **Entry point.** `pnpm test:scope -- <scope or test file>…`: typecheck, the selected Vitest files, a build only when UI cases are selected and `out/` is stale, then the selected background cases through one Playwright run; `--list`, and `--dry-run`, which lists through `vitest list --filesOnly` and `playwright test --list` without building or launching Electron. Unknown scopes, missing files and empty selections exit 2; child outcomes go through the recipe runner's phases.
+- **Catalog.** Eleven scopes in `scripts/lib/runner/test-scopes.mts`: one per Settings tab (`recording-settings`, `general`, `library`, `failures`), `layout`, `player`, `countdown`, `shortcut`, `settings-bridge`, and the unit-only `recording` and `tooling`. Mixed specs carry Playwright tags per case (`components` 18, `settings-panel` 14, `settings-layout` 7, `player` 5, `settings-results` 1); `test-scopes.test.ts` fails on a missing file, an unused tag, a unit filter that matches nothing or a spec outside every scope.
+- **Split.** The settings matrix's 12 cases, each running ten states over every tab and then the player and card menu at the minimum size, became 36 cases (language, theme, size, tab) and 4 overlay cases (language, theme, minimum). Every assertion is kept: S023 and S024 for each state, S025 to S028, S035 and S036 in their tab's cases, and S029 to S034 in the overlay cases, which draw the library state first. On a full run the matrix took 69.2 s against 44.3 s: 25 s, the price of selecting a tab.
+- **Policy.** `AGENTS.md`, both testing and contributing guides, tooling and the recipe descriptions now name the focused entry for iteration and the broad composites for shared or cross-cutting changes and final runs; CI and release gates are unchanged.
+
+### Verification
+
+- Final migration run, `pnpm acceptance:recipe -- settings` on the final sources: 147 files and 1,850 unit tests, build, background 156/156; wall 463.6 s (typecheck 1.2 s, unit 21.3 s, build 2.8 s, background 437.6 s). `pnpm test:ui:drills` 13 passed, 1 skipped, also covering the boundary's recorded `setBounds` from the full-screen change earlier that day.
+- Representative tasks on the same build: a General-tab visual edit (`general`: 5 unit files, 34 cases, no library, player, failures, countdown or shortcut case) 68.9 s, 85 % less than the full run; an isolated helper (`src/shared/file-name.test.ts`) 2.8 s with no build and no Electron; a persistence path (`settings-bridge`: 8 unit files, 4 cases) 11.1 s. Dry runs: a shared token (`layout`) 99 cases; `recording-settings` 21. Copy-only work runs no test runner, by policy.
+- Global setup was not optimized: in the `general` run the 34 cases took 60.5 s and typecheck and unit tests 6.3 s, so setup does not dominate.
+
+Not done: no automatic selection from a diff (out of scope); tags are kept by review and the catalog test, not inferred.
+
 ## Plan 071 closure — 2026-10-10
 
 Categories and search in the Recordings tab ([desktop design](../system-design/desktop.md#recordings)), implemented on 2026-10-09 in `b9f7f111` and revised the same day at the maintainer's review in `ef9eda4b`; closed on 2026-10-10 at the maintainer's request.

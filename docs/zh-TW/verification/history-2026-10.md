@@ -4,6 +4,23 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 070 結案 — 2026-10-10
+
+為本機「修改－驗證」循環提供聚焦入口（[聚焦 scope](../testing.md#聚焦-scope)、[工具指南](../system-design/tooling.md#聚焦測試-scope)），依維護者要求接在 071 之後完成。
+
+- **入口。** `pnpm test:scope -- <scope 或測試檔>…`：typecheck、選到的 Vitest 檔案、只有選到 UI 案例且 `out/` 過期時才建置，接著以一次 Playwright 執行跑選到的背景案例；另有 `--list`，以及透過 `vitest list --filesOnly` 與 `playwright test --list` 列出、不建置也不啟動 Electron 的 `--dry-run`。未知 scope、不存在的檔案與空的選取以 exit 2 結束；子程序的結果沿用配方 runner 的階段處理。
+- **目錄。** `scripts/lib/runner/test-scopes.mts` 有十一個 scope：每個設定分頁一個（`recording-settings`、`general`、`library`、`failures`），以及 `layout`、`player`、`countdown`、`shortcut`、`settings-bridge`，和只有單元測試的 `recording` 與 `tooling`。混合型 spec 的案例各自帶 Playwright tag（`components` 18 個、`settings-panel` 14 個、`settings-layout` 7 個、`player` 5 個、`settings-results` 1 個）；`test-scopes.test.ts` 會在檔案不存在、tag 沒被使用、單元過濾條件比對不到任何檔案，或 spec 不屬於任何 scope 時失敗。
+- **拆分。** 設定矩陣原本 12 個案例，每個都跑遍所有分頁的十種狀態，再於最小尺寸跑播放器與卡片選單；現在拆成 36 個案例（語言、外觀、尺寸、分頁）與 4 個疊加層案例（語言、外觀、最小尺寸）。所有斷言都保留：每個狀態的 S023 與 S024、各分頁案例中的 S025 到 S028、S035 與 S036，以及先畫出 library 狀態的疊加層案例中的 S029 到 S034。完整執行時矩陣花 69.2 秒，之前是 44.3 秒：多出的 25 秒是能單獨選取分頁的代價。
+- **政策。** `AGENTS.md`、中英文測試與貢獻指南、工具指南與配方說明，現在都把聚焦入口列為迭代時使用，大範圍組合則用於共用或跨範圍的改動與最終執行；CI 與發布關卡不變。
+
+### 驗證
+
+- 最終遷移執行，在最終原始碼上跑 `pnpm acceptance:recipe -- settings`：147 個檔案、1,850 個單元測試、建置、背景 156/156；總時間 463.6 秒（typecheck 1.2 秒、單元測試 21.3 秒、建置 2.8 秒、背景 437.6 秒）。`pnpm test:ui:drills` 13 個通過、1 個略過，同時涵蓋當天稍早全螢幕變更在 boundary 中記錄的 `setBounds`。
+- 在同一份建置上的代表性工作：General 分頁的視覺修改（`general`：5 個單元測試檔、34 個案例，不含 library、播放器、失敗紀錄、倒數或快捷鍵案例）68.9 秒，比完整執行少 85 %；獨立 helper（`src/shared/file-name.test.ts`）2.8 秒，不建置也不啟動 Electron；持久化路徑（`settings-bridge`：8 個單元測試檔、4 個案例）11.1 秒。Dry run：共用 token（`layout`）99 個案例；`recording-settings` 21 個。依政策，純文案修改不執行任何測試 runner。
+- 沒有最佳化 global setup：在 `general` 執行中，34 個案例花 60.5 秒，typecheck 與單元測試共 6.3 秒，setup 並不是主要開銷。
+
+未做：不從 diff 自動選取（不在範圍內）；tag 靠審查與目錄測試維持，不會自動推斷。
+
 ## Plan 071 結案 — 2026-10-10
 
 錄影檔分頁的分類與搜尋（[桌面設計](../system-design/desktop.md#錄影檔)），2026-10-09 以 `b9f7f111` 實作，同日依維護者檢視以 `ef9eda4b` 改版；2026-10-10 依維護者要求結案。
