@@ -628,6 +628,7 @@
   }
   /* The library's controls take the head's line under its title and summary. */
   .settings-head-controls {
+    container: library-controls / inline-size;
     flex-basis: 100%;
     min-width: 0;
   }
@@ -1460,34 +1461,59 @@
   .result-day {
     margin-bottom: 18px;
   }
+  /* The controls line is a grid of named areas (2026-10-09): the selector gives way first (96–200px, its name cut), the
+     search keeps 160–320px, and the layout switch and Show in Finder keep the line's end. Flex wrapping moved whole
+     controls to new lines before shrinking any; areas let each narrower line be laid out on purpose instead. */
   .library-head {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(96px, max-content) minmax(160px, 320px) 1fr auto auto;
+    grid-template-areas: "picker search . layout reveal";
     align-items: center;
     gap: 8px;
     margin-bottom: 12px;
+  }
+  .library-head > .library-category {
+    grid-area: picker;
+  }
+  .library-head > .library-search {
+    grid-area: search;
+  }
+  .library-head > .library-layout {
+    grid-area: layout;
+  }
+  .library-head > #library-reveal {
+    grid-area: reveal;
+  }
+  /* Too narrow for all of them at once (a narrow window, a large zoom): the search takes the next line at full width. */
+  @container library-controls (max-width: 580px) {
+    .library-head {
+      grid-template-columns: minmax(96px, max-content) 1fr auto auto;
+      grid-template-areas:
+        "picker . layout reveal"
+        "search search search search";
+    }
+  }
+  /* Narrower still, every part gets a line: nothing runs past the window. */
+  @container library-controls (max-width: 300px) {
+    .library-head {
+      grid-template-columns: auto 1fr auto;
+      grid-template-areas:
+        "picker picker picker"
+        "layout . reveal"
+        "search search search";
+    }
+    .library-head > .library-category {
+      justify-self: start;
+    }
   }
   .library-summary {
     flex: 1;
     font-size: 12px;
     color: var(--muted-foreground);
   }
-  /* The layout switch and Show in Finder keep together at the line's end. */
-  .library-layout {
-    margin-left: auto;
-  }
-  /* The search starts the controls' line and takes the room the buttons leave, up to 320px. Its basis is zero: a
-     wrapping line wraps items at their basis before shrinking them, which would push Show in Finder to a line of its own
-     in a narrow window. */
-  .library-search {
-    flex: 1 1 0;
-    min-width: 88px;
-    max-width: 320px;
-  }
+
+
   /* The category selector starts the controls' line (2026-10-09): the category shown, kept to a readable width. */
-  .library-category {
-    flex: none;
-    max-width: 200px;
-  }
   .library-category-current {
     min-width: 0;
     overflow: hidden;
@@ -2297,10 +2323,6 @@
     .controls {
       max-width: 55%;
     }
-    /* At a large zoom the buttons alone can outgrow the line; they wrap then, never past the window. */
-    .library-head {
-      flex-wrap: wrap;
-    }
     .library-summary {
       flex-basis: 100%;
     }
@@ -2316,6 +2338,13 @@
   @media (max-height: 480px) {
     .settings-card {
       padding-bottom: 24px;
+    }
+    /* A narrow, short window keeps its few lines for the recordings: the summary's line of count and size gives way to
+       the controls and the search, which have a line each there. */
+    @media (max-width: 599px) {
+      .library-summary {
+        display: none;
+      }
     }
     @media (max-width: 599px) {
       /* Status/recovery cards retain their breathing room; compact only an ordinary settings page. */

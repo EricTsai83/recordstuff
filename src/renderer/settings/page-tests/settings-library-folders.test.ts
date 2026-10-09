@@ -118,12 +118,15 @@ it("opens on the remembered category, selects, favorites, makes, renames and del
 
   // Search narrows the category shown, ignoring case; Escape clears it before it would close the window.
   const search = document.getElementById("library-search") as HTMLInputElement;
+  // The field shows the keys at once; the cards follow a deferred copy of the search, a moment later.
   enter(search, "BUG");
-  expect(cards()).toEqual(["c"]);
+  expect(search.value).toBe("BUG");
+  await vi.waitFor(() => expect(cards()).toEqual(["c"]));
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
   search.focus();
   key(search, "Escape");
-  expect([search.value, cards(), close.mock.calls.length]).toEqual(["", ["a", "c"], 0]);
+  expect([search.value, close.mock.calls.length]).toEqual(["", 0]);
+  await vi.waitFor(() => expect(cards()).toEqual(["a", "c"]));
 
   // Move to: every category but the card's own place; the moved card leaves Uncategorized and the move is said.
   await menu(document.getElementById("clip-a-more")!);

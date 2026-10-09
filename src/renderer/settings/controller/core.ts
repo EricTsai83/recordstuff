@@ -424,7 +424,7 @@ function reconcile(
   takeShown(next.library);
   forgetMissingFolder(next.library);
   // A card moved out of the folder shown, or out of the search, hands its focus on as one that left does.
-  const shown = new Set(next.library?.items.filter(isShown).map((item) => item.id));
+  const shown = new Set(next.library?.items.filter((item) => isShown(item)).map((item) => item.id));
   const resultIds = reconcileResults(next, entering);
   forgetInfo(next);
   if (document.documentElement.lang !== documentLanguage(next.language))

@@ -43,6 +43,11 @@ export let shownFolder: { folder: string | null } | undefined;
 let shownTaken = false;
 /** The search typed in the tab's head; it narrows the shown folder's recordings by name. */
 export let query = "";
+/**
+ * The list follows `query` at once rather than a deferred copy: an entry cleared the search to bring a recording into view,
+ * and its card must be there when the entry focuses and scrolls to it (review 2026-10-09). Typing defers it again.
+ */
+export let queryNow = false;
 /** New folder or Rename folder…, while its dialog is open. */
 export let folderDialog:
   | { folder?: string; name: string; error: string; pending: boolean }
@@ -63,6 +68,7 @@ export function dismissLibraryOverlays(): void {
 /** An entry bringing a recording into view: every category and no search, so its card is there. */
 export function showEveryRecording(): void {
   query = "";
+  queryNow = true;
   // Before the first listing too, so the remembered category is never applied over the recording asked for (review F1);
   // main hears of it only when something other than every recording was shown or remembered.
   shownTaken = true;
@@ -75,13 +81,14 @@ export function takeShown(library: LibraryView | undefined): void {
   shownFolder = library.shown;
 }
 /** Whether `item` is in the shown folder and matches the search, ignoring case. */
-export function isShown(item: LibraryItemView): boolean {
+export function isShown(item: LibraryItemView, text = query): boolean {
   if (shownFolder && (item.folder ?? null) !== shownFolder.folder) return false;
-  const words = query.trim().toLocaleLowerCase();
+  const words = text.trim().toLocaleLowerCase();
   return !words || item.title.toLocaleLowerCase().includes(words);
 }
-export function shownItems(library: LibraryView | undefined): LibraryItemView[] {
-  return library?.items.filter(isShown) ?? [];
+/** The cards for the search `text`: the tab passes a deferred copy of `query`, so typing never waits for the list. */
+export function shownItems(library: LibraryView | undefined, text = query): LibraryItemView[] {
+  return library?.items.filter((item) => isShown(item, text)) ?? [];
 }
 /** Shows a category at once and has main remember it; a failed save leaves it shown, and says nothing. */
 export function showFolder(folder: { folder: string | null } | undefined, redraw = true): void {
@@ -97,6 +104,7 @@ export function showFolder(folder: { folder: string | null } | undefined, redraw
 }
 export function search(text: string): void {
   query = text;
+  queryNow = false;
   draw();
 }
 /**

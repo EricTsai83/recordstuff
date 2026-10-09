@@ -2,7 +2,7 @@
  * The Recordings tab: cards or a list by day, a card's menu, renaming, the embedded player dialog, and its folders and
  * search (plan 071).
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
 import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderInput, SearchX, FolderOpen, ChevronDown, Check, Plus, Star, Settings2 } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/popover";
 import type { LibraryItemView } from "../../../shared/settings-panel";
@@ -374,7 +374,8 @@ function CategoryPicker() {
       <PopoverTrigger
         render={<Button variant="outline" />}
         id="library-category"
-        className="library-category darwin:wide:window-no-drag"
+        // At most 200px; on a short line it gives way first, down to 96px, its name cut by an ellipsis (ui.css .library-head).
+        className="library-category min-w-0 max-w-[200px] darwin:wide:window-no-drag"
         disabled={!library || Boolean(library.status)}
         aria-label={translate("Category: {name}", language, { name: label })}
       >
@@ -521,6 +522,7 @@ export function LibraryHead() {
   return (
     <div className="library-head">
       <CategoryPicker />
+      {/* At least 160px wide beside the others; a narrow line gives it a line of its own (ui.css .library-head). */}
       <InputGroup className="library-search darwin:wide:window-no-drag">
         <InputGroupAddon>
           <Search />
@@ -694,8 +696,12 @@ export function Library() {
   const library = model.view?.library,
     all = library?.items,
     shownFolder = model.shownFolder,
-    query = model.query,
-    items = useMemo(() => model.shownItems(library), [all, shownFolder, query]),
+    // The field shows each key at once; the list follows a deferred copy of the search, re-rendered in the background and
+    // dropped for a newer one while typing goes on (React's useDeferredValue), so a long list never holds the typing up.
+    // An entry that cleared the search takes the live one, so the card it brings is there to focus (model.queryNow).
+    deferredQuery = useDeferredValue(model.query),
+    query = model.queryNow ? model.query : deferredQuery,
+    items = useMemo(() => model.shownItems(library, query), [all, shownFolder, query]),
     narrowed = Boolean(all?.length) && (shownFolder !== undefined || query.trim() !== ""),
     layout = model.optimisticLayout ?? library?.layout ?? "grid";
   const days = useMemo(() => {

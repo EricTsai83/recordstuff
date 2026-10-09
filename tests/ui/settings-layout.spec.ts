@@ -519,3 +519,51 @@ for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "
     await page.keyboard.press("Escape");
   });
 }
+
+test("U071-1 a long category name never squeezes the library's search away: it keeps 160px, or takes a line of its own", async ({}, testInfo) => {
+  const long = "A very long category name that goes on and on";
+  let picked = false;
+  for (const size of ["default", "narrow", "minimum"] as const) {
+    await host.evaluate((h, args) => {
+      h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+      const state = h.library().state;
+      h.pushModel({ type: "idle" }, { language: "zh-TW", library: { ...state, folders: [...(state.folders ?? []), { name: args.long, empty: true }] } });
+    }, { size, long });
+    await page.locator("#tab-library").click();
+    if (!picked) {
+      await page.locator("#library-category").click();
+      await page.locator('[role="option"]', { hasText: long }).click();
+      picked = true;
+    }
+    await expect(page.locator("#library-category")).toContainText("A very long");
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const box = await read<{ search: DOMRect; picker: DOMRect; line: DOMRect; outside: string[] }>(page, `(() => {
+      const rect = id => document.getElementById(id).getBoundingClientRect().toJSON();
+      const line = document.querySelector(".settings-head-controls").getBoundingClientRect();
+      const outside = [...document.querySelectorAll(".settings-head-controls button, .settings-head-controls input")]
+        .filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.left < line.left - 0.5 || r.right > line.right + 0.5 || r.right > innerWidth); })
+        .map(el => el.id || el.className);
+      return { search: document.getElementById("library-search").closest('[data-slot="input-group"]').getBoundingClientRect().toJSON(), picker: rect("library-category"), line: line.toJSON(), outside };
+    })()`);
+    await page.screenshot({ path: testInfo.outputPath(`library-head-${size}.png`) });
+    expect.soft(box.search.width, `U071-1 ${size}: the search is at least 160px wide`).toBeGreaterThanOrEqual(159.5);
+    expect.soft(box.outside, `U071-1 ${size}: every control stays inside the controls line and the window`).toEqual([]);
+    // A line too narrow for all of them puts the search below the others, at the line's full width.
+    if (box.search.top > box.picker.bottom) expect.soft(Math.abs(box.search.width - box.line.width), `U071-1 ${size}: a search of its own line spans it`).toBeLessThan(1);
+  }
+});
+
+test("U071-2 an entry to a recording the search hides clears the search and focuses that card at once", async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
+  await page.locator("#tab-library").click();
+  const first = await page.locator(".clip").first().getAttribute("data-id");
+  await page.locator("#library-search").fill("no recording is called this");
+  await expect(page.locator(".clip")).toHaveCount(0);
+  // The saved notification's entry, as main sends it: a newer entry, on Recordings, with the card to bring.
+  await host.evaluate((h, id) => {
+    const view = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: "en", library: h.library().state });
+    h.push({ ...view, entryTab: "library", libraryFocus: id, resultFocus: Date.now() });
+  }, first);
+  await expect(page.locator(`#clip-${first}-open`)).toBeFocused();
+  await expect(page.locator("#library-search")).toHaveValue("");
+});
