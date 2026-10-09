@@ -4,6 +4,21 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plan 071 closure — 2026-10-10
+
+Categories and search in the Recordings tab ([desktop design](../system-design/desktop.md#recordings)), implemented on 2026-10-09 in `b9f7f111` and revised the same day at the maintainer's review in `ef9eda4b`; closed on 2026-10-10 at the maintainer's request.
+
+- **Contract.** Categories are the output folder's own subfolders, one level deep (hidden folders, packages, links and folders of other files left out; an empty one shown); a card moves with Move to, never over another file; categories are created, renamed (never over another) and deleted when empty, to the Trash; one selector lists All, Uncategorized, favorites and every category with a filter; the category shown and the favorites are remembered (`libraryShown`, `libraryFavorites`); search filters by name; the output folder is watched recursively only while the window is open; main resolves only listed ids and folders.
+- **Removed in the revision.** Dropping a card on a category: on the desktop the drop did not move it (`webContents.startDrag` was not delivered back to the page as a drop), so the plan's open native-drag limit no longer applies.
+- **Review.** Codex GPT-6.1 Sol, two read-only passes on the first commit and a third on the follow-up; all eight findings fixed.
+
+### Verification
+
+- At implementation: typecheck, 1,827 then 1,831 unit tests, 126 background UI tests and the drills passed; `pnpm measure:cpu -- --skip-recording` passed with the recursive watch present.
+- On 2026-10-10, source including both commits: `pnpm acceptance:regression` (1,843 tests, background 128/128); `pnpm measure:cpu` C (Settings open, so the recursive watch running over the maintainer's output folder) 0.149 %, against ≤0.5 %.
+
+Not verified: the recursive watch's CPU over a large or deep output folder (the measured folder was the maintainer's own); the toast's held focus rests on code inspection, since happy-dom cannot show it; VoiceOver with the selector.
+
 ## Plain MP4 at save and a warm full-screen page — 2026-10-10
 
 At the maintainer's request, ahead of plan 071: a 36-minute recording opened black for about a second and full screen hitched. Two changes ([plain MP4 at save](../system-design/recording.md#plain-mp4-at-save), [desktop design](../system-design/desktop.md#recordings)); OBS `7d98bebe` and Cap `8d808e09` were read for comparison.
