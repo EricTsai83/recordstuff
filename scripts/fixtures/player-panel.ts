@@ -135,6 +135,11 @@ async function run(): Promise<boolean> {
   await window.loadFile(path.join(out, "renderer/settings.html"), { query: { lang: language } });
   if (process.platform === "darwin") app.focus({ steal: true });
   window.show(); window.focus();
+  // As SettingsWindow.show does: a full-screen page loads hidden for the next request (video-fullscreen.ts, macOS).
+  fullScreen.prepare();
+  /** On macOS, that page loaded and waiting, as a user's click a second after opening the window finds it. */
+  const waiting = (): Promise<boolean> => process.platform !== "darwin" ? Promise.resolve(true) : until(() =>
+    BrowserWindow.getAllWindows().some(other => other !== window && !other.isDestroyed() && !other.isVisible() && !other.webContents.isLoading()), 5000);
   await settle(600);
   const shot = async (target: BrowserWindow, file: string): Promise<void> => fs.writeFileSync(path.join(outDir, file), (await target.webContents.capturePage()).toPNG());
 
@@ -144,6 +149,7 @@ async function run(): Promise<boolean> {
   click(window, card!.x, card!.y);
   await until(async () => { const p = await playback(window, ".player video"); return !p.paused && p.time > 0.3; }, 5000);
   // Full screen from its button, playing.
+  await waiting();
   const fullButton = await box(window, "#player-fullscreen");
   click(window, fullButton!.x, fullButton!.y);
   let full: BrowserWindow | undefined;
@@ -166,6 +172,7 @@ async function run(): Promise<boolean> {
   record("N-P02 F leaves full screen: the window goes and the Settings window, still open, has its focus back",
     left && refocused && await read<boolean>(window, `document.querySelector(".player")?.hasAttribute("data-open")`), { left, refocused, after: await playback(window, ".player video") });
   await settle(1100);
+  await waiting();
   const again = await box(window, ".player video");
   click(window, again!.x, again!.y, 1);
   window.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 2, x: Math.round(again!.x), y: Math.round(again!.y) });

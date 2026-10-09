@@ -319,13 +319,20 @@ export const roleText = (roles: RoleCounts): string =>
 export const IDLE_ROLES = {
   launch: { required: ["main", "gpu", "utility:network"], allowed: { renderer: 1 } },
   afterRecording: { required: ["main", "gpu", "utility:network"], allowed: { "utility:audio": 1 } },
-  /** The Settings page's renderer must exist: without it the scenario measured closed idle. */
-  settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1 } },
+  /**
+   * The Settings page's renderer must exist: without it the scenario measured closed idle. A second is the full-screen
+   * page waiting loaded and hidden while Settings is open (video-fullscreen.ts).
+   */
+  settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1, renderer: 2 } },
 } as const satisfies Record<string, { required: readonly string[]; allowed: Readonly<Record<string, number>> }>;
 
 export function judgeRoles(roles: RoleCounts, contract: { required: readonly string[]; allowed: Readonly<Record<string, number>> }): Verdict {
   const problems: string[] = [];
-  for (const role of contract.required) if (roles[role] !== 1) problems.push(`${role} ×${roles[role] ?? 0}, expected ×1`);
+  // A required role is there once, or up to the number `allowed` names for it.
+  for (const role of contract.required) {
+    const most = Math.max(1, (contract.allowed as Record<string, number>)[role] ?? 1), n = roles[role] ?? 0;
+    if (n < 1 || n > most) problems.push(`${role} ×${n}, expected ${most > 1 ? `×1 to ×${most}` : "×1"}`);
+  }
   for (const [role, n] of Object.entries(roles)) {
     if (contract.required.includes(role)) continue;
     const allowed = (contract.allowed as Record<string, number>)[role] ?? 0;

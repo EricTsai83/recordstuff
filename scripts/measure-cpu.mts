@@ -351,7 +351,8 @@ async function main(): Promise<number> {
       // Delivery is the app's own log line; the Settings renderer is the evidence that the window exists.
       await waitForLog(log, beforeSettings, /\] settings shortcut: .* pressed/, "the Settings shortcut's delivery", AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
       await sleep(2000);
-      if (readRoles(appPid)["renderer"] !== 1) fail("Settings did not open: the shortcut was delivered but no Settings renderer is running");
+      // A second renderer is the full-screen page loading hidden beside Settings on macOS (video-fullscreen.ts).
+      if (!(readRoles(appPid)["renderer"] ?? 0)) fail("Settings did not open: the shortcut was delivered but no Settings renderer is running");
       // The pre-warmed renderer of a launch without recordings counts as one too, so the window itself is the evidence.
       const { windows } = await osascriptAx(controller.signal).windows(appPid);
       if (!windows.some((window) => window.title === "RecordStuff")) fail(`Settings did not open: RecordStuff shows no Settings window (${JSON.stringify(windows.map((window) => window.title))})`);

@@ -24,7 +24,7 @@
 | `pnpm diagnose:cadence` | 經由隔離的 capture host fixture 錄影測試素材，比對 track 送達的影格時間戳與計數和檔案 pts，找出幀率不足發生在哪一層（[說明](#影格節奏診斷)）；僅限 macOS，不做通過／失敗判定 |
 | pnpm acceptance | 對執行中的 App，使用其實際設定（含倒數）：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、分別回報準備時間、每格倒數、`record → started` 與第一片、裁出最初影格的數字區域、驗完整性層級（test-material 模式），再以第二次按鍵取消另一次嘗試；把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
 | `pnpm acceptance:playback` | 以 QuickTime Player 的 AppleScript 字典播放一個已存檔的錄影，判定長度、尺寸、即時播放、跳轉、畫面隨跳轉改變及播放到結尾；報告寫在 docs/verification/measurements，截圖只在未通過時保留（[說明](#播放檢查)） |
-| `pnpm acceptance:player` | 需要桌面的播放器案例（plan 066 縮減）：簽入的片段（tests/ui/media）從卡片播放，並在 App 自己的 `VideoFullScreen` 於螢幕上全螢幕：全螢幕蓋住螢幕、F 與 Escape 離開、設定視窗取回焦點；報告、案例與一張截圖寫到 docs/verification/measurements。播放器的控制項、按鍵、拖曳、靜止與喚回、雙向交接的時間與 16:9 畫面在 `pnpm test:ui` 執行。這是桌面回合：RecordStuff 執行中時拒絕執行（blocked，2），因為它的視窗與焦點會干擾 |
+| `pnpm acceptance:player` | 需要桌面的播放器案例（plan 066 縮減）：簽入的片段（tests/ui/media）從卡片播放，並在 App 自己的 `VideoFullScreen` 於螢幕上全螢幕：全螢幕蓋住螢幕、F 與 Escape 離開、設定視窗取回焦點；在 macOS 上，每次進入全螢幕前會先等待事先隱藏載入的全螢幕頁面（與 `SettingsWindow.show` 的準備方式相同），log 的 `video fullscreen timing` 行會寫 `warm page`；報告、案例與一張截圖寫到 docs/verification/measurements。播放器的控制項、按鍵、拖曳、靜止與喚回、雙向交接的時間與 16:9 畫面在 `pnpm test:ui` 執行。這是桌面回合：RecordStuff 執行中時拒絕執行（blocked，2），因為它的視窗與焦點會干擾 |
 | `pnpm acceptance:shortcut` | 建置後執行背景套件中的快捷鍵部分（`tests/ui/shortcut-integration.spec.ts`）：正式 main、`SettingsWindow`、actions、`AppShortcuts` 與 settings.json，加上註冊 adapter；不需桌面 |
 | `pnpm acceptance:shortcut-native` | 建置後執行：Electron 真正的註冊經 `setSuspended` 被拒，以及真實設定視窗狀態（最小化、還原、焦點、平台關閉鍵與重開）。保留 runner 的 `--drill-failure` 與 `--drill-timeout` 清理演練。屬桌面回合 |
 | `pnpm preview:ui` | 對已建置的 `out/`，在畫面外執行、不需桌面回合：以真實 model 與示範資料夾（FFmpeg 補上可播放片段）畫出：每個分頁與每個可捲動頁面的底部，涵蓋兩種語言、兩種主題與預設、窄、最小三種尺寸；600 px 與 420 px 斷點兩側、大視窗、App 的 zoom 級距與 200% 探測；以及錄影中、缺少權限、說明、無效檔名、卡片選單、改名、空資料夾與無法讀取的資料夾、鍵盤焦點、zoom 通知、播放器與全螢幕頁面（plan 067）。輸出 PNG 與 index.html 到 docs/verification/measurements；`shots.json` 是配對兩次執行截圖的 manifest，`measurements.json` 保留每頁的量測（字級與對比、控制項點擊區、overflow 與被截斷的文字）。它不做任何判定 |
@@ -147,7 +147,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 - **A. 啟動後待機**，設定視窗關閉：暖機 60 秒後量 `--minutes`（預設 5）分鐘。
 - **R. 錄影**：以錄影快捷鍵開始並停止一段 60 秒的錄影，畫面上是持續移動的測試素材（主螢幕上的 Chrome kiosk），只判定第 5 到 55 秒，並追蹤 VTEncoderXPCService。`--repeat N`（奇數，1–9，讓中位數就是其中一次的實際結果）錄 N 次、判定中位數那一次。`--fps 60` 之後會結束 App、寫入 60 fps 再重新啟動，錄第二組。
 - **B. 錄影後待機**：從最後一次儲存後 30 秒起量 `--minutes` 分鐘，套用待機門檻。
-- **C. 設定視窗開著、在其他 App 後面**：用設定快捷鍵開啟，並以 App 的 `settings shortcut: … pressed` 那一行、執行中的設定 renderer 與輔助使用樹中的設定視窗確認已開啟（沒有錄影的一次啟動仍留著預熱的 renderer），再把 Finder 帶到最前面，穩定 10 秒後量 3 分鐘，之後關閉。
+- **C. 設定視窗開著、在其他 App 後面**：用設定快捷鍵開啟，並以 App 的 `settings shortcut: … pressed` 那一行、執行中的設定 renderer 與輔助使用樹中的設定視窗確認已開啟（沒有錄影的一次啟動仍留著預熱的 renderer；在 macOS 上，設定視窗旁待命載入的全螢幕頁面是第二個 renderer），再把 Finder 帶到最前面，穩定 10 秒後量 3 分鐘，之後關閉。
 
 **程序角色。**每個待機情境也會依 Chromium 角色檢查 App 的程序；角色取自程序命令列的 `--type` 與 `--utility-sub-type`，因為三個 helper 的名稱都一樣。待機契約是 cpu-sampler.mts 的 `IDLE_ROLES`：主程序、GPU 與網路服務各一個，除此之外只能有[設計總覽](design-overview.md#在選單列待命)說明過的程序。也就是啟動後（A）最多一個預熱 renderer，第一個視窗會拿走它；錄影後（B）最多一個 Chromium 音訊服務，由第一次擷取系統聲音啟動，一直存在到 App 結束；設定視窗開著時（C）剛好一個 renderer，也就是設定頁，所以沒有真的開啟的設定視窗會判定失敗，而不是量到關閉時的待機。設定視窗關閉時，錄影後不能留下任何 renderer，所以即使預熱 renderer 已經不在，殘留的 capture host 或倒數覆蓋層仍會判定失敗；其他任何角色也一樣會失敗。每次儲存後 5 秒會記下一次角色，同一次啟動中的每一次記錄，以及 B 結束時的角色，都必須和第一次相同：錄影只啟動一次的東西是預期的，每錄一次就多一份的才是洩漏。這和 [fuite](https://github.com/nolanlawson/fuite) 這類洩漏偵測工具的做法一樣，看每次重複的成長，而不是和冷啟動比較。報告也會列出每次記錄時 App 的記憶體，只回報不判定。
 
@@ -159,7 +159,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 | --- | --- | --- |
 | 待機、設定視窗關閉（A，以及錄影後的 B） | 平均 ≤0.2%、每秒取樣的第 95 百分位 ≤1%、合計每秒喚醒 ≤5 次 | 沒有事要做：唯一的週期性工作是每 5 秒一次的權限輪詢。Apple 的[能耗指南](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html)要求 App 回應事件而不是輪詢 |
 | 錄影後（B） | 儲存後 30 秒起符合待機門檻、符合待機契約的角色且沒有 renderer，而且每次錄影後的角色都相同；VTEncoderXPCService 低於 0.1% 只是警告，因為它是共用服務 | 殘留的計時器、renderer 或編碼器會在這裡出現；和剛啟動時比較則抓不到，因為第一次錄影會拿走預熱 renderer，並只啟動一次音訊服務 |
-| 設定視窗開著、在其他 App 後面（C） | 平均 ≤0.5% | 一個沒有動畫在跑的閒置 renderer |
+| 設定視窗開著、在其他 App 後面（C） | 平均 ≤0.5% | 沒有動畫在跑的閒置設定 renderer，以及在 macOS 上隱藏待命的全螢幕頁面 |
 | 錄影 30 fps（R 與矩陣） | 平均 ≤30%；baseline 確認之前，沿用原本 40% 的上限 | 擷取與 H.264 編碼在硬體上執行；App 自己負擔的是 Chromium 媒體管線、AAC、IPC 與檔案寫入 |
 | 錄影 60 fps | 平均 ≤40% | 影格加倍，但固定成本不會加倍 |
 | 錄影時的硬體編碼器 | 只回報不判定 | 若它不存在而 App 自己的 CPU 很高，可能退回軟體編碼；在 Cap 的量測中，軟體編碼每個影格的成本是硬體路徑的數十倍 |
