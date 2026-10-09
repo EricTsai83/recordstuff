@@ -1208,9 +1208,9 @@ describe("a recording's new name (2026-10-05)", () => {
     await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: null })).resolves.toMatchObject({ applied: true });
     expect(move.mock.calls).toEqual([["a", "Demos"], ["a", null]]);
     await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: "Gone" }))
-      .resolves.toMatchObject({ applied: false, failure: "This folder is no longer in the output folder." });
+      .resolves.toMatchObject({ applied: false, failure: "This category no longer exists." });
     await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: "Full" }))
-      .resolves.toMatchObject({ applied: false, failure: "A recording with this name is already in that folder." });
+      .resolves.toMatchObject({ applied: false, failure: "A recording with this name is already in that category." });
     await expect(s.choose(s.event(), "recordingFile:zz", { action: "move", folder: "Demos" }))
       .resolves.toMatchObject({ applied: false, failure: "This recording is no longer in the folder." });
     // A folder that is not a string, or a path smuggled as a move, never reaches the library.
@@ -1223,18 +1223,29 @@ describe("a recording's new name (2026-10-05)", () => {
       create: vi.fn(async (name: string) => name === "Foo.app" ? { problem: "extension" as const } : { folder: name }),
       rename: vi.fn(async (_folder: string, name: string) => ({ folder: name })),
       remove: vi.fn(async (folder: string) => folder === "Kept" ? { problem: "notEmpty" as const } : true as const),
+      show: vi.fn(async (folder: string | null | undefined) => folder === "Gone" ? { problem: "missing" as const } : true as const),
+      favorite: vi.fn(async (_folder: string, _favorite: boolean) => true as const),
     };
     const s = setup({ folders, quitRequested: () => quitting });
     s.live.library = library;
     s.panel.show();
     await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Demos" })).resolves.toMatchObject({ applied: true, folder: "Demos" });
     await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Foo.app" }))
-      .resolves.toMatchObject({ applied: false, failure: "A folder name cannot end in an extension such as .app." });
+      .resolves.toMatchObject({ applied: false, failure: "A category name cannot end in an extension such as .app." });
     await expect(s.choose(s.event(), "libraryFolder", { action: "renameFolder", folder: "Demos", name: "Talks" })).resolves.toMatchObject({ applied: true, folder: "Talks" });
     await expect(s.choose(s.event(), "libraryFolder", { action: "removeFolder", folder: "Talks" })).resolves.toMatchObject({ applied: true });
     await expect(s.choose(s.event(), "libraryFolder", { action: "removeFolder", folder: "Kept" }))
-      .resolves.toMatchObject({ applied: false, failure: "Only an empty folder can be deleted." });
+      .resolves.toMatchObject({ applied: false, failure: "Only an empty category can be deleted." });
     await expect(s.choose(s.event(), "libraryFolder", { action: "renameFolder", folder: "Demos" })).resolves.toMatchObject({ applied: false });
+    // The category shown and the favorites are remembered through the library's own checks (2026-10-09).
+    await expect(s.choose(s.event(), "libraryFolder", { action: "showFolder", folder: "Talks" })).resolves.toMatchObject({ applied: true });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "showFolder", folder: null })).resolves.toMatchObject({ applied: true });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "showAll" })).resolves.toMatchObject({ applied: true });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "showFolder", folder: "Gone" }))
+      .resolves.toMatchObject({ applied: false, failure: "This category no longer exists." });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "favorite", folder: "Talks", favorite: true })).resolves.toMatchObject({ applied: true });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "favorite", folder: "Talks", favorite: "yes" })).resolves.toMatchObject({ applied: false });
+    expect([folders.show.mock.calls, folders.favorite.mock.calls]).toEqual([[["Talks"], [null], [undefined], ["Gone"]], [["Talks", true]]]);
     await expect(s.choose(s.event(), "libraryFolder", "createFolder")).resolves.toMatchObject({ applied: false });
     quitting = true;
     await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Late" })).resolves.toMatchObject({ applied: false });

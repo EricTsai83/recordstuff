@@ -37,8 +37,8 @@ import {
   folderDialog,
   forgetMissingItems,
   isShown,
-  stopDragging,
   showEveryRecording,
+  takeShown,
   menuId,
   renaming,
   undoTrash,
@@ -421,6 +421,7 @@ function reconcile(
   const ids = new Set(next.library?.items.map((item) => item.id));
   if (playingItem && !ids.has(playingItem.id)) closePlayer(false);
   forgetMissingItems(ids);
+  takeShown(next.library);
   forgetMissingFolder(next.library);
   // A card moved out of the folder shown, or out of the search, hands its focus on as one that left does.
   const shown = new Set(next.library?.items.filter(isShown).map((item) => item.id));
@@ -616,9 +617,6 @@ export function start(): () => void {
     if (event.key === "Escape" || isCloseChord(event, platform()))
       window.close();
   });
-  // A card's drag out of the page ends without an event here when it is dropped elsewhere; the next press forgets it.
-  listen(document, "pointerdown", stopDragging, true);
-  listen(window, "blur", stopDragging);
   listen(document, "fullscreenchange", () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});

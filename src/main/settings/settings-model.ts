@@ -647,6 +647,7 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
   };
   if (library.failed) return { folder, ...extras, status: t("Could not read the output folder. Check the folder and its drive, or choose another folder.", language), items: [] };
   if (library.loading) return { folder, ...extras, status: t("Loading recordings…", language), items: [] };
+  const listed = new Set(library.folders?.map(folder => folder.name));
   const total = library.files.reduce((sum, file) => sum + file.size, 0);
   const count = library.files.length;
   return {
@@ -662,13 +663,19 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
         title: file.name.replace(/\.[^.]+$/, ""), time: shortTime(at, language, format),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
-        bytes: file.size,
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
       };
     }),
     ...(library.folders?.length ? { folders: library.folders.map(({ name, empty }) => ({ name, empty })) } : {}),
+    // Only categories listed now: one renamed or deleted in Finder is not offered, and the tab shows every recording.
+    ...((): Pick<LibraryView, "favorites"> => {
+      const favorites = (ctx.libraryFavorites ?? []).filter(name => listed.has(name));
+      return favorites.length ? { favorites } : {};
+    })(),
+    ...(ctx.libraryShown === null || (typeof ctx.libraryShown === "string" && listed.has(ctx.libraryShown))
+      ? { shown: { folder: ctx.libraryShown } } : {}),
   };
 }
 

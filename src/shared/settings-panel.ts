@@ -134,10 +134,8 @@ export interface LibraryItemView {
   size: string;
   thumbnail: string;
   video: string;
-  /** The output folder's subfolder it is in (plan 071); absent for one in the output folder itself (Unsorted). */
+  /** The output folder's subfolder it is in (plan 071); absent for one in the output folder itself (Not in a folder). */
   folder?: string;
-  /** Its size in bytes, which a file dropped on a folder must have to be taken for this recording (review pass 1, F1). */
-  bytes?: number;
 }
 /** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
 export interface LibraryFolderView {
@@ -161,6 +159,10 @@ export interface LibraryView {
   items: LibraryItemView[];
   /** By name; absent or empty when the output folder has none. */
   folders?: LibraryFolderView[];
+  /** Listed categories marked favorite, in the order they were added (2026-10-09). */
+  favorites?: string[];
+  /** The category the tab last showed, when it is still listed: `{ folder: null }` for Uncategorized; absent for all. */
+  shown?: { folder: string | null };
 }
 export interface SettingsView {
   revision?: number;
@@ -215,7 +217,11 @@ export function isMoveChoice(value: unknown): value is MoveChoice {
 export type FolderChoice =
   | { action: "createFolder"; name: string }
   | { action: "renameFolder"; folder: string; name: string }
-  | { action: "removeFolder"; folder: string };
+  | { action: "removeFolder"; folder: string }
+  /** The category the tab shows now, remembered across windows and launches: `null` is Uncategorized. */
+  | { action: "showFolder"; folder: string | null }
+  | { action: "showAll" }
+  | { action: "favorite"; folder: string; favorite: boolean };
 export function isFolderChoice(value: unknown): value is FolderChoice {
   if (typeof value !== "object" || value === null) return false;
   const choice = value as Record<string, unknown>;
@@ -223,6 +229,9 @@ export function isFolderChoice(value: unknown): value is FolderChoice {
     case "createFolder": return typeof choice.name === "string";
     case "renameFolder": return typeof choice.folder === "string" && typeof choice.name === "string";
     case "removeFolder": return typeof choice.folder === "string";
+    case "showFolder": return choice.folder === null || typeof choice.folder === "string";
+    case "showAll": return true;
+    case "favorite": return typeof choice.folder === "string" && typeof choice.favorite === "boolean";
     default: return false;
   }
 }

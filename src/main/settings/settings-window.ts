@@ -101,6 +101,9 @@ export interface SettingsWindowOptions {
     create: (name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
     rename: (folder: string, name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
     remove: (folder: string) => Promise<true | { problem: FolderProblem }>;
+    /** Remembers the category shown (`undefined` every recording, `null` Uncategorized) across windows and launches. */
+    show: (folder: string | null | undefined) => Promise<true | { problem: FolderProblem }>;
+    favorite: (folder: string, favorite: boolean) => Promise<true | { problem: FolderProblem }>;
   };
   /** The window is about to be shown: on macOS the app becomes a Dock app with its menus while it is open (app-menu.ts). */
   opened?: () => void;
@@ -557,7 +560,7 @@ export class SettingsWindow {
     const view = this.view();
     if ("id" in outcome) return this.deliver({ view, applied: true, renamed: outcome.id }, recipient);
     const failure = outcome.problem === "folderMissing" ? folderProblemText("missing", view.language)
-      : outcome.problem === "exists" ? translate("A recording with this name is already in that folder.", view.language)
+      : outcome.problem === "exists" ? translate("A recording with this name is already in that category.", view.language)
         : fileNameProblemText(outcome.problem, view.language);
     return this.deliver({ view, applied: false, failure }, recipient);
   }
@@ -583,6 +586,9 @@ export class SettingsWindow {
       case "createFolder": return folders.create(choice.name);
       case "renameFolder": return folders.rename(choice.folder, choice.name);
       case "removeFolder": return folders.remove(choice.folder);
+      case "showFolder": return folders.show(choice.folder);
+      case "showAll": return folders.show(undefined);
+      case "favorite": return folders.favorite(choice.folder, choice.favorite);
     }
   }
 

@@ -101,6 +101,10 @@ export interface AppContext {
   fileNameTemplate?: string;
   /** The Recordings tab's grid or list; absent is the grid. */
   libraryLayout?: LibraryLayout;
+  /** Favorite categories by name (settings.ts `libraryFavorites`). */
+  libraryFavorites?: string[];
+  /** The category the tab last showed: absent for every recording, `null` for Uncategorized. */
+  libraryShown?: string | null;
   hotkey: AppHotkey;
   settingsShortcut?: SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };

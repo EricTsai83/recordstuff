@@ -57,10 +57,10 @@ export function folderNameProblem(name: string): FolderProblem | undefined {
 /** What to tell the user about a folder name, or a folder action that did not happen. */
 export function folderProblemText(problem: FolderProblem, language: Language): string {
   switch (problem) {
-    case "extension": return t("A folder name cannot end in an extension such as .app.", language);
-    case "exists": return t("A folder or file with this name already exists.", language);
-    case "missing": return t("This folder is no longer in the output folder.", language);
-    case "notEmpty": return t("Only an empty folder can be deleted.", language);
+    case "extension": return t("A category name cannot end in an extension such as .app.", language);
+    case "exists": return t("This name is already in use.", language);
+    case "missing": return t("This category no longer exists.", language);
+    case "notEmpty": return t("Only an empty category can be deleted.", language);
     case "failed": return t("Could not complete this action. Try again.", language);
     default: return fileNameProblemText(problem, language);
   }

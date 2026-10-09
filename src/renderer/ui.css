@@ -626,8 +626,10 @@
   .settings-head:has(> .settings-head-tools:not([hidden])) > :is(.page-title, .settings-head-tools) {
     align-self: last baseline;
   }
-  .settings-head-tools .library-head {
-    align-items: last baseline;
+  /* The library's controls take the head's line under its title and summary. */
+  .settings-head-controls {
+    flex-basis: 100%;
+    min-width: 0;
   }
   .settings-card {
     --content-x: var(--main-right);
@@ -1462,67 +1464,122 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 18px;
+    margin-bottom: 12px;
   }
   .library-summary {
     flex: 1;
     font-size: 12px;
     color: var(--muted-foreground);
   }
+  /* The layout switch and Show in Finder keep together at the line's end. */
   .library-layout {
-    margin-left: 0;
+    margin-left: auto;
   }
-  /* The search sits between the summary and the layout switch and takes the room they leave, up to 220px. Its basis is
-     zero: a wrapping line wraps items at their basis before shrinking them, which would push Show in Finder to a line of
-     its own in a narrow window. */
+  /* The search starts the controls' line and takes the room the buttons leave, up to 320px. Its basis is zero: a
+     wrapping line wraps items at their basis before shrinking them, which would push Show in Finder to a line of its own
+     in a narrow window. */
   .library-search {
     flex: 1 1 0;
     min-width: 88px;
-    max-width: 220px;
+    max-width: 320px;
   }
-  /* Folders take the head's own line under the summary (plan 071), so they stay in view as drop targets while the
-     recordings scroll. The list wraps rather than scrolls: every folder stays reachable by pointer and keyboard. */
-  .settings-head-folders {
-    flex-basis: 100%;
+  /* The category selector starts the controls' line (2026-10-09): the category shown, kept to a readable width. */
+  .library-category {
+    flex: none;
+    max-width: 200px;
+  }
+  .library-category-current {
     min-width: 0;
-  }
-  .library-folders {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: -8px 0 12px;
-  }
-  .library-folder-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    min-width: 0;
-  }
-  .library-folder {
-    max-width: 220px;
-    color: var(--muted-foreground);
-  }
-  .library-folder[aria-pressed="true"] {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-  /* A card dragged over a folder: the folder it will go to is ringed. */
-  .library-folder[data-drop] {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-  .library-folder-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .library-folder-count {
+  /* Its list: as macOS lists a menu's items, a quiet tint under the one the keyboard or pointer is on and a check on the
+     one shown; favorites and the other categories under small headings. Many categories scroll inside the list. */
+  .library-category-list {
+    max-height: min(320px, calc(100dvh - 180px));
+    overflow-y: auto;
+  }
+  .library-category-heading {
+    padding: 8px 8px 3px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .library-category-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 0 8px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    cursor: default;
+  }
+  .library-category-option[data-active] {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .library-category-check {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    visibility: hidden;
+  }
+  .library-category-option[aria-selected="true"] .library-category-check {
+    visibility: visible;
+  }
+  .library-category-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .library-category-count {
     font-variant-numeric: tabular-nums;
     color: var(--muted-foreground);
   }
-  /* New folder, the layout switch and Show in Finder keep together at the line's end. */
-  .library-new-folder {
-    margin-left: auto;
+  .library-category-none {
+    padding: 8px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
+  .library-category-separator {
+    height: 1px;
+    margin: 4px 2px;
+    background: var(--border);
+  }
+  .library-category-new {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  /* The category shown heads its recordings: its name and count, with the favorite star and settings at the end. */
+  /* Room above it, so it reads as the head of the recordings rather than a line of the page's head. */
+  .library-category-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 16px;
+    min-width: 0;
+  }
+  .library-category-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .library-category-total {
     flex: none;
+    font-size: 13px;
+    color: var(--muted-foreground);
+  }
+  .library-category-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
     color: var(--muted-foreground);
   }
   /* A day out of view skips layout and paint: resizing or zooming the window (a title-bar double-click animates through
@@ -2177,8 +2234,8 @@
       line-height: 1.1;
       margin-bottom: 18px;
     }
-    .settings-head-tools .library-head {
-      margin-bottom: 18px;
+    .settings-head-controls .library-head {
+      margin-bottom: 14px;
     }
     /* The scroll viewport stays below the drag strip, even after content scrolls. */
     :root[data-platform="darwin"] main {
@@ -2240,16 +2297,12 @@
     .controls {
       max-width: 55%;
     }
+    /* At a large zoom the buttons alone can outgrow the line; they wrap then, never past the window. */
     .library-head {
       flex-wrap: wrap;
     }
     .library-summary {
       flex-basis: 100%;
-    }
-    /* With folders (plan 071) the head would take three lines of a narrow window: their line already counts every
-       recording (All), so the summary's own line gives way to it. */
-    .settings-head:has(.library-folder-list) .library-summary {
-      display: none;
     }
     .sidebar-about {
       display: none;

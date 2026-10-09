@@ -15,7 +15,7 @@ import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
-import { Library, LibraryHead, LibraryFolders, RenameDialog, FolderDialog, PlayerDialog } from "./tabs/library";
+import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
 
@@ -259,10 +259,11 @@ export function SettingsApp() {
                     ?.label.replace(/\s?[（(]\d+[)）]$/, "")}
                 </p>
                 <div className="settings-head-tools" hidden={model.selectedTab !== "library"}>
-                  <LibraryHead />
+                  <LibrarySummary />
                 </div>
-                <div className="settings-head-folders" hidden={model.selectedTab !== "library"}>
-                  <LibraryFolders />
+                {/* The search and folder controls take a line of their own under the title (2026-10-09). */}
+                <div className="settings-head-controls" hidden={model.selectedTab !== "library"}>
+                  <LibraryHead />
                 </div>
               </div>
               <div className="settings-viewport">

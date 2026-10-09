@@ -431,6 +431,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     trayClick: settings.trayClick,
     fileNameTemplate: settings.fileNameTemplate,
     libraryLayout: settings.libraryLayout,
+    libraryFavorites: settings.libraryFavorites,
+    ...(settings.libraryShown === undefined ? {} : { libraryShown: settings.libraryShown }),
     updates: { state: updates.state, enabled: settings.updates.enabled },
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
@@ -454,8 +456,39 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     move: (id, folder) => library.move(id, folder),
     folders: {
       create: name => library.createFolder(name),
-      rename: (folder, name) => library.renameFolder(folder, name),
-      remove: folder => library.removeFolder(folder),
+      // A category renamed or deleted here keeps or drops its favorite and the remembered choice with it (2026-10-09).
+      rename: async (folder, name) => {
+        const outcome = await library.renameFolder(folder, name);
+        if ("folder" in outcome && outcome.folder !== folder) {
+          await settings.renameLibraryCategory(folder, outcome.folder).catch((cause: unknown) => log(`library: could not carry ${folder}'s favorite and choice to ${outcome.folder}: ${String(cause)}`));
+        }
+        return outcome;
+      },
+      remove: async folder => {
+        const outcome = await library.removeFolder(folder);
+        if (outcome === true) await settings.forgetLibraryCategory(folder).catch((cause: unknown) => log(`library: could not forget ${folder}'s favorite and choice: ${String(cause)}`));
+        return outcome;
+      },
+      show: async folder => {
+        if (typeof folder === "string" && !library.state.folders?.some(entry => entry.name === folder)) return { problem: "missing" };
+        try {
+          await settings.setLibraryShown(folder);
+          return true;
+        } catch (cause) {
+          log(`library: could not remember the category shown: ${String(cause)}`);
+          return { problem: "failed" };
+        }
+      },
+      favorite: async (folder, favorite) => {
+        if (!library.state.folders?.some(entry => entry.name === folder)) return { problem: "missing" };
+        try {
+          await settings.setLibraryFavorite(folder, favorite);
+          return true;
+        } catch (cause) {
+          log(`library: could not ${favorite ? "add" : "remove"} the favorite ${folder}: ${String(cause)}`);
+          return { problem: "failed" };
+        }
+      },
     },
     drag: async (contents, id) => {
       const file = library.find(id);

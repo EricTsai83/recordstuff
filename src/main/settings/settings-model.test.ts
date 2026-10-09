@@ -878,7 +878,7 @@ describe("the Recordings tab", () => {
     expect(view.folder).toBe("~/recordings");
     expect(view.items).toEqual([
       { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: "2026-10-04 14-02-11", time: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
-        duration: "1:23", size: "180 MB", bytes: 176_000_000, thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
+        duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
       expect.objectContaining({ day: "Yesterday", title: "Product demo", time: new Date(2026, 9, 3, 9, 30).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }), duration: "1:02:05", size: "2.2 GB" }),
     ]);
     expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
@@ -893,6 +893,13 @@ describe("the Recordings tab", () => {
     expect(view.items[0]).not.toHaveProperty("folder");
     expect(view.folders).toEqual([{ name: "Demos", empty: false }, { name: "Empty", empty: true }]);
     expect(settingsView(idle, library({ folders: [] })).library).not.toHaveProperty("folders");
+    // Favorites and the category shown, only while their categories are listed (2026-10-09).
+    const folders = [{ name: "Demos", empty: false }, { name: "Talks", empty: true }];
+    const remembered = (extra: Partial<AppContext>) => settingsView(idle, { ...library({ folders }), ...extra }).library!;
+    expect(remembered({ libraryFavorites: ["Talks", "Gone", "Demos"], libraryShown: "Demos" })).toMatchObject({ favorites: ["Talks", "Demos"], shown: { folder: "Demos" } });
+    expect(remembered({ libraryShown: null }).shown).toEqual({ folder: null });
+    expect(remembered({ libraryFavorites: ["Gone"], libraryShown: "Gone" })).not.toHaveProperty("shown");
+    expect(remembered({ libraryFavorites: ["Gone"] })).not.toHaveProperty("favorites");
   });
   it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
     expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", status: "Loading recordings…", items: [] });

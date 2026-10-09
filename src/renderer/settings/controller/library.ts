@@ -35,18 +35,18 @@ export let renaming:
   | undefined;
 export let optimisticLayout: LibraryLayout | undefined;
 /**
- * The folder shown: every recording (undefined), those directly in the output folder (`{ folder: null }`, Unsorted) or
- * one subfolder's. Never saved: the tab opens on every recording.
+ * The category shown: every recording (undefined), those directly in the output folder (`{ folder: null }`, Uncategorized)
+ * or one subfolder's. Main remembers it (settings `libraryShown`), so the tab opens on it again in a new window or launch.
  */
 export let shownFolder: { folder: string | null } | undefined;
+/** The remembered category is taken once, from the first listing: later views must not undo a choice made since. */
+let shownTaken = false;
 /** The search typed in the tab's head; it narrows the shown folder's recordings by name. */
 export let query = "";
 /** New folder or Rename folder…, while its dialog is open. */
 export let folderDialog:
   | { folder?: string; name: string; error: string; pending: boolean }
   | undefined;
-/** The card being dragged out of the page, which a folder in the bar takes when it is dropped there. */
-export let dragging: string | undefined;
 let folderPending = false;
 /** Only the latest layout request's answer ends the optimistic layout: an earlier one would flash back its choice. */
 let layoutRequest = 0;
@@ -60,10 +60,19 @@ export function dismissLibraryOverlays(): void {
   renaming = undefined;
   folderDialog = undefined;
 }
-/** An entry bringing a recording into view: every folder and no search, so its card is there. */
+/** An entry bringing a recording into view: every category and no search, so its card is there. */
 export function showEveryRecording(): void {
-  shownFolder = undefined;
   query = "";
+  // Before the first listing too, so the remembered category is never applied over the recording asked for (review F1);
+  // main hears of it only when something other than every recording was shown or remembered.
+  shownTaken = true;
+  if (shownFolder || view?.library?.shown) showFolder(undefined, false);
+}
+/** The first listing opens the tab on the category it showed last, as main remembers it, when it is still there. */
+export function takeShown(library: LibraryView | undefined): void {
+  if (shownTaken || !library || library.status) return;
+  shownTaken = true;
+  shownFolder = library.shown;
 }
 /** Whether `item` is in the shown folder and matches the search, ignoring case. */
 export function isShown(item: LibraryItemView): boolean {
@@ -74,30 +83,30 @@ export function isShown(item: LibraryItemView): boolean {
 export function shownItems(library: LibraryView | undefined): LibraryItemView[] {
   return library?.items.filter(isShown) ?? [];
 }
-export function showFolder(folder: { folder: string | null } | undefined): void {
+/** Shows a category at once and has main remember it; a failed save leaves it shown, and says nothing. */
+export function showFolder(folder: { folder: string | null } | undefined, redraw = true): void {
   shownFolder = folder;
+  shownTaken = true;
   menuId = undefined;
-  draw();
+  // A failure said about the category left behind belongs to it, not to the one shown now.
+  libraryError = undefined;
+  if (redraw) draw();
+  void window.settings
+    .choose("libraryFolder", folder ? { action: "showFolder", folder: folder.folder } : { action: "showAll" })
+    .catch(() => undefined);
 }
 export function search(text: string): void {
   query = text;
   draw();
 }
 /**
- * A folder gone from the output folder, renamed or deleted elsewhere, is no longer shown: every recording is. So is
- * Unsorted once no folder is left, since the bar then offers no way back to every recording.
+ * A category gone from the output folder, renamed or deleted elsewhere, is no longer shown: every recording is.
+ * Uncategorized always stays, as the selector always offers it (review F2).
  */
 export function forgetMissingFolder(library: LibraryView | undefined): void {
   const shown = shownFolder?.folder;
-  if (shownFolder && !library?.folders?.length) shownFolder = undefined;
-  else if (typeof shown === "string" && !library?.folders?.some((entry) => entry.name === shown))
+  if (typeof shown === "string" && !library?.status && !library?.folders?.some((entry) => entry.name === shown))
     shownFolder = undefined;
-}
-export function startDragging(id: string): void {
-  dragging = id;
-}
-export function stopDragging(): void {
-  dragging = undefined;
 }
 /** The menu closes as the player opens over it. */
 export function forgetMenu(): void {
@@ -340,10 +349,8 @@ export async function undoTrash(): Promise<void> {
 /** Moves a recording into a folder, or with `null` into the output folder itself, and says where it went. */
 export async function moveTo(id: string, folder: string | null): Promise<void> {
   menuId = undefined;
-  dragging = undefined;
   const item = view?.library?.items.find((entry) => entry.id === id);
-  // Its own set: the card's drag request can still be pending when the drop arrives, since the native drag may hold
-  // that request until it ends, and must not refuse the move it carries.
+  // Its own set: a move must not wait for, nor be refused by, the card's other file actions.
   if (!item || (item.folder ?? null) === folder || movesPending.has(id)) {
     draw();
     return;
@@ -356,7 +363,7 @@ export async function moveTo(id: string, folder: string | null): Promise<void> {
     const result = await window.settings.choose(`recordingFile:${id}`, { action: "move", folder });
     render(result.view);
     if (result.applied) {
-      announce(translate("Moved {name} to {folder}", view?.language, { name: item.name, folder: folder ?? text("Unsorted") }));
+      announce(translate("Moved {name} to {folder}", view?.language, { name: item.name, folder: folder ?? text("Uncategorized") }));
       const moved = result.renamed && view?.library?.items.find((entry) => entry.id === result.renamed);
       if (focused && moved && isShown(moved) && document.hasFocus()) focus(`clip-${moved.id}-open`);
     } else libraryError = result.failure ?? text("Could not complete this action. Try again.");
@@ -384,7 +391,7 @@ export function cancelFolderDialog(): void {
   const renamingFolder = folderDialog?.folder !== undefined;
   folderDialog = undefined;
   draw();
-  focus(renamingFolder ? "library-folder-more" : "library-new-folder");
+  focus(renamingFolder ? "library-category-settings" : "library-category");
 }
 async function folderAction(choice: FolderChoice): Promise<{ applied: boolean; folder?: string; failure?: string }> {
   try {
@@ -435,31 +442,63 @@ export async function submitFolderDialog(): Promise<void> {
   const owned = folderDialog === current;
   if (owned) {
     folderDialog = undefined;
-    if (result.folder !== undefined) shownFolder = { folder: result.folder };
+    // A new category is shown and remembered; a renamed one main already carried to its new name.
+    if (result.folder !== undefined && current.folder === undefined) showFolder({ folder: result.folder }, false);
+    else if (result.folder !== undefined) shownFolder = { folder: result.folder };
   }
   draw();
-  announce(translate(current.folder === undefined ? "Created {folder}" : "Renamed folder to {folder}", view?.language, { folder: result.folder ?? name }));
-  if (owned) focus(result.folder !== undefined ? "library-folder-more" : "library-new-folder");
+  announce(translate(current.folder === undefined ? "Created {folder}" : "Renamed category to {folder}", view?.language, { folder: result.folder ?? name }));
+  if (owned) focus(current.folder === undefined ? "library-category" : "library-category-settings");
 }
 /** Moves an empty folder to the Trash and shows every recording. */
 export async function removeFolder(folder: string): Promise<void> {
   menuId = undefined;
   if (folderPending) return;
   folderPending = true;
-  libraryError = undefined;
   draw();
+  const trash = text(platform() === "darwin" ? "Moved to the Trash" : "Moved to the Recycle Bin");
   try {
     const result = await folderAction({ action: "removeFolder", folder });
     if (result.applied) {
       if (shownFolder?.folder === folder) shownFolder = undefined;
       announce(translate(platform() === "darwin" ? "Moved {name} to the Trash." : "Moved {name} to the Recycle Bin.", view?.language, { name: folder }));
-      focus("library-folder-all");
+      showToast("notice", trash, folder, 5000);
+      focus("library-category");
     } else {
-      libraryError = result.failure ?? text("Could not complete this action. Try again.");
-      announce(libraryError);
+      // Said in a toast that leaves by itself, not a line that stays over the recordings (2026-10-09). A category that
+      // still holds recordings says how many and what to do.
+      const left = view?.library?.items.filter((item) => item.folder === folder).length ?? 0;
+      const why = left
+        ? translate(platform() === "darwin"
+          ? (left === 1 ? "“{name}” still holds 1 recording. Move it to another category or to the Trash first." : "“{name}” still holds {count} recordings. Move them to another category or to the Trash first.")
+          : (left === 1 ? "“{name}” still holds 1 recording. Move it to another category or to the Recycle Bin first." : "“{name}” still holds {count} recordings. Move them to another category or to the Recycle Bin first."),
+          view?.language, { name: folder, count: left })
+        : (result.failure ?? text("Could not complete this action. Try again."));
+      const title = translate("Could not delete “{name}”", view?.language, { name: folder });
+      announce(`${title} ${why}`);
+      showToast("notice", title, why, 6000);
     }
   } finally {
     folderPending = false;
     draw();
   }
+}
+
+/** Adds the category to the selector's favorites, or takes it out; main keeps them across launches. */
+export async function favorite(folder: string, on: boolean): Promise<void> {
+  try {
+    const result = await window.settings.choose("libraryFolder", { action: "favorite", folder, favorite: on });
+    render(result.view);
+    if (result.applied) announce(translate(on ? "Added {name} to favorites" : "Removed {name} from favorites", view?.language, { name: folder }));
+    else failFavorite(result.failure);
+  } catch {
+    failFavorite(undefined);
+  } finally {
+    draw();
+  }
+}
+function failFavorite(failure: string | undefined): void {
+  const title = text("Could not update favorites"), why = failure ?? text("Could not complete this action. Try again.");
+  announce(`${title} ${why}`);
+  showToast("notice", title, why, 6000);
 }

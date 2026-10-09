@@ -66,6 +66,10 @@ export interface Settings {
   fileNameTemplate: string;
   /** The Recordings tab's grid or list. */
   libraryLayout: LibraryLayout;
+  /** Categories (the output folder's subfolders, by name) the selector lists first as favorites (2026-10-09). */
+  libraryFavorites: string[];
+  /** The category the tab last showed (2026-10-09): absent for every recording, `null` for Uncategorized. */
+  libraryShown?: string | null;
 }
 
 export interface SettingsStoreOptions {
@@ -100,8 +104,22 @@ export function defaultSettings(outputDir: string): Settings {
     trayClick: "menu",
     fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
     libraryLayout: "grid",
+    libraryFavorites: [],
   };
 }
+
+/** How many favorites are kept: far more than a selector's first group shows, and a bound on a hand-edited file. */
+const MAX_LIBRARY_FAVORITES = 200;
+/**
+ * A category name as stored: any name the library could list (review F3), however it was made, which is looser than the
+ * rules a new or renamed category follows (file-name.ts `folderNameProblem`): one path segment, not hidden, within a
+ * file name's 255 bytes. Whether it is listed now is checked where it is used.
+ */
+const isCategoryName = (value: unknown): value is string => typeof value === "string" && value.length > 0 &&
+  !/[/\\\u0000]/.test(value) && !value.startsWith(".") && new TextEncoder().encode(value).length <= 255;
+const isFavorites = (value: unknown): value is string[] => Array.isArray(value) && value.length <= MAX_LIBRARY_FAVORITES &&
+  value.every(isCategoryName) && new Set(value).size === value.length;
+const isShown = (value: unknown): value is string | null => value === null || isCategoryName(value);
 
 /**
  * `undefined` when the file as a whole is unusable (not an object, unknown
@@ -171,9 +189,11 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
   const fileNameTemplate = field("fileNameTemplate", isTemplate, defaults.fileNameTemplate, `fileNameTemplate is unsupported: using ${defaults.fileNameTemplate}`);
   const libraryLayout = field("libraryLayout", isLibraryLayout, defaults.libraryLayout, `libraryLayout is unsupported: using ${defaults.libraryLayout}`);
+  const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
+  const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
-    fileNameTemplate, libraryLayout }, warnings };
+    fileNameTemplate, libraryLayout, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
 
 export class SettingsStore {
@@ -254,6 +274,44 @@ export class SettingsStore {
   setLibraryLayout(libraryLayout: LibraryLayout): Promise<void> {
     if (!isLibraryLayout(libraryLayout)) return Promise.reject(new Error(`unsupported library layout: ${JSON.stringify(libraryLayout)}`));
     return this.save((current) => ({ ...current, libraryLayout }));
+  }
+
+  get libraryFavorites(): string[] { return [...this.settings.libraryFavorites]; }
+
+  /** Adds or removes one favorite category; the order is the order they were added in. */
+  setLibraryFavorite(name: string, favorite: boolean): Promise<void> {
+    if (!isCategoryName(name)) return Promise.reject(new Error(`unsupported category: ${JSON.stringify(name)}`));
+    return this.save((current) => {
+      const rest = current.libraryFavorites.filter(entry => entry !== name);
+      return { ...current, libraryFavorites: favorite ? [...rest, name].slice(-MAX_LIBRARY_FAVORITES) : rest };
+    });
+  }
+
+  get libraryShown(): string | null | undefined { return this.settings.libraryShown; }
+
+  /** The category the tab shows now: `undefined` for every recording, `null` for Uncategorized. */
+  setLibraryShown(shown: string | null | undefined): Promise<void> {
+    if (shown !== undefined && !isShown(shown)) return Promise.reject(new Error(`unsupported category: ${JSON.stringify(shown)}`));
+    return this.save(({ libraryShown: _, ...current }) => (shown === undefined ? current : { ...current, libraryShown: shown }));
+  }
+
+  /** A category renamed in the app keeps its favorite and stays shown under its new name. */
+  renameLibraryCategory(from: string, to: string): Promise<void> {
+    if (!isCategoryName(to)) return Promise.reject(new Error(`unsupported category: ${JSON.stringify(to)}`));
+    return this.save((current) => ({
+      ...current,
+      libraryFavorites: current.libraryFavorites.map(entry => entry === from ? to : entry).filter((entry, index, all) => all.indexOf(entry) === index),
+      ...(current.libraryShown === from ? { libraryShown: to } : {}),
+    }));
+  }
+
+  /** A category deleted in the app is no longer a favorite, nor the one shown. */
+  forgetLibraryCategory(name: string): Promise<void> {
+    return this.save(({ libraryShown, ...current }) => ({
+      ...current,
+      libraryFavorites: current.libraryFavorites.filter(entry => entry !== name),
+      ...(libraryShown === undefined || libraryShown === name ? {} : { libraryShown }),
+    }));
   }
 
   get appearance(): Appearance { return this.settings.appearance; }

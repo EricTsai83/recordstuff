@@ -165,7 +165,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -247,7 +247,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -267,7 +267,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
     });
   });
 
@@ -321,7 +321,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -421,7 +421,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid",
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -551,6 +551,54 @@ describe("display preference storage", () => {
   });
 });
 
+
+describe("library categories (2026-10-09)", () => {
+  it("keeps favorites and the category shown across instances, and carries or drops them with a rename or delete", async () => {
+    expect([store().libraryFavorites, store().libraryShown]).toEqual([[], undefined]);
+    const s = store();
+    await s.setLibraryFavorite("Demos", true);
+    await s.setLibraryFavorite("Talks", true);
+    await s.setLibraryFavorite("Demos", true);
+    await s.setLibraryShown("Demos");
+    expect([store().libraryFavorites, store().libraryShown]).toEqual([["Talks", "Demos"], "Demos"]);
+    await s.renameLibraryCategory("Demos", "Final");
+    expect([store().libraryFavorites, store().libraryShown]).toEqual([["Talks", "Final"], "Final"]);
+    // Renamed onto a name already a favorite: listed once.
+    await s.renameLibraryCategory("Final", "Talks");
+    expect(store().libraryFavorites).toEqual(["Talks"]);
+    await s.forgetLibraryCategory("Talks");
+    expect([store().libraryFavorites, store().libraryShown]).toEqual([[], undefined]);
+    await s.setLibraryShown(null);
+    expect(store().libraryShown).toBeNull();
+    await s.setLibraryShown(undefined);
+    expect(store().libraryShown).toBeUndefined();
+    await s.setLibraryFavorite("Demos", true);
+    await s.setLibraryFavorite("Demos", false);
+    expect(store().libraryFavorites).toEqual([]);
+    // Any name the library could list is kept, even one the app would not let a new category take (review F3): longer
+    // than a new name may be, or ending like an extension. One that is not a single, visible path segment is refused.
+    const long = "長".repeat(80);
+    await s.setLibraryFavorite(long, true);
+    await s.setLibraryShown(long);
+    expect([store().libraryFavorites, store().libraryShown]).toEqual([[long], long]);
+    await expect(s.setLibraryFavorite("a/b", true)).rejects.toThrow();
+    await expect(s.setLibraryFavorite("長".repeat(90), true)).rejects.toThrow();
+    await expect(s.setLibraryShown(".hidden")).rejects.toThrow();
+  });
+  it("forgets the category shown when that category is deleted", async () => {
+    const s = store();
+    await s.setLibraryShown("Demos");
+    await s.forgetLibraryCategory("Demos");
+    expect(store().libraryShown).toBeUndefined();
+  });
+  it("reads invalid stored values as none, with a warning", () => {
+    const parsed = parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", libraryFavorites: ["ok", "a/b"], libraryShown: 3 }))!;
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", libraryFavorites: ["Foo.app"] }))!.settings.libraryFavorites).toEqual(["Foo.app"]);
+    expect([parsed.settings.libraryFavorites, parsed.settings.libraryShown]).toEqual([[], undefined]);
+    expect(parsed.warnings).toEqual(expect.arrayContaining(["libraryFavorites is invalid: using none", "libraryShown is invalid: showing every recording"]));
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", libraryShown: null }))!.settings.libraryShown).toBeNull();
+  });
+});
 
 describe("appearance", () => {
   it("defaults missing appearance to system and persists each explicit choice", async () => {

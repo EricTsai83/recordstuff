@@ -3,7 +3,8 @@
  * search (plan 071).
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
-import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderPlus, FolderInput, SearchX } from "lucide-react";
+import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderInput, SearchX, FolderOpen, ChevronDown, Check, Plus, Star, Settings2 } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/popover";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -21,6 +22,11 @@ import { flushSync } from "react-dom";
 import { Player } from "../../player/player";
 import * as model from "../settings-controller";
 import { ClipPreview, hoverClip, leaveClip, pressedOnBar, previewing, previewTime, stopPreview, subscribePreview } from "./clip-preview";
+
+/** A key an input method is still composing with (keyCode 229 where `isComposing` is not set): it is the method's, not ours. */
+function isComposing(event: React.KeyboardEvent): boolean {
+  return event.nativeEvent.isComposing || event.keyCode === 229;
+}
 
 export const Clip = memo(function Clip({
   item,
@@ -60,11 +66,7 @@ export const Clip = memo(function Clip({
         onDragStart={(event) => {
           event.preventDefault();
           // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
-          // A folder in the tab's head takes the card if it is dropped there (plan 071).
-          if (!pressedOnBar()) {
-            model.startDragging(item.id);
-            void model.fileAction(item.id, "drag");
-          }
+          if (!pressedOnBar()) void model.fileAction(item.id, "drag");
         }}
         onAnimationEnd={() => setArrived(false)}
         onBlur={() => setArrived(false)}
@@ -212,9 +214,9 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
   const SubContent = context ? ContextMenuSubContent : DropdownMenuSubContent;
   const prefix = context ? "clip-context-menu" : "clip-menu";
   const p = model.platform(), t = model.text;
-  // Every place but its own: Unsorted for one in a folder, and each other folder.
+  // Every place but its own: out of its folder for one in a folder, and each other folder.
   const targets: Array<{ folder: string | null; label: string }> = [
-    ...(item.folder === undefined ? [] : [{ folder: null, label: t("Unsorted") }]),
+    ...(item.folder === undefined ? [] : [{ folder: null, label: t("Uncategorized") }]),
     ...(model.view?.library?.folders ?? []).filter((entry) => entry.name !== item.folder).map((entry) => ({ folder: entry.name, label: entry.name })),
   ];
   return (
@@ -277,7 +279,240 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
   );
 }
 
-/** The library's summary and folder controls, drawn in the page's fixed head above the scrolling recordings. */
+/** The library's count and size, beside the page's title (2026-10-09: the controls take a line of their own below). */
+export function LibrarySummary() {
+  const summary = model.view?.library?.summary;
+  return (
+    <p className="library-summary" hidden={!summary}>
+      {summary}
+    </p>
+  );
+}
+
+/**
+ * The category selector (2026-10-09): one button naming the category shown, whose list holds every recording,
+ * Uncategorized, the favorites first and then every other category, filtered as one types, with New category at its foot.
+ * Categories are the output folder's subfolders; favorites are only a group of this list, never a line of their own.
+ */
+function CategoryPicker() {
+  const library = model.view?.library,
+    language = model.view?.language,
+    items = library?.items ?? [],
+    folders = library?.folders ?? [],
+    favorites = new Set(library?.favorites ?? []),
+    shown = model.shownFolder;
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [active, setActive] = useState(0);
+  // New category hands the focus to its dialog; any other way the list closes gives it back to the selector (review F4).
+  const toDialog = useRef(false);
+  const count = (folder: string | null | undefined): number =>
+    folder === undefined ? items.length : items.filter((item) => (item.folder ?? null) === folder).length;
+  type Option = { id: string; label: string; scope: { folder: string | null } | undefined; group: "top" | "favorites" | "others" };
+  const words = filter.trim().toLocaleLowerCase();
+  const options: Option[] = [
+    { id: "all", label: model.text("All"), scope: undefined, group: "top" as const },
+    { id: "none", label: model.text("Uncategorized"), scope: { folder: null }, group: "top" as const },
+    ...(library?.favorites ?? []).map((name) => ({ id: `f-${name}`, label: name, scope: { folder: name }, group: "favorites" as const })),
+    ...folders.filter((entry) => !favorites.has(entry.name)).map((entry) => ({ id: `c-${entry.name}`, label: entry.name, scope: { folder: entry.name }, group: "others" as const })),
+  ].filter((option) => !words || option.label.toLocaleLowerCase().includes(words));
+  const at = Math.min(active, Math.max(0, options.length - 1));
+  const isCurrent = (option: Option): boolean =>
+    option.scope === undefined ? shown === undefined : shown !== undefined && shown.folder === option.scope.folder;
+  const label = shown === undefined ? model.text("All") : shown.folder === null ? model.text("Uncategorized") : shown.folder;
+  const choose = (option: Option | undefined): void => {
+    if (!option) return;
+    setOpen(false);
+    model.showFolder(option.scope);
+    model.focus("library-category");
+  };
+  const optionId = (option: Option): string => `library-category-option-${options.indexOf(option)}`;
+  // The option the arrows reach stays in view when many categories scroll inside the list (review F5).
+  useEffect(() => {
+    if (open) document.getElementById(`library-category-option-${at}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, at]);
+  const group = (name: Option["group"], heading?: string) => {
+    const members = options.filter((option) => option.group === name);
+    if (!members.length) return null;
+    return (
+      <div role="group" aria-label={heading} className="library-category-group">
+        {heading && <div className="library-category-heading" aria-hidden="true">{heading}</div>}
+        {members.map((option) => (
+          <div
+            key={option.id}
+            id={optionId(option)}
+            role="option"
+            aria-selected={isCurrent(option)}
+            data-active={options.indexOf(option) === at ? "" : undefined}
+            className="library-category-option"
+            onPointerMove={() => setActive(options.indexOf(option))}
+            onClick={() => choose(option)}
+          >
+            <Check className="library-category-check" aria-hidden="true" />
+            <span className="library-category-label">{option.label}</span>
+            <span className="library-category-count">{count(option.scope?.folder)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next, details) => {
+        setOpen(next);
+        if (next) {
+          toDialog.current = false;
+          setFilter("");
+          setActive(0);
+        }
+        // Escape gives the focus back to the selector (review F4); leaving by Tab or a click keeps it where it went
+        // (review pass 2, F1), and choosing a category moves it itself.
+        else if (!toDialog.current && details.reason === "escape-key") model.focus("library-category");
+      }}
+    >
+      <PopoverTrigger
+        render={<Button variant="outline" />}
+        id="library-category"
+        className="library-category darwin:wide:window-no-drag"
+        disabled={!library || Boolean(library.status)}
+        aria-label={translate("Category: {name}", language, { name: label })}
+      >
+        <FolderOpen />
+        <span className="library-category-current">{label}</span>
+        <ChevronDown className="opacity-60" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        data-folder-actions=""
+        className="library-category-popup w-64 gap-1 p-1.5"
+        initialFocus={() => document.getElementById("library-category-filter")}
+        finalFocus={false}
+      >
+        <InputGroup className="mb-1">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            id="library-category-filter"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="library-category-list"
+            aria-activedescendant={options[at] ? optionId(options[at]) : undefined}
+            aria-label={model.text("Search categories")}
+            placeholder={model.text("Search categories")}
+            value={filter}
+            spellCheck={false}
+            autoComplete="off"
+            onInput={(event) => {
+              setFilter(event.currentTarget.value);
+              setActive(0);
+            }}
+            onKeyDown={(event) => {
+              // An input method's Enter or arrows choose its characters, not a category (review pass 2, F2).
+              if (isComposing(event)) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setActive((at + step + options.length) % Math.max(1, options.length));
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                choose(options[at]);
+              }
+            }}
+          />
+        </InputGroup>
+        <div id="library-category-list" role="listbox" aria-label={model.text("Categories")} className="library-category-list">
+          {group("top")}
+          {group("favorites", model.text("Favorites"))}
+          {group("others", model.text("All categories"))}
+          {!options.length && (
+            <p className="library-category-none">{translate("No categories match “{query}”.", language, { query: filter.trim() })}</p>
+          )}
+        </div>
+        <div className="library-category-separator" role="separator" />
+        <Button
+          id="library-category-new"
+          variant="ghost"
+          className="library-category-new"
+          onClick={() => {
+            toDialog.current = true;
+            setOpen(false);
+            model.openFolderDialog();
+          }}
+        >
+          <Plus />
+          {model.text("New category")}
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The category shown, above its recordings (2026-10-09): its name and count, and for a category of the user's, its
+ * favorite star and settings (rename, delete; the star alone adds or removes the favorite). Every recording has no
+ * heading; Uncategorized has no actions.
+ */
+function CategoryHeader() {
+  const library = model.view?.library,
+    language = model.view?.language,
+    shown = model.shownFolder;
+  if (!library || !shown) return null;
+  const folder = shown.folder;
+  const count = library.items.filter((item) => (item.folder ?? null) === folder).length;
+  const favorite = typeof folder === "string" && (library.favorites ?? []).includes(folder);
+  const name = folder ?? model.text("Uncategorized");
+  const favoriteLabel = model.text(favorite ? "Remove from favorites" : "Add to favorites");
+  return (
+    <div className="library-category-head" id="library-category-head">
+      <h2 className="library-category-title">{name}</h2>
+      <span className="library-category-total">{translate(count === 1 ? "1 recording" : "{count} recordings", language, { count })}</span>
+      {typeof folder === "string" && (
+        <span className="library-category-actions">
+          <ControlTooltip label={favoriteLabel}>
+            <Button
+              id="library-category-favorite"
+              variant="ghost"
+              size="icon-lg"
+              // A favorite's star takes the primary colour, filled; any other is the plain outline.
+              className={favorite ? "text-primary hover:text-primary" : undefined}
+              aria-label={favoriteLabel}
+              aria-pressed={favorite}
+              onClick={() => void model.favorite(folder, !favorite)}
+            >
+              <Star className={favorite ? "fill-current" : undefined} />
+            </Button>
+          </ControlTooltip>
+          <DropdownMenu>
+            <ControlTooltip label={translate("Category settings for {folder}", language, { folder })}>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon-lg" />}
+                id="library-category-settings"
+                aria-label={translate("Category settings for {folder}", language, { folder })}
+              >
+                <Settings2 />
+              </DropdownMenuTrigger>
+            </ControlTooltip>
+            <DropdownMenuContent data-folder-actions="" align="end" className="clip-menu w-auto min-w-[196px] whitespace-nowrap" finalFocus={false}>
+              <DropdownMenuItem id="library-category-rename" onClick={() => model.openFolderDialog(folder)}>
+                <FileText />
+                <span className="menu-label">{model.text("Rename category…")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem id="library-category-delete" variant="destructive" onClick={() => void model.removeFolder(folder)}>
+                <HardDrive />
+                <span className="menu-label">{model.text("Delete category")}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The library's search and folder controls, on their own line in the page's fixed head above the scrolling recordings. */
 export function LibraryHead() {
   const library = model.view?.library,
     folder = model.view?.groups.find((group) => group.id === "outputFolder"),
@@ -285,9 +520,7 @@ export function LibraryHead() {
     layout = model.optimisticLayout ?? library?.layout ?? "grid";
   return (
     <div className="library-head">
-      <p className="library-summary" hidden={!library?.summary}>
-        {library?.summary}
-      </p>
+      <CategoryPicker />
       <InputGroup className="library-search darwin:wide:window-no-drag">
         <InputGroupAddon>
           <Search />
@@ -303,7 +536,7 @@ export function LibraryHead() {
           onInput={(event) => model.search(event.currentTarget.value)}
           onKeyDown={(event) => {
             // Escape clears a search first; with nothing typed it closes the window as anywhere else.
-            if (event.key === "Escape" && model.query) {
+            if (event.key === "Escape" && model.query && !isComposing(event)) {
               event.preventDefault();
               model.search("");
             }
@@ -325,19 +558,6 @@ export function LibraryHead() {
           </InputGroupAddon>
         )}
       </InputGroup>
-      <ControlTooltip label={model.text("New folder")}>
-        <Button
-          id="library-new-folder"
-          variant="ghost"
-          size="icon"
-          className="library-new-folder darwin:wide:window-no-drag"
-          aria-label={model.text("New folder")}
-          disabled={!library}
-          onClick={() => model.openFolderDialog()}
-        >
-          <FolderPlus />
-        </Button>
-      </ControlTooltip>
       <ToggleGroup
         className="library-layout segments darwin:wide:window-no-drag"
         variant="segmented"
@@ -392,95 +612,6 @@ export function LibraryHead() {
   );
 }
 
-/**
- * The head's second line (plan 071): every recording, Unsorted (the output folder itself) and each folder, with their
- * counts, then the shown folder's actions. It stays above the scrolling cards, so a card dragged from
- * anywhere in the list can be dropped on a folder.
- */
-export function LibraryFolders() {
-  const library = model.view?.library,
-    items = library?.items ?? [],
-    folders = library?.folders ?? [],
-    shown = model.shownFolder,
-    selected = typeof shown?.folder === "string" ? folders.find((entry) => entry.name === shown.folder) : undefined,
-    language = model.view?.language;
-  const [over, setOver] = useState<string | null | undefined>(undefined);
-  const count = (folder: string | null): number => items.filter((item) => (item.folder ?? null) === folder).length;
-  // A card dragged from this page, and only that card's own file, moves where it is dropped.
-  const target = (folder: string | null) => ({
-    onDragOver: (event: React.DragEvent) => {
-      if (!model.dragging || !event.dataTransfer.types.includes("Files")) return;
-      event.preventDefault();
-      setOver(folder);
-    },
-    onDragLeave: () => setOver(undefined),
-    onDrop: (event: React.DragEvent) => {
-      event.preventDefault();
-      setOver(undefined);
-      const id = model.dragging, files = event.dataTransfer.files,
-        item = items.find((entry) => entry.id === id);
-      // A stale id, from a drag that ended outside the page, must not move a recording for another file dropped here
-      // (review pass 1, F1): the dropped file must be the card's own by name and size.
-      if (id && item && files.length === 1 && files[0]?.name === item.name && (item.bytes === undefined || files[0].size === item.bytes))
-        void model.moveTo(id, folder);
-      else model.stopDragging();
-    },
-  });
-  const chip = (id: string, label: string, pressed: boolean, choose: () => void, folder?: string | null) => (
-    <Button
-      key={id}
-      id={id}
-      variant="ghost"
-      size="sm"
-      className="library-folder"
-      aria-pressed={pressed}
-      data-drop={folder !== undefined && over === folder ? "" : undefined}
-      onClick={choose}
-      {...(folder === undefined ? {} : target(folder))}
-    >
-      <span className="library-folder-name">{label}</span>
-      <span className="library-folder-count">{folder === undefined ? items.length : count(folder)}</span>
-    </Button>
-  );
-  // Until there is a folder, All and Unsorted would show the same cards: the line is not drawn, and New folder waits in
-  // the head's first line.
-  if (!library || !folders.length) return null;
-  return (
-    <div className="library-folders darwin:wide:window-no-drag">
-      <div className="library-folder-list" role="group" aria-label={model.text("Folders")}>
-        {chip("library-folder-all", model.text("All"), shown === undefined, () => model.showFolder(undefined))}
-        {chip("library-folder-unsorted", model.text("Unsorted"), shown?.folder === null, () => model.showFolder({ folder: null }), null)}
-        {folders.map((entry, index) =>
-          chip(`library-folder-${index}`, entry.name, shown?.folder === entry.name, () => model.showFolder({ folder: entry.name }), entry.name))}
-      </div>
-      {selected && (
-        <DropdownMenu>
-          <ControlTooltip label={translate("Folder actions for {folder}", language, { folder: selected.name })}>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" />}
-              id="library-folder-more"
-              aria-label={translate("Folder actions for {folder}", language, { folder: selected.name })}
-            >
-              <MoreHorizontal />
-            </DropdownMenuTrigger>
-          </ControlTooltip>
-          <DropdownMenuContent data-folder-actions="" className="clip-menu w-auto min-w-[180px] whitespace-nowrap" finalFocus={false}>
-            <DropdownMenuItem id="library-folder-rename" onClick={() => model.openFolderDialog(selected.name)}>
-              <FileText />
-              <span className="menu-label">{model.text("Rename folder…")}</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem id="library-folder-delete" variant="destructive" onClick={() => void model.removeFolder(selected.name)}>
-              <HardDrive />
-              <span className="menu-label">{model.text("Delete folder")}</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}
-
 /** New folder, or Rename folder… for the folder shown: one name, checked as main will before it is sent. */
 export function FolderDialog() {
   const dialog = model.folderDialog,
@@ -513,29 +644,29 @@ export function FolderDialog() {
         <DialogHeader>
           <DialogTitle className="[overflow-wrap:anywhere]">
             {dialog?.folder === undefined
-              ? model.text("New folder")
+              ? model.text("New category")
               : translate("New name for {title}", language, { title: dialog.folder })}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            {model.text(dialog?.folder === undefined ? "New folder" : "Rename folder…")}
+            {model.text(dialog?.folder === undefined ? "New category" : "Rename category…")}
           </DialogDescription>
         </DialogHeader>
         <Field>
           <FieldLabel className="sr-only" htmlFor="library-folder-input">
-            {model.text("Folder name")}
+            {model.text("Category name")}
           </FieldLabel>
           <InputGroup className="clip-rename-field bg-card">
             <InputGroupInput
               id="library-folder-input"
               value={dialog?.name ?? ""}
-              placeholder={model.text("Folder name")}
+              placeholder={model.text("Category name")}
               spellCheck={false}
               autoComplete="off"
               aria-describedby={dialog?.error ? "library-folder-error" : undefined}
               aria-invalid={Boolean(dialog?.error)}
               onInput={(event) => model.folderDraft(event.currentTarget.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !isComposing(event)) {
                   event.preventDefault();
                   void model.submitFolderDialog();
                 }
@@ -584,6 +715,7 @@ export function Library() {
   }, [layout, shown]);
   return (
     <section id="library" aria-labelledby="tab-library" data-layout={layout}>
+      <CategoryHeader />
       <p
         className="library-error"
         hidden={!model.libraryError && !library?.notice}
@@ -603,10 +735,10 @@ export function Library() {
           <EmptyTitle className="library-empty-title text-base">
             {query.trim()
               ? translate("No recordings match “{query}”.", model.view?.language, { query: query.trim() })
-              : model.text("This folder is empty.")}
+              : model.text("This category is empty.")}
           </EmptyTitle>
           <EmptyDescription className="library-empty-detail" hidden={Boolean(query.trim())}>
-            {model.text("Drag a recording here, or choose Move to in its menu.")}
+            {model.text("Choose Move to in a recording's menu to add it here.")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

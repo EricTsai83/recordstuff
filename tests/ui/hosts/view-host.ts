@@ -81,7 +81,7 @@ async function recordingsFolder(dir: string): Promise<RecordingsLibrary> {
   const files = [
     { name: "2026-10-04 14-02-11.mp4", at: new Date(2026, 9, 4, 14, 2, 11), size: 182e6, seconds: 83, picture: pictureOf(64, 112, 196) },
     { name: "A long product walkthrough recorded for the onboarding review.mp4", at: new Date(2026, 9, 4, 9, 30), size: 1.24e9, seconds: 3725, picture: pictureOf(196, 120, 64) },
-    // In a folder of its own (plan 071), so the head draws its folder line: All, Unsorted and Demos.
+    // In a folder of its own (plan 071), so the head draws its folder line: All, Not in a folder and Demos.
     { name: path.join("Demos", "2026-10-03 21-15-00.mp4"), at: new Date(2026, 9, 3, 21, 15), size: 54e6, seconds: 0, picture: undefined },
   ];
   fs.mkdirSync(path.join(dir, "Demos"), { recursive: true });
