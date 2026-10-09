@@ -45,8 +45,8 @@ describe("resolveSelection", () => {
 describe("the scope catalog", () => {
   const specs = fs.readdirSync(path.join(root, "tests/ui")).filter(file => file.endsWith(".spec.ts"));
   const testFiles = (dir: string): string[] => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap(entry =>
-    entry.isDirectory() ? entry.name === "node_modules" ? [] : testFiles(path.join(dir, entry.name))
-      : /\.test\.m?ts$/.test(entry.name) ? [path.join(dir, entry.name)] : []);
+    entry.isDirectory() ? entry.name === "node_modules" ? [] : testFiles(`${dir}/${entry.name}`)
+      : /\.test\.m?ts$/.test(entry.name) ? [`${dir}/${entry.name}`] : []);
   const units = [...testFiles("src"), ...testFiles("scripts"), ...testFiles("tests")];
 
   it("names unique scopes whose unit filters each match a test file", () => {
