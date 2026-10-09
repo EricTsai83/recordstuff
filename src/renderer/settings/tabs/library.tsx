@@ -113,8 +113,6 @@ export const Clip = memo(function Clip({
               onError={() => flushSync(() => setFailed(true))}
               onLoad={() => flushSync(() => setFailed(false))}
             />
-            {/* The same word in every language. */}
-            <span className="clip-new" hidden={!item.fresh}>NEW</span>
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}
             </span>

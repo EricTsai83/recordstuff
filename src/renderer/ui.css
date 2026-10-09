@@ -1548,22 +1548,6 @@
     font-weight: 600;
     letter-spacing: 0;
   }
-  /* A recording from the last 24 hours. */
-  .clip-new {
-    position: absolute;
-    left: 8px;
-    top: 8px;
-    border-radius: 6px;
-    padding: 1px 6px;
-    color: var(--primary-foreground);
-    background: var(--primary);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-  #library[data-layout="list"] .clip-new {
-    display: none;
-  }
   .clip-text {
     padding: 10px 2px 0;
     display: flex;
@@ -1619,8 +1603,8 @@
     }
   }
   /* The hover preview (clip-preview.tsx): the recording plays muted over its picture, a seek bar along its foot. While
-     it shows, the badges step aside, as YouTube's do. */
-  .clip-thumb.previewing > :is(.clip-duration, .clip-new) {
+     it shows, the duration badge steps aside, as YouTube's do. */
+  .clip-thumb.previewing > .clip-duration {
     visibility: hidden;
   }
   /* A container of the picture's size, which the frame picture measures to stay inside it. */
