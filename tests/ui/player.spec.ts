@@ -370,7 +370,7 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
   expect.soft(calls.filter(kind => kind === "window:setSimpleFullScreen" || kind === "window:create").length > 0, "P11 production's full-screen requests are recorded adapter calls, not screen changes").toBe(true);
 });
 
-test("a grid card previews on hover: one muted preview, its bar shows a frame where the pointer is and moves only on a press, a click plays on from there, leaving unloads it", async () => {
+test("a grid card previews on hover: one muted preview, its bar shows a frame where the pointer is and moves only on a press, a click plays on from there, leaving unloads it", { tag: "@library" }, async () => {
   const previews = page.locator(".clip-preview > video");
   const thumbs = page.locator(".clip-thumb");
   await thumbs.nth(0).hover();
@@ -452,7 +452,7 @@ test("a grid card previews on hover: one muted preview, its bar shows a frame wh
   await page.mouse.move(0, 0);
 });
 
-test("a press on a preview's bar moves it, drags no file out and opens no player, and a preview never starts in a hidden window", async () => {
+test("a press on a preview's bar moves it, drags no file out and opens no player, and a preview never starts in a hidden window", { tag: "@library" }, async () => {
   const thumbs = page.locator(".clip-thumb"), previews = page.locator(".clip-preview > video");
   // The pointer already on the bar as the preview starts, pressed there: the preview moves to that moment.
   const thumb = (await thumbs.nth(0).boundingBox())!;
@@ -497,7 +497,7 @@ test("a press on a preview's bar moves it, drags no file out and opens no player
   });
 });
 
-test("switching tabs from the keyboard ends a preview, or one waiting to start, while the pointer stays on the picture", async () => {
+test("switching tabs from the keyboard ends a preview, or one waiting to start, while the pointer stays on the picture", { tag: "@library" }, async () => {
   const previews = page.locator(".clip-preview > video"), thumbs = page.locator(".clip-thumb");
   await thumbs.nth(0).hover();
   await expect(previews).toHaveCount(1);
@@ -514,7 +514,7 @@ test("switching tabs from the keyboard ends a preview, or one waiting to start, 
   await expect(previews).toHaveCount(0);
 });
 
-test("with reduced motion a preview plays nothing by itself, and shows the frame a press on its bar moves to", async () => {
+test("with reduced motion a preview plays nothing by itself, and shows the frame a press on its bar moves to", { tag: "@library" }, async () => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   try {
     const card = page.locator(".clip").nth(0), preview = card.locator(".clip-preview");
@@ -543,7 +543,7 @@ test("with reduced motion a preview plays nothing by itself, and shows the frame
   }
 });
 
-test("a card's frame picture stays inside the picture at any card width, and the player's seek bar shows one without moving playback", async () => {
+test("a card's frame picture stays inside the picture at any card width, and the player's seek bar shows one without moving playback", { tag: "@library" }, async () => {
   const card = page.locator(".clip").nth(0);
   /** Whether the frame picture at `fraction` along the card's bar lies inside the card's picture. */
   const peekAt = async (fraction: number): Promise<{ inside: boolean }> => {

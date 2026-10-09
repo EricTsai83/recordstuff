@@ -36,7 +36,7 @@ const showsFocus = (control: Locator): Promise<boolean> => control.evaluate((nod
   }
   return false;
 });
-test("zoom notification reflects applied zoom and dismisses automatically without stealing entry focus", async ({}, testInfo) => {
+test("zoom notification reflects applied zoom and dismisses automatically without stealing entry focus", { tag: "@layout" }, async ({}, testInfo) => {
   // Install before reloading so every page timer uses the same clock. Keep assertion/CI time out of
   // the notice's 1.5 s lifetime; CSS transitions and Playwright pointer/keyboard input remain real.
   await page.clock.install({ time: new Date("2026-10-08T12:00:00Z") });
@@ -119,7 +119,7 @@ test("zoom notification reflects applied zoom and dismisses automatically withou
   await expect(tab).toBeFocused();
 });
 for (const language of ["en", "zh-TW"] as const) {
-  test(`zoom notification ${language} fits the minimum window at every zoom limit with its controls unclipped and uncovered`, async ({}, testInfo) => {
+  test(`zoom notification ${language} fits the minimum window at every zoom limit with its controls unclipped and uncovered`, { tag: "@layout" }, async ({}, testInfo) => {
     // A paused page clock keeps each notice past its 1.5 s lifetime however slow the runner is: this test measures
     // geometry, and the lifetime is the test above's. CSS transitions and pointer input stay real.
     await page.clock.install({ time: new Date("2026-10-08T12:00:00Z") });
@@ -171,7 +171,7 @@ for (const language of ["en", "zh-TW"] as const) {
     }
   });
 }
-test("tabs, switch and icon segments retain their names, keyboard navigation and committed values", async () => {
+test("tabs, switch and icon segments retain their names, keyboard navigation and committed values", { tag: "@layout" }, async () => {
   await page.getByRole("tab", { name: "Recording settings" }).click();
   const sound = page.getByRole("switch", { name: "Countdown sound" });
   await expect(sound).toBeChecked();
@@ -189,7 +189,7 @@ test("tabs, switch and icon segments retain their names, keyboard navigation and
     "true",
   );
 });
-test("failure rows open independently and acknowledgement collapses with focus returned", async () => {
+test("failure rows open independently and acknowledgement collapses with focus returned", { tag: "@failures" }, async () => {
   await page.getByRole("tab", { name: "Troubleshooting (1)" }).click();
   const headers = page.locator('[id^="recording-result-"][id$="-summary"]');
   const header = headers.first();
@@ -203,7 +203,7 @@ test("failure rows open independently and acknowledgement collapses with focus r
   await expect(header).toBeFocused();
   await expect(headers.nth(1)).toHaveAttribute("aria-expanded", "true");
 });
-test("menu keyboard selection opens Rename and a committed rename returns focus to its card", async () => {
+test("menu keyboard selection opens Rename and a committed rename returns focus to its card", { tag: "@library" }, async () => {
   const trigger = page.getByRole("button", {
     name: "More actions for a",
     exact: true,
@@ -265,17 +265,17 @@ async function explanationAt(left: number, top: number, height = 30) {
   return { button, popup, rect, placed };
 }
 test.describe("an ⓘ explanation's placement (ported from the former placement unit tests)", () => {
-  test("near the bottom of the window it stays inside the window without covering its button", async () => {
+  test("near the bottom of the window it stays inside the window without covering its button", { tag: "@layout" }, async () => {
     const { placed } = await explanationAt(96, 278);
     await expect.poll(() => placed()).toBe(true);
   });
-  test("near the top it stays clear of its button, and inside the window when it cannot avoid it", async () => {
+  test("near the top it stays clear of its button, and inside the window when it cannot avoid it", { tag: "@layout" }, async () => {
     const { popup, placed } = await explanationAt(96, 12);
     await expect.poll(() => placed()).toBe(true);
     await popup.evaluate((element) => (element.style.height = "320px"));
     await expect.poll(() => placed(false)).toBe(true);
   });
-  test("stays inside the window's side edges, the pointer path from the button still keeping it open", async () => {
+  test("stays inside the window's side edges, the pointer path from the button still keeping it open", { tag: "@layout" }, async () => {
     const { button, rect, placed } = await explanationAt(500, 278);
     await expect.poll(() => placed()).toBe(true);
     // The original geometry case also asserted the bridge over the trigger.
@@ -299,7 +299,7 @@ test.describe("an ⓘ explanation's placement (ported from the former placement 
     await pauseInGap();
   });
 });
-test("player slider drag, fixed seek keys and volume controls keep their accessible value text", async () => {
+test("player slider drag, fixed seek keys and volume controls keep their accessible value text", { tag: "@player" }, async () => {
   await page.locator("#clip-a-open").click();
   await page.getByRole("dialog").locator("video").evaluate((element) => {
     const video = element as HTMLVideoElement;
@@ -348,7 +348,7 @@ test("player slider drag, fixed seek keys and volume controls keep their accessi
   await page.getByRole("button", { name: "More actions for a", exact: true }).click();
   await expect(page.getByRole("menu")).toBeVisible();
 });
-test("a menu on a partly clipped card stays inside the window and pointer hover takes the keyboard highlight", async () => {
+test("a menu on a partly clipped card stays inside the window and pointer hover takes the keyboard highlight", { tag: "@library" }, async () => {
   const trigger = page.locator("#clip-a-more");
   await trigger.click();
   const menu = page.getByRole("menu");
@@ -389,7 +389,7 @@ test("a menu on a partly clipped card stays inside the window and pointer hover 
     .toBe(true);
 });
 
-test("long settings content scrolls inside its panel without overflowing the window", async () => {
+test("long settings content scrolls inside its panel without overflowing the window", { tag: "@layout" }, async () => {
   const view = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
   view.groups = Array.from({ length: 20 }, (_, index) => ({
     ...view.groups[0]!,
@@ -412,7 +412,7 @@ test("long settings content scrolls inside its panel without overflowing the win
 });
 
 for (const language of ["en", "zh-TW"] as const) {
-  test(`local data cleanup shows its scope in ${language}, stays disabled during capture and sends one offered choice`, async () => {
+  test(`local data cleanup shows its scope in ${language}, stays disabled during capture and sends one offered choice`, { tag: "@general" }, async () => {
     const current = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
     const group = {
       id: "localData", tab: "failures" as const, section: "cleanup", kind: "actions" as const, enabled: false,
@@ -435,7 +435,7 @@ for (const language of ["en", "zh-TW"] as const) {
   });
 }
 
-test("the Electron cleanup helper waits for normal quit and removes the final profile files while retaining recordings", async () => {
+test("the Electron cleanup helper waits for normal quit and removes the final profile files while retaining recordings", { tag: "@general" }, async () => {
   const data = host.data, profile = path.join(data, "profile"), output = path.join(data, "videos");
   await fs.mkdir(output); await fs.writeFile(path.join(output, "kept.mp4"), "user recording");
   await fs.writeFile(path.join(profile, "recording-result.json"), "old history");
@@ -451,7 +451,7 @@ test("the Electron cleanup helper waits for normal quit and removes the final pr
 });
 
 
-test("shadcn tooltips name icon controls on hover and focus, update language, and reveal clipped recording titles", async ({}, testInfo) => {
+test("shadcn tooltips name icon controls on hover and focus, update language, and reveal clipped recording titles", { tag: ["@layout", "@library"] }, async ({}, testInfo) => {
   await page.getByRole("tab", { name: "General", exact: true }).click();
   const dark = page.locator("#setting-appearance-dark");
   await dark.hover();
@@ -538,7 +538,7 @@ test("shadcn tooltips name icon controls on hover and focus, update language, an
   expect(await tip.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
 });
 
-test("a new zoom notice keeps focus ownership when the previous notice finishes leaving", async () => {
+test("a new zoom notice keeps focus ownership when the previous notice finishes leaving", { tag: "@layout" }, async () => {
   const tab = page.locator("#tab-library");
   const notice = zoomNotice();
   await tab.focus();
@@ -560,7 +560,7 @@ test("a new zoom notice keeps focus ownership when the previous notice finishes 
   await expect(notice).toBeHidden();
 });
 
-test("narrow tab tooltips keep the same focused control when the window widens", async () => {
+test("narrow tab tooltips keep the same focused control when the window widens", { tag: "@layout" }, async () => {
   await host.evaluate(h => h.setSize(380, 360));
   const tab = page.locator("#tab-general");
   await tab.hover();
@@ -571,7 +571,7 @@ test("narrow tab tooltips keep the same focused control when the window widens",
   await expect(tab).toBeFocused();
 });
 
-test("context menu opens at the pointer, shares file actions, and restores focus after Escape and rename", async ({}, testInfo) => {
+test("context menu opens at the pointer, shares file actions, and restores focus after Escape and rename", { tag: "@library" }, async ({}, testInfo) => {
   const card = page.locator("#clip-a");
   await card.click({ button: "right", position: { x: 30, y: 40 } });
   const menu = page.locator("#clip-context-menu");
@@ -598,7 +598,7 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   await expect(page.locator("#feedback")).toContainText("Renamed to Context menu recording.mp4");
 });
 
-test("sidebar tabs, library layout and primary actions keep their selection semantics, keyboard operation and visible focus", async ({}, testInfo) => {
+test("sidebar tabs, library layout and primary actions keep their selection semantics, keyboard operation and visible focus", { tag: ["@layout", "@library"] }, async ({}, testInfo) => {
   const tab = page.locator("#tab-library"), general = page.locator("#tab-general");
   await expect(tab).toHaveAttribute("aria-selected", "true");
   await general.click();

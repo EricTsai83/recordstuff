@@ -31,7 +31,7 @@ const commitEnglish = async (): Promise<void> => {
   await clearCalls();
 };
 
-test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized first render, committed values, unavailable option, refused-shortcut note", async () => {
+test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized first render, committed values, unavailable option, refused-shortcut note", { tag: "@settings-bridge" }, async () => {
   const rendered = await read<{ title: string; docTitle: string; lang: string; bridge: string[]; exposed: string[]; note: string | null;
     controls: Array<{ id: string; value: string; disabled: boolean; label: string; describedBy: string | null }> }>(page, `(() => ({
     title: document.querySelector("#title").textContent, docTitle: document.title, lang: document.documentElement.lang,
@@ -58,7 +58,7 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     .toEqual(["這個快捷鍵可能被其他 App 佔用。", true]);
 });
 
-test("S010–S013 a change reaches main as ids, re-renders in the committed language, and a choice main refused says so", async () => {
+test("S010–S013 a change reaches main as ids, re-renders in the committed language, and a choice main refused says so", { tag: "@settings-bridge" }, async () => {
   await page.locator("#setting-language-en").click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   expect.soft(await calls(), "S010 a change reaches main as the group and choice ids, not an action").toEqual([["language", "en"]]);
@@ -73,7 +73,7 @@ test("S010–S013 a change reaches main as ids, re-renders in the committed lang
   expect(await page.locator("#setting-frameRate").getAttribute("data-value"), "S013 a choice that did not commit reports it and shows the committed value").toBe("30");
 });
 
-test("S014–S015 two held saves and an older push: the pushed committed value shows with the lock kept, and the final completion unlocks", async () => {
+test("S014–S015 two held saves and an older push: the pushed committed value shows with the lock kept, and the final completion unlocks", { tag: "@settings-bridge" }, async () => {
   await commitEnglish();
   await host.evaluate(h => { h.state.holdSaves = true; });
   await page.locator("#setting-language-zh-TW").click();
@@ -93,7 +93,7 @@ test("S014–S015 two held saves and an older push: the pushed committed value s
   await host.evaluate(h => { h.state.holdSaves = false; });
 });
 
-test("S016–S021 the notification setting: switch and pane button, ids to main, held saves keep the control, restrictions disable", async () => {
+test("S016–S021 the notification setting: switch and pane button, ids to main, held saves keep the control, restrictions disable", { tag: "@general" }, async () => {
   await commitEnglish();
   await page.locator("#tab-general").click();
   const switches = await read<string[]>(page, `[...document.querySelectorAll("[role=switch]")].filter(s => s.checkVisibility()).map(s => s.id)`);
@@ -141,7 +141,7 @@ test("S016–S021 the notification setting: switch and pane button, ids to main,
   await expect(page.locator("#setting-notifications"), "S021 recording restrictions disable the controls").toBeDisabled();
 });
 
-test("S022 the Recordings folder is read by the app's library: names, dates, sizes and lengths from the files", async () => {
+test("S022 the Recordings folder is read by the app's library: names, dates, sizes and lengths from the files", { tag: "@library" }, async () => {
   const files = await host.evaluate(h => h.library().state.files.map((file: { name: string; recordedAt: number; size: number; duration?: number }) => [file.name, file.recordedAt, file.size, file.duration ?? null]));
   // A name without a time stamp dates from the file's creation time; only macOS lets `utimes` move it back, so
   // elsewhere the file system's own creation time is the date the library must read.
@@ -156,7 +156,7 @@ test("S022 the Recordings folder is read by the app's library: names, dates, siz
   expect(files).toEqual(expected.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
 });
 
-test("S037–S038 countdown sound: a click on the checked switch asks main for off; under countdown Off it is disabled, keeps its value and sends nothing", async () => {
+test("S037–S038 countdown sound: a click on the checked switch asks main for off; under countdown Off it is disabled, keeps its value and sends nothing", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
   await page.locator("#tab-recording").click();
   const soundSwitch = async (countdown: 0 | 3) => {
@@ -175,7 +175,7 @@ test("S037–S038 countdown sound: a click on the checked switch asks main for o
   expect.soft(disabled, "S038 countdown sound: disabled while the countdown is Off, keeping its value, and a click sends nothing").toEqual({ checked: true, disabled: true, calls: [], after: true });
 });
 
-test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", async () => {
+test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);
   await host.evaluate(h => h.pushModel({ type: "idle", outputDirUnavailable: true }));
@@ -201,7 +201,7 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
 });
 
 for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
-  test(`S042–S043 ${lang}/${size}: the ⓘ explanation by hover (kept through the gap and on itself) and by Tab, closed by Escape with the window open`, async () => {
+  test(`S042–S043 ${lang}/${size}: the ⓘ explanation by hover (kept through the gap and on itself) and by Tab, closed by Escape with the window open`, { tag: "@layout" }, async () => {
     await host.evaluate((h, args) => { h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "idle" }, { language: args.lang }); }, { lang, size });
     await page.locator("#tab-recording").click();
     const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(page, `(() => {
@@ -250,7 +250,7 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
   });
 }
 
-test("S044–S048 update checks: repeated states keep nodes and geometry; Tab and Enter start one check and keep focus through it", async () => {
+test("S044–S048 update checks: repeated states keep nodes and geometry; Tab and Enter start one check and keep focus through it", { tag: "@general" }, async () => {
   await host.evaluate(h => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }); });
   await page.locator("#tab-general").click();
   await read(page, `window.updateBefore = { row: document.getElementById("setting-updates-row"), button: document.getElementById("setting-updates-check"), note: document.getElementById("setting-updates-note"), below: document.getElementById("setting-language-row").getBoundingClientRect().top };`);
@@ -285,7 +285,7 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
   expect.soft(next !== "" && !next.startsWith("tab-") && next !== "setting-updates-check", `S048 after the check, the next Tab continues past the button instead of restarting at the tabs (${next})`).toBe(true);
 });
 
-test("S050 a Tab-focused control in an overflowing panel is scrolled into view and uncovered", async () => {
+test("S050 a Tab-focused control in an overflowing panel is scrolled into view and uncovered", { tag: "@layout" }, async () => {
   await host.evaluate(h => { h.pushModel({ type: "idle" }); h.setSize(380, 360); });
   await page.waitForTimeout(100);
   await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
@@ -313,7 +313,7 @@ test("S050 a Tab-focused control in an overflowing panel is scrolled into view a
   expect.soft({ scrolled: scrolled > 0, covered }, "S050 a Tab never leaves the focused control out of view or under something else").toEqual({ scrolled: true, covered: [] });
 });
 
-test("S053–S057 General's footer and the log link: wide and narrow windows, a failed link's Retry keeps focus in its row", async () => {
+test("S053–S057 General's footer and the log link: wide and narrow windows, a failed link's Retry keeps focus in its row", { tag: "@general" }, async () => {
   await host.evaluate(h => { h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   await page.waitForTimeout(100);
@@ -347,7 +347,7 @@ test("S053–S057 General's footer and the log link: wide and narrow windows, a 
 });
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`Troubleshooting sections, always-visible cleanup warning and General footer: ${language}/${scheme}, mouse and keyboard`, async () => {
+  test(`Troubleshooting sections, always-visible cleanup warning and General footer: ${language}/${scheme}, mouse and keyboard`, { tag: "@general" }, async () => {
     await host.evaluate((h, args) => {
       h.theme(args.scheme);
       h.setSize(720, 900);
@@ -418,7 +418,7 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
   });
 }
 
-test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave capture, focus rings, listening indicator, Control+F12, Confirm, forced colors and reduced motion", async () => {
+test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave capture, focus rings, listening indicator, Control+F12, Confirm, forced colors and reduced motion", { tag: "@shortcut" }, async () => {
   await host.evaluate(h => { h.setSize(560, 760); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   const arm = (): Promise<unknown> => pickMenu(page, "setting-hotkey", "custom");
@@ -471,7 +471,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
 });
 
 for (const platform of ["darwin", "win32"] as const) {
-  test(`S116 ${platform}: the top of a narrow window is clickable: nothing, the window-drag strip included, covers a tab`, async () => {
+  test(`S116 ${platform}: the top of a narrow window is clickable: nothing, the window-drag strip included, covers a tab`, { tag: "@layout" }, async () => {
     // Plan 066 found the strip over the tabs on Windows CI; the page lays out by the platform its view names.
     await host.evaluate((h, value) => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { platform: value }); }, platform);
     await expect(page.locator("html")).toHaveAttribute("data-platform", platform);

@@ -213,7 +213,7 @@ test("wheel and keyboard scrolling in settings keep controls below the macOS dra
 });
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`Window actions ${language}/${scheme}: the label reads in full in both placements, with mouse and keyboard access`, async ({}, testInfo) => {
+  test(`Window actions ${language}/${scheme}: the label reads in full in both placements, with mouse and keyboard access`, { tag: "@general" }, async ({}, testInfo) => {
     for (const size of ["default", "minimum"] as const) {
       await host.evaluate((h, args) => {
         h.theme(args.scheme);
@@ -313,7 +313,7 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; outside
 })()`);
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`permission setup ${lang}/${scheme}: guidance and both recovery paths remain readable and reachable at every window size`, async ({}, testInfo) => {
+  test(`permission setup ${lang}/${scheme}: guidance and both recovery paths remain readable and reachable at every window size`, { tag: "@recording-settings" }, async ({}, testInfo) => {
     for (const size of ["default", "narrow", "minimum"] as const) {
       await host.evaluate((h, args) => {
         h.theme(args.scheme);
@@ -418,7 +418,7 @@ for (const lang of ["en", "zh-TW"] as const) {
   });
 }
 
-test("U067-3 a file name format the app would refuse marks the field invalid and says why; Escape restores the saved one", async () => {
+test("U067-3 a file name format the app would refuse marks the field invalid and says why; Escape restores the saved one", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.pushModel({ type: "idle" }, { language: "en" }); });
   await page.locator("#tab-recording").click();
   const field = page.locator("#setting-fileName");
@@ -441,7 +441,7 @@ test("U067-0 both measurements detect a field's small value", async () => {
   expect(gallery.texts.find(entry => entry.at === "#probe-field")?.size).toBe(10);
 });
 
-test("U070-1 a card's menu lists every action readably inside the window and Escape closes it", async () => {
+test("U070-1 a card's menu lists every action readably inside the window and Escape closes it", { tag: "@library" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "zh-TW", library: h.library().state }); });
   await page.locator("#tab-library").click();
   await page.locator(MORE).first().click();
@@ -481,7 +481,7 @@ test("U070-2 a settings menu follows focus-visible, preserves focus after select
 });
 
 for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "list"] as const) {
-  test(`U070-3 ${scheme}/${layout}: recording card focus is visible, an arrival focuses the card, and pointer input still reaches it`, async ({}, testInfo) => {
+  test(`U070-3 ${scheme}/${layout}: recording card focus is visible, an arrival focuses the card, and pointer input still reaches it`, { tag: "@library" }, async ({}, testInfo) => {
     await host.evaluate((h, args) => {
       h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default);
       h.pushModel({ type: "idle" }, { language: "en", library: h.library().state, libraryLayout: args.layout });
@@ -520,7 +520,7 @@ for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "
   });
 }
 
-test("U071-1 a long category name never squeezes the library's search away: it keeps 160px, or takes a line of its own", async ({}, testInfo) => {
+test("U071-1 a long category name never squeezes the library's search away: it keeps 160px, or takes a line of its own", { tag: "@library" }, async ({}, testInfo) => {
   const long = "A very long category name that goes on and on";
   let picked = false;
   for (const size of ["default", "narrow", "minimum"] as const) {
@@ -553,7 +553,7 @@ test("U071-1 a long category name never squeezes the library's search away: it k
   }
 });
 
-test("U071-2 an entry to a recording the search hides clears the search and focuses that card at once", async () => {
+test("U071-2 an entry to a recording the search hides clears the search and focuses that card at once", { tag: "@library" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
   await page.locator("#tab-library").click();
   const first = await page.locator(".clip").first().getAttribute("data-id");

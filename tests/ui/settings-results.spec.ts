@@ -478,7 +478,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
 });
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
-  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show visible keyboard focus at the minimum size`, async ({}, testInfo) => {
+  test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show visible keyboard focus at the minimum size`, { tag: "@layout" }, async ({}, testInfo) => {
     await host.evaluate((h, value) => { h.setSize(380, 360); h.theme(value); }, scheme);
     await seedHistory();
     await pushResult(lang, 0);
