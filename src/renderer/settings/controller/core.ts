@@ -29,10 +29,16 @@ import {
 import { reconcileResults, resultDomId, resultIntents, resultStates } from "./results";
 import { settingsNews } from "./news";
 import {
+  cancelFolderDialog,
   cancelRename,
   closeMenu,
   dismissLibraryOverlays,
+  forgetMissingFolder,
+  folderDialog,
   forgetMissingItems,
+  isShown,
+  stopDragging,
+  showEveryRecording,
   menuId,
   renaming,
   undoTrash,
@@ -407,12 +413,17 @@ function reconcile(
     // A banner or menu click brought the card: its outline flashes and goes, with no focus line left in the same red
     // (2026-10-09); a key the user presses there brings the line back.
     if (arriving) document.documentElement.dataset.input = "pointer";
+    // The recording it brings must be among the cards shown (plan 071).
+    if (arriving) showEveryRecording();
     closePlayer(false);
     dismissLibraryOverlays();
   }
   const ids = new Set(next.library?.items.map((item) => item.id));
   if (playingItem && !ids.has(playingItem.id)) closePlayer(false);
   forgetMissingItems(ids);
+  forgetMissingFolder(next.library);
+  // A card moved out of the folder shown, or out of the search, hands its focus on as one that left does.
+  const shown = new Set(next.library?.items.filter(isShown).map((item) => item.id));
   const resultIds = reconcileResults(next, entering);
   forgetInfo(next);
   if (document.documentElement.lang !== documentLanguage(next.language))
@@ -427,15 +438,15 @@ function reconcile(
   lastNotice = next.library?.notice;
   if (toastState?.kind === "trashed" && !next.library?.trashed) dismissToast();
   draw();
-  if (priorCard && !ids.has(priorCard)) {
+  if (priorCard && !shown.has(priorCard)) {
     const old = previous?.library?.items ?? [],
       at = old.findIndex((item) => item.id === priorCard);
     const successor =
-      old.slice(at + 1).find((item) => ids.has(item.id)) ??
+      old.slice(at + 1).find((item) => shown.has(item.id)) ??
       old
         .slice(0, at)
         .reverse()
-        .find((item) => ids.has(item.id));
+        .find((item) => shown.has(item.id));
     focus(successor ? `clip-${successor.id}-open` : "tab-library");
   } else if (priorResult && !resultIds.has(priorResult)) {
     const old = previous?.recordingResults ?? [],
@@ -562,15 +573,20 @@ export function start(): () => void {
     // An open settings or window-actions menu takes Escape itself and closes; the window stays.
     if (
       event.key === "Escape" &&
-      (document.querySelector('[data-slot="select-content"][data-open], [data-window-actions][data-open]') ||
+      (document.querySelector('[data-slot="select-content"][data-open], [data-window-actions][data-open], [data-folder-actions][data-open]') ||
         (event.target instanceof Element &&
-          event.target.closest('[data-slot="select-content"], [data-window-actions]')))
+          event.target.closest('[data-slot="select-content"], [data-window-actions], [data-folder-actions]')))
     )
       return;
     if (event.key === "Escape" && playingItem) {
       event.preventDefault();
       markEscapeClosed();
       closePlayer();
+      return;
+    }
+    if (event.key === "Escape" && folderDialog) {
+      event.preventDefault();
+      cancelFolderDialog();
       return;
     }
     if (event.key === "Escape" && renaming) {
@@ -600,6 +616,9 @@ export function start(): () => void {
     if (event.key === "Escape" || isCloseChord(event, platform()))
       window.close();
   });
+  // A card's drag out of the page ends without an event here when it is dropped elsewhere; the next press forgets it.
+  listen(document, "pointerdown", stopDragging, true);
+  listen(window, "blur", stopDragging);
   listen(document, "fullscreenchange", () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});

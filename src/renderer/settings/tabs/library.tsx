@@ -1,18 +1,21 @@
-/** The Recordings tab: cards or a list by day, a card's menu, renaming, and the embedded player dialog. */
+/**
+ * The Recordings tab: cards or a list by day, a card's menu, renaming, the embedded player dialog, and its folders and
+ * search (plan 071).
+ */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
-import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize } from "lucide-react";
+import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderPlus, FolderInput, SearchX } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Field, FieldLabel, FieldError } from "../../components/ui/field";
-import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "../../components/ui/input-group";
+import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText, InputGroupButton } from "../../components/ui/input-group";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "../../components/ui/empty";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { useTruncated } from "../../lib/use-truncated";
-import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "../../components/ui/context-menu";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "../../components/ui/context-menu";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card } from "../../components/ui/card";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "../../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "../../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader, DialogFooter } from "../../components/ui/dialog";
 import { flushSync } from "react-dom";
 import { Player } from "../../player/player";
@@ -57,7 +60,11 @@ export const Clip = memo(function Clip({
         onDragStart={(event) => {
           event.preventDefault();
           // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
-          if (!pressedOnBar()) void model.fileAction(item.id, "drag");
+          // A folder in the tab's head takes the card if it is dropped there (plan 071).
+          if (!pressedOnBar()) {
+            model.startDragging(item.id);
+            void model.fileAction(item.id, "drag");
+          }
         }}
         onAnimationEnd={() => setArrived(false)}
         onBlur={() => setArrived(false)}
@@ -200,8 +207,16 @@ export const Clip = memo(function Clip({
 function ClipMenuActions({ item, context = false }: { item: LibraryItemView; context?: boolean }) {
   const Item = context ? ContextMenuItem : DropdownMenuItem;
   const Separator = context ? ContextMenuSeparator : DropdownMenuSeparator;
+  const Sub = context ? ContextMenuSub : DropdownMenuSub;
+  const SubTrigger = context ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
+  const SubContent = context ? ContextMenuSubContent : DropdownMenuSubContent;
   const prefix = context ? "clip-context-menu" : "clip-menu";
   const p = model.platform(), t = model.text;
+  // Every place but its own: Unsorted for one in a folder, and each other folder.
+  const targets: Array<{ folder: string | null; label: string }> = [
+    ...(item.folder === undefined ? [] : [{ folder: null, label: t("Unsorted") }]),
+    ...(model.view?.library?.folders ?? []).filter((entry) => entry.name !== item.folder).map((entry) => ({ folder: entry.name, label: entry.name })),
+  ];
   return (
     <>
       <Item
@@ -227,6 +242,26 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
         <FileText />
         <span className="menu-label">{t("Rename…")}</span>
       </Item>
+      {targets.length > 0 && (
+        <Sub>
+          <SubTrigger id={`${prefix}-move`}>
+            <FolderInput />
+            <span className="menu-label">{t("Move to")}</span>
+          </SubTrigger>
+          <SubContent className="clip-menu w-auto min-w-[160px] whitespace-nowrap">
+            {targets.map((target, index) => (
+              <Item
+                key={target.folder ?? ""}
+                id={`${prefix}-move-${index}`}
+                onClick={() => void model.moveTo(item.id, target.folder)}
+              >
+                <Folder />
+                <span className="menu-label">{target.label}</span>
+              </Item>
+            ))}
+          </SubContent>
+        </Sub>
+      )}
       <Separator />
       <Item
         id={`${prefix}-trash`}
@@ -253,6 +288,56 @@ export function LibraryHead() {
       <p className="library-summary" hidden={!library?.summary}>
         {library?.summary}
       </p>
+      <InputGroup className="library-search darwin:wide:window-no-drag">
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput
+          id="library-search"
+          type="text"
+          value={model.query}
+          placeholder={model.text("Search recordings")}
+          aria-label={model.text("Search recordings")}
+          spellCheck={false}
+          autoComplete="off"
+          onInput={(event) => model.search(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            // Escape clears a search first; with nothing typed it closes the window as anywhere else.
+            if (event.key === "Escape" && model.query) {
+              event.preventDefault();
+              model.search("");
+            }
+          }}
+        />
+        {model.query && (
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              id="library-search-clear"
+              size="icon-sm"
+              aria-label={model.text("Clear search")}
+              onClick={() => {
+                model.search("");
+                document.getElementById("library-search")?.focus();
+              }}
+            >
+              <X />
+            </InputGroupButton>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+      <ControlTooltip label={model.text("New folder")}>
+        <Button
+          id="library-new-folder"
+          variant="ghost"
+          size="icon"
+          className="library-new-folder darwin:wide:window-no-drag"
+          aria-label={model.text("New folder")}
+          disabled={!library}
+          onClick={() => model.openFolderDialog()}
+        >
+          <FolderPlus />
+        </Button>
+      </ControlTooltip>
       <ToggleGroup
         className="library-layout segments darwin:wide:window-no-drag"
         variant="segmented"
@@ -307,9 +392,180 @@ export function LibraryHead() {
   );
 }
 
+/**
+ * The head's second line (plan 071): every recording, Unsorted (the output folder itself) and each folder, with their
+ * counts, then the shown folder's actions. It stays above the scrolling cards, so a card dragged from
+ * anywhere in the list can be dropped on a folder.
+ */
+export function LibraryFolders() {
+  const library = model.view?.library,
+    items = library?.items ?? [],
+    folders = library?.folders ?? [],
+    shown = model.shownFolder,
+    selected = typeof shown?.folder === "string" ? folders.find((entry) => entry.name === shown.folder) : undefined,
+    language = model.view?.language;
+  const [over, setOver] = useState<string | null | undefined>(undefined);
+  const count = (folder: string | null): number => items.filter((item) => (item.folder ?? null) === folder).length;
+  // A card dragged from this page, and only that card's own file, moves where it is dropped.
+  const target = (folder: string | null) => ({
+    onDragOver: (event: React.DragEvent) => {
+      if (!model.dragging || !event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault();
+      setOver(folder);
+    },
+    onDragLeave: () => setOver(undefined),
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault();
+      setOver(undefined);
+      const id = model.dragging, files = event.dataTransfer.files,
+        item = items.find((entry) => entry.id === id);
+      // A stale id, from a drag that ended outside the page, must not move a recording for another file dropped here
+      // (review pass 1, F1): the dropped file must be the card's own by name and size.
+      if (id && item && files.length === 1 && files[0]?.name === item.name && (item.bytes === undefined || files[0].size === item.bytes))
+        void model.moveTo(id, folder);
+      else model.stopDragging();
+    },
+  });
+  const chip = (id: string, label: string, pressed: boolean, choose: () => void, folder?: string | null) => (
+    <Button
+      key={id}
+      id={id}
+      variant="ghost"
+      size="sm"
+      className="library-folder"
+      aria-pressed={pressed}
+      data-drop={folder !== undefined && over === folder ? "" : undefined}
+      onClick={choose}
+      {...(folder === undefined ? {} : target(folder))}
+    >
+      <span className="library-folder-name">{label}</span>
+      <span className="library-folder-count">{folder === undefined ? items.length : count(folder)}</span>
+    </Button>
+  );
+  // Until there is a folder, All and Unsorted would show the same cards: the line is not drawn, and New folder waits in
+  // the head's first line.
+  if (!library || !folders.length) return null;
+  return (
+    <div className="library-folders darwin:wide:window-no-drag">
+      <div className="library-folder-list" role="group" aria-label={model.text("Folders")}>
+        {chip("library-folder-all", model.text("All"), shown === undefined, () => model.showFolder(undefined))}
+        {chip("library-folder-unsorted", model.text("Unsorted"), shown?.folder === null, () => model.showFolder({ folder: null }), null)}
+        {folders.map((entry, index) =>
+          chip(`library-folder-${index}`, entry.name, shown?.folder === entry.name, () => model.showFolder({ folder: entry.name }), entry.name))}
+      </div>
+      {selected && (
+        <DropdownMenu>
+          <ControlTooltip label={translate("Folder actions for {folder}", language, { folder: selected.name })}>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" />}
+              id="library-folder-more"
+              aria-label={translate("Folder actions for {folder}", language, { folder: selected.name })}
+            >
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+          </ControlTooltip>
+          <DropdownMenuContent data-folder-actions="" className="clip-menu w-auto min-w-[180px] whitespace-nowrap" finalFocus={false}>
+            <DropdownMenuItem id="library-folder-rename" onClick={() => model.openFolderDialog(selected.name)}>
+              <FileText />
+              <span className="menu-label">{model.text("Rename folder…")}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem id="library-folder-delete" variant="destructive" onClick={() => void model.removeFolder(selected.name)}>
+              <HardDrive />
+              <span className="menu-label">{model.text("Delete folder")}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+}
+
+/** New folder, or Rename folder… for the folder shown: one name, checked as main will before it is sent. */
+export function FolderDialog() {
+  const dialog = model.folderDialog,
+    language = model.view?.language;
+  return (
+    <Dialog
+      open={Boolean(dialog)}
+      onOpenChange={(open) => {
+        if (!open) model.cancelFolderDialog();
+      }}
+    >
+      <DialogContent
+        id="library-folder-dialog"
+        className="clip-rename max-h-[calc(100dvh-32px)] overflow-y-auto"
+        showCloseButton={false}
+        initialFocus={() => {
+          const field = document.getElementById("library-folder-input") as HTMLInputElement | null;
+          field?.select();
+          return field;
+        }}
+        finalFocus={false}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            model.cancelFolderDialog();
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle className="[overflow-wrap:anywhere]">
+            {dialog?.folder === undefined
+              ? model.text("New folder")
+              : translate("New name for {title}", language, { title: dialog.folder })}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {model.text(dialog?.folder === undefined ? "New folder" : "Rename folder…")}
+          </DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel className="sr-only" htmlFor="library-folder-input">
+            {model.text("Folder name")}
+          </FieldLabel>
+          <InputGroup className="clip-rename-field bg-card">
+            <InputGroupInput
+              id="library-folder-input"
+              value={dialog?.name ?? ""}
+              placeholder={model.text("Folder name")}
+              spellCheck={false}
+              autoComplete="off"
+              aria-describedby={dialog?.error ? "library-folder-error" : undefined}
+              aria-invalid={Boolean(dialog?.error)}
+              onInput={(event) => model.folderDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void model.submitFolderDialog();
+                }
+              }}
+            />
+          </InputGroup>
+          <FieldError role={undefined} id="library-folder-error" className="clip-rename-error" hidden={!dialog?.error}>
+            {dialog?.error}
+          </FieldError>
+        </Field>
+        <DialogFooter className="clip-rename-buttons">
+          <Button id="library-folder-cancel" variant="outline" onClick={() => model.cancelFolderDialog()}>
+            {model.text("Cancel")}
+          </Button>
+          <Button id="library-folder-confirm" aria-disabled={dialog?.pending} onClick={() => void model.submitFolderDialog()}>
+            {model.text(dialog?.folder === undefined ? "Create" : "Rename")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function Library() {
   const library = model.view?.library,
-    items = library?.items,
+    all = library?.items,
+    shownFolder = model.shownFolder,
+    query = model.query,
+    items = useMemo(() => model.shownItems(library), [all, shownFolder, query]),
+    narrowed = Boolean(all?.length) && (shownFolder !== undefined || query.trim() !== ""),
     layout = model.optimisticLayout ?? library?.layout ?? "grid";
   const days = useMemo(() => {
     const groups = new Map<string, LibraryItemView[]>();
@@ -338,8 +594,25 @@ export function Library() {
         {library?.status}
       </p>
       <Empty
+        id="library-none-shown"
         className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]"
-        hidden={Boolean(items?.length || library?.status || !library)}
+        hidden={Boolean(items.length || library?.status || !library || !(narrowed || shownFolder))}
+      >
+        <EmptyHeader className="max-w-full">
+          <EmptyMedia>{query.trim() ? <SearchX className="size-[38px]" /> : <Folder className="size-[38px]" />}</EmptyMedia>
+          <EmptyTitle className="library-empty-title text-base">
+            {query.trim()
+              ? translate("No recordings match “{query}”.", model.view?.language, { query: query.trim() })
+              : model.text("This folder is empty.")}
+          </EmptyTitle>
+          <EmptyDescription className="library-empty-detail" hidden={Boolean(query.trim())}>
+            {model.text("Drag a recording here, or choose Move to in its menu.")}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+      <Empty
+        className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]"
+        hidden={Boolean(all?.length || library?.status || !library || shownFolder)}
       >
         <EmptyHeader className="max-w-full">
         <EmptyMedia><Film className="size-[38px]" /></EmptyMedia>

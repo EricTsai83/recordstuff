@@ -1470,7 +1470,60 @@
     color: var(--muted-foreground);
   }
   .library-layout {
+    margin-left: 0;
+  }
+  /* The search sits between the summary and the layout switch and takes the room they leave, up to 220px. Its basis is
+     zero: a wrapping line wraps items at their basis before shrinking them, which would push Show in Finder to a line of
+     its own in a narrow window. */
+  .library-search {
+    flex: 1 1 0;
+    min-width: 88px;
+    max-width: 220px;
+  }
+  /* Folders take the head's own line under the summary (plan 071), so they stay in view as drop targets while the
+     recordings scroll. The list wraps rather than scrolls: every folder stays reachable by pointer and keyboard. */
+  .settings-head-folders {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .library-folders {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -8px 0 12px;
+  }
+  .library-folder-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  .library-folder {
+    max-width: 220px;
+    color: var(--muted-foreground);
+  }
+  .library-folder[aria-pressed="true"] {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+  /* A card dragged over a folder: the folder it will go to is ringed. */
+  .library-folder[data-drop] {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+  .library-folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .library-folder-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted-foreground);
+  }
+  /* New folder, the layout switch and Show in Finder keep together at the line's end. */
+  .library-new-folder {
     margin-left: auto;
+    flex: none;
+    color: var(--muted-foreground);
   }
   /* A day out of view skips layout and paint: resizing or zooming the window (a title-bar double-click animates through
      dozens of widths) then lays out only the visible days instead of every card in the library. The clip margin keeps
@@ -2192,6 +2245,11 @@
     }
     .library-summary {
       flex-basis: 100%;
+    }
+    /* With folders (plan 071) the head would take three lines of a narrow window: their line already counts every
+       recording (All), so the summary's own line gives way to it. */
+    .settings-head:has(.library-folder-list) .library-summary {
+      display: none;
     }
     .sidebar-about {
       display: none;

@@ -166,10 +166,13 @@
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `isListedName(name)` | 分頁會列出的影片：`.mp4`、`.m4v` 或 `.mov`，非隱藏檔，也不是仍在寫入的 `.recording.mp4` |
+| `isFolderName(name)` / `listsAgain(name)` | 分頁可提供的子資料夾：非隱藏、不以副檔名結尾（套件）；recursive 監看事件的相對路徑是否可能改變清單（資料夾本身或直接子資料夾裡列出的名稱，或可能是子資料夾的名稱） |
 | `stampedTime(name)` | App 自己的 `YYYY-MM-DD HH-MM-SS[-n].mp4` 檔名所記的本地時間；其他檔名為 undefined |
 | `fileId(path)` | 路徑的穩定 id（截短的 SHA-256），頁面只拿 id、不拿路徑，重新列出時卡片得以保留 |
 | `parseRange(header, size)` | size 內的單一 `bytes=` 範圍；沒有 header 為 undefined，無法提供的範圍為 null（416） |
-| `RecordingsLibrary.refresh()` | 由新到舊列出資料夾並發布；同時只列一次，期間的請求共用其後的一次列出；未知片長之後再讀（`lengths`）並一起發布；已不在清單的檔案，其片長與縮圖從記憶體移除；無法讀取的資料夾會說明，而不是顯示為空 |
+| `RecordingsLibrary.refresh()` | 由新到舊列出資料夾及其提供的子資料夾（一層，plan 071）並發布；同時只列一次，期間的請求共用其後的一次列出；未知片長之後再讀（`lengths`）並一起發布；已不在清單的檔案，其片長與縮圖從記憶體移除；無法讀取的資料夾會說明，而不是顯示為空 |
+| `RecordingsLibrary.move(id, folder)` / `rename(id, name)` | 把已列出的 id 移到已列出的資料夾（`null` 為儲存位置本身），或就地改名，兩者共用絕不覆蓋的 `relocate`（先連結再刪除，沒有 hard link 時先獨占保留）；片長與縮圖一併帶過去；回傳新 id 或原因 |
+| `RecordingsLibrary.createFolder` / `renameFolder` / `removeFolder` | 建立資料夾（`folderNameProblem`、獨占 `mkdir`）；為已列出的資料夾改名且絕不取代其他項目，並帶走其中檔案的快取與等待中的垃圾桶項目；把沒有可見檔案的已列出資料夾在其等待中的項目之後移到垃圾桶；各自回傳資料夾或 `FolderProblem` |
 | `RecordingsLibrary.act(id, action)` | 對已列出的 id 執行「顯示」、「開啟」或「丟到垃圾桶」；任何失敗都先重新列出資料夾再回傳 false，讓已離開的檔案不出現在回覆中 |
 | `RecordingsLibrary.thumbnail(file)` | 已列出檔案的 JPEG 縮圖；在最近顯示的 `THUMBNAILS_KEPT`（64）張之內時，同一版本只產生一次 |
 | `RecordingsLibrary.watch()` / `unwatch()` | 視窗開著時監看資料夾（不輪詢），對已列名稱的一串事件結束 `WATCH_SETTLE_MS`（250 毫秒）後重新讀取；儲存位置改變時跟著換；視窗關閉時 `unwatch`，不留下監看或計時器；無法監看的資料夾只記一次 log |

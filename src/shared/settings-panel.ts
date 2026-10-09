@@ -134,6 +134,16 @@ export interface LibraryItemView {
   size: string;
   thumbnail: string;
   video: string;
+  /** The output folder's subfolder it is in (plan 071); absent for one in the output folder itself (Unsorted). */
+  folder?: string;
+  /** Its size in bytes, which a file dropped on a folder must have to be taken for this recording (review pass 1, F1). */
+  bytes?: number;
+}
+/** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
+export interface LibraryFolderView {
+  name: string;
+  /** Holds no visible file, so Delete folder is offered. */
+  empty: boolean;
 }
 export interface LibraryView {
   /** The output folder as shown, home abbreviated. */
@@ -149,6 +159,8 @@ export interface LibraryView {
   /** "12 recordings · 2.4 GB". */
   summary?: string;
   items: LibraryItemView[];
+  /** By name; absent or empty when the output folder has none. */
+  folders?: LibraryFolderView[];
 }
 export interface SettingsView {
   revision?: number;
@@ -192,6 +204,28 @@ export interface RenameChoice { action: "rename"; name: string }
 export function isRenameChoice(value: unknown): value is RenameChoice {
   return typeof value === "object" && value !== null && (value as RenameChoice).action === "rename" && typeof (value as RenameChoice).name === "string";
 }
+/** Moves a recording (group `recordingFile:<id>`) into a listed folder, or with `null` into the output folder itself. */
+export interface MoveChoice { action: "move"; folder: string | null }
+export function isMoveChoice(value: unknown): value is MoveChoice {
+  if (typeof value !== "object" || value === null || (value as MoveChoice).action !== "move") return false;
+  const folder = (value as MoveChoice).folder;
+  return folder === null || typeof folder === "string";
+}
+/** A folder action of the Recordings tab (group `libraryFolder`); main checks the name and that the folder is listed. */
+export type FolderChoice =
+  | { action: "createFolder"; name: string }
+  | { action: "renameFolder"; folder: string; name: string }
+  | { action: "removeFolder"; folder: string };
+export function isFolderChoice(value: unknown): value is FolderChoice {
+  if (typeof value !== "object" || value === null) return false;
+  const choice = value as Record<string, unknown>;
+  switch (choice.action) {
+    case "createFolder": return typeof choice.name === "string";
+    case "renameFolder": return typeof choice.folder === "string" && typeof choice.name === "string";
+    case "removeFolder": return typeof choice.folder === "string";
+    default: return false;
+  }
+}
 export interface SettingsChoiceResult {
   view: SettingsView;
   /** Whether the requested choice is the committed one now. */
@@ -201,8 +235,10 @@ export interface SettingsChoiceResult {
   refused?: true;
   /** A recording played full screen: where the video was when the viewer left (video-player.ts). */
   playback?: PlaybackState;
-  /** A renamed recording's new id, so its card keeps the focus. */
+  /** A renamed or moved recording's new id, so its card keeps the focus. */
   renamed?: string;
+  /** The folder a folder action made or renamed, so the tab can show it. */
+  folder?: string;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {
@@ -211,8 +247,8 @@ export interface SettingsBridge {
   onZoomChanged?(callback: (zoom: SettingsZoom) => void): () => void;
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
-  /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts) or its new name. */
-  choose(group: string, choice: string | FullScreenChoice | RenameChoice): Promise<SettingsChoiceResult>;
+  /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts), its new name or folder, or a folder action. */
+  choose(group: string, choice: string | FullScreenChoice | RenameChoice | MoveChoice | FolderChoice): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
   /** RecordStuff was hidden (⌘H); main says so before the window goes out of sight. The preload always offers it. */
   onHidden?(callback: () => void): () => void;

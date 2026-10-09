@@ -165,10 +165,13 @@ The page's window-message callback checks source/marker/port before creating the
 | Function/method | Contract |
 | --- | --- |
 | isListedName | A video the tab lists: `.mp4`, `.m4v` or `.mov`, not hidden, not a `.recording.mp4` still being written |
+| isFolderName / listsAgain | A subfolder the tab may offer: not hidden, not ending in an extension (a package); whether a recursive watch event's relative path can change the listing (a listed name in the folder or a direct subfolder, or a possible subfolder) |
 | stampedTime | The local time in the app's own `YYYY-MM-DD HH-MM-SS[-n].mp4` name, or undefined for any other name |
 | fileId | A stable id for a path (a truncated SHA-256), so the page holds ids, never paths, and keeps a card across listings |
 | parseRange | One `bytes=` range within a size; undefined without a header, null for a range that cannot be served (416) |
-| RecordingsLibrary.refresh | List the folder newest first and publish it; one listing at a time, and requests made meanwhile share one more listing after it; unknown lengths are read afterwards (`lengths`) and published together; lengths and thumbnails of files no longer listed are dropped; an unreadable folder is reported, not shown empty |
+| RecordingsLibrary.refresh | List the folder and its offered subfolders (one level, plan 071) newest first and publish it; one listing at a time, and requests made meanwhile share one more listing after it; unknown lengths are read afterwards (`lengths`) and published together; lengths and thumbnails of files no longer listed are dropped; an unreadable folder is reported, not shown empty |
+| RecordingsLibrary.move / rename | Move a listed id into a listed folder (or `null`, the output folder) or rename it in place, through one never-replacing `relocate` (link then unlink, or an exclusive reservation without hard links); its length and thumbnail carry over; answers the new id or why not |
+| RecordingsLibrary.createFolder / renameFolder / removeFolder | Make a folder (`folderNameProblem`, exclusive `mkdir`); rename a listed one never over another, carrying its files' caches and waiting trash; move a listed folder with no visible file to the Trash after its waiting trash; each answers the folder or a `FolderProblem` |
 | RecordingsLibrary.act | Reveal, open or move to the Trash a listed id; any failure lists the folder again before answering false, so a file that left it is gone from the reply |
 | RecordingsLibrary.thumbnail | A listed file's JPEG thumbnail, made once per file version while it is among the `THUMBNAILS_KEPT` (64) shown most recently |
 | RecordingsLibrary.watch / unwatch | While the window is open: watch the folder (no poll) and list it again `WATCH_SETTLE_MS` (250 ms) after a burst of events on a listed name; follows a changed folder; `unwatch` when the window closes leaves no watcher or timer; a folder that cannot be watched is logged once |

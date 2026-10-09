@@ -91,7 +91,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"] } = {}) {
+function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -107,6 +107,8 @@ function setup(overrides: { act?: (action: AppAction) => Promise<boolean | void>
     ...(overrides.quitRequested ? { quitRequested: overrides.quitRequested } : {}),
     ...(overrides.drag ? { drag: overrides.drag } : {}),
     ...(overrides.rename ? { rename: overrides.rename } : {}),
+    ...(overrides.move ? { move: overrides.move } : {}),
+    ...(overrides.folders ? { folders: overrides.folders } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -1195,6 +1197,48 @@ describe("a recording's new name (2026-10-05)", () => {
     await expect(s.choose(s.event(), "recordingFile:/etc/passwd", { action: "rename", name: "x" }))
       .resolves.toMatchObject({ applied: false, failure: "This recording is no longer in the folder." });
     expect(rename).toHaveBeenCalledTimes(2);
+  });
+  it("moves only a listed recording, and says why a move did not happen (plan 071)", async () => {
+    const move = vi.fn(async (_id: string, folder: string | null) => folder === "Gone" ? { problem: "folderMissing" as const }
+      : folder === "Full" ? { problem: "exists" as const } : { id: "c" });
+    const s = setup({ move });
+    s.live.library = library;
+    s.panel.show();
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: "Demos" })).resolves.toMatchObject({ applied: true, renamed: "c" });
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: null })).resolves.toMatchObject({ applied: true });
+    expect(move.mock.calls).toEqual([["a", "Demos"], ["a", null]]);
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: "Gone" }))
+      .resolves.toMatchObject({ applied: false, failure: "This folder is no longer in the output folder." });
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: "Full" }))
+      .resolves.toMatchObject({ applied: false, failure: "A recording with this name is already in that folder." });
+    await expect(s.choose(s.event(), "recordingFile:zz", { action: "move", folder: "Demos" }))
+      .resolves.toMatchObject({ applied: false, failure: "This recording is no longer in the folder." });
+    // A folder that is not a string, or a path smuggled as a move, never reaches the library.
+    await expect(s.choose(s.event(), "recordingFile:a", { action: "move", folder: 3 })).resolves.toMatchObject({ applied: false });
+    expect(move).toHaveBeenCalledTimes(4);
+  });
+  it("routes the folder actions to the library, refusing malformed ones and any during a quit (plan 071)", async () => {
+    let quitting = false;
+    const folders = {
+      create: vi.fn(async (name: string) => name === "Foo.app" ? { problem: "extension" as const } : { folder: name }),
+      rename: vi.fn(async (_folder: string, name: string) => ({ folder: name })),
+      remove: vi.fn(async (folder: string) => folder === "Kept" ? { problem: "notEmpty" as const } : true as const),
+    };
+    const s = setup({ folders, quitRequested: () => quitting });
+    s.live.library = library;
+    s.panel.show();
+    await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Demos" })).resolves.toMatchObject({ applied: true, folder: "Demos" });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Foo.app" }))
+      .resolves.toMatchObject({ applied: false, failure: "A folder name cannot end in an extension such as .app." });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "renameFolder", folder: "Demos", name: "Talks" })).resolves.toMatchObject({ applied: true, folder: "Talks" });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "removeFolder", folder: "Talks" })).resolves.toMatchObject({ applied: true });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "removeFolder", folder: "Kept" }))
+      .resolves.toMatchObject({ applied: false, failure: "Only an empty folder can be deleted." });
+    await expect(s.choose(s.event(), "libraryFolder", { action: "renameFolder", folder: "Demos" })).resolves.toMatchObject({ applied: false });
+    await expect(s.choose(s.event(), "libraryFolder", "createFolder")).resolves.toMatchObject({ applied: false });
+    quitting = true;
+    await expect(s.choose(s.event(), "libraryFolder", { action: "createFolder", name: "Late" })).resolves.toMatchObject({ applied: false });
+    expect([folders.create.mock.calls, folders.rename.mock.calls, folders.remove.mock.calls]).toEqual([[["Demos"], ["Foo.app"]], [["Demos", "Talks"]], [["Talks"], ["Kept"]]]);
   });
   it("routes the layout and Undo to the app's handler, and refuses Undo with nothing waiting", async () => {
     const act = vi.fn(async (action: AppAction) => action === "undoTrash" ? true : undefined);

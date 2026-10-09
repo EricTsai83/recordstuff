@@ -43,6 +43,29 @@ export function fileNameProblem(name: string): FileNameProblem | undefined {
   return undefined;
 }
 
+/** Why a folder could not be made, renamed or deleted (plan 071). */
+export type FolderProblem = FileNameProblem | "extension" | "exists" | "missing" | "notEmpty" | "failed";
+
+/**
+ * Why `name` cannot name a folder of recordings, or nothing when it can: a file name's rules, and no extension at its
+ * end, since the library takes such a folder for a package (`Foo.app`) and would not offer it.
+ */
+export function folderNameProblem(name: string): FolderProblem | undefined {
+  return fileNameProblem(name) ?? (/\.[a-z][a-z0-9-]*$/i.test(name) ? "extension" : undefined);
+}
+
+/** What to tell the user about a folder name, or a folder action that did not happen. */
+export function folderProblemText(problem: FolderProblem, language: Language): string {
+  switch (problem) {
+    case "extension": return t("A folder name cannot end in an extension such as .app.", language);
+    case "exists": return t("A folder or file with this name already exists.", language);
+    case "missing": return t("This folder is no longer in the output folder.", language);
+    case "notEmpty": return t("Only an empty folder can be deleted.", language);
+    case "failed": return t("Could not complete this action. Try again.", language);
+    default: return fileNameProblemText(problem, language);
+  }
+}
+
 /** The two-digit (or four-digit year) local value of each token at `date`. */
 function tokenValues(date: Date): Record<FileNameToken, string> {
   const two = (n: number): string => String(n).padStart(2, "0");

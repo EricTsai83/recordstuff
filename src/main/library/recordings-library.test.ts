@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isListedName, parseRange, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "../recording/recorder";
 
 let dir: string;
@@ -611,5 +611,216 @@ describe("RecordingsLibrary", () => {
     expect(library.state.files.map(item => item.path)).toEqual([kept]);
     expect(await library.act(idOf(kept), "open")).toBe(false);
     expect(library.state.files.map(item => item.path)).toEqual([kept]);
+  });
+});
+
+describe("folders (plan 071)", () => {
+  const folder = (name: string, ...files: string[]): string => {
+    const at = path.join(dir, name);
+    fs.mkdirSync(at, { recursive: true });
+    for (const file of files) fs.writeFileSync(path.join(at, file), "0123456789");
+    return at;
+  };
+  const listing = (library: RecordingsLibrary) => ({
+    files: library.state.files.map(file => [file.folder ?? "", file.name]).sort((a, b) => a.join("/").localeCompare(b.join("/"))),
+    folders: library.state.folders,
+  });
+
+  it("offers subfolders holding videos or nothing, one level deep, never packages, hidden folders, links or other folders", async () => {
+    touch("root.mp4");
+    folder("Demos", "a.mp4", "notes.txt", ".hidden.mp4", "b.recording.mp4");
+    folder("Demos/Deeper", "deep.mp4");
+    folder("Empty");
+    folder("Only hidden", ".DS_Store");
+    folder("Documents", "notes.txt");
+    folder("iMovie Library.imovielibrary", "clip.mov");
+    folder(".hidden", "c.mp4");
+    fs.symlinkSync(folder("../outside-" + path.basename(dir), "linked.mp4"), path.join(dir, "Linked"));
+    try {
+      const { library } = setup();
+      await library.refresh();
+      expect(listing(library)).toEqual({
+        files: [["", "root.mp4"], ["Demos", "a.mp4"]],
+        folders: [{ name: "Demos", empty: false }, { name: "Empty", empty: true }, { name: "Only hidden", empty: true }],
+      });
+      // Ids differ by folder, so the same name in two folders is two cards.
+      folder("Other", "root.mp4");
+      await library.refresh();
+      const ids = library.state.files.filter(file => file.name === "root.mp4").map(file => file.id);
+      expect(new Set(ids).size).toBe(2);
+    } finally { fs.rmSync(path.join(dir, "..", "outside-" + path.basename(dir)), { recursive: true, force: true }); }
+  });
+  it("tells which watched changes can change the listing", () => {
+    expect(["a.mp4", "Demos", "Demos/a.mp4", "Demos\\a.mp4"].every(listsAgain)).toBe(true);
+    expect(["a.recording.mp4", "notes.txt", ".hidden", "Demos/notes.txt", "Demos/Deeper/a.mp4", "Lib.imovielibrary/a.mp4", ".x/a.mp4"].some(listsAgain)).toBe(false);
+    expect(["Demos", "Project v1.2", "Mr. Smith"].every(isFolderName)).toBe(true);
+    expect([".hidden", "Foo.app", "iMovie Library.imovielibrary"].some(isFolderName)).toBe(false);
+  });
+  it("while watched, follows a video added in a subfolder", async () => {
+    folder("Demos");
+    const { library } = setup();
+    await library.refresh();
+    library.watch();
+    try {
+      await writeUntilListed(library, path.join(dir, "Demos", "new.mp4"), ["new.mp4"]);
+      expect(library.state.files[0]!.folder).toBe("Demos");
+    } finally { library.unwatch(); }
+  });
+  it("moves a recording into a folder and back, never over another file, keeping its cached length", async () => {
+    const file = touch("clip.mp4");
+    folder("Demos", "taken.mp4");
+    folder("Empty");
+    const { library, deps } = setup();
+    await library.refresh();
+    await library.lengths;
+    const id = library.state.files.find(item => item.path === file)!.id;
+    expect(await library.move(id, "Nowhere")).toEqual({ problem: "folderMissing" });
+    expect(await library.move(id, null)).toEqual({ id });
+    const moved = await library.move(id, "Empty");
+    const target = path.join(dir, "Empty", "clip.mp4");
+    expect(moved).toEqual({ id: fileId(target) });
+    expect([fs.existsSync(file), fs.readFileSync(target, "utf8")]).toEqual([false, "0123456789"]);
+    expect(library.state.folders).toEqual([{ name: "Demos", empty: false }, { name: "Empty", empty: false }]);
+    expect(await library.move(id, "Demos")).toEqual({ problem: "missing" });
+    // A name already taken in the folder it goes to is refused, and nothing moves.
+    touch("taken.mp4", "other");
+    await library.refresh();
+    const taken = library.state.files.find(item => item.path === path.join(dir, "taken.mp4"))!.id;
+    expect(await library.move(taken, "Demos")).toEqual({ problem: "exists" });
+    expect([fs.readFileSync(path.join(dir, "taken.mp4"), "utf8"), fs.readFileSync(path.join(dir, "Demos", "taken.mp4"), "utf8")]).toEqual(["other", "0123456789"]);
+    const back = await library.move(fileId(target), null);
+    expect(back).toEqual({ id: fileId(file) });
+    expect(deps.log).toHaveBeenCalledWith(`library: renamed ${target} to ${file}`);
+  });
+  it("makes a folder once, refusing names it would not offer", async () => {
+    const { library } = setup();
+    await library.refresh();
+    expect(await library.createFolder(" Demos ")).toEqual({ folder: "Demos" });
+    expect(library.state.folders).toEqual([{ name: "Demos", empty: true }]);
+    expect(await library.createFolder("Demos")).toEqual({ problem: "exists" });
+    expect(await library.createFolder("Foo.app")).toEqual({ problem: "extension" });
+    expect(await library.createFolder(".hidden")).toEqual({ problem: "dot" });
+    expect(await library.createFolder("a/b")).toEqual({ problem: "characters" });
+    expect(await library.createFolder("")).toEqual({ problem: "empty" });
+    touch("file");
+    expect(await library.createFolder("file")).toEqual({ problem: "exists" });
+  });
+  it("renames a folder, never over another, and keeps its waiting recording's Undo", async () => {
+    folder("Demos", "a.mp4", "b.mp4");
+    folder("Taken", "x.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    expect(await library.renameFolder("Nowhere", "New")).toEqual({ problem: "missing" });
+    expect(await library.renameFolder("Demos", "Taken")).toEqual({ problem: "exists" });
+    expect(await library.renameFolder("Demos", "Foo.app")).toEqual({ problem: "extension" });
+    expect(await library.renameFolder("Demos", "Demos")).toEqual({ folder: "Demos" });
+    const waiting = library.state.files.find(file => file.name === "a.mp4")!;
+    expect(await library.act(waiting.id, "trash")).toBe(true);
+    expect(await library.renameFolder("Demos", "Talks")).toEqual({ folder: "Talks" });
+    expect(listing(library).files).toEqual([["Taken", "x.mp4"], ["Talks", "b.mp4"]]);
+    expect(await library.undoTrash()).toBe(true);
+    expect(listing(library).files).toEqual([["Taken", "x.mp4"], ["Talks", "a.mp4"], ["Talks", "b.mp4"]]);
+    const again = library.state.files.find(file => file.name === "b.mp4")!;
+    expect(await library.act(again.id, "trash")).toBe(true);
+    expect(await library.renameFolder("Talks", "Final")).toEqual({ folder: "Final" });
+    await library.flushTrash();
+    expect(deps.trash).toHaveBeenCalledWith(path.join(dir, "Final", "b.mp4"));
+  });
+  it("moves only a folder with no visible file to the Trash, after the recordings in it still waiting for the Trash", async () => {
+    folder("Demos", "a.mp4");
+    folder("Hidden only", ".DS_Store");
+    folder("Kept", "k.mp4");
+    const { library, deps } = setup();
+    deps.trash.mockImplementation(async (file: string) => fs.rmSync(file, { recursive: true }));
+    await library.refresh();
+    expect(await library.removeFolder("Kept")).toEqual({ problem: "notEmpty" });
+    expect(await library.removeFolder("Nowhere")).toEqual({ problem: "missing" });
+    expect(await library.removeFolder("Hidden only")).toBe(true);
+    expect(deps.trash).toHaveBeenCalledWith(path.join(dir, "Hidden only"));
+    const a = library.state.files.find(file => file.name === "a.mp4")!;
+    expect(await library.act(a.id, "trash")).toBe(true);
+    expect(library.state.folders?.find(entry => entry.name === "Demos")).toEqual({ name: "Demos", empty: true });
+    expect(await library.removeFolder("Demos")).toBe(true);
+    expect(deps.trash.mock.calls.map(call => call[0])).toEqual([path.join(dir, "Hidden only"), path.join(dir, "Demos", "a.mp4"), path.join(dir, "Demos")]);
+    expect(library.state.trashed).toBeUndefined();
+    expect(library.state.folders).toEqual([{ name: "Kept", empty: false }]);
+  });
+  it("refuses a delete before any waiting recording goes when the folder holds anything else (review pass 1, F4)", async () => {
+    folder("Demos", "a.mp4", "notes.txt");
+    const { library, deps } = setup();
+    await library.refresh();
+    const a = library.state.files.find(file => file.name === "a.mp4")!;
+    expect(await library.act(a.id, "trash")).toBe(true);
+    expect(await library.removeFolder("Demos")).toEqual({ problem: "notEmpty" });
+    expect(deps.trash).not.toHaveBeenCalled();
+    expect(await library.undoTrash()).toBe(true);
+    expect(library.state.files.map(file => file.name)).toEqual(["a.mp4"]);
+  });
+  it("moves nothing through a folder replaced by a link since it was listed (review pass 1, F2)", async () => {
+    touch("clip.mp4");
+    folder("Demos");
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-outside-"));
+    try {
+      const { library } = setup();
+      await library.refresh();
+      fs.rmdirSync(path.join(dir, "Demos"));
+      fs.symlinkSync(outside, path.join(dir, "Demos"));
+      expect(await library.move(library.state.files[0]!.id, "Demos")).toEqual({ problem: "missing" });
+      expect([fs.existsSync(path.join(dir, "clip.mp4")), fs.readdirSync(outside)]).toEqual([true, []]);
+    } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+  });
+  it("runs folder actions one at a time, so two renames to one name never replace the first (review pass 1, F3)", async () => {
+    folder("A");
+    folder("B");
+    const { library } = setup();
+    await library.refresh();
+    const [first, second] = await Promise.all([library.renameFolder("A", "X"), library.renameFolder("B", "X")]);
+    expect([first, second]).toEqual([{ folder: "X" }, { problem: "exists" }]);
+    expect(fs.readdirSync(dir).sort()).toEqual(["B", "X"]);
+  });
+  it("follows a subfolder named as the output folder itself (review pass 1, F5)", async () => {
+    const { library } = setup();
+    await library.refresh();
+    library.watch();
+    const same = path.join(dir, path.basename(dir));
+    try {
+      for (let attempt = 0; attempt < 6 && !library.state.folders?.length; attempt++) {
+        fs.mkdirSync(same);
+        await vi.waitFor(() => { if (!library.state.folders?.length) throw new Error("not listed yet"); }, { timeout: WATCH_SETTLE_MS * 4 }).catch(() => undefined);
+        if (!library.state.folders?.length) fs.rmdirSync(same);
+      }
+      expect(library.state.folders).toEqual([{ name: path.basename(dir), empty: true }]);
+    } finally { library.unwatch(); }
+  });
+  it("never trashes a recording moved into a folder being deleted (review pass 2, F1)", async () => {
+    touch("clip.mp4");
+    folder("Empty");
+    const { library, deps } = setup();
+    deps.trash.mockImplementation(async (file: string) => fs.rmSync(file, { recursive: true }));
+    await library.refresh();
+    const id = library.state.files[0]!.id;
+    const [removed, moved] = await Promise.all([library.removeFolder("Empty"), library.move(id, "Empty")]);
+    expect([removed, moved]).toEqual([true, { problem: "folderMissing" }]);
+    expect(fs.existsSync(path.join(dir, "clip.mp4"))).toBe(true);
+  });
+  it("moves a waiting recording to the Trash wherever its folder is renamed meanwhile (review pass 2, F2)", async () => {
+    // Every interleaving of the rename and the commit: the Trash always gets a path that still names the file.
+    for (let ticks = 0; ticks < 12; ticks++) {
+      const name = `Demos${ticks}`, renamed = `Talks${ticks}`;
+      folder(name, "a.mp4");
+      const { library, deps } = setup();
+      // A slow Trash, as macOS's is: a rename landing while it works would take the file from under it.
+      deps.trash.mockImplementation(async (file: string) => {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        if (!fs.existsSync(file)) throw new Error(`gone: ${file}`);
+        fs.rmSync(file);
+      });
+      await library.refresh();
+      expect(await library.act(library.state.files.find(file => file.folder === name)!.id, "trash")).toBe(true);
+      const renaming = library.renameFolder(name, renamed);
+      for (let tick = 0; tick < ticks; tick++) await new Promise(resolve => setImmediate(resolve));
+      await Promise.all([renaming, library.flushTrash()]);
+      expect([await renaming, library.state.trashFailed, fs.readdirSync(path.join(dir, renamed))]).toEqual([{ folder: renamed }, undefined, []]);
+    }
   });
 });

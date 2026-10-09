@@ -447,7 +447,8 @@ test("U070-1 a card's menu lists every action readably inside the window and Esc
   await page.locator(MORE).first().click();
   const menu = page.locator("#clip-menu");
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem")).toHaveCount(4);
+  // Show in Finder, Open, Rename…, Move to (the fixture has a folder, plan 071) and Move to Trash.
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
   for (const item of await menu.getByRole("menuitem").all()) await expect(item).toBeInViewport({ ratio: 1 });
   const measured = await read<UiMeasurement>(page, MEASURE_UI);
   expect.soft(measured.texts.filter(text => (text.at.startsWith("#clip-menu") || text.at.startsWith("clip-menu>")) && text.clipped),

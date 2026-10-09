@@ -451,6 +451,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
     rename: (id, name) => library.rename(id, name),
+    move: (id, folder) => library.move(id, folder),
+    folders: {
+      create: name => library.createFolder(name),
+      rename: (folder, name) => library.renameFolder(folder, name),
+      remove: folder => library.removeFolder(folder),
+    },
     drag: async (contents, id) => {
       const file = library.find(id);
       if (!file) return false;

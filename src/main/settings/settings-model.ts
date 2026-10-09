@@ -662,10 +662,13 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
         title: file.name.replace(/\.[^.]+$/, ""), time: shortTime(at, language, format),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
+        bytes: file.size,
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
+        ...(file.folder === undefined ? {} : { folder: file.folder }),
       };
     }),
+    ...(library.folders?.length ? { folders: library.folders.map(({ name, empty }) => ({ name, empty })) } : {}),
   };
 }
 

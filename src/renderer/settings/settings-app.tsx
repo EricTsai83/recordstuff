@@ -15,7 +15,7 @@ import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
-import { Library, LibraryHead, RenameDialog, PlayerDialog } from "./tabs/library";
+import { Library, LibraryHead, LibraryFolders, RenameDialog, FolderDialog, PlayerDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
 
@@ -261,6 +261,9 @@ export function SettingsApp() {
                 <div className="settings-head-tools" hidden={model.selectedTab !== "library"}>
                   <LibraryHead />
                 </div>
+                <div className="settings-head-folders" hidden={model.selectedTab !== "library"}>
+                  <LibraryFolders />
+                </div>
               </div>
               <div className="settings-viewport">
                 <TabsContent
@@ -326,6 +329,7 @@ export function SettingsApp() {
         </p>
       </main>
       <RenameDialog />
+      <FolderDialog />
       <PlayerDialog />
       <ToastHost />
       <ZoomToast />

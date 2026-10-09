@@ -163,7 +163,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
       const fromRightClick = await menuState("clip-context-menu");
       await page.keyboard.press("Escape");
       await expect(page.locator("#clip-context-menu")).toBeHidden();
-      const expectedItems = [translate("Show in Finder", lang), translate("Open", lang), translate("Rename…", lang), translate("Move to Trash", lang)];
+      const expectedItems = [translate("Show in Finder", lang), translate("Open", lang), translate("Rename…", lang),
+        // The fixture holds a folder (plan 071), so the card can move there.
+        translate("Move to", lang), translate("Move to Trash", lang)];
       expect.soft(fromButton.open && JSON.stringify(fromButton.items) === JSON.stringify(expectedItems) && fromButton.fits
         && (fromButton.focused === "clip-menu" || fromButton.focused.startsWith("clip-menu-") || fromButton.focused.endsWith("-more")) && fromButton.expanded === "true"
         && !escaped.open && escaped.expanded === "false" && escaped.focused.endsWith("-more") && !page.isClosed() && fromRightClick.open && fromRightClick.fits,

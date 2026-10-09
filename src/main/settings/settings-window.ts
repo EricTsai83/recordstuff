@@ -11,9 +11,9 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isRenameChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
-import { fileNameProblemText, fileNameTemplateProblem } from "../../shared/file-name";
-import type { RenameProblem } from "../library/recordings-library";
+import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isFolderChoice, isMoveChoice, isRenameChoice, type FolderChoice, type MoveChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
+import { fileNameProblemText, fileNameTemplateProblem, folderProblemText, type FolderProblem } from "../../shared/file-name";
+import type { MoveProblem, RenameProblem } from "../library/recordings-library";
 import type { RecordingState } from "../../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -94,6 +94,14 @@ export interface SettingsWindowOptions {
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom">>;
   /** Renames a listed recording (recordings-library.ts `rename`): its new id, or why it was not renamed. */
   rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem }>;
+  /** Moves a listed recording into a listed folder, or with `null` into the output folder (recordings-library.ts `move`). */
+  move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem }>;
+  /** The Recordings tab's folder actions (recordings-library.ts): the folder made or renamed, or why not. */
+  folders?: {
+    create: (name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
+    rename: (folder: string, name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
+    remove: (folder: string) => Promise<true | { problem: FolderProblem }>;
+  };
   /** The window is about to be shown: on macOS the app becomes a Dock app with its menus while it is open (app-menu.ts). */
   opened?: () => void;
   /** The window was shown or regained focus: what it lists from disk may have changed meanwhile. */
@@ -201,6 +209,8 @@ export class SettingsWindow {
       // Full screen answers when the viewer leaves it, with where the video is then.
       if (typeof group === "string" && group.startsWith("recordingFile:") && isFullScreenChoice(choice)) return this.playFullScreen(group, choice, window);
       if (typeof group === "string" && group.startsWith("recordingFile:") && isRenameChoice(choice)) return this.applyRename(group, choice, window);
+      if (typeof group === "string" && group.startsWith("recordingFile:") && isMoveChoice(choice)) return this.applyMove(group, choice, window);
+      if (group === "libraryFolder") return this.applyFolder(choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
       // The Recordings tab's layout and Undo: no recording lock, no shortcut capture, nothing to wait behind.
@@ -529,6 +539,51 @@ export class SettingsWindow {
     return this.deliver("id" in outcome
       ? { view, applied: true, renamed: outcome.id }
       : { view, applied: false, failure: fileNameProblemText(outcome.problem, view.language) }, recipient);
+  }
+
+  /**
+   * Moves a listed recording into a folder the tab offers, or back into the output folder (plan 071). The id must be
+   * listed now and the folder is checked by the library; the reply carries the new id, so the page keeps the card's focus.
+   */
+  private async applyMove(group: string, choice: MoveChoice, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const id = group.slice("recordingFile:".length);
+    const listed = this.options.context().library?.files.some(file => file.id === id) === true;
+    if (!listed || !this.options.move || recipient.isDestroyed() || this.quitStarted()) {
+      this.log(`settings window: refused ${JSON.stringify({ group, choice: "move" })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false, failure: fileNameProblemText("missing", view.language) }, recipient);
+    }
+    const outcome = await this.options.move(id, choice.folder);
+    const view = this.view();
+    if ("id" in outcome) return this.deliver({ view, applied: true, renamed: outcome.id }, recipient);
+    const failure = outcome.problem === "folderMissing" ? folderProblemText("missing", view.language)
+      : outcome.problem === "exists" ? translate("A recording with this name is already in that folder.", view.language)
+        : fileNameProblemText(outcome.problem, view.language);
+    return this.deliver({ view, applied: false, failure }, recipient);
+  }
+
+  /** The Recordings tab's folder actions (plan 071): names are checked and folders resolved by the library, never trusted. */
+  private async applyFolder(choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const folders = this.options.folders;
+    if (!isFolderChoice(choice) || !folders || recipient.isDestroyed() || this.quitStarted()) {
+      this.log(`settings window: refused ${JSON.stringify({ group: "libraryFolder", choice: isFolderChoice(choice) ? choice.action : choice })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false, failure: translate("Could not complete this action. Try again.", view.language) }, recipient);
+    }
+    const outcome = await this.runFolder(folders, choice);
+    const view = this.view();
+    if (outcome === true) return this.deliver({ view, applied: true }, recipient);
+    return this.deliver("folder" in outcome
+      ? { view, applied: true, folder: outcome.folder }
+      : { view, applied: false, failure: folderProblemText(outcome.problem, view.language) }, recipient);
+  }
+
+  private runFolder(folders: NonNullable<SettingsWindowOptions["folders"]>, choice: FolderChoice): Promise<true | { folder: string } | { problem: FolderProblem }> {
+    switch (choice.action) {
+      case "createFolder": return folders.create(choice.name);
+      case "renameFolder": return folders.rename(choice.folder, choice.name);
+      case "removeFolder": return folders.remove(choice.folder);
+    }
   }
 
   /** The Recordings tab's layout and Undo, resolved like any other offered choice. */
