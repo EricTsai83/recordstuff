@@ -2,10 +2,10 @@
  * Pure state-to-presentation projection for the native tray. See
  * docs/system-design/desktop.md.
  *
- * The tray holds only what is to be done now: the state with its primary action
- * (start, stop or cancel, and the fix when permission, the output folder or an unavailable
- * display blocks recording), unread failures, Open RecordStuff with Show last recording (the window
- * on Recordings, the newest take focused), and Quit. The recordings, reviewed failures, the output
+ * The tray holds only what is to be done now: the state's primary action (start, stop or cancel,
+ * and the fix when permission, the output folder or an unavailable display blocks recording),
+ * Open RecordStuff with Show last recording (the window on Recordings, the newest take focused),
+ * the status lines with unread failures, and Quit. The recordings, reviewed failures, the output
  * folder, the log and every preference live in the app's window ([settings-model.ts](../settings/settings-model.ts)); this model never builds a
  * submenu, so what it returns is exactly what the menu shows.
  */
@@ -58,8 +58,9 @@ function item(label: string, action: AppAction, toolTip?: string, accelerator?: 
 const SEPARATOR: TrayMenuItem = { kind: "separator" };
 
 /**
- * One group order for every state (plan 048): state and its primary action,
- * unread failures, the window, then the app. An empty group is omitted,
+ * One group order for every state (plan 048): the state's actions, the window, the status
+ * lines with unread failures, then the app. Actions lead so Start recording is the first item
+ * and the status never pushes it or the window down (2026-10-09). An empty group is omitted,
  * so no separator leads, trails or doubles and an item never changes places.
  */
 function grouped(...groups: TrayMenuItem[][]): TrayMenuItem[] {
@@ -127,12 +128,16 @@ function shortcutHint(ctx: AppContext, key: "Start / stop recording with {value}
   return accelerator ? t(key, ctx.language, { value: describeAccelerator(accelerator, ctx.platform) }) : undefined;
 }
 export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
+  return trayParts(state, ctx).model;
+}
+/** The model with the state's actions and first status line, which `recordMenu` takes on their own. */
+function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; actions: TrayMenuItem[]; line?: TrayMenuItem } {
   const language = ctx.language;
   const text = (key: PlainMessageKey): string => t(key, language);
   const results = ctx.recordingResults ?? [];
   const unread = results.filter(r => !r.acknowledged);
   const unreadText = t("Unreviewed recording failures: {value}", language, { value: String(unread.length) });
-  // Unread failures get their own group after the state; reviewed ones live in the window's Failures tab.
+  // Unread failures close the status group; reviewed ones live in the window's Failures tab.
   const unreadGroup: TrayMenuItem[] = unread.length ? [disabled(unreadText), item(text("View recording failures…"), "openRecordingResult")] : [];
   const windows = windowsGroup(ctx);
   const app = appGroup(ctx);
@@ -144,34 +149,39 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
     // Saves go on in the background whatever the state, a new recording's included (2026-10-09).
     ...(ctx.saving ?? []).map(({ file, slow }) => t(slow ? "Still saving {file}. The drive may not be responding." : "Saving {file}…", language, { file })),
   ];
-  /** After the state's own lines and before its actions, so Stop and Start keep their places. */
-  const withNotes = (group: TrayMenuItem[]): TrayMenuItem[] => {
-    const lines = group.findIndex(entry => entry.kind === "item" && entry.enabled);
-    const at = lines < 0 ? group.length : lines;
-    return [...group.slice(0, at), ...notes.map(disabled), ...group.slice(at)];
-  };
-  const model = (icon: TrayIcon, title: string, status: string, stateGroup: TrayMenuItem[]): TrayModel => {
-    const menu = grouped(withNotes(stateGroup), unreadGroup, windows, app);
+  // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
+  const settled = (entries: TrayMenuItem[]): TrayMenuItem[] => ctx.quitting
+    ? entries.map(entry => entry.kind === "item" && entry.action !== "quit" && entry.action !== "quitWithoutWaiting" ? { ...entry, enabled: false } : entry)
+    : entries;
+  /**
+   * `lines` are the state's own status lines, shown under the window with the notes after them (2026-10-09).
+   * `lead` puts them above the actions instead, which only the permission line needs: its steps mean nothing
+   * without it, and nothing can be recorded.
+   */
+  const model = (icon: TrayIcon, title: string, status: string, actions: TrayMenuItem[], lines: string[] = [], lead = false) => {
+    const leading = lead ? lines.map(disabled) : [];
+    const statusGroup = [...(lead ? [] : lines), ...notes].map(disabled);
     return {
-      icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
-      title,
-      // The state and what it holds back, nothing about clicking: what a click does is the user's choice (2026-10-04).
-      tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
-      // A quit in progress ignores every other action (the quit stops capture itself), so none looks available.
-      menu: ctx.quitting ? menu.map(entry => entry.kind === "item" && entry.action !== "quit" && entry.action !== "quitWithoutWaiting" ? { ...entry, enabled: false } : entry) : menu,
+      model: {
+        icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
+        title,
+        // The state and what it holds back, nothing about clicking: what a click does is the user's choice (2026-10-04).
+        tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
+        menu: settled(grouped([...leading, ...actions], windows, [...statusGroup, ...unreadGroup], app)),
+      },
+      actions: settled(actions),
+      ...(lines[0] === undefined ? {} : { line: disabled(lines[0]) }),
     };
   };
   // A settled recorder shows no work of its own, so a quit waiting on cleanup would look like nothing happened.
   if (ctx.quitting && preferencesUnlocked(state)) {
     const quitting = text(QUITTING_TEXT[ctx.quitStep ?? "media"]);
-    return model("busy", "", quitting, [disabled(quitting)]);
+    return model("busy", "", quitting, [], [quitting]);
   }
   switch (state.type) {
     case "needsPermission":
-      return model("idle", "", text("Screen recording permission required"), [
-        disabled(text("Screen recording permission required")),
-        ...permissionActions(state.needsRelaunch, language),
-      ]);
+      return model("idle", "", text("Screen recording permission required"), permissionActions(state.needsRelaunch, language),
+        [text("Screen recording permission required")], true);
     case "idle": {
       const resolution = displayResolution(ctx.displays, ctx.display);
       const status = state.outputDirUnavailable ? text("Output folder unavailable")
@@ -180,22 +190,21 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
       // A plain "Ready" says no more than Start recording below, so the line shows only when it says more:
       // the chosen display, or what stops the next recording (2026-10-05). The tooltip keeps the status.
       const plain = !state.outputDirUnavailable && resolution.ok && ctx.display.kind !== "display";
-      const stateGroup = plain ? [] : [disabled(status)];
-      if (ctx.displayFailure) stateGroup.push(disabled(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) })));
+      const lines = plain ? [] : [status];
+      if (ctx.displayFailure) lines.push(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) }));
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
-      stateGroup.push(item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut));
+      const actions = [item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut)];
       // The one folder item left: the fix, while the folder is what stops the next recording.
-      if (state.outputDirUnavailable) stateGroup.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
+      if (state.outputDirUnavailable) actions.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
       // Likewise the way back from a chosen display that is gone, as Settings offers it.
-      else if (!resolution.ok && primaryDisplayChoosable(ctx.displays)) stateGroup.push(item(text("Use Primary display"), { setDisplay: { kind: "primary" } }));
-      return model("idle", "", status, stateGroup);
+      else if (!resolution.ok && primaryDisplayChoosable(ctx.displays)) actions.push(item(text("Use Primary display"), { setDisplay: { kind: "primary" } }));
+      return model("idle", "", status, actions, lines);
     }
     case "starting":
       // The shortcut cancels too once the start has lasted a second (plan 065), so it is named as in the countdown.
       return model("busy", "", text("Starting… Check for system permission prompts"), [
-        disabled(text("Starting… Check for system permission prompts")),
         item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
-      ]);
+      ], [text("Starting… Check for system permission prompts")]);
     case "countdown": {
       const seconds = { seconds: state.remaining };
       // No status line: an open menu keeps its items, so its seconds would go stale, and the
@@ -210,7 +219,7 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
       ]);
     case "stopping":
-      return model("busy", "", text("Saving…"), [disabled(text("Saving…"))]);
+      return model("busy", "", text("Saving…"), [], [text("Saving…")]);
   }
 }
 
@@ -221,13 +230,10 @@ export function trayModel(state: RecordingState, ctx: AppContext): TrayModel {
  * rebuild a menu the user may have open. A state with no action, saving or a quit in progress, keeps its line.
  */
 export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem[] {
-  const menu = trayModel(state, ctx).menu;
-  const end = menu.findIndex(entry => entry.kind === "separator");
-  const stateGroup = menu.slice(0, end < 0 ? menu.length : end);
-  const actions = stateGroup.flatMap(entry => entry.kind === "item" && entry.action !== undefined
-    ? [entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry] : []);
-  const last = menu.find(entry => entry.kind === "item" && entry.action === "showLastRecording");
-  return [...(actions.length ? actions : stateGroup.slice(0, 1)), ...(last ? [SEPARATOR, last] : [])];
+  const { model, actions: stateActions, line } = trayParts(state, ctx);
+  const actions = stateActions.map(entry => entry.kind === "item" && entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry);
+  const last = model.menu.find(entry => entry.kind === "item" && entry.action === "showLastRecording");
+  return [...(actions.length ? actions : line ? [line] : []), ...(last ? [SEPARATOR, last] : [])];
 }
 
 /**
