@@ -76,6 +76,14 @@ let requestId = 0,
   reportedReady = false;
 let resultFocus = 0,
   lastNotice: string | undefined;
+/** The card a Recordings entry outlines; taken by its card once, so a remount or a later view does not outline it again. */
+let arriving: string | undefined;
+export const arrivingAt = (id: string): boolean => arriving === id;
+export function takeArrival(id: string): boolean {
+  if (arriving !== id) return false;
+  arriving = undefined;
+  return true;
+}
 const tabScroll = new Map<SettingsTab, number>();
 let serial = 0;
 const listeners = new Set<() => void>();
@@ -395,6 +403,10 @@ function reconcile(
     if (tab !== selectedTab && (shortcutGroup()?.capturing || arming))
       void capture(false);
     selectedTab = tab;
+    arriving = tab === "library" ? next.libraryFocus : undefined;
+    // A banner or menu click brought the card: its outline flashes and goes, with no focus line left in the same red
+    // (2026-10-09); a key the user presses there brings the line back.
+    if (arriving) document.documentElement.dataset.input = "pointer";
     closePlayer(false);
     dismissLibraryOverlays();
   }

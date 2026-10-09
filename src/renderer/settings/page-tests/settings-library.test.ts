@@ -42,7 +42,7 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(3));
   expect([...document.querySelectorAll(".library-day")].map(day => [day.querySelector("h2")!.textContent, day.querySelectorAll(".clip").length])).toEqual([["Today", 2], ["Yesterday", 1]]);
   expect(document.querySelector(".library-summary")!.textContent).toBe("3 recordings · 400 MB");
-  const first = document.getElementById("clip-a")!;
+  let first = document.getElementById("clip-a")!;
   expect([first.querySelector("img")!.getAttribute("src"), first.querySelector(".clip-meta")!.textContent, first.querySelector("button")!.getAttribute("aria-label")])
     .toEqual(["recordstuff-media://thumb/a?v=1", "2:02 PM · 180 MB", "Play Standup, Today, 2:02 PM, 1:23, 180 MB"]);
   expect(first.querySelector(".clip-title")!.textContent).toBe("Standup");
@@ -86,8 +86,22 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   // A saved recording's entry (its notification) lands on its card and outlines it, without playing.
   push({ ...base, revision: 2, resultFocus: 1, entryTab: "library", libraryFocus: "c" });
   expect(document.activeElement?.id).toBe("clip-c-open");
+  // A click brought it, so no keyboard focus line stays behind once the outline has faded.
+  expect(document.documentElement.dataset.input).toBe("pointer");
   await vi.waitFor(() => expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(true));
   expect(Boolean(document.querySelector(".player[data-open]"))).toBe(false);
+  // The outline is the entry's, once: after it has faded, a language switch remounts the cards (their day headings
+  // are the groups' keys) and later views still carry the entry, but nothing is outlined again.
+  document.getElementById("clip-c")!.dispatchEvent(new Event("animationend", { bubbles: true }));
+  await vi.waitFor(() => expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(false));
+  push({ ...base, revision: 2.1, resultFocus: 1, entryTab: "library", libraryFocus: "c", language: "zh-TW",
+    library: { ...base.library!, items: base.library!.items.map(entry => ({ ...entry, day: entry.day === "Today" ? "今天" : "昨天" })) } });
+  await Promise.resolve();
+  expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(false);
+  push({ ...base, revision: 2.2, resultFocus: 1, entryTab: "library", libraryFocus: "c" });
+  await Promise.resolve();
+  expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(false);
+  first = document.getElementById("clip-a")!;
   first.dispatchEvent(new Event("dragstart", { cancelable: true, bubbles: true }));
   expect(choose).toHaveBeenLastCalledWith("recordingFile:a", "drag");
   await vi.waitFor(() => expect(document.querySelector(".library-summary")!.textContent).toBe("3 recordings · 401 MB"));

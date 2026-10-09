@@ -1588,8 +1588,9 @@
     /* An opaque line stays visible over both light and dark thumbnail pixels. */
     border: 2px solid var(--ring);
   }
-  /* With keyboard focus on it the card keeps its focus line instead (review of 2026-10-07); its blur ends the highlight. */
-  .clip.arrived:not(:has(> .clip-open:focus-visible))::after {
+  /* The entry focuses the card itself, so the outline plays over its focus line; once it has faded (or the card is
+     blurred) the class goes and the focus line, if shown, is back (review of 2026-10-07). */
+  .clip.arrived::after {
     border-width: 2px;
     animation: arrived 2.4s ease-out forwards;
   }

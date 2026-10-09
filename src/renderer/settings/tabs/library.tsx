@@ -29,7 +29,7 @@ export const Clip = memo(function Clip({
   useSyncExternalStore(
     model.subscribe,
     () =>
-      `${model.menuId === item.id ? model.menuKind : ""}/${model.view?.libraryFocus === item.id ? model.view.resultFocus : ""}`,
+      `${model.menuId === item.id ? model.menuKind : ""}/${model.arrivingAt(item.id)}`,
   );
   const preview = useSyncExternalStore(subscribePreview, () => previewing() === item.id);
   const [failed, setFailed] = useState(false),
@@ -39,9 +39,8 @@ export const Clip = memo(function Clip({
     setFailed(false);
   }, [item.thumbnail]);
   useEffect(() => {
-    if (model.view?.libraryFocus === item.id && model.view.resultFocus)
-      setArrived(true);
-  }, [item.id, model.view?.resultFocus]);
+    if (model.takeArrival(item.id)) setArrived(true);
+  });
   return (
     <ContextMenu
       open={model.menuId === item.id && model.menuKind === "context"}
