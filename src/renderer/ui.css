@@ -234,14 +234,19 @@
   --media-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
   --player-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   /* The Screen row's arrangement: each screen a dark bezel around a slate wallpaper with white ink, as in both themes
-     a monitor looks the same; the primary one's menu bar is a white strip. */
+     a monitor looks the same. */
   --display-wallpaper: radial-gradient(120% 90% at 12% 0%, oklch(0.82 0.08 215 / 0.9), transparent 58%),
     radial-gradient(90% 80% at 100% 100%, oklch(0.58 0.14 305 / 0.85), transparent 62%),
     linear-gradient(160deg, oklch(0.64 0.11 240), oklch(0.42 0.12 268));
   --display-bezel: oklch(0.18 0.004 56);
+  /* The foot under a screen: a silver dish seen from the front and a little above, its far half behind the screen. Its
+     top lit, its near rim darker, the screen's shade along its back and a soft contact shadow under it, the same in
+     both themes. */
+  --display-stand: radial-gradient(70% 120% at 50% 20%, oklch(0.98 0 0), oklch(0.93 0.002 250) 50%, oklch(0.86 0.003 250) 82%, oklch(0.76 0.004 250));
+  --display-stand-edge: inset 0 3px 2px -1px rgb(0 0 0 / 0.22), inset 0 -1px 0 rgb(0 0 0 / 0.15),
+    inset 0 0 0 0.5px rgb(0 0 0 / 0.14), 0 1px 1px rgb(0 0 0 / 0.12), 0 2px 4px -1px rgb(0 0 0 / 0.16);
   --display-glare: inset 0 1px 0 rgb(255 255 255 / 0.18);
   --display-ink: #fff;
-  --display-menubar: rgb(255 255 255 / 0.82);
   --display-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.1);
   --display-text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   /* An opaque mask stop: a mask reads only its alpha. */
@@ -911,14 +916,15 @@
   }
   /* The labels of the screens along the desk's foot (or head) are written past it: room for two lines. */
   .arrangement-desk[data-room-below] {
-    margin-bottom: 38px;
+    margin-bottom: 51px;
   }
   .arrangement-desk[data-room-above] {
     margin-top: 38px;
   }
   .display-tile {
+    --tile-room: 8px;
     position: absolute;
-    padding: 3px;
+    padding: var(--tile-room);
     border: 0;
     border-radius: 9px;
     background: none;
@@ -931,38 +937,58 @@
   .arrangement:not([data-held]) .display-tile:disabled {
     opacity: 0.5;
   }
-  /* A screen: a thin dark bezel around a dusk wallpaper; the primary one carries the menu bar, as macOS draws it. Its
-     name and size are written outside it (below, above or, when boxed in, inside), so a small screen cuts neither. */
+  /* A screen: a thin dark bezel around a dusk wallpaper. Its name and size are written outside it (below, above or, when boxed in, inside), so a small screen cuts neither. */
   .display-screen {
     position: relative;
     display: block;
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border: 2.5px solid var(--display-bezel);
-    border-radius: 6px;
+    z-index: 1;
+    border: 3px solid var(--display-bezel);
+    border-radius: 3px;
     background: var(--display-wallpaper);
     box-shadow: var(--display-glare), var(--display-shadow);
     transition: box-shadow 120ms ease-out;
   }
-  .display-tile[data-primary] .display-screen::before {
+  /* A screen with nothing right below it stands on a silver dish under its bottom edge, as macOS draws it, its label
+     written under the dish. */
+  .display-tile[data-stand]::after {
     content: "";
     position: absolute;
-    inset: 0 0 auto;
-    height: max(3px, 7%);
-    background: var(--display-menubar);
+    top: calc(100% - var(--tile-room) - 2px);
+    left: 50%;
+    width: clamp(22px, 58%, 46px);
+    height: 7px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: var(--display-stand);
+    box-shadow: var(--display-stand-edge);
   }
-  .display-tile:not(:disabled):hover .display-screen {
-    box-shadow: var(--display-glare), 0 0 0 2px var(--background), 0 0 0 4px color-mix(in oklab, var(--primary) 35%, transparent);
+  /* The ring around a screen, 2px clear of it, and of its dish too, so the dish stands inside the ring. */
+  .display-tile::before {
+    content: "";
+    position: absolute;
+    inset: calc(var(--tile-room) - 4px);
+    border: 2px solid transparent;
+    border-radius: 6px;
+    pointer-events: none;
+    transition: border-color 120ms ease-out;
+  }
+  .display-tile[data-stand]::before {
+    bottom: calc(var(--tile-room) - 10px);
+  }
+  .display-tile:not(:disabled):hover::before {
+    border-color: color-mix(in oklab, var(--primary) 35%, transparent);
   }
   /* The screen recorded has the red ring, whether chosen by name or as the primary display followed. */
-  .display-tile:is([aria-checked="true"], [data-following]) .display-screen,
-  .display-tile:not(:disabled):hover:is([aria-checked="true"], [data-following]) .display-screen {
-    box-shadow: var(--display-glare), 0 0 0 2px var(--background), 0 0 0 4px var(--primary);
+  .display-tile:is([aria-checked="true"], [data-following])::before,
+  .display-tile:not(:disabled):hover:is([aria-checked="true"], [data-following])::before {
+    border-color: var(--primary);
   }
-  .display-tile:focus-visible .display-screen {
+  .display-tile:focus-visible::before {
     outline: 2px solid var(--ring);
-    outline-offset: 5px;
+    outline-offset: 1px;
   }
   .display-label {
     position: absolute;
@@ -978,10 +1004,10 @@
     pointer-events: none;
   }
   .display-label[data-place="below"] {
-    top: calc(100% + 4px);
+    top: calc(100% - var(--tile-room) + 15px);
   }
   .display-label[data-place="above"] {
-    bottom: calc(100% + 4px);
+    bottom: calc(100% - var(--tile-room) + 6px);
   }
   .display-label[data-place="inside"] {
     top: 50%;

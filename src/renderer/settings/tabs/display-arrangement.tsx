@@ -137,6 +137,7 @@ export function DisplayArrangement({
                 aria-checked={checked}
                 aria-label={choice.label}
                 data-primary={frame.primary || undefined}
+                data-stand={label.place === "below" || undefined}
                 data-following={(following && frame.primary) || undefined}
                 tabIndex={choice.id === focusable ? 0 : -1}
                 disabled={disabled || !choice.enabled}
