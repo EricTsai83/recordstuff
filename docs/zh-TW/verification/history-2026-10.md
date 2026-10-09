@@ -4,6 +4,23 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## 存檔時轉成一般 MP4 與預先載入的全螢幕頁面 — 2026-10-10
+
+維護者要求，排在 plan 071 之前：一支 36 分鐘的錄影開啟時黑屏約一秒，全螢幕也會卡頓。兩項變更（[存檔時轉成一般 MP4](../system-design/recording.md#存檔時轉成一般-mp4)、[桌面設計](../system-design/desktop.md#錄影檔)）；比較時閱讀了 OBS `7d98bebe` 與 Cap `8d808e09`。
+
+- **原因。** 擷取 host 寫的分段 MP4 沒有索引：Chromium 在第一格之前讀了 2.7 GB 檔案（2,106 個片段）的 1,722 個範圍、358 MB，約 1.1 秒；AVFoundation 完全無法開啟（`-11832`）。補上 `mfra` 沒有幫助。
+- **存檔時轉成一般 MP4。** `FragmentIndex` 跟著已寫入的位元組讀；finish 時 `FileWriter` 附加完整 `moov` 並 sync，再把 16 位元組的 `mdat` 標頭寫在舊 `moov` 上並 sync，與 OBS 的 hybrid MP4 相同，但 OBS 沒有這兩次 sync。同一支 36 分鐘錄影：建立索引 16 ms、索引 1.5 MB、第一格 41 ms、14 次請求，AVFoundation 也能開啟。若在兩步之間中斷，檔案仍以分段格式播放。
+- **全螢幕。** 以新的 `video fullscreen timing` log 行量測：第一格之前的 200 ms 中，有 140 ms 花在建立視窗與載入頁面；150 ms 的淡入本來就平順（最長一步 23 ms）。現在在 macOS 上，設定視窗開著時會有一個頁面隱藏載入待命：第一格 74–75 ms、顯示 82 ms、淡入完成 233–238 ms，之前分別是 168–192、175–199 與 331–357 ms。
+
+### 驗證
+
+- 維護者的四支錄影（10 秒到 36 分鐘）以隨機大小分段送進 `FragmentIndex`：每個封包的串流、解碼與顯示時間、大小與校驗碼都與原檔相同（ffmpeg `framemd5`），只有被修正的長度不同；ffprobe 長度相同；AVFoundation 都能開啟並在 80 % 處畫出影格。依維護者要求，那支 36 分鐘錄影已換成重新封裝的版本（原檔移到垃圾桶）。
+- `pnpm acceptance:regression`：146 個檔案、1,843 個測試、build、背景 128/128（P11 另外確認播放的就是待命的頁面）。
+- 第一輪桌面實測，使用新的 `pnpm start:app` bundle：`pnpm acceptance` 通過（60 fps 錄 10.3 秒、所有完整性檢查、倒數取消案例）；log 顯示 `finalize 14 ms to plain MP4`，檔案為 ftyp、mdat、moov；`pnpm acceptance:playback` 在 QuickTime 通過；`pnpm acceptance:player` 4/4，取得上述基準計時。
+- 第二輪桌面實測，使用重新建置的 bundle：`pnpm acceptance:player` 4/4，兩次進入都是 `warm page`；`pnpm measure:cpu`：A 0.052 %、30 fps 錄影 R 15.1 %（編碼器 2.1 %）、B 0.052 % 且錄影後程序角色正確，接著 C 的前置檢查失敗，因為它要求恰好一個 renderer；改成至少一個後，`pnpm measure:cpu -- --skip-recording --minutes 1` 通過：A 0.063 %、C 0.149 %，renderer ×2（上限 0.5 %）。
+
+未驗證：這項變更之前存的錄影仍是分段格式；存檔瞬間當機只在複本上模擬，沒有在 App 裡實際造成；Windows（不會預先載入頁面）；主觀聽感。
+
 ## 統一焦點線、shadcn 前的紅色與素面狀態卡 — 2026-10-07
 
 同日維護者的第三輪（[桌面設計](../system-design/desktop.md#設定視窗)）。證據：`measurements/2026-10-06T16-30-24Z-restore-look/iter6` 與回歸測試 `test-results/ui/` 中的焦點圖片。

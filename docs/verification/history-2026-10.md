@@ -4,6 +4,23 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plain MP4 at save and a warm full-screen page — 2026-10-10
+
+At the maintainer's request, ahead of plan 071: a 36-minute recording opened black for about a second and full screen hitched. Two changes ([plain MP4 at save](../system-design/recording.md#plain-mp4-at-save), [desktop design](../system-design/desktop.md#recordings)); OBS `7d98bebe` and Cap `8d808e09` were read for comparison.
+
+- **Cause.** The capture host's fragmented MP4 has no index: Chromium read 1,722 ranges and 358 MB of the 2.7 GB file (2,106 fragments) before its first frame, about 1.1 s, and AVFoundation could not open it (`-11832`). An `mfra` did not help.
+- **Plain MP4 at save.** `FragmentIndex` follows the written bytes; at finish `FileWriter` appends the whole `moov`, syncs, writes a 16-byte `mdat` header over the old `moov` and syncs again, as OBS's hybrid MP4 does without its syncs. The same 36 minutes: indexed in 16 ms, a 1.5 MB index, first frame in 41 ms over 14 requests, and AVFoundation opens it. Interrupted between the two steps the file still plays as fragmented.
+- **Full screen.** Measured with a new `video fullscreen timing` log line: 140 of the 200 ms before the first frame were creating the window and loading its page; the 150 ms fade was even (longest step 23 ms). On macOS a page now waits loaded and hidden while Settings is open: first frame 74–75 ms, shown 82 ms, faded in 233–238 ms, against 168–192, 175–199 and 331–357 ms.
+
+### Verification
+
+- Four of the maintainer's recordings (10 s to 36 min) streamed through `FragmentIndex` in random pieces: every packet's stream, decode and presentation time, size and checksum equal to the original (ffmpeg `framemd5`), only the corrected durations differing; equal ffprobe lengths; AVFoundation opened each and drew a frame at 80 %. The 36-minute recording was replaced by its remuxed copy at the maintainer's request (the original moved to the Trash).
+- `pnpm acceptance:regression`: 146 files and 1,843 tests, build, background 128/128 (P11 now also checks that the waiting page is the one that plays).
+- Desktop round 1 on a fresh `pnpm start:app` bundle: `pnpm acceptance` passed (10.3 s at 60 fps, every integrity check, the countdown cancel case); its log said `finalize 14 ms to plain MP4` and the file is ftyp, mdat, moov; `pnpm acceptance:playback` passed in QuickTime; `pnpm acceptance:player` 4/4 with the baseline timings above.
+- Desktop round 2 on a new bundle: `pnpm acceptance:player` 4/4 with `warm page` on both entries; `pnpm measure:cpu`: A 0.052 %, R 15.1 % at 30 fps (encoder 2.1 %), B 0.052 % with the after-recording roles, then C failed its precondition, which counted exactly one renderer; with that check reading at least one, `pnpm measure:cpu -- --skip-recording --minutes 1` passed: A 0.063 %, C 0.149 % with renderer ×2 (≤0.5 %).
+
+Not verified: recordings saved before this change stay fragmented; a crash at the moment of finishing was simulated on a copy, not caused in the app; Windows, where no page waits; subjective audio.
+
 ## One focus line, the pre-shadcn red and a plain status card — 2026-10-07
 
 The maintainer's third round that day ([desktop design](../system-design/desktop.md#settings-window)). Evidence: `measurements/2026-10-06T16-30-24Z-restore-look/iter6` and the regression's `test-results/ui/` focus pictures.
