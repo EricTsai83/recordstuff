@@ -145,11 +145,11 @@ Renderer 把 Blob 轉 ArrayBuffer 的 Promise 串成 chain，避免非同步轉�
 
 FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 append 只補寫剩餘緩衝區直到完整，並立即累計每次確認寫入的位元組；各段之間不會插入後續 chunk 或 sync。空 chunk 不呼叫 write。零、負數、非整數、非有限值或超出剩餘長度的進度以 output_write_failed 失敗；拋出的錯誤不重試。每 5 秒嘗試 fsync；首次 I/O 錯誤被記住，之後佇列作業回同一錯誤。ENOSPC 映射為 disk_full，其他寫入錯誤為 output_write_failed。
 
-成功 finish 等待佇列、sync、close，再以硬連結把暫存檔發布成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。連結不會取代既有名稱（EEXIST 就換下一個尾碼，最多到 `-100`；之後存檔以 output_write_failed 失敗並保留 `.recording.mp4`），耗時固定且不需要剩餘空間，因此 15 秒與一小時的錄影儲存所需時間相同，低空間提前停止也仍能儲存。儲存的檔案就是錄影寫入的那個檔案，所以建立時間是錄影開始的時間。若磁碟區因其他原因拒絕連結，例如 exFAT（ENOTSUP）或部分網路磁碟區，這個與之後每個尾碼都改用原本的排他複製（`COPYFILE_EXCL`），複本 sync 後才移除暫存名稱；複製耗時與檔案大小成正比，且需要與檔案同樣大小的剩餘空間。發布失敗時，ENOSPC 與其他寫入一樣回報 disk_full，其餘回報 output_write_failed。程式仍要求 `COPYFILE_FICLONE`，但在 macOS 上從不會 clone：libuv 在 macOS 沒有實作 clone（Electron 44 中 `COPYFILE_FICLONE_FORCE` 回傳 ENOSYS），所以 plan 037 之前每次儲存，包括 APFS，都是完整複製。發布後盡力刪除暫存名稱，之後 Recorder 才以實際存檔路徑發 saved。清理失敗會留下暫存名稱，它是已儲存檔案的第二個連結（改用複製時則是完整副本），但不影響已成功儲存的影片。log 的 `finalize timing` 行記錄最後的 host 交付、佇列寫入、flush、close、發布（`by link` 或 `by copy (link <code>)`）與清理各花多少時間。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
+成功 finish 等待佇列、sync，把檔案轉成一般 MP4（見[下文](#存檔時轉成一般-mp4)），再 close，以硬連結把暫存檔發布成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。連結不會取代既有名稱（EEXIST 就換下一個尾碼，最多到 `-100`；之後存檔以 output_write_failed 失敗並保留 `.recording.mp4`），耗時固定且不需要剩餘空間，因此 15 秒與一小時的錄影儲存所需時間相同，低空間提前停止也仍能儲存。儲存的檔案就是錄影寫入的那個檔案，所以建立時間是錄影開始的時間。若磁碟區因其他原因拒絕連結，例如 exFAT（ENOTSUP）或部分網路磁碟區，這個與之後每個尾碼都改用原本的排他複製（`COPYFILE_EXCL`），複本 sync 後才移除暫存名稱；複製耗時與檔案大小成正比，且需要與檔案同樣大小的剩餘空間。發布失敗時，ENOSPC 與其他寫入一樣回報 disk_full，其餘回報 output_write_failed。程式仍要求 `COPYFILE_FICLONE`，但在 macOS 上從不會 clone：libuv 在 macOS 沒有實作 clone（Electron 44 中 `COPYFILE_FICLONE_FORCE` 回傳 ENOSYS），所以 plan 037 之前每次儲存，包括 APFS，都是完整複製。發布後盡力刪除暫存名稱，之後 Recorder 才以實際存檔路徑發 saved。清理失敗會留下暫存名稱，它是已儲存檔案的第二個連結（改用複製時則是完整副本），但不影響已成功儲存的影片。log 的 `finalize timing` 行記錄最後的 host 交付、佇列寫入、flush、轉成一般 MP4 的步驟（`to plain MP4`，或 `kept fragmented (<原因>)`）、close、發布（`by link` 或 `by copy (link <code>)`）與清理各花多少時間。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
 
 成功必須有非空媒體。唯一的發布步驟 FileWriter.finish 就是關卡：排空佇列後檢查實際確認寫入的位元組數，不採用要求寫入的 chunk 長度。已保留的 append 或背景 sync 錯誤優先以原代碼回報（例如 disk_full），即使一個位元組都沒寫入。否則零位元組（不論是在任何 chunk 之前停止，或只收到空 chunk）會讓 finish 釋放 handle 與 sync timer、刪除空暫存檔，並以 `capture_start_failed` 與 detail `capture ended without media; no bytes were written` 拒絕，與首片期限使用同一代碼。Recorder 把這個拒絕導入單一失敗流程，因此不發 saved，也不產生 `.mp4`；結果為 empty，可立即重試。Abandon 具冪等性，失敗流程稍後的清理不會刪掉在同一秒內重用該檔名的重試錄影。Recorder 不自行預先檢查位元組數：佇列排空前看不到排隊中或執行中的 sync 失敗，會把磁碟錯誤誤報為沒有媒體。沒有最短錄影秒數；非常短但非空的錄影照常儲存。
 
-非空只是必要的最低門檻，不代表檔案可播放。Cap 的 AVFoundation writer [在沒有最後影格時拒絕 finish](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990)（該 revision 的靜態檢視），但 RecordStuff 收到的是編碼後 chunk 而非影格時間戳，不解析 MP4，也不確認含可解碼影格。可播放性只由驗收時的媒體檢查（如 ffprobe 與完整解碼）確立，執行期不檢查。
+非空只是必要的最低門檻，不代表檔案可播放。Cap 的 AVFoundation writer [在沒有最後影格時拒絕 finish](https://github.com/CapSoftware/Cap/blob/ce785e705e79652adba4b8bf752669c4093499e0/crates/enc-avfoundation/src/mp4.rs#L961-L990)（該 revision 的靜態檢視），但 RecordStuff 收到的是編碼後 chunk 而非影格時間戳；它只讀 MP4 的 box 來建立索引（見[下文](#存檔時轉成一般-mp4)），從不讀影格，因此不確認含可解碼影格。可播放性只由驗收時的媒體檢查（如 ffprobe 與完整解碼）確立，執行期不檢查。
 
 排他建立同時保護暫存檔與正式檔名，包括錄影途中才出現的同名正式檔；短寫取得進展後失敗時，保留確認寫入量與非空部分檔；後續 append 與 finish 拒絕且不產生完成檔，abandon 關閉 handle 並停止 sync。背景 sync 的 rejection 會被接住，首次失敗仍被保留。完整寫入與 fsync 耐久性是不同保證，不承諾所有 crash、斷電或檔案系統故障都可復原。更完整的耐久性需求應先建測試，再改實作。
 
@@ -162,6 +162,21 @@ FileWriter 限制已接受但尚未確認寫入的位元組數（`backlogBytes`�
 Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待最多 120 秒，期間每 5 秒 sync。若該次嘗試隨後以泛用的 `capture_start_failed` 結束（首片期限、擷取請求逾時、host start 被拒，或 host 回報 capture_start_failed），失敗流程會先排空 writer 最多 2 秒；若 writer 已保留寫入或 sync 錯誤，就以該代碼（disk_full 或 output_write_failed）回報，沿用既有的資料夾／磁碟指引，detail 同時列出兩個原因。代碼在發布 pending 結果前決定，因此通知與紀錄一致。權限或缺少音訊等具體 host 原因維持原代碼；乾淨的 writer 維持 `capture_start_failed`。排空未能在上限內完成時也維持 `capture_start_failed`。
 
 中斷證據是每個 session 一個 sentinel 檔，位於 `userData/recording-sessions/`，檔名為 session id，內容為 session id、開始時間與暫存檔路徑。它在建立暫存檔之前以原子寫入完成，因此當機不會留下沒有任何 sentinel 記錄的暫存檔；寫入失敗只記錄一次，不阻擋錄影。為撞名改用後綴時若改寫 sentinel 失敗，會移除前一次嘗試的 sentinel，因為它指向的撞名檔屬於另一個 session。每個終止結果在發布結果後移除該 session 自己的 sentinel，正常退出會等待移除完成。啟動時、在紀錄還原前，先前程序留下的每個 sentinel 都會成為一筆 `app_terminated` 失敗紀錄（「RecordStuff 在錄影期間未正常結束」），其路徑是查找線索，以還原部分檔的相同方式重新檢查：只有該處存在非空檔案時才是 partial，否則為 unknown。紀錄時間為該 session 的開始時間。只有該紀錄已寫入磁碟（包含之後歷史自動重試成功）後，才移除 sentinel，讓失敗紀錄先接手證據，已確認並移除的紀錄也不會再出現；紀錄 ID 由 session 推導，因此紀錄始終未能保存時，下次啟動會重試而不重複新增。單一執行個體鎖與本程序自己的 session 清單確保被回報的 sentinel 都屬於已結束的程序。中斷的 sentinel 寫入或無效內容沒有指向任何媒體，會直接捨棄；啟動時暫時無法讀取的 sentinel，以及較新版本寫下的 sentinel，則保留到之後的啟動。不掃描輸出資料夾中的其他檔案，也不復原、重新封裝或修復任何內容。
+
+### 存檔時轉成一般 MP4
+
+擷取 host 的 MediaRecorder 寫的是分段 MP4：開頭一個樣本表為空、長度為 0 的 `moov`，之後約每秒一組 `moof` 與 `mdat`，沒有 `sidx` 或 `mfra` 索引。這種檔案在寫入過程中耐得住當機，但播放器必須讀過每個片段的標頭，才知道長度與某個時間點在哪裡。2026-10-10 實測一支 36 分鐘、2.7 GB（2,106 個片段）的錄影：Chromium 顯示第一個畫面前，經由 `recordstuff-media:` 花了約 1.1 秒、1,722 次範圍請求、讀取 358 MB，而且每次開啟都重來一次，包括進度條的畫格預覽與全螢幕視窗；同樣的媒體改成一般 MP4 只要 27–41 ms、14–17 次請求、14–19 MB。在檔尾補上 `mfra` 沒有幫助，Chromium 仍會讀過每個片段。AVFoundation（QuickTime、快速查看）完全無法開啟那個分段檔（`-11832`），一般 MP4 則可以。
+
+所以 `FileWriter.finish` 在發布前就地把檔案轉成一般 MP4，做法與 OBS 的 hybrid MP4 相同（[`mp4_mux_finalise`](https://github.com/obsproject/obs-studio/blob/7d98bebe1115b12608837b622164ea5fe6d9483a/plugins/obs-outputs/mp4-mux.c#L2967-L3028)，該 revision 的靜態檢視）。錄影期間，[`FragmentIndex`](../../../src/main/recording/mp4-finalize.ts) 在每次 append 的位元組確認寫入後跟著讀：保留 `moov` 與每個 `moof`、跳過媒體，記下每個樣本的大小、長度、同步旗標與組成時間偏移，並把每個 `trun` 當成一個 chunk。每個片段的 `tfdt` 會修正 host 為前一個樣本猜測的長度（影像最多差幾格，聲音約 1 毫秒），與分段播放器的讀法一致，因此每個樣本的解碼與顯示時間都不變。finish 在最後一次 sync 之後：
+
+1. 在檔尾附加完整的 `moov`：沿用原本的 track box 與樣本描述，重建 `stts`、`stsc`、`stsz`、`stco`（超過 4 GiB 用 `co64`），需要時加上 `stss` 與 `ctts`，在 `mvhd`、`tkhd`、`mdhd` 寫入實際長度，並拿掉 `mvex`。接著 sync。
+2. 把舊 `moov` 的前 16 個位元組改寫成 64 位元的 `mdat` 標頭，涵蓋從該處到新 `moov` 之前的全部內容，讓舊標頭與所有片段都變成不透明的媒體資料。接著再 sync 一次。
+
+過程中不複製也不搬移資料，除了索引本身不需要額外空間，所以存檔時間仍然固定：36 分鐘的錄影建立索引花 16 ms，索引大小 1.5 MB。若在兩步之間中斷，檔案是「分段檔加上檔尾索引」，Chromium 與 ffprobe 仍以分段格式播放；若附加索引失敗，會截掉附加的部分，照原樣發布。OBS 沒有任何寫入屏障，這裡每一步都先 sync 才進行下一步，存檔通知也在兩步之後才發出。暫存的 `.recording.mp4` 自始至終是同一個檔案，所以任何時間點中斷留下的證據都與以前相同。
+
+索引遇到不理解的內容時，就照以前的方式發布分段檔，並在 `finalize timing` 行寫出原因：無法跟上的 box、不是從 0 開始或倒退到上一個樣本之前的 track（兩者都需要 edit list，而這裡不寫 edit list）、已有的 edit list、落在所有 `mdat` 之外的樣本，或不支援指定位置寫入的 handle。錄影期間樣本表在 main 每個樣本約佔 8 位元組，60 fps 一小時約 3 MB。部分檔案與這項變更之前存的錄影仍是分段格式，不會被改寫。
+
+Cap 走另一條路：它把 DASH 片段錄進一個資料夾，停止後在背景複製成新的 MP4（[remux.rs](https://github.com/CapSoftware/Cap/blob/8d808e09e0541efdf5e8318f57bbf3b2ed88bc76/crates/enc-ffmpeg/src/remux.rs)，該 revision 的靜態檢視），期間由編輯器直接播放片段；RecordStuff 存的是使用者可以立刻打開的單一檔案，所以採用 OBS 的就地收尾。2026-10-10 的驗證把四支真實錄影（10 秒到 36 分鐘）以隨機大小分段送進 `FragmentIndex`：每個封包的串流、解碼與顯示時間、大小與校驗碼都與原檔相同（ffmpeg `framemd5`），只有被修正的長度不同，ffprobe 的總長度相同，AVFoundation 也能開啟每個一般 MP4，並在 80 % 處畫出影格。`mp4-finalize.test.ts` 對 ffmpeg 產生的檔案（有與沒有 B 影格）保留同樣的封包比對。
 
 ## 錯誤分類
 

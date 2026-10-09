@@ -137,7 +137,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Media storage
 
-[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts). NodeFs adapts open, link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
+[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts). NodeFs adapts open (a handle that also writes at a position and truncates), link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
 
 | Function/method | Contract |
 | --- | --- |
@@ -152,11 +152,21 @@ The page's window-message callback checks source/marker/port before creating the
 | backlogBytes | Bytes accepted by append and not yet confirmed written or released after a failure |
 | append | Reject if closed or already refused; refuse at once, without queueing, an append that would exceed the backlog bound (keeping an earlier disk error); otherwise queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
 | drain | Wait for queued work, then return the retained failure or refusal, if any |
-| finish | Queued sync; reject after a refusal; release, exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
-| finishTimings | After a successful finish: flush, close, publish and cleanup milliseconds, `link` or `copy`, and the link's error code when it copied; diagnostics only |
+| finish | Queued sync; reject after a refusal; makePlain; release, exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
+| finishTimings | After a successful finish: flush, finalize, close, publish and cleanup milliseconds, why the file stayed fragmented if it did, `link` or `copy`, and the link's error code when it copied; diagnostics only |
+| makePlain | With the index's plan and positional writes: append the whole `moov` and sync, then write the 16-byte `mdat` header over the old `moov` and sync; truncate a partly appended index; never throw → why the file stayed fragmented, or undefined ([plain MP4 at save](recording.md#plain-mp4-at-save)) |
 | abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
 | release | Once-only closed flag and handle close; `beginTerminal` already stopped the fsync timer |
 | enqueue | Serialize operations; retain first failure and reject later operations consistently |
+
+[main/recording/mp4-finalize.ts](../../src/main/recording/mp4-finalize.ts) indexes the fragmented MP4 as it is written ([plain MP4 at save](recording.md#plain-mp4-at-save)).
+
+| Function/method | Contract |
+| --- | --- |
+| FragmentIndex.push | Follow the next written bytes in pieces of any size: keep ftyp, moov and each moof whole (up to 16 MiB), skip every other box's body, record each mdat's payload range; read the moov's tracks and trex defaults and each traf's samples, one chunk per trun, `tfdt` correcting the previous sample's duration; never throw, keep the first reason it gave up |
+| FragmentIndex.unusable | The reason it gave up, if any |
+| FragmentIndex.finalize | For a file of `end` bytes, all pushed and ending on a box boundary, with every chunk inside one mdat: the new `moov` (rebuilt sample tables, real durations, no mvex) and where the `mdat` header goes; otherwise `{ reason }` |
+| mdatHeader | The 16-byte, 64-bit `mdat` header for a given size |
 
 ## Recordings library
 

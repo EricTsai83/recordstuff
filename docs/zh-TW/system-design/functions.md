@@ -138,7 +138,7 @@
 
 ## 影片儲存 — main/recording/file-writer.ts
 
-[原始碼](../../../src/main/recording/file-writer.ts)。nodeFs 將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
+[原始碼](../../../src/main/recording/file-writer.ts)。nodeFs 將 open（取得的 handle 也能指定位置寫入與截斷）／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -153,11 +153,21 @@
 | `backlogBytes` getter | append 已接受、但尚未確認寫入或因失敗釋放的位元組數 |
 | `append(bytes)` | closed 或已拒絕時 reject；會超過積壓上限的 append 立即拒絕且不排入佇列（沿用先前的磁碟錯誤）；否則在佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
 | `drain()` | 等待佇列作業後回傳已保留的失敗或拒絕（若有） |
-| `finish()` | enqueue sync；曾拒絕 append 時 reject；release、排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
-| `finishTimings` | 成功 finish 後的 flush、close、發布與清理毫秒數，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
+| `finish()` | enqueue sync；曾拒絕 append 時 reject；`makePlain`；release、排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
+| `finishTimings` | 成功 finish 後的 flush、轉檔、close、發布與清理毫秒數，若維持分段格式則附原因，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
+| `makePlain()` | 有索引的計畫且 handle 能指定位置寫入時：附加完整 `moov` 並 sync，再把 16 位元組的 `mdat` 標頭寫在舊 `moov` 上並 sync；附加到一半的索引會被截掉；不拋出 → 維持分段格式的原因，或 undefined（[存檔時轉成一般 MP4](recording.md#存檔時轉成一般-mp4)） |
 | `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
 | `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
 | `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
+
+[main/recording/mp4-finalize.ts](../../../src/main/recording/mp4-finalize.ts) 在寫入過程中為分段 MP4 建立索引（[存檔時轉成一般 MP4](recording.md#存檔時轉成一般-mp4)）。
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `FragmentIndex.push(bytes)` | 接著讀下一段已寫入的位元組，大小不拘：完整保留 ftyp、moov 與每個 moof（上限 16 MiB），其他 box 只跳過內容並記下每個 mdat 的資料範圍；讀取 moov 的 track 與 trex 預設值，以及每個 traf 的樣本，每個 trun 一個 chunk，以 `tfdt` 修正前一個樣本的長度；不拋出，保留第一個放棄的原因 |
+| `FragmentIndex.unusable` getter | 放棄的原因（若有） |
+| `FragmentIndex.finalize(end)` | 對 `end` 位元組、全部讀過且結束在 box 邊界、每個 chunk 都在某個 mdat 內的檔案：回傳新的 `moov`（重建樣本表、實際長度、沒有 mvex）與 `mdat` 標頭要寫的位置；否則回傳 `{ reason }` |
+| `mdatHeader(size)` | 指定大小的 16 位元組、64 位元 `mdat` 標頭 |
 
 ## 錄影檔資料庫 — main/library/recordings-library.ts
 

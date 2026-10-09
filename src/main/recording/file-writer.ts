@@ -7,6 +7,7 @@
  * Zero written bytes is never published: nonempty is necessary, not proof of a playable file.
  * Bytes accepted but not yet written are bounded; exceeding the bound fails the
  * recording instead of buffering slow or offline storage in memory.
+ * Before publishing, the fragmented file becomes a plain MP4 in place (mp4-finalize.ts) when it can.
  */
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
@@ -14,9 +15,13 @@ import path from "node:path";
 import type { ErrorCode } from "../../shared/state";
 import { RECORDING_HEALTH } from "./recording-health";
 import { errnoCode, messageOf } from "../lib/errors";
+import { FragmentIndex, mdatHeader } from "./mp4-finalize";
 
 export interface WritableHandle {
   write(data: Uint8Array): Promise<{ bytesWritten: number }>;
+  /** Writes at `position` without moving the append position; without it the file is published fragmented. */
+  writeAt?(data: Uint8Array, position: number): Promise<{ bytesWritten: number }>;
+  truncate?(length: number): Promise<void>;
   sync(): Promise<void>;
   close(): Promise<void>;
 }
@@ -33,7 +38,16 @@ export interface FileWriterFs {
 }
 
 export const nodeFs: FileWriterFs = {
-  open: (filePath, flags) => fs.open(filePath, flags),
+  open: async (filePath, flags) => {
+    const handle = await fs.open(filePath, flags);
+    return {
+      write: (data) => handle.write(data),
+      writeAt: (data, position) => handle.write(data, 0, data.byteLength, position),
+      truncate: (length) => handle.truncate(length),
+      sync: () => handle.sync(),
+      close: () => handle.close(),
+    };
+  },
   link: (from, to) => fs.link(from, to),
   // On macOS libuv never clones (FICLONE_FORCE is ENOSYS), so this is a full
   // copy and needs the file's size in free space. EXCL protects existing destinations.
@@ -59,6 +73,10 @@ export const nodeFs: FileWriterFs = {
 export interface FinishTimings {
   /** Queued writes and the final fsync. */
   flushMs: number;
+  /** Appending the plain MP4's index and rewriting the old header, both synced; or deciding not to. */
+  finalizeMs: number;
+  /** Why the file was published fragmented, as it was written; absent when it became a plain MP4. */
+  fragmented?: string;
   closeMs: number;
   /** Creating the `.mp4`: a hard link, or a full copy and its fsync. */
   publishMs: number;
@@ -144,6 +162,8 @@ export class FileWriter {
   preservationUncertain = false;
   /** Set once `finish` published the file. */
   finishTimings: FinishTimings | undefined;
+  /** Follows what has been written, so `finish` can make the file a plain MP4; gone once it has been used. */
+  private index: FragmentIndex | undefined = new FragmentIndex();
 
   private constructor(
     readonly recordingPath: string,
@@ -219,6 +239,8 @@ export class FileWriter {
         this._backlogBytes -= bytesWritten;
         pending -= bytesWritten;
       }
+      // Only bytes on disk: the index must describe the file, not what was meant to be in it.
+      this.index?.push(bytes);
     });
     // A failed or skipped append no longer holds its unwritten bytes.
     const release = (): void => { this._backlogBytes -= pending; pending = 0; };
@@ -271,6 +293,8 @@ export class FileWriter {
       await this.abandonOnce();
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
+    const fragmented = await this.makePlain();
+    const finalized = performance.now();
     try {
       await this.release();
     } catch (cause) {
@@ -310,11 +334,52 @@ export class FileWriter {
         // to it, or a full copy) must not turn a successful save into a failure.
         cleanupError = errnoCode(cause) ?? messageOf(cause);
       }
-      this.finishTimings = { flushMs: flushed - began, closeMs: closed - flushed, publishMs: published - closed,
+      this.finishTimings = { flushMs: flushed - began, finalizeMs: finalized - flushed, ...(fragmented === undefined ? {} : { fragmented }),
+        closeMs: closed - finalized, publishMs: published - closed,
         cleanupMs: performance.now() - published, ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }),
         ...(cleanupError === undefined ? {} : { cleanupError }) };
       return target;
     }
+  }
+
+  /**
+   * Makes the complete, synced file a plain MP4 (mp4-finalize.ts): appends the whole movie's index and syncs it, then
+   * turns the old fragmented header into the start of one mdat and syncs again. Interrupted between the two, the file
+   * is still the fragmented one with an index after it, which players read as before. Never throws: a file it
+   * cannot or did not finish making plain is published as written. Returns why it stayed fragmented, if it did.
+   */
+  private async makePlain(): Promise<string | undefined> {
+    const index = this.index;
+    // The sample lists are no longer needed, whatever happens next.
+    this.index = undefined;
+    const handle = this.handle;
+    if (!index || !handle.writeAt) return "no positional writes";
+    const end = this._bytesWritten;
+    const plan = index.finalize(end);
+    if ("reason" in plan) return plan.reason;
+    const writeAt = async (data: Uint8Array, position: number): Promise<void> => {
+      for (let offset = 0; offset < data.byteLength;) {
+        const { bytesWritten } = await handle.writeAt!(data.subarray(offset), position + offset);
+        if (!Number.isInteger(bytesWritten) || bytesWritten <= 0) throw new Error(`Invalid write progress: ${bytesWritten}`);
+        offset += bytesWritten;
+      }
+    };
+    try {
+      await writeAt(plan.moov, end);
+      await handle.sync();
+    } catch (cause) {
+      // Without its whole index the file must stay exactly the fragmented one; what was appended goes.
+      await handle.truncate?.(end).then(() => handle.sync()).catch(() => undefined);
+      return `index not written: ${errnoCode(cause) ?? messageOf(cause)}`;
+    }
+    try {
+      await writeAt(mdatHeader(end - plan.mdatAt), plan.mdatAt);
+      await handle.sync();
+    } catch (cause) {
+      // Either header plays: the fragmented one before it, the plain one after.
+      return `header not confirmed: ${errnoCode(cause) ?? messageOf(cause)}`;
+    }
+    return undefined;
   }
 
   /**

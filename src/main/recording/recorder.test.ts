@@ -205,24 +205,25 @@ describe("Recorder happy path", () => {
     const log = vi.fn();
     const ctx = setup({ log, deps: { monotonic: () => clock } });
     await startRecording(ctx);
-    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 4.4, closeMs: 0.2, publishMs: 0.6, cleanupMs: 1, method: "link" } });
+    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 4.4, finalizeMs: 2.6, closeMs: 0.2, publishMs: 0.6, cleanupMs: 1, method: "link" } });
     clock = 1000;
     ctx.recorder.stop();
     clock = 1012;
     ctx.host.emit({ type: "stopped", sessionId: "s1", tracksStoppedAt: Date.now() });
     await flush();
-    expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, close 0 ms, publish 1 ms by link, cleanup 1 ms, checkpoint ? ms; 4 bytes");
+    expect(log).toHaveBeenCalledWith("recorder: session s1 finalize timing: host 12 ms, writes 0 ms, flush 4 ms, finalize 3 ms to plain MP4, close 0 ms, publish 1 ms by link, cleanup 1 ms, checkpoint ? ms; 4 bytes");
   });
 
-  it("says when the temporary name was kept beside the saved file", async () => {
+  it("says when the file stayed fragmented and when the temporary name was kept beside the saved file", async () => {
     const log = vi.fn();
     const ctx = setup({ log });
     await startRecording(ctx);
-    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 1, closeMs: 0, publishMs: 9, cleanupMs: 0, method: "copy", linkError: "ENOTSUP", cleanupError: "EPERM" } });
+    Object.assign(ctx.writers[0]!, { bytesWritten: 4, finishTimings: { flushMs: 1, finalizeMs: 0, fragmented: "track 2 has an edit list", closeMs: 0, publishMs: 9, cleanupMs: 0, method: "copy", linkError: "ENOTSUP", cleanupError: "EPERM" } });
     ctx.recorder.stop();
     ctx.host.emit({ type: "stopped", sessionId: "s1" });
     await flush();
     const line = log.mock.calls.map(([message]) => String(message)).find(message => message.includes("finalize timing"));
+    expect(line).toContain("finalize 0 ms kept fragmented (track 2 has an edit list), close 0 ms");
     expect(line).toContain("by copy (link ENOTSUP), cleanup 0 ms (temporary name kept: EPERM), checkpoint ? ms; 4 bytes");
   });
 

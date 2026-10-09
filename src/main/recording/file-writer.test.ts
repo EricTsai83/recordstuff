@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileWriteError, FileWriter, MAX_PUBLISH_ATTEMPTS, NO_MEDIA_DETAIL, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
+import { ftyp, sampleRecording } from "./mp4-fixture";
 
 let dir: string;
 const activeWriters: FileWriter[] = [];
@@ -35,6 +36,51 @@ describe("FileWriter", () => {
     expect(saved.nlink).toBe(1);
     expect(writer.finishTimings).toMatchObject({ method: "link" });
     expect(writer.finishTimings).not.toHaveProperty("linkError");
+  });
+
+  it("publishes the capture host's fragmented MP4 as a plain one, its media untouched", async () => {
+    const final = path.join(dir, "p.mp4");
+    const file = sampleRecording();
+    const writer = await FileWriter.open(path.join(dir, "p.recording.mp4"), final);
+    // In uneven pieces, as the capture host hands them over.
+    for (let at = 0; at < file.length; at += 37) await writer.append(file.subarray(at, at + 37));
+    await writer.finish();
+    const saved = await fs.readFile(final);
+    const moovAt = ftyp.length;
+    expect(saved.subarray(0, moovAt)).toEqual(ftyp);
+    // The old header and every fragment are one mdat, and the whole index follows it.
+    expect(saved.toString("latin1", moovAt + 4, moovAt + 8)).toBe("mdat");
+    expect(Number(saved.readBigUInt64BE(moovAt + 8))).toBe(file.length - moovAt);
+    expect(saved.toString("latin1", file.length + 4, file.length + 8)).toBe("moov");
+    expect(saved.readUInt32BE(file.length)).toBe(saved.length - file.length);
+    expect(saved.subarray(moovAt + 16, file.length)).toEqual(file.subarray(moovAt + 16));
+    expect(writer.finishTimings).toMatchObject({ method: "link", finalizeMs: expect.any(Number) });
+    expect(writer.finishTimings).not.toHaveProperty("fragmented");
+  });
+
+  it("publishes the file exactly as written when its index cannot be appended whole, or cannot be written at all", async () => {
+    const file = sampleRecording();
+    let writes = 0;
+    // A volume that takes the start of the index, then fills up.
+    const full: FileWriterFs = { ...nodeFs, open: async (filePath, flags) => {
+      const handle = await nodeFs.open(filePath, flags);
+      return { ...handle, writeAt: async (data, position) => {
+        if (writes++ > 0) throw Object.assign(new Error("no space"), { code: "ENOSPC" });
+        return handle.writeAt!(data.subarray(0, 10), position);
+      } };
+    } };
+    const cut = await FileWriter.open(path.join(dir, "f.recording.mp4"), path.join(dir, "f.mp4"), { io: full });
+    await cut.append(file);
+    expect(await fs.readFile(await cut.finish())).toEqual(file);
+    expect(cut.finishTimings?.fragmented).toBe("index not written: ENOSPC");
+    const appendOnly: FileWriterFs = { ...nodeFs, open: async (filePath, flags) => {
+      const { write, sync, close } = await nodeFs.open(filePath, flags);
+      return { write, sync, close };
+    } };
+    const plainless = await FileWriter.open(path.join(dir, "n.recording.mp4"), path.join(dir, "n.mp4"), { io: appendOnly });
+    await plainless.append(file);
+    expect(await fs.readFile(await plainless.finish())).toEqual(file);
+    expect(plainless.finishTimings?.fragmented).toBe("no positional writes");
   });
 
   it("copies exclusively when the volume refuses hard links, for every candidate name", async () => {

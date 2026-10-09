@@ -1102,7 +1102,9 @@ export class Recorder {
     const span = (from: number | undefined, to: number | undefined): number | undefined =>
       from === undefined || to === undefined ? undefined : to - from;
     this.deps.log(`recorder: session ${session.id} finalize timing: host ${ms(span(session.stopRequestedAt, session.hostStoppedAt))} ms, ` +
-      `writes ${ms(span(session.hostStoppedAt, drainedAt))} ms, flush ${ms(timings?.flushMs)} ms, close ${ms(timings?.closeMs)} ms, ` +
+      `writes ${ms(span(session.hostStoppedAt, drainedAt))} ms, flush ${ms(timings?.flushMs)} ms, ` +
+      `finalize ${ms(timings?.finalizeMs)} ms ${timings ? timings.fragmented === undefined ? "to plain MP4" : `kept fragmented (${timings.fragmented})` : "?"}, ` +
+      `close ${ms(timings?.closeMs)} ms, ` +
       `publish ${ms(timings?.publishMs)} ms by ${timings?.method ?? "?"}${timings?.linkError ? ` (link ${timings.linkError})` : ""}, ` +
       `cleanup ${ms(timings?.cleanupMs)} ms${timings?.cleanupError ? ` (temporary name kept: ${timings.cleanupError})` : ""}, ` +
       `checkpoint ${ms(checkpointMs)} ms; ` +

@@ -71,6 +71,9 @@ export class ControlledFaults {
         written += result.bytesWritten;
         return result;
       },
+      // Making the saved file a plain MP4 goes through unchanged, as in the app.
+      ...(inner.writeAt ? { writeAt: (data: Uint8Array, position: number) => inner.writeAt!(data, position) } : {}),
+      ...(inner.truncate ? { truncate: (length: number) => inner.truncate!(length) } : {}),
       sync: () => inner.sync(),
       close: async () => {
         // The descriptor is released first; only the confirmation fails.
