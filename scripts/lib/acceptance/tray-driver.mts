@@ -112,6 +112,8 @@ export function structureProblems(native: readonly NativeMenuItem[], state: Tray
   const start = find(t("Start recording"));
   if (state === "idle" && !start?.enabled) problems.push("idle has no enabled Start recording");
   if (state !== "idle" && start) problems.push(`${state} offers Start recording`);
+  // The quickest way in leads: status lines sit under the window (2026-10-09).
+  if (state === "idle" && start && native[0] !== start) problems.push("idle does not lead with Start recording");
   const stop = find(t("Stop"));
   if ((state === "recording") !== Boolean(stop?.enabled)) problems.push(state === "recording" ? "recording has no enabled Stop" : `${state} offers Stop`);
   const cancel = find(t("Cancel recording"));

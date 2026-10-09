@@ -21,6 +21,7 @@ describe("tray menu comparison (plan 063)", () => {
     expect(compareMenu(native(RECORDED_IDLE), logged.menu)).toEqual({ problems: [], notes: [] });
     // That menu predates 2026-10-04: its folder items, Settings… and Show log are now RecordStuff's, and Show last recording came back as the window's way in.
     expect(structureProblems(native(RECORDED_IDLE), "idle", "zh-TW")).toEqual([
+      "idle does not lead with Start recording",
       "idle has no enabled Open RecordStuff",
       "idle has no enabled Show last recording",
       "idle still lists an item RecordStuff now holds (output folder or Show log)",
@@ -70,6 +71,11 @@ describe("tray menu comparison (plan 063)", () => {
     expect(structureProblems(starting, "starting", "zh-TW")).toEqual([]);
     expect(structureProblems(starting, "idle", "zh-TW")).toContain("idle offers Cancel recording");
     expect(structureProblems(starting.filter((_, i) => i !== 1), "starting", "zh-TW")).toEqual(["starting has no enabled Cancel recording"]);
+    // Idle leads with Start recording; its status lines sit under the window (2026-10-09).
+    const idle = native([["開始錄影", true, "1", 1], ["", false, "", 0], ["開啟 RecordStuff", true, ",", 2], ["顯示最後一個錄影", true, "", 0],
+      ["", false, "", 0], ["待命中 — Studio", false, "", 0], ["", false, "", 0], ["結束 RecordStuff", true, "", 0]]);
+    expect(structureProblems(idle, "idle", "zh-TW")).toEqual([]);
+    expect(structureProblems([...idle.slice(5, 7), ...idle.slice(0, 5), idle.at(-1)!], "idle", "zh-TW")).toEqual(["idle does not lead with Start recording"]);
     const doubled = native([["", false, "", 0], ["Ready", false, "", 0], ["", false, "", 0], ["", false, "", 0], ["Open RecordStuff", true, "", 0], ["Quit RecordStuff", true, "", 0]]);
     expect(structureProblems(doubled, "idle", "en")).toEqual(expect.arrayContaining(["the menu starts with a separator", "two separators are adjacent", "idle has no enabled Start recording"]));
     expect(isSeparator({ title: "", enabled: false })).toBe(true);
