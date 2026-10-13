@@ -5,8 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
-  processRole, rolesFromPs, summarize, type Sample, type Summary,
+  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
+  processRole, roleTreeFromPs, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
 /**
@@ -94,6 +94,26 @@ describe("CPU budget verdicts (plan 049)", () => {
     expect(judgeSettingsOpen(summary(0.6))[0]!.verdict).toBe("fail");
   });
 
+  it("judges playback by role and fails a window in which nothing played (plan 072)", () => {
+    const roles = new Map([[1, "main"], [2, "gpu"], [3, "renderer"], [4, "renderer"]]);
+    const playing = (total: number, gpu: number, renderers: [number, number]): Summary => ({
+      ...summary(total),
+      processes: [
+        { name: "RecordStuff", pid: 1, followed: false, cpuPercent: { average: 1, p95: 1, max: 1 }, wakeupsPerSecond: 0, maxResidentBytes: 0 },
+        { name: "RecordStuff Helper", pid: 2, followed: false, cpuPercent: { average: gpu, p95: gpu, max: gpu }, wakeupsPerSecond: 0, maxResidentBytes: 0 },
+        ...renderers.map((cpu, i) => ({ name: "RecordStuff Helper (Renderer)", pid: 3 + i, followed: false, cpuPercent: { average: cpu, p95: cpu, max: cpu }, wakeupsPerSecond: 0, maxResidentBytes: 0 })),
+        // A followed helper with a pid the app's tree reuses is never counted as the app's.
+        { name: "VTDecoderXPCService", pid: 3, followed: true, cpuPercent: { average: 50, p95: 50, max: 50 }, wakeupsPerSecond: 0, maxResidentBytes: 0 },
+      ],
+    });
+    expect(judgePlayback(playing(16.6, 8.3, [6.6, 0]), roles).map((v) => v.verdict)).toEqual(["pass", "pass", "pass", "pass"]);
+    // The former backdrop blur, and a renderer busy with a fragmented file: both renderers count.
+    expect(judgePlayback(playing(21.5, 13.5, [6.5, 0]), roles).map((v) => v.verdict)).toEqual(["pass", "pass", "fail", "pass"]);
+    expect(judgePlayback(playing(21, 6, [6, 5]), roles).map((v) => v.verdict)).toEqual(["pass", "pass", "pass", "fail"]);
+    expect(judgePlayback(playing(23, 6, [6, 0]), roles)[1]!.verdict).toBe("fail");
+    expect(judgePlayback(playing(0.3, 0.1, [0.2, 0]), roles)[0]).toMatchObject({ check: "Playback seen", verdict: "fail" });
+  });
+
   it("fails above the frame rate's threshold and flags a regression against the baseline", () => {
     expect(judgeRecording(summary(20), 30)[0]!.verdict).toBe("pass");
     expect(judgeRecording(summary(30), 30)[0]!.verdict).toBe("pass");
@@ -158,6 +178,7 @@ describe("process roles and the idle contract (plan 049)", () => {
     expect(judgeRoles(rolesFromPs(ps, 100), IDLE_ROLES.afterRecording).actual).toContain("unexpected child:descendant ×1");
     expect(rolesFromPs(ps, 200)).toEqual({ main: 1, renderer: 1 });
     expect(rolesFromPs(ps, 999)).toEqual({});
+    expect([...roleTreeFromPs(ps, 100)]).toEqual([[100, "main"], [101, "gpu"], [102, "utility:network"], [103, "utility:audio"], [300, "child:descendant"]]);
   });
 
   it("allows the pre-warmed renderer only at launch and the audio service only after a recording", () => {

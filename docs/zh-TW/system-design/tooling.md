@@ -149,10 +149,11 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 - **R. 錄影**：以錄影快捷鍵開始並停止一段 60 秒的錄影，畫面上是持續移動的測試素材（主螢幕上的 Chrome kiosk），只判定第 5 到 55 秒，並追蹤 VTEncoderXPCService。`--repeat N`（奇數，1–9，讓中位數就是其中一次的實際結果）錄 N 次、判定中位數那一次。`--fps 60` 之後會結束 App、寫入 60 fps 再重新啟動，錄第二組。
 - **B. 錄影後待機**：從最後一次儲存後 30 秒起量 `--minutes` 分鐘，套用待機門檻。
 - **C. 設定視窗開著、在其他 App 後面**：用設定快捷鍵開啟，並以 App 的 `settings shortcut: … pressed` 那一行、執行中的設定 renderer 與輔助使用樹中的設定視窗確認已開啟（沒有錄影的一次啟動仍留著預熱的 renderer；在 macOS 上，設定視窗旁待命載入的全螢幕頁面是第二個 renderer），再把 Finder 帶到最前面，穩定 10 秒後量 3 分鐘，之後關閉。
+- **P. 播放**（plan 072）：播放 R 最後一段 30 fps 的錄影，操作方式和使用者一樣：從 Finder 點系統匣選單的 Show last recording，它的 `show last recording:` 那一行必須指名這個檔案；頁面會聚焦該卡片的播放按鈕（透過 Chromium 的輔助使用樹以元素 id 確認，量測前再關閉輔助使用樹），按 Return 後在設定視窗的播放器播放。穩定 5 秒後量 50 秒，依程序樹的角色判定：App 合計、GPU 程序與 renderer。GPU 程序或 renderer 低於 0.5% 表示沒有在播放，判定失敗。檔案必須以 plain MP4 儲存（看它的 `finalize timing` 那一行）。硬體解碼器 VTDecoderXPCService 不追蹤：它在 App 之外約多 2%。Escape 關閉播放器、⌘W 關閉視窗，都只在設定視窗位於最前面且有焦點時才送出。這次啟動沒有錄影時略過 P。
 
 **程序角色。**每個待機情境也會依 Chromium 角色檢查 App 的程序；角色取自程序命令列的 `--type` 與 `--utility-sub-type`，因為三個 helper 的名稱都一樣。待機契約是 cpu-sampler.mts 的 `IDLE_ROLES`：主程序、GPU 與網路服務各一個，除此之外只能有[設計總覽](design-overview.md#在選單列待命)說明過的程序。也就是啟動後（A）最多一個預熱 renderer，第一個視窗會拿走它；錄影後（B）最多一個 Chromium 音訊服務，由第一次擷取系統聲音啟動，一直存在到 App 結束；設定視窗開著時（C）剛好一個 renderer，也就是設定頁，所以沒有真的開啟的設定視窗會判定失敗，而不是量到關閉時的待機。設定視窗關閉時，錄影後不能留下任何 renderer，所以即使預熱 renderer 已經不在，殘留的 capture host 或倒數覆蓋層仍會判定失敗；其他任何角色也一樣會失敗。每次儲存後 5 秒會記下一次角色，同一次啟動中的每一次記錄，以及 B 結束時的角色，都必須和第一次相同：錄影只啟動一次的東西是預期的，每錄一次就多一份的才是洩漏。這和 [fuite](https://github.com/nolanlawson/fuite) 這類洩漏偵測工具的做法一樣，看每次重複的成長，而不是和冷啟動比較。報告也會列出每次記錄時 App 的記憶體，只回報不判定。
 
-`--skip-recording` 省略 R 與 B，`--skip-settings` 省略 C，`--out` 指定報告資料夾。報告是 `docs/verification/measurements/<time>-cpu/`（git 忽略）下的 `report.md` 與 `report.json`，包含每個情境對照預算的檢查、判定與捨棄的區間、合計與逐程序的 CPU、喚醒、能耗與記憶體、儲存的檔案，以及機器、macOS、Electron、螢幕、電源與產物時間。結束時 runner 會正常結束 App（中斷時，若已要求啟動 App，會先等最多 10 秒讓它出現），確認它已退出，關閉素材瀏覽器並確認它也已結束，在沒有任何 RecordStuff 程序後，把 `countdown`、`display` 與 `quality` 設回執行前的值，並保留 App 在這段時間存下的其他設定；原始檔案另存在報告旁的 `settings-before.json`。錄影檔留在輸出資料夾。和其他桌面 runner 一樣，它會宣告使用者活動，並在整個執行期間持有螢幕與閒置睡眠的 assertion。每項判定都通過時 exit 0；任一失敗、執行出錯或收尾不完整時 exit 1；blocked（沒有 Command Line Tools、沒有輔助使用權限、螢幕鎖定）時 exit 2；收到 SIGINT 或 SIGTERM 時，會先收尾進行中的錄影（只有在這段錄影正在倒數或錄影、且尚未送出停止時才送出快捷鍵，因此絕不會開始新的錄影），再關閉素材、結束 App 並還原設定，再寫出標記為 INTERRUPTED 的部分報告，exit 130 或 143。
+`--skip-recording` 省略 R、B 與 P，`--skip-settings` 省略 C，`--skip-playback` 省略 P，`--out` 指定報告資料夾。報告是 `docs/verification/measurements/<time>-cpu/`（git 忽略）下的 `report.md` 與 `report.json`，包含每個情境對照預算的檢查、判定與捨棄的區間、合計與逐程序的 CPU、喚醒、能耗與記憶體、儲存的檔案，以及機器、macOS、Electron、螢幕、電源與產物時間。結束時 runner 會正常結束 App（中斷時，若已要求啟動 App，會先等最多 10 秒讓它出現），確認它已退出，關閉素材瀏覽器並確認它也已結束，在沒有任何 RecordStuff 程序後，把 `countdown`、`display` 與 `quality` 設回執行前的值，並保留 App 在這段時間存下的其他設定；原始檔案另存在報告旁的 `settings-before.json`。錄影檔留在輸出資料夾。和其他桌面 runner 一樣，它會宣告使用者活動，並在整個執行期間持有螢幕與閒置睡眠的 assertion。每項判定都通過時 exit 0；任一失敗、執行出錯或收尾不完整時 exit 1；blocked（沒有 Command Line Tools、沒有輔助使用權限、螢幕鎖定）時 exit 2；收到 SIGINT 或 SIGTERM 時，會先收尾進行中的錄影（只有在這段錄影正在倒數或錄影、且尚未送出停止時才送出快捷鍵，因此絕不會開始新的錄影），再關閉素材、結束 App 並還原設定，再寫出標記為 INTERRUPTED 的部分報告，exit 130 或 143。
 
 **預算。**plan 049 的初始目標，已由參考機 M1 Pro 的 [2026-09-28 baseline](../verification/history-2026-09.md#plan-049-cpu-baseline-結案--2026-09-28) 確認；數值放在 cpu-sampler.mts 的 `CPU_BUDGET`。
 
@@ -164,7 +165,10 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 | 錄影 30 fps（R 與矩陣） | 平均 ≤30%；baseline 確認之前，沿用原本 40% 的上限 | 擷取與 H.264 編碼在硬體上執行；App 自己負擔的是 Chromium 媒體管線、AAC、IPC 與檔案寫入 |
 | 錄影 60 fps | 平均 ≤40% | 影格加倍，但固定成本不會加倍 |
 | 錄影時的硬體編碼器 | 只回報不判定 | 若它不存在而 App 自己的 CPU 很高，可能退回軟體編碼；在 Cap 的量測中，軟體編碼每個影格的成本是硬體路徑的數十倍 |
+| 在設定視窗的播放器播放（P） | 平均 ≤22%、GPU 程序 ≤11%、renderer ≤10% | plan 072 在 M1 Pro 參考機上：播放器下方改為模糊頁面本身時，打包後的 App 16.6%（GPU 8.3%、renderer 6.6%）；同一個檔案在開發版中 GPU 程序 6.7%，原本在對話框背景用 `backdrop-filter` 時 13.5%；以 fragmented 儲存的 36 分鐘錄影，renderer 11.7%（2 小時 25 分時 73.7%）；Chrome 播放長檔案合計 11.5%。每個上限都落在修正後的數字與它要防的退步之間 |
 | 對照 baseline | 錄影比本機同一案例的 baseline 高出 25% 以上時發出警告，即使仍在門檻內 | 寬鬆的上限可能藏住退步；CPU 在不同回合間會漂移，所以只警告不判失敗 |
+
+**播放的成本**（plan 072）。App 內播放器變貴有兩個原因。fragmented MP4 沒有索引，Chromium 的 demuxer 會透過 `recordstuff-media:` 協定的 range request 讀取每一個 `moof`，renderer 因此保有數千段不相連的緩衝區間；成本增加得比檔案長度還快，而同一個檔案從 `file://` 讀取時仍然很便宜。錄影會存成 plain MP4（mp4-finalize.ts 的 `FragmentIndex`），capture host 停止時寫出空的音訊 run 也一樣；舊版已存成 fragmented 的檔案仍有這個成本，不會修復。另外，`backdrop-filter` 即使後面沒有任何變化，也會隨每個影片畫格重畫，所以播放器的背景只負責變暗，下方的頁面改用 `filter` 模糊（ui.css 的 `#root`），Chromium 只需畫一次。兩種情況的影片都由 VideoToolbox 解碼。
 
 baseline 存在 [cpu-baselines.json](../../../scripts/lib/verification/cpu-baselines.json)，以 `sysctl hw.model` 為鍵：每個錄影數字是三次重複平均值的中位數，由 baseline 回合的報告手動填入，並同時寫入驗證紀錄。沒有記錄的機器只對照門檻。換機器或升級 Electron 時，要先取新的 baseline 才能比較結果。baseline 沒通過目標時是要調查的發現；沒有書面證據與維護者同意，不能因此放寬目標。
 

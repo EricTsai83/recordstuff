@@ -12,7 +12,7 @@ import { command } from "./processes.mts";
 /**
  * `osascript -l JavaScript -e <script> <command> …`, one JSON object out.
  * Commands: `status <pid>`, `press <pid> <menu index>`, `mouse left|right <x> <y>`,
- * `key <code> [flags]`, `windows <pid>`, `layout <pid> <title> <zone json>`, `menubar <pid>`, `manual <pid>`, `banners`,
+ * `key <code> [flags]`, `windows <pid>`, `layout <pid> <title> <zone json>`, `menubar <pid>`, `manual <pid> [off]`, `banners`,
  * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
  * `drag-events <event json>`, `release-mouse`, `move-mouse <x> <y>`, `screen-access` support native window dragging.
  * Any failed AX call is reported as its AXError code rather than thrown, so the
@@ -192,7 +192,7 @@ function run(argv) {
       throw error;
     }
   }
-  if (cmd === 'manual') return out({ error: $.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.NSNumber.numberWithBool(true)) || undefined });
+  if (cmd === 'manual') return out({ error: $.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.NSNumber.numberWithBool(b !== 'off')) || undefined });
   if (cmd === 'status' || cmd === 'press') {
     const bar = raw(app, 'AXExtrasMenuBar');
     if (!ok(bar)) return out({ error: bar });
@@ -401,8 +401,11 @@ export interface NativeAx {
   /** The titled window's corner as `judgeWindowLayout` needs it; read with web accessibility enabled. */
   layout(pid: number, title: string, zone: { width: number; height: number }): Promise<WindowLayout>;
   menuBar(pid: number): Promise<AppMenu[]>;
-  /** Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable. */
-  enableWebAccessibility(pid: number): Promise<void>;
+  /**
+   * Asks Chromium to build its accessibility tree, as assistive software does, so web focus is readable; `false` asks
+   * it to stop again, for a measurement that must not carry the tree's cost.
+   */
+  enableWebAccessibility(pid: number, enabled?: boolean): Promise<void>;
   banners(): Promise<Banner[]>;
   /** Saves the general pasteboard into `directory`; the manifest restores it, and `unsaved` names types whose data could not be read. */
   savePasteboard(directory: string): Promise<{ items: PasteboardManifest; unsaved: string[] }>;
@@ -427,7 +430,7 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     // Every element of the page is read, a few AX calls each: a long Recordings tab needs longer than one menu.
     layout: (pid, title, zone) => runFor<WindowLayout>(60_000, "window layout", "layout", pid, title, JSON.stringify(zone)),
     menuBar: async pid => (await run<{ menus: AppMenu[] }>("menu bar", "menubar", pid)).menus,
-    enableWebAccessibility: async pid => { await run("web accessibility", "manual", pid); },
+    enableWebAccessibility: async (pid, enabled = true) => { await run("web accessibility", "manual", pid, enabled ? "on" : "off"); },
     banners: async () => (await run<{ banners: Banner[] }>("Notification Center", "banners")).banners,
     savePasteboard: directory => run<{ items: PasteboardManifest; unsaved: string[] }>("pasteboard save", "pasteboard-save", directory),
     restorePasteboard: async manifest => { await run("pasteboard restore", "pasteboard-restore", JSON.stringify(manifest)); },

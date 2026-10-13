@@ -211,6 +211,14 @@ export const CPU_BUDGET = {
   idle: { averagePercent: 0.2, p95Percent: 1, wakeupsPerSecond: 5 },
   settingsOpen: { averagePercent: 0.5 },
   recording: { 30: { averagePercent: 30 }, 60: { averagePercent: 40 } },
+  /**
+   * A saved plain MP4 played in the Settings player (plan 072). On the reference M1 Pro on 2026-10-14 the packaged
+   * app used 16.6% (GPU process 8.3%, renderers 6.6%) with the page blurred under the player. On the same file the
+   * development build's GPU process used 6.7%, and 13.5% with the former backdrop-filter; a 36-minute recording
+   * saved fragmented kept its renderer at 11.7%, and Chrome played a long file at 11.5% in all. Each limit sits
+   * between the fix and the regression it guards.
+   */
+  playback: { averagePercent: 22, gpuPercent: 11, rendererPercent: 10, evidencePercent: 0.5 },
   /** Above the case's last baseline by this fraction: a warning, since CPU drifts between rounds. */
   regressionFraction: 0.25,
 } as const;
@@ -264,6 +272,25 @@ export function judgeRecording(summary: Summary, fps: 30 | 60, baselinePercent?:
 }
 
 /**
+ * Playback, by role: the app's total, its GPU process and its renderers against the budget. A GPU process or renderer
+ * under the evidence floor means nothing played, so the window measured Settings at rest and cannot pass.
+ */
+export function judgePlayback(summary: Summary, roles: ReadonlyMap<number, string>): Verdict[] {
+  const { averagePercent, gpuPercent, rendererPercent, evidencePercent } = CPU_BUDGET.playback;
+  const byRole = (match: (role: string) => boolean): number =>
+    summary.processes.filter((p) => !p.followed && match(roles.get(p.pid) ?? "")).reduce((total, p) => total + p.cpuPercent.average, 0);
+  const gpu = byRole((role) => role === "gpu");
+  const renderer = byRole((role) => role === "renderer");
+  const played = gpu >= evidencePercent && renderer >= evidencePercent;
+  return [
+    { check: "Playback seen", limit: `GPU process and renderers each ≥ ${evidencePercent}%`, actual: `GPU ${pct(gpu)}, renderers ${pct(renderer)}`, verdict: played ? "pass" : "fail" },
+    { check: "CPU average", limit: `≤ ${averagePercent}%`, actual: pct(summary.cpuPercent.average), verdict: summary.cpuPercent.average <= averagePercent ? "pass" : "fail" },
+    { check: "GPU process", limit: `≤ ${gpuPercent}%`, actual: pct(gpu), verdict: gpu <= gpuPercent ? "pass" : "fail" },
+    { check: "Renderers", limit: `≤ ${rendererPercent}%`, actual: pct(renderer), verdict: renderer <= rendererPercent ? "pass" : "fail" },
+  ];
+}
+
+/**
  * A Chromium process's role from its command line: `main`, `gpu`, `renderer`,
  * `utility:<service>` (`network`, `audio`, …) or `other:<type>`. Names alone
  * cannot tell the helpers apart: three are all "RecordStuff Helper".
@@ -279,8 +306,8 @@ export function processRole(command: string): string {
 
 export type RoleCounts = Record<string, number>;
 
-/** The roles of `rootPid` and its descendants in `ps -axww -o pid=,ppid=,command=` output. */
-export function rolesFromPs(output: string, rootPid: number): RoleCounts {
+/** Each process of `rootPid`'s tree, to any depth, by pid with its role, in `ps -axww -o pid=,ppid=,command=` output. */
+export function roleTreeFromPs(output: string, rootPid: number): Map<number, string> {
   const rows = output.split("\n").map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)).filter((m) => m !== null)
     .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), command: m[3]! }));
   const tree = new Set([rootPid]);
@@ -288,20 +315,33 @@ export function rolesFromPs(output: string, rootPid: number): RoleCounts {
     grown = false;
     for (const row of rows) if (!tree.has(row.pid) && tree.has(row.ppid)) { tree.add(row.pid); grown = true; }
   }
-  const roles: RoleCounts = {};
+  const roles = new Map<number, string>();
   for (const row of rows) {
     if (!tree.has(row.pid)) continue;
     // A descendant without a Chromium type is some other program the app started, not a second main process.
     const typed = processRole(row.command);
-    const role = typed === "main" && row.pid !== rootPid ? `child:${path.basename(row.command.split(" --")[0]!.trim())}` : typed;
-    roles[role] = (roles[role] ?? 0) + 1;
+    roles.set(row.pid, typed === "main" && row.pid !== rootPid ? `child:${path.basename(row.command.split(" --")[0]!.trim())}` : typed);
   }
   return roles;
 }
 
+/** The roles of `rootPid` and its descendants in `ps -axww -o pid=,ppid=,command=` output. */
+export function rolesFromPs(output: string, rootPid: number): RoleCounts {
+  const roles: RoleCounts = {};
+  for (const role of roleTreeFromPs(output, rootPid).values()) roles[role] = (roles[role] ?? 0) + 1;
+  return roles;
+}
+
+const psTree = (): string => spawnSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).stdout ?? "";
+
 /** The live roles of an app's process tree. */
 export function readRoles(rootPid: number): RoleCounts {
-  return rolesFromPs(spawnSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).stdout ?? "", rootPid);
+  return rolesFromPs(psTree(), rootPid);
+}
+
+/** The live role of each process in an app's tree, by pid. */
+export function readRoleTree(rootPid: number): Map<number, string> {
+  return roleTreeFromPs(psTree(), rootPid);
 }
 
 export const roleText = (roles: RoleCounts): string =>

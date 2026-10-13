@@ -1,5 +1,5 @@
 /**
- * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--out <dir>]`
+ * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--out <dir>]`
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
@@ -15,6 +15,10 @@
  * - B. Idle after the recording: from 30 seconds after the last save, `--minutes`, with the encoder
  *   back to nothing.
  * - C. Settings open behind another app: 3 minutes.
+ * - P. Playback (plan 072): the last 30 fps recording, reached as a person does (the tray's Show last recording
+ *   focuses its card's Play button, confirmed by its element id, Return plays it), judged over 50 s after a 5-second settle, per role: the app,
+ *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
+ *   a plain MP4: a fragmented one costs the renderer more the longer it is, which a 60-second file cannot show.
  *
  * Each idle scenario also checks the app's processes by Chromium role against the idle contract
  * (`IDLE_ROLES`): after launch one pre-warmed renderer may exist, after a recording Chromium's audio
@@ -40,21 +44,26 @@ import { fileURLToPath } from "node:url";
 import { confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgeRecording, judgeRoles, judgeSettingsOpen,
-  judgeSteadyState, machineModel, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
+  judgeSettingsOpen, judgeSteadyState, machineModel, readRoleTree, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/verification/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
-import { AccessibilityBlockedError, osascriptAx } from "./lib/runner/native-ax.mts";
+import { AccessibilityBlockedError, FLAG, KEY, osascriptAx } from "./lib/runner/native-ax.mts";
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
 import { percentile } from "./lib/verification/stats.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
+import { isLanguage, translate, type Language } from "../src/shared/i18n.ts";
+import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
+import { recordingCardOpenId } from "./lib/acceptance/tray-acceptance.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE = developmentAppPath(REPO_ROOT);
 const EXECUTABLE = path.join(BUNDLE, "Contents/MacOS/RecordStuff");
+/** Names the bundle's status-item window, where the tray driver clicks (clickTarget in tray-driver.mts). */
+const BUNDLE_ID = (): string => spawnSync("plutil", ["-extract", "CFBundleIdentifier", "raw", path.join(BUNDLE, "Contents/Info.plist")], { encoding: "utf8" }).stdout?.trim() || "com.ericts.record";
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const LOG_PATH = APP_LOG_PATH;
@@ -62,9 +71,11 @@ const SETTINGS_PATH = APP_SETTINGS_PATH;
 const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 const RECORDING_SECONDS = 60;
 const SETTINGS_MINUTES = 3;
+/** Judged after a 5-second settle, inside the 60-second recording it plays. */
+const PLAYBACK_SECONDS = 50;
 
-const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--out <dir>]";
-let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false;
+const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--out <dir>]";
+let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false;
 let outDir: string | undefined;
 const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
@@ -74,6 +85,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--fps" && argv[i + 1] === "60") { with60 = true; i += 1; }
   else if (arg === "--skip-recording") skipRecording = true;
   else if (arg === "--skip-settings") skipSettings = true;
+  else if (arg === "--skip-playback") skipPlayback = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
@@ -308,8 +320,64 @@ async function main(): Promise<number> {
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
   };
 
+  /** How the app saved `file`, from its log: `to plain MP4` or `kept fragmented (…)`. */
+  const finalizedAs = (file: string): string | undefined => {
+    const lines = log.all();
+    const session = lines.map((line) => /recorder: session (\S+) file finalized (.+)$/.exec(line)).findLast((match) => match?.[2] === file)?.[1];
+    if (!session) return undefined;
+    const timing = new RegExp(`recorder: session ${escapeRegExp(session)} finalize timing: .*?finalize \\S+ ms (to plain MP4|kept fragmented \\(.*?\\))`);
+    return lines.map((line) => timing.exec(line)?.[1]).findLast((text) => text !== undefined);
+  };
+  /** Whether RecordStuff is frontmost with Settings focused, so a key reaches the page and ⌘W no other app. */
+  const settingsInFront = async (): Promise<boolean> => {
+    const front = await osascriptAx(controller.signal).windows(appPid);
+    return front.frontmostPid === appPid && front.focusedWindow === "RecordStuff";
+  };
+  const playback = async (file: string): Promise<void> => {
+    const ax = osascriptAx(controller.signal);
+    const stored = readSettings()["language"];
+    const language: Language = isLanguage(stored) ? stored : "en";
+    const tray = new TrayDriver(ax, appPid, controller.signal, undefined, BUNDLE_ID());
+    // From another app, as acceptance-tray's Show last recording case reaches it.
+    await command("osascript", ["-e", 'tell application "Finder" to activate'], AbortSignal.timeout(5000));
+    const from = log.end();
+    await tray.open();
+    await tray.select(translate("Show last recording", language));
+    const entry = await waitForLog(log, from, /\] show last recording: (.*)$/, "the Show last recording entry", AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
+    const target = /show last recording: Recordings with (.+)$/.exec(entry.line)?.[1];
+    if (target !== file) fail(`Show last recording named ${target ?? "no recording"}, not this run's save ${file}`);
+    await tray.until("RecordStuff with Settings focused in front", async () => (await settingsInFront()) || undefined);
+    // Return must reach this file's Play button, which the page focuses once it has rendered the entry: read through
+    // Chromium's accessibility tree, as acceptance-tray does, and turned off again so the tree's cost is not measured.
+    const playId = recordingCardOpenId(file);
+    await ax.enableWebAccessibility(appPid);
+    try {
+      await tray.until(`${path.basename(file)}'s Play button focused`, async () => ((await ax.windows(appPid)).focused?.domId === playId ? true : undefined), 10_000);
+      if (!await settingsInFront()) fail("RecordStuff with Settings focused left the front before Return");
+      await ax.key(KEY.return);
+    } finally {
+      await ax.enableWebAccessibility(appPid, false);
+    }
+    note(`P. Return on ${path.basename(file)}'s Play button; settling 5 s`);
+    await sleep(5000);
+    const pFrom = Date.now();
+    await sleep(PLAYBACK_SECONDS * 1000);
+    const summary = window(pFrom, Date.now());
+    const container = finalizedAs(file);
+    scenarios.push({ name: "P. Playback in the Settings player", key: "playback", summary, roles: readRoles(appPid), note: `Played ${file}.`,
+      verdicts: [judgeCoverage(summary, PLAYBACK_SECONDS, sampler!.failure), ...judgePlayback(summary, readRoleTree(appPid)),
+        { check: "The file played", limit: "saved as a plain MP4", actual: container ?? "no finalize timing in the log", verdict: container === "to plain MP4" ? "pass" : "fail" }] });
+    note(`P: average ${summary.cpuPercent.average.toFixed(1)}%`);
+    // Escape closes the player and ⌘W the window, each only while Settings is focused in front; the quit closes it otherwise.
+    if (await settingsInFront()) {
+      await ax.key(KEY.escape);
+      await sleep(800);
+      if (await settingsInFront()) { await ax.key(KEY.w, FLAG.command); await sleep(1000); }
+    } else note("P: RecordStuff with Settings focused is not frontmost; the quit closes the player");
+  };
+
   try {
-    // Launch 1: idle, the 30 fps recordings, idle after them and Settings open.
+    // Launch 1: idle, the 30 fps recordings, idle after them, Settings open and playback.
     seed(30);
     const first = await launch();
     recordingKey = first.recordingKey;
@@ -375,6 +443,11 @@ async function main(): Promise<number> {
         await command("osascript", ["-e", 'tell application "System Events" to keystroke "w" using {command down}'], AbortSignal.timeout(5000));
         await sleep(1000);
       } else note(`C: RecordStuff with Settings focused is not frontmost (pid ${front.frontmostPid ?? "none"}); ⌘W not sent, the quit closes it`);
+    }
+    if (!skipPlayback) {
+      const saved = recordings.filter((r) => r.fps === 30).at(-1)?.file;
+      if (saved) await playback(saved);
+      else note("P. skipped: this launch saved no recording to play");
     }
     await sampler.stop();
     await quitApp();
@@ -448,7 +521,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
