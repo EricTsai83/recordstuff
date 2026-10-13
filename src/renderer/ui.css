@@ -1627,6 +1627,8 @@
   .clip {
     position: relative;
     isolation: isolate;
+    /* The card's width, which places its ⋮ button on the title's line below the 16:9 picture. */
+    container-type: inline-size;
   }
   /* Paint the state line above positioned thumbnails and controls, without intercepting their input. */
   .clip::after {
@@ -1685,7 +1687,8 @@
     letter-spacing: 0;
   }
   .clip-text {
-    padding: 10px 2px 0;
+    /* Room on the title's line for the ⋮ button at its right. */
+    padding: 10px 30px 0 2px;
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -1707,11 +1710,18 @@
   .clip-detail {
     display: none;
   }
+  /* On the title's line, at its right: the picture's height, then the text's top padding. */
   .clip-more {
+    position: absolute;
+    top: calc(100cqw * 9 / 16 + 8px);
+    right: 0;
+    opacity: 0;
+  }
+  /* The preview's speaker, at the picture's top right while the preview plays. */
+  .clip-sound {
     position: absolute;
     top: 7px;
     right: 7px;
-    opacity: 0;
   }
   .clip:hover .clip-more,
   .clip:focus-within .clip-more,
@@ -1909,6 +1919,7 @@
   }
   #library[data-layout="list"] .clip-more {
     top: 50%;
+    right: 7px;
     transform: translateY(-50%);
   }
   /* The player's controls, as YouTube's full screen lays them out: the title on a shade along the top, a seek bar the

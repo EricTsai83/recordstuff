@@ -902,9 +902,9 @@ describe("the Recordings tab", () => {
     expect(remembered({ libraryFavorites: ["Gone"] })).not.toHaveProperty("favorites");
   });
   it("says it is loading or cannot read the folder instead of claiming it is empty", () => {
-    expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", status: "Loading recordings…", items: [] });
+    expect(settingsView(idle, library({ loading: true, files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", previewSound: false, status: "Loading recordings…", items: [] });
     expect(settingsView(idle, library({ failed: true, files: [] })).library?.status).toBe("Could not read the output folder. Check the folder and its drive, or choose another folder.");
-    expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", items: [] });
+    expect(settingsView(idle, library({ files: [] })).library).toEqual({ folder: "~/recordings", layout: "grid", previewSound: false, items: [] });
     expect(settingsView(idle, context)).not.toHaveProperty("library");
   });
   it("resolves only listed ids and offered actions, even while recording", () => {
@@ -920,6 +920,15 @@ describe("the Recordings tab", () => {
     expect(settingsAction(busy[2]!, ctx, "library", "list")).toEqual({ setLibraryLayout: "list" });
     expect(settingsAction(idle, ctx, "library", "shelf")).toBeUndefined();
     expect(settingsChecked(idle, { ...ctx, libraryLayout: "list" }, "library", "list")).toBe(true);
+    // The previews' sound (2026-10-14): muted unless saved on, switchable while recording.
+    expect(settingsView(idle, ctx).library?.previewSound).toBe(false);
+    expect(settingsView(idle, { ...ctx, libraryPreviewSound: true }).library?.previewSound).toBe(true);
+    expect(settingsAction(busy[2]!, ctx, "library", "previewSound:on")).toEqual({ setLibraryPreviewSound: true });
+    expect(settingsAction(idle, ctx, "library", "previewSound:off")).toEqual({ setLibraryPreviewSound: false });
+    expect(settingsAction(idle, ctx, "library", "previewSound")).toBeUndefined();
+    expect(settingsChecked(idle, { ...ctx, libraryPreviewSound: true }, "library", "previewSound:on")).toBe(true);
+    expect(settingsChecked(idle, ctx, "library", "previewSound:on")).toBe(false);
+    expect(settingsChecked(idle, ctx, "library", "previewSound:off")).toBe(true);
     expect(settingsAction(idle, ctx, "library", "undoTrash")).toBeUndefined();
     const waiting = library({ trashed: { name: "Product demo.mp4" } });
     expect(settingsAction(idle, waiting, "library", "undoTrash")).toBe("undoTrash");

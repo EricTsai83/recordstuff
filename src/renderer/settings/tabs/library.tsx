@@ -3,7 +3,7 @@
  * search (plan 071).
  */
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore, memo } from "react";
-import { Film, MoreHorizontal, Play, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderInput, SearchX, FolderOpen, ChevronDown, Check, Plus, Star, Settings2 } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Grid2X2, List, Folder, FileText, HardDrive, X, Maximize, Search, FolderInput, SearchX, FolderOpen, ChevronDown, Check, Plus, Star, Settings2 } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/popover";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../shared/i18n";
@@ -38,9 +38,10 @@ export const Clip = memo(function Clip({
   useSyncExternalStore(
     model.subscribe,
     () =>
-      `${model.menuId === item.id ? model.menuKind : ""}/${model.arrivingAt(item.id)}`,
+      `${model.menuId === item.id ? model.menuKind : ""}/${model.arrivingAt(item.id)}/${model.previewSound()}`,
   );
   const preview = useSyncExternalStore(subscribePreview, () => previewing() === item.id);
+  const sound = model.previewSound();
   const [failed, setFailed] = useState(false),
     [arrived, setArrived] = useState(false),
     title = useTruncated<HTMLSpanElement>();
@@ -110,7 +111,10 @@ export const Clip = memo(function Clip({
               if (event.pointerType === "mouse" && event.currentTarget.closest("#library")?.getAttribute("data-layout") === "grid")
                 hoverClip(item.id);
             }}
-            onPointerLeave={() => leaveClip(item.id)}
+            // Onto the card's speaker, the pointer stays with the preview it switches the sound of.
+            onPointerLeave={(event) => {
+              if (!(event.relatedTarget instanceof Element && event.relatedTarget.closest(".clip-sound"))) leaveClip(item.id);
+            }}
           >
             <Film className="clip-fallback size-9" />
             <img
@@ -124,7 +128,7 @@ export const Clip = memo(function Clip({
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}
             </span>
-            {preview && <ClipPreview item={item} />}
+            {preview && <ClipPreview item={item} sound={sound} />}
           </span>
           <span className="clip-text">
             <ControlTooltip label={item.title} enabled={title.truncated} delay={1000}>
@@ -145,6 +149,26 @@ export const Clip = memo(function Clip({
             </span>
           </span>
         </Button>
+        {/* While a preview plays, a speaker at the picture's top right turns its sound on or off; the choice is kept
+            (settings `libraryPreviewSound`) and starts muted. */}
+        {preview && (
+          <ControlTooltip label={translate(sound ? "Mute" : "Unmute", language)}>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              id={`clip-${item.id}-sound`}
+              className="clip-sound"
+              aria-label={translate(sound ? "Mute" : "Unmute", language)}
+              onPointerLeave={(event) => {
+                const back = event.relatedTarget instanceof Node && event.currentTarget.closest(".clip")?.querySelector(".clip-thumb")?.contains(event.relatedTarget);
+                if (!back) leaveClip(item.id);
+              }}
+              onClick={() => void model.choosePreviewSound(!sound)}
+            >
+              {sound ? <Volume2 /> : <VolumeX />}
+            </Button>
+          </ControlTooltip>
+        )}
         <DropdownMenu
           open={model.menuId === item.id && model.menuKind === "dropdown"}
           onOpenChange={(open) => {
@@ -154,7 +178,7 @@ export const Clip = memo(function Clip({
         >
           <ControlTooltip label={translate("More actions for {title}", model.view?.language, { title: item.title })}>
             <DropdownMenuTrigger
-              render={<Button variant="secondary" size="icon-sm" />}
+              render={<Button variant="ghost" size="icon-sm" />}
               id={`clip-${item.id}-more`}
               className="clip-more"
               aria-label={translate(
@@ -163,7 +187,7 @@ export const Clip = memo(function Clip({
                 { title: item.title },
               )}
             >
-              <MoreHorizontal />
+              <EllipsisVertical />
             </DropdownMenuTrigger>
           </ControlTooltip>
           <DropdownMenuContent

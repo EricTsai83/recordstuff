@@ -66,6 +66,8 @@ export interface Settings {
   fileNameTemplate: string;
   /** The Recordings tab's grid or list. */
   libraryLayout: LibraryLayout;
+  /** Whether a grid card's hover preview plays its sound; off until the card's speaker turns it on (2026-10-14). */
+  libraryPreviewSound: boolean;
   /** Categories (the output folder's subfolders, by name) the selector lists first as favorites (2026-10-09). */
   libraryFavorites: string[];
   /** The category the tab last showed (2026-10-09): absent for every recording, `null` for Uncategorized. */
@@ -104,6 +106,7 @@ export function defaultSettings(outputDir: string): Settings {
     trayClick: "menu",
     fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
     libraryLayout: "grid",
+    libraryPreviewSound: false,
     libraryFavorites: [],
   };
 }
@@ -189,11 +192,12 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
   const fileNameTemplate = field("fileNameTemplate", isTemplate, defaults.fileNameTemplate, `fileNameTemplate is unsupported: using ${defaults.fileNameTemplate}`);
   const libraryLayout = field("libraryLayout", isLibraryLayout, defaults.libraryLayout, `libraryLayout is unsupported: using ${defaults.libraryLayout}`);
+  const libraryPreviewSound = field("libraryPreviewSound", isBoolean, defaults.libraryPreviewSound, `libraryPreviewSound is not a boolean: using ${defaults.libraryPreviewSound ? "on" : "off"}`);
   const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
   return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
-    fileNameTemplate, libraryLayout, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
+    fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
 
 export class SettingsStore {
@@ -274,6 +278,13 @@ export class SettingsStore {
   setLibraryLayout(libraryLayout: LibraryLayout): Promise<void> {
     if (!isLibraryLayout(libraryLayout)) return Promise.reject(new Error(`unsupported library layout: ${JSON.stringify(libraryLayout)}`));
     return this.save((current) => ({ ...current, libraryLayout }));
+  }
+
+  get libraryPreviewSound(): boolean { return this.settings.libraryPreviewSound; }
+
+  setLibraryPreviewSound(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported preview sound: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, libraryPreviewSound: enabled }));
   }
 
   get libraryFavorites(): string[] { return [...this.settings.libraryFavorites]; }

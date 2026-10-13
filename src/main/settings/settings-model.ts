@@ -638,6 +638,7 @@ function libraryView(ctx: AppContext, now: Date, format: DateFormats): LibraryVi
   // What a Move to Trash left to say, whatever the listing shows meanwhile.
   const extras = {
     layout: ctx.libraryLayout ?? "grid",
+    previewSound: ctx.libraryPreviewSound ?? false,
     ...(library.trashed ? { trashed: {
       name: library.trashed.name,
       message: t(mac ? "Moved {name} to the Trash." : "Moved {name} to the Recycle Bin.", language, { name: library.trashed.name }),
@@ -767,9 +768,10 @@ export function settingsAction(
     return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
-  // The Recordings tab's own choices: its layout, and Undo while a recording waits to go to the Trash.
+  // The Recordings tab's own choices: its layout, its previews' sound, and Undo while a recording waits to go to the Trash.
   if (groupId === "library") {
     if (choiceId === "undoTrash") return ctx.library?.trashed ? "undoTrash" : undefined;
+    if (choiceId === "previewSound:on" || choiceId === "previewSound:off") return { setLibraryPreviewSound: choiceId === "previewSound:on" };
     return isLibraryLayout(choiceId) ? { setLibraryLayout: choiceId } : undefined;
   }
   // The file name pattern is typed, so any valid one is offered while recording settings are unlocked.
@@ -799,7 +801,10 @@ export function settingsChecked(
 ): boolean {
   // The card's actions, like the tray's, are requests whose result the card itself then shows.
   if (groupId === "status") return true;
-  if (groupId === "library") return choiceId === "undoTrash" || (ctx.libraryLayout ?? "grid") === choiceId;
+  if (groupId === "library") {
+    if (choiceId === "previewSound:on" || choiceId === "previewSound:off") return (ctx.libraryPreviewSound ?? false) === (choiceId === "previewSound:on");
+    return choiceId === "undoTrash" || (ctx.libraryLayout ?? "grid") === choiceId;
+  }
   if (groupId === "fileName") return canonicalFileNameTemplate(choiceId) === (ctx.fileNameTemplate ?? DEFAULT_FILE_NAME_TEMPLATE);
   if (proposesHotkey(groupId, choiceId)) return ctx.hotkey.enabled && sameShortcut(choiceId, ctx.hotkey.accelerator, ctx.platform);
   return find(state, ctx, groupId, choiceId)?.checked ?? false;

@@ -165,7 +165,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -247,7 +247,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -267,7 +267,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -321,7 +321,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -421,7 +421,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryFavorites: [],
+      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -752,5 +752,19 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
     await expect(s.setFileNameTemplate("a/b {time}")).rejects.toThrow("unsupported file name template");
     await expect(s.setLibraryLayout("shelf" as never)).rejects.toThrow("unsupported library layout");
     expect(s.fileNameTemplate).toBe("Demo {date} {time}");
+  });
+
+  it("keeps the previews' sound off until it is turned on, and remembers it (2026-10-14)", async () => {
+    expect(defaultSettings("/a").libraryPreviewSound).toBe(false);
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { libraryPreviewSound: false } });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, libraryPreviewSound: "on" })))
+      .toMatchObject({ settings: { libraryPreviewSound: false }, warnings: ["libraryPreviewSound is not a boolean: using off"] });
+    const s = store();
+    await s.setLibraryPreviewSound(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ libraryPreviewSound: true });
+    expect(store().libraryPreviewSound).toBe(true);
+    await expect(s.setLibraryPreviewSound("on" as never)).rejects.toThrow("unsupported preview sound");
+    await s.setLibraryPreviewSound(false);
+    expect(store().libraryPreviewSound).toBe(false);
   });
 });

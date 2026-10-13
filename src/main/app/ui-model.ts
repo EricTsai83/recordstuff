@@ -64,6 +64,7 @@ export type AppAction =
   | { setTrayClick: TrayClick }
   | { setFileNameTemplate: string }
   | { setLibraryLayout: LibraryLayout }
+  | { setLibraryPreviewSound: boolean }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
 
@@ -101,6 +102,8 @@ export interface AppContext {
   fileNameTemplate?: string;
   /** The Recordings tab's grid or list; absent is the grid. */
   libraryLayout?: LibraryLayout;
+  /** Whether a grid card's hover preview plays its sound; absent is muted. */
+  libraryPreviewSound?: boolean;
   /** Favorite categories by name (settings.ts `libraryFavorites`). */
   libraryFavorites?: string[];
   /** The category the tab last showed: absent for every recording, `null` for Uncategorized. */

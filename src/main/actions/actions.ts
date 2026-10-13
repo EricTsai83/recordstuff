@@ -28,7 +28,7 @@ export interface ActionDeps {
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "setUpdates" | "notifications" | "setNotifications"
-    | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setAppearance"
+    | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
@@ -109,6 +109,8 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       });
     } else if ("setLibraryLayout" in action) {
       await deps.savePreference("library layout", { write: () => settings.setLibraryLayout(action.setLibraryLayout) });
+    } else if ("setLibraryPreviewSound" in action) {
+      await deps.savePreference("library preview sound", { write: () => settings.setLibraryPreviewSound(action.setLibraryPreviewSound) });
     } else if ("setAppearance" in action) {
       await deps.savePreference("appearance", {
         write: () => settings.setAppearance(action.setAppearance),

@@ -148,6 +148,8 @@ export interface LibraryView {
   folder: string;
   /** Large thumbnails in a grid, or one row each (2026-10-05); chosen as group `library`, choice `grid` or `list`. Absent is the grid. */
   layout?: LibraryLayout;
+  /** A grid card's hover preview plays its sound (2026-10-14); chosen as group `library`, choice `previewSound:on` or `previewSound:off`. Absent is muted. */
+  previewSound?: boolean;
   /** Localized: the recording Move to Trash just took, which Undo (group `library`, choice `undoTrash`) brings back while it waits. */
   trashed?: { name: string; message: string; undo: string };
   /** Localized: a delayed move to the Trash that failed; the recording is listed again. */

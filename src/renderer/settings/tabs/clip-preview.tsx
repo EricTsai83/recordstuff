@@ -1,6 +1,7 @@
 /**
  * A card's hover preview, as YouTube's home page plays one: a moment's rest on a grid card's picture plays the
- * recording there, muted, with a seek bar along its foot. Near the foot the bar rises over a strip of its own; the
+ * recording there, muted unless the card's speaker turned its sound on (a choice kept for every card), with a seek bar
+ * along its foot. Near the foot the bar rises over a strip of its own; the
  * pointer along it shows the frame at that moment in a small picture above it while the preview plays on, and a press
  * there (or a drag) moves the preview. A click elsewhere on the picture opens the player from what the preview shows.
  * One preview at a time: the card it leaves unloads its video, so
@@ -78,7 +79,7 @@ const clamp = (value: number): number => Math.min(1, Math.max(0, value));
 const known = (el: HTMLVideoElement): boolean => Number.isFinite(el.duration) && el.duration > 0;
 
 /** The preview itself, drawn over card `item`'s picture while it is the one previewed. */
-export function ClipPreview({ item }: { item: LibraryItemView }) {
+export function ClipPreview({ item, sound }: { item: LibraryItemView; sound: boolean }) {
   const element = useRef<HTMLVideoElement>(null),
     fill = useRef<HTMLSpanElement>(null),
     knob = useRef<HTMLSpanElement>(null),
@@ -89,6 +90,12 @@ export function ClipPreview({ item }: { item: LibraryItemView }) {
     pointerX = useRef(0),
     // Reduced motion: nothing plays by itself; the picture changes only when a press on the bar moves it.
     still = useRef(matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // The card's speaker: on, the preview plays its sound; switched while it plays, the sound follows at once.
+  const soundRef = useRef(sound);
+  soundRef.current = sound;
+  useEffect(() => {
+    if (element.current) element.current.muted = !sound;
+  }, [sound]);
   const [shown, setShown] = useState(false),
     // The small picture above the bar, and its own video, exist only while the pointer is on the bar's strip.
     [peeking, setPeeking] = useState(false),
@@ -97,7 +104,7 @@ export function ClipPreview({ item }: { item: LibraryItemView }) {
     const el = element.current;
     if (!el) return;
     video = el;
-    el.muted = true;
+    el.muted = !soundRef.current;
     if (!still.current) void el.play().catch(() => {});
     let frame = 0;
     // The bar follows the picture each frame by a transform and a small dot's offset: no render, no page layout.

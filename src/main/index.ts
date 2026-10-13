@@ -431,6 +431,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     trayClick: settings.trayClick,
     fileNameTemplate: settings.fileNameTemplate,
     libraryLayout: settings.libraryLayout,
+    libraryPreviewSound: settings.libraryPreviewSound,
     libraryFavorites: settings.libraryFavorites,
     ...(settings.libraryShown === undefined ? {} : { libraryShown: settings.libraryShown }),
     updates: { state: updates.state, enabled: settings.updates.enabled },

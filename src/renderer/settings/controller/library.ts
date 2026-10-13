@@ -34,6 +34,9 @@ export let renaming:
     }
   | undefined;
 export let optimisticLayout: LibraryLayout | undefined;
+/** The preview sound just chosen, shown while main saves it (settings `libraryPreviewSound`). */
+export let optimisticPreviewSound: boolean | undefined;
+let previewSoundRequest = 0;
 /**
  * The category shown: every recording (undefined), those directly in the output folder (`{ folder: null }`, Uncategorized)
  * or one subfolder's. Main remembers it (settings `libraryShown`), so the tab opens on it again in a new window or launch.
@@ -142,6 +145,30 @@ export async function chooseLayout(layout: LibraryLayout): Promise<void> {
   } finally {
     if (request === layoutRequest) {
       optimisticLayout = undefined;
+      draw();
+    }
+  }
+}
+/** Whether a grid card's hover preview plays its sound: the choice being saved, else the saved one (muted by default). */
+export function previewSound(): boolean {
+  return optimisticPreviewSound ?? view?.library?.previewSound ?? false;
+}
+export async function choosePreviewSound(on: boolean): Promise<void> {
+  const request = ++previewSoundRequest;
+  optimisticPreviewSound = on;
+  draw();
+  try {
+    const result = await window.settings.choose("library", on ? "previewSound:on" : "previewSound:off");
+    render(result.view);
+    if (!result.applied)
+      announce(
+        result.failure ?? text("Could not complete this action. Try again."),
+      );
+  } catch {
+    announce(text("Could not complete this action. Try again."));
+  } finally {
+    if (request === previewSoundRequest) {
+      optimisticPreviewSound = undefined;
       draw();
     }
   }

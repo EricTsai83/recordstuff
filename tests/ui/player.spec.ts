@@ -377,6 +377,18 @@ test("a grid card previews on hover: one muted preview, its bar shows a frame wh
   await expect(previews).toHaveCount(1);
   await expect(page.locator(".clip").nth(0).locator(".clip-preview > video")).toHaveCount(1);
   await expect.poll(() => playback(page, ".clip-preview video").then(state => !state.paused && state.muted && state.time > 0)).toBe(true);
+  // Its speaker, at the picture's top right: the pointer resting on it keeps the preview, a click turns the sound on and
+  // another off again (2026-10-14).
+  const speaker = page.locator(".clip").nth(0).locator(".clip-sound");
+  await expect(speaker).toHaveAccessibleName(label("Unmute"));
+  await speaker.hover();
+  await speaker.click();
+  await expect(speaker).toHaveAccessibleName(label("Mute"));
+  await expect.poll(() => playback(page, ".clip-preview video").then(state => !state.paused && !state.muted)).toBe(true);
+  expect(await previews.count(), "the speaker keeps the preview it switches").toBe(1);
+  await speaker.click();
+  await expect(speaker).toHaveAccessibleName(label("Unmute"));
+  await expect.poll(() => playback(page, ".clip-preview video").then(state => state.muted)).toBe(true);
   // Another card's picture: the first preview unloads, and only one preview exists at a time.
   await thumbs.nth(1).hover();
   await expect(page.locator(".clip").nth(0).locator(".clip-preview")).toHaveCount(0);

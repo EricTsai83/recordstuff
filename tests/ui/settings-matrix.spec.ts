@@ -157,8 +157,10 @@ async function checkOverlays(page: Page, testInfo: TestInfo, lang: "en" | "zh-TW
     return { open: Boolean(m?.hasAttribute("data-open")), items: m ? [...m.querySelectorAll("[role=menuitem]")].map(i => i.textContent) : [],
       fits: Boolean(r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight), focused: document.activeElement?.id ?? "",
       expanded: document.querySelector(${JSON.stringify(MORE)}).getAttribute("aria-expanded") }; })()`);
-  await read(page, `document.querySelector(${JSON.stringify(OPEN)}).scrollIntoView({ block: "nearest" })`);
-  const card = await centre(page, OPEN, false), more = await centre(page, MORE, false);
+  // The ⋮ button sits on the card's title line, below its picture: that line is brought into view, and the card is
+  // pointed at there, so both stay inside a short window.
+  await read(page, `document.querySelector(${JSON.stringify(MORE)}).scrollIntoView({ block: "nearest" })`);
+  const card = await centre(page, `${OPEN} .clip-text`, false), more = await centre(page, MORE, false);
   await page.mouse.move(card.x, card.y);
   await page.mouse.move(more.x, more.y);
   await page.mouse.click(more.x, more.y);
