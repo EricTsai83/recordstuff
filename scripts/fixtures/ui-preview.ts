@@ -158,7 +158,7 @@ async function run(): Promise<void> {
     current = { group, lang, scheme, size: sizeName, width: size.width, height: size.height };
     return open(size);
   };
-  const TABS = ["library", "recording", "general", "failures"] as const;
+  const TABS = ["library", "recording", "general", "shortcuts", "failures"] as const;
 
   // 1. The baseline matrix: every tab, both languages and themes, the default, narrow and minimum sizes, and the
   //    bottom of every page that scrolls (plan 067 step 2).

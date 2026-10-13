@@ -35,7 +35,7 @@ export interface ActionDeps {
   recordingResults: Pick<RecordingResults, "act">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
     | "notifyQualityWriteFailed" | "notifyAnswer">;
-  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showRecording">;
+  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
   shortcuts: Pick<AppShortcuts, "set" | "retry">;
   updates: Pick<UpdateChecker, "check" | "state">;
   captureNotices: Pick<CaptureNotices, "hold">;
@@ -178,6 +178,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         return;
       case "openShortcutSettings":
         deps.settingsWindow.showShortcut();
+        return;
+      case "openShortcutList":
+        deps.settingsWindow.showShortcutList();
         return;
       case "openRecordingSettings":
         deps.settingsWindow.showRecording();

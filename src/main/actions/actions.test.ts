@@ -16,7 +16,7 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     library: { act: vi.fn(async () => true), undoTrash: vi.fn(async () => true) },
     recordingResults: { act: vi.fn(async () => true) },
     tray: {},
-    settingsWindow: { show: vi.fn(), showRecordingResult: vi.fn(), showShortcut: vi.fn(), showRecording: vi.fn() },
+    settingsWindow: { show: vi.fn(), showRecordingResult: vi.fn(), showShortcut: vi.fn(), showShortcutList: vi.fn(), showRecording: vi.fn() },
     shortcuts: { set: vi.fn(async () => {}), retry: vi.fn(() => true) },
     updates: { check: vi.fn(async () => {}), state: { kind: "idle" } },
     captureNotices: { hold: vi.fn() },
@@ -59,6 +59,15 @@ describe("createActionHandler", () => {
     // The way out of a quit held by saves in the background is offered while that quit runs.
     expect(await act("quitWithoutWaiting")).toBe(true);
     expect(deps.quitWithoutWaiting).toHaveBeenCalledOnce();
+  });
+
+  it("opens the Keyboard Shortcuts tab from Help, and not while a quit runs (plan 073)", async () => {
+    const { deps, act } = harness();
+    await act("openShortcutList");
+    expect(deps.settingsWindow.showShortcutList).toHaveBeenCalledOnce();
+    const quitting = harness({ quitRequested: () => true });
+    expect(await quitting.act("openShortcutList")).toBe(false);
+    expect(quitting.deps.settingsWindow.showShortcutList).not.toHaveBeenCalled();
   });
 
   it("hides the interface without stopping or quitting a recording", async () => {

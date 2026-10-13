@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw } from "lucide-react";
+import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw, AppWindow, Film, Play, Maximize } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -16,6 +16,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/pop
 import { flushSync } from "react-dom";
 import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
+import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
 import { WindowActions } from "../window-actions";
 
@@ -47,6 +48,11 @@ const sectionIcons = {
   controls: MousePointerClick,
   display: Palette,
   updates: RefreshCw,
+  "shortcutList:global": Globe,
+  "shortcutList:window": AppWindow,
+  "shortcutList:recordings": Film,
+  "shortcutList:player": Play,
+  "shortcutList:fullScreen": Maximize,
 };
 function SectionIcon({ id }: { id: string }) {
   const Icon = sectionIcons[id as keyof typeof sectionIcons];
@@ -217,6 +223,9 @@ export function TextSetting({
   );
 }
 export function SettingRow({ group }: { group: SettingsGroup }) {
+  return group.kind === "shortcutList" ? <ShortcutRows group={group} /> : <PreferenceRow group={group} />;
+}
+function PreferenceRow({ group }: { group: SettingsGroup }) {
   const id = `setting-${group.id}`,
     ownFailure = model.failure?.group === group.id ? model.failure : undefined;
   const actions =
@@ -271,6 +280,8 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
   return (
     <Row
       id={`${id}-row`}
+      // The Keyboard Shortcuts tab's Change… lands here when a recording or a save has the control disabled (plan 073).
+      tabIndex={group.kind === "shortcut" ? -1 : undefined}
       className={group.id === "about" ? "row about-row" : "row block gap-0 [&>*]:w-auto"}
       aria-busy={model.saving?.group === group.id}
     >

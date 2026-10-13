@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Film, Wrench, Video, Settings, Lock } from "lucide-react";
+import { Film, Wrench, Video, Settings, Lock, Keyboard } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -23,6 +23,7 @@ const tabIcons = {
   library: Film,
   recording: Video,
   general: Settings,
+  shortcuts: Keyboard,
   failures: Wrench,
 };
 const isPermissionStatus = (status?: SettingsStatus): boolean => status?.tone === "attention" &&
@@ -173,6 +174,7 @@ export function SettingsApp() {
                 value === "library" ||
                 value === "general" ||
                 value === "recording" ||
+                value === "shortcuts" ||
                 value === "failures"
               )
                 model.activateTab(value);

@@ -4,6 +4,7 @@
  */
 import { flushSync } from "react-dom";
 import { browserPlatform, isCloseChord } from "../../lib/shortcut-capture";
+import { UNDO_KEY } from "../../../shared/shortcut-catalog";
 import {
   documentLanguage,
   isLanguage,
@@ -210,6 +211,15 @@ export function activateTab(tab: SettingsTab): void {
   const panel = document.getElementById("settings-panel");
   if (panel) panel.scrollTop = tabScroll.get(tab) ?? 0;
   focus(`tab-${tab}`);
+}
+/** The Keyboard Shortcuts tab's Change… (plan 073): the recording shortcut changes only on General's Shortcut card. */
+export function showShortcutCard(): void {
+  activateTab("general");
+  const control = document.getElementById("setting-hotkey");
+  focus("setting-hotkey");
+  // A recording or a save in progress disables the control; the card's row takes the focus then, still locked.
+  if (document.activeElement !== control) focus("setting-hotkey-row");
+  control?.scrollIntoView({ block: "nearest" });
 }
 /** An action (a link, a folder, a system pane) saves nothing: its retry repeats the action and is labelled so. */
 export async function choose(
@@ -555,7 +565,7 @@ export function start(): () => void {
       command &&
       !event.shiftKey &&
       !event.altKey &&
-      event.key.toLowerCase() === "z" &&
+      event.key.toLowerCase() === UNDO_KEY &&
       view?.library?.trashed &&
       !playingItem &&
       !(

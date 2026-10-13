@@ -21,6 +21,7 @@ import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { VIDEO_TIMING, formatDuration } from "../../shared/video-player";
 import { translate, type Language } from "../../shared/i18n";
+import { playerKeyAction } from "../../shared/shortcut-catalog";
 import { playbackOf } from "./player-state";
 import { FramePeek, type FramePeekHandle } from "./frame-peek";
 
@@ -302,33 +303,24 @@ export function Player({
     )
       return;
     const target = event.target as HTMLElement,
-      key = event.key.length === 1 ? event.key.toLowerCase() : event.key,
-      onButton = target instanceof HTMLButtonElement;
-    const onVolume = Boolean(target.closest(`#${id}-volume`)),
-      onSeek = Boolean(target.closest(`#${id}-seek`)),
       el = video.current;
     if (!el) return;
-    if ((key === " " && !onButton) || key === "k") toggle(true);
-    else if ((key === "ArrowLeft" || key === "ArrowRight") && !onVolume) {
-      seekTo(el.currentTime + (key === "ArrowLeft" ? -5 : 5));
-      showSeek(key === "ArrowRight");
-    } else if ((key === "ArrowUp" || key === "ArrowDown") && !onVolume)
-      nudgeVolume(key === "ArrowUp" ? 0.05 : -0.05);
-    else if (onSeek && ["PageUp", "PageDown", "Home", "End"].includes(key))
-      seekTo(
-        key === "PageUp"
-          ? el.currentTime + 10
-          : key === "PageDown"
-            ? el.currentTime - 10
-            : key === "Home"
-              ? 0
-              : Number.isFinite(el.duration)
-                ? el.duration
-                : el.currentTime,
-      );
-    else if (key === "m") mute();
-    else if (key === "f") props.current.fullScreen();
-    else return;
+    // The keys are the Keyboard Shortcuts tab's own (shortcut-catalog.ts), so the list and the player cannot differ.
+    const action = playerKeyAction(event.key, {
+      onButton: target instanceof HTMLButtonElement,
+      onVolume: Boolean(target.closest(`#${id}-volume`)),
+      onSeek: Boolean(target.closest(`#${id}-seek`)),
+    });
+    if (!action) return;
+    if (action.kind === "toggle") toggle(true);
+    else if (action.kind === "seekBy") {
+      seekTo(el.currentTime + action.seconds);
+      if (action.flash) showSeek(action.flash === "forward");
+    } else if (action.kind === "volume") nudgeVolume(action.by);
+    else if (action.kind === "seekTo")
+      seekTo(action.to === "start" ? 0 : Number.isFinite(el.duration) ? el.duration : el.currentTime);
+    else if (action.kind === "mute") mute();
+    else props.current.fullScreen();
     event.preventDefault();
     event.stopPropagation();
     wake();

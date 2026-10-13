@@ -25,7 +25,7 @@ import type { ZoomRequest } from "../settings/settings-window";
  * the window handles them itself on every platform (settings-window.ts `zoomRequest`), so the items show their keys
  * without binding them, and a key is never handled twice.
  */
-function systemMenus(language: Language, record: MenuItemConstructorOptions[], hide?: () => void, zoom?: (request: ZoomRequest) => void): MenuItemConstructorOptions[] {
+function systemMenus(language: Language, record: MenuItemConstructorOptions[], hide?: () => void, zoom?: (request: ZoomRequest) => void, shortcuts?: () => void): MenuItemConstructorOptions[] {
   const t = (key: PlainMessageKey): string => translate(key, language);
   const separator: MenuItemConstructorOptions = { type: "separator" };
   return [
@@ -49,6 +49,8 @@ function systemMenus(language: Language, record: MenuItemConstructorOptions[], h
     ] } satisfies MenuItemConstructorOptions] : []),
     ...record,
     { label: t("Window"), role: "window", submenu: [{ role: "minimize", label: t("Minimize") }, { role: "zoom", label: t("Zoom") }, separator, { role: "front", label: t("Bring All to Front") }] },
+    // Help lists every shortcut in the window's Keyboard Shortcuts tab (plan 073); the item has no key of its own.
+    ...(shortcuts ? [{ label: t("Help"), role: "help", submenu: [{ label: t("Keyboard Shortcuts"), click: shortcuts }] } satisfies MenuItemConstructorOptions] : []),
   ];
 }
 
@@ -151,7 +153,8 @@ export class AppMenu {
     this.built = key;
     const record: MenuItemConstructorOptions[] = items.length
       ? [{ label: translate("Record", language), submenu: items.map(entry => this.toTemplate(entry)) }] : [];
-    Menu.setApplicationMenu(Menu.buildFromTemplate(systemMenus(language, record, this.options.hide, this.options.zoom)));
+    Menu.setApplicationMenu(Menu.buildFromTemplate(systemMenus(language, record, this.options.hide, this.options.zoom,
+      () => this.options.onAction("openShortcutList"))));
     // The Dock's own items (Show All Windows, Quit) follow ours.
     if (items.length) app.dock?.setMenu(Menu.buildFromTemplate(items.map(entry => this.toTemplate(entry))));
   }

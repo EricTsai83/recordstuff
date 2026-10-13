@@ -460,6 +460,28 @@ export const ZH_TW = {
   "An unexpected error occurred. See the log for details.": "發生未預期的錯誤，詳見 log。",
   "Quit or relaunch postponed: recording work is pending. Try again when it finishes.": "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。",
   "Quit or relaunch postponed: settings or the log are being written. Try again in a moment.": "設定或 log 仍在寫入，暫不結束或重新啟動；請稍後再試。",
+  // The Keyboard Shortcuts tab and the macOS Help menu's way to it (plan 073).
+  "Keyboard Shortcuts": "鍵盤快捷鍵",
+  Help: "輔助說明",
+  Anywhere: "任何地方",
+  "RecordStuff window": "RecordStuff 視窗",
+  Player: "播放器",
+  "Full-screen video": "全螢幕影片",
+  "Start or stop recording": "開始或停止錄影",
+  "Close the window": "關閉視窗",
+  "Undo Move to Trash": "還原「丟到垃圾桶」",
+  "In the search box": "在搜尋框中",
+  "Play or pause": "播放或暫停",
+  "Back or forward 5 seconds": "倒轉或快轉 5 秒",
+  "Volume up or down": "調高或調低音量",
+  "Forward or back 10 seconds": "快轉或倒轉 10 秒",
+  "On the seek bar": "在進度列上",
+  "Jump to the start or end": "跳到開頭或結尾",
+  "Leave full screen": "結束全螢幕",
+  "Double-click": "按兩下",
+  Unavailable: "無法使用",
+  /** Between a shortcut's alternatives, ⌘W or Esc. */
+  or: "或",
 } as const;
 
 export type MessageKey = keyof typeof ZH_TW;

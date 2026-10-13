@@ -21,6 +21,7 @@ import { TRAFFIC_LIGHT_POSITION } from "../../shared/window-controls";
 import { preferencesUnlocked } from "../recording/recording-lock";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../../shared/hotkey";
 import { translate } from "../../shared/i18n";
+import { ZOOM_KEYS } from "../../shared/shortcut-catalog";
 import { isFullScreenChoice, type FullScreenChoice } from "../../shared/video-player";
 import type { VideoFullScreen } from "../library/video-fullscreen";
 import type { AppAction, AppContext } from "../app/ui-model";
@@ -44,7 +45,8 @@ export function nextZoom(current: number, request: ZoomRequest): number {
 export function zoomRequest(input: { type: string; key: string; meta: boolean; control: boolean; alt: boolean }, platform: NodeJS.Platform): ZoomRequest | undefined {
   const command = platform === "darwin" ? input.meta && !input.control : input.control && !input.meta;
   if (input.type !== "keyDown" || !command || input.alt) return undefined;
-  return input.key === "=" || input.key === "+" ? "in" : input.key === "-" || input.key === "_" ? "out" : input.key === "0" ? "reset" : undefined;
+  const has = (keys: readonly string[]): boolean => keys.includes(input.key);
+  return has(ZOOM_KEYS.in) ? "in" : has(ZOOM_KEYS.out) ? "out" : has(ZOOM_KEYS.reset) ? "reset" : undefined;
 }
 /**
  * The one description of the Settings window, for the app and for the Settings fixture alike, so the fixture's
@@ -240,6 +242,11 @@ export class SettingsWindow {
   /** The shortcut-failure banner's entry: General, where the shortcut card is. */
   showShortcut(): void {
     this.showEntry("general");
+  }
+
+  /** Help → Keyboard Shortcuts (app-menu.ts): the list of every shortcut (plan 073). */
+  showShortcutList(): void {
+    this.showEntry("shortcuts");
   }
 
   /** A saved recording's entry, from its notification: Recordings, with that recording in view when listed. */

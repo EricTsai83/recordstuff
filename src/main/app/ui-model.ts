@@ -27,6 +27,8 @@ export type AppAction =
   | "openRecordingResult"
   /** Settings on the General tab, where the shortcut card, its retry and the editor are. */
   | "openShortcutSettings"
+  /** Settings on the Keyboard Shortcuts tab (plan 073): the macOS Help menu's Keyboard Shortcuts. */
+  | "openShortcutList"
   /** Settings on the Recording tab, where the resolution warning a capture notice names is shown. */
   | "openRecordingSettings"
   /** The window on Recordings with the newest recording in view and focused: the tray's way to the last take. */

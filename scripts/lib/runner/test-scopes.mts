@@ -75,8 +75,9 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "shortcut",
-    covers: "the recording shortcut: its editor, registration, refusals and entry",
-    unit: [`${PAGE}settings-shortcut-`, `${PAGE}settings.test.ts`, `${PAGE}settings-close.test.ts`, "src/main/shortcuts/", "src/shared/hotkey.test.ts"],
+    covers: "the recording shortcut: its editor, registration, refusals and entry, and the Keyboard Shortcuts tab with its catalog",
+    unit: [`${PAGE}settings-shortcut-`, `${PAGE}settings.test.ts`, `${PAGE}settings-close.test.ts`, "src/main/shortcuts/", "src/shared/hotkey.test.ts",
+      "src/shared/shortcut-catalog.test.ts", "src/main/menus/app-menu.test.ts"],
     ui: [{ file: "shortcut-integration.spec.ts" }, { file: "settings-panel.spec.ts", tags: ["@shortcut"] }],
   },
   {

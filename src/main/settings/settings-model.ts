@@ -31,7 +31,8 @@ import { COUNTDOWN_CHOICES } from "../../shared/countdown";
 import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../../shared/file-name";
 import { isLibraryLayout } from "../../shared/appearance";
 import { formatDuration } from "../../shared/video-player";
-import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, StatusActionId } from "../../shared/settings-panel";
+import type { LibraryView, RecordingResultView, SettingsChoice, SettingsGroup, SettingsStatus, SettingsView, ShortcutRowView, StatusActionId } from "../../shared/settings-panel";
+import { SHORTCUT_CATEGORIES, SHORTCUT_CATEGORY_LABELS, shortcutCatalog, shortcutKeys, shortcutText, type CatalogShortcut } from "../../shared/shortcut-catalog";
 import { MEDIA_SCHEME, RECORDING_FILE_ACTIONS, type RecordingFileAction } from "../library/recordings-library";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { RecordingState } from "../../shared/state";
@@ -332,6 +333,48 @@ function hotkeyDiagnostics(ctx: AppContext, unavailable: string | undefined): No
   ];
 }
 
+/**
+ * The Keyboard Shortcuts tab (plan 073): one read-only section per catalog category. Only main knows whether the two
+ * global shortcuts work, so their rows show the current choice and status here, with the Shortcut card's reasons.
+ */
+function shortcutListGroups(ctx: AppContext): Group[] {
+  const { language, platform, hotkey } = ctx;
+  const settingsKind = ctx.settingsShortcut?.kind;
+  const unavailable = (reason: string): ShortcutRowView["status"] => ({ kind: "unavailable", label: t("Unavailable", language), reason });
+  const status = (id: string): ShortcutRowView["status"] => {
+    if (id === "record") {
+      if (!hotkey.enabled) return { kind: "off", label: t("Off", language) };
+      return hotkey.registered ? undefined : unavailable(t("Another app may be using this shortcut.", language));
+    }
+    if (id !== "open") return undefined;
+    const settings = describeAccelerator(settingsShortcut(platform), platform);
+    return settingsKind === "failed" ? unavailable(t("Another app may be using {shortcut}.", language, { shortcut: settings }))
+      : settingsKind === "conflict" ? unavailable(t("{shortcut} is the recording shortcut, so it does not open RecordStuff.", language, { shortcut: settings }))
+        : undefined;
+  };
+  const row = (shortcut: CatalogShortcut): ShortcutRowView => {
+    // The recording row shows the user's own combination; Off still names it, as the Shortcut card remembers it.
+    const keys = shortcut.id === "record" ? [hotkey.accelerator] : shortcut.keys;
+    const rowStatus = status(shortcut.id);
+    return {
+      id: shortcut.id,
+      label: t(shortcut.label, language),
+      keys: keys.map((key) => shortcutKeys(key, platform)),
+      spoken: keys.map((key) => shortcutText(key, platform)),
+      ...(shortcut.gesture ? { gesture: t(shortcut.gesture, language) } : {}),
+      ...(shortcut.where ? { where: t(shortcut.where, language) } : {}),
+      ...(rowStatus ? { status: rowStatus } : {}),
+      ...(shortcut.id === "record" ? { change: t("Change…", language) } : {}),
+    };
+  };
+  const catalog = shortcutCatalog(platform);
+  return SHORTCUT_CATEGORIES.map((category) => {
+    const id = `shortcutList:${category}`, label = t(SHORTCUT_CATEGORY_LABELS[category], language);
+    return { id, label, tab: "shortcuts", kind: "shortcutList", section: id, sectionHeading: label, enabled: true, choices: [],
+      shortcuts: catalog.filter((shortcut) => shortcut.category === category).map(row) };
+  });
+}
+
 function updateChecksGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   return { ...group("updateChecks", t("Check for updates on launch", language), enabled,
@@ -450,6 +493,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     }))),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
+    ...shortcutListGroups(ctx),
     // Troubleshooting: diagnostics stay visible, with destructive cleanup in a separate section.
     // Never locked: showing a file touches nothing a recording holds.
     { ...group("log", t("Log file", ctx.language), true, [
@@ -707,7 +751,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     // needs none: the status card's own title already says it, and the hint sits right under that title.
     hint: quitting || unlocked ? "" : t("Recording in progress; only language, appearance and icon click can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
-    tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) }, failuresTab(ctx)],
+    tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) },
+      { id: "shortcuts", label: t("Keyboard Shortcuts", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,
       ...(quitting && rest.id !== "about" ? { enabled: false } : {}),

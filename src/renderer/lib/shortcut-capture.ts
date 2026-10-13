@@ -1,4 +1,5 @@
 import { MODIFIER_ORDER } from "../../shared/hotkey";
+import { CLOSE_KEY } from "../../shared/shortcut-catalog";
 
 export interface ShortcutKey {
   code: string;
@@ -20,7 +21,7 @@ export function isCloseChord(event: ShortcutKey, platform: string): boolean {
   const mac = platform === "darwin";
   if (event.metaKey !== mac || event.ctrlKey === mac || event.altKey || event.shiftKey) return false;
   const key = event.key.toLowerCase();
-  return key === "w" || (event.code === "KeyW" && !/^[\x21-\x7e]$/.test(key));
+  return key === CLOSE_KEY || (event.code === `Key${CLOSE_KEY.toUpperCase()}` && !/^[\x21-\x7e]$/.test(key));
 }
 
 /**

@@ -34,12 +34,31 @@ export interface DisplayFrame {
   pixels: string;
 }
 /** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
-export type SettingsTab = "library" | "recording" | "general" | "failures";
+export type SettingsTab = "library" | "recording" | "general" | "shortcuts" | "failures";
+/** One row of the Keyboard Shortcuts tab (plan 073): read-only, from `shortcut-catalog.ts`. */
+export interface ShortcutRowView {
+  id: string;
+  label: string;
+  /** Alternatives, any of which works; each the keys pressed together, as shown. */
+  keys: string[][];
+  /** Each alternative as one phrase, for assistive technology. */
+  spoken: string[];
+  /** A pointer gesture that does the same, in words. */
+  gesture?: string;
+  /** Where the keys work, when narrower than the section. */
+  where?: string;
+  /** A global shortcut that does not work now: Off, or Unavailable with the Shortcut card's reason. */
+  status?: { kind: "off" | "unavailable"; label: string; reason?: string };
+  /** The recording shortcut's way to the Shortcut card, which changes it; the list itself edits nothing. */
+  change?: string;
+}
 export interface SettingsGroup {
   id: string;
   label: string;
   tab: Exclude<SettingsTab, "library">;
-  kind?: "actions" | "shortcut";
+  kind?: "actions" | "shortcut" | "shortcutList";
+  /** A `shortcutList` group's rows. */
+  shortcuts?: ShortcutRowView[];
   /**
    * Presentation only; omitted controls default to a native menu. `text` is a field whose committed value is the one
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).

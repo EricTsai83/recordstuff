@@ -72,6 +72,7 @@ vi.mock("electron", () => ({
   },
 }));
 import { SettingsWindow, nextZoom, settingsWindowOptions, zoomRequest, type SettingsWindowOptions } from "./settings-window";
+import { shortcutCatalog } from "../../shared/shortcut-catalog";
 import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../../shared/window-controls";
 import type { AppAction, AppContext } from "../app/ui-model";
 import { preferencesUnlocked } from "../recording/recording-lock";
@@ -808,6 +809,9 @@ it("the shortcut entry names the General tab with a new token, and an ordinary o
   expect(s.read(s.event()).entryTab).toBeUndefined();
   s.panel.showRecording();
   expect(s.read(s.event())).toMatchObject({ resultFocus: 3, entryTab: "recording" });
+  // Help → Keyboard Shortcuts (plan 073).
+  s.panel.showShortcutList();
+  expect(s.read(s.event())).toMatchObject({ resultFocus: 4, entryTab: "shortcuts" });
   s.panel.show();
   expect(s.read(s.event())).toMatchObject({ resultFocus: 0 });
   expect(s.read(s.event()).entryTab).toBeUndefined();
@@ -1135,6 +1139,18 @@ describe("the page's zoom (2026-10-05)", () => {
     expect(zoomRequest(key("=", { meta: true, alt: true }), "darwin")).toBeUndefined();
     expect(zoomRequest(key("=", { meta: true, type: "keyUp" }), "darwin")).toBeUndefined();
     expect(zoomRequest(key("-", { control: true }), "win32")).toBe("out");
+  });
+  it("zooms on the keys the Keyboard Shortcuts tab lists (plan 073)", () => {
+    const listed = { zoomIn: "in", zoomOut: "out", zoomReset: "reset" } as const;
+    for (const platform of ["darwin", "win32"] as const) {
+      for (const row of shortcutCatalog(platform).filter((entry) => entry.id in listed)) {
+        const [modifier, name] = row.keys[0]!.split("+") as [string, string];
+        expect(modifier, row.id).toBe("CommandOrControl");
+        const key = name === "Plus" ? "+" : name;
+        const input = { type: "keyDown", key, meta: platform === "darwin", control: platform !== "darwin", alt: false };
+        expect(zoomRequest(input, platform), `${platform} ${row.id}`).toBe(listed[row.id as keyof typeof listed]);
+      }
+    }
   });
   it("zooms its own page alone, from the saved factor, and remembers each step", () => {
     const saveZoom = vi.fn();

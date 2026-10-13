@@ -88,12 +88,18 @@ describe("settingsView", () => {
       "appearance",
       "updateChecks",
       "updates",
+      // Keyboard Shortcuts (plan 073): read-only lists, one per category.
+      "shortcutList:global",
+      "shortcutList:window",
+      "shortcutList:recordings",
+      "shortcutList:player",
+      "shortcutList:fullScreen",
       "log",
       "localData",
       "about",
     ]);
     for (const entry of view.groups) {
-      expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" ? 0 : 1);
+      expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" || entry.kind === "shortcutList" ? 0 : 1);
       expect(entry.enabled, entry.id).toBe(true);
     }
     expect(checked(idle, context, "countdown")).toBe("3");
@@ -172,7 +178,7 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id));
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id) || entry.kind === "shortcutList");
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
@@ -484,7 +490,9 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "segmented", "display"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],
+    ...["global", "window", "recordings", "player", "fullScreen"].map(category => [`shortcutList:${category}`, undefined, `shortcutList:${category}`]),
+    ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
   ]);
   // Appearance is three icons, one click each (2026-10-05); no other row is.
   expect(groups.filter(g => g.iconChoices).map(g => [g.id, g.choices.map(c => c.id)])).toEqual([["appearance", ["system", "light", "dark"]]]);
@@ -640,18 +648,19 @@ describe("Recording failures tab (plan 047)", () => {
   const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
   it("always offers Troubleshooting last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
     expect(settingsView(idle, context).tabs).toEqual([
-      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" }, { id: "failures", label: "Troubleshooting" },
+      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
+      { id: "shortcuts", label: "Keyboard Shortcuts" }, { id: "failures", label: "Troubleshooting" },
     ]);
     const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
-    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[3]).toEqual({
+    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[4]).toEqual({
       id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影檔", "錄影設定", "一般", "疑難排解（2）"]);
-    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[3]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
-    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[3]).toEqual({ id: "failures", label: "Troubleshooting" });
+      .toEqual(["錄影檔", "錄影設定", "一般", "鍵盤快捷鍵", "疑難排解（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[4]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[4]).toEqual({ id: "failures", label: "Troubleshooting" });
     // One unread failure is said in the singular.
-    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[3]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
+    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[4]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
@@ -733,9 +742,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
       ["screen", "Source and output"], ["countdown", "Before recording"], ["videoQuality", "Video"],
-      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
+      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
+      ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
+      ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
+      ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新", "診斷工具", "重設與清理"]);
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新",
+      "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
 });
@@ -993,5 +1006,54 @@ describe("the menu's support items in RecordStuff (2026-10-04)", () => {
     expect(group(idle, { ...context, language: "zh-TW" }, "about")?.choices.find(c => c.id === "hide")).toMatchObject({ label: "隱藏 RecordStuff", enabled: true });
     expect(settingsAction(busy[2]!, context, "about", "hide")).toBe("hideSettings");
     expect(settingsAction(idle, { ...context, quitting: true }, "about", "hide")).toBeUndefined();
+  });
+});
+
+describe("Keyboard Shortcuts tab (plan 073)", () => {
+  const rows = (ctx: AppContext) => settingsView(idle, ctx).groups.filter(g => g.kind === "shortcutList").flatMap(g => g.shortcuts ?? []);
+  const row = (ctx: AppContext, id: string) => rows(ctx).find(entry => entry.id === id)!;
+  const win: AppContext = { ...context, platform: "win32" };
+
+  it("lists every catalog row read-only on its own tab, offering no choice main would act on", () => {
+    const groups = settingsView(idle, context).groups.filter(g => g.kind === "shortcutList");
+    expect(groups.every(g => g.tab === "shortcuts" && g.choices.length === 0 && g.actions === undefined)).toBe(true);
+    expect(rows(context).map(entry => entry.id)).toEqual(["record", "open", "close", "undoTrash", "zoomIn", "zoomOut", "zoomReset",
+      "clearSearch", "playPause", "seek", "volume", "mute", "fullScreen", "seekPage", "seekEnds", "leaveFullScreen"]);
+    for (const group of groups) expect(settingsAction(idle, context, group.id, "record"), group.id).toBeUndefined();
+  });
+
+  it("shows each platform's keys, symbols on macOS and names elsewhere", () => {
+    expect([row(context, "record").keys, row(context, "record").spoken]).toEqual([[["⇧", "⌘", "1"]], ["⇧⌘1"]]);
+    expect([row(win, "record").keys, row(win, "record").spoken]).toEqual([[["Ctrl", "Shift", "1"]], ["Ctrl+Shift+1"]]);
+    expect(row(context, "open").spoken).toEqual(["⌥⌘,"]);
+    expect(row(win, "open").spoken).toEqual(["Ctrl+Shift+,"]);
+    expect(row(context, "close").spoken).toEqual(["⌘W", "Esc"]);
+    expect(row(win, "close").spoken).toEqual(["Ctrl+W", "Esc"]);
+    expect(row(context, "zoomIn").keys).toEqual([["⌘", "+"]]);
+    expect(row(win, "zoomOut").keys).toEqual([["Ctrl", "-"]]);
+    expect(row(win, "seek").keys).toEqual([["←"], ["→"]]);
+    expect(row(context, "seekPage")).toMatchObject({ keys: [["Page Up"], ["Page Down"]], where: "On the seek bar" });
+    expect(row(context, "leaveFullScreen")).toMatchObject({ spoken: ["Esc", "⌘W", "F"], gesture: "Double-click" });
+  });
+
+  it("follows the recording shortcut's choice and registration, with Change… only there", () => {
+    const custom: AppContext = { ...context, hotkey: { enabled: true, accelerator: "CommandOrControl+Alt+R", registered: true } };
+    expect(row(custom, "record")).toMatchObject({ spoken: ["⌥⌘R"], change: "Change…" });
+    expect(row(custom, "record")).not.toHaveProperty("status");
+    expect(rows(context).filter(entry => entry.change).map(entry => entry.id)).toEqual(["record"]);
+    const off: AppContext = { ...custom, hotkey: { ...custom.hotkey, enabled: false } };
+    expect(row(off, "record")).toMatchObject({ spoken: ["⌥⌘R"], status: { kind: "off", label: "Off" } });
+    const failed: AppContext = { ...context, hotkey: { ...DEFAULT_HOTKEY, registered: false } };
+    expect(row(failed, "record").status).toEqual({ kind: "unavailable", label: "Unavailable", reason: "Another app may be using this shortcut." });
+    expect(row({ ...failed, language: "zh-TW" }, "record").status?.label).toBe("無法使用");
+    expect(row({ ...failed, platform: "win32" }, "record").status?.kind).toBe("unavailable");
+  });
+
+  it("marks Open RecordStuff unavailable when its registration failed or the recording shortcut took it", () => {
+    expect(row(context, "open")).not.toHaveProperty("status");
+    expect(row({ ...context, settingsShortcut: { kind: "failed", accelerator: SETTINGS_SHORTCUT, reason: "taken" } }, "open").status)
+      .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Another app may be using ⌥⌘,." });
+    expect(row({ ...win, settingsShortcut: { kind: "conflict" } }, "open").status)
+      .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Ctrl+Shift+, is the recording shortcut, so it does not open RecordStuff." });
   });
 });

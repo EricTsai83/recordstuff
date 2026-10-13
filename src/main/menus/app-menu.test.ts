@@ -49,9 +49,9 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
   afterEach(() => { Object.defineProperty(process, "platform", { value: platform }); });
 
   it("keeps the key-equivalent menu without a window, and adds Record and the Dock icon while one is open", async () => {
-    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Window"]);
+    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Window", "Help"]);
     menu.windowOpened();
-    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Record", "Window"]);
+    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Record", "Window", "Help"]);
     const start = lastMenu()[2]!.submenu![0]!;
     expect([start.label, start.accelerator, start.icon?.name]).toEqual(["Start recording", ctx.hotkey.accelerator, "record.circle"]);
     start.click!();
@@ -64,7 +64,7 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
       .toEqual(["Start recording", "separator", "Show last recording"]);
     menu.windowClosed();
     expect(electron.dock.hide).toHaveBeenCalledOnce();
-    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Window"]);
+    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "Window", "Help"]);
   });
 
   it("keeps the key equivalents the window relies on, in the app's language", () => {
@@ -73,8 +73,21 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
     expect(keys).not.toContain("close");
     const zh = new AppMenu({ state: () => state, context: () => ({ ...ctx, language: "zh-TW" }), language: () => "zh-TW", onAction });
     zh.windowOpened();
-    expect(titles(lastMenu())).toEqual(["appMenu", "編輯", "錄影", "視窗"]);
+    expect(titles(lastMenu())).toEqual(["appMenu", "編輯", "錄影", "視窗", "輔助說明"]);
     expect(lastMenu()[1]!.submenu!.map(entry => entry.label ?? entry.type)).toEqual(["還原", "重做", "separator", "剪下", "拷貝", "貼上", "全選"]);
+  });
+
+  it("opens the Keyboard Shortcuts tab from Help, with no key of its own (plan 073)", () => {
+    for (const open of [false, true]) {
+      if (open) menu.windowOpened();
+      const help = lastMenu().at(-1)!;
+      expect([help.label, help.role]).toEqual(["Help", "help"]);
+      const item = help.submenu![0]!;
+      expect([item.label, item.accelerator]).toEqual(["Keyboard Shortcuts", undefined]);
+      onAction.mockClear();
+      item.click!();
+      expect(onAction).toHaveBeenCalledWith("openShortcutList");
+    }
   });
 
   it("hides into the menu bar on Hide RecordStuff, leaving no Dock icon behind (2026-10-05)", () => {
@@ -92,7 +105,7 @@ describe("the app menu and Dock icon (2026-10-04)", () => {
     const zoom = vi.fn();
     const zooming = new AppMenu({ state: () => state, context: () => ctx, language: () => ctx.language, onAction, zoom });
     zooming.windowOpened();
-    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "View", "Record", "Window"]);
+    expect(titles(lastMenu())).toEqual(["appMenu", "Edit", "View", "Record", "Window", "Help"]);
     const items = lastMenu()[2]!.submenu! as Array<Template & { registerAccelerator?: boolean }>;
     expect(items.map(entry => [entry.label, entry.accelerator, entry.registerAccelerator]))
       .toEqual([["Actual Size", "Command+0", false], ["Zoom In", "Command+Plus", false], ["Zoom Out", "Command+-", false],

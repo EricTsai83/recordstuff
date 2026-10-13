@@ -341,8 +341,8 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     expect.soft(recordingTab && generalTab, `S094 ${lang}: a normal open shows no history in the Recording and General tabs`).toBe(true);
     const strip = await read<{ fits: boolean; labels: string[] }>(page, `(() => { const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
       return { fits: tabs.every(t => t.scrollWidth <= t.clientWidth), labels: tabs.map(t => t.textContent) }; })()`);
-    expect.soft(strip.fits && strip.labels[3] === (lang === "en" ? "Troubleshooting (1)" : "疑難排解（1）"),
-      `S095 ${lang}: the four tabs fit the 380 pt window without truncation, the failures tab by name and count ${JSON.stringify(strip)}`).toBe(true);
+    expect.soft(strip.fits && strip.labels.at(-1) === (lang === "en" ? "Troubleshooting (1)" : "疑難排解（1）"),
+      `S095 ${lang}: the five tabs fit the 380 pt window without truncation, the failures tab by name and count ${JSON.stringify(strip)}`).toBe(true);
     for (const scheme of ["light", "dark"] as const) {
       await host.evaluate((h, value) => h.theme(value), scheme);
       await page.waitForTimeout(120);
@@ -352,13 +352,13 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     }
     await host.evaluate(h => h.theme("light"));
   }
-  // Arrow keys, Home and End cover all four tabs, wrapping from Failures to Recordings.
+  // Arrow keys, Home and End cover all five tabs, wrapping from Failures to Recordings.
   await clickAt(page, "#tab-recording");
   await page.waitForTimeout(60);
   const tabKeys: string[] = [];
-  for (const key of ["ArrowRight", "ArrowRight", "ArrowRight", "End", "Home", "ArrowLeft"]) { await page.keyboard.press(key); await page.waitForTimeout(60); tabKeys.push(await selected()); }
-  expect.soft([...tabKeys, await read<string>(page, "document.activeElement.id")], "S096 keyboard navigation covers the four tabs")
-    .toEqual(["tab-general", "tab-failures", "tab-library", "tab-failures", "tab-library", "tab-failures", "tab-failures"]);
+  for (const key of ["ArrowRight", "ArrowRight", "ArrowRight", "ArrowRight", "End", "Home", "ArrowLeft"]) { await page.keyboard.press(key); await page.waitForTimeout(60); tabKeys.push(await selected()); }
+  expect.soft([...tabKeys, await read<string>(page, "document.activeElement.id")], "S096 keyboard navigation covers the five tabs")
+    .toEqual(["tab-general", "tab-shortcuts", "tab-failures", "tab-library", "tab-failures", "tab-library", "tab-failures", "tab-failures"]);
   await pushResult("en", await lastFocus());
   const layout = await read<{ days: string[]; open: boolean[] }>(page, `({ days: [...document.querySelectorAll(".result-day-heading")].map(h => h.textContent),
     open: [...document.querySelectorAll(".recording-result")].map(r => r.hasAttribute("data-open")) })`);

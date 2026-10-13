@@ -24,7 +24,7 @@ test.beforeEach(async ({ launchView }) => {
 
 /** The app's last zoom step (src/main/settings/settings-window.ts ZOOM_STEPS), the most ⌘+ reaches. */
 const LAST_ZOOM = 1.5;
-const TABS = ["library", "recording", "general", "failures"] as const;
+const TABS = ["library", "recording", "general", "shortcuts", "failures"] as const;
 /** A recording card's ⋯ menu button (`clip-<id>-more`). */
 const MORE = '[id^="clip-"][id$="-more"]';
 

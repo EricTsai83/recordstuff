@@ -51,6 +51,8 @@ Open settings with **⌥⌘,**:
 | Icon click | Open the menu / Start / stop recording | Open the menu |
 | Language | English / 繁體中文 | English |
 
+The **Keyboard Shortcuts** tab, also opened from the Help menu on macOS, lists every shortcut and whether it works now.
+
 Output is H.264/AAC MP4. One whole screen is captured, without microphone, window or region selection. Recordings and settings stay local; update checks send no identifiers or telemetry.
 
 ## Development
