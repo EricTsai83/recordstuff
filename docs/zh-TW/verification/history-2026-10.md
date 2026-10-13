@@ -4,6 +4,23 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 073 結案 — 2026-10-14
+
+App 裡原本沒有任何地方列出所有快捷鍵：Shortcut 卡片只顯示錄影快捷鍵，tray 與「錄影」選單只顯示錄影與開啟的快捷鍵，播放器、縮放與視窗的按鍵則沒有任何地方寫出來。Plan 073 新增一個地方列出這些快捷鍵，以及每一個現在能否使用（[桌面設計](../system-design/desktop.md#鍵盤快捷鍵分頁)）。
+
+- **決定（2026-10-14，維護者）。** 採用獨立的「鍵盤快捷鍵」分頁，位於「一般」與「疑難排解」之間，而不是「一般」裡的群組；macOS 新增「輔助說明」選單，其「鍵盤快捷鍵」會開啟視窗並切到該分頁，項目本身沒有快捷鍵；不列入範圍照計畫（平台的編輯與選單按鍵、清單與對話框的一般導覽、編輯器錄入時按下的按鍵）。依維護者要求，本計畫在獨立 worktree 中，從 072 步驟 4 之前的 commit 開始進行，072 結案後再 rebase 到 main。
+- **清單。** 五個唯讀區段：任何地方、RecordStuff 視窗、錄影檔、播放器、全螢幕影片，共 16 列。由 main 產生（`shortcutListGroups`），因為只有 main 知道全域快捷鍵的註冊狀態：錄影列顯示目前的組合、「關閉」或「無法使用」；「開啟 RecordStuff」在註冊失敗或被錄影快捷鍵佔用時顯示「無法使用」，原因沿用 Shortcut 卡片的說明。「更改…」會切到「一般」並聚焦 Shortcut 卡片；錄影或儲存中控制項停用時，改聚焦該列。
+- **單一來源。** `src/shared/shortcut-catalog.ts` 存放各列，以及各 handler 比對的常數：播放器透過 `playerKeyAction`，另有 `ZOOM_KEYS`、`CLOSE_KEY` 與 `UNDO_KEY`。按鍵透過 `acceleratorKeys` 顯示；macOS 上的 Space 也顯示為文字，因為 `␣` 會被當成符號唸出。沒有任何快捷鍵改變按鍵或行為。
+
+### 驗證
+
+- `pnpm typecheck` 通過。review 前的 `pnpm test:scope -- general shortcut player layout failures`：unit 路徑與 `pnpm build` 通過，背景套件 142 項通過 141 項；`settings-results.spec.ts` 的 S095–S096 原本寫死四個分頁（實際量到五個分頁都放得下），更新後 10 項全數通過。`src/main/settings`、`src/main/menus`、`src/main/actions`、`src/renderer` 與 `src/shared` 的 unit 與 page tests：56 個檔案、566 項；加入 Help action 案例後 `src/main/actions` 7 項全數通過。review 修正後重新建置執行 `pnpm test:scope -- general shortcut`：22 個檔案、161 項 unit tests 與 37 項背景案例。rebase 到 main 後重新建置再跑同樣五個 scope：35 個檔案、286 項 unit tests，背景案例 142 項全數通過（398.2 秒）。
+- 新增測試：catalog 雙向檢查（清單上的每個播放器與縮放按鍵都會觸發 handler，播放器處理的每個按鍵都在清單上）及其例外；model 在 darwin 與 win32 下，錄影快捷鍵為預設、自訂、關閉與註冊失敗，以及「開啟 RecordStuff」註冊失敗或衝突；頁面（入口、唸出文字、狀態、未鎖定與鎖定時的「更改…」、zh-TW）；有無視窗時的「輔助說明」選單；結束中拒絕該 action。
+- 原生（macOS），以全新的 `pnpm start:app` bundle（zh-TW），由 Codex GPT-6 Astra 以 computer use 操作，Claude 判讀其截圖：「輔助說明 → 鍵盤快捷鍵」把同一個視窗切到該分頁，五個區段、macOS 符號、Space 與「更改…」皆正確（pass）；「更改…」回到「一般」並聚焦 Shortcut 列（pass）；選單列顯示「輔助說明」，其輔助使用樹中有「鍵盤快捷鍵」項目，但未截到展開的選單，因此「沒有快捷鍵」只有 unit test 證據。從 tray 開啟與結束受阻：自動核准拒絕 Computer Use 存取 SystemUIServer；App 以 ⌘Q 結束，程序已確認退出。Computer Use 工具留下的 Software Cursor 浮層已由維護者關閉。
+- Review：Codex GPT-6.1 Sol，第 1 輪兩項 findings——唸出的文字是符號（部分接受：Space 改為文字；未另寫一套唸法，因為計畫指定 `describeAccelerator` 的文字，VoiceOver 也會把修飾鍵與方向鍵符號唸成按鍵名稱），以及錄影中「更改…」無法聚焦已停用的控制項（接受）；第 2 輪無 findings。
+
+未完成：展開後「輔助說明」選單的外觀、該輪的 tray 路徑，以及 Windows 實機（僅 CI）；網站說明頁未變更，計畫本就排除。
+
 ## Plan 072 結案 — 2026-10-14
 
 2026-10-13 維護者看到已安裝的 App 在播放器播放一段 2 小時 21 分的錄影時，有一個 renderer 用掉單核 74–77%，暫停後降到 0%。Plan 072 找出兩個原因、都已修正，並把播放納入 CPU 預算（[工具](../system-design/tooling.md#cpu-預算)的播放成本）。
