@@ -1038,7 +1038,7 @@ describe("Keyboard Shortcuts tab (plan 073)", () => {
 
   it("follows the recording shortcut's choice and registration, with Change… only there", () => {
     const custom: AppContext = { ...context, hotkey: { enabled: true, accelerator: "CommandOrControl+Alt+R", registered: true } };
-    expect(row(custom, "record")).toMatchObject({ spoken: ["⌥⌘R"], change: "Change…" });
+    expect(row(custom, "record")).toMatchObject({ spoken: ["⌥⌘R"], change: "Change in General" });
     expect(row(custom, "record")).not.toHaveProperty("status");
     expect(rows(context).filter(entry => entry.change).map(entry => entry.id)).toEqual(["record"]);
     const off: AppContext = { ...custom, hotkey: { ...custom.hotkey, enabled: false } };

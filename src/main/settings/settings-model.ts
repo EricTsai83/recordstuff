@@ -364,7 +364,7 @@ function shortcutListGroups(ctx: AppContext): Group[] {
       ...(shortcut.gesture ? { gesture: t(shortcut.gesture, language) } : {}),
       ...(shortcut.where ? { where: t(shortcut.where, language) } : {}),
       ...(rowStatus ? { status: rowStatus } : {}),
-      ...(shortcut.id === "record" ? { change: t("Change…", language) } : {}),
+      ...(shortcut.id === "record" ? { change: t("Change in General", language) } : {}),
     };
   };
   const catalog = shortcutCatalog(platform);

@@ -1,6 +1,8 @@
 /** The Keyboard Shortcuts tab's rows (plan 073): read-only, from main's projection of `shortcut-catalog.ts`. */
+import { ArrowUpRight } from "lucide-react";
 import { Fragment } from "react";
 import type { SettingsGroup, ShortcutRowView } from "../../../shared/settings-panel";
+import { ControlTooltip } from "../../components/control-tooltip";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Kbd, KbdGroup } from "../../components/ui/kbd";
@@ -18,6 +20,22 @@ function ShortcutRow({ row }: { row: ShortcutRowView }) {
             <Badge id={`${id}-status`} size="md" variant={row.status.kind === "unavailable" ? "destructive" : "secondary"}>
               {row.status.label}
             </Badge>
+          )}
+          {/* An arrow beside the label, so every row's keys stay alike: it goes to the Shortcut card, which edits them. */}
+          {row.change && (
+            <ControlTooltip label={row.change}>
+              <Button
+                id={`${id}-change`}
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground"
+                aria-label={row.change}
+                aria-describedby={`${id}-label`}
+                onClick={() => model.showShortcutCard()}
+              >
+                <ArrowUpRight aria-hidden="true" />
+              </Button>
+            </ControlTooltip>
           )}
         </div>
         <div className="controls">
@@ -43,19 +61,6 @@ function ShortcutRow({ row }: { row: ShortcutRowView }) {
       </div>
       {row.where && <p id={`${id}-where`} className="note">{row.where}</p>}
       {row.status?.reason && <p id={`${id}-reason`} className="note">{row.status.reason}</p>}
-      {row.change && (
-        <div className="row-actions">
-          <Button
-            id={`${id}-change`}
-            variant="outline"
-            wrap
-            aria-describedby={`${id}-label`}
-            onClick={() => model.showShortcutCard()}
-          >
-            {row.change}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

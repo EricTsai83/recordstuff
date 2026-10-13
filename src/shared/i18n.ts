@@ -303,6 +303,7 @@ export const ZH_TW = {
   "Change output folder…": "更改儲存位置…",
   "Output folder": "儲存位置",
   "Change…": "更改…",
+  "Change in General": "在「一般」中更改",
   "Show in Finder": "在 Finder 中顯示",
   "Open folder": "開啟資料夾",
   "Change output folder": "更改儲存位置",

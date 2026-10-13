@@ -15,7 +15,7 @@ const view = (language: "en" | "zh-TW"): SettingsView => ({
     { id: "hotkey", label: "Shortcut", tab: "general", kind: "shortcut", platform: "darwin", enabled: true,
       choices: [{ id: DEFAULT_HOTKEY.accelerator, label: "Recommended: ⇧⌘1", checked: true, enabled: true }] },
     list("global", "Anywhere", [
-      { id: "record", label: "Start or stop recording", keys: [["⇧", "⌘", "1"]], spoken: ["⇧⌘1"], change: "Change…" },
+      { id: "record", label: "Start or stop recording", keys: [["⇧", "⌘", "1"]], spoken: ["⇧⌘1"], change: "Change in General" },
       { id: "open", label: "Open RecordStuff", keys: [["⌥", "⌘", ","]], spoken: ["⌥⌘,"],
         status: { kind: "unavailable", label: "Unavailable", reason: "Another app may be using ⌥⌘,." } },
     ]),
@@ -51,7 +51,7 @@ it("lists the shortcuts read-only on their own tab, says each one's keys in word
   expect(document.getElementById("shortcut-open-status")!.textContent).toBe("Unavailable");
   expect(document.getElementById("shortcut-open-reason")!.textContent).toBe("Another app may be using ⌥⌘,.");
   expect(document.getElementById("shortcut-record-status")).toBeNull();
-  // The list edits nothing: no control in it but Change… .
+  // The list edits nothing: no control in it but the arrow to the Shortcut card.
   expect([...document.querySelectorAll("#settings-panel button, #settings-panel input, #settings-panel select")].map((el) => el.id))
     .toEqual(["shortcut-record-change"]);
 
