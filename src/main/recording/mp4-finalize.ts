@@ -251,15 +251,18 @@ export class FragmentIndex {
       if (head.flags & 0x8) { duration = data.readUInt32BE(field); field += 4; }
       if (head.flags & 0x10) { size = data.readUInt32BE(field); field += 4; }
       if (head.flags & 0x20) flags = data.readUInt32BE(field);
+      const runs = parts.filter(b => b.type === "trun");
       const tfdt = parts.find(b => b.type === "tfdt");
-      if (tfdt) {
+      // A traf without samples, such as the empty audio run the capture host can flush at stop with tfdt 0, adds
+      // nothing to the track, so when it says it starts does not correct or contradict the samples before it.
+      if (tfdt && runs.some(trun => data.readUInt32BE(full(data, trun).at) > 0)) {
         const decode = full(data, tfdt);
         const time = decode.version === 1 ? Number(data.readBigUInt64BE(decode.at)) : data.readUInt32BE(decode.at);
         this.align(track, time);
       }
       let position = base;
       let first = true;
-      for (const trun of parts.filter(b => b.type === "trun")) {
+      for (const trun of runs) {
         const run = full(data, trun);
         const count = data.readUInt32BE(run.at);
         let at = run.at + 4;

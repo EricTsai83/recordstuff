@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
 import { FragmentIndex, MDAT_HEADER_SIZE, mdatHeader } from "./mp4-finalize";
-import { audio, box, fragment, ftyp, moov, sampleRecording, trak, u32, video, zeros } from "./mp4-fixture";
+import { audio, box, fragment, ftyp, fullBox, moov, sampleRecording, trak, u32, video, zeros } from "./mp4-fixture";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-finalize-"));
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -85,6 +85,18 @@ describe("FragmentIndex", () => {
     expect(find(out, "moov/mvhd")[0]!.readUInt32BE(16)).toBe(172);
   });
 
+  it("ignores when an empty run says it starts, as in the audio run the capture host can flush at stop with tfdt 0", () => {
+    const tables = (out: Buffer, type: string): Array<number[] | undefined> =>
+      find(out, "moov/trak/mdia/minf/stbl").map(stbl => find(stbl, type).map(body => words(body, 4))[0]);
+    const ended = plain(Buffer.concat([file, fragment([audio(0, 0), video(15500, [3000, 3000])])]));
+    const without = plain(Buffer.concat([file, fragment([video(15500, [3000, 3000])])]));
+    expect(ended).not.toEqual(without);
+    for (const type of ["stts", "stsz", "stss", "stsc"]) expect(tables(ended, type)).toEqual(tables(without, type));
+    // Audio keeps its five samples and their durations; nothing is added for the empty run.
+    expect(tables(ended, "stts")[0]).toEqual([1, 5, 1024]);
+    expect(find(ended, "moov/trak/mdia/mdhd").map(body => body.readUInt32BE(16))).toEqual([5 * 1024, 21500]);
+  });
+
   it("keeps the file fragmented for what it cannot represent or did not see whole", () => {
     const reason = (result: ReturnType<typeof finalize>): string | undefined => "reason" in result ? result.reason : undefined;
     const late = Buffer.concat([ftyp, moov(), fragment([audio(512, 2)])]);
@@ -121,11 +133,15 @@ describe("FragmentIndex", () => {
       spawnSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi", "-i", "sine=sample_rate=48000",
         "-t", "3.5", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-bf", bframes, "-c:a", "aac",
         "-movflags", "frag_keyframe+empty_moov+default_base_moof", source]);
-      const result = finalize(fs.readFileSync(source), 4096);
+      // The empty audio run the capture host can flush at stop: no samples, tfdt 0, after every other fragment.
+      const audioTrack = 2;
+      const ended = Buffer.concat([fs.readFileSync(source), box("moof", fullBox("mfhd", 0, 0, u32(1_000_000)),
+        box("traf", fullBox("tfhd", 0, 0x020000, u32(audioTrack)), fullBox("tfdt", 1, 0, u32(0), u32(0)), fullBox("trun", 0, 0, u32(0)))), box("mdat")]);
+      const result = finalize(ended, 4096);
       // An encoder delay is written as an edit list, which keeps the file as it was rather than shifting it.
       if ("reason" in result) { expect(result.reason).toMatch(/edit list/); continue; }
       const out = path.join(dir, `plain-bf${bframes}.mp4`);
-      fs.writeFileSync(out, plain(fs.readFileSync(source), 4096));
+      fs.writeFileSync(out, plain(ended, 4096));
       expect(packets(out)).toBe(packets(source));
       expect(probe(out)).toBe(probe(source));
     }
