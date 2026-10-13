@@ -4,6 +4,38 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plan 072 closure — 2026-10-14
+
+On 2026-10-13 the maintainer saw a renderer of the installed app at 74–77% of a core while its player played a 2 h 21 min recording, and 0% once paused. Plan 072 named two causes, fixed both and added playback to the CPU budget ([tooling](../system-design/tooling.md#cpu-budget), playback costs).
+
+- **Container.** The long recording had stayed a fragmented MP4: the capture host can flush an empty audio run with `tfdt` 0 at stop, and `FragmentIndex` failed the whole file on it (`track 1 goes back to 0, before its last sample`). A `traf` whose runs hold no samples is now skipped, so such recordings save as plain MP4; two unit cases cover it, including the ffmpeg packet comparison with an empty final fragment. Playing a fragmented file costs the renderer more than its length: Chromium's demuxer reads every `moof` through a `recordstuff-media:` range request and the media buffer keeps thousands of disjoint ranges. In the same Electron the same file costs 3.5% from `file://` and 72.8% through a handler serving ranges as `RecordingsLibrary.handle` does; cache validators changed nothing, a 206 capped at 4 MiB did not play, and `net.fetch(file://)` (4.4%) ignores `Range`. The maintainer chose no repair for files already saved fragmented (2026-10-14): the 47 local ones were test recordings and went to the Trash. Files saved fragmented by earlier versions keep the cost and their slow opens.
+- **Blur.** On a plain file the Settings player cost more than full screen and Chrome, in the GPU process, because the dialog backdrop's `backdrop-filter` is redrawn with every video frame. With the maintainer's agreement (2026-10-14), after comparing a darker backdrop without blur, the backdrop now only darkens and ui.css blurs the page under it (`#root`, `filter: blur(3px)` while `.player[data-open]`), which Chromium draws once; the look is the same.
+- **Decoder.** Every file, fragmented or plain, decodes video with `VideoToolboxVideoDecoder` and audio with `FFmpegAudioDecoder`, so software decoding was not a cause.
+- **Prevention.** `pnpm measure:cpu` gained scenario P: the last 30 fps recording, opened from the tray's Show last recording, its card's Play button confirmed by element id through Chromium's accessibility tree (turned off again before the window), played with Return and judged over 50 s per role: app ≤22%, GPU process ≤11%, renderers ≤10%, a floor of 0.5% each as evidence that something played, and the file saved as plain MP4. `--skip-playback` leaves it out.
+
+### Verification
+
+Measured on the reference M1 Pro (Electron 44.3.0) with the shared sampler, by Chromium role, % of one core. The 2026-10-13 recordings were not on this Mac, so with the maintainer's agreement `2026-10-10 01-11-43.mp4` (36 min, the same H.264 Baseline properties) stood in, fragmented with ffmpeg and concatenated four times (2 h 25 min, 10,186 fragments), each with a plain copy. Development build, diagnostic fixture loading the built Settings page and serving through the production `RecordingsLibrary.handle`; renderer / app total over 59 s after a 10 s warm-up:
+
+| File | Settings player | Full screen | Paused |
+| --- | --- | --- | --- |
+| 10,186 fragments | 73.7 / 79.0 | 70.9 / 74.0 | ≤ 0.6 |
+| same media, plain | 5.6 / 17.6 | 5.6 / 13.8 | ≤ 0.8 |
+| 2,547 fragments (36 min) | 11.7 / 22.0 | 11.6 / 18.4 | ≤ 0.6 |
+| same media, plain | 5.1 / 16.4 | 5.6 / 13.6 | ≤ 0.5 |
+| 10,186 fragments, from 75 % | 98.2 / 102.5 | — | ≤ 0.9 |
+| same media, plain, from 75 % | 5.4 / 16.7 | — | ≤ 0.6 |
+| 60 s plain recording; High 30 fps re-encode (44 s) | 5.9 / 19.6; 5.9 / 19.7 | — | ≤ 0.6 |
+
+- Fragmented 2 h 25 min file: first frame after 4.47 s and 7,308 range requests, the seek bar's thumbnail 11.4 s and 7,039 more, and from 75 % playback fell behind (57.9 s of media in 60 s); the plain copy 0.29 s and 3 requests, thumbnail 70 ms and 4. References on that file and its plain copy: Chrome 155 (`file://`) 11.2% and 11.5% in all, renderer 2.8% and 2.9%; QuickTime Player 4.8% on the plain copy and cannot open the fragmented one. The renderer's main thread ran native code (V8 profile 71.6% `(program)`, under 0.1% JavaScript); the native function was not named, as the 1.4 GB symbol archive did not download in usable time.
+- Blur, plain file, Settings player, GPU process: 10.9% with the backdrop blur, 6.4% with it off, 6.5% with every `backdrop-filter` off, 10.8% with the resting controls hidden; full screen and Chrome 6.4%. On the 60 s recording below, the change against the former backdrop: 6.7% against 13.5% (app 13.9% against 21.5%), with the page blurred and the picture sharp in a screenshot.
+- Step 0: an empty audio `traf` injected into a copy of a host-written recording reproduced the logged reason before the change and saved plain after it, with equal `framemd5` packets and ffprobe length; AVFoundation opened it. `pnpm acceptance -- --seconds 10 --skip-cancel` on a fresh `pnpm start:app` bundle saved `finalize 14 ms to plain MP4`, opened in the player in 247 ms with 3 requests.
+- Packaged app, `pnpm measure:cpu -- --minutes 1` ([report](measurements/2026-10-13T17-08-46-740Z-cpu/report.md)): PASS; A 0.049%, R 14.3% at 30 fps, B 0.053%, C 0.114%, P 16.6% (GPU 8.3%, renderers 6.6%, the file saved plain). After the review, `pnpm measure:cpu -- --minutes 1 --skip-settings` with the Play-button confirmation: PASS ([report](measurements/2026-10-13T17-25-20-816Z-cpu/report.md)); P 16.9% (GPU 7.6%, renderers 6.4%), R 16.0%, A 0.059%, B 0.067%.
+- Checks: `mp4-finalize.test.ts` 7/7, both new cases failing without the change; `pnpm check` (147 files, 1,852 tests) after step 0; `pnpm test:scope -- player tooling` after step 4: 619 unit tests and 13 background cases; `scripts/lib` 470 after the review fix. The checkout carried a concurrent task's uncommitted preview-sound changes during the step 4 builds and runs.
+- Review: Codex GPT-6.1 Sol, pass 1 on step 0 with no findings; pass 2 on step 4 found that Return was sent without confirming the focused Play button (accepted; confirmed by element id with the accessibility tree turned off before measuring).
+
+Not done: the full-screen player is not in `measure:cpu` (it measured as the Settings player without the blur); files saved fragmented by earlier versions are not repaired.
+
 ## Plan 070 closure — 2026-10-10
 
 A focused entry point for the local edit–verify cycle ([focused scopes](../testing.md#focused-scopes), [tooling](../system-design/tooling.md#focused-test-scopes)), at the maintainer's request after 071.

@@ -4,6 +4,38 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 072 結案 — 2026-10-14
+
+2026-10-13 維護者看到已安裝的 App 在播放器播放一段 2 小時 21 分的錄影時，有一個 renderer 用掉單核 74–77%，暫停後降到 0%。Plan 072 找出兩個原因、都已修正，並把播放納入 CPU 預算（[工具](../system-design/tooling.md#cpu-預算)的播放成本）。
+
+- **容器。**那段長錄影一直是 fragmented MP4：capture host 停止時可能寫出 `tfdt` 為 0 的空音訊 run，`FragmentIndex` 因此讓整個檔案失敗（`track 1 goes back to 0, before its last sample`）。現在略過 run 中沒有任何 sample 的 `traf`，這類錄影會存成 plain MP4；兩個單元案例涵蓋它，包括最後一個 fragment 為空時的 ffmpeg packet 比對。播放 fragmented 檔案時，renderer 的成本增加得比長度還快：Chromium 的 demuxer 透過 `recordstuff-media:` 的 range request 讀取每一個 `moof`，媒體緩衝區保有數千段不相連的區間。在同一個 Electron 中，同一個檔案從 `file://` 播放是 3.5%，透過與 `RecordingsLibrary.handle` 相同方式提供 range 的 handler 是 72.8%；加上快取驗證標頭沒有差別，限制 4 MiB 的 206 無法播放，`net.fetch(file://)`（4.4%）會忽略 `Range`。維護者決定不修復已存成 fragmented 的檔案（2026-10-14）：本機的 47 支是測試錄影，已移到垃圾桶。舊版存成 fragmented 的檔案仍有這個成本與開啟緩慢。
+- **模糊。**播放 plain 檔案時，設定視窗的播放器比全螢幕和 Chrome 多耗 GPU 程序的 CPU，因為對話框背景的 `backdrop-filter` 會隨每個影片畫格重畫。維護者比較過不模糊的較暗背景後同意（2026-10-14）：背景現在只負責變暗，ui.css 改為模糊下方的頁面（`.player[data-open]` 時對 `#root` 套用 `filter: blur(3px)`），Chromium 只畫一次；外觀相同。
+- **解碼器。**不論 fragmented 或 plain，每個檔案的影片都由 `VideoToolboxVideoDecoder` 解碼、音訊由 `FFmpegAudioDecoder` 解碼，所以原因不是軟體解碼。
+- **防止退步。**`pnpm measure:cpu` 新增情境 P：最後一段 30 fps 錄影，從系統匣的 Show last recording 開啟，透過 Chromium 的輔助使用樹以元素 id 確認焦點在它卡片的播放按鈕（量測前再關閉輔助使用樹），按 Return 播放，依角色判定 50 秒：App ≤22%、GPU 程序 ≤11%、renderer ≤10%，兩者各需至少 0.5% 作為確實播放的證據，且檔案必須存成 plain MP4。`--skip-playback` 會略過它。
+
+### 驗證
+
+在 M1 Pro 參考機（Electron 44.3.0）上以共用取樣程式依 Chromium 角色量測，單位是單核百分比。2026-10-13 的錄影不在這台 Mac 上，經維護者同意改用 `2026-10-10 01-11-43.mp4`（36 分鐘，相同的 H.264 Baseline 屬性），以 ffmpeg 轉成 fragmented，並串接四次（2 小時 25 分、10,186 個 fragment），各自附一份 plain 複本。開發版，診斷 fixture 載入建置好的設定頁面，經由正式的 `RecordingsLibrary.handle` 提供檔案；暖機 10 秒後量 59 秒，數字是 renderer / App 合計：
+
+| 檔案 | 設定視窗播放器 | 全螢幕 | 暫停 |
+| --- | --- | --- | --- |
+| 10,186 個 fragment | 73.7 / 79.0 | 70.9 / 74.0 | ≤ 0.6 |
+| 同內容，plain | 5.6 / 17.6 | 5.6 / 13.8 | ≤ 0.8 |
+| 2,547 個 fragment（36 分鐘） | 11.7 / 22.0 | 11.6 / 18.4 | ≤ 0.6 |
+| 同內容，plain | 5.1 / 16.4 | 5.6 / 13.6 | ≤ 0.5 |
+| 10,186 個 fragment，從 75% 開始 | 98.2 / 102.5 | — | ≤ 0.9 |
+| 同內容，plain，從 75% 開始 | 5.4 / 16.7 | — | ≤ 0.6 |
+| 60 秒 plain 錄影；High 30 fps 重新編碼（44 秒） | 5.9 / 19.6；5.9 / 19.7 | — | ≤ 0.6 |
+
+- fragmented 的 2 小時 25 分檔案：第一個畫面在 4.47 秒、7,308 個 range request 之後，進度列縮圖 11.4 秒、再 7,039 個 request，從 75% 開始播放會跟不上（60 秒只播了 57.9 秒的內容）；plain 複本是 0.29 秒、3 個 request，縮圖 70 ms、4 個。同一個檔案與其 plain 複本的參考：Chrome 155（`file://`）合計 11.2% 與 11.5%，renderer 2.8% 與 2.9%；QuickTime Player 播放 plain 複本 4.8%，無法開啟 fragmented 檔案。renderer 主執行緒在跑 native 程式碼（V8 profile 71.6% `(program)`，JavaScript 不到 0.1%）；native 函式沒有找出名稱，因為 1.4 GB 的符號檔無法在合理時間內下載。
+- 模糊，plain 檔案、設定視窗播放器、GPU 程序：有背景模糊 10.9%、關閉後 6.4%、關閉所有 `backdrop-filter` 6.5%、隱藏靜止的控制項 10.8%；全螢幕與 Chrome 6.4%。在下面那段 60 秒錄影上，修改後對照原本的背景：6.7% 對 13.5%（App 13.9% 對 21.5%），截圖中頁面模糊、畫面清楚。
+- 步驟 0：在一支 host 寫出的錄影複本中插入空的音訊 `traf`，修改前重現 log 中的原因，修改後存成 plain，`framemd5` packet 與 ffprobe 長度相同；AVFoundation 能開啟。在新的 `pnpm start:app` bundle 上執行 `pnpm acceptance -- --seconds 10 --skip-cancel`，存成 `finalize 14 ms to plain MP4`，在播放器中 247 ms、3 個 request 就開啟。
+- 打包後的 App，`pnpm measure:cpu -- --minutes 1`（[報告](../../verification/measurements/2026-10-13T17-08-46-740Z-cpu/report.md)）：PASS；A 0.049%、R 30 fps 14.3%、B 0.053%、C 0.114%、P 16.6%（GPU 8.3%、renderer 6.6%，檔案存成 plain）。Review 之後，加上播放按鈕確認的 `pnpm measure:cpu -- --minutes 1 --skip-settings`：PASS（[報告](../../verification/measurements/2026-10-13T17-25-20-816Z-cpu/report.md)）；P 16.9%（GPU 7.6%、renderer 6.4%）、R 16.0%、A 0.059%、B 0.067%。
+- 檢查：`mp4-finalize.test.ts` 7/7，兩個新案例在沒有修改時失敗；步驟 0 之後 `pnpm check`（147 個檔案、1,852 個測試）；步驟 4 之後 `pnpm test:scope -- player tooling`：619 個單元測試與 13 個背景案例；review 修正後 `scripts/lib` 470 個。步驟 4 的建置與執行期間，工作目錄中同時有另一項工作尚未提交的預覽聲音修改。
+- Review：Codex GPT-6.1 Sol，pass 1 審查步驟 0，沒有 findings；pass 2 審查步驟 4，指出送出 Return 前沒有確認焦點在播放按鈕上（接受；以元素 id 確認，並在量測前關閉輔助使用樹）。
+
+未做：全螢幕播放器不在 `measure:cpu` 中（量測時它與沒有模糊的設定視窗播放器相同）；舊版存成 fragmented 的檔案不修復。
+
 ## Plan 070 結案 — 2026-10-10
 
 為本機「修改－驗證」循環提供聚焦入口（[聚焦 scope](../testing.md#聚焦-scope)、[工具指南](../system-design/tooling.md#聚焦測試-scope)），依維護者要求接在 071 之後完成。
