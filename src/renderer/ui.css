@@ -449,15 +449,18 @@
   }
   /* The selected sidebar tab's red cap sits inside the tile like a sleeve over the end of a rod. The tile clips it, so
      its outer edge is the tile's own curve; its inner edge is the border's inner curve, a concave arc whose ends meet
-     the tile's corners. Both are shape edges, smooth at every zoom where a gradient's hard stop steps; the page's CSP
-     blocks data: masks. */
+     the tile's corners. The arc is deep enough to cross pixel columns quickly, so its edge reads crisp rather than as
+     a long antialiased smear, and the cap's short vertical overhang lets the arc turn early so its ends run further
+     into the corners. The tile's side stays straight while the arc keeps curving, so the 4.5px middle is the thinnest
+     point, under a pixel narrower than the widest. Both are shape edges, smooth at every zoom where a gradient's hard
+     stop steps; the page's CSP blocks data: masks. */
   [data-variant="sidebar"] [role="tab"][aria-selected="true"] {
     overflow: clip;
   }
   [data-variant="sidebar"] [role="tab"][aria-selected="true"]::before {
     content: "";
     position: absolute;
-    inset: -4px auto -4px -4px;
+    inset: -2px auto -2px -3.5px;
     width: 20px;
     border-left: 8px solid var(--sidebar-primary);
     border-radius: 18px 0 0 18px / 50% 0 0 50%;
