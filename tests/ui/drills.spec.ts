@@ -31,6 +31,8 @@ async function rememberedAreGone(): Promise<Array<{ pid: number; data: string; r
 }
 
 test("D01 a launch that fails before the app is up leaves no process and reports the failure", async () => {
+  // Launch (15 s), exit (10 s) and a cold Windows CIM read (30 s) have separate bounds.
+  test.setTimeout(60_000);
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-drill-"));
   const broken = path.join(data, "broken-host.cjs");
   fs.writeFileSync(broken, `require("electron").app.whenReady().then(() => { console.error("drill: host failed on purpose"); process.exit(3); });`);
@@ -39,11 +41,13 @@ test("D01 a launch that fails before the app is up leaves no process and reports
   let pid: number | undefined;
   try {
     const application = await _electron.launch({ args: [broken], cwd: ROOT, env, timeout: 15_000 });
-    pid = application.process().pid;
+    const child = application.process();
+    pid = child.pid;
     // Connected before it exited: it must still end on its own, with its failure code.
-    await expect.poll(() => application.process().exitCode, { timeout: 10_000 }).toBe(3);
+    // Keep the handle: application.process() can no longer be read after Electron disconnects.
+    await expect.poll(() => child.exitCode, { timeout: 10_000 }).toBe(3);
   } catch (error) { failure = error; }
-  const remaining = (await ownedProcesses(pid ?? -1, data)).filter(alive);
+  const remaining = await test.step("Confirm the failed launch's process tree ended", async () => (await ownedProcesses(pid ?? -1, data)).filter(alive));
   expect(remaining, `no process of the failed launch remains${failure ? ` (launch rejected: ${String(failure).split("\n")[0]})` : ""}`).toEqual([]);
   fs.rmSync(data, { recursive: true, force: true });
 });
@@ -68,7 +72,7 @@ test("D04 a renderer crash in the view host ends normally: the page goes, the ho
   // Teardown (fixtures.ts) then closes the host normally and confirms its tree is gone; a failure there fails this test.
 });
 
-test("D05 a hung main cannot pass: its normal close times out, its own tree is killed, and the report says so", async ({ launchApp }) => {
+test("D05 a hung main cannot pass: its normal close times out, its own tree is killed, and the report says so", async ({ launchApp }, testInfo) => {
   test.setTimeout(60_000);
   const app = await launchApp();
   remember(app);
@@ -76,6 +80,7 @@ test("D05 a hung main cannot pass: its normal close times out, its own tree is k
   void app.application.evaluate(() => { for (;;) { /* hang */ } }).catch(() => undefined);
   await new Promise(resolve => setTimeout(resolve, 500));
   const report = await tearDown(app);
+  await testInfo.attach("hung-main-cleanup.json", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
   // The fixture fails a test on exactly these fields; this drill expects them, so its own teardown is cleared.
   app.teardown = { ...report, closedNormally: true, forced: false, error: undefined as never };
   expect({ closedNormally: report.closedNormally, forced: report.forced, remaining: report.remaining, error: /close timed out/.test(report.error ?? "") })
