@@ -32,7 +32,7 @@
 | 儲存通知送達、時序或 Finder 定位 | `pnpm check`；新簽章產物，再跑 `pnpm acceptance:notification -- --install --clicks 2`。偶發／時序修正依失敗情境選五次或 `--full`，記錄缺少橫幅的案例 | 此輪已提供所需錄影證據時，不另錄相同 smoke；未改文案時不預設雙語原生矩陣 |
 | 更新邏輯、feed 篩選或更新生命週期 | `pnpm check` 與 `pnpm acceptance:updates`；feed 篩選／逾時改動加 `--full`。只有 diff 限於邏輯，且不影響擷取、生命週期或 OS 整合時可用 `--logic-only`，並揭露省略錄影範圍 | 未影響正常 bundle 行為時不重複一般錄影驗收；插樁結果不能證明原生 Tray／瀏覽器操作 |
 | 僅測試、fixture、分析器或開發腳本 | 相關測試；TypeScript 執行 `pnpm typecheck`。背景套件被改動的 spec 在新的建置上執行（`pnpm test:scope -- tests/ui/<檔案>`，`out/` 過期時會建置）；改動其 host、boundary、fixture 或 teardown 時跑完整套件（`pnpm acceptance:regression`）與 `pnpm test:ui:drills`。runner 編排改動需跑該 runner，包含改動的失敗／清理路徑；純分析器使用受控媒體及既有樣本 | 純斷言／解析／報表格式不需 App 錄影。改動送鍵或真實錄影編排時須執行該真實路徑；fixture 讀取 `out/` 時先建置 |
-| 建置設定、Electron／執行期依賴、preload 安全、簽章或封裝 | `pnpm check` 與受影響的建置／封裝驗證（`pnpm start:app` 或 `pnpm dist:mac`；Windows 封裝沒有維護者機器能建置或執行，改為 dispatch 一次 [check.yml](../../.github/workflows/check.yml)，其 `windows-installer` job 會在 runner 上建置安裝檔並執行安裝／解除安裝閘門）；檢視受影響產物／安裝介面。Electron／媒體／執行期／entitlement 改動加錄影 smoke，Electron 改動另需 `pnpm acceptance:shortcut-layout`（`shortcut-registration` 配方把它接在回歸之後，不再建置第二次），並在其 `pnpm start:app` 產物上跑 `pnpm acceptance:settings-shortcut -- --observe`，因為預設選單與其快捷鍵的分派由 Electron 決定；設定 preload／CSP 改動加設定回歸 | 發布、覆蓋使用者安裝、重設權限；純封裝修改不需完整錄影矩陣 |
+| 建置設定、Electron／執行期依賴、preload 安全、簽章或封裝 | `pnpm check` 與受影響的建置／封裝驗證（`pnpm start:app` 或 `pnpm dist:mac`；Windows 封裝沒有維護者機器能建置或執行，改為 dispatch 一次 [check.yml](../../.github/workflows/check.yml)，其 `windows-installer` job 會在 GitHub Actions runner 上建置安裝檔並執行安裝／解除安裝閘門）；檢視受影響產物／安裝介面。Electron／媒體／執行期／entitlement 改動加錄影 smoke，Electron 改動另需 `pnpm acceptance:shortcut-layout`（`shortcut-registration` 配方把它接在回歸之後，不再建置第二次），並在其 `pnpm start:app` 產物上跑 `pnpm acceptance:settings-shortcut -- --observe`，因為預設選單與其快捷鍵的分派由 Electron 決定；設定 preload／CSP 改動加設定回歸 | 發布、覆蓋使用者安裝、重設權限；純封裝修改不需完整錄影矩陣 |
 | 網站原始碼／資源／設定 | `pnpm site:check`（網站測試、診斷、線上 manifest 驗證、建置與產生頁面連結檢查）；視覺修改檢視受影響頁面 | 未改共用 App／發布輸入時，不需 App 測試與原生錄影 |
 | 發布工作流程或發布作業 | 相關發布工具測試及[發布指南](system-design/releases.md)要求；實際發布驗收綁定候選 SHA | 用發布來測試；程式／文件任務不代表允許推送 tag |
 
@@ -81,6 +81,8 @@ Fixture 可以使用示範錄影、受控狀態與不同的版本文字，這些
 - 區分 **not applicable／不適用**（影響範圍外，附理由）、**not run／未執行**（必要但未嘗試）、**blocked／受阻**（必要但缺前置）、**fail／失敗**及 **pass／通過**。缺權限／工具是受阻，不能改稱不必測。豁免保留未執行及使用者理由，不標通過。回報缺口並繼續可獨立完成的檢查。
 
 ### 腳本 runner 或 Computer Use
+
+本專案的 **runner** 指 `scripts/` 底下已提交、以 `pnpm` 指令（例如 `pnpm acceptance:player`）啟動、自行完成一輪原生驗收的腳本。它先檢查前置條件（建置是否最新、RecordStuff 是否仍在執行、桌面是否鎖定），缺少時回報受阻；接著啟動 App 或 Electron fixture，以真實輸入操作，逐一判定案例通過或失敗；寫下報告、截圖與 log（通常在 `docs/verification/measurements/`）；確認自己的程序都已結束；最後以 exit 0（通過）、1（失敗或收尾未完成）、2（受阻）或 130／143（中斷）結束。量測與診斷指令（`pnpm matrix`、`measure:*`、`diagnose:*`）也是 runner：它們回報量測結果，遵守相同的啟動環境與收尾規則（[runner 共用程式](system-design/tooling.md#驗收收尾)）。單元測試、背景套件（`pnpm test:ui`）與未提交的一次性腳本都不是 runner。CI runner（GitHub Actions job 執行所在的機器）也不是；本指南指的是它時會明寫。
 
 每個原生案例的操作方式在回合開始前決定。有專案 runner 涵蓋的操作就用 runner；觀察畫面呈現，以及沒有 runner 涵蓋的操作，才用 Computer Use；主觀判斷與需要維護者在場的步驟留給維護者。runner 與觀察回答的是不同問題，彼此不能代替；哪個 runner 涵蓋哪項操作、哪些仍由 Computer Use 或維護者負責，列在[原生案例](acceptance.md#腳本-runner-或-computer-use)。
 
