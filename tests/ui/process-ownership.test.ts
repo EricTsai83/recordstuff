@@ -8,6 +8,13 @@ it("does not adopt old children of a dead root that was never observed", () => {
   expect(pids(tracker(), '20 10 @100 system.exe\n30 1 @300 "C:\\electron.exe" unique-profile')).toEqual([30]);
 });
 
+it("tracks Playwright's Windows cmd launcher and its Electron main even without a profile argument", () => {
+  const owner = tracker();
+  expect(pids(owner, '10 1 @200 C:\\Windows\\cmd.exe /c "C:\\electron.exe" "host.cjs"\n20 10 @201 "C:\\electron.exe" "host.cjs"\n30 20 @202 renderer')).toEqual([10, 20, 30]);
+  expect(pids(owner, '20 1 @201 "C:\\electron.exe" "host.cjs"\n30 20 @202 renderer')).toEqual([20, 30]);
+  expect(pids(owner, '')).toEqual([]);
+});
+
 it("tracks surviving helpers but rejects reused root and child PIDs before signalling", () => {
   const owner = tracker();
   expect(pids(owner, '10 1 @200 "C:\\electron.exe" host\n20 10 @201 renderer\n30 1 @202 "C:\\electron.exe" unique-profile')).toEqual([10, 30, 20]);

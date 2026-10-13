@@ -21,7 +21,10 @@ export class ProcessOwnership {
     for (const row of rows.values()) {
       if (row.pid === this.self) continue;
       const prior = this.known.get(row.pid);
-      if (prior ? same(prior, row) : runsElectron(row.command) && (row.pid === this.root || row.command.includes(this.marker))) owned.add(row.pid);
+      // Playwright launches Electron through cmd.exe on Windows: application.process() is that shell.
+      // Admit only the supplied root whose command names our exact quoted executable, then follow its children.
+      const launcher = row.pid === this.root && row.command.toLowerCase().includes(`"${this.executable.toLowerCase()}"`);
+      if (prior ? same(prior, row) : launcher || runsElectron(row.command) && (row.pid === this.root || row.command.includes(this.marker))) owned.add(row.pid);
     }
     // An absent parent can still have surviving children, but only with a previously observed identity.
     let changed = true;
