@@ -384,7 +384,12 @@ export const test = launchers.extend<{ containment: void }>({
       }
       // A tree whose end is confirmed leaves nothing; otherwise, or when supervision failed, its folder stays for
       // diagnosis. A restart shares its folder.
-      if (!reports.some(other => other.data === report.data && (other.remaining.length || other.error))) fs.rmSync(report.data, { recursive: true, force: true });
+      if (!reports.some(other => other.data === report.data && (other.remaining.length || other.error))) {
+        // Windows can keep profile handles locked briefly after a killed process disappears from CIM.
+        // Bounded retries allow those handles to drain; a persistent lock still fails and retains evidence.
+        try { await fs.promises.rm(report.data, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
+        catch (error) { problems.push(`${report.kind}: temporary folder cleanup failed: ${String(error)}`); }
+      }
     }
     expect(problems, "containment and cleanup").toEqual([]);
   }, { auto: true }],
