@@ -54,7 +54,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  * What a starting, recording or saving recorder must do to each settings group, from product intent
  * (docs/system-design/desktop.md), not from what the model currently returns: preferences and update
  * actions lock; language, appearance, the icon's click (nothing a session holds depends on it) and the
- * About links stay usable; the output folder keeps Show in Finder and locks only Change…. A group missing
+ * About links and read-only shortcut lists stay usable; the output folder keeps Show in Finder and locks only Change…. A group missing
  * from this table, or a listed group the panel no longer offers, fails until someone classifies it here.
  */
 export type BusyPolicy = "locked" | "available" | { lockedChoices: readonly string[] };
@@ -62,6 +62,8 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
+  "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
+  "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 

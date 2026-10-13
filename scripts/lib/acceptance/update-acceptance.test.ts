@@ -101,6 +101,20 @@ describe('recording lock contract', () => {
     }
   });
 
+  it('keeps every read-only shortcut list available throughout a session on both platforms', () => {
+    const states: RecordingState[] = [{ type: 'idle' }, { type: 'starting' }, { type: 'countdown', remaining: 2 }, recording, { type: 'stopping' }];
+    for (const platform of ['darwin', 'win32'] as const) for (const language of ['en', 'zh-TW'] as const) for (const state of states) {
+      const s = snap(state, { ...context, platform, language });
+      expect(() => assertLockContract(s), `${platform} ${language} ${state.type}`).not.toThrow();
+      for (const category of ['global', 'window', 'recordings', 'player', 'fullScreen']) {
+        const id = `shortcutList:${category}`;
+        group(s, id).enabled = false;
+        expect(() => assertLockContract(s)).toThrow(`settings group ${id} while ${state.type}`);
+        group(s, id).enabled = true;
+      }
+    }
+  });
+
   it('rejects a busy snapshot that leaves a capture, notification or update control usable', () => {
     for (const state of [recording, { type: 'starting' }, { type: 'countdown', remaining: 2 }, { type: 'stopping' }] as RecordingState[]) {
       for (const id of ['screen', 'countdown', 'videoQuality', 'resolutionCap', 'frameRate', 'hotkey', 'notifications', 'updateChecks', 'updates']) {
