@@ -739,6 +739,22 @@ describe("folders (plan 071)", () => {
     await library.flushTrash();
     expect(deps.trash).toHaveBeenCalledWith(path.join(dir, "Final", "b.mp4"));
   });
+  it("renames a folder on Windows once a file held open in it is let go", async () => {
+    folder("Demos", "a.mp4");
+    const { library } = setup();
+    await library.refresh();
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    const held = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    const rename = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(held).mockRejectedValueOnce(held);
+    try {
+      expect(await library.renameFolder("Demos", "Talks")).toEqual({ folder: "Talks" });
+      expect(rename).toHaveBeenCalledTimes(3);
+      expect(listing(library).files).toEqual([["Talks", "a.mp4"]]);
+    } finally {
+      rename.mockRestore();
+      platform.mockRestore();
+    }
+  });
   it("moves only a folder with no visible file to the Trash, after the recordings in it still waiting for the Trash", async () => {
     folder("Demos", "a.mp4");
     folder("Hidden only", ".DS_Store");

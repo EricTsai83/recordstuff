@@ -114,13 +114,20 @@ export const THUMBNAILS_AT_ONCE = 4;
 export const WATCH_SETTLE_MS = 250;
 /** How often lengths read so far are published while a long folder is still being read. */
 export const LENGTHS_PUBLISH_MS = 500;
+/** How long a picture that could not be made waits before its one more attempt. */
+export const THUMBNAIL_RETRY_MS = 300;
 /**
  * How long a recording moved to the Trash can be brought back before it is really moved: longer than its toast stays
  * (2026-10-06, formerly 10 s), since ⌘Z still works once the toast has gone, and waiting only keeps the file in place.
  */
-/** How long a picture that could not be made waits before its one more attempt. */
-export const THUMBNAIL_RETRY_MS = 300;
 export const UNDO_TRASH_MS = 30_000;
+/**
+ * Windows refuses to rename a folder while any file in it is open (EPERM, EACCES or EBUSY), and a length being read in
+ * the background, a thumbnail, Explorer or a virus scan holds one only briefly: the rename is tried again for about a
+ * second before it fails.
+ */
+const FOLDER_RENAME_RETRIES_MS = [50, 100, 200, 300, 400];
+const HELD_OPEN = new Set(["EPERM", "EACCES", "EBUSY"]);
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 
@@ -175,6 +182,18 @@ export async function relists(dir: string, name: string, folders: readonly Libra
 }
 
 /** Changes whenever the file's bytes do, as far as its size and modification time tell. */
+async function renameHeldFolder(from: string, to: string): Promise<void> {
+  for (const wait of process.platform === "win32" ? FOLDER_RENAME_RETRIES_MS : []) {
+    try {
+      return await fs.rename(from, to);
+    } catch (cause) {
+      if (!HELD_OPEN.has(errnoCode(cause) ?? "")) throw cause;
+      await new Promise(resolve => setTimeout(resolve, wait));
+    }
+  }
+  await fs.rename(from, to);
+}
+
 function fileVersion(stat: { size: number; mtimeMs: number }): string {
   return `${stat.size}-${Math.round(stat.mtimeMs)}`;
 }
@@ -741,7 +760,7 @@ export class RecordingsLibrary {
       if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) return { problem: "exists" };
       // A folder made at the new name in the instant between that look and the rename, if empty, is the only thing
       // `rename` could replace; anything holding a file fails with ENOTEMPTY, and a file with ENOTDIR.
-      await fs.rename(from, to);
+      await renameHeldFolder(from, to);
     } catch (cause) {
       const code = errnoCode(cause);
       this.deps.log(`library: renaming ${from} to ${to} failed: ${String(cause)}`);

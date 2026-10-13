@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>開著的檔案擋住資料夾改名：Windows 與 macOS 的差異，以及有上限的重試</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+}
+.flow-figure .flow-mobile { display: none; }
+.flow-figure .panel-frame { fill: none; stroke: var(--oat); stroke-width: 1.5; }
+.flow-figure .folder { fill: var(--gray-100); stroke: var(--gray-300); stroke-width: 1.5; }
+.flow-figure .node { fill: var(--white); stroke: var(--gray-300); stroke-width: 1.5; }
+.flow-figure .edge { fill: none; stroke: var(--gray-500); stroke-width: 1.5; }
+.flow-figure .result.ok { fill: #EAF2E1; stroke: #6E9A4C; stroke-width: 2; }
+.flow-figure .result.fail { fill: #F8E6E1; stroke: #C0533A; stroke-width: 2; }
+.flow-figure text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; fill: var(--slate); }
+.flow-figure .panel-name { font-size: 16px; font-weight: 650; }
+.flow-figure .node-name { font-size: 14px; font-weight: 650; }
+.flow-figure .node-text { font-size: 14px; }
+.flow-figure .result-text { font-size: 15px; font-weight: 650; }
+.flow-figure .note { font-size: 13px; fill: var(--gray-700); }
+@media (max-width: 640px) {
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>開著的檔案擋住資料夾改名：Windows 與 macOS 的差異，以及有上限的重試</h1>
+
+<p class="deck">同一行 <code>fs.rename</code>，在 macOS 上永遠成功，在 Windows 上卻偶爾失敗、而且本機重現不出來。原因是兩個系統對「檔案正開著」的處理方式不同：macOS 和 Linux 記住的是檔案本身，Windows 則會讓開著的檔案擋住它所在資料夾的改名。本文說明這個差異、Node.js 會回報哪些錯誤碼，以及為什麼「只在 Windows、只對特定錯誤碼、有上限地重試」是這種情況下較好的預設。範例來自一個選單列錄影 App 的錄影檔資料夾改名。</p>
+
+<h2>這篇文章要回答的問題</h2>
+
+<p>很多桌面 App 都會管理使用者的一個資料夾：列出檔案、產生縮圖、讀取中繼資料，也讓使用者重新命名或移動子資料夾。這些工作通常在背景進行，使用者隨時可能按下「重新命名」。</p>
+
+<p>在 macOS 上，這兩件事互不干擾。移植到 Windows 後，改名卻偶爾失敗，錯誤是看起來像權限問題的 <code>EPERM</code>，再按一次又成功了。可遷移的問題是：<strong>當檔案操作會被「別人暫時開著檔案」擋住時，程式該怎麼分辨暫時失敗和真正的失敗，又不讓使用者等太久？</strong></p>
+
+<h2>兩種記住「開著的檔案」的方式</h2>
+
+<h3>macOS 與 Linux：記住的是檔案本身</h3>
+
+<p>在 macOS 和 Linux（POSIX 系統）上，程式打開檔案後拿到一個「檔案描述子」（file descriptor）。它直接指向磁碟上的檔案本體（inode），之後就和路徑無關了。路徑只是「資料夾裡的一筆名字對到哪個 inode」，改資料夾的名字只動到上一層的那筆名字，裡面的 inode 完全沒變。</p>
+
+<p>Linux 的 <code>rename(2)</code> 手冊明確寫著：改名時，指向舊路徑的已開啟檔案描述子不受影響。所以檔案開著，照樣可以改它所在資料夾的名字，正在讀的程式也繼續讀得到。</p>
+
+<h3>Windows：開著的檔案會擋住上層資料夾</h3>
+
+<p>Windows 上打開檔案拿到的是一個 handle。開檔時要指定「共用模式」（share mode），決定別人能不能同時讀、寫或刪除這個檔案。Node.js 底層的 libuv 開檔時三種都允許：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+<thead><tr><th>共用旗標</th><th>允許別人同時做的事</th></tr></thead>
+<tbody>
+<tr><td><code>FILE_SHARE_READ</code></td><td>讀這個檔案</td></tr>
+<tr><td><code>FILE_SHARE_WRITE</code></td><td>寫這個檔案</td></tr>
+<tr><td><code>FILE_SHARE_DELETE</code></td><td>刪除或改名<strong>這個檔案本身</strong></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>所以在 Windows 上，改「開著的那個檔案」的名字可以成功。但這個允許只涵蓋檔案本身，不涵蓋它上面的資料夾：資料夾裡只要有任何一個檔案開著，改資料夾的名字就會被拒絕。Microsoft 的 <code>MoveFileExW</code> 文件沒有明寫這條規則，但這是 Windows 上常見而且可重現的行為，下面提到的 <code>graceful-fs</code> 也是為了它才在 Windows 上重試。</p>
+
+<p>更麻煩的是，在 Windows 上開著檔案的往往不是你的程式：檔案總管的預覽與縮圖、防毒軟體掃描、搜尋索引都會短暫打開檔案，通常很快就關掉。</p>
+
+<figure class="flow-figure">
+<svg class="flow-desktop" role="img" aria-labelledby="rename-title rename-desc" viewBox="0 0 760 300">
+  <title id="rename-title">同一個操作，macOS 改名成功，Windows 拒絕</title>
+  <desc id="rename-desc">兩個平台上，資料夾 Demos 裡的 b.mp4 都正被讀取時長的程式開著。在 macOS 或 Linux 上把資料夾改名為 Talks 會成功；在 Windows 上會被拒絕，Node.js 回報 EPERM。</desc>
+  <defs>
+    <marker id="rename-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#87867F"></path></marker>
+  </defs>
+  <g class="panel">
+    <rect class="panel-frame" x="8" y="8" width="356" height="284" rx="8"></rect>
+    <text class="panel-name" x="28" y="42">macOS / Linux</text>
+    <rect class="folder" x="28" y="62" width="208" height="104" rx="8"></rect>
+    <text class="node-name" x="44" y="90">資料夾 Demos → Talks</text>
+    <rect class="node" x="44" y="108" width="176" height="42" rx="8"></rect>
+    <text class="node-text" x="132" y="134" text-anchor="middle">b.mp4（開著）</text>
+    <rect class="node" x="256" y="108" width="92" height="42" rx="8"></rect>
+    <text class="node-text" x="302" y="134" text-anchor="middle">讀時長</text>
+    <path class="edge" d="M256 129H222" marker-end="url(#rename-arrow)"></path>
+    <rect class="result ok" x="28" y="196" width="320" height="52" rx="8"></rect>
+    <text class="result-text" x="188" y="227" text-anchor="middle">改名成功，讀取不受影響</text>
+    <text class="note" x="28" y="276">檔案描述子指向 inode，與路徑無關</text>
+  </g>
+  <g class="panel">
+    <rect class="panel-frame" x="396" y="8" width="356" height="284" rx="8"></rect>
+    <text class="panel-name" x="416" y="42">Windows</text>
+    <rect class="folder" x="416" y="62" width="208" height="104" rx="8"></rect>
+    <text class="node-name" x="432" y="90">資料夾 Demos → Talks</text>
+    <rect class="node" x="432" y="108" width="176" height="42" rx="8"></rect>
+    <text class="node-text" x="520" y="134" text-anchor="middle">b.mp4（開著）</text>
+    <rect class="node" x="644" y="108" width="92" height="42" rx="8"></rect>
+    <text class="node-text" x="690" y="134" text-anchor="middle">讀時長</text>
+    <path class="edge" d="M644 129H610" marker-end="url(#rename-arrow)"></path>
+    <rect class="result fail" x="416" y="196" width="320" height="52" rx="8"></rect>
+    <text class="result-text" x="576" y="227" text-anchor="middle">拒絕改名：EPERM</text>
+    <text class="note" x="416" y="276">開著的檔案擋住上層資料夾</text>
+  </g>
+</svg>
+<svg class="flow-mobile" role="img" aria-labelledby="rename-title-m rename-desc-m" viewBox="0 0 360 560">
+  <title id="rename-title-m">同一個操作，macOS 改名成功，Windows 拒絕</title>
+  <desc id="rename-desc-m">兩個平台上，資料夾 Demos 裡的 b.mp4 都正被讀取時長的程式開著。在 macOS 或 Linux 上把資料夾改名為 Talks 會成功；在 Windows 上會被拒絕，Node.js 回報 EPERM。</desc>
+  <defs>
+    <marker id="rename-arrow-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#87867F"></path></marker>
+  </defs>
+  <g class="panel">
+    <rect class="panel-frame" x="2" y="2" width="356" height="270" rx="8"></rect>
+    <text class="panel-name" x="20" y="34">macOS / Linux</text>
+    <rect class="folder" x="20" y="52" width="208" height="104" rx="8"></rect>
+    <text class="node-name" x="36" y="80">資料夾 Demos → Talks</text>
+    <rect class="node" x="36" y="98" width="176" height="42" rx="8"></rect>
+    <text class="node-text" x="124" y="124" text-anchor="middle">b.mp4（開著）</text>
+    <rect class="node" x="248" y="98" width="92" height="42" rx="8"></rect>
+    <text class="node-text" x="294" y="124" text-anchor="middle">讀時長</text>
+    <path class="edge" d="M248 119H214" marker-end="url(#rename-arrow-m)"></path>
+    <rect class="result ok" x="20" y="180" width="320" height="52" rx="8"></rect>
+    <text class="result-text" x="180" y="211" text-anchor="middle">改名成功，讀取不受影響</text>
+    <text class="note" x="20" y="258">檔案描述子指向 inode，與路徑無關</text>
+  </g>
+  <g class="panel">
+    <rect class="panel-frame" x="2" y="288" width="356" height="270" rx="8"></rect>
+    <text class="panel-name" x="20" y="320">Windows</text>
+    <rect class="folder" x="20" y="338" width="208" height="104" rx="8"></rect>
+    <text class="node-name" x="36" y="366">資料夾 Demos → Talks</text>
+    <rect class="node" x="36" y="384" width="176" height="42" rx="8"></rect>
+    <text class="node-text" x="124" y="410" text-anchor="middle">b.mp4（開著）</text>
+    <rect class="node" x="248" y="384" width="92" height="42" rx="8"></rect>
+    <text class="node-text" x="294" y="410" text-anchor="middle">讀時長</text>
+    <path class="edge" d="M248 405H214" marker-end="url(#rename-arrow-m)"></path>
+    <rect class="result fail" x="20" y="466" width="320" height="52" rx="8"></rect>
+    <text class="result-text" x="180" y="497" text-anchor="middle">拒絕改名：EPERM</text>
+    <text class="note" x="20" y="544">開著的檔案擋住上層資料夾</text>
+  </g>
+</svg>
+<figcaption>兩邊的狀況完全相同，只差在系統允不允許。箭頭表示程式正開著資料夾裡的檔案。</figcaption>
+</figure>
+
+<h2>Node.js 看到的錯誤碼</h2>
+
+<p><code>fs.rename</code> 失敗時，Node.js 會把各系統的錯誤統一成 POSIX 風格的錯誤碼，放在 <code>error.code</code>。在 Windows 上，libuv 呼叫 <code>MoveFileExW</code>，再把 Windows 的錯誤對應過來：<code>ERROR_ACCESS_DENIED</code> 變成 <code>EPERM</code>，<code>ERROR_SHARING_VIOLATION</code> 變成 <code>EBUSY</code>。所以同一個錯誤碼在兩個平台上代表的事不一樣：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+<thead><tr><th>錯誤碼</th><th>macOS / Linux 常見原因</th><th>Windows 常見原因</th></tr></thead>
+<tbody>
+<tr><td><code>EPERM</code></td><td>真的沒有權限</td><td>沒有權限，<strong>或資料夾裡有檔案開著</strong>，或目標名稱已經是一個資料夾</td></tr>
+<tr><td><code>EACCES</code></td><td>沒有寫入上層資料夾的權限</td><td>沒有權限，或被占用</td></tr>
+<tr><td><code>EBUSY</code></td><td>資料夾正被系統使用，例如是掛載點</td><td>共用衝突：檔案正被其他程式以不相容的模式開著</td></tr>
+<tr><td><code>ENOENT</code></td><td>來源不存在</td><td>來源不存在</td></tr>
+<tr><td><code>ENOTEMPTY</code> / <code>EEXIST</code></td><td>目標是非空的資料夾</td><td>目標已存在</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout warning">
+<p><strong>在 Windows 上看到 <code>EPERM</code>，不一定是權限問題。</strong>很多時候只是有人暫時開著裡面的檔案，等一下再試就會成功。把它直接顯示成「沒有權限」，會誤導使用者。</p>
+</div>
+
+<h2>天真做法的失敗方式</h2>
+
+<p>最直接的寫法是呼叫一次 <code>fs.rename</code>，失敗就把錯誤回報給使用者。在 macOS 上開發和測試時，這個寫法完全正確，因為背景工作開著檔案也不影響改名。</p>
+
+<p>到了 Windows，它會出現三種典型症狀：</p>
+
+<ul>
+  <li><strong>偶發失敗：</strong>只在背景工作剛好開著檔案的那幾十毫秒內失敗，再按一次就成功。</li>
+  <li><strong>錯誤訊息誤導：</strong>使用者看到「改名失敗」，但他其實有權限，也沒做錯任何事。</li>
+  <li><strong>測試時好時壞（flaky）：</strong>CI 上的 Windows 偶爾紅燈，開發者在 macOS 上怎麼跑都重現不出來。</li>
+</ul>
+
+<h2>有上限的重試：三個條件</h2>
+
+<p>這類「被暫時占用」的失敗通常很快就會消失，所以合理的做法是等一下再試。但重試本身也有成本，需要三個條件把它限制住，每個條件各對應一個風險：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+<thead><tr><th>條件</th><th>它防止的問題</th></tr></thead>
+<tbody>
+<tr><td>只在 Windows 上重試</td><td>macOS / Linux 的 <code>EPERM</code> 就是真的沒權限，重試只會拖慢錯誤回報。</td></tr>
+<tr><td>只對 <code>EPERM</code>、<code>EACCES</code>、<code>EBUSY</code> 重試</td><td><code>ENOENT</code>、<code>EEXIST</code> 這類錯誤再試多少次結果都一樣。</td></tr>
+<tr><td>總等待時間有上限</td><td>真正的權限問題在 Windows 上也是 <code>EPERM</code>，不設上限會讓使用者一直乾等。</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>等待的間隔可以逐步拉長：一開始短，因為多數占用很快就放開；後面長一點，給防毒軟體這類較慢的程式時間。</p>
+
+<h3>和其他做法比較</h3>
+
+<ul>
+  <li><strong>完全不重試：</strong>最簡單，但會把暫時的占用當成失敗回報給使用者，正是上面那三種症狀。</li>
+  <li><strong>只等自己的背景工作結束：</strong>能避開自己開的檔案，也值得做；但檔案總管、防毒軟體開的檔案你控制不了，所以仍然需要重試。</li>
+  <li><strong>像 <code>graceful-fs</code> 一樣重試很久：</strong>這個常見的 npm 套件在 Windows 上會對同樣三個錯誤碼重試最多 60 秒，而且只在目標名稱還不存在時才重試。它適合建置工具這類沒人盯著的批次工作；但使用者按下「重新命名」後，等一分鐘才看到失敗太久了。</li>
+</ul>
+
+<h3>什麼時候不該用</h3>
+
+<ul>
+  <li><strong>開著檔案的就是你自己：</strong>先把自己的 handle 關掉，或等自己的工作結束再改名，比重試更直接。</li>
+  <li><strong>操作不能重複執行：</strong><code>rename</code> 失敗時什麼都沒發生，可以安全地再試；複製、寫入這類失敗時可能已經做了一半的操作，不能直接套用同樣的重試。</li>
+  <li><strong>目標名稱可能已存在：</strong>在 Windows 上，目標是一個現有資料夾時也會得到 <code>EPERM</code>。先檢查目標是否存在，否則會白白重試到上限才失敗。</li>
+</ul>
+
+<h2>回到範例：錄影 App 的資料夾改名</h2>
+
+<p>這個 App 在選單列執行，會列出使用者錄影資料夾裡的影片，並在背景逐一打開影片讀取時長。使用者可以把錄影分到子資料夾，也能重新命名子資料夾。它的 CI 在 macOS 和 Windows 上都會跑同一套測試。</p>
+
+<p>有一次 CI 的 macOS 通過、Windows 失敗，失敗的是資料夾改名的測試，而且在本機 macOS 上連跑五次都通過。測試的步驟是：</p>
+
+<ol>
+  <li>建立 <code>Demos</code> 資料夾，放入 <code>a.mp4</code> 和 <code>b.mp4</code>。</li>
+  <li>把 <code>a.mp4</code> 標記為「等待移到垃圾桶」，App 隨即重新列出檔案，並在背景打開 <code>b.mp4</code> 讀取時長。</li>
+  <li>測試立刻把 <code>Demos</code> 改名為 <code>Talks</code>，預期得到 <code>{ folder: "Talks" }</code>。</li>
+</ol>
+
+<p>第 2 步的讀取不會等完成才往下走。讀取剛好還沒結束時，Windows 拒絕改名；App 只把 <code>ENOENT</code>、<code>ENOTEMPTY</code>、<code>EEXIST</code>、<code>ENOTDIR</code> 對應成具體的問題，其他一律回報 <code>{ problem: "failed" }</code>，測試因此失敗。這也是 App 的真實問題：在 Windows 上，縮圖或防毒軟體同樣會讓使用者的改名偶爾失敗。</p>
+
+<p>需要說明的是，那次 CI 的紀錄沒有印出實際的錯誤碼，因為測試把記錄函式換成了假的。<code>EPERM</code> 是根據「只有 Windows 失敗」和上面的行為推斷出來的，並以修正後 Windows CI 是否穩定通過來驗證。</p>
+
+<p>修正採用上面的三個條件：只在 Windows 上，遇到這三個錯誤碼時依序等 50、100、200、300、400 毫秒再試，總共大約一秒，仍然失敗才照原本方式回報。改名前，App 本來就會先檢查目標名稱是否被占用，所以不會白白重試。</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> <span class="t">FOLDER_RENAME_RETRIES_MS</span> <span class="o">=</span> <span class="o">[</span><span class="n">50</span><span class="o">,</span> <span class="n">100</span><span class="o">,</span> <span class="n">200</span><span class="o">,</span> <span class="n">300</span><span class="o">,</span> <span class="n">400</span><span class="o">]</span><span class="o">;</span>
+<span class="k">const</span> <span class="t">HELD_OPEN</span> <span class="o">=</span> <span class="k">new</span> <span class="f">Set</span><span class="o">(</span><span class="o">[</span><span class="s">"EPERM"</span><span class="o">,</span> <span class="s">"EACCES"</span><span class="o">,</span> <span class="s">"EBUSY"</span><span class="o">]</span><span class="o">)</span><span class="o">;</span>
+
+<span class="k">async</span> <span class="k">function</span> <span class="f">renameHeldFolder</span><span class="o">(</span><span class="k">from</span><span class="o">:</span> string<span class="o">,</span> to<span class="o">:</span> string<span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">for</span> <span class="o">(</span><span class="k">const</span> wait <span class="k">of</span> process<span class="o">.</span><span class="p">platform</span> <span class="o">=</span><span class="o">=</span><span class="o">=</span> <span class="s">"win32"</span> <span class="o">?</span> <span class="t">FOLDER_RENAME_RETRIES_MS</span> <span class="o">:</span> <span class="o">[</span><span class="o">]</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">try</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="k">await</span> fs<span class="o">.</span><span class="p">rename</span><span class="o">(</span><span class="k">from</span><span class="o">,</span> to<span class="o">)</span><span class="o">;</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span>cause<span class="o">)</span> <span class="o">{</span>
+      <span class="k">if</span> <span class="o">(</span><span class="o">!</span><span class="t">HELD_OPEN</span><span class="o">.</span><span class="p">has</span><span class="o">(</span><span class="f">errnoCode</span><span class="o">(</span>cause<span class="o">)</span> <span class="o">?</span><span class="o">?</span> <span class="s">""</span><span class="o">)</span><span class="o">)</span> <span class="k">throw</span> cause<span class="o">;</span>
+      <span class="k">await</span> <span class="k">new</span> <span class="f">Promise</span><span class="o">(</span>resolve <span class="o">=</span><span class="o">&gt;</span> <span class="f">setTimeout</span><span class="o">(</span>resolve<span class="o">,</span> wait<span class="o">)</span><span class="o">)</span><span class="o">;</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+  <span class="k">await</span> fs<span class="o">.</span><span class="p">rename</span><span class="o">(</span><span class="k">from</span><span class="o">,</span> to<span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>在 macOS 上迴圈是空的，只會執行最後那一次 <code>fs.rename</code>，行為和修正前完全一樣。對應的測試把 <code>process.platform</code> 假裝成 <code>win32</code>，並讓前兩次 <code>rename</code> 回報 <code>EPERM</code>，確認第三次成功。這樣在 macOS 上跑測試，也能驗到 Windows 專用的重試邏輯。</p>
+
+<h2>帶走的判斷問題</h2>
+
+<ol>
+  <li>這個檔案操作只在 Windows 上偶爾失敗、本機重現不出來嗎？先懷疑有東西開著相關的檔案。</li>
+  <li>開著檔案的是誰？是自己的程式，就先關掉或等它結束；是系統或其他程式，才需要重試。</li>
+  <li>失敗的操作能不能安全地再做一次？只有失敗時什麼都沒發生的操作，才能直接重試。</li>
+  <li>哪些錯誤碼代表「暫時」？只對它們重試，其他錯誤立刻回報。</li>
+  <li>誰在等結果？使用者在等，就把上限設在一秒左右；批次工作沒人盯著，可以等久一點。</li>
+</ol>
+
+<section class="sources">
+<h2>延伸閱讀</h2>
+<ul>
+  <li><a href="https://man7.org/linux/man-pages/man2/rename.2.html">Linux man page：rename(2)</a>（已開啟的檔案描述子不受改名影響；<code>EBUSY</code>、<code>ENOTEMPTY</code> 的定義）</li>
+  <li><a href="https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw">Microsoft Learn：MoveFileExW</a>（Windows 上 <code>rename</code> 實際呼叫的 API）</li>
+  <li><a href="https://github.com/libuv/libuv/blob/v1.x/src/win/error.c">libuv：src/win/error.c</a>（Windows 錯誤對應到 <code>EPERM</code>、<code>EBUSY</code> 的位置）</li>
+  <li><a href="https://github.com/libuv/libuv/blob/v1.x/src/win/fs.c">libuv：src/win/fs.c</a>（開檔時的共用模式與 <code>MoveFileExW</code> 呼叫）</li>
+  <li><a href="https://github.com/isaacs/node-graceful-fs/blob/main/polyfills.js">graceful-fs：polyfills.js</a>（Windows 上 <code>rename</code> 的重試）</li>
+</ul>
+</section>
+
+</article>
+</main>
+
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>
