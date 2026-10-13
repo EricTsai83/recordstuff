@@ -24,6 +24,7 @@ import { scrubbedEnv } from "../../scripts/lib/runner/runner-env.mts";
 import type { Boundary, AdapterCall, Violation } from "./hosts/boundary";
 import { DesktopProbe, type ProbeReport } from "./desktop-probe";
 import { processTableRows } from "./process-table";
+import { ProcessOwnership } from "./process-ownership";
 
 export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
@@ -82,12 +83,14 @@ export class Launched {
   readonly probe: DesktopProbe;
   /** Electron's main process, kept from launch: the handle stays readable after it exits. */
   readonly child: ChildProcess;
+  readonly ownership: ProcessOwnership;
   closed = false;
   /** The teardown a test ran itself (`close`), which the fixture reports instead of running another. */
   teardown: Teardown | undefined;
   constructor(readonly kind: "app" | "view", readonly application: ElectronApplication, readonly data: string, readonly pid: number) {
     this.probe = new DesktopProbe(pid);
     this.child = application.process();
+    this.ownership = new ProcessOwnership(pid, data, electronExecutable(), process.pid);
     const watch = (page: Page): void => {
       this.pages.push(page);
       page.on("pageerror", error => this.pageErrors.push(`${page.url().split("?")[0]!.split("/").pop()}: ${error.message}`));
@@ -137,37 +140,7 @@ export interface HostGlobals {
  * such as the local-data cleanup worker, is reparented away from it).
  */
 export async function ownedProcesses(root: number, marker: string): Promise<number[]> {
-  const rows = await processTableRows();
-  const children = new Map<number, number[]>();
-  const created = new Map<number, number>();
-  const marked: number[] = [];
-  const executable = electronExecutable().toLowerCase();
-  for (const line of rows.split(/\r?\n/)) {
-    const match = /^\s*(\d+)\s+(\d+)\s?(?:@(\d+)\s?)?(.*)$/.exec(line);
-    if (!match) continue;
-    const pid = Number(match[1]), ppid = Number(match[2]), command = match[4]!;
-    if (match[3] !== undefined) created.set(pid, Number(match[3]));
-    lastCommands.set(pid, command);
-    children.set(ppid, [...(children.get(ppid) ?? []), pid]);
-    // Only this checkout's Electron (a helper run as Node, such as the local-data cleanup worker) is adopted by
-    // folder: a person's `tail -f` of the launch's log names the folder too, and is never this launch's to end.
-    const runs = command.replace(/^"/, "").toLowerCase().startsWith(executable);
-    if (runs && command.includes(marker) && pid !== process.pid) marked.push(pid);
-  }
-  // Windows keeps a dead parent's pid as its children's ppid and gives that pid to later processes: a process is a
-  // child only if it was created after its parent, or an unrelated one (a system process) would be adopted, then
-  // signalled, and reported as surviving it (CI, 2026-10-09).
-  const childOf = (parent: number, child: number): boolean =>
-    !created.has(parent) || !created.has(child) || created.get(child)! >= created.get(parent)!;
-  const tree: number[] = [];
-  const queue = [root, ...marked];
-  while (queue.length) {
-    const pid = queue.shift()!;
-    if (tree.includes(pid)) continue;
-    tree.push(pid);
-    queue.push(...(children.get(pid) ?? []).filter(child => childOf(pid, child)));
-  }
-  return tree;
+  return new ProcessOwnership(root, marker, electronExecutable(), process.pid).read(await processTableRows()).map(row => row.pid);
 }
 
 /** The command line each pid last had in a table read, to name a process a teardown could not end. */
@@ -213,17 +186,23 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   const result: Teardown = { violations: [], closedNormally: false, forced: false, remaining: [], pageErrors: launched.pageErrors };
   const errors: string[] = [];
   /** Every process seen to belong to the launch, rescanned while it shuts down: a helper started by quit counts too. */
-  const tree = new Set<number>([launched.pid]);
+  let tree: number[] = [launched.pid];
   // A read is a CIM query on Windows (process-table.ts), so waiting for the end rescans about once a second, not per poll.
   let scanned = 0;
-  const scan = async (): Promise<void> => {
+  const scan = async (): Promise<boolean> => {
     scanned = Date.now();
-    try { for (const pid of await ownedProcesses(launched.pid, launched.data)) tree.add(pid); }
+    try {
+      const owned = launched.ownership.read(await processTableRows());
+      tree = owned.map(row => row.pid);
+      for (const row of owned) lastCommands.set(row.pid, row.command);
+      return true;
+    }
     catch (error) { if (!errors.some(text => text.startsWith("process table"))) errors.push(`process table unreadable: ${describeFailure(error)}`); }
+    return false;
   };
   await scan();
   result.desktop = await launched.probe.stop();
-  if (alive(launched.pid) && !launched.closed) {
+  if (launched.child.exitCode === null && launched.child.signalCode === null && !launched.closed) {
     try { await Promise.race([launched.evaluate(host => { host.prepareClose?.(); host.boundary.audit(); }), timeoutAfter(5000, "audit")]); }
     catch (error) { errors.push(`boundary audit failed: ${String(error)}`); }
     await scan();
@@ -250,7 +229,8 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   if (!await until(gone, EXIT_TIMEOUT_MS)) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
     result.forced = true;
-    for (const pid of [...tree].reverse()) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    // A failed read must never authorize signalling identities from an older snapshot.
+    if (await scan()) for (const pid of [...tree].reverse()) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
     await until(gone, EXIT_TIMEOUT_MS);
   }
   result.remaining = [...tree].filter(alive);
@@ -345,6 +325,8 @@ const launchers = base.extend<Fixtures>({
       fs.rmSync(path.join(data, "logs/recordstuff.log"), { force: true });
       const launched = await launch("app", data, { RECORDSTUFF_UI_FAILING_SHORTCUTS: (options.failingShortcuts ?? []).join(","), RECORDSTUFF_UI_OFFLINE: options.offline ? "1" : "0" }, testInfo);
       launches.push(launched);
+      // Register for teardown before the read can fail; record identity before the test can quit main.
+      launched.ownership.read(await processTableRows());
       const log = path.join(data, "logs/recordstuff.log");
       await expect.poll(() => fs.existsSync(log) && fs.readFileSync(log, "utf8").includes("ready;"), { message: "production main logged ready;", timeout: 15_000 }).toBe(true);
       return launched;
@@ -355,6 +337,7 @@ const launchers = base.extend<Fixtures>({
       const data = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-countdown-"));
       const launched = await launch("countdown", data, {}, testInfo);
       launches.push(launched);
+      launched.ownership.read(await processTableRows());
       await expect.poll(() => launched.evaluate(h => h.ready === true), { message: "countdown host ready" }).toBe(true);
       return launched;
     });
@@ -364,6 +347,7 @@ const launchers = base.extend<Fixtures>({
       const data = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-view-"));
       const launched = await launch("view", data, { ...options.env, RECORDSTUFF_UI_VIEW: options.mode ?? "panel" }, testInfo);
       launches.push(launched);
+      launched.ownership.read(await processTableRows());
       const page = await launched.page("settings.html");
       await page.waitForLoadState("domcontentloaded");
       return { launched, page };
