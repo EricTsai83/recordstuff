@@ -916,7 +916,8 @@ export function PlayerDialog() {
       <DialogContent
         keepMounted
         // The player's stage: as wide as the window allows at 16:9, black in both themes, below the title bar on macOS.
-        overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-[3px]"
+        // The backdrop only darkens; ui.css blurs the page under it (#root), which costs nothing per video frame.
+        overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
         className="player aspect-video rounded-[14px] shadow-player ring-0 w-[min(860px,calc(100vw-48px),calc((100dvh-72px)*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none darwin:top-[calc(50%+24px)]"
         data-id={item?.id}
         showCloseButton={false}

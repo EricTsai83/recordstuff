@@ -1,6 +1,6 @@
 /**
  * App change from the shadcn source (2026-10-07): `overlayClassName` styles a dialog's backdrop from its call site, so
- * the player keeps its own lighter, softly blurred backdrop.
+ * the player keeps its own lighter backdrop, which blurs the page under it rather than filtering the backdrop.
  */
 "use client";
 

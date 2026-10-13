@@ -1922,6 +1922,14 @@
     right: 7px;
     transform: translateY(-50%);
   }
+  /* Behind the player the page itself is blurred, not the dialog's backdrop: a backdrop-filter is redrawn with every
+     video frame (about 4.5% of a core in the GPU process, plan 072), while the still page's blur is drawn once. */
+  #root {
+    transition: filter 100ms;
+  }
+  :root:has(.player[data-open]) #root {
+    filter: blur(3px);
+  }
   /* The player's controls, as YouTube's full screen lays them out: the title on a shade along the top, a seek bar the
      picture's width over play, volume and the time on a shade along the bottom. White on the picture. */
   .pc {
