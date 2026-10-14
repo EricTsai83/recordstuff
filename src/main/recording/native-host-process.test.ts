@@ -61,6 +61,12 @@ describe("NativeHost", () => {
       capture: { width: 1670, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, audioBitsPerSecond: 256_000 } });
   });
 
+  it("leaves the display point out when main gave none: the engine refuses null for it", async () => {
+    const { engine } = await prepared();
+    expect(engine.probe).toHaveBeenCalledWith(1, undefined);
+    expect(Object.keys(engine.prepare.mock.calls[0]![0])).not.toContain("displayPoint");
+  });
+
   it("logs where preparing, record and stop spent their time", async () => {
     const { port, logs } = await prepared();
     port.deliver({ type: "record", sessionId: "s1" });

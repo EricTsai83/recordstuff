@@ -5,13 +5,23 @@
 //!
 //! A failure rejects with a message `code|detail`, where `code` is one of the capture host's error codes.
 
+pub mod core;
 pub mod mux;
 pub mod pacing;
 pub mod timing;
 pub mod writer;
 
+pub mod aac;
+pub mod avc;
+
 #[cfg(target_os = "macos")]
 pub mod mac;
+#[cfg(target_os = "macos")]
+use mac as platform;
+#[cfg(windows)]
+pub mod win;
+#[cfg(windows)]
+use win as platform;
 
 use std::sync::{Arc, Mutex};
 
@@ -27,9 +37,20 @@ pub struct ProbeResult {
     pub height: u32,
 }
 
+/// A point in physical screen pixels.
+#[napi(object)]
+#[derive(Clone, Copy)]
+pub struct DisplayPoint {
+    pub x: i32,
+    pub y: i32,
+}
+
 #[napi(object)]
 pub struct PrepareOptions {
+    /// The display's CGDirectDisplayID on macOS; unused on Windows.
     pub display_id: u32,
+    /// A point on the display: how Windows finds it. Unused on macOS.
+    pub display_point: Option<DisplayPoint>,
     pub width: u32,
     pub height: u32,
     pub frame_rate: u32,
@@ -94,8 +115,8 @@ impl Emitter {
     }
 }
 
-#[cfg(target_os = "macos")]
-impl mac::session::Events for Emitter {
+#[cfg(any(target_os = "macos", windows))]
+impl core::Events for Emitter {
     fn progress(&self, bytes: u64) {
         self.emit(EngineEvent { kind: "progress".into(), bytes: Some(bytes as f64), code: None, detail: None });
     }
@@ -109,9 +130,9 @@ impl mac::session::Events for Emitter {
     }
 }
 
-#[cfg(target_os = "macos")]
-type Session = mac::session::Session;
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(target_os = "macos", windows))]
+type Session = platform::session::Session;
+#[cfg(not(any(target_os = "macos", windows)))]
 type Session = ();
 
 #[napi]
@@ -129,8 +150,8 @@ impl NativeCapture {
     }
 
     #[napi(ts_return_type = "Promise<ProbeResult>")]
-    pub fn probe(&self, display_id: u32) -> AsyncTask<ProbeTask> {
-        AsyncTask::new(ProbeTask { display_id })
+    pub fn probe(&self, display_id: u32, display_point: Option<DisplayPoint>) -> AsyncTask<ProbeTask> {
+        AsyncTask::new(ProbeTask { display_id, display_point: display_point.map(|p| (p.x, p.y)) })
     }
 
     #[napi(ts_return_type = "Promise<PreparedInfo>")]
@@ -141,13 +162,13 @@ impl NativeCapture {
     /// Starts writing the prepared session; returns at once.
     #[napi]
     pub fn record(&self) -> Result<()> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         {
             let mut guard = self.session.lock().unwrap();
             let session = guard.as_mut().ok_or_else(|| failure("capture_start_failed", "record refused: nothing is prepared"))?;
             session.record().map_err(|e| failure(e.code, e.detail))
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", windows)))]
         Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
     }
 
@@ -164,6 +185,7 @@ impl NativeCapture {
 
 pub struct ProbeTask {
     display_id: u32,
+    display_point: Option<(i32, i32)>,
 }
 
 impl Task for ProbeTask {
@@ -171,9 +193,9 @@ impl Task for ProbeTask {
     type JsValue = ProbeResult;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        #[cfg(target_os = "macos")]
-        return mac::session::probe(self.display_id).map_err(|e| failure(e.code, e.detail));
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "macos", windows))]
+        return platform::session::probe(self.display_id, self.display_point).map_err(|e| failure(e.code, e.detail));
+        #[cfg(not(any(target_os = "macos", windows)))]
         Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
     }
 
@@ -197,10 +219,11 @@ impl Task for PrepareTask {
         if self.session.lock().unwrap().is_some() {
             return Err(failure("capture_start_failed", "a recording is already in progress"));
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         {
-            let request = mac::session::PrepareRequest {
+            let request = core::PrepareRequest {
                 display_id: options.display_id,
+                display_point: options.display_point.map(|p| (p.x, p.y)),
                 width: options.width,
                 height: options.height,
                 frame_rate: options.frame_rate,
@@ -225,7 +248,7 @@ impl Task for PrepareTask {
                 timings: prepared.timings,
             })
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = (options, &self.events);
             Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
@@ -249,7 +272,7 @@ impl Task for StopTask {
         let Some(session) = self.session.lock().unwrap().take() else {
             return Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 });
         };
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         {
             let stopped = session.stop().map_err(|e| failure(e.code, e.detail))?;
             Ok(StopReport {
@@ -262,7 +285,7 @@ impl Task for StopTask {
                 frame_lead_max_ms: stopped.frame_lead_ms.1,
             })
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             let () = session;
             Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 })
@@ -283,7 +306,7 @@ impl Task for CancelTask {
     type JsValue = ();
 
     fn compute(&mut self) -> Result<Self::Output> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         if let Some(session) = self.session.lock().unwrap().take() {
             session.cancel();
         }

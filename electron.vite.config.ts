@@ -33,20 +33,24 @@ const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
 
 /**
  * Plan 076's native capture engine (native/capture), built with Cargo before main and copied to
- * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. macOS only while the engine is
- * a prototype behind `RECORDSTUFF_CAPTURE_ENGINE=native`; a machine without Rust skips it with a warning, and the
- * flag then fails at start with the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose.
+ * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. While the engine is a
+ * prototype behind `RECORDSTUFF_CAPTURE_ENGINE=native` it is built on macOS, and on Windows only with
+ * `RECORDSTUFF_BUILD_NATIVE=1` (plan 076, step 3: CI's native job builds and tests it; the Windows check and release
+ * builds take it up in step 6). A machine without Rust skips it with a warning, and the flag then fails at start with
+ * the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose.
  */
 const nativeEngine = (): Plugin => {
   const manifest = resolve(__dirname, "native/capture/Cargo.toml");
-  const library = resolve(__dirname, "native/capture/target/release/librecordstuff_capture.dylib");
+  const library = resolve(__dirname, "native/capture/target/release",
+    process.platform === "win32" ? "recordstuff_capture.dll" : "librecordstuff_capture.dylib");
   let built = false;
   return {
     name: "recordstuff-native-engine", apply: "build",
     buildStart() {
       built = false;
-      if (process.platform !== "darwin" || process.env["RECORDSTUFF_SKIP_NATIVE"] === "1") return;
-      const cargo = [process.env["CARGO"], resolve(homedir(), ".cargo/bin/cargo"), "cargo"].find(c => c && (c === "cargo" || existsSync(c)))!;
+      const wanted = process.platform === "darwin" || (process.platform === "win32" && process.env["RECORDSTUFF_BUILD_NATIVE"] === "1");
+      if (!wanted || process.env["RECORDSTUFF_SKIP_NATIVE"] === "1") return;
+      const cargo = [process.env["CARGO"], resolve(homedir(), process.platform === "win32" ? ".cargo/bin/cargo.exe" : ".cargo/bin/cargo"), "cargo"].find(c => c && (c === "cargo" || existsSync(c)))!;
       try {
         execFileSync(cargo, ["build", "--release", "--manifest-path", manifest], { stdio: "inherit" });
         built = true;

@@ -49,8 +49,10 @@ function isHostErrorCode(value: unknown): value is HostErrorCode {
 
 /** What the native engine's host needs beyond the quality: the display main resolved, the file it opened and what to leave out. */
 export interface NativeStart {
-  /** The CGDirectDisplayID of the display to record. */
+  /** The display to record: its CGDirectDisplayID on macOS, Electron's display id elsewhere. */
   displayId: number;
+  /** A point on that display in physical screen pixels: how the engine finds it on Windows (plan 076, step 3). */
+  displayPoint?: { x: number; y: number };
   /** The empty temporary file main created; the engine writes it. */
   recordingPath: string;
   /** RecordStuff's processes, main first: their windows and sound are left out of the recording. */
@@ -106,8 +108,13 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function isPoint(value: unknown): value is { x: number; y: number } {
+  return isRecord(value) && Number.isInteger(value["x"]) && Number.isInteger(value["y"]);
+}
+
 function isNativeStart(value: unknown): value is NativeStart {
   return isRecord(value) && typeof value["displayId"] === "number" && Number.isInteger(value["displayId"]) &&
+    (value["displayPoint"] === undefined || isPoint(value["displayPoint"])) &&
     isNonEmptyString(value["recordingPath"]) &&
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
     typeof value["hideSystemUi"] === "boolean";
