@@ -69,23 +69,21 @@ All of step 1 was decided by the maintainer on 2026-10-14.
 
 ### 3. Windows prototype
 
-- [ ] The same module on Windows: Windows.Graphics.Capture for the display, WASAPI loopback for system audio, Media Foundation H.264/AAC, the shared muxer; `WDA_EXCLUDEFROMCAPTURE` on RecordStuff's windows.
-- [ ] In CI on `windows-2025`: build, `cargo test`, load the module, and try a short display recording with system audio. Whether the runner's session can capture at all is itself a finding; when it cannot, the recording is listed as untested rather than failed.
-- Progress (2026-10-14, uncommitted until the maintainer commits it):
+- [x] The same module on Windows: Windows.Graphics.Capture for the display, WASAPI loopback for system audio, Media Foundation H.264/AAC, the shared muxer; `WDA_EXCLUDEFROMCAPTURE` on RecordStuff's windows (PR #5).
+- [x] In CI on `windows-2025`: build, `cargo test`, load the module, and try a short display recording with system audio. Whether the runner's session can capture at all is itself a finding; when it cannot, the recording is listed as untested rather than failed. The runner can capture: the `native-windows` job passes on commit `886a7f55`.
+- What was done (2026-10-14, PR #5):
   - The session state machine moved out of `mac/session.rs` into `native/capture/src/core/`, generic over the platform's frames, encoders and clock, so both platforms share one set of rules for pacing, the stop and the sound up to it. It has tests with fake encoders that run on both platforms. macOS was re-verified on the signed bundle (`pnpm acceptance`, `pnpm verify --sync`, `pnpm measure:cpu`).
   - `native/capture/src/win/` implements the module:
-    - Windows.Graphics.Capture, converted to NV12 by the Direct3D 11 video processor.
+    - Windows.Graphics.Capture, converted to NV12 by the Direct3D 11 video processor. A device without one (WARP on a machine without a GPU, as on the runner) copies each frame to a staging texture, and the frames that are encoded are converted on the CPU (`nv12.rs`).
     - WASAPI process loopback without RecordStuff's process tree.
     - Media Foundation's software H.264 encoder, with a key frame every second of presentation time.
     - Its AAC encoder, which takes at most 192 kbps, with its priming measured when it is made.
     - `avc.rs` turns its Annex B output into the muxer's form.
   - Main passes a physical point on the display (Electron's display ids name no monitor there) and marks its own windows `setContentProtection(true)` while an attempt runs (`capture-exclusion.ts`). The Windows build is opt-in (`RECORDSTUFF_BUILD_NATIVE=1`), so the check and release builds are unchanged until step 6.
-  - The `native-windows` job in `check.yml` runs the following, but has not run yet, since nothing was pushed:
-    - `cargo test`, including Media Foundation's encoders on synthetic media;
-    - `ffprobe`/`ffmpeg` decoding of that file;
-    - a live three-second recording (`live_test.rs`), untested only when the session positively cannot capture;
-    - loading the module in Node.
-- Carried to step 4 from this prototype: the hardware H.264 encoder (an asynchronous transform), sound while nothing plays (process loopback may deliver no packets, so audio fragments wait for the next sound), and confirming the measured AAC priming and the own-window exclusion on real Windows hardware, which D8 leaves to users' reports.
+  - The `native-windows` job in `check.yml` runs `cargo test`, decodes the synthetic file with `ffprobe`/`ffmpeg`, runs system audio alone, the display alone and a whole three-second session as live tests in separate processes (rerun under `cdb` with full page heap when one fails), and loads the module in Node. Its first runs found two defects, both fixed: the runner's device had no video processor, and the loopback activation's `PROPVARIANT` freed its stack-held parameters when dropped.
+  - Results on the runner (run 38569135126): the 1024×768 display through the CPU conversion; `prepare` in 92 ms; three seconds gave 6 video samples (3 key frames, a still desktop) and 141 AAC packets, both tracks lasting 3000 ms; a 2 ms drain with no silence filled in; the measured AAC priming was 0 frames; `probe` from Node returned 1024×768. The synthetic file decoded without errors.
+  - Untested on Windows (D8): the video processor and hardware paths, picture content and quality, audio content and A/V sync, the own-window exclusion, DPI with several displays, CPU, and long recordings.
+- Carried to step 4 from this prototype: the hardware H.264 encoder (an asynchronous transform), sound while nothing plays (process loopback may deliver no packets, so audio fragments wait for the next sound), and confirming on real Windows hardware the measured AAC priming (0 on the runner; if the encoder's output is in fact delayed, audio is late by that much) and the own-window exclusion, which D8 leaves to users' reports.
 
 ### 4. The engine
 

@@ -69,23 +69,21 @@
 
 ### 3. Windows 原型
 
-- [ ] 同一個模組的 Windows 版：以 Windows.Graphics.Capture 擷取螢幕、WASAPI loopback 擷取系統聲音、Media Foundation 編碼 H.264／AAC，使用共用的封裝器；對 RecordStuff 的視窗設 `WDA_EXCLUDEFROMCAPTURE`。
-- [ ] 在 `windows-2025` 的 CI 上：建置、`cargo test`、載入模組，並嘗試一段帶系統聲音的短暫螢幕錄影。runner 的工作階段能否擷取本身就是一項發現；不能的話，錄影列為未測試，而不是失敗。
-- 進度（2026-10-14，在維護者 commit 之前都未 commit）：
+- [x] 同一個模組的 Windows 版：以 Windows.Graphics.Capture 擷取螢幕、WASAPI loopback 擷取系統聲音、Media Foundation 編碼 H.264／AAC，使用共用的封裝器；對 RecordStuff 的視窗設 `WDA_EXCLUDEFROMCAPTURE`（PR #5）。
+- [x] 在 `windows-2025` 的 CI 上：建置、`cargo test`、載入模組，並嘗試一段帶系統聲音的短暫螢幕錄影。runner 的工作階段能否擷取本身就是一項發現；不能的話，錄影列為未測試，而不是失敗。runner 可以擷取：`native-windows` job 在 commit `886a7f55` 通過。
+- 完成內容（2026-10-14，PR #5）：
   - 錄影的狀態機從 `mac/session.rs` 移到 `native/capture/src/core/`，以平台的影格、encoder 與時鐘為泛型，兩個平台共用同一套節奏、停止與停止前聲音的規則。它有以假 encoder 寫的測試，兩個平台都會執行。macOS 已在簽章 bundle 上重新驗證（`pnpm acceptance`、`pnpm verify --sync`、`pnpm measure:cpu`）。
   - `native/capture/src/win/` 實作模組：
-    - Windows.Graphics.Capture，由 Direct3D 11 video processor 轉成 NV12。
+    - Windows.Graphics.Capture，由 Direct3D 11 video processor 轉成 NV12。裝置沒有 video processor 時（沒有 GPU 的機器上的 WARP，例如 runner），每張畫面複製到 staging texture，要編碼的畫面再於 CPU 上轉換（`nv12.rs`）。
     - WASAPI process loopback，排除 RecordStuff 的 process tree。
     - Media Foundation 的軟體 H.264 encoder，每一秒呈現時間產生一個 key frame。
     - 它的 AAC encoder，最高只接受 192 kbps，建立時量測 priming。
     - `avc.rs` 把它的 Annex B 輸出轉成封裝器的格式。
   - main 傳入螢幕上一個實體座標點（Electron 的 display id 在 Windows 上對應不到螢幕），並在錄影期間把自己的視窗設為 `setContentProtection(true)`（`capture-exclusion.ts`）。Windows 建置需明確開啟（`RECORDSTUFF_BUILD_NATIVE=1`），所以在步驟 6 之前 check 與 release 建置都不變。
-  - `check.yml` 的 `native-windows` job 會執行以下項目，但因為還沒 push，尚未執行過：
-    - `cargo test`，包含以合成媒體測試 Media Foundation 的 encoder；
-    - 以 `ffprobe`／`ffmpeg` 解碼該檔案；
-    - 實際錄影三秒（`live_test.rs`），只有在工作階段明確無法擷取時才列為未測試；
-    - 在 Node 中載入模組。
-- 從這個原型移到步驟 4：硬體 H.264 encoder（非同步 transform）、沒有聲音播放時的音訊（process loopback 可能不送封包，音訊分片會等到下一次有聲音），以及在真實 Windows 硬體上確認量測到的 AAC priming 與自己視窗的排除；依 D8，這些留給使用者回報。
+  - `check.yml` 的 `native-windows` job 執行 `cargo test`、以 `ffprobe`／`ffmpeg` 解碼合成檔，再把「只有系統聲音」、「只有畫面」和完整三秒錄影各自在獨立 process 中實錄（失敗時以 `cdb` 加 full page heap 重跑），最後在 Node 中載入模組。最初幾輪找到兩個缺陷，都已修正：runner 的裝置沒有 video processor；loopback 啟用參數的 `PROPVARIANT` 在 drop 時釋放了放在 stack 上的參數。
+  - runner 上的結果（run 38569135126）：1024×768 螢幕走 CPU 轉換；`prepare` 92 ms；三秒錄到 6 個影片 sample（3 個 key frame，桌面靜止）與 141 個 AAC 封包，兩條軌都是 3000 ms；drain 2 ms，沒有補靜音；量到的 AAC priming 為 0 frame；Node 的 `probe` 回傳 1024×768。合成檔解碼沒有錯誤。
+  - Windows 上未測試（D8）：video processor 與硬體路徑、畫面內容與品質、聲音內容與 A/V 同步、自己視窗的排除、多螢幕的 DPI、CPU、長時間錄影。
+- 從這個原型移到步驟 4：硬體 H.264 encoder（非同步 transform）、沒有聲音播放時的音訊（process loopback 可能不送封包，音訊分片會等到下一次有聲音），以及在真實 Windows 硬體上確認量測到的 AAC priming（runner 上為 0；如果 encoder 的輸出實際上有延遲，聲音就會晚那麼多）與自己視窗的排除；依 D8，這些留給使用者回報。
 
 ### 4. 引擎
 
