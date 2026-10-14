@@ -206,6 +206,7 @@ jobs:
           exit 0
       - name: Build the module and load it in Node
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         working-directory: native/capture
         shell: pwsh
         run: |
@@ -213,5 +214,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $module = Join-Path $env:RUNNER_TEMP 'recordstuff-capture.node'
           Copy-Item target\release\recordstuff_capture.dll $module
-          node -e "const m = require(process.argv[1]); const c = new m.NativeCapture(() => {}); c.probe(0, null).then((s) => console.log('loaded; probe', JSON.stringify(s)), (e) => console.log('loaded; probe refused:', e.message));" $module
+          # The event callback's threadsafe function keeps Node running, so it exits once probe answers.
+          node -e "const m = require(process.argv[1]); const c = new m.NativeCapture(() => {}); c.probe(0, null).then((s) => console.log('loaded; probe', JSON.stringify(s)), (e) => console.log('loaded; probe refused:', e.message)).finally(() => process.exit(0));" $module
           if ($LASTEXITCODE -ne 0) { exit 1 }

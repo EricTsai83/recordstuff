@@ -48,7 +48,8 @@ fn loopback_client(exclude_pid: u32) -> Result<IAudioClient, CaptureError> {
             },
         },
     };
-    let blob = PROPVARIANT {
+    // Never cleared: PROPVARIANT's Drop would free the blob, which points at `params` on this stack.
+    let blob = std::mem::ManuallyDrop::new(PROPVARIANT {
         Anonymous: PROPVARIANT_0 {
             Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
                 vt: VT_BLOB,
@@ -63,11 +64,11 @@ fn loopback_client(exclude_pid: u32) -> Result<IAudioClient, CaptureError> {
                 },
             }),
         },
-    };
+    });
     let (sender, done) = channel();
     let handler: IActivateAudioInterfaceCompletionHandler = Activated(Mutex::new(Some(sender))).into();
     let operation =
-        unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&blob), &handler) }
+        unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&*blob), &handler) }
             .map_err(|e| start_failed("system audio capture is not available (Windows 10 2004 or later is needed)", e))?;
     done.recv_timeout(ACTIVATE_TIMEOUT)
         .map_err(|_| CaptureError::new("capture_start_failed", "system audio capture did not open within 5 s"))?;
