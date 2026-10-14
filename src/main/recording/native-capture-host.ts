@@ -6,7 +6,8 @@
  * recordings.
  *
  * Before posting `start` it resolves the display through the same `DisplayMedia` request the renderer host's
- * display-media handler answers, so display choice, its diagnostics and the countdown's display are unchanged.
+ * display-media handler answers, so display choice, its diagnostics and the countdown's display are unchanged. The
+ * display is chosen while the process starts, so neither waits for the other.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
 import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage } from "../../shared/protocol";
@@ -28,6 +29,7 @@ export interface NativeCaptureHostOptions {
   log?: (message: string) => void;
   /** Forks the host; tests pass a fake. */
   fork?: (entryPath: string, args: string[]) => UtilityProcess;
+  now?: () => number;
 }
 
 type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
@@ -73,18 +75,29 @@ export class NativeCaptureHost implements RecorderHost {
     this.teardown();
     const generation = this.generation;
     if (!recordingPath) throw new Error("the native engine needs the recording file's path");
+    const now = this.options.now ?? (() => performance.now());
+    const began = now();
+    let chosenAt = began;
+    const choice = this.options.resolveDisplay(sessionId).then(
+      (display) => { chosenAt = now(); return { display }; },
+      (cause: unknown) => ({ cause }),
+    );
     try {
       await this.create();
     } catch (cause) {
       if (generation === this.generation) this.teardown();
       throw cause;
     }
+    const readyAt = now();
     if (generation !== this.generation) throw new Error("capture host was invalidated during startup");
     this.watching = sessionId;
     this.recordingPath = recordingPath;
     this.missedPongs = 0;
     this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
-    const display = await this.options.resolveDisplay(sessionId);
+    const chosen = await choice;
+    if ("cause" in chosen) throw chosen.cause;
+    const display = chosen.display;
+    this.log(`capture host: timing: process ready ${Math.round(readyAt - began)} ms, display chosen ${Math.round(chosenAt - began)} ms`);
     if (generation !== this.generation) throw new Error("capture host was invalidated while the display was chosen");
     if (!display || !/^\d+$/.test(display)) {
       // Main refused a display (the recorder's `mapHostError` names why) or has none to offer.

@@ -91,9 +91,16 @@ impl<O: Output> SessionMuxer<O> {
         Ok(())
     }
 
-    /// Writes what is pending and makes the file plain. The last video sample lasts until `video_end` ticks, or one
-    /// thirtieth of a second when that is not after it; the audio track presents `audio_frames` after its priming.
+    /// Writes what is pending and makes the file plain. The last video sample lasts until `video_end` ticks. A last
+    /// sample at or after the end is left out, unless it is the only one (then it lasts a thirtieth of a second):
+    /// ScreenCaptureKit stamps a frame with when it is shown, which can be a few milliseconds after it is handed
+    /// over, so a frame received before the stop can be stamped after it. Nothing refers to the last frame (the
+    /// encoder does not reorder), so leaving it out is safe. The audio track presents `audio_frames` after its priming.
     pub fn finish(mut self, video_end: u64, audio_frames: Option<u64>) -> io::Result<(FinishReport, O)> {
+        let written = self.mp4.sample_count(VIDEO_TRACK) + self.video.samples.len();
+        if self.held.as_ref().is_some_and(|held| held.pts >= video_end && written > 0) {
+            self.held = None;
+        }
         if let Some(held) = self.held.take() {
             let duration = if video_end > held.pts { clamp_duration(video_end - held.pts) } else { (self.video_timescale / 30).max(1) };
             self.video.samples.push(Owned { data: held.data, duration, sync: held.sync });
@@ -166,10 +173,30 @@ mod tests {
         let mut muxer = SessionMuxer::new(Vec::new(), video_config(), None).unwrap();
         muxer.push_video(vec![1], 0, true).unwrap();
         muxer.push_video(vec![2], 0, false).unwrap();
-        let (_, out) = muxer.finish(0, None).unwrap();
+        let (_, out) = muxer.finish(4000, None).unwrap();
         let parsed = parse(&out).unwrap();
         assert_eq!(parsed.tracks[0].samples[1].decode_time, 1);
-        assert_eq!(parsed.tracks[0].duration, 1 + 3000);
+        assert_eq!(parsed.tracks[0].duration, 4000);
+    }
+
+    #[test]
+    fn a_last_frame_stamped_at_or_after_the_end_is_left_out_unless_it_is_the_only_one() {
+        let mut muxer = SessionMuxer::new(Vec::new(), video_config(), None).unwrap();
+        for (pts, sync) in [(0, true), (1500, false), (3000, false)] {
+            muxer.push_video(vec![1, 2, 3], pts, sync).unwrap();
+        }
+        // Stopped at 2900 ticks: the frame stamped 3000 was shown after the stop.
+        let (_, out) = muxer.finish(2900, None).unwrap();
+        let parsed = parse(&out).unwrap();
+        assert_eq!(parsed.tracks[0].samples.len(), 2);
+        assert_eq!(parsed.tracks[0].duration, 3000);
+
+        let mut muxer = SessionMuxer::new(Vec::new(), video_config(), None).unwrap();
+        muxer.push_video(vec![1], 500, true).unwrap();
+        let (_, out) = muxer.finish(100, None).unwrap();
+        let parsed = parse(&out).unwrap();
+        assert_eq!(parsed.tracks[0].samples.len(), 1);
+        assert_eq!(parsed.tracks[0].duration, 3000);
     }
 
     #[test]

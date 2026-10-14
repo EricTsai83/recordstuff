@@ -6,6 +6,7 @@
 //! A failure rejects with a message `code|detail`, where `code` is one of the capture host's error codes.
 
 pub mod mux;
+pub mod pacing;
 pub mod timing;
 pub mod writer;
 
@@ -32,7 +33,6 @@ pub struct PrepareOptions {
     pub width: u32,
     pub height: u32,
     pub frame_rate: u32,
-    pub capture_rate: f64,
     pub video_bitrate: u32,
     pub audio_bitrate: u32,
     /// RecordStuff's processes, main first; their windows and sound are left out.
@@ -52,6 +52,8 @@ pub struct PreparedInfo {
     pub excluded_apps: u32,
     pub hidden_windows: u32,
     pub warnings: Vec<String>,
+    /// Where preparing spent its time, for the log.
+    pub timings: String,
 }
 
 #[napi(object)]
@@ -60,6 +62,12 @@ pub struct StopReport {
     /// Why the file stayed fragmented, when it did.
     pub fragmented: Option<String>,
     pub finalize_ms: f64,
+    /// How long the sound up to the stop took to arrive, and how many of its frames were filled with silence.
+    pub drain_ms: f64,
+    pub drain_padded_frames: f64,
+    /// How far ahead of the host clock frames were stamped when handed over: average and maximum, in ms.
+    pub frame_lead_avg_ms: f64,
+    pub frame_lead_max_ms: f64,
 }
 
 #[napi(object)]
@@ -196,7 +204,6 @@ impl Task for PrepareTask {
                 width: options.width,
                 height: options.height,
                 frame_rate: options.frame_rate,
-                capture_rate: options.capture_rate,
                 video_bitrate: options.video_bitrate,
                 audio_bitrate: options.audio_bitrate,
                 own_pids: options.own_pids,
@@ -215,6 +222,7 @@ impl Task for PrepareTask {
                 excluded_apps: prepared.excluded_apps as u32,
                 hidden_windows: prepared.hidden_windows as u32,
                 warnings: prepared.warnings,
+                timings: prepared.timings,
             })
         }
         #[cfg(not(target_os = "macos"))]
@@ -239,17 +247,25 @@ impl Task for StopTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         let Some(session) = self.session.lock().unwrap().take() else {
-            return Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0 });
+            return Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 });
         };
         #[cfg(target_os = "macos")]
         {
             let stopped = session.stop().map_err(|e| failure(e.code, e.detail))?;
-            Ok(StopReport { bytes: stopped.bytes as f64, fragmented: stopped.fragmented, finalize_ms: stopped.finalize_ms })
+            Ok(StopReport {
+                bytes: stopped.bytes as f64,
+                fragmented: stopped.fragmented,
+                finalize_ms: stopped.finalize_ms,
+                drain_ms: stopped.drain_ms,
+                drain_padded_frames: stopped.drain_padded_frames as f64,
+                frame_lead_avg_ms: stopped.frame_lead_ms.0,
+                frame_lead_max_ms: stopped.frame_lead_ms.1,
+            })
         }
         #[cfg(not(target_os = "macos"))]
         {
             let () = session;
-            Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0 })
+            Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 })
         }
     }
 

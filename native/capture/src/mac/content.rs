@@ -2,8 +2,9 @@
 //! windows and sound (075's D14, always), and optionally without the menu bar, the Dock, desktop icons and widgets
 //! (076's D6).
 
+use std::sync::Mutex;
 use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -16,6 +17,23 @@ use super::{CaptureError, Unsent};
 /// SCStreamErrorUserDeclined: the user has not granted screen recording.
 const USER_DECLINED: isize = -3801;
 const CONTENT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long `probe`'s content serves the `prepare` right after it: one attempt asks the system once.
+const REUSE_WITHIN: Duration = Duration::from_secs(2);
+
+static RECENT: Mutex<Option<(Instant, Unsent<SCShareableContent>)>> = Mutex::new(None);
+
+/// Keeps `content` for the next `recent_or_fetch`.
+pub fn remember(content: &Retained<SCShareableContent>) {
+    *RECENT.lock().unwrap() = Some((Instant::now(), Unsent(content.clone())));
+}
+
+/// The content `remember` kept within the last two seconds, once; otherwise asks the system.
+pub fn recent_or_fetch() -> Result<Retained<SCShareableContent>, CaptureError> {
+    match RECENT.lock().unwrap().take() {
+        Some((at, content)) if at.elapsed() < REUSE_WITHIN => Ok(content.0),
+        _ => shareable_content(),
+    }
+}
 
 /// kCGDockWindowLevel, kCGMainMenuWindowLevel and kCGStatusWindowLevel.
 const DOCK_LEVEL: isize = 20;
