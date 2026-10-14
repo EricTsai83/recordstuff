@@ -78,7 +78,7 @@ impl Session {
         })?;
 
         let software = gpu.0.software;
-        let (display, borderless) =
+        let (display, borderless, cpu) =
             DisplayCapture::start(gpu, &item, width, height, Pacer::capture_interval_ns(request.frame_rate), core.shared())?;
         mark("display capture start");
         let exclude = request.own_pids.first().copied().unwrap_or(std::process::id() as i32) as u32;
@@ -115,6 +115,9 @@ impl Session {
         }
         if software {
             warnings.push("no Direct3D hardware device: frames are converted by WARP, Windows's software renderer".into());
+        }
+        if let Some(reason) = cpu {
+            warnings.push(format!("frames are converted to NV12 on the CPU ({reason})"));
         }
         if (width, height) != (request.width, request.height) {
             warnings.push(format!("recorded at {width}x{height}: H.264 in NV12 needs even dimensions"));

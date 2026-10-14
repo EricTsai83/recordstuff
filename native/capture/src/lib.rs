@@ -13,6 +13,7 @@ pub mod writer;
 
 pub mod aac;
 pub mod avc;
+pub mod nv12;
 
 #[cfg(target_os = "macos")]
 pub mod mac;
