@@ -53,11 +53,19 @@
 
 ### 2. macOS 原型與量測關卡（決定點）
 
-- [ ] 一個最小的 Rust 模組：透過 ScreenCaptureKit 錄下所選螢幕與系統聲音，排除 RecordStuff 的視窗，可選擇隱藏選單列與 Dock，以 VideoToolbox 與 AudioToolbox 編碼，經由 D4 的封裝器寫出 hybrid MP4 檔。
-- [ ] 在簽章的 `pnpm start:app` bundle 上，確認螢幕與系統聲音的權限提示與授權適用於 `utilityProcess` 中的模組（TCC 會把它歸給 RecordStuff）。
-- [ ] 當機與停止的安全性：錄影中強制結束 `utilityProcess`，確認 main 能把已寫入的內容變成可播放的檔案，符合現有的中斷錄影處理。
-- [ ] 在同一台機器上與現有引擎比較：`pnpm audio:quality` 的保真度、`pnpm matrix -- quick` 與 `fps` 的子集、`pnpm measure:cpu -- --fps 60 --repeat 3`、開始錄影的延遲，以及 10 分鐘錄影的音畫漂移。
-- [ ] 把數字回報給維護者。本計畫在此暫停：繼續、換做法（例如 D1 的 Swift 替代方案），或停止並保留 Chromium 路徑。
+- [x] 一個最小的 Rust 模組：透過 ScreenCaptureKit 錄下所選螢幕與系統聲音，排除 RecordStuff 的視窗，可選擇隱藏選單列與 Dock，以 VideoToolbox 與 AudioToolbox 編碼，經由 D4 的封裝器寫出 hybrid MP4 檔（commit `c4f9a2dd`；在 `9df50a25` 優化）。以 `RECORDSTUFF_CAPTURE_ENGINE=native` 選用。
+- [x] 權限：在簽章的 `pnpm start:app` bundle 上，螢幕與系統聲音的授權適用於 `utilityProcess` 中的模組。開發版 Electron 的 `utilityProcess` 會被拒絕（`-3801`），所以原生量測都使用簽章 bundle。因為已經授權過，沒有看到第一次的權限提示。
+- [x] 當機安全性：錄影中強制結束 `utilityProcess`，留下 8.0 s 可播放的部分檔案。兩個 track 的長度差 147 ms，因為各自約每秒才寫出一次分片。
+- [x] 2026-10-14 在同一台機器上與現有引擎比較，數據為優化回合之後（括號內為 Chromium）：
+  - 開始：快捷鍵到 `prepared` 457–535 ms（347–369 ms）；`record` 到 `started` 2 ms（1–2 ms）。
+  - 聲音與畫面的長度差：每個檔案都是 -0 ms，包含 10 分鐘的錄影（+13 到 +15 ms）。
+  - 掉幀：30 fps 0.00%，60 fps 0.06–0.22%（0.00%；0.14–0.22%）。
+  - 錄影 CPU，30/60 fps：10.0–10.5% / 15.0%（15.6% / 23.0%）。
+  - 10 分鐘 drift：0 ms，600 組閃光與嗶聲全部配對。
+  - 閃光到嗶聲的 offset：-22 到 +9 ms，同一段錄影內固定（+6 到 +8 ms）。
+  - `pnpm matrix` 與 `pnpm audio:quality record` 無法驅動原生引擎，因為開發版 Electron 被拒絕擷取。改用 `pnpm acceptance` 加 `pnpm verify --sync`、在播放測試素材的錄影上跑 `audio:quality verify`，以及在簽章 bundle 上跑 `pnpm measure:cpu`。
+  - 原生模式下，`pnpm measure:cpu` 因 Electron 預先啟動的 renderer 在 `IDLE_ROLES` 判定失敗，由步驟 4 處理。
+- [x] 已回報給維護者。維護者於 2026-10-14 決定在優化回合後繼續。接受的取捨：開始比 Chromium 慢約 0.1 秒，落在倒數之內。後續項目在步驟 4（影格時序、開始延遲、閒置的 renderer），以及其寫檔項目（把停止與檔案收尾分開）。
 
 ### 3. Windows 原型
 
@@ -69,6 +77,19 @@
 - [ ] 新增 Rust crate（提議為 `native/capture/`）與 napi-rs 綁定，以 `cargo test` 測試封裝器、時間戳與來源篩選，平台模組藏在同一個 Rust 介面後面。
 - [ ] 寫檔（D3）：Rust 的寫檔與封裝器接手 `file-writer.ts` 與 `mp4-finalize.ts` 的工作（定期同步、寫入錯誤分類、分片索引、存檔轉一般 MP4），並移植它們的測試案例；main 保留 sentinel、剩餘空間檢查、發布與歷史，結案時移除這兩個 TypeScript 模組。
 - [ ] 時鐘與同步：每個 session 使用一個單調時鐘（mach absolute time；QueryPerformanceCounter）；音訊時間戳以累計樣本數計算，空隙以靜音補上，和 Cap 一樣，讓長時間錄影的聲音不會相對畫面漂移。
+- [ ] 影格時序，來自步驟 2 的優化回合（commit `9df50a25`，維護者 2026-10-14 的要求）：
+  - 統一停止規則：影格的時間早於停止點才保留。目前擷取端會保留剛好落在停止點的影格，封裝器再丟掉時間不早於結束點的最後一格；封裝器這一步保留為保險。
+  - 擷取間隔：`pacing.rs` 向 ScreenCaptureKit 要求幀間隔的四分之一，在 60 與 120 Hz 螢幕上等於每次刷新都送。直接要求刷新週期時，30 fps 掉了 1.8% 的影格。改試「不設最小間隔」（明確表達每次刷新都送），保留時間格挑選，並重新量測 30 與 60 fps 的掉幀與 CPU；若沒有至少一樣好，就維持四分之一。
+  - 影格時間：影格目前使用 ScreenCaptureKit 的顯示時間，比送達時間早約 11 ms。閃光與嗶聲的 offset 為 -22 到 +9 ms，同一段錄影內固定；Chromium 為 +6 到 +8 ms。決定維持顯示時間，或改用送達時間。
+- [ ] 開始延遲：步驟 2 的優化回合之後，原生引擎從按下快捷鍵到 `prepared` 需要 457–535 ms，Chromium 需要 347–369 ms。原生的時間由三部分組成：`utilityProcess` 啟動（74–88 ms）、shareable content 查詢（59–83 ms），以及 ScreenCaptureKit 的 `startCapture`（206–227 ms）。
+  - 用同樣的方式替 Chromium 路徑的開始流程分段計時，了解它的時間花在哪裡。
+  - 量測預先啟動擷取用的 `utilityProcess`（在開始任何擷取之前）。
+  - 把延遲與記憶體回報給維護者。這個 process 會改變[在選單列待命](../docs/zh-TW/system-design/design-overview.md#在選單列待命)的閒置清單，所以由維護者決定。
+- [ ] 閒置的 renderer：Electron 44 在第一次使用預設 session 時會預先啟動一個 renderer，而 display-media handler 在啟動時就會使用預設 session。走 Chromium 時，第一個 capture host 會用掉它；走原生時沒有人用，所以它一直留著（約 65 MB），錄影後的 `pnpm measure:cpu` 因此在 `IDLE_ROLES` 判定失敗。
+  - 原生模式下，啟動時不碰預設 session。
+  - 用 `pnpm measure:cpu` 確認錄影後沒有殘留 renderer。
+  - 量測有和沒有預先啟動的 renderer 時，Settings 第一次開啟的時間。隱藏 Settings 會保留它的 renderer；關閉後，下次開啟本來就會啟動新的 renderer。
+  - 若無法避免這個 renderer，由維護者在「`IDLE_ROLES` 允許它」與上面的預先啟動 process 之間選擇。
 - [ ] 輸入：螢幕（現在就用）、視窗、區域與 App 篩選、單一 App 聲音（只做引擎與測試）、麥克風（供 074），每一項都有清楚的錯誤，對應到既有的 `HostErrorCode` 或新代碼。
 - [ ] 品質：`src/shared/quality.ts` 中的既有設定（尺寸上限、影格率、位元率）改由原生端套用；`CaptureReport` 維持原有欄位，讓 Recorder、log 與警告維持原樣。
 

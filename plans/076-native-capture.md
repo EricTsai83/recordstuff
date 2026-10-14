@@ -53,11 +53,19 @@ All of step 1 was decided by the maintainer on 2026-10-14.
 
 ### 2. macOS prototype and measurement gate (decision point)
 
-- [ ] A minimal Rust module records the chosen display with system audio through ScreenCaptureKit, excludes RecordStuff's windows, optionally hides the menu bar and Dock, encodes with VideoToolbox and AudioToolbox and writes a hybrid MP4 file through the D4 muxer.
-- [ ] Confirm the screen and system-audio permission prompts and grants apply to the module in the `utilityProcess` (TCC attributes it to RecordStuff), on a signed `pnpm start:app` bundle.
-- [ ] Crash and stop safety: kill the `utilityProcess` mid-recording and confirm main turns what was written into a playable file, as today's interrupted-recording handling expects.
-- [ ] Measure against today's engine on the same machine: `pnpm audio:quality` fidelity, a `pnpm matrix -- quick` and `fps` subset, `pnpm measure:cpu -- --fps 60 --repeat 3`, start latency, and a 10-minute recording's drift between audio and picture.
-- [ ] Report the numbers to the maintainer. This plan pauses here: continue, change approach (for example D1's Swift alternative), or stop and keep the Chromium path.
+- [x] A minimal Rust module records the chosen display with system audio through ScreenCaptureKit, excludes RecordStuff's windows, optionally hides the menu bar and Dock, encodes with VideoToolbox and AudioToolbox and writes a hybrid MP4 file through the D4 muxer (commit `c4f9a2dd`; optimised in `9df50a25`). It is chosen with `RECORDSTUFF_CAPTURE_ENGINE=native`.
+- [x] Permissions: on a signed `pnpm start:app` bundle the screen and system-audio grants apply to the module in the `utilityProcess`. The development Electron's `utilityProcess` is refused (`-3801`), so native measurements use the signed bundle. The first-time prompt was not seen, since the grant already existed.
+- [x] Crash safety: killing the `utilityProcess` mid-recording left an 8.0 s playable partial file. Its tracks differed by 147 ms in length, because each track's fragments are flushed about once a second.
+- [x] Measured against today's engine on the same machine, 2026-10-14, after the optimisation round (Chromium in brackets):
+  - Start, shortcut to `prepared`: 457–535 ms (347–369 ms). `record` to `started`: 2 ms (1–2 ms).
+  - Audio and picture length difference: -0 ms in every file, including 10 minutes (+13 to +15 ms).
+  - Dropped frames: 0.00% at 30 fps, 0.06–0.22% at 60 fps (0.00%; 0.14–0.22%).
+  - Recording CPU at 30/60 fps: 10.0–10.5% / 15.0% (15.6% / 23.0%).
+  - 10-minute drift: 0 ms, 600 of 600 flash–beep pairs.
+  - Flash-to-beep offset: -22 to +9 ms, fixed within a recording (+6 to +8 ms).
+  - `pnpm matrix` and `pnpm audio:quality record` cannot drive the native engine, because the development Electron is refused capture. Their place was taken by `pnpm acceptance` with `pnpm verify --sync`, by `audio:quality verify` on a recording that played the fixture, and by `pnpm measure:cpu` on the signed bundle.
+  - `pnpm measure:cpu` fails `IDLE_ROLES` natively on Electron's early renderer, which step 4 handles.
+- [x] Reported to the maintainer, who decided on 2026-10-14 to continue after the optimisation round. Accepted: the start is about 0.1 s slower than Chromium's, inside the countdown. The follow-ups are in step 4 (frame timing, start latency, the idle renderer) and in its writing item (separating stop from file completion).
 
 ### 3. Windows prototype
 
@@ -69,6 +77,19 @@ All of step 1 was decided by the maintainer on 2026-10-14.
 - [ ] Add the Rust crate (proposed `native/capture/`) with napi-rs bindings, `cargo test` for the muxer, timestamps and source filters, and platform modules behind one Rust interface.
 - [ ] Writing (D3): the Rust writer and muxer take over `file-writer.ts` and `mp4-finalize.ts` (periodic sync, write-error classification, fragment index, plain MP4 at save), with their test cases ported; main keeps the sentinel, the free-space check, publication and history, and drops the two TypeScript modules at closure. The step 2 prototype finishes the file before it reports `stopped`, so a slow volume's save falls under the recorder's 10 s stop deadline and is killed as `stop_timeout` (review of step 2): separate capture stop from file completion, as today's renderer stop and main's finalize are.
 - [ ] Clock and sync: one monotonic clock per session (mach absolute time; QueryPerformanceCounter); audio timestamps from cumulative sample counts and gaps filled with silence, as Cap does, so audio never drifts against video over long recordings.
+- [ ] Frame timing, from step 2's optimisation round (commit `9df50a25`, maintainer's request of 2026-10-14):
+  - One stop rule: a frame is kept only when its time is before the stop. Capture now keeps a frame at the stop itself, and the muxer drops a last frame at or after the end; the muxer's drop stays as a guard.
+  - Capture interval: `pacing.rs` asks ScreenCaptureKit for a quarter of the frame interval, which on 60 and 120 Hz displays means every refresh. Asking for the refresh period itself dropped 1.8% of 30 fps frames. Try asking for no minimum interval (every refresh, by name), keep the slot grid, and measure 30 and 60 fps drops and CPU again; keep the quarter if it is not at least equal.
+  - Frame times: frames carry ScreenCaptureKit's display time, about 11 ms ahead of their arrival. The flash-to-beep offset was -22 to +9 ms, fixed within a recording, against Chromium's +6 to +8 ms. Decide whether to keep display time or use arrival time.
+- [ ] Start latency: after step 2's optimisation round, pressing the shortcut to `prepared` took 457–535 ms natively, against 347–369 ms through Chromium. The native time is the `utilityProcess` start (74–88 ms), the shareable-content query (59–83 ms) and ScreenCaptureKit's `startCapture` (206–227 ms).
+  - Time the Chromium path's start by phase the same way, to learn where its time goes.
+  - Measure starting the capture `utilityProcess` ahead of time, before any capture begins.
+  - Report the latency and memory to the maintainer. That process would change the idle list in [Waiting in the menu bar](../docs/system-design/design-overview.md#waiting-in-the-menu-bar), so the maintainer decides.
+- [ ] Idle renderer: Electron 44 launches a renderer ahead of time when the default session is first used, which the display-media handler does at launch. Through Chromium the first capture host takes it. Natively nothing does, so it stays (about 65 MB), and `pnpm measure:cpu` fails `IDLE_ROLES` after a recording.
+  - Natively, do not touch the default session at launch.
+  - Confirm with `pnpm measure:cpu` that no renderer remains after a recording.
+  - Time Settings' first open with and without the early renderer. Hiding Settings keeps its renderer, and closing it already starts a new one on the next open.
+  - If the renderer cannot be avoided, the maintainer decides between allowing it in `IDLE_ROLES` and the ahead-of-time process above.
 - [ ] Inputs: display (now), window, area and app filters, per-app audio (engine and tests only), microphone (for 074), each with clear errors mapped to the existing `HostErrorCode`s or new ones.
 - [ ] Quality: the existing settings in `src/shared/quality.ts` (size cap, frame rate, bit rates) applied natively; the `CaptureReport` keeps its fields so the Recorder, logs and warnings stay as they are.
 
