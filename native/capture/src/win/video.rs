@@ -43,7 +43,7 @@ unsafe impl Sync for H264Encoder {}
 
 impl H264Encoder {
     pub fn new(gpu: Arc<Mta<Gpu>>, width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
-        let readback = Readback::new(&gpu.0, width, height)?;
+        let readback = Readback::new(width, height);
         let (jobs, received) = channel::<Job>();
         let (ready, made) = channel::<Result<(), CaptureError>>();
         let thread = std::thread::Builder::new()
