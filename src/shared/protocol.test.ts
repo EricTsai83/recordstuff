@@ -18,6 +18,9 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, recordingPath: "" } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, ownPids: ["1"] } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, hideSystemUi: 1 } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: { x: -960, y: 540 } } })).toBe(true);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: { x: 0.5, y: 0 } } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: [0, 0] } })).toBe(false);
   });
   it("rejects anything else", () => {
     expect(isMainMessage({ type: "start" })).toBe(false);

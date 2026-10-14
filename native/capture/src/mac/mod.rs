@@ -8,18 +8,7 @@ pub mod video;
 use objc2::rc::Retained;
 use objc2_core_media::{CMClock, CMTime, CMTimeFlags};
 
-/// A failure with one of the capture host's error codes (`HostErrorCode` in src/shared/protocol.ts).
-#[derive(Clone, Debug)]
-pub struct CaptureError {
-    pub code: &'static str,
-    pub detail: String,
-}
-
-impl CaptureError {
-    pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
-        Self { code, detail: detail.into() }
-    }
-}
+pub use crate::core::CaptureError;
 
 /// An Objective-C object moved to the thread that waits for it. The frameworks' objects used here are thread-safe;
 /// objc2 marks them neither Send nor Sync because not every class is.

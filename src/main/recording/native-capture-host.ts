@@ -8,6 +8,9 @@
  * Before posting `start` it resolves the display through the same `DisplayMedia` request the renderer host's
  * display-media handler answers, so display choice, its diagnostics and the countdown's display are unchanged. The
  * display is chosen while the process starts, so neither waits for the other.
+ *
+ * On Windows the engine finds the display by a point on it, and cannot leave RecordStuff's windows out of the
+ * recording itself: from `start` until the attempt is torn down, main marks them excluded from capture.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
 import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage } from "../../shared/protocol";
@@ -19,8 +22,12 @@ export interface NativeCaptureHostOptions {
   entryPath: string;
   /** The engine's `.node` file, outside the asar archive. */
   addonPath: string;
-  /** The display this attempt records (a CGDirectDisplayID), or undefined when main refused one. */
+  /** The display this attempt records (Electron's display id), or undefined when main refused one. */
   resolveDisplay: (sessionId: string) => Promise<string | undefined>;
+  /** A point on that display in physical screen pixels, which is how the engine finds it on Windows. */
+  displayPoint?: (displayId: string) => { x: number; y: number } | undefined;
+  /** Keeps RecordStuff's windows out of capture, or lets them back in (Windows, where the engine cannot). */
+  excludeOwnWindows?: (excluded: boolean) => void;
   /** RecordStuff's processes, main first, whose windows and sound the recording leaves out. */
   ownPids: () => number[];
   hideSystemUi: () => boolean;
@@ -34,6 +41,9 @@ export interface NativeCaptureHostOptions {
 
 type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
 
+/** How long windows stay excluded after the capture process was told to end, if it does not report its exit. */
+const RELEASE_BOUND_MS = 5000;
+
 export class NativeCaptureHost implements RecorderHost {
   private child: UtilityProcess | undefined;
   private generation = 0;
@@ -44,6 +54,9 @@ export class NativeCaptureHost implements RecorderHost {
   /** What the engine reported for each file it finished, by temporary path; read once by EngineFileWriter. */
   private readonly reports = new Map<string, EngineFileReport>();
   private recordingPath: string | undefined;
+  private excluding = false;
+  /** Counts exclusions: a deferred release lets windows back in only if no exclusion came after its own. */
+  private exclusions = 0;
   private readonly messageListeners = new Set<(message: HostMessage) => void>();
   private readonly failureListeners = new Set<(code: FailureCode, detail: string) => void>();
   private readonly pingIntervalMs: number;
@@ -104,8 +117,15 @@ export class NativeCaptureHost implements RecorderHost {
       this.emit({ type: "error", sessionId, code: "capture_start_failed", detail: "no display was granted for this recording" });
       return;
     }
+    const displayPoint = this.options.displayPoint?.(display);
+    if (this.options.excludeOwnWindows) {
+      this.options.excludeOwnWindows(true);
+      this.excluding = true;
+      this.exclusions += 1;
+    }
     this.post({ type: "start", sessionId, quality, native: {
-      displayId: Number(display), recordingPath, ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
+      displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
+      ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
     } });
   }
 
@@ -135,6 +155,8 @@ export class NativeCaptureHost implements RecorderHost {
     child.on("exit", (code) => {
       if (this.child !== child) return;
       const lost = this.watching !== undefined;
+      // Gone: nothing is left to capture RecordStuff's windows.
+      this.child = undefined;
       this.teardown();
       this.log(`capture host: process exited (${code})${lost ? " during a session" : ""}`);
       if (lost) this.emitFailure("capture_host_crashed", `capture process exited with ${code}`);
@@ -212,6 +234,29 @@ export class NativeCaptureHost implements RecorderHost {
     this.recordingPath = undefined;
     const child = this.child;
     this.child = undefined;
+    if (this.excluding) this.releaseWindows(child);
     child?.kill();
+  }
+
+  /**
+   * Lets RecordStuff's windows back into capture once `child` can no longer capture them: at once when it has already
+   * exited, otherwise when it does, or after a bound if it never says so. An attempt that excluded them after this one
+   * owns them from then on, so this release is dropped even after that attempt has ended.
+   */
+  private releaseWindows(child: UtilityProcess | undefined): void {
+    this.excluding = false;
+    const own = this.exclusions;
+    const release = (): void => {
+      clearTimeout(bound);
+      // A later attempt excluded them again: its own teardown lets them back in, whether or not it still runs.
+      if (own !== this.exclusions) return;
+      this.options.excludeOwnWindows?.(false);
+    };
+    if (!child) {
+      this.options.excludeOwnWindows?.(false);
+      return;
+    }
+    const bound = setTimeout(release, RELEASE_BOUND_MS);
+    child.once("exit", release);
   }
 }

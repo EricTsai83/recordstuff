@@ -71,6 +71,21 @@
 
 - [ ] 同一個模組的 Windows 版：以 Windows.Graphics.Capture 擷取螢幕、WASAPI loopback 擷取系統聲音、Media Foundation 編碼 H.264／AAC，使用共用的封裝器；對 RecordStuff 的視窗設 `WDA_EXCLUDEFROMCAPTURE`。
 - [ ] 在 `windows-2025` 的 CI 上：建置、`cargo test`、載入模組，並嘗試一段帶系統聲音的短暫螢幕錄影。runner 的工作階段能否擷取本身就是一項發現；不能的話，錄影列為未測試，而不是失敗。
+- 進度（2026-10-14，在維護者 commit 之前都未 commit）：
+  - 錄影的狀態機從 `mac/session.rs` 移到 `native/capture/src/core/`，以平台的影格、encoder 與時鐘為泛型，兩個平台共用同一套節奏、停止與停止前聲音的規則。它有以假 encoder 寫的測試，兩個平台都會執行。macOS 已在簽章 bundle 上重新驗證（`pnpm acceptance`、`pnpm verify --sync`、`pnpm measure:cpu`）。
+  - `native/capture/src/win/` 實作模組：
+    - Windows.Graphics.Capture，由 Direct3D 11 video processor 轉成 NV12。
+    - WASAPI process loopback，排除 RecordStuff 的 process tree。
+    - Media Foundation 的軟體 H.264 encoder，每一秒呈現時間產生一個 key frame。
+    - 它的 AAC encoder，最高只接受 192 kbps，建立時量測 priming。
+    - `avc.rs` 把它的 Annex B 輸出轉成封裝器的格式。
+  - main 傳入螢幕上一個實體座標點（Electron 的 display id 在 Windows 上對應不到螢幕），並在錄影期間把自己的視窗設為 `setContentProtection(true)`（`capture-exclusion.ts`）。Windows 建置需明確開啟（`RECORDSTUFF_BUILD_NATIVE=1`），所以在步驟 6 之前 check 與 release 建置都不變。
+  - `check.yml` 的 `native-windows` job 會執行以下項目，但因為還沒 push，尚未執行過：
+    - `cargo test`，包含以合成媒體測試 Media Foundation 的 encoder；
+    - 以 `ffprobe`／`ffmpeg` 解碼該檔案；
+    - 實際錄影三秒（`live_test.rs`），只有在工作階段明確無法擷取時才列為未測試；
+    - 在 Node 中載入模組。
+- 從這個原型移到步驟 4：硬體 H.264 encoder（非同步 transform）、沒有聲音播放時的音訊（process loopback 可能不送封包，音訊分片會等到下一次有聲音），以及在真實 Windows 硬體上確認量測到的 AAC priming 與自己視窗的排除；依 D8，這些留給使用者回報。
 
 ### 4. 引擎
 

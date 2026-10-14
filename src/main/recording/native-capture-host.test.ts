@@ -20,10 +20,11 @@ class Child extends EventEmitter {
   deliver(message: unknown): void { this.emit("message", message); }
 }
 
-function setup(display: string | undefined = "69733632") {
+function setup(display: string | undefined = "69733632", windows: Partial<ConstructorParameters<typeof NativeCaptureHost>[0]> = {}) {
   const children: Child[] = [];
   const logs: string[] = [];
   const host = new NativeCaptureHost({
+    ...windows,
     entryPath: "/out/main/native-host-process.js",
     addonPath: "/out/native/recordstuff-capture.node",
     resolveDisplay: async () => display,
@@ -63,6 +64,64 @@ describe("NativeCaptureHost", () => {
     expect(child.args).toEqual(["/out/native/recordstuff-capture.node"]);
     expect(child.sent).toEqual([{ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY,
       native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101], hideSystemUi: true } }]);
+  });
+
+  it("on Windows passes a point on the display and keeps its own windows out of capture until torn down", async () => {
+    const excluded: boolean[] = [];
+    const ctx = setup("2779098405", {
+      displayPoint: (id) => (id === "2779098405" ? { x: 960, y: 540 } : undefined),
+      excludeOwnWindows: (on) => excluded.push(on),
+    });
+    const child = await started(ctx);
+    expect(child.sent[0]).toMatchObject({ native: { displayId: 2779098405, displayPoint: { x: 960, y: 540 } } });
+    expect(excluded).toEqual([true]);
+    ctx.host.destroy();
+    ctx.host.destroy();
+    // Still excluded until the process has ended, since it may still be capturing.
+    expect([excluded, child.killed]).toEqual([[true], true]);
+    child.emit("exit", 0);
+    expect(excluded).toEqual([true, false]);
+  });
+
+  it("lets its windows back in after a bound when the process never reports its exit, unless a newer attempt excluded them", async () => {
+    const excluded: boolean[] = [];
+    const ctx = setup("7", { excludeOwnWindows: (on) => excluded.push(on) });
+    await started(ctx);
+    ctx.host.destroy();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(excluded).toEqual([true, false]);
+
+    const first = await started(ctx);
+    ctx.host.destroy();
+    await started(ctx);
+    first.emit("exit", 0);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(excluded).toEqual([true, false, true, true]);
+  });
+
+  it("drops an earlier attempt's late release even after a later attempt was torn down", async () => {
+    const excluded: boolean[] = [];
+    const ctx = setup("7", { excludeOwnWindows: (on) => excluded.push(on) });
+    const first = await started(ctx);
+    ctx.host.destroy();
+    const second = await started(ctx);
+    ctx.host.destroy();
+    // The first attempt's process ends while the second may still be capturing: windows stay out.
+    first.emit("exit", 0);
+    expect(excluded).toEqual([true, true]);
+    second.emit("exit", 0);
+    expect(excluded).toEqual([true, true, false]);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(excluded).toEqual([true, true, false]);
+  });
+
+  it("lets its windows back in when the process exits during a session", async () => {
+    const excluded: boolean[] = [];
+    const ctx = setup("7", { excludeOwnWindows: (on) => excluded.push(on) });
+    const child = await started(ctx);
+    child.emit("exit", 1);
+    expect(excluded).toEqual([true, false]);
+    expect(ctx.failures).toEqual(["capture_host_crashed"]);
   });
 
   it("chooses the display while the process starts, and logs how long each took", async () => {

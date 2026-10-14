@@ -28,11 +28,7 @@ use objc2_video_toolbox::{
 use super::{CaptureError, host_ns};
 use crate::writer::Media;
 
-/// Where encoded samples go, and who hears that encoding failed. Called on VideoToolbox's thread.
-pub trait VideoSink: Send + Sync {
-    fn media(&self, media: Media);
-    fn failed(&self, detail: String);
-}
+pub use crate::core::VideoSink;
 
 struct Callback {
     sink: Arc<dyn VideoSink>,

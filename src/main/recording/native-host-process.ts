@@ -23,9 +23,9 @@ interface StopReport {
 }
 interface EngineEvent { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string }
 interface NativeCapture {
-  probe(displayId: number): Promise<ProbeResult>;
+  probe(displayId: number, displayPoint?: { x: number; y: number }): Promise<ProbeResult>;
   prepare(options: {
-    displayId: number; width: number; height: number; frameRate: number;
+    displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
   }): Promise<PreparedInfo>;
   record(): void;
@@ -104,12 +104,13 @@ export class NativeHost {
     let capture: CaptureReport;
     try {
       const began = this.now();
-      const source = await this.capture.probe(native.displayId);
+      // napi-rs reads an absent optional object as None and refuses null, so the point is left out on macOS.
+      const source = await this.capture.probe(native.displayId, native.displayPoint);
       const probed = this.now();
       const size = fitWithinCap(source, quality.resolutionCap);
       const videoBps = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality);
       const prepared = await this.capture.prepare({
-        displayId: native.displayId, width: size.width, height: size.height, frameRate: quality.frameRate,
+        displayId: native.displayId, ...(native.displayPoint ? { displayPoint: native.displayPoint } : {}), width: size.width, height: size.height, frameRate: quality.frameRate,
         videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
       });

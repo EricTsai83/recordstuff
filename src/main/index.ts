@@ -17,6 +17,7 @@ import { DisplayMedia } from "./display/display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import {
   app,
+  BrowserWindow,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -36,6 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./recording/capture-host";
 import { NativeCaptureHost } from "./recording/native-capture-host";
+import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./recording/file-writer";
@@ -296,8 +298,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   }, { useSystemPicker: false });
 
   // Plan 076's prototype engine, behind D7's development flag until it replaces the hidden capture renderer: a
-  // `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit and writes the file itself.
-  const nativeEngine = process.platform === "darwin" && process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native";
+  // `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit (macOS) or Windows.Graphics.Capture
+  // (Windows) and writes the file itself.
+  const nativeEngine = (process.platform === "darwin" || process.platform === "win32") && process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native";
+  const excludeWindowsFromCapture = captureExclusion<BrowserWindow>({
+    windows: () => BrowserWindow.getAllWindows(),
+    onCreated: (listener) => {
+      const created = (_event: Electron.Event, window: BrowserWindow): void => listener(window);
+      app.on("browser-window-created", created);
+      return () => app.removeListener("browser-window-created", created);
+    },
+  });
   log(`capture engine: ${nativeEngine ? "native (RECORDSTUFF_CAPTURE_ENGINE=native)" : "chromium"}`);
   const nativeHost = nativeEngine ? new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
@@ -307,6 +318,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     // Main first: the engine takes its bundle identifier as the prefix of RecordStuff's helpers.
     ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
     hideSystemUi: () => process.env["RECORDSTUFF_HIDE_SYSTEM_UI"] === "1",
+    ...(process.platform === "win32" ? {
+      // The engine finds the display by the physical point at its centre: Electron's ids name no monitor there.
+      displayPoint: (displayId: string) => {
+        const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === displayId);
+        if (!display) return undefined;
+        const { x, y, width, height } = display.bounds;
+        const point = screen.dipToScreenPoint({ x: x + Math.floor(width / 2), y: y + Math.floor(height / 2) });
+        return { x: Math.round(point.x), y: Math.round(point.y) };
+      },
+      excludeOwnWindows: excludeWindowsFromCapture,
+    } : {}),
     log,
   }) : undefined;
   const host = nativeHost ?? new CaptureHost({
