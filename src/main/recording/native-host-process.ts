@@ -8,19 +8,24 @@
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
 import { OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type NativeStart } from "../../shared/protocol";
-import { AUDIO_BITS_PER_SECOND, CAPTURE_FRAME_RATE, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
+import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
 interface PreparedInfo {
   width: number; height: number; sampleRate: number; channelCount: number; primingFrames: number;
   excludedApps: number; hiddenWindows: number; warnings: string[];
+  /** Where the engine's prepare spent its time. */
+  timings?: string;
 }
-interface StopReport { bytes: number; fragmented?: string | null; finalizeMs: number }
+interface StopReport {
+  bytes: number; fragmented?: string | null; finalizeMs: number; drainMs?: number; drainPaddedFrames?: number;
+  frameLeadAvgMs?: number; frameLeadMaxMs?: number;
+}
 interface EngineEvent { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string }
 interface NativeCapture {
   probe(displayId: number): Promise<ProbeResult>;
   prepare(options: {
-    displayId: number; width: number; height: number; frameRate: number; captureRate: number;
+    displayId: number; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
   }): Promise<PreparedInfo>;
   record(): void;
@@ -50,7 +55,13 @@ type Phase = "preparing" | "prepared" | "recording" | "stopping";
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
 
-  constructor(private readonly port: ParentPort, private readonly engine: NativeCapture | ((onEvent: (event: EngineEvent) => void) => NativeCapture)) {
+  constructor(
+    private readonly port: ParentPort,
+    private readonly engine: NativeCapture | ((onEvent: (event: EngineEvent) => void) => NativeCapture),
+    /** A line for main's log: the host's stdout reaches it as `capture host: …`. */
+    private readonly log: (line: string) => void = (line) => console.log(line),
+    private readonly now: () => number = () => performance.now(),
+  ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
     port.on("message", ({ data }) => this.handle(data));
     this.send({ type: "ready" });
@@ -92,14 +103,18 @@ export class NativeHost {
     this.session = session;
     let capture: CaptureReport;
     try {
+      const began = this.now();
       const source = await this.capture.probe(native.displayId);
+      const probed = this.now();
       const size = fitWithinCap(source, quality.resolutionCap);
       const videoBps = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality);
       const prepared = await this.capture.prepare({
         displayId: native.displayId, width: size.width, height: size.height, frameRate: quality.frameRate,
-        captureRate: CAPTURE_FRAME_RATE[quality.frameRate], videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
+        videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
       });
+      this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
+        `${prepared.timings ? ` (${prepared.timings})` : ""}`);
       capture = {
         width: prepared.width, height: prepared.height, frameRate: quality.frameRate,
         sampleRate: prepared.sampleRate, channelCount: prepared.channelCount,
@@ -138,7 +153,9 @@ export class NativeHost {
       return;
     }
     try {
+      const began = this.now();
       this.capture.record();
+      this.log(`timing: record ${(this.now() - began).toFixed(1)} ms`);
     } catch (cause) {
       const { detail } = engineFailure(cause);
       this.fail(sessionId, "capture_start_failed", detail);
@@ -165,7 +182,11 @@ export class NativeHost {
       return;
     }
     try {
+      const began = this.now();
       const report = await this.capture.stop();
+      this.log(`timing: stop ${Math.round(this.now() - began)} ms (sound up to the stop ${Math.round(report.drainMs ?? 0)} ms, ` +
+        `${report.drainPaddedFrames ?? 0} frame(s) filled with silence; file ${Math.round(report.finalizeMs)} ms; ` +
+        `frames stamped ${(report.frameLeadAvgMs ?? 0).toFixed(1)} ms ahead on average, ${(report.frameLeadMaxMs ?? 0).toFixed(1)} ms at most)`);
       this.session = undefined;
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now(),
         file: { bytes: report.bytes, finalizeMs: report.finalizeMs, ...(report.fragmented ? { fragmented: report.fragmented } : {}) } });

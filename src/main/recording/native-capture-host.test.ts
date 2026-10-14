@@ -65,6 +65,39 @@ describe("NativeCaptureHost", () => {
       native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101], hideSystemUi: true } }]);
   });
 
+  it("chooses the display while the process starts, and logs how long each took", async () => {
+    let chosen = false;
+    const children: Child[] = [];
+    const logs: string[] = [];
+    const host = new NativeCaptureHost({
+      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], hideSystemUi: () => false, log: (line) => logs.push(line),
+      resolveDisplay: async () => { chosen = true; return "7"; },
+      fork: () => { const child = new Child(); children.push(child); return child as unknown as UtilityProcess; },
+    });
+    const start = host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    // Not ready yet, and the display is already chosen.
+    expect(chosen).toBe(true);
+    expect(children[0]!.sent).toEqual([]);
+    children[0]!.deliver({ type: "ready" });
+    await start;
+    expect(children[0]!.sent[0]).toMatchObject({ type: "start", native: { displayId: 7 } });
+    expect(logs.some((line) => /^capture host: timing: process ready \d+ ms, display chosen \d+ ms$/.test(line))).toBe(true);
+  });
+
+  it("rejects the start when choosing the display fails, after the process is ready", async () => {
+    const children: Child[] = [];
+    const host = new NativeCaptureHost({
+      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], hideSystemUi: () => false,
+      resolveDisplay: async () => { throw new Error("no answer"); },
+      fork: () => { const child = new Child(); children.push(child); return child as unknown as UtilityProcess; },
+    });
+    const start = host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4").catch((cause: Error) => cause);
+    await vi.advanceTimersByTimeAsync(0);
+    children[0]!.deliver({ type: "ready" });
+    expect(await start).toMatchObject({ message: "no answer" });
+  });
+
   it("reports a refused display as a start error the recorder's mapping explains", async () => {
     const ctx = setup("");
     const child = await started(ctx);

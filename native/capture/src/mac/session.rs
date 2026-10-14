@@ -5,10 +5,15 @@
 //! ScreenCaptureKit delivers a frame only when the screen changes. At `record` the newest frame is encoded at the
 //! recording's start, so the file starts with a picture however still the screen is, and while nothing changes the
 //! last frame is encoded again every second, so a key frame still comes every second and fragments keep closing.
+//! Capture is asked for four times the frame rate and `Pacer` keeps one frame per slot (see pacing.rs).
+//!
+//! `stop` ends both tracks at the moment it is called: frames after it are left out, and capture keeps running until
+//! the sound up to that moment has arrived (ScreenCaptureKit hands audio over a few tens of milliseconds late), so the
+//! audio track is exactly as long as the video's.
 
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -32,11 +37,14 @@ use super::audio::AacEncoder;
 use super::content::{self, describe};
 use super::video::{VideoEncoder, VideoSink};
 use super::{CaptureError, Unsent, host_ns, now_ns};
+use crate::pacing::Pacer;
 use crate::timing::{AudioAligner, NANOS_PER_SECOND};
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 
 const PREPARED: u8 = 0;
 const RECORDING: u8 = 1;
+/// `stop` was called: capture still runs until the sound before the stop has arrived; nothing after it is kept.
+const DRAINING: u8 = 3;
 const STOPPING: u8 = 2;
 
 pub const SAMPLE_RATE: u32 = 48_000;
@@ -48,6 +56,8 @@ const REFRESH_NS: u64 = NANOS_PER_SECOND;
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long `stop` waits for the sound up to the stop; what has not come by then is silence.
+const DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 const FINISH_TIMEOUT: Duration = Duration::from_secs(120);
 /// kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, what VideoToolbox encodes without converting.
 const PIXEL_FORMAT_420V: u32 = u32::from_be_bytes(*b"420v");
@@ -64,10 +74,8 @@ pub struct PrepareRequest {
     pub display_id: u32,
     pub width: u32,
     pub height: u32,
-    /// The frame rate setting, for the encoder's rate control.
+    /// The frame rate setting: the encoder's rate control and `Pacer`'s grid.
     pub frame_rate: u32,
-    /// The rate asked of ScreenCaptureKit as a minimum frame interval, slightly above the setting (`CAPTURE_FRAME_RATE`).
-    pub capture_rate: f64,
     pub video_bitrate: u32,
     pub audio_bitrate: u32,
     pub own_pids: Vec<i32>,
@@ -84,17 +92,26 @@ pub struct Prepared {
     pub excluded_apps: usize,
     pub hidden_windows: usize,
     pub warnings: Vec<String>,
+    /// Where preparing spent its time, for the log.
+    pub timings: String,
 }
 
 pub struct Stopped {
     pub bytes: u64,
     pub fragmented: Option<String>,
     pub finalize_ms: f64,
+    /// How long the sound up to the stop took to arrive, and how much of it was filled with silence.
+    pub drain_ms: f64,
+    pub drain_padded_frames: u64,
+    /// How far ahead of the host clock frames were stamped when handed over, on average and at most.
+    pub frame_lead_ms: (f64, f64),
 }
 
 /// The source's size in pixels, for choosing the output size before `prepare`.
 pub fn probe(display_id: u32) -> Result<(u32, u32), CaptureError> {
     let content = content::shareable_content()?;
+    // Kept for the `prepare` that follows.
+    content::remember(&content);
     let display = content::find_display(&content, display_id)?;
     let filter = content::filter(&content, &display, &[], false);
     let scale = content::point_pixel_scale(&filter.filter).max(1.0);
@@ -112,6 +129,12 @@ struct VideoState {
     encoder: Option<VideoEncoder>,
     last: Option<Frame>,
     last_encoded_ns: u64,
+    /// Set once the first frame is encoded; until then no captured frame is.
+    pacer: Option<Pacer>,
+    /// The newest frame was left out by the pacer and is still to be encoded at its slot.
+    pending: bool,
+    /// When the newest frame was captured.
+    last_pts: u64,
 }
 
 struct AudioState {
@@ -119,6 +142,13 @@ struct AudioState {
     aligner: Option<AudioAligner>,
     priming: u32,
     scratch: Vec<f32>,
+}
+
+impl AudioState {
+    /// Changes the cutoff; taking `&mut self` means the audio lock is held.
+    fn audio_target_set(&mut self, target: &AtomicU64, frames: u64) {
+        target.store(frames, Ordering::Release);
+    }
 }
 
 struct Shared {
@@ -130,6 +160,15 @@ struct Shared {
     audio: Mutex<AudioState>,
     writer: Mutex<Option<writer::MediaSender>>,
     frames_seen: AtomicU64,
+    frame_rate: u32,
+    /// Host time of `stop`; nothing captured after it is kept. `u64::MAX` until then.
+    stop_ns: AtomicU64,
+    /// Audio frames the recording holds up to the stop, counted from t0; `u64::MAX` until then.
+    audio_target: AtomicU64,
+    /// How far ahead of the host clock frames are stamped when handed over, in microseconds, while recording.
+    lead_sum_us: AtomicI64,
+    lead_count: AtomicU64,
+    lead_max_us: AtomicI64,
 }
 
 impl Shared {
@@ -143,7 +182,7 @@ impl Shared {
         if self.failed.swap(true, Ordering::AcqRel) || self.phase.load(Ordering::Acquire) == STOPPING {
             return;
         }
-        let code = if self.phase.load(Ordering::Acquire) == RECORDING { "capture_failed" } else { "capture_start_failed" };
+        let code = if matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING) { "capture_failed" } else { "capture_start_failed" };
         self.events.capture_failed(code, detail);
     }
 
@@ -164,11 +203,22 @@ impl Shared {
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
         let pts = host_ns(unsafe { sample.presentation_time_stamp() });
         self.frames_seen.fetch_add(1, Ordering::Relaxed);
-        let mut video = self.video.lock().unwrap();
-        if self.phase.load(Ordering::Acquire) == RECORDING && pts > video.last_encoded_ns {
+        if self.phase.load(Ordering::Acquire) == RECORDING {
+            let lead = (pts as i64 - now_ns() as i64) / 1000;
+            self.lead_sum_us.fetch_add(lead, Ordering::Relaxed);
+            self.lead_count.fetch_add(1, Ordering::Relaxed);
+            self.lead_max_us.fetch_max(lead, Ordering::Relaxed);
+        }
+        let mut guard = self.video.lock().unwrap();
+        let video = &mut *guard;
+        let phase = self.phase.load(Ordering::Acquire);
+        let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts <= self.stop_ns.load(Ordering::Acquire);
+        let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
+        video.pending = eligible && !wanted && video.pacer.is_some();
+        if wanted {
             if let Some(encoder) = video.encoder.as_ref() {
                 if let Err(detail) = encoder.encode(&image, pts, false) {
-                    drop(video);
+                    drop(guard);
                     self.fail(detail);
                     return;
                 }
@@ -176,10 +226,11 @@ impl Shared {
             video.last_encoded_ns = pts;
         }
         video.last = Some(Frame { image });
+        video.last_pts = pts;
     }
 
     fn sound(&self, sample: &CMSampleBuffer) -> Result<(), String> {
-        if self.phase.load(Ordering::Acquire) != RECORDING {
+        if !matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING) {
             return Ok(());
         }
         let format = unsafe { sample.format_description() }.ok_or("audio without a format")?;
@@ -221,9 +272,15 @@ impl Shared {
         let aligner = audio.aligner.get_or_insert_with(|| AudioAligner::new(SAMPLE_RATE, t0, AUDIO_TOLERANCE_FRAMES));
         let placement = aligner.place(pts, frames as u64);
         let Some(encoder) = audio.encoder.as_mut() else { return Ok(()) };
-        encoder.push_silence(placement.silence as usize);
+        // After `stop`, sound only up to it: the track ends where the video does. `audio_target` is only changed under
+        // this lock, so a buffer is cut by the target in force while it is placed.
+        let room = self.audio_target.load(Ordering::Acquire).saturating_sub(encoder.frames_in);
+        let silence = placement.silence.min(room);
+        encoder.push_silence(silence as usize);
+        let start = (placement.skip as usize).min(frames);
+        let end = start + ((frames - start) as u64).min(room - silence) as usize;
         audio.scratch.clear();
-        for frame in placement.skip as usize..frames {
+        for frame in start..end {
             audio.scratch.push(channel(frame, 0));
             audio.scratch.push(channel(frame, second));
         }
@@ -322,9 +379,18 @@ fn wait_for(timeout: Duration, what: &str, start: impl FnOnce(&block2::DynBlock<
 
 impl Session {
     pub fn prepare(request: PrepareRequest, events: Arc<dyn Events>) -> Result<(Session, Prepared), CaptureError> {
-        let content = content::shareable_content()?;
+        let began = Instant::now();
+        let mut lap = began;
+        let mut timings = Vec::new();
+        let mut mark = |what: &str| {
+            timings.push(format!("{what} {} ms", lap.elapsed().as_millis()));
+            lap = Instant::now();
+        };
+        let content = content::recent_or_fetch()?;
+        mark("content");
         let display = content::find_display(&content, request.display_id)?;
         let filter = content::filter(&content, &display, &request.own_pids, request.hide_system_ui);
+        mark("filter");
 
         let file = OpenOptions::new()
             .write(true)
@@ -336,26 +402,42 @@ impl Session {
             phase: AtomicU8::new(PREPARED),
             t0_ns: AtomicU64::new(0),
             failed: AtomicBool::new(false),
-            video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0 }),
+            video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0 }),
             audio: Mutex::new(AudioState { encoder: None, aligner: None, priming: 0, scratch: Vec::new() }),
             writer: Mutex::new(None),
             frames_seen: AtomicU64::new(0),
+            frame_rate: request.frame_rate,
+            stop_ns: AtomicU64::new(u64::MAX),
+            audio_target: AtomicU64::new(u64::MAX),
+            lead_sum_us: AtomicI64::new(0),
+            lead_count: AtomicU64::new(0),
+            lead_max_us: AtomicI64::new(i64::MIN),
         });
-        let video = VideoEncoder::new(request.width, request.height, request.frame_rate, request.video_bitrate, shared.clone())?;
-        let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, request.audio_bitrate)?;
-        let priming = audio.priming;
-        shared.video.lock().unwrap().encoder = Some(video);
-        {
-            let mut state = shared.audio.lock().unwrap();
-            state.priming = priming;
-            state.encoder = Some(audio);
-        }
+        // The encoders are made while the stream starts: until `record` capture only keeps the newest frame, so
+        // nothing needs them before then, and preparing takes the longer of the two instead of their sum.
+        let encoders = {
+            let shared = shared.clone();
+            let (width, height, frame_rate, video_bitrate, audio_bitrate) =
+                (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
+            std::thread::Builder::new()
+                .name("recordstuff-encoders".into())
+                .spawn(move || -> Result<(), CaptureError> {
+                    let video = VideoEncoder::new(width, height, frame_rate, video_bitrate, shared.clone())?;
+                    let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
+                    shared.video.lock().unwrap().encoder = Some(video);
+                    let mut state = shared.audio.lock().unwrap();
+                    state.priming = audio.priming;
+                    state.encoder = Some(audio);
+                    Ok(())
+                })
+                .map_err(|e| CaptureError::new("capture_start_failed", format!("encoder thread: {e}")))?
+        };
 
         let config = unsafe { SCStreamConfiguration::new() };
         unsafe {
             config.setWidth(request.width as usize);
             config.setHeight(request.height as usize);
-            let interval = (1e9 / request.capture_rate.max(1.0)).round() as i64;
+            let interval = Pacer::capture_interval_ns(request.frame_rate) as i64;
             config.setMinimumFrameInterval(CMTime { value: interval, timescale: 1_000_000_000, flags: CMTimeFlags::Valid, epoch: 0 });
             config.setPixelFormat(PIXEL_FORMAT_420V);
             config.setShowsCursor(true);
@@ -401,6 +483,14 @@ impl Session {
                 let code = if detail.contains("-3801") { "permission_denied" } else { "capture_start_failed" };
                 CaptureError::new(code, format!("starting capture: {detail}"))
             })?;
+        mark("stream start");
+        let made = encoders.join().unwrap_or_else(|_| Err(CaptureError::new("capture_start_failed", "making the encoders failed")));
+        if let Err(error) = made {
+            session.halt();
+            return Err(error);
+        }
+        mark("encoders (made alongside)");
+        let priming = session.shared.audio.lock().unwrap().priming;
         // The stream is checked once it has delivered a picture; `record` starts the file with it.
         let deadline = Instant::now() + FIRST_FRAME_TIMEOUT;
         while session.shared.video.lock().unwrap().last.is_none() {
@@ -408,8 +498,9 @@ impl Session {
                 session.halt();
                 return Err(CaptureError::new("capture_start_failed", "the display delivered no frame within 3 s"));
             }
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(Duration::from_millis(2));
         }
+        mark("first frame");
         let prepared = Prepared {
             width: request.width,
             height: request.height,
@@ -419,6 +510,7 @@ impl Session {
             excluded_apps: filter.excluded_apps,
             hidden_windows: filter.hidden_windows,
             warnings: filter.warnings,
+            timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
         };
         Ok((session, prepared))
     }
@@ -442,36 +534,66 @@ impl Session {
         *self.shared.writer.lock().unwrap() = Some(writer.sender);
         self.writer = Some(writer.thread);
 
-        {
-            let mut video = self.shared.video.lock().unwrap();
-            let video = &mut *video;
-            let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) else {
-                return Err(CaptureError::new("capture_start_failed", "no frame to start the recording with"));
-            };
-            encoder.encode(&frame.image, t0, true).map_err(|detail| CaptureError::new("capture_start_failed", detail))?;
-            video.last_encoded_ns = t0;
-            // Under the video lock: no captured frame can be encoded before the first one.
-            self.shared.phase.store(RECORDING, Ordering::Release);
-        }
-
+        // The first frame is encoded on the refresh thread, so `record` answers at once; until it is, the phase
+        // stays PREPARED and no captured frame or sound is taken, and the file's time zero is still t0.
         let shared = self.shared.clone();
         self.refresher = Some(
             std::thread::Builder::new()
                 .name("recordstuff-refresh".into())
                 .spawn(move || {
+                    {
+                        let mut guard = shared.video.lock().unwrap();
+                        let video = &mut *guard;
+                        let first = match (video.encoder.as_ref(), video.last.as_ref()) {
+                            (Some(encoder), Some(frame)) => encoder.encode(&frame.image, t0, true),
+                            _ => Err("no frame to start the recording with".into()),
+                        };
+                        if let Err(detail) = first {
+                            drop(guard);
+                            shared.fail(detail);
+                            return;
+                        }
+                        video.last_encoded_ns = t0;
+                        video.pacer = Some(Pacer::new(t0, shared.frame_rate));
+                        // Under the video lock: no captured frame can be encoded before the first one. A stop that
+                        // came first keeps its phase.
+                        if shared.phase.compare_exchange(PREPARED, RECORDING, Ordering::AcqRel, Ordering::Acquire).is_err() {
+                            return;
+                        }
+                    }
+                    let mut wake = Duration::from_millis(100);
                     while shared.phase.load(Ordering::Acquire) == RECORDING {
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(wake);
+                        wake = Duration::from_millis(100);
                         let now = now_ns();
-                        let mut video = shared.video.lock().unwrap();
-                        if shared.phase.load(Ordering::Acquire) != RECORDING || now < video.last_encoded_ns + REFRESH_NS {
+                        let mut guard = shared.video.lock().unwrap();
+                        let video = &mut *guard;
+                        if shared.phase.load(Ordering::Acquire) != RECORDING {
                             continue;
                         }
+                        // A frame the pacer left out, on a screen that has since stood still: due at its slot.
+                        let at = if video.pending {
+                            match video.pacer.as_mut().and_then(|pacer| pacer.due(now)) {
+                                Some(slot) => Some(slot.max(video.last_encoded_ns + 1)),
+                                None => {
+                                    let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
+                                    wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
+                                    None
+                                }
+                            }
+                        } else if now >= video.last_encoded_ns + REFRESH_NS {
+                            Some(now)
+                        } else {
+                            None
+                        };
+                        let Some(at) = at else { continue };
+                        video.pending = false;
                         let result = match (video.encoder.as_ref(), video.last.as_ref()) {
-                            (Some(encoder), Some(frame)) => encoder.encode(&frame.image, now, false),
+                            (Some(encoder), Some(frame)) => encoder.encode(&frame.image, at, false),
                             _ => Ok(()),
                         };
-                        video.last_encoded_ns = now;
-                        drop(video);
+                        video.last_encoded_ns = at;
+                        drop(guard);
                         if let Err(detail) = result {
                             shared.fail(detail);
                         }
@@ -485,6 +607,7 @@ impl Session {
     /// Stops capture and the encoders, and finishes the file. Blocks until the file is plain or why it is not is known.
     pub fn stop(mut self) -> Result<Stopped, WriteFailure> {
         let stop_ns = now_ns();
+        let (drain_ms, drain_padded_frames) = self.drain(stop_ns);
         self.halt();
         {
             // Encoded samples reach the writer before the flush returns, and before the file is finished below.
@@ -501,7 +624,7 @@ impl Session {
             if let Some(mut encoder) = audio.encoder.take() {
                 if audio.aligner.is_some() {
                     let _ = encoder.finish(&mut |packet| packets.push(packet));
-                    audio_frames = Some(encoder.frames_in);
+                    audio_frames = Some(encoder.frames_in.min(self.shared.audio_target.load(Ordering::Acquire)));
                 }
             }
         }
@@ -509,7 +632,7 @@ impl Session {
             self.shared.send(Media::Audio { data });
         }
         let Some(sender) = self.shared.writer.lock().unwrap().take() else {
-            return Ok(Stopped { bytes: 0, fragmented: None, finalize_ms: 0.0 });
+            return Ok(Stopped { bytes: 0, fragmented: None, finalize_ms: 0.0, drain_ms, drain_padded_frames, frame_lead_ms: (0.0, 0.0) });
         };
         let began = Instant::now();
         let outcome = sender
@@ -520,7 +643,78 @@ impl Session {
             let _ = thread.join();
         }
         let report = outcome?;
-        Ok(Stopped { bytes: report.bytes, fragmented: report.fragmented, finalize_ms: began.elapsed().as_secs_f64() * 1000.0 })
+        let count = self.shared.lead_count.load(Ordering::Relaxed).max(1) as f64;
+        let frame_lead_ms = (
+            self.shared.lead_sum_us.load(Ordering::Relaxed) as f64 / count / 1000.0,
+            self.shared.lead_max_us.load(Ordering::Relaxed).max(i64::MIN / 2) as f64 / 1000.0,
+        );
+        Ok(Stopped {
+            frame_lead_ms,
+            bytes: report.bytes,
+            fragmented: report.fragmented,
+            finalize_ms: began.elapsed().as_secs_f64() * 1000.0,
+            drain_ms,
+            drain_padded_frames,
+        })
+    }
+
+    /// Ends the recording at `stop_ns`: no later frame is encoded, and capture runs on until the sound up to it has
+    /// been encoded, or for `DRAIN_TIMEOUT`, after which the rest of it is silence. Returns how long that took and how
+    /// many frames were silence.
+    fn drain(&mut self, stop_ns: u64) -> (f64, u64) {
+        let began = Instant::now();
+        // Not recorded: nothing to end.
+        if self.writer.is_none() {
+            return (0.0, 0);
+        }
+        let t0 = self.shared.t0_ns.load(Ordering::Acquire);
+        let target = u64::try_from(u128::from(stop_ns.saturating_sub(t0)) * u128::from(SAMPLE_RATE) / u128::from(NANOS_PER_SECOND))
+            .unwrap_or(u64::MAX);
+        // The cutoff first, under the audio lock that placement holds: no sound after the stop is taken from here on.
+        self.shared.audio.lock().unwrap().audio_target_set(&self.shared.audio_target, target);
+        {
+            // Under the video lock, so no frame after the stop is encoded once this returns. A record whose first frame
+            // is still being encoded (PREPARED) drains too, and its refresh thread then never moves to RECORDING.
+            let mut guard = self.shared.video.lock().unwrap();
+            let video = &mut *guard;
+            self.shared.stop_ns.store(stop_ns, Ordering::Release);
+            let moved = [RECORDING, PREPARED].iter().any(|&from| {
+                self.shared.phase.compare_exchange(from, DRAINING, Ordering::AcqRel, Ordering::Acquire).is_ok()
+            });
+            if !moved {
+                return (0.0, 0);
+            }
+            // The newest change, left out by the pacer, is the picture until the stop: at its own capture time, which
+            // is after the last encoded frame and before the stop, so it lasts until the video's end.
+            if video.pending {
+                video.pending = false;
+                let at = video.last_pts.max(video.last_encoded_ns + 1);
+                if at >= stop_ns {
+                    // No time left before the stop to show it.
+                } else if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
+                    if encoder.encode(&frame.image, at, false).is_ok() {
+                        video.last_encoded_ns = at;
+                    }
+                }
+            }
+        }
+        let deadline = began + DRAIN_TIMEOUT;
+        loop {
+            let mut audio = self.shared.audio.lock().unwrap();
+            let started = audio.aligner.is_some();
+            let Some(encoder) = audio.encoder.as_mut() else { return (0.0, 0) };
+            let missing = target.saturating_sub(encoder.frames_in);
+            if missing == 0 || Instant::now() >= deadline {
+                // No sound at all yet: the track is empty and `stop` leaves it so.
+                if !started {
+                    return (began.elapsed().as_secs_f64() * 1000.0, 0);
+                }
+                encoder.push_silence(missing as usize);
+                return (began.elapsed().as_secs_f64() * 1000.0, missing);
+            }
+            drop(audio);
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
 
     /// Ends capture and frame refreshes; frames and sound arriving afterwards are ignored.
