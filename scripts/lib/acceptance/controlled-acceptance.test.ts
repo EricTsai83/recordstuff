@@ -22,7 +22,7 @@ describe("controlled acceptance instrumentation", () => {
     expect(instrumented).toContain('configureControlled("/tmp/run with \\"quotes\\" $&")');
     expect(instrumented).toContain("defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
     expect(instrumented).toContain("  const recorder = new Recorder({\n    host: controlled.host(host),\n");
-    expect(instrumented).toContain("openWriter: (recordingPath, finalPath) => controlled.openWriter(recordingPath, finalPath),");
+    expect(instrumented).toContain(": controlled.openWriter(recordingPath, finalPath),");
     expect(instrumented).toContain("publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {");
     expect(instrumented).toContain('notify: code => permissionNotices.failed(code),');
     expect(instrumented).toContain('failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),');

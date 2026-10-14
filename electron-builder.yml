@@ -14,6 +14,9 @@ extraResources:
       - "*.png"
       - "*.ico"
 asar: true
+# Plan 076's native capture engine: native code cannot load from inside the archive.
+asarUnpack:
+  - out/native/**
 mac:
   icon: build/icon.icns
   category: public.app-category.video

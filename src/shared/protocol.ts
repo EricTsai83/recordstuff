@@ -47,16 +47,40 @@ function isHostErrorCode(value: unknown): value is HostErrorCode {
   return typeof value === "string" && (HOST_ERROR_CODES as readonly string[]).includes(value);
 }
 
+/** What the native engine's host needs beyond the quality: the display main resolved, the file it opened and what to leave out. */
+export interface NativeStart {
+  /** The CGDirectDisplayID of the display to record. */
+  displayId: number;
+  /** The empty temporary file main created; the engine writes it. */
+  recordingPath: string;
+  /** RecordStuff's processes, main first: their windows and sound are left out of the recording. */
+  ownPids: number[];
+  /** Leave the menu bar, Dock, desktop icons and widgets out (plan 076, D6). */
+  hideSystemUi: boolean;
+}
+
 export type MainMessage =
   /**
    * Prepare capture: stream, checks, quality and an inactive MediaRecorder.
    * `quality` is main's snapshot for this session; the host never reads settings itself.
+   * `native` is present only for the native engine's host (plan 076, D7).
    */
-  | { type: "start"; sessionId: string; quality: QualitySettings }
+  | { type: "start"; sessionId: string; quality: QualitySettings; native?: NativeStart }
   /** Begin encoding the prepared session (plan 040); refused for any other session. */
   | { type: "record"; sessionId: string }
   | { type: "stop"; sessionId: string }
   | { type: "ping" };
+
+/** Write failures the native engine, which writes the file itself (plan 076, D3), reports; the same codes as FileWriter's. */
+export const ENGINE_WRITE_ERROR_CODES = ["disk_full", "output_write_failed"] as const satisfies readonly ErrorCode[];
+export type EngineWriteErrorCode = (typeof ENGINE_WRITE_ERROR_CODES)[number];
+
+/** What the native engine reports about the file once it stopped: its size, and why it stayed fragmented, if it did. */
+export interface EngineFileReport {
+  bytes: number;
+  finalizeMs: number;
+  fragmented?: string;
+}
 
 export type HostMessage =
   | { type: "ready" }
@@ -66,8 +90,12 @@ export type HostMessage =
   | { type: "started"; sessionId: string }
   /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture/capture-host.ts. */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
-  | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
+  | { type: "stopped"; sessionId: string; tracksStoppedAt?: number; file?: EngineFileReport }
   | { type: "error"; sessionId: string; code: HostErrorCode; detail: string; displayFailure?: "track_ended" }
+  /** Native engine only: media is still being written, `bytes` so far; what the stall guard watches instead of chunks. */
+  | { type: "progress"; sessionId: string; bytes: number }
+  /** Native engine only: writing the file failed; what was written is kept. */
+  | { type: "writeError"; sessionId: string; code: EngineWriteErrorCode; detail: string }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,11 +106,25 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function isNativeStart(value: unknown): value is NativeStart {
+  return isRecord(value) && typeof value["displayId"] === "number" && Number.isInteger(value["displayId"]) &&
+    isNonEmptyString(value["recordingPath"]) &&
+    Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
+    typeof value["hideSystemUi"] === "boolean";
+}
+
+function isEngineFileReport(value: unknown): value is EngineFileReport {
+  return isRecord(value) && typeof value["bytes"] === "number" && Number.isFinite(value["bytes"]) &&
+    typeof value["finalizeMs"] === "number" && Number.isFinite(value["finalizeMs"]) &&
+    (value["fragmented"] === undefined || typeof value["fragmented"] === "string");
+}
+
 export function isMainMessage(value: unknown): value is MainMessage {
   if (!isRecord(value)) return false;
   switch (value["type"]) {
     case "start":
-      return isNonEmptyString(value["sessionId"]) && isQualitySettings(value["quality"]);
+      return isNonEmptyString(value["sessionId"]) && isQualitySettings(value["quality"]) &&
+        (value["native"] === undefined || isNativeStart(value["native"]));
     case "record":
     case "stop":
       return isNonEmptyString(value["sessionId"]);
@@ -118,7 +160,14 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "stopped":
       return isNonEmptyString(value["sessionId"]) &&
         (value["tracksStoppedAt"] === undefined ||
-          (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"])));
+          (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"]))) &&
+        (value["file"] === undefined || isEngineFileReport(value["file"]));
+    case "progress":
+      return isNonEmptyString(value["sessionId"]) && typeof value["bytes"] === "number" && Number.isFinite(value["bytes"]) && value["bytes"] >= 0;
+    case "writeError":
+      return isNonEmptyString(value["sessionId"]) &&
+        (ENGINE_WRITE_ERROR_CODES as readonly unknown[]).includes(value["code"]) &&
+        typeof value["detail"] === "string";
     case "error":
       return (
         isNonEmptyString(value["sessionId"]) &&

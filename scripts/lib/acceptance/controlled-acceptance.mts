@@ -34,8 +34,7 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
     `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, "defaultOutputDir: defaultOutputDir(),", "defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
   source = replaceOnce(source, "  const recorder = new Recorder({\n    host,\n", "  const recorder = new Recorder({\n    host: controlled.host(host),\n");
-  source = replaceOnce(source, "openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),",
-    "openWriter: (recordingPath, finalPath) => controlled.openWriter(recordingPath, finalPath),");
+  source = replaceOnce(source, "      : FileWriter.open(recordingPath, finalPath),", "      : controlled.openWriter(recordingPath, finalPath),");
   source = replaceOnce(source, PUBLISH, PUBLISH
     .replace("publishFailure: result => recordingResults.receive(result, {",
       "publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {")

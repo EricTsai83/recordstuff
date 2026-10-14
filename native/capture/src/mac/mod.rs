@@ -1,0 +1,44 @@
+//! macOS capture: ScreenCaptureKit for the display and system audio, VideoToolbox and AudioToolbox for encoding.
+
+pub mod audio;
+pub mod content;
+pub mod session;
+pub mod video;
+
+use objc2::rc::Retained;
+use objc2_core_media::{CMClock, CMTime, CMTimeFlags};
+
+/// A failure with one of the capture host's error codes (`HostErrorCode` in src/shared/protocol.ts).
+#[derive(Clone, Debug)]
+pub struct CaptureError {
+    pub code: &'static str,
+    pub detail: String,
+}
+
+impl CaptureError {
+    pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
+        Self { code, detail: detail.into() }
+    }
+}
+
+/// An Objective-C object moved to the thread that waits for it. The frameworks' objects used here are thread-safe;
+/// objc2 marks them neither Send nor Sync because not every class is.
+pub struct Unsent<T: objc2::Message>(pub Retained<T>);
+unsafe impl<T: objc2::Message> Send for Unsent<T> {}
+unsafe impl<T: objc2::Message> Sync for Unsent<T> {}
+
+/// Nanoseconds of host time, the clock ScreenCaptureKit stamps samples with; 0 for an invalid time.
+pub fn host_ns(time: CMTime) -> u64 {
+    if !time.flags.contains(CMTimeFlags::Valid) || time.timescale <= 0 || time.value < 0 {
+        return 0;
+    }
+    (i128::from(time.value) * 1_000_000_000 / i128::from(time.timescale)) as u64
+}
+
+/// Host time now, on the same clock.
+pub fn now_ns() -> u64 {
+    host_ns(unsafe { CMClock::host_time_clock().time() })
+}
+
+#[cfg(test)]
+mod pipeline_test;

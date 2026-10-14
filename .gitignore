@@ -19,3 +19,6 @@ docs/verification/measurements/
 # Playwright run artifacts
 playwright-report/
 test-results/
+
+# Cargo build output of the native capture engine (plan 076).
+native/capture/target/

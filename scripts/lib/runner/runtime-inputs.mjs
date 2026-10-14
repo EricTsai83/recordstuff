@@ -8,10 +8,11 @@ import path from "node:path";
  * configuration and lockfile that choose the toolchain. Tests, scripts, docs, plans and the
  * website never reach the normal bundle, so editing only those leaves a built bundle reusable.
  */
-export const RUNTIME_INPUT_DIRECTORIES = ["src", "build", "resources"];
+export const RUNTIME_INPUT_DIRECTORIES = ["src", "build", "resources", "native/capture/src"];
 export const RUNTIME_INPUT_FILES = [
   "package.json", "pnpm-lock.yaml", "electron-builder.yml", "electron-builder.local.yml", "electron.vite.config.ts",
   "tsconfig.json", "tsconfig.base.json", "tsconfig.node.json", "tsconfig.web.json",
+  "native/capture/Cargo.toml", "native/capture/Cargo.lock", "native/capture/build.rs",
 ];
 /** Installed toolchain, which the lockfile alone does not prove when node_modules was not reinstalled. */
 export const RUNTIME_TOOL_PACKAGES = ["electron", "electron-builder", "electron-vite", "vite"];

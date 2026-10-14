@@ -46,6 +46,13 @@ export const MATRICES: Record<string, MatrixEntry[]> = {
   long: [
     { name: "1080p Standard 30 fps 3 minutes", seconds: 180, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
   ],
+  /**
+   * The ten-minute drift case of the 2026-09-13 baseline, recorded again when the capture engine changes (plan 076's
+   * measurement gate asks for a ten-minute recording's drift between audio and picture). Not part of `all`.
+   */
+  long10: [
+    { name: "1080p Standard 30 fps 10 minutes", seconds: 600, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
+  ],
 };
 
 /**

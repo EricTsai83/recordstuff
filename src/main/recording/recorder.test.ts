@@ -28,10 +28,13 @@ class FakeHost implements RecorderHost {
     | ((code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void)
     | undefined;
 
-  async start(sessionId: string, quality: QualitySettings): Promise<void> {
+  /** The temporary file each `start` named, for the native engine (plan 076). */
+  recordingPaths: (string | undefined)[] = [];
+  async start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void> {
     if (this.startError) throw this.startError;
     this.started.push(sessionId);
     this.startedWith.push(quality);
+    this.recordingPaths.push(recordingPath);
   }
   record(sessionId: string): void {
     if (this.recordError) throw this.recordError;
@@ -172,6 +175,78 @@ describe("formatTimestamp", () => {
     expect(fileName).toHaveBeenCalledWith(new Date(2026, 8, 11, 14, 30, 0));
     expect([ctx.writers[0]!.recordingPath, ctx.writers[0]!.finalPath])
       .toEqual([path.join("/out", "Demo 2026-09-11 14-30-00.recording.mp4"), path.join("/out", "Demo 2026-09-11 14-30-00.mp4")]);
+  });
+});
+
+describe("native engine messages (plan 076)", () => {
+  /** Recording through a host that writes the file itself: `started`, then `progress` instead of chunks. */
+  async function startNative(ctx: ReturnType<typeof setup>): Promise<void> {
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+  }
+
+  it("tells the host which file the writer opened", async () => {
+    const ctx = setup();
+    await startNative(ctx);
+    expect(ctx.host.recordingPaths).toEqual([path.join("/out", "2026-09-11 14-30-00.recording.mp4")]);
+  });
+
+  it("counts progress with bytes as the first media and logs it as the first chunk the runners time to", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (message) => logs.push(message) });
+    await startNative(ctx);
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 0 });
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(ctx.recorder.state.type).toBe("recording");
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 4096 });
+    await vi.advanceTimersByTimeAsync(5000);
+    // Past the 8 s first-media deadline, which the progress cleared.
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logs).toContain("recorder: session s1 first chunk 4096 bytes (engine progress)");
+  });
+
+  it("fails the start when the engine reports no media before the deadline", async () => {
+    const ctx = setup();
+    await startNative(ctx);
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 0 });
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_start_failed" });
+  });
+
+  it("fails as a stall when progress stops while the host still answers", async () => {
+    const ctx = setup({ deps: { health: { stallWarnMs: 3000, stallFailMs: 6000 } } });
+    await startNative(ctx);
+    for (let second = 1; second <= 5; second++) {
+      ctx.host.emit({ type: "progress", sessionId: "s1", bytes: second * 1000 });
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(ctx.recorder.state.type).toBe("recording");
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "capture_failed", detail: expect.stringContaining("stalled") });
+  });
+
+  it("fails with the engine's write error and keeps what it wrote", async () => {
+    const ctx = setup();
+    await startNative(ctx);
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 4096 });
+    ctx.writers[0]!.chunks.push(new Uint8Array(1));
+    ctx.host.emit({ type: "writeError", sessionId: "s1", code: "disk_full", detail: "write failed: No space left on device" });
+    await flush();
+    expect(ctx.host.stopped).toEqual(["s1"]);
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "disk_full", outcome: "partial",
+      partialPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4") });
+  });
+
+  it("ignores progress and write errors of another session", async () => {
+    const ctx = setup();
+    await startNative(ctx);
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 10 });
+    ctx.host.emit({ type: "writeError", sessionId: "other", code: "output_write_failed", detail: "x" });
+    ctx.host.emit({ type: "progress", sessionId: "other", bytes: 10 });
+    await flush();
+    expect(ctx.recorder.state.type).toBe("recording");
   });
 });
 

@@ -35,6 +35,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./recording/capture-host";
+import { NativeCaptureHost } from "./recording/native-capture-host";
+import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
 import { FileWriter, ensureWritableDir } from "./recording/file-writer";
 import { KeepAwake } from "./recording/keep-awake";
@@ -285,7 +287,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     displayMedia.answer(
       // Only preparation asks for a display; a counting-down session already holds its stream.
-      (sessionId) => recorder.state.type === "starting" && host.ownsDisplayRequest(request.frame, sessionId),
+      (sessionId) => recorder.state.type === "starting" && host instanceof CaptureHost && host.ownsDisplayRequest(request.frame, sessionId),
       (source) => {
         if (source) callback({ video: source, audio: "loopback" });
         else (callback as () => void)();
@@ -293,7 +295,21 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     );
   }, { useSystemPicker: false });
 
-  const host = new CaptureHost({
+  // Plan 076's prototype engine, behind D7's development flag until it replaces the hidden capture renderer: a
+  // `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit and writes the file itself.
+  const nativeEngine = process.platform === "darwin" && process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native";
+  log(`capture engine: ${nativeEngine ? "native (RECORDSTUFF_CAPTURE_ENGINE=native)" : "chromium"}`);
+  const nativeHost = nativeEngine ? new NativeCaptureHost({
+    entryPath: path.join(__dirname, "native-host-process.js"),
+    // Native code cannot load from inside the asar archive; packaging unpacks out/native.
+    addonPath: path.join(__dirname, "../native/recordstuff-capture.node").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+    resolveDisplay: () => new Promise((resolve) => displayMedia.answer(() => true, (source) => resolve(source?.display_id || undefined))),
+    // Main first: the engine takes its bundle identifier as the prefix of RecordStuff's helpers.
+    ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
+    hideSystemUi: () => process.env["RECORDSTUFF_HIDE_SYSTEM_UI"] === "1",
+    log,
+  }) : undefined;
+  const host = nativeHost ?? new CaptureHost({
     preloadPath: path.join(__dirname, "../preload/index.js"),
     devUrl: app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"],
     htmlPath: path.join(__dirname, "../renderer/index.html"),
@@ -330,7 +346,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
       isSameFolder(dir, settings.defaultOutputDir) || dir === outputDirOverride),
-    openWriter: (recordingPath, finalPath) => FileWriter.open(recordingPath, finalPath),
+    openWriter: (recordingPath, finalPath) => nativeHost
+      ? EngineFileWriter.open(recordingPath, finalPath, { report: (file) => nativeHost.takeReport(file) })
+      : FileWriter.open(recordingPath, finalPath),
     fileName: date => formatFileName(settings.fileNameTemplate, date),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
     sentinels,

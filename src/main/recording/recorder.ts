@@ -44,8 +44,10 @@ export interface RecorderHost {
   /**
    * Ensures the capture host is up and posts `start` with the quality
    * snapshot; rejects if it cannot. The host replies `prepared`, not recording.
+   * `recordingPath` is the temporary file the writer opened, which the native
+   * engine writes itself (plan 076, D3); the renderer host ignores it.
    */
-  start(sessionId: string, quality: QualitySettings): Promise<void>;
+  start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void>;
   /** Begins encoding the prepared session (plan 040); throws when it cannot be sent. */
   record(sessionId: string): void;
   stop(sessionId: string): void;
@@ -690,7 +692,7 @@ export class Recorder {
       this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
     }
     try {
-      await this.deps.host.start(session.id, session.quality);
+      await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath);
     } catch (cause) {
       if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
       await this.fail(session.id, "capture_start_failed", messageOf(cause));
@@ -806,6 +808,13 @@ export class Recorder {
       case "chunk":
         this.handleChunk(session, message.seq, message.bytes);
         return;
+      case "progress":
+        // The native engine writes the file itself and reports that media still arrives, which the chunks said.
+        this.mediaArrived(session, message.bytes, "engine progress");
+        return;
+      case "writeError":
+        if (!session.finalizing) void this.fail(session.id, message.code, message.detail);
+        return;
       case "stopped":
         if (session.finalizing) return;
         this.deps.log(`recorder: session ${session.id} host stopped; tracksStoppedAt=${message.tracksStoppedAt ?? "unknown"}`);
@@ -829,25 +838,36 @@ export class Recorder {
     }
   }
 
-  private handleChunk(session: Session, seq: number, bytes: ArrayBuffer): void {
-    if (session.finalizing) return;
-    // Media can exist only after `record`.
-    if (session.phase !== "arming" && session.phase !== "recording" && session.phase !== "stopping") {
-      return;
+  /** Media can exist only after `record`, and not once the finalizer owns the attempt. */
+  private acceptsMedia(session: Session): boolean {
+    return !session.finalizing && (session.phase === "arming" || session.phase === "recording" || session.phase === "stopping");
+  }
+
+  /**
+   * Media arrived (a chunk, or the native engine's progress): the first-media deadline and the stall guard hear it.
+   * Empty media is not media, so it neither satisfies the deadline nor resets the guard.
+   */
+  private mediaArrived(session: Session, bytes: number, source?: "engine progress"): void {
+    if (!this.acceptsMedia(session)) return;
+    const nonEmpty = bytes > 0;
+    if (!session.hasMedia && nonEmpty) {
+      session.hasMedia = true;
+      // "first chunk" is what the acceptance runners time to; the engine's progress counts the bytes written so far.
+      this.deps.log(`recorder: session ${session.id} first chunk ${bytes} bytes${source ? ` (${source})` : ""}`);
+      // Only the first-chunk deadline ends here: before `started` the timer is the record → started deadline.
+      if (session.phase === "recording") this.clearTimer(session);
     }
+    if (nonEmpty && session.phase !== "arming") this.armStall(session);
+  }
+
+  private handleChunk(session: Session, seq: number, bytes: ArrayBuffer): void {
+    if (!this.acceptsMedia(session)) return;
     if (seq !== session.nextSeq) {
       void this.fail(session.id, "capture_failed", `chunk sequence mismatch: expected ${session.nextSeq}, received ${seq}`);
       return;
     }
     session.nextSeq += 1;
-    if (!session.hasMedia && bytes.byteLength > 0) {
-      session.hasMedia = true;
-      this.deps.log(`recorder: session ${session.id} first chunk ${bytes.byteLength} bytes`);
-      // Only the first-chunk deadline ends here: before `started` the timer is the record → started deadline.
-      if (session.phase === "recording") this.clearTimer(session);
-    }
-    // Empty chunks are not media, so they do not reset the stall guard either.
-    if (bytes.byteLength > 0 && session.phase !== "arming") this.armStall(session);
+    this.mediaArrived(session, bytes.byteLength);
     const writer = session.writer;
     if (!writer) return;
     const write = writer.append(new Uint8Array(bytes));

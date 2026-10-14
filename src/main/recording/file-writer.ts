@@ -144,6 +144,56 @@ export interface FileWriterOptions {
   io?: FileWriterFs;
 }
 
+/** How publication went: the steps `FinishTimings` reports after the file was closed. */
+export type PublishTimings = Pick<FinishTimings, "publishMs" | "cleanupMs" | "method" | "linkError" | "cleanupError">;
+
+/**
+ * Publishes the closed `recordingPath` under `finalPath`, or `name-2.mp4` and on when taken, then removes the
+ * temporary name. A hard link where the volume supports one: constant time, no extra space, and like the copy it
+ * never replaces an existing name. Any refusal other than EEXIST (exFAT and some network volumes have no hard links)
+ * falls back to the exclusive copy for this and every later candidate name. Shared by FileWriter and the native
+ * engine's EngineFileWriter, whose files reach it the same way.
+ */
+export async function publishRecording(io: FileWriterFs, recordingPath: string, finalPath: string): Promise<{ target: string; timings: PublishTimings }> {
+  const began = performance.now();
+  const ext = path.extname(finalPath);
+  const stem = finalPath.slice(0, finalPath.length - ext.length);
+  let linkError: string | undefined;
+  for (let attempt = 1; ; attempt += 1) {
+    const target = attempt === 1 ? finalPath : `${stem}-${attempt}${ext}`;
+    try {
+      if (linkError === undefined) {
+        try {
+          await io.link(recordingPath, target);
+        } catch (cause) {
+          if (errnoCode(cause) === "EEXIST") throw cause;
+          linkError = errnoCode(cause) ?? messageOf(cause);
+        }
+      }
+      if (linkError !== undefined) await io.copyExclusive(recordingPath, target);
+    } catch (cause) {
+      if (errnoCode(cause) === "EEXIST") {
+        if (attempt < MAX_PUBLISH_ATTEMPTS) continue;
+        throw new FileWriteError("output_write_failed", recordingPath, new Error(`every name up to ${path.basename(target)} was taken`, { cause }));
+      }
+      // A copy without room for the whole file is disk_full, like any other ENOSPC.
+      throw new FileWriteError(classifyWriteError(cause), recordingPath, cause);
+    }
+    const published = performance.now();
+    let cleanupError: string | undefined;
+    try {
+      await io.unlink(recordingPath);
+    } catch (cause) {
+      // The completed file is safe; a leftover temporary name (a second link
+      // to it, or a full copy) must not turn a successful save into a failure.
+      cleanupError = errnoCode(cause) ?? messageOf(cause);
+    }
+    return { target, timings: { publishMs: published - began, cleanupMs: performance.now() - published,
+      ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }),
+      ...(cleanupError === undefined ? {} : { cleanupError }) } };
+  }
+}
+
 export class FileWriter {
   private queue: Promise<void> = Promise.resolve();
   private failure: FileWriteError | undefined;
@@ -259,15 +309,10 @@ export class FileWriter {
   }
 
   /**
-   * Flush, close, publish exclusively, then remove the temporary name. Draining
+   * Flush, close, publish exclusively (`publishRecording`), then remove the temporary name. Draining
    * first lets a retained write/sync error keep its code; with no confirmed
    * bytes it then closes, removes the empty file and rejects with
    * `capture_start_failed` instead of publishing an empty `.mp4`.
-   *
-   * Publication is a hard link: constant time, no extra space, and like the
-   * copy it never replaces an existing name. Any refusal other than EEXIST
-   * (exFAT and some network volumes have no hard links) falls back to the
-   * exclusive copy for this and every later candidate name.
    */
   finish(): Promise<string> {
     if (this.finished) return this.finished;
@@ -302,44 +347,10 @@ export class FileWriter {
       throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
     }
     const closed = performance.now();
-    const ext = path.extname(this.finalPath);
-    const stem = this.finalPath.slice(0, this.finalPath.length - ext.length);
-    let linkError: string | undefined;
-    for (let attempt = 1; ; attempt += 1) {
-      const target = attempt === 1 ? this.finalPath : `${stem}-${attempt}${ext}`;
-      try {
-        if (linkError === undefined) {
-          try {
-            await this.io.link(this.recordingPath, target);
-          } catch (cause) {
-            if (errnoCode(cause) === "EEXIST") throw cause;
-            linkError = errnoCode(cause) ?? messageOf(cause);
-          }
-        }
-        if (linkError !== undefined) await this.io.copyExclusive(this.recordingPath, target);
-      } catch (cause) {
-        if (errnoCode(cause) === "EEXIST") {
-          if (attempt < MAX_PUBLISH_ATTEMPTS) continue;
-          throw new FileWriteError("output_write_failed", this.recordingPath, new Error(`every name up to ${path.basename(target)} was taken`, { cause }));
-        }
-        // A copy without room for the whole file is disk_full, like any other ENOSPC.
-        throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
-      }
-      const published = performance.now();
-      let cleanupError: string | undefined;
-      try {
-        await this.io.unlink(this.recordingPath);
-      } catch (cause) {
-        // The completed file is safe; a leftover temporary name (a second link
-        // to it, or a full copy) must not turn a successful save into a failure.
-        cleanupError = errnoCode(cause) ?? messageOf(cause);
-      }
-      this.finishTimings = { flushMs: flushed - began, finalizeMs: finalized - flushed, ...(fragmented === undefined ? {} : { fragmented }),
-        closeMs: closed - finalized, publishMs: published - closed,
-        cleanupMs: performance.now() - published, ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }),
-        ...(cleanupError === undefined ? {} : { cleanupError }) };
-      return target;
-    }
+    const published = await publishRecording(this.io, this.recordingPath, this.finalPath);
+    this.finishTimings = { flushMs: flushed - began, finalizeMs: finalized - flushed, ...(fragmented === undefined ? {} : { fragmented }),
+      closeMs: closed - finalized, ...published.timings };
+    return published.target;
   }
 
   /**

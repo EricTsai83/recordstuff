@@ -11,6 +11,14 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "stop", sessionId: "a" })).toBe(true);
     expect(isMainMessage({ type: "ping" })).toBe(true);
   });
+  it("accepts the native engine's start options and refuses malformed ones (plan 076)", () => {
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1, 2], hideSystemUi: false };
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native })).toBe(true);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayId: 1.5 } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, recordingPath: "" } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, ownPids: ["1"] } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, hideSystemUi: 1 } })).toBe(false);
+  });
   it("rejects anything else", () => {
     expect(isMainMessage({ type: "start" })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a" })).toBe(false);
@@ -25,6 +33,16 @@ describe("isMainMessage", () => {
 });
 
 describe("isHostMessage", () => {
+  it("accepts the native engine's progress, write errors and file report, and refuses malformed ones (plan 076)", () => {
+    expect(isHostMessage({ type: "progress", sessionId: "a", bytes: 0 })).toBe(true);
+    expect(isHostMessage({ type: "progress", sessionId: "a", bytes: -1 })).toBe(false);
+    expect(isHostMessage({ type: "progress", sessionId: "a", bytes: Number.NaN })).toBe(false);
+    expect(isHostMessage({ type: "writeError", sessionId: "a", code: "disk_full", detail: "x" })).toBe(true);
+    // A host may report only the write failures the engine can observe.
+    expect(isHostMessage({ type: "writeError", sessionId: "a", code: "stop_timeout", detail: "x" })).toBe(false);
+    expect(isHostMessage({ type: "stopped", sessionId: "a", file: { bytes: 1, finalizeMs: 2, fragmented: "why" } })).toBe(true);
+    expect(isHostMessage({ type: "stopped", sessionId: "a", file: { bytes: 1 } })).toBe(false);
+  });
   it("accepts every host → main shape", () => {
     expect(isHostMessage({ type: "ready" })).toBe(true);
     expect(isHostMessage({ type: "pong" })).toBe(true);

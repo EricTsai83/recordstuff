@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
@@ -28,11 +31,55 @@ const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
   },
 });
 
+/**
+ * Plan 076's native capture engine (native/capture), built with Cargo before main and copied to
+ * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. macOS only while the engine is
+ * a prototype behind `RECORDSTUFF_CAPTURE_ENGINE=native`; a machine without Rust skips it with a warning, and the
+ * flag then fails at start with the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose.
+ */
+const nativeEngine = (): Plugin => {
+  const manifest = resolve(__dirname, "native/capture/Cargo.toml");
+  const library = resolve(__dirname, "native/capture/target/release/librecordstuff_capture.dylib");
+  let built = false;
+  return {
+    name: "recordstuff-native-engine", apply: "build",
+    buildStart() {
+      built = false;
+      if (process.platform !== "darwin" || process.env["RECORDSTUFF_SKIP_NATIVE"] === "1") return;
+      const cargo = [process.env["CARGO"], resolve(homedir(), ".cargo/bin/cargo"), "cargo"].find(c => c && (c === "cargo" || existsSync(c)))!;
+      try {
+        execFileSync(cargo, ["build", "--release", "--manifest-path", manifest], { stdio: "inherit" });
+        built = true;
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+        this.warn("cargo was not found: the native capture engine was not built (needed only for RECORDSTUFF_CAPTURE_ENGINE=native)");
+      }
+    },
+    writeBundle(options) {
+      if (!built || !options.dir) return;
+      const target = resolve(options.dir, "../native/recordstuff-capture.node");
+      mkdirSync(resolve(target, ".."), { recursive: true });
+      copyFileSync(library, target);
+    },
+  };
+};
+
 // Main, one preload per renderer, and four renderer entries (hidden capture
 // host, settings panel, countdown overlay, fullscreen video).
 export default defineConfig({
   // electron-vite externalizes dependencies by default (`build.externalizeDeps`).
-  main: { plugins: [buildRecord("main")] },
+  main: {
+    plugins: [buildRecord("main"), nativeEngine()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, "src/main/index.ts"),
+          // The native engine's capture host, run in a utilityProcess (plan 076).
+          "native-host-process": resolve(__dirname, "src/main/recording/native-host-process.ts"),
+        },
+      },
+    },
+  },
   preload: {
     plugins: [buildRecord("preload")],
     build: {
