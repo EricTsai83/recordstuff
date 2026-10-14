@@ -83,6 +83,7 @@ fn loopback_client(exclude_pid: u32) -> Result<IAudioClient, CaptureError> {
 
 pub struct SoundCapture {
     client: Mta<IAudioClient>,
+    event: Mta<HANDLE>,
     running: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -109,6 +110,7 @@ impl SoundCapture {
         unsafe { client.Start() }.map_err(|e| start_failed("starting system audio capture", e))?;
 
         let running = Arc::new(AtomicBool::new(true));
+        let event_handle = event;
         let (capture, event) = (Mta(capture), Mta(event));
         let thread = {
             let running = running.clone();
@@ -122,11 +124,10 @@ impl SoundCapture {
                             shared.fail(detail);
                         }
                     }
-                    let _ = unsafe { CloseHandle(event.0) };
                 })
                 .map_err(|e| CaptureError::new("capture_start_failed", format!("audio thread: {e}")))?
         };
-        Ok(Self { client: Mta(client), running, thread: Some(thread) })
+        Ok(Self { client: Mta(client), event: Mta(event_handle), running, thread: Some(thread) })
     }
 
     pub fn stop(&mut self) {
@@ -135,6 +136,11 @@ impl SoundCapture {
             let _ = thread.join();
         }
         let _ = unsafe { self.client.0.Stop() };
+        // Only once the client has stopped signalling it.
+        if !self.event.0.is_invalid() {
+            let _ = unsafe { CloseHandle(self.event.0) };
+            self.event.0 = HANDLE::default();
+        }
     }
 }
 

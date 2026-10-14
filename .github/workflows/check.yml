@@ -174,10 +174,38 @@ jobs:
           $errors = ffmpeg -v error -i $file -f null - 2>&1
           if ($LASTEXITCODE -ne 0 -or $errors) { Write-Output $errors; exit 1 }
           "Synthetic H.264 and AAC from Media Foundation decoded without errors." >> $env:GITHUB_STEP_SUMMARY
+      # Each part alone, then the whole session, each in its own process: a crash names its part. Every step runs
+      # whatever the one before did, so one run shows them all.
+      - name: Live system audio alone
+        if: ${{ !cancelled() }}
+        working-directory: native/capture
+        run: cargo test --lib -- --ignored --nocapture live_sound
+      - name: Live display alone
+        if: ${{ !cancelled() }}
+        working-directory: native/capture
+        run: cargo test --lib -- --ignored --nocapture live_display
       - name: A live recording of this runner's display and system audio
+        if: ${{ !cancelled() }}
         working-directory: native/capture
         run: cargo test --lib -- --ignored --nocapture live_capture
+      - name: On failure, the live tests again under the debugger with full page heap
+        # Page heap stops at the first bad write or free instead of a later heap check, and cdb prints the stack.
+        if: ${{ failure() }}
+        working-directory: native/capture
+        shell: pwsh
+        run: |
+          $debuggers = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64'
+          $cdb = Join-Path $debuggers 'cdb.exe'
+          if (-not (Test-Path $cdb)) { "cdb is not on this runner; no stack." ; exit 0 }
+          $exe = Get-ChildItem target\debug\deps\recordstuff_capture-*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          & (Join-Path $debuggers 'gflags.exe') /p /enable $exe.Name /full
+          foreach ($filter in 'live_sound', 'live_display', 'live_capture') {
+            "=== $filter"
+            & $cdb -lines -y $exe.DirectoryName -G -c 'sxe -c "kP 40; q" av; sxe -c "kP 40; q" c0000374; sxe -c "kP 40; q" bpe; g' $exe.FullName --ignored --nocapture --test-threads=1 $filter
+          }
+          exit 0
       - name: Build the module and load it in Node
+        if: ${{ !cancelled() }}
         working-directory: native/capture
         shell: pwsh
         run: |
