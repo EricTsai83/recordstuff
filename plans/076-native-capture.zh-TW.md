@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 實作，等待 Windows CI。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 完成（PR #6）。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -104,10 +104,10 @@
   - 原生模式下，main 不再註冊 display-media handler；錄影檔庫的 media protocol 啟動時也會使用預設 session，改為在第一個視窗建立時才註冊。
   - 原生模式的 `pnpm measure:cpu` 通過 process 角色檢查：啟動時與錄影後都沒有 renderer。
   - Settings 第一次開啟：原生 253–341 ms，有預先啟動的 renderer 時 241–245 ms（341 ms 那次是建置後第一次啟動）。
-- [ ] 輸入：螢幕（現在就用）、視窗、區域與 App 篩選、單一 App 聲音（只做引擎與測試）、麥克風（供 074），每一項都有清楚的錯誤，對應到既有的 `HostErrorCode` 或新代碼。
+- [x] 輸入：螢幕（現在就用）、視窗、區域與 App 篩選、單一 App 聲音（只做引擎與測試）、麥克風（供 074），每一項都有清楚的錯誤，對應到既有的 `HostErrorCode` 或新代碼。
   - 2026-10-15 實作：`prepare` 接受來源（螢幕、視窗、區域、App）與聲音（系統聲音、指定 process 的聲音或無，加上麥克風，預設裝置或指定 id）；`microphones()` 列出輸入裝置。core 把每個輸入混進同一條 AAC 音軌（`core/mixer.rs`）；某個輸入沒送資料時，音軌跟著時鐘、落後 500 ms 前進，所以 WASAPI loopback 的靜音不再讓音訊分片停住。錯誤使用 `capture_start_failed` 並附原因；給使用者看的錯誤碼隨選擇器與 074 加入。
   - macOS：以這台 Mac 的 live test 驗證（視窗、區域、單一 App 的視窗與聲音，各 3 秒，影音長度相同），也透過簽章 App 驗證（區域與 Finder 視窗，`RECORDSTUFF_CAPTURE_SOURCE`）。錄視窗一開始會讓擷取 process 結束（`CGS_REQUIRE_INIT`，沒有 window server 連線），已修正。macOS 尚未詢問過麥克風權限時，麥克風會拒絕，因為 AVFoundation 此時只送出靜音；它的聲音在這裡未測，因為執行測試的 App 沒有權限。
-  - Windows：Windows.Graphics.Capture 的視窗與裁切、每個 process 的 loopback、WASAPI 麥克風；只錄指定 App 的視窗會被拒絕（Windows.Graphics.Capture 做不到）。等待 `native-windows` CI 執行，它會錄區域、測試自己開的視窗、單一 process 的聲音，以及 runner 若有麥克風則錄麥克風。
+  - Windows：Windows.Graphics.Capture 的視窗與裁切、每個 process 的 loopback、WASAPI 麥克風；只錄指定 App 的視窗會被拒絕（Windows.Graphics.Capture 做不到）。`native-windows` job 在 commit `985221bd` 通過（run 38692860341）：區域錄成 640×360，測試自己開的視窗錄成 786×592，各 3001 ms，音軌一樣長（區域那次關掉系統聲音，整段是時鐘補上的靜音）；單一 process 的聲音成功開啟、讀取並停止。runner 沒有音訊輸入，所以 Windows 麥克風未測，步驟 3 列出的項目也同樣未測。
 - [x] 品質：`src/shared/quality.ts` 中的既有設定（尺寸上限、影格率、位元率）改由原生端套用；`CaptureReport` 維持原有欄位，讓 Recorder、log 與警告維持原樣。步驟 2 起就已實作（`native-host-process.ts`）。
 - 過程中的發現：`pnpm measure:cpu` 的情境 C（Settings 開在其他 App 後面）在兩次原生執行量到 38.5% 與 39.0%，一次 Chromium 執行量到 10.0%；同一個 build 的另外兩次是 0.15–0.18%。忙碌的是 Settings 的 renderer 與 GPU process；原因尚未確定（卡片的 hover 預覽在游標下播放符合現象）。它不只發生在原生引擎。
 
