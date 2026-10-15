@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 完成（PR #6），步驟 5 已於 2026-10-15 完成，只剩移除 display-media handler，要等步驟 7 之後 D7 的旗標移除。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 完成（PR #6），步驟 5 已於 2026-10-15 完成，只剩移除 display-media handler，要等步驟 7 之後 D7 的旗標移除；步驟 6 已於 2026-10-15 完成。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -125,8 +125,13 @@
 
 ### 6. 建置與發布
 
-- [ ] 在兩個 runner 的 `check.yml` 與 `release.yml` 中加入 Rust 工具鏈與 cargo 快取；`.node` 二進位從 asar 中解出，在 macOS 上隨 App 一起簽章；Windows 安裝檔的冒煙測試涵蓋載入它。
-- [ ] `pnpm check` 執行 `cargo test` 與建置後模組的載入測試；[CONTRIBUTING.md](../CONTRIBUTING.md) 的開發環境設定寫明需要 Rust。
+- [x] 在兩個 runner 的 `check.yml` 與 `release.yml` 中加入 Rust 工具鏈與 cargo 快取；`.node` 二進位從 asar 中解出，在 macOS 上隨 App 一起簽章；Windows 安裝檔的冒煙測試涵蓋載入它。
+  - 2026-10-15 完成：macOS 與 Windows 的每次建置都會編譯模組，因此 Windows 的 check、installer 與發布建置都帶有它；沒有 Cargo 的建置現在會失敗，而不是產出無法錄影的 App，`RECORDSTUFF_SKIP_NATIVE=1` 可刻意略過（CI 中從不錄影的背景 UI 分片）。因此 Windows 也預設以原生引擎錄影，`RECORDSTUFF_CAPTURE_ENGINE=chromium` 與 macOS 一樣可改回隱藏 renderer：D7 的切換在兩個平台都完成。
+  - `check.yml` 在 `check`、`windows-installer` 與 `native-windows` job 以 `Swatinem/rust-cache` 保留 Cargo 的輸出；發布建置只確認有 Rust，不使用快取，讓發布的內容完全由原始碼建出。
+  - macOS：electron-builder 本來就以 App 的憑證與 hardened runtime 簽署解出的模組。本機 bundle 與發布時掛載的 DMG 都會經過的 `start-app.mjs --verify-app`，現在要求它存在並檢查其憑證（真實 bundle 通過；拿掉模組的副本被拒絕）。
+  - Windows：installer smoke（`windows-smoke`、`candidate-windows`、`published-windows`）會以 `scripts/native-load.mjs` 在 Node 中載入安裝後的模組。
+- [x] `pnpm check` 執行 `cargo test` 與建置後模組的載入測試；[CONTRIBUTING.md](../CONTRIBUTING.md) 的開發環境設定寫明需要 Rust。
+  - 2026-10-15 完成：`pnpm check` 依序為 typecheck、Vitest、`pnpm test:native`（`cargo test --lib`）、建置，以及 `node scripts/native-load.mjs`：載入模組並確認 capture host 會呼叫的方法都在，不進行擷取。驗證 recipe 也跟著調整。本機通過：1946 個 Vitest 測試、65 個 Rust 測試（5 個 live 測試如常略過），模組可載入。
 
 ### 7. 驗證工具與驗收
 
