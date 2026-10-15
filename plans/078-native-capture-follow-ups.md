@@ -6,7 +6,7 @@ Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the main
 
 ## Goal and boundaries
 
-Close the questions 076's acceptance and documentation left open about the native capture engine on macOS. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; and frame-timing diagnosis covers the engine that records.
+Close the questions 076's acceptance and documentation left open about the native capture engine, and a Windows CI case that fails intermittently. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; frame-timing diagnosis covers the engine that records; step 4's decisions are built; and the Windows UI shards close the app reliably.
 
 Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4's hardware encoder included), new capture features, and the hands-on cases in [077](077-native-hands-on-acceptance.md).
 
