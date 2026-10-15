@@ -23,17 +23,12 @@ import { errnoCode, messageOf } from "../lib/errors";
 export interface RecorderWriter {
   readonly recordingPath?: string;
   readonly preservationUncertain?: boolean;
-  /** Accepted bytes not yet confirmed written; diagnostics only. */
-  readonly backlogBytes?: number;
   /** Confirmed bytes and the steps of a successful finish; diagnostics only. */
   readonly bytesWritten?: number;
   readonly finishTimings?: FinishTimings | undefined;
-  append(bytes: Uint8Array): Promise<void>;
-  /** Settles after queued work; resolves with a retained write/sync error, if any. */
-  drain?(): Promise<unknown>;
   /**
-   * Flush, close and publish under the final name; resolves with it. Rejects instead of
-   * publishing zero confirmed bytes, after any retained write/sync error.
+   * Publishes the finished file under the final name; resolves with it. Rejects instead of publishing zero bytes,
+   * and with the engine's write error when it could not finish the file.
    */
   finish(): Promise<string>;
   /** Close and keep the partial file; resolves with its path if it was kept. */
@@ -45,7 +40,7 @@ export interface RecorderHost {
    * Ensures the capture host is up and posts `start` with the quality
    * snapshot; rejects if it cannot. The host replies `prepared`, not recording.
    * `recordingPath` is the temporary file the writer opened, which the native
-   * engine writes itself (plan 076, D3); the renderer host ignores it.
+   * engine writes itself (plan 076, D3).
    */
   start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void>;
   /** Begins encoding the prepared session (plan 040); throws when it cannot be sent. */
@@ -119,12 +114,12 @@ export interface RecorderDeps {
   freeSpace?: (dir: string) => Promise<number>;
   /** Interruption evidence: written before the temporary file exists, removed on the terminal outcome. */
   sentinels?: SentinelStore;
-  /** Overrides for the `RECORDING_HEALTH` guards Recorder applies, for tests; FileWriter reads its own backlog limit. */
+  /** Overrides for the `RECORDING_HEALTH` guards, for tests. */
   health?: Partial<RecorderHealth>;
 }
 
-/** The guards Recorder applies itself; the writer backlog limit is FileWriter's (see `openWriter`). */
-type RecorderHealth = Omit<RecordingHealth, "writerBacklogBytes">;
+/** The guards Recorder applies. */
+type RecorderHealth = RecordingHealth;
 
 /** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
 export type CancelReason = "toggle" | "menu" | "quit" | "sleep";
@@ -228,21 +223,18 @@ interface Session {
    * before a single frame, nothing was recorded, and that is the cancel, not a failed start.
    */
   stopOnStart?: CancelReason;
-  /** A nonempty chunk arrived; empty chunks neither satisfy the first-media deadline nor count as media. */
+  /** The engine reported bytes written; nothing written neither satisfies the first-media deadline nor counts as media. */
   hasMedia: boolean;
   writer?: RecorderWriter;
   opening?: Promise<void>;
-  nextSeq: number;
   timer?: ReturnType<typeof setTimeout> | undefined;
-  /** Last append; awaited before finishing so the final chunk is on disk. */
-  writes: Promise<void>;
   /** Output folder, polled for free space while recording. */
   dir: string;
   startedAt: string;
   /** Set when the host confirmed capture and when stop was requested; carried on the terminal event. */
   recordingAt?: string;
   stoppingAt?: string;
-  /** Inter-chunk guard after media began; the first-media deadline covers the time before. */
+  /** Guard between media reports after media began; the first-media deadline covers the time before. */
   stall?: ReturnType<typeof setTimeout> | undefined;
   disk?: ReturnType<typeof setTimeout> | undefined;
   diskWarned: boolean;
@@ -622,8 +614,6 @@ export class Recorder {
       requestedAt: this.monotonic(),
       finalizing: false,
       hasMedia: false,
-      nextSeq: 0,
-      writes: Promise.resolve(),
       dir,
       startedAt,
       diskWarned: false,
@@ -765,7 +755,7 @@ export class Recorder {
     if (!session || message.sessionId !== session.id) {
       // A session we already gave up on (e.g. start timed out while the host
       // was still inside getDisplayMedia) must not keep capturing unseen.
-      if (message.type === "prepared" || message.type === "started" || message.type === "chunk") {
+      if (message.type === "prepared" || message.type === "started" || message.type === "progress") {
         this.deps.log(`recorder: stopping stale session ${message.sessionId} (${message.type})`);
         this.requestHostStop(message.sessionId);
       }
@@ -805,11 +795,8 @@ export class Recorder {
         this.emit({ type: "captureStarted", sessionId: session.id, requested: session.quality, capture });
         return;
       }
-      case "chunk":
-        this.handleChunk(session, message.seq, message.bytes);
-        return;
       case "progress":
-        // The native engine writes the file itself and reports that media still arrives, which the chunks said.
+        // The engine writes the file itself and reports that media still arrives.
         this.mediaArrived(session, message.bytes, "engine progress");
         return;
       case "writeError":
@@ -858,25 +845,6 @@ export class Recorder {
       if (session.phase === "recording") this.clearTimer(session);
     }
     if (nonEmpty && session.phase !== "arming") this.armStall(session);
-  }
-
-  private handleChunk(session: Session, seq: number, bytes: ArrayBuffer): void {
-    if (!this.acceptsMedia(session)) return;
-    if (seq !== session.nextSeq) {
-      void this.fail(session.id, "capture_failed", `chunk sequence mismatch: expected ${session.nextSeq}, received ${seq}`);
-      return;
-    }
-    session.nextSeq += 1;
-    this.mediaArrived(session, bytes.byteLength);
-    const writer = session.writer;
-    if (!writer) return;
-    const write = writer.append(new Uint8Array(bytes));
-    session.writes = write.then(
-      () => undefined,
-      (cause: unknown) => {
-        void this.fail(session.id, errorCodeOf(cause, "output_write_failed"), messageOf(cause));
-      },
-    );
   }
 
   /**
@@ -1081,7 +1049,6 @@ export class Recorder {
   }
 
   private async save(session: Session, writer: RecorderWriter): Promise<void> {
-    await session.writes;
     const drainedAt = this.monotonic();
     let finalPath: string;
     try {
@@ -1140,7 +1107,7 @@ export class Recorder {
     if (session.stall) clearTimeout(session.stall);
     const { stallWarnMs, stallFailMs } = this.health;
     session.stall = setTimeout(() => {
-      this.deps.log(`recorder: session ${session.id} no media for ${stallWarnMs} ms; writer backlog ${session.writer?.backlogBytes ?? "unknown"} bytes`);
+      this.deps.log(`recorder: session ${session.id} no media for ${stallWarnMs} ms`);
       session.stall = setTimeout(() => {
         session.stall = undefined;
         void this.fail(session.id, "capture_failed", `capture stalled: no media for ${stallFailMs} ms while the capture host still responded`);
@@ -1165,7 +1132,7 @@ export class Recorder {
         }
         if (free < diskWarnBytes && !session.diskWarned) {
           session.diskWarned = true;
-          this.deps.log(`recorder: session ${session.id} ${free} bytes free in ${session.dir}, below ${diskWarnBytes}; writer backlog ${session.writer?.backlogBytes ?? "unknown"} bytes`);
+          this.deps.log(`recorder: session ${session.id} ${free} bytes free in ${session.dir}, below ${diskWarnBytes}`);
         }
         this.watchDisk(session);
       }, (cause: unknown) => {
@@ -1185,23 +1152,6 @@ export class Recorder {
     this.clearDisk(session);
     if (session.stall) clearTimeout(session.stall);
     session.stall = undefined;
-  }
-
-  /**
-   * A generic start failure can hide a disk error a background sync already
-   * retained (the writer opens before the capture request). Classify only after
-   * the writer's queued work settles, within a bound, so a sick disk keeps its
-   * own code and guidance. Only `capture_start_failed` asks; specific host causes keep their code.
-   */
-  private async retainedWriteError(session: Session): Promise<{ code: ErrorCode; detail: string } | undefined> {
-    const writer = session.writer;
-    if (!writer?.drain) return undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const retained = await Promise.race([
-      writer.drain().catch(() => undefined),
-      new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), this.health.startDrainMs); }),
-    ]).finally(() => clearTimeout(timer));
-    return retained ? { code: errorCodeOf(retained, "output_write_failed"), detail: messageOf(retained) } : undefined;
   }
 
   /**
@@ -1280,14 +1230,6 @@ export class Recorder {
    * a failure ends its session first, and a save in the background has no session left to end.
    */
   private async reportFailure(session: Session, code: ErrorCode, detail: string, occurredAt: string): Promise<boolean> {
-    if (code === "capture_start_failed") {
-      const retained = await this.retainedWriteError(session);
-      if (retained) {
-        this.deps.log(`recorder: session ${session.id} start failure reported as ${retained.code}: the writer retained ${retained.detail}`);
-        detail = `${retained.detail} (start ended: ${detail})`;
-        code = retained.code;
-      }
-    }
     const result: RecordingFailure = { id: randomUUID(), occurredAt,
       code, detail, outcome: "pending", ...(session.writer?.recordingPath ? { recordingPath: session.writer.recordingPath } : {}) };
     // Before the report, so a process that ends while the cleanup below still runs (a stalled share, then a force

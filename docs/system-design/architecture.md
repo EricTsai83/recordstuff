@@ -6,6 +6,8 @@ For the roles of Electron, Chromium, browser media APIs, and internal WebRTC aud
 
 ## Processes and responsibilities
 
+The diagram and the process description below still describe the hidden capture renderer that plan 076 removed on 2026-10-16; they are kept until plan 076 step 8 rewrites them. Recording now runs only through the native engine: for each attempt main forks an Electron `utilityProcess` that loads the Rust engine (`native/capture`), which captures, encodes, muxes and writes the file.
+
 The application has a main layer, a hidden capture renderer, a settings renderer that exists only while the user has the settings window open, and a countdown overlay renderer that exists only while a countdown runs. Electron also creates GPU/helper processes; this is not a claim about the number of operating-system processes.
 
 ```mermaid
@@ -51,10 +53,8 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 | `renderer/countdown/countdown.ts` / `preload/countdown.ts` | Drawing the digit and its fades / the one value subscription | Timing, state or any reply to main |
 | `main/library/video-fullscreen.ts` | The fullscreen video window's lifetime, its screen, its fades and the playback state it hands back | Which recording plays or its source URL (the settings window resolves it from the listing) |
 | `renderer/video/video.ts` / `preload/video.ts` | Playing from the given time, its exit control / saying ready and leaving with the playback state | The window, its fades or closing it |
-| `main/recording/capture-host.ts` | Hidden BrowserWindow, main port, readiness and heartbeat | File-success decisions |
-| `renderer/capture/capture-host.ts` | MediaStream, MediaRecorder, sequence numbers, Blob chain | Settings files, output paths, disk writes |
-| `preload/index.ts` | Port handoff | Exposing Node APIs to the page |
-| `main/recording/file-writer.ts` | A recording's media handle and I/O queue | UI state |
+| `main/recording/native-capture-host.ts` / `native-host-process.ts` | The per-attempt `utilityProcess`, its parent port, readiness and heartbeat / loading the Rust engine and speaking the host protocol | File-success decisions |
+| `main/recording/engine-file-writer.ts` / `file-writer.ts` | Reserving and publishing the file the engine writes / publication, write-error classification and the folder check | UI state |
 | `main/settings/settings.ts` | Committed settings and serialized saves | A running session's quality snapshot |
 | `main/menus/tray-model.ts` / `tray.ts` | Pure projection of the tray's flat command menu / native presentation | Preferences, or a separate recording state machine |
 | `main/app/ui-model.ts` | The action union and the context snapshot both interfaces share; the preference-lock rule they apply is `main/recording/recording-lock.ts` | Any projection of its own |
@@ -69,7 +69,7 @@ The tray, menu and notifications are native Electron APIs in main. The settings 
 
 ## Trust boundaries and IPC
 
-Every renderer enables sandboxing, context isolation, and web security, disables Node integration, and blocks navigation and new windows. The hidden capture window and the countdown overlay additionally disable background throttling. The overlay's preload exposes only `countdown.onValue`; main sends `countdown:value` with a digit or `null`, and the preload accepts only positive integers or `null`. Packaged builds load local HTML. Development builds may load the electron-vite URL.
+Every renderer enables sandboxing, context isolation, and web security, disables Node integration, and blocks navigation and new windows. The countdown overlay additionally disables background throttling. The overlay's preload exposes only `countdown.onValue`; main sends `countdown:value` with a digit or `null`, and the preload accepts only positive integers or `null`. Packaged builds load local HTML. Development builds may load the electron-vite URL.
 
 The settings panel has its own preload exposing exactly four calls. `settings:capture`, `settings:read` and `settings:choose` are refused unless the sender is the panel window's main frame. A choose request carries a group id and a choice id — never an action — and main resolves the pair against a freshly built model, so a request can only perform work the app is offering at that moment, and only while the recording state allows it. Saves are serialized in request order and the answer reports the committed value.
 
@@ -80,7 +80,7 @@ The settings panel has its own preload exposing exactly four calls. `settings:ca
 | Panel → main | `settings:choose { group, choice }` | Apply an offered option; answers with the view and whether it committed |
 | Main → panel | `settings:changed` | State or context moved; re-render |
 
-Main creates a MessageChannelMain and sends one port to preload over `capture-host-port`. Preload transfers it to the page with window.postMessage. The page checks that the message comes from its own window with the expected marker, then sends ready. The port is transferred; media ArrayBuffers are copied with structured clone.
+Main forks a fresh `utilityProcess` for each attempt and exchanges the messages below over its parent port; the host sends ready once it has loaded. The rest of this section and the bounded-queue paragraph still describe parts of the removed capture renderer and are kept until step 8 rewrites them.
 
 Both receivers run handwritten type guards. These validate required shapes, not strict rejection of extra fields or comprehensive resource quotas. There is no protocol-version negotiation because both ends ship together.
 
@@ -93,8 +93,9 @@ Both receivers run handwritten type guards. These validate required shapes, not 
 | Host → main | `ready` / `pong` | Channel ready / heartbeat response |
 | Host → main | `prepared { sessionId, mimeType, capture }` | Stream checked, quality applied, MediaRecorder built but inactive |
 | Host → main | `started { sessionId }` | MediaRecorder started; main keeps the report from `prepared`; does not mean a chunk is on disk |
-| Host → main | `chunk { sessionId, seq, bytes }` | Encoded bytes with consecutive sequence numbers starting at zero |
-| Host → main | `stopped { sessionId }` | Final chunk has been posted; main may finalize the file |
+| Host → main | `progress { sessionId, bytes }` | Bytes the engine has written while media arrives |
+| Host → main | `stopped { sessionId }` | Capture has ended; the engine still finishes the file |
+| Host → main | `finished { sessionId, file }` / `writeError { sessionId, code, detail }` | The engine finished the file / the write error that kept it from being finished |
 | Host → main | `error { sessionId, code, detail }` | Failure the host observed; only the codes in `HOST_ERROR_CODES` (folder, disk, deadline and supervision failures are main's own) |
 
 There is no per-chunk ACK or backpressure. Blob conversion and disk writes are serialized separately, and each queue is bounded instead: the renderer's handoff and the writer's accepted-but-unwritten bytes each stop at 64 MiB, which ends the recording with its written prefix kept rather than growing memory. Heartbeats detect renderer responsiveness, not continuing media delivery; media delivery has its own deadlines, the first nonempty chunk and then a stall guard that warns after 10 s without one and fails at 30 s ([recording](recording.md#deadlines-and-supervision)).
@@ -117,6 +118,6 @@ The single media writer rule does not prohibit settings and logging modules from
 
 ## Startup and shutdown
 
-Main initializes logging/error handlers and obtains a single-instance lock. It hides the Dock icon as the app finishes launching and again after ready (the bundle declares no `LSUIElement`; on macOS the icon returns, with the menu bar's menus, only while the window is open), loads settings, registers the display-media handler, composes Recorder/host/permissions/Tray, subscribes to events, and starts permission polling. Each recording attempt creates a fresh capture window, and with a countdown an overlay window, and main destroys both when the attempt settles: no capture or overlay renderer or heartbeat timer remains between recordings.
+Main initializes logging/error handlers and obtains a single-instance lock. It hides the Dock icon as the app finishes launching and again after ready (the bundle declares no `LSUIElement`; on macOS the icon returns, with the menu bar's menus, only while the window is open), loads settings, composes Recorder/host/permissions/Tray, subscribes to events, and starts permission polling. Each recording attempt creates a fresh capture host process, and with a countdown an overlay window, and main ends both when the attempt settles (the host may first finish the file): no capture host, overlay renderer or heartbeat timer remains between recordings.
 
 Closing all windows does not quit the app. Before-quit always waits for Recorder.shutdown, which includes failure cleanup even when the tray is idle, then for the settings, window-size and log writes and the failure-history save, before retrying quit ([deferred quit](desktop.md#deferred-quit)). Will-quit stops permission polling and destroys host, overlay and Tray. Power loss, forced main-process termination, and blocked storage do not carry a complete-durability guarantee.

@@ -1,7 +1,6 @@
 /**
  * Recording health guards (docs/system-design/recording.md#deadlines-and-supervision):
- * every main-side threshold lives here; the capture page's handoff bound is
- * `HANDOFF_BACKLOG_LIMIT_BYTES` in shared/protocol.ts. Values are the initial targets of plan 038; tune
+ * every main-side threshold lives here. Values are the initial targets of plan 038; tune
  * them only with written evidence. The guards observe and stop through the
  * existing paths; nothing here reserves space, throttles capture or repairs files.
  */
@@ -12,14 +11,10 @@ export interface RecordingHealth {
   diskWarnBytes: number;
   /** Below this, request the normal stop once so the file is drained and published while space remains. */
   diskStopBytes: number;
-  /** Without a nonempty chunk after media began: log a warning once… */
+  /** Without the engine reporting media after it began: log a warning once… */
   stallWarnMs: number;
   /** …then fail the session with `capture_failed`. */
   stallFailMs: number;
-  /** Bytes FileWriter accepted but has not confirmed written; exceeding it fails the session. */
-  writerBacklogBytes: number;
-  /** A generic start failure waits at most this long for queued writer work before classifying it. */
-  startDrainMs: number;
   /**
    * A save still running after this, in the background once capture stopped, is said to be slow (a drive that stopped
    * answering): logged and told once. It is never abandoned, since a slow drive that is still working finishes it.
@@ -35,7 +30,5 @@ export const RECORDING_HEALTH: Readonly<RecordingHealth> = {
   diskStopBytes: 200 * MIB,
   stallWarnMs: 10_000,
   stallFailMs: 30_000,
-  writerBacklogBytes: 64 * MIB,
-  startDrainMs: 2000,
   saveSlowMs: 30_000,
 };

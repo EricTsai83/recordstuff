@@ -1,6 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { COUNTDOWN_VALUE_CHANNEL } from "../shared/countdown";
-import { CAPTURE_HOST_PORT_CHANNEL } from "../shared/protocol";
 import { SETTINGS_CHANNELS } from "../shared/settings-panel";
 import { VIDEO_CHANNELS } from "../shared/video-player";
 
@@ -39,17 +38,4 @@ it("countdown preload subscribes to the channel the overlay sends on", async () 
   await import("./countdown");
   electron.exposed.countdown.onValue(() => {});
   expect([...electron.used]).toEqual([COUNTDOWN_VALUE_CHANNEL]);
-});
-
-it("capture-host preload listens for the port on the channel main posts it to, and hands it on under the name the page waits for", async () => {
-  const postMessage = vi.fn();
-  vi.stubGlobal("window", { postMessage });
-  try {
-    await import("./index");
-    expect([...electron.used]).toEqual([CAPTURE_HOST_PORT_CHANNEL]);
-    // The page's startup listener matches this message against the same constant; a drifted copy would leave every recording unready.
-    const port = {};
-    electron.listeners.get(CAPTURE_HOST_PORT_CHANNEL)!({ ports: [port] });
-    expect(postMessage).toHaveBeenCalledWith(CAPTURE_HOST_PORT_CHANNEL, "*", [port]);
-  } finally { vi.unstubAllGlobals(); }
 });

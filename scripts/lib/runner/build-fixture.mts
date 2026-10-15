@@ -6,20 +6,12 @@ import { build, transformWithEsbuild } from "vite";
 
 export async function buildFixture(
   name: "quit-dialog" | "recording-lifecycle" | "history-quit" | "settings-native" | "window-drag" | "player-panel" | "ui-preview" | "shortcut-failure" | "shortcut-layout"
-    | "release-record-network" | "frame-cadence" | "frame-cadence-renderer" | "publication-bench",
+    | "release-record-network" | "publication-bench",
   outputDir: string,
 ): Promise<string> {
   const source = fileURLToPath(new URL(`../../fixtures/${name}.ts`, import.meta.url));
-  // A classic script, so the diagnostic page loads it from file:// under the host's CSP.
-  if (name === "frame-cadence-renderer") {
-    await build({ configFile: false, logLevel: "error", build: {
-      outDir: outputDir, emptyOutDir: false, minify: false,
-      lib: { entry: source, formats: ["iife"], name: "RecordStuffFrameCadence", fileName: () => `${name}.js` },
-    } });
-    return path.join(outputDir, `${name}.js`);
-  }
   // Settings snapshots use the real model and its pure shared dependencies.
-  if (name === "window-drag" || name === "settings-native" || name === "player-panel" || name === "ui-preview" || name === "recording-lifecycle" || name === "history-quit" || name === "quit-dialog" || name === "frame-cadence"
+  if (name === "window-drag" || name === "settings-native" || name === "player-panel" || name === "ui-preview" || name === "recording-lifecycle" || name === "history-quit" || name === "quit-dialog"
     || name === "publication-bench") {
     await build({ configFile: false, logLevel: "error", build: {
       outDir: outputDir, emptyOutDir: false, minify: false,

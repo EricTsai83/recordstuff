@@ -22,10 +22,8 @@ describe("controlled acceptance instrumentation", () => {
     expect(instrumented).toContain('configureControlled("/tmp/run with \\"quotes\\" $&")');
     expect(instrumented).toContain("defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
     expect(instrumented).toContain("  const recorder = new Recorder({\n    host: controlled.host(host),\n");
-    expect(instrumented).toContain(": controlled.openWriter(recordingPath, finalPath),");
-    // Both engines' writers carry the faults (plan 076): the engine the app records through is the production choice.
-    expect(instrumented).toContain("? controlled.openEngineWriter(recordingPath, finalPath, (file) => nativeHost.fileOutcome(file))");
-    expect(instrumented).toContain("const engine = captureEngine(process.platform, process.env);");
+    // The native engine's writer carries the close fault (plan 076); its write fault is the host's.
+    expect(instrumented).toContain("openWriter: (recordingPath, finalPath) => controlled.openEngineWriter(recordingPath, finalPath, (file) => host.fileOutcome(file)),");
     expect(instrumented).toContain("publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {");
     expect(instrumented).toContain('notify: code => permissionNotices.failed(code),');
     expect(instrumented).toContain('failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),');
@@ -35,7 +33,7 @@ describe("controlled acceptance instrumentation", () => {
     expect(source).not.toContain("controlled");
   });
   it("fails closed when production wiring drifts or an anchor repeats", () => {
-    expect(() => instrumentControlledAcceptance(source.replace("FileWriter.open(recordingPath, finalPath),", "FileWriter.open(recordingPath, finalPath, {}),"), "/tmp/x")).toThrow("anchor changed");
+    expect(() => instrumentControlledAcceptance(source.replace("{ outcome: (file) => host.fileOutcome(file) }),", "{ outcome: (file) => host.fileOutcome(file), io: undefined }),"), "/tmp/x")).toThrow("anchor changed");
     const changedNotice = source.replace('notify: code => permissionNotices.failed(code),', "notify: () => undefined,");
     expect(changedNotice).not.toBe(source);
     expect(() => instrumentControlledAcceptance(changedNotice, "/tmp/x")).toThrow("anchor changed");

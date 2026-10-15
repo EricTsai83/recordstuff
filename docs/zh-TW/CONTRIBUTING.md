@@ -37,7 +37,7 @@
 | 位置 | 職責 |
 | --- | --- |
 | `src/main/` | `index.ts` 組裝整個 App；每個模組一個資料夾：`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`、`app/`、`settings/`、`menus/`、`actions/`，共用工具放在 `lib/` |
-| `src/renderer/` | 每個頁面一個資料夾（`capture/`、`settings/`、`countdown/`、`video/`）、共用的 `player/`，以及 `components/ui/` 的 shadcn/ui primitive |
+| `src/renderer/` | 每個頁面一個資料夾（`settings/`、`countdown/`、`video/`）、共用的 `player/`，以及 `components/ui/` 的 shadcn/ui primitive |
 | `src/preload/` | MessagePort 交接 |
 | `src/shared/` | 狀態、訊息協定、錄影品質與翻譯 |
 | `scripts/` | 建置、簽署與錄影驗證工具：入口檔在頂層，共用程式碼在 `lib/runner/`、`lib/acceptance/`、`lib/verification/`、`lib/audio/` 與 `lib/release/` |
@@ -50,7 +50,7 @@
 
 App 文案位於 `src/shared/i18n.ts`。新增或修改文案時，同步更新英文與繁體中文項目，保持具名 placeholder 一致；編譯器會檢查每次呼叫都傳入各 placeholder 的值。修改已記載的行為或指令時，更新相關文件及既有翻譯，並確認連結能從各文件所在目錄正確解析。
 
-可見的 renderer 使用 React、Tailwind CSS 4 與 shadcn/ui 的 Base UI 版本。`components.json` 設定 `base-mira` registry、alias 與共用的 `src/renderer/ui.css` token。透過 `pnpm dlx shadcn@latest add <component>` 加入元件；產生的原始碼放在 `src/renderer/components/ui/`，並確認 Base UI 的 data attribute 與安裝版本一致。產生的 `cn` import 必須使用 `@/lib/utils`，不要加入無關的 `cn` 套件。`settings-app.tsx` 畫出已提交的 view；`settings-controller.ts` 負責 IPC、非同步請求所有權、焦點與宣告。`player.tsx` 由設定視窗與全螢幕視窗共用。倒數字型與播放覆蓋層是功能專用的 React 呈現；原生 OS 選單及隱藏的擷取 host 使用各自的平台 API。
+可見的 renderer 使用 React、Tailwind CSS 4 與 shadcn/ui 的 Base UI 版本。`components.json` 設定 `base-mira` registry、alias 與共用的 `src/renderer/ui.css` token。透過 `pnpm dlx shadcn@latest add <component>` 加入元件；產生的原始碼放在 `src/renderer/components/ui/`，並確認 Base UI 的 data attribute 與安裝版本一致。產生的 `cn` import 必須使用 `@/lib/utils`，不要加入無關的 `cn` 套件。`settings-app.tsx` 畫出已提交的 view；`settings-controller.ts` 負責 IPC、非同步請求所有權、焦點與宣告。`player.tsx` 由設定視窗與全螢幕視窗共用。倒數字型與播放覆蓋層是功能專用的 React 呈現；原生 OS 選單及原生錄影引擎使用各自的平台 API。
 
 一般 UI 優先組合既有的 shadcn primitive：有標籤的設定與驗證用 Field、附固定副檔名的輸入用 InputGroup、空狀態用 Empty、收合區用 Collapsible、右鍵操作用 ContextMenu，控制項的視覺提示用 Tooltip。`ControlTooltip` 直接組合在既有控制項上，不增加 Tab 停靠點；控制項仍需保留可存取名稱。DropdownMenu 與 ContextMenu 共用檔案操作內容。草稿驗證與短暫提示的計時放在功能 hooks（`use-text-setting.ts`、`use-zoom-notice.ts`），畫面由 primitive 組合；縮放 IPC 放在對應 hook，已提交設定、檔案操作所有權與宣告仍由 controller 管理。縮放與復原回饋使用共用的 Sonner Toaster。導入 primitive 時保留既有鍵盤行為：失敗紀錄以 Collapsible 保留跨日期的方向鍵導覽。
 

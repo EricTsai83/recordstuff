@@ -357,33 +357,22 @@ export const roleText = (roles: RoleCounts): string =>
 
 /**
  * What may run while the app waits (plan 049; docs/system-design/design-overview.md#waiting-in-the-menu-bar),
- * by role: each required role exactly once, each allowed role at most its count, nothing else.
- * Right after launch Electron 44 keeps one pre-warmed renderer from the default session
- * (electron/electron#53144), which the first window takes and nothing re-creates. After a
- * recording Chromium's out-of-process audio service, started by the first system-audio capture,
- * stays until the app quits; Chromium 152 gives it no idle exit. With Settings closed no renderer
- * may remain: a capture host or countdown overlay left behind shows up here.
+ * by role: each required role exactly once, each allowed role at most its count, nothing else. The native engine
+ * records (plan 076): nothing uses the default session before a window opens, so no renderer is pre-warmed at launch,
+ * and capture starts neither Chromium's audio service nor a lasting process, since its `utilityProcess`
+ * (`utility:node`) ends once its file is finished. With Settings closed no renderer may remain: a countdown overlay
+ * left behind shows up here.
  */
 export const IDLE_ROLES = {
-  launch: { required: ["main", "gpu", "utility:network"], allowed: { renderer: 1 } },
-  afterRecording: { required: ["main", "gpu", "utility:network"], allowed: { "utility:audio": 1 } },
+  launch: { required: ["main", "gpu", "utility:network"], allowed: {} },
+  afterRecording: { required: ["main", "gpu", "utility:network"], allowed: {} },
   /**
    * The Settings page's renderer must exist: without it the scenario measured closed idle. A second is the full-screen
-   * page waiting loaded and hidden while Settings is open (video-fullscreen.ts).
+   * page waiting loaded and hidden while Settings is open (video-fullscreen.ts); Chromium's audio service may follow a
+   * preview or the player's sound.
    */
   settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1, renderer: 2 } },
 } as const satisfies Record<string, { required: readonly string[]; allowed: Readonly<Record<string, number>> }>;
-
-/**
- * The same contract when the native engine records (plan 076): nothing uses the default session at launch, so no
- * renderer is pre-warmed, and capture never starts Chromium's audio service, so none may follow a recording. The
- * capture `utilityProcess` (`utility:node`) ends once its file is finished, so it is not allowed either.
- */
-export const NATIVE_IDLE_ROLES = {
-  launch: { required: ["main", "gpu", "utility:network"], allowed: {} },
-  afterRecording: { required: ["main", "gpu", "utility:network"], allowed: {} },
-  settingsOpen: IDLE_ROLES.settingsOpen,
-} as const satisfies Record<keyof typeof IDLE_ROLES, { required: readonly string[]; allowed: Readonly<Record<string, number>> }>;
 
 export function judgeRoles(roles: RoleCounts, contract: { required: readonly string[]; allowed: Readonly<Record<string, number>> }): Verdict {
   const problems: string[] = [];

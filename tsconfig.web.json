@@ -17,7 +17,6 @@
   "include": [
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
-    "src/shared/**/*.ts",
-    "scripts/fixtures/frame-cadence-renderer.ts"
+    "src/shared/**/*.ts"
   ]
 }

@@ -72,17 +72,16 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe, unique writer, overlay prepare, host start; clean late results |
 | openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
 | markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
-| handleHostMessage | Filter session, dispatch prepared/started/chunk/stopped/error, map a pre-capture capture_failed to capture_start_failed with the phase, stop stale capture |
+| handleHostMessage | Filter session, dispatch prepared/started/progress/stopped/error, map a pre-capture capture_failed to capture_start_failed with the phase, stop stale capture |
 | beginCountdown | Enter countdown N, show the overlay and schedule every tick, the dismissal and N seconds from one monotonic anchor |
 | dismissOverlay / recordAfterCountdown | Await the overlay's dismissal within its bound (then close it and log) / send `record` once N seconds passed and the overlay is gone |
 | record | Enter arming, arm the `record → started` deadline and send `record`; a refusal fails the start |
 | cancel | Detach session, clear timers, close the overlay, stop the host, return to the pre-attempt idle, abandon the writer, emit `cancelled`, remove the sentinel |
 | present / closeOverlay / clearCountdown | Call the presenter, logging its errors / close the overlay once / clear countdown timers |
-| handleChunk | Validate consecutive seq, clear first-chunk deadline, reset the stall guard on nonempty media after started, append; map rejection to failure |
+| mediaArrived | The engine's nonempty `progress`: clear the first-media deadline and reset the stall guard after started |
 | finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason and the session trace, then remove the sentinel |
-| armStall | Inter-chunk timer after media began: log once at the warning bound, fail with capture_failed at the second |
+| armStall | Timer between progress reports after media began: log once at the warning bound, fail with capture_failed at the second |
 | watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
-| retainedWriteError | Drain the writer within a bound and return its retained write/sync error, used only to reclassify capture_start_failed |
 | handleHostFailure | Fail only when a session exists; before `record` as capture_start_failed naming the phase |
 | cancelMarked | An attempt sleep or quit marked before `prepared` is cancelled with that reason instead of failing on a host error or loss, display removal, or a timed-out or refused request |
 | fail | Detach session, clear deadline, countdown and health timers, close the overlay, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
@@ -92,7 +91,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Main capture supervisor
 
-[main/recording/capture-host.ts](../../src/main/recording/capture-host.ts). Distinct from the same-named renderer class.
+[main/recording/native-capture-host.ts](../../src/main/recording/native-capture-host.ts) supervises the per-attempt `utilityProcess` ([native-host-process.ts](../../src/main/recording/native-host-process.ts)) that loads the Rust engine. The table below still describes the hidden-window supervisor that plan 076 removed on 2026-10-16; it is kept until plan 076 step 8 rewrites it.
 
 | Method | Contract |
 | --- | --- |
@@ -110,7 +109,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Renderer capture and encoding
 
-[renderer/capture/capture-host.ts](../../src/renderer/capture/capture-host.ts). No filesystem or arbitrary Node access.
+This section describes the hidden capture renderer (`renderer/capture/capture-host.ts`) that plan 076 removed on 2026-10-16; it is kept until plan 076 step 8 rewrites it. The native engine now captures and encodes in its own process.
 
 | Function/method | Contract |
 | --- | --- |
@@ -137,7 +136,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 ## Media storage
 
-[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts). NodeFs adapts open (a handle that also writes at a position and truncates), link, exclusive copy, unlink, mkdir, and writeFile for injected I/O.
+[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts) keeps `publishRecording`, the error classification, `ensureWritableDir` and `nodeFs` (open, link, exclusive copy, unlink, mkdir and writeFile for injected I/O); the `FileWriter` class was removed with the hidden renderer on 2026-10-16. [main/recording/engine-file-writer.ts](../../src/main/recording/engine-file-writer.ts) is the Recorder's writer: `EngineFileWriter.open` reserves the temporary name exclusively, `finish` waits for the engine's outcome and publishes, `abandon` keeps a nonempty file.
 
 | Function/method | Contract |
 | --- | --- |
@@ -146,20 +145,9 @@ The page's window-message callback checks source/marker/port before creating the
 | classifyWriteError | ENOSPC→disk_full; otherwise output_write_failed |
 | classifyOpenError | ENOSPC→disk_full; otherwise output_open_failed (the folder probe and the exclusive open) |
 | ensureWritableDir | mkdir and write probe; throw classifyOpenError's code on failure; remove probe best effort |
-| FileWriter constructor | Store handle/paths/I/O and schedule queued sync |
-| FileWriter.open | Exclusive temporary-file open → writer; wrap open failure |
-| bytesWritten | Sum of confirmed bytes from each write, including progress before an append fails |
-| backlogBytes | Bytes accepted by append and not yet confirmed written or released after a failure |
-| append | Reject if closed or already refused; refuse at once, without queueing, an append that would exceed the backlog bound (keeping an earlier disk error); otherwise queue complete writes of the remaining buffer, counting confirmed progress; empty input skips write, zero/invalid counts reject |
-| drain | Wait for queued work, then return the retained failure or refusal, if any |
-| finish | Queued sync; reject after a refusal; makePlain; release, exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and `finishTimings`; reject failure |
-| finishTimings | After a successful finish: flush, finalize, close, publish and cleanup milliseconds, why the file stayed fragmented if it did, `link` or `copy`, and the link's error code when it copied; diagnostics only |
-| makePlain | With the index's plan and positional writes: append the whole `moov` and sync, then write the 16-byte `mdat` header over the old `moov` and sync; truncate a partly appended index; never throw → why the file stayed fragmented, or undefined ([plain MP4 at save](recording.md#plain-mp4-at-save)) |
-| abandon | Drain, best-effort close, preserve nonempty temporary file or remove empty file; never throw |
-| release | Once-only closed flag and handle close; `beginTerminal` already stopped the fsync timer |
-| enqueue | Serialize operations; retain first failure and reject later operations consistently |
+| publishRecording | Exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and timings |
 
-[main/recording/mp4-finalize.ts](../../src/main/recording/mp4-finalize.ts) indexes the fragmented MP4 as it is written ([plain MP4 at save](recording.md#plain-mp4-at-save)).
+The table below describes `mp4-finalize.ts`, removed with the hidden renderer on 2026-10-16 and kept until plan 076 step 8 rewrites it; the native engine's muxer ([native/capture/src/mux](../../native/capture/src/mux)) now writes and finishes the MP4.
 
 | Function/method | Contract |
 | --- | --- |
@@ -244,7 +232,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [shared/video-player.ts](../../src/shared/video-player.ts): `formatDuration(seconds)` writes a length or a position as `1:23`, or `1:02:03` from an hour, counting whole seconds down, so a recording card's length and its player's total read the same; an unknown length reads `0:00`. `playbackState` and `isFullScreenChoice` validate what the full-screen window and the player send.
 
-[shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; chunk validation requires nonnegative integer seq and ArrayBuffer bytes.
+[shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; `progress` requires finite nonnegative bytes and `finished` an engine file report.
 
 [shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (the font fraction of the display's shorter side and its 56–216 pt clamp, the window-to-font ratio, insets, font, digit, outline and shadows at the 56 pt reference size, reduced-transparency values), the tick's values `COUNTDOWN_TICK` (sine at 523 Hz, the last digit ×1.5, a quiet fourth partial, 4 ms attack, 140 ms, −20 dBFS), `DEFAULT_COUNTDOWN_SOUND` (on), `tickFrequencyHz(digit)` and the page's `COUNTDOWN_SOUND_QUERY` (plan 046), the one place every timing, appearance and sound value lives; `overlayFontPt(displayBounds)` gives the digit's size for a display and `overlayBounds(displayBounds, workArea)` the square window, in whole points, at the top-right of its work area; the value channel and bridge type the overlay preload exposes.
 
@@ -259,8 +247,6 @@ The page's window-message callback checks source/marker/port before creating the
 | close / destroy | Destroy at once, resolving a pending dismissal; `destroy` is the app's safety net on settled states and quit |
 
 [renderer/countdown/countdown.ts](../../src/renderer/countdown/countdown.ts): `overlayStyle` turns the shared appearance values into CSS custom properties; `createCountdownView` crossfades two stacked faces, fades the stage out on `null` and calls its optional `onDigit` once per new digit; `playTick` synthesizes one tick from `COUNTDOWN_TICK` with Web Audio; `soundRequested` reads the page's query (plan 046). [preload/countdown.ts](../../src/preload/countdown.ts) exposes only `countdown.onValue` and forwards positive integers or `null`. [shared/state.ts](../../src/shared/state.ts): `isErrorCode` checks the ERROR_CODES whitelist.
-
-[preload/index.ts](../../src/preload/index.ts) has one IPC callback rather than named functions: forward the received capture-host-port to window with transferred ports. No contextBridge API is exposed.
 
 ## Permissions
 
@@ -354,7 +340,7 @@ The page's window-message callback checks source/marker/port before creating the
 
 [main/recording/session-sentinel.ts](../../src/main/recording/session-sentinel.ts): `SessionSentinels.write` atomically names a session's temporary file before it exists; `remove` deletes it without throwing; `leftovers` lists sentinels of earlier processes, skipping this process's sessions, discarding interrupted writes and invalid content, and keeping ones it cannot read now. `interruptionFailure` turns one into an `app_terminated` entry with a session-derived ID; `reportInterruptions` hands them to `RecordingResults.restore` at launch and removes them only once `RecordingResults.saved` confirms their entries were saved.
 
-[main/recording/recording-health.ts](../../src/main/recording/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space, writer-backlog and start-drain thresholds.
+[main/recording/recording-health.ts](../../src/main/recording/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space and slow-save thresholds.
 
 [main/recording/keep-awake.ts](../../src/main/recording/keep-awake.ts): `KeepAwake.update` holds one `prevent-display-sleep` power blocker from `starting` until the state settles and logs each start and stop; a blocker that throws is logged only; `dispose` releases it on quit (plan 050).
 
@@ -439,13 +425,13 @@ See [tooling](tooling.md) for pipeline and thresholds. These tools are developme
 | Same: mainDisplaySize, outputDir | Primary-display dimensions and configured/default folder |
 | Same: sleep, electronPids, electronMainPid | Inter-case delay; every process of this checkout's Electron.app, and its main process, the root the CPU sampler follows |
 | Same: logSince | This case's lines from its cursor across rotation; a lost history is a case failure |
-| Same: recordOnce | Launch development app with automatic-recording config, follow its process tree with the shared CPU sampler, await outcome; CPU judged over the recording from its third second (`cpuWindow` in lib/verification/matrix.mts), with the 95th percentile, VTEncoderXPCService and this machine's baseline |
+| Same: recordOnce | Launch development app with automatic-recording config, follow its process tree with the shared CPU sampler, await outcome; CPU judged over the recording from its third second (`cpuWindow` in lib/verification/matrix.mts), with the 95th percentile, VTEncoderXPCService and this machine's baseline when one is recorded (none for the native engine yet) |
 | Same: main | Validate prerequisites (ffmpeg/ffprobe, then clang for the CPU sampler; blocked exit 2 before anything runs), open material, run cases with energy and sync required, verify/save results, clean up, exit by `verdictExitCode` |
 | Same: unmetChecks | A case's verdict and each check that kept it from passing, with its reason |
 | [lib/verification/cpu-sampler.mts](../../scripts/lib/verification/cpu-sampler.mts) `compileSampler`, `CpuSampler` | Compile [cpu-sampler.c](../../scripts/lib/verification/cpu-sampler.c) with clang (missing Command Line Tools: `SamplerBlockedError`); stream its once-a-second `proc_pid_rusage` counters for a root process, its descendants and followed helpers such as VTEncoderXPCService, until stopped |
 | Same: `parseSample`, `intervals`, `summarize`, `percentile` | Parse one helper line; per-second CPU, wake-ups and energy per process with the app's process-set changes marked; average, nearest-rank 95th percentile and maximum over a window, discarding changed intervals unless changes are expected |
 | Same: `CPU_BUDGET`, `judgeIdle`, `judgeSettingsOpen`, `judgeRecording`, `judgeCoverage`, `cpuBaseline`, `machineModel` | The plan 049 budget and its verdicts (the recording threshold, encoder report, 25% baseline warning and the 80% sampled coverage); this machine's recorded baseline from cpu-baselines.json |
-| Same: `processRole`, `rolesFromPs`, `readRoles`, `IDLE_ROLES`, `judgeRoles`, `judgeSteadyState` | A Chromium process's role from its command line; the roles of an app's tree; the idle contract by scenario; the same roles after every recording |
+| Same: `processRole`, `rolesFromPs`, `readRoles`, `IDLE_ROLES`, `judgeRoles`, `judgeSteadyState` | A Chromium process's role from its command line; the roles of an app's tree; the native engine's idle contract by scenario; the same roles after every recording |
 | [measure-cpu.mts](../../scripts/measure-cpu.mts) `launch`, `seed` / `restoreSettings`, `main` | Launch the quit bundle and wait for settled startup; write the countdown, display and quality only while the app is quit and set just those keys back once no process remains; run scenarios A, R, B and C, write report.md/report.json, quit the app and confirm it exited, exit 0/1/2/130/143 |
 
 ### Pure measurement logic

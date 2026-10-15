@@ -1,8 +1,7 @@
 /**
- * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, register
- * the display-media handler (the chosen display + system audio loopback), detect
- * permission, and make quitting wait for recording work, metadata writes and failure history.
- * Settings use a separate sandboxed window; capture keeps its hidden host.
+ * App lifecycle (docs/system-design/recording.md): hide the Dock icon, create the tray, detect permission, and make
+ * quitting wait for recording work, metadata writes and failure history. Settings use a separate sandboxed window;
+ * capture runs in the native engine's `utilityProcess` (plan 076).
  */
 import { createPreferenceActions } from "./settings/preferences";
 import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
@@ -28,20 +27,17 @@ import {
   powerSaveBlocker,
   protocol,
   screen,
-  session,
   shell,
   type DesktopCapturerSource,
 } from "electron";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CaptureHost } from "./recording/capture-host";
 import { NativeCaptureHost } from "./recording/native-capture-host";
-import { captureEngine } from "./recording/capture-engine";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
-import { FileWriter, ensureWritableDir } from "./recording/file-writer";
+import { ensureWritableDir } from "./recording/file-writer";
 import { KeepAwake } from "./recording/keep-awake";
 import { createOutputFolderOpener, isSameFolder } from "./library/output-folder";
 import { createUncaughtExceptionHandler } from "./app/fault-dialog";
@@ -250,12 +246,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     log,
   });
   // The library's media protocol lives on the default session, and using that session makes Electron start a renderer
-  // ahead of time, which then idles. With the native engine nothing else uses the session until a window opens, so the
-  // protocol is registered as the first window is made, before it loads anything (plan 076, step 4).
-  const registerMedia = (): void => protocol.handle(MEDIA_SCHEME, request => library.handle(request));
-  const engine = captureEngine(process.platform, process.env);
-  if (engine === "native") app.once("browser-window-created", registerMedia);
-  else registerMedia();
+  // ahead of time, which then idles. Nothing else uses the session until a window opens, so the protocol is registered
+  // as the first window is made, before it loads anything (plan 076, step 4). Nothing may use it at launch.
+  app.once("browser-window-created", () => protocol.handle(MEDIA_SCHEME, request => library.handle(request)));
   appLanguage = () => settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
@@ -293,10 +286,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     changed: () => refreshUi(),
     log,
   });
-  // Plan 076's native engine (capture-engine.ts): a `utilityProcess` running the Rust engine, which captures with
-  // ScreenCaptureKit (macOS) or Windows.Graphics.Capture (Windows) and writes the file itself. It leaves RecordStuff's
-  // own windows out of every recording, those opened after the start included (075's D14).
-  const nativeEngine = engine === "native";
+  // Plan 076's native engine: a `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit (macOS)
+  // or Windows.Graphics.Capture (Windows) and writes the file itself. It leaves RecordStuff's own windows out of every
+  // recording, those opened after the start included (075's D14). Other platforms have no engine: a recording fails
+  // when the module does not load.
   const excludeWindowsFromCapture = captureExclusion<BrowserWindow>({
     windows: () => BrowserWindow.getAllWindows(),
     onCreated: (listener) => {
@@ -305,22 +298,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return () => app.removeListener("browser-window-created", created);
     },
   });
-  log(`capture engine: ${engine}${process.env["RECORDSTUFF_CAPTURE_ENGINE"] ? ` (RECORDSTUFF_CAPTURE_ENGINE=${process.env["RECORDSTUFF_CAPTURE_ENGINE"]})` : ""}`);
-  // Only the hidden capture renderer asks Chromium for the display. The native engine leaves the default session
-  // untouched: using it at launch makes Electron start a renderer ahead of time, which then idles (plan 076, step 4).
-  if (!nativeEngine) session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    if (host instanceof CaptureHost) host.phase("display requested");
-    displayMedia.answer(
-      // Only preparation asks for a display; a counting-down session already holds its stream.
-      (sessionId) => recorder.state.type === "starting" && host instanceof CaptureHost && host.ownsDisplayRequest(request.frame, sessionId),
-      (source) => {
-        if (host instanceof CaptureHost) host.phase("display answered");
-        if (source) callback({ video: source, audio: "loopback" });
-        else (callback as () => void)();
-      },
-    );
-  }, { useSystemPicker: false });
-  const nativeHost = nativeEngine ? new NativeCaptureHost({
+  const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     // Native code cannot load from inside the asar archive; packaging unpacks out/native.
     addonPath: path.join(__dirname, "../native/recordstuff-capture.node").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
@@ -340,12 +318,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       },
       excludeOwnWindows: excludeWindowsFromCapture,
     } : {}),
-    log,
-  }) : undefined;
-  const host = nativeHost ?? new CaptureHost({
-    preloadPath: path.join(__dirname, "../preload/index.js"),
-    devUrl: app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"],
-    htmlPath: path.join(__dirname, "../renderer/index.html"),
     log,
   });
 
@@ -379,9 +351,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
       isSameFolder(dir, settings.defaultOutputDir) || dir === outputDirOverride),
-    openWriter: (recordingPath, finalPath) => nativeHost
-      ? EngineFileWriter.open(recordingPath, finalPath, { outcome: (file) => nativeHost.fileOutcome(file) })
-      : FileWriter.open(recordingPath, finalPath),
+    openWriter: (recordingPath, finalPath) => EngineFileWriter.open(recordingPath, finalPath, { outcome: (file) => host.fileOutcome(file) }),
     fileName: date => formatFileName(settings.fileNameTemplate, date),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },
     sentinels,

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, NATIVE_IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
+  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
   processRole, roleTreeFromPs, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
@@ -186,27 +186,15 @@ describe("process roles and the idle contract (plan 049)", () => {
     expect([...roleTreeFromPs(ps, 100)]).toEqual([[100, "main"], [101, "gpu"], [102, "utility:network"], [103, "utility:audio"], [300, "child:descendant"]]);
   });
 
-  it("allows neither a pre-warmed renderer, the audio service nor a capture process to idle with the native engine (plan 076)", () => {
+  it("allows neither a pre-warmed renderer, the audio service nor a capture process to idle (plan 076)", () => {
     const base = { main: 1, gpu: 1, "utility:network": 1 };
-    expect(judgeRoles(base, NATIVE_IDLE_ROLES.launch).verdict).toBe("pass");
-    expect(judgeRoles({ ...base, renderer: 1 }, NATIVE_IDLE_ROLES.launch).actual).toContain("unexpected renderer ×1");
-    expect(judgeRoles(base, NATIVE_IDLE_ROLES.afterRecording).verdict).toBe("pass");
-    expect(judgeRoles({ ...base, "utility:audio": 1 }, NATIVE_IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:audio ×1");
-    expect(judgeRoles({ ...base, "utility:node": 1 }, NATIVE_IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:node ×1");
-    expect(NATIVE_IDLE_ROLES.settingsOpen).toBe(IDLE_ROLES.settingsOpen);
-  });
-
-  it("allows the pre-warmed renderer only at launch and the audio service only after a recording", () => {
-    const base = { main: 1, gpu: 1, "utility:network": 1 };
-    expect(judgeRoles({ ...base, renderer: 1 }, IDLE_ROLES.launch).verdict).toBe("pass");
     expect(judgeRoles(base, IDLE_ROLES.launch).verdict).toBe("pass");
-    expect(judgeRoles({ ...base, renderer: 2 }, IDLE_ROLES.launch).actual).toContain("renderer ×2, at most ×1");
-    expect(judgeRoles({ ...base, "utility:audio": 1 }, IDLE_ROLES.launch).actual).toContain("unexpected utility:audio ×1");
-    expect(judgeRoles({ ...base, "utility:audio": 1 }, IDLE_ROLES.afterRecording).verdict).toBe("pass");
-    // A capture host or overlay left behind after a recording, even with the pre-warmed renderer gone.
-    const leaked = judgeRoles({ ...base, "utility:audio": 1, renderer: 1 }, IDLE_ROLES.afterRecording);
-    expect(leaked).toMatchObject({ verdict: "fail" });
-    expect(leaked.actual).toContain("unexpected renderer ×1");
+    expect(judgeRoles({ ...base, renderer: 1 }, IDLE_ROLES.launch).actual).toContain("unexpected renderer ×1");
+    expect(judgeRoles(base, IDLE_ROLES.afterRecording).verdict).toBe("pass");
+    expect(judgeRoles({ ...base, "utility:audio": 1 }, IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:audio ×1");
+    expect(judgeRoles({ ...base, "utility:node": 1 }, IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:node ×1");
+    // An overlay left behind after a recording.
+    expect(judgeRoles({ ...base, renderer: 1 }, IDLE_ROLES.afterRecording)).toMatchObject({ verdict: "fail" });
     expect(judgeRoles({ main: 1, gpu: 1 }, IDLE_ROLES.afterRecording).actual).toContain("utility:network ×0, expected ×1");
     expect(judgeRoles({ ...base, "utility:audio": 1, renderer: 1 }, IDLE_ROLES.settingsOpen).verdict).toBe("pass");
     // With the full-screen page waiting beside Settings, but no third.

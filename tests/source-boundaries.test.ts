@@ -30,7 +30,6 @@ const ALLOWED: Record<string, readonly string[]> = {
   "renderer/lib": ["shared"],
   "renderer/components": ["renderer/lib"],
   "renderer/player": ["renderer/components", "renderer/lib", "shared"],
-  "renderer/capture": RENDERER_SHARED,
   "renderer/countdown": RENDERER_SHARED,
   "renderer/settings": RENDERER_SHARED,
   "renderer/video": RENDERER_SHARED,

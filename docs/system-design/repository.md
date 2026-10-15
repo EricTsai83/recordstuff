@@ -31,16 +31,16 @@ This document describes where things live and why. [Architecture](architecture.m
 | Directory | Runs in | Contents |
 | --- | --- | --- |
 | `src/main/` | Main process | `index.ts`, the composition root that builds and wires every module, and one folder per module ([below](#main-process-modules)) |
-| `src/renderer/` | Renderer processes | The four HTML entries (`index.html` for the hidden capture host, `settings.html`, `countdown.html`, `video.html`) and `ui.css`, the shared tokens and feature layout, at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
-| `src/preload/` | Preload, sandboxed | One file per renderer: `index.ts` hands the MessagePort to the capture host and exposes no API; `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes the overlay value subscription and its unsubscribe; `video.ts` carries fullscreen ready/exit |
-| `src/shared/` | Both | State (`state.ts`), the MessagePort protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
+| `src/renderer/` | Renderer processes | The three HTML entries (`settings.html`, `countdown.html`, `video.html`) and `ui.css`, the shared tokens and feature layout, at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
+| `src/preload/` | Preload, sandboxed | One file per renderer: `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes the overlay value subscription and its unsubscribe; `video.ts` carries fullscreen ready/exit |
+| `src/shared/` | Both | State (`state.ts`), the capture host protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
 
 ### Main process modules
 
 | Folder | What it owns |
 | --- | --- |
 | `lib/` | Process-wide helpers that know no feature: atomic file replacement, the write-drain queue, reading errors, the file log, and the app name |
-| `recording/` | One recording session end to end: the state machine (`recorder.ts`), capture-host supervision, file writing, health thresholds, interruption sentinels, session log lines, the countdown overlay, keep-awake, capture and saved notices, the result history (`recording-result*.ts`), the preference lock (`recording-lock.ts`) and development-only unattended recording (`autorecord.ts`) |
+| `recording/` | One recording session end to end: the state machine (`recorder.ts`), supervision of the native engine's capture host (`native-capture-host.ts`) and the host process itself (`native-host-process.ts`), file reservation and publication, health thresholds, interruption sentinels, session log lines, the countdown overlay, keep-awake, capture and saved notices, the result history (`recording-result*.ts`), the preference lock (`recording-lock.ts`) and development-only unattended recording (`autorecord.ts`) |
 | `display/` | Which screen a recording uses, and main's side of display-media requests |
 | `permission/` | Screen-recording permission detection and its notices |
 | `library/` | The recordings on disk: the Recordings tab's library, MP4 duration, the output folder and the full-screen video window |
@@ -54,7 +54,6 @@ This document describes where things live and why. [Architecture](architecture.m
 
 | Folder | What it holds |
 | --- | --- |
-| `capture/` | The hidden capture host, loaded by `index.html` |
 | `settings/` | The settings page: its entry, the shell (`settings-app.tsx`), one module per tab in `tabs/`, the undo and zoom toasts, the controller (`settings-controller.ts`, one surface over `controller/`, kept by concern), and the page's tests |
 | `countdown/` | The countdown digit and its own `countdown.css` |
 | `video/` | The full-screen video page |
@@ -69,7 +68,7 @@ Imports between folders point one way, so a folder's place in this order is its 
 
 ```text
 main:      lib ← recording, display, permission, library, shortcuts ← app ← settings ← menus ← actions ← index.ts
-renderer:  lib ← components ← player ← capture, countdown, settings, video
+renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← entry points
 ```
 
@@ -93,8 +92,8 @@ Four conventions hold across this tree:
 
 `scripts/` holds everything that supports development but ships with nothing:
 
-- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `diagnose-frame-cadence.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
-- **`scripts/lib/`** for the shared implementation behind those entry points, grouped by purpose: `runner/` (what every desktop runner shares: processes, the scrubbed environment, desktop sessions, round exits, native accessibility, fixture builds, the log reader and session records, timing and the bundle's runtime inputs), `acceptance/` (each acceptance runner's own logic), `verification/` (recording verification, the matrix, playback, media tools, frame cadence, finalization and CPU measurement), `audio/` (audio-quality analysis) and `release/` (the release manifest and its client, which the website also imports).
+- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
+- **`scripts/lib/`** for the shared implementation behind those entry points, grouped by purpose: `runner/` (what every desktop runner shares: processes, the scrubbed environment, desktop sessions, round exits, native accessibility, fixture builds, the log reader and session records, timing and the bundle's runtime inputs), `acceptance/` (each acceptance runner's own logic), `verification/` (recording verification, the matrix, playback, media tools, finalization and CPU measurement), `audio/` (audio-quality analysis) and `release/` (the release manifest and its client, which the website also imports).
 - **`scripts/fixtures/`** for test doubles and injected stand-ins.
 
 Tools use `.mts`/`.mjs` because they run under Node directly rather than through the app's bundler. Their tests are ordinary `*.test.ts` files beside them.
@@ -148,10 +147,10 @@ The structure is enforced by configuration, not convention alone:
 
 | File | What it constrains |
 | --- | --- |
-| `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both. The renderer-side fixture `scripts/fixtures/frame-cadence-renderer.ts` is excluded from the Node config and checked with the DOM one |
+| `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both. |
 | `tsconfig.tests.json` | `tests/` typechecks against both DOM and Node libraries, separately from the renderer |
 | `vitest.config.ts` | Tests are found only under `src/`, `scripts/` and `tests/`, as `*.test.ts` |
-| `electron.vite.config.ts` | The one main entry, four preload entries and four renderer HTML entries |
+| `electron.vite.config.ts` | The main entries (`index.ts` and the native engine's `native-host-process.ts`), three preload entries and three renderer HTML entries |
 | `tests/source-boundaries.test.ts` | Which module folders in `src/` and `scripts/` may import which ([module boundaries](#module-boundaries)) |
 | `electron-builder.yml` | What is packaged (`out/**`, `package.json`) and which resources are copied |
 | `.gitignore` | Generated output, raw measurements, and signing material stay untracked |

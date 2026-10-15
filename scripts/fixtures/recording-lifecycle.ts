@@ -1,13 +1,15 @@
 /**
- * Isolated real Electron process; delays real filesystem work, never the user's app. The `native` modes play the native
- * engine (plan 076): the host writes the file itself and reports progress, its outcome comes after `stopped`, and
- * EngineFileWriter keeps or publishes what it wrote.
+ * Isolated real Electron process; delays real filesystem work, never the user's app. The host plays the native engine
+ * (plan 076): it writes the file itself and reports progress, its outcome comes after `stopped`, and EngineFileWriter
+ * keeps or publishes what it wrote. Modes hold one step each: `publish` the final name's link after a stop, `finish`
+ * the engine's outcome after a stop, `crash` the size check that keeps the partial after the host ends, and `result`
+ * the failure history's check of that partial.
  */
 import { app } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { FileWriter, nodeFs } from "../../src/main/recording/file-writer";
+import { nodeFs } from "../../src/main/recording/file-writer";
 import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
 import { RecordingResults } from "../../src/main/recording/recording-result";
 import { RecordingResultStore } from "../../src/main/recording/recording-result-store";
@@ -19,6 +21,8 @@ import type { HostMessage } from "../../src/shared/protocol";
 async function main(): Promise<void> {
 const dir = process.argv[2]!;
 const mode = process.argv[3]!;
+/** `publish` and `finish` stop normally; `crash` and `result` end the host while it records. */
+const stops = mode === "publish" || mode === "finish";
 app.setPath("userData", path.join(dir, "user-data"));
 app.on("window-all-closed", () => undefined);
 await app.whenReady();
@@ -28,7 +32,6 @@ let deliver!: (message: HostMessage) => void;
 let crash!: () => void;
 let started = false, diskPending = false, release!: () => void;
 let deferred = 0, terminal = 0, stablePath: string | undefined, partial: string | undefined;
-const native = mode.startsWith("native");
 /** Holds a step of the file's finishing until `release`, marking the disk work as pending meanwhile. */
 const held = async <T>(work: () => Promise<T>): Promise<T> => { diskPending = true; await gate; const value = await work(); diskPending = false; return value; };
 const gate = new Promise<void>(resolve => { release = resolve; });
@@ -47,7 +50,7 @@ const recorder = new Recorder({
     start: async (_sessionId, _quality, recordingPath) => { partial = recordingPath; started = true; },
     // Prepare then record, as the real host does; no countdown here.
     record: sessionId => deliver({ type: "started", sessionId }),
-    stop: sessionId => { if (mode === "copy" || mode === "native") deliver({ type: "stopped", sessionId }); },
+    stop: sessionId => { if (stops) deliver({ type: "stopped", sessionId }); },
     onMessage: fn => { deliver = fn; },
     onFailure: fn => { crash = () => fn("capture_host_crashed", "controlled fault"); },
   },
@@ -55,23 +58,16 @@ const recorder = new Recorder({
   newSessionId: () => "fixture", ensureWritableDir: async () => undefined,
   shutdownTimeoutMs: 100,
   stopTimeoutMs: 100, // Same production deadline path, shortened for the fixture.
-  // The engine's file: its outcome after `stopped` (native), or the size the kept partial is judged by after a crash.
-  openWriter: (partial, final) => native ? EngineFileWriter.open(partial, final, {
-    outcome: () => mode === "native" ? held(async () => ({ bytes: 3, finalizeMs: 1 })) : new Promise(() => {}),
-    ...(mode === "native-crash" ? { size: (file: string) => held(async () => (await fs.stat(file)).size) } : {}),
-  }) : FileWriter.open(partial, final, { io: {
-    ...nodeFs,
-    // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
-    link: async (from, to) => { diskPending = true; await gate; await nodeFs.link(from, to); diskPending = false; },
-    copyExclusive: async (from, to) => { diskPending = true; await gate; await nodeFs.copyExclusive(from, to); diskPending = false; },
-    open: async (file, flags) => {
-      const handle = await nodeFs.open(file, flags);
-      return { write: bytes => handle.write(bytes), sync: () => handle.sync(), close: async () => {
-        if (mode === "cleanup") { diskPending = true; await gate; }
-        await handle.close(); if (mode === "cleanup") diskPending = false;
-      } };
+  // Publication is a hard link here (a copy only where links are refused); `publish` holds whichever runs.
+  openWriter: (partial, final) => EngineFileWriter.open(partial, final, {
+    io: mode !== "publish" ? nodeFs : {
+      ...nodeFs,
+      link: (from, to) => held(() => nodeFs.link(from, to)),
+      copyExclusive: (from, to) => held(() => nodeFs.copyExclusive(from, to)),
     },
-  } }),
+    outcome: () => mode === "finish" ? held(async () => ({ bytes: 3, finalizeMs: 1 })) : Promise.resolve({ bytes: 3, finalizeMs: 1 }),
+    ...(mode === "crash" ? { size: (file: string) => held(async () => (await fs.stat(file)).size) } : {}),
+  }),
 });
 recorder.subscribe(event => {
   if (event.type === "saved" || event.type === "failed") {
@@ -89,12 +85,10 @@ while (!started) await pause(1);
 deliver({ type: "prepared", sessionId: "fixture", mimeType: "video/mp4", capture: {
   videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
 } });
-if (native) {
-  // The engine writes the file itself and reports the bytes written so far.
-  await fs.writeFile(partial!, new Uint8Array([11, 22, 33]));
-  deliver({ type: "progress", sessionId: "fixture", bytes: 3 });
-} else deliver({ type: "chunk", sessionId: "fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });
-if (mode !== "copy" && mode !== "native") crash();
+// The engine writes the file itself and reports the bytes written so far.
+await fs.writeFile(partial!, new Uint8Array([11, 22, 33]));
+deliver({ type: "progress", sessionId: "fixture", bytes: 3 });
+if (!stops) crash();
 app.quit(); app.quit();
 await pause(150);
 assert.equal(diskPending, true);
@@ -108,7 +102,7 @@ release();
 while (terminal === 0) await pause(1);
 assert.deepEqual([...await fs.readFile(stablePath!)], [11, 22, 33]);
 assert.equal(await recorder.shutdown(), true);
-if (mode !== "copy" && mode !== "native") { assert.equal(await results.persist(), true); assert.equal((await resultStore.load())[0]?.outcome, "partial"); }
+if (!stops) { assert.equal(await results.persist(), true); assert.equal((await resultStore.load())[0]?.outcome, "partial"); }
 await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({ mode, deferred, terminal, stablePath, bytes: [11, 22, 33] }));
 app.quit();
 

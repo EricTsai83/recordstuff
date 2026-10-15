@@ -1,5 +1,5 @@
 /**
- * Isolated real Electron process for plan 036: production Recorder, FileWriter,
+ * Isolated real Electron process for plan 036: production Recorder, EngineFileWriter,
  * RecordingResults, quit coordinator and unsaved-history quit flow over a
  * controllable history storage boundary. Synthetic bytes only; the prompt's
  * native presentation is replaced by scripted answers that record its options.
@@ -10,7 +10,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
-import { FileWriter, nodeFs } from "../../src/main/recording/file-writer";
+import { nodeFs } from "../../src/main/recording/file-writer";
+import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
 import { RecordingResults } from "../../src/main/recording/recording-result";
 import type { ResultStorage } from "../../src/main/recording/recording-result-store";
 import { Recorder } from "../../src/main/recording/recorder";
@@ -48,12 +49,14 @@ async function main(): Promise<void> {
 
   let deliver!: (message: HostMessage) => void, crash!: () => void;
   let started = 0, sessions = 0, copyHeld = false, releaseCopy!: () => void;
+  /** Each session's temporary file, which the host writes as the engine would. */
+  const files = new Map<string, string>();
   const copyGate = new Promise<void>(resolve => { releaseCopy = resolve; });
   let savedPath: string | undefined, partialPath: string | undefined;
   const recorder = new Recorder({
     publishFailure: result => results.receive(result, { stat: file => fs.stat(file), refresh() {}, notify() {} }),
     host: {
-      start: async () => { started++; },
+      start: async (sessionId, _quality, recordingPath) => { started++; if (recordingPath) files.set(sessionId, recordingPath); },
       record: sessionId => deliver({ type: "started", sessionId }),
       stop: sessionId => { if (sessionId === "B") deliver({ type: "stopped", sessionId }); },
       onMessage: fn => { deliver = fn; },
@@ -62,8 +65,9 @@ async function main(): Promise<void> {
     outputDir: () => dir, quality: () => DEFAULT_QUALITY,
     newSessionId: () => (++sessions === 1 ? "A" : "B"), ensureWritableDir: async () => undefined,
     shutdownTimeoutMs: 100, stopTimeoutMs: 100,
-    openWriter: (partial, final) => FileWriter.open(partial, final, { io: { ...nodeFs,
-      // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
+    // The engine's file (plan 076): it finishes at once; publication is a hard link here (a copy only where links are
+    // refused), and whichever runs is held.
+    openWriter: (partial, final) => EngineFileWriter.open(partial, final, { outcome: async () => ({ bytes: 3, finalizeMs: 1 }), io: { ...nodeFs,
       link: async (from, to) => { copyHeld = true; await copyGate; await nodeFs.link(from, to); copyHeld = false; },
       copyExclusive: async (from, to) => { copyHeld = true; await copyGate; await nodeFs.copyExclusive(from, to); copyHeld = false; } } }),
   });
@@ -73,7 +77,9 @@ async function main(): Promise<void> {
   });
   const begin = (id: string, bytes: number[]): void => {
     deliver({ type: "prepared", sessionId: id, mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
-    deliver({ type: "chunk", sessionId: id, seq: 0, bytes: new Uint8Array(bytes).buffer });
+    // The engine writes the file itself and reports the bytes written.
+    writeFileSync(files.get(id)!, new Uint8Array(bytes));
+    deliver({ type: "progress", sessionId: id, bytes: bytes.length });
   };
 
   const prompts: Array<{ message: string; buttons: string[] | undefined; detail: string | undefined; copyHeld: boolean; savedPath?: string; busy: boolean }> = [];
@@ -100,7 +106,7 @@ async function main(): Promise<void> {
         prompts, joined, deferred, resumed, peak, saves, active, lagMs: Math.round(lag), roundTripsMs: trips.map(Math.round),
         mediaBytes: savedPath ? [...readFileSync(savedPath)] : null, partialBytes: partialPath ? [...readFileSync(partialPath)] : null,
         historyFileWritten: existsSync(historyFile), busyAtExit: results.busy, events,
-        scope: "isolated synthetic capture; production Recorder, FileWriter, RecordingResults, quit coordinator and history quit flow; scripted prompt answers",
+        scope: "isolated synthetic capture; production Recorder, EngineFileWriter, RecordingResults, quit coordinator and history quit flow; scripted prompt answers",
       }, null, 2));
     } catch (cause) { console.error(cause); app.exit(1); }
   });

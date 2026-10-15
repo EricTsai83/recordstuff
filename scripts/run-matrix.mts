@@ -33,7 +33,6 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
-import { ENGINE_USAGE, baselineKey, engineEnv, engineMismatch, takeEngineOption } from "./lib/runner/capture-engine.mts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -74,19 +73,17 @@ const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 
 function usage(message?: string): never {
   if (message) console.error(message);
-  console.error(`usage: pnpm matrix -- <${Object.keys(MATRICES).join("|")}>[,<name>…] [--repeat N] [--no-open-material] [--screen 1920x1080] ${ENGINE_USAGE} [--dry-run]`);
+  console.error(`usage: pnpm matrix -- <${Object.keys(MATRICES).join("|")}>[,<name>…] [--repeat N] [--no-open-material] [--screen 1920x1080] [--dry-run]`);
   process.exit(2);
 }
 
 const roundStarted = Date.now();
-const engineOption = takeEngineOption(runnerArgs());
-if (!engineOption) usage("--engine takes native or chromium");
-const { engine, rest: argv } = engineOption;
+const argv = runnerArgs();
 const parsed = parseMatrixArgs(argv, Object.keys(MATRICES));
 if (!parsed.ok) usage(parsed.error);
 const { names, repeat, openMaterial, dryRun } = parsed.options;
 const cases = planCases(names, repeat);
-const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""} (${engine} engine)`;
+const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""}`;
 const screen = parsed.options.screen ?? mainDisplaySize();
 if (!screen) console.error("Primary display size unavailable; aspect checks may be unavailable (use --screen WxH)");
 if (process.platform !== "darwin") {
@@ -265,7 +262,7 @@ process.once("exit", cleanupSampler);
 async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> {
   const logStart = appLog.end();
   owned.caseLog = logStart;
-  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), ...engineEnv(engine), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
   const launchedAt = Date.now();
   owned.caseLaunchedAt = launchedAt;
   const child = spawn("open", ["-W", "-a", ELECTRON_APP, "--args", REPO_ROOT], { env, stdio: "inherit" });
@@ -307,12 +304,10 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
       : !summary?.judged ? "no one-second interval fell inside the judged window"
         : windowSeconds !== undefined && summary.seconds < windowSeconds * MIN_COVERAGE
           ? `only ${summary.seconds.toFixed(1)} of ${windowSeconds.toFixed(1)} s were sampled (at least ${MIN_COVERAGE * 100}% required)` : undefined;
-  const baselinePercent = cpuBaseline(baselineKey(`matrix ${key}`, engine));
-  const chromiumPercent = engine === "native" ? cpuBaseline(baselineKey(`matrix ${key}`, "chromium")) : undefined;
-  const wrongEngine = engineMismatch(since.lines, engine);
+  const baselinePercent = cpuBaseline(`matrix ${key}`);
   return {
-    file: timedOut || wrongEngine ? undefined : app.saved,
-    failure: since.gap ? `log evidence gap: ${since.gap}` : wrongEngine ?? app.failed,
+    file: timedOut ? undefined : app.saved,
+    failure: since.gap ? `log evidence gap: ${since.gap}` : app.failed,
     cpuProblem: cpuProblem === undefined ? undefined : `CPU evidence incomplete: ${cpuProblem}`,
     cpu: summary && !cpuProblem ? {
       averagePercent: summary.cpuPercent.average,
@@ -320,7 +315,6 @@ async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> 
       peakPercent: summary.cpuPercent.max,
       encoder: { present: summary.followed.present, averagePercent: summary.followed.cpuPercent.average },
       ...(baselinePercent === undefined ? {} : { baselinePercent }),
-      ...(chromiumPercent === undefined ? {} : { reference: { label: "the hidden renderer's baseline", percent: chromiumPercent } }),
     } : undefined,
     elapsedSeconds: (Date.now() - launchedAt) / 1000,
     timedOut,

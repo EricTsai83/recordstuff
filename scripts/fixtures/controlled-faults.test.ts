@@ -54,43 +54,6 @@ describe("controlled acceptance faults", () => {
     expect(faults.faults.write).toBe("off");
   });
 
-  it("fails one write, only once the file holds data, so the production writer keeps a partial", async () => {
-    const events: string[] = [];
-    const faults = new ControlledFaults(event => events.push(event));
-    faults.set("write", "enospc");
-    const partial = path.join(dir, "a.recording.mp4");
-    const writer = await faults.openWriter(partial, path.join(dir, "a.mp4"));
-    await writer.append(new Uint8Array([1, 2, 3]));
-    await expect(writer.append(new Uint8Array([4]))).rejects.toMatchObject({ code: "disk_full" });
-    expect(await writer.abandon()).toBe(partial);
-    expect([...await fs.readFile(partial)]).toEqual([1, 2, 3]);
-    expect(faults.faults.write).toBe("off");
-    expect(events).toContain("write failed");
-
-    // Disarmed after one use; EIO is a write failure rather than a full disk.
-    const next = await faults.openWriter(path.join(dir, "b.recording.mp4"), path.join(dir, "b.mp4"));
-    await next.append(new Uint8Array([5]));
-    await next.append(new Uint8Array([6]));
-    faults.set("write", "eio");
-    await expect(next.append(new Uint8Array([7]))).rejects.toMatchObject({ code: "output_write_failed" });
-    await next.abandon();
-  });
-
-  it("fails one close after the file really closed, so preservation is uncertain and nothing is published", async () => {
-    const faults = new ControlledFaults();
-    faults.set("close", "fail");
-    const partial = path.join(dir, "c.recording.mp4"), final = path.join(dir, "c.mp4");
-    const writer = await faults.openWriter(partial, final);
-    await writer.append(new Uint8Array([8, 9]));
-    // Classified like any other write error, with the close error as its cause.
-    await expect(writer.finish()).rejects.toMatchObject({ code: "output_write_failed", cause: { code: "EIO", syscall: "close" } });
-    expect(await writer.abandon()).toBe(partial);
-    expect(writer.preservationUncertain).toBe(true);
-    expect(faults.faults.close).toBe("off");
-    await expect(fs.access(final)).rejects.toThrow();
-    expect([...await fs.readFile(partial)]).toEqual([8, 9]);
-  });
-
   it("passes the recording's path through to the capture host, which the native engine needs", async () => {
     const faults = new ControlledFaults();
     const start = vi.fn(async () => {});
@@ -103,12 +66,13 @@ describe("controlled acceptance faults", () => {
     const faults = new ControlledFaults();
     const results = new RecordingResults();
     let deliver!: (message: HostMessage) => void;
-    let started = 0;
+    let started = 0, file: string | undefined;
     const recorder = new Recorder({
-      host: { start: async () => { started++; }, record: sessionId => deliver({ type: "started", sessionId }), stop: () => undefined,
-        onMessage: fn => { deliver = fn; }, onFailure: () => undefined },
+      // Through the fault points, as the controlled build wires them; the host writes the file as the engine would.
+      host: faults.host({ start: async (_id, _quality, recordingPath) => { started++; file = recordingPath; }, record: sessionId => deliver({ type: "started", sessionId }),
+        stop: () => undefined, onMessage: fn => { deliver = fn; }, onFailure: () => undefined }),
       outputDir: () => dir, quality: () => DEFAULT_QUALITY, ensureWritableDir: async () => undefined,
-      openWriter: faults.openWriter, newSessionId: () => "A",
+      openWriter: (partial, final) => faults.openEngineWriter(partial, final, async () => ({ bytes: 3, finalizeMs: 1 })), newSessionId: () => "A",
       publishFailure: async result => {
         await faults.beforePublish(result);
         await results.receive(result, { stat: file => fs.stat(file), refresh: () => undefined, notify: () => undefined });
@@ -118,10 +82,11 @@ describe("controlled acceptance faults", () => {
     recorder.toggle();
     await until(() => started === 1);
     deliver({ type: "prepared", sessionId: "A", mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
-    deliver({ type: "chunk", sessionId: "A", seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
+    await fs.writeFile(file!, new Uint8Array([1, 2, 3]));
+    deliver({ type: "progress", sessionId: "A", bytes: 3 });
     await pause(20);
     faults.set("write", "eio");
-    deliver({ type: "chunk", sessionId: "A", seq: 1, bytes: new Uint8Array([4]).buffer });
+    deliver({ type: "progress", sessionId: "A", bytes: 3 });
     await until(() => faults.heldCounts.cleanup === 1);
     await pause(50);
     expect(recorder.state.type).toBe("idle");
@@ -176,7 +141,7 @@ describe("controlled acceptance faults", () => {
     });
     let id = 0;
     const recorder = new Recorder({ host, outputDir: () => dir, quality: () => DEFAULT_QUALITY, ensureWritableDir: async () => undefined,
-      openWriter: faults.openWriter, newSessionId: () => `S${++id}`, monotonic: () => clock });
+      openWriter: (partial, final) => faults.openEngineWriter(partial, final, async () => ({ bytes: 3, finalizeMs: 1 })), newSessionId: () => `S${++id}`, monotonic: () => clock });
     const prepared = (sessionId: string): HostMessage => ({ type: "prepared", sessionId, mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
     faults.set("prepare", "hold");
     recorder.toggle();

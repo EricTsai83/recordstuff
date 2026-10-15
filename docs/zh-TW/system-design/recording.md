@@ -2,9 +2,9 @@
 
 [English](../../system-design/recording.md) | [繁體中文](recording.md)
 
-實作來源：[Recorder](../../../src/main/recording/recorder.ts)、[renderer CaptureHost](../../../src/renderer/capture/capture-host.ts)、[FileWriter](../../../src/main/recording/file-writer.ts)、[健康門檻](../../../src/main/recording/recording-health.ts)、[倒數數值](../../../src/shared/countdown.ts)、[session sentinel](../../../src/main/recording/session-sentinel.ts)、[品質函式](../../../src/shared/quality.ts)。
+實作來源：[Recorder](../../../src/main/recording/recorder.ts)、[原生擷取 host](../../../src/main/recording/native-capture-host.ts) 與[其程序](../../../src/main/recording/native-host-process.ts)、[檔案 writer](../../../src/main/recording/engine-file-writer.ts) 與[發布](../../../src/main/recording/file-writer.ts)、[健康門檻](../../../src/main/recording/recording-health.ts)、[倒數數值](../../../src/shared/countdown.ts)、[session sentinel](../../../src/main/recording/session-sentinel.ts)、[品質函式](../../../src/shared/quality.ts)。
 
-由哪個引擎錄影（[capture-engine.ts](../../../src/main/recording/capture-engine.ts)，plan 076 步驟 5 與 6，2026-10-15）：macOS 上是原生引擎，也就是執行 Rust 模組（`native/capture`）的 `utilityProcess`，以 ScreenCaptureKit 擷取，把 RecordStuff 自己的視窗（包括開始後才開的）排除在每一段錄影之外，並自行寫出檔案；`RECORDSTUFF_CAPTURE_ENGINE=chromium` 會改回隱藏的擷取 renderer，供並排比較，直到原生引擎通過驗收（D7）。Windows 從步驟 6（2026-10-15）起，check、installer 與發布建置都帶有該模組，因此也改由原生引擎錄影；`=chromium` 同樣可以改回隱藏 renderer。以下各節仍描述隱藏 renderer 的路徑，plan 076 結案時改寫。
+原生引擎是唯一的錄影路徑：執行 Rust 模組（`native/capture`）的 `utilityProcess` 負責擷取（macOS 用 ScreenCaptureKit；Windows 自 plan 076 步驟 6，2026-10-15 起），把 RecordStuff 自己的視窗（包括開始後才開的）排除在每一段錄影之外，並自行寫出檔案。Plan 076 已於 2026-10-16 移除隱藏的擷取 renderer，以及改回它的開發旗標。本文件有許多部分仍描述隱藏 renderer 的路徑（stream 請求、MediaRecorder、chunk 交付、FileWriter），保留到 plan 076 step 8 改寫為止。
 
 ## 狀態與操作
 
@@ -66,8 +66,6 @@ stateDiagram-v2
 | started 後首個非空 chunk | 8 秒 | capture_start_failed，保留已寫入資料 |
 | 媒體開始後的下一個非空 chunk | 10 秒記錄一次警告，30 秒判定失敗；每個非空 chunk 重新計時，收到 stopped 或失敗時解除 | capture_failed，detail 註明停滯；保留部分檔 |
 | 輸出資料夾可用空間 | 從 started 到停止前每 5 秒查詢；低於 1 GiB 記錄一次 | 低於 200 MiB 時只要求一次正常停止；以「磁碟即將滿」原因存檔，不算失敗 |
-| Writer 積壓（已接受、未寫入的 bytes） | 64 MiB | output_write_failed，detail 註明積壓；保留已寫入的前段 |
-| 判定泛用啟動失敗前排空 writer | 2 秒 | 已保留的磁碟錯誤沿用原代碼；否則 capture_start_failed |
 | stop 回應 | 10 秒 | stop_timeout |
 | Renderer 終止交接 | 終止開始後 5 秒 | 缺少 stop／最後 Blob 交接時回報失敗，忽略後續交接 |
 | 退出等待 | 每次嘗試 13 秒（停止期限另加 3 秒） | 尚有工作時延後退出並顯示在地化提示，不截斷存檔 |
@@ -75,7 +73,7 @@ stateDiagram-v2
 
 `record` 之前沒有擷取任何內容，因此準備或倒數期間的軌道結束、螢幕移除、host 當機或無回應，以及 `record` 被拒或逾時，都是啟動失敗：`capture_start_failed`，detail 註明階段（`while preparing capture`、`while counting down`、`while starting capture`），仍發出螢幕診斷，結果為 empty。Writer 已保留的磁碟錯誤沿用原代碼。已脫離的 session 若送來遲到的 `prepared` 或 `started`，會要求 host 停止。
 
-這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。健康檢查各列（停滯、可用空間、積壓、啟動排空）是初始目標，集中在 [recording-health.ts](../../../src/main/recording/recording-health.ts)；只有書面證據支持時才調整。心跳只證明 renderer 仍會回應；停滯保護才證明媒體仍在送達。可用空間查詢失敗只記錄一次，永不因此停止錄影。`powerMonitor` 的 suspend 與 resume 會連同進行中的 session id 寫入 log，讓之後的失敗能對照睡眠判讀；睡眠本身如何停止錄影或取消嘗試，見[寫檔與失敗](#寫檔與失敗)。
+這些是專案的等待上限，不是 OS 標準或精準的全流程耗時保證。磁碟 I/O 不能因此被真正取消。健康檢查各列（停滯、可用空間、存檔過慢）是初始目標，集中在 [recording-health.ts](../../../src/main/recording/recording-health.ts)；只有書面證據支持時才調整。心跳只證明 renderer 仍會回應；停滯保護才證明媒體仍在送達。可用空間查詢失敗只記錄一次，永不因此停止錄影。`powerMonitor` 的 suspend 與 resume 會連同進行中的 session id 寫入 log，讓之後的失敗能對照睡眠判讀；睡眠本身如何停止錄影或取消嘗試，見[寫檔與失敗](#寫檔與失敗)。
 
 ## 終止責任與正常退出
 
@@ -92,7 +90,7 @@ Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾，錄影也就結�
 | 影像等級 | economy 0.07、standard 0.13、high 0.24 bits / pixel / frame |
 | 位元率 | width × height × requested fps × 係數，四捨五入至 100 kbps，限制 1.5–60 Mbps |
 | 解析度 | source 不縮放；1080p／1440p／4K 上限按來源方向交換長短邊，不放大，縮小時取偶數 |
-| 幀率 | 30／60；目前只有 darwin 開放 60；其他平台有效值為 30，不覆寫使用者檔案。擷取要求 30.3／62.5 才能錄到設定值（[幀率要求](#幀率要求)） |
+| 幀率 | 30／60；目前只有 darwin 開放 60；其他平台有效值為 30，不覆寫使用者檔案。隱藏 renderer 曾要求 30.3／62.5 才能錄到設定值（[幀率要求](#幀率要求)） |
 | 音訊 | 固定要求 256,000 bps；請求 ideal 2 聲道、restrictOwnAudio true；echoCancellation／noiseSuppression／autoGainControl false |
 | 格式 | `video/mp4;codecs=avc1,mp4a.40.2`；不支援時失敗，不偷偷切 WebM |
 | 分片 | timeslice 與 `videoKeyFrameIntervalDuration` 均設 1000 ms；實際出片不保證一秒 |
@@ -105,13 +103,17 @@ Recorder 接受 `stopped` 後由 finalizer 獨占該次收尾，錄影也就結�
 
 ### 幀率要求
 
-擷取要求的幀率略高於設定：30 fps 要求 30.3，60 fps 要求 62.5（`src/shared/quality.ts` 的 `CAPTURE_FRAME_RATE`），以 `{ ideal, max }` 放進 `getDisplayMedia`，套解析度上限的 `applyConstraints` 也再附上一次。Chromium 152（Electron 44.3）以 ScreenCaptureKit 擷取螢幕，這個要求會變成它的[最小影格間隔](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.78/content/browser/media/capture/screen_capture_kit_device_mac.mm#239)，是下限而非週期。Plan 041 的診斷（`pnpm diagnose:cadence`，見[工具](tooling.md#影格節奏診斷)）確認偏差出在這一層：影格送到 video track 時就已經晚了，每個間隔都是下限再加上交付延遲；track 丟棄的影格最多 0.45%，檔案時間戳與送達時一致。因此照設定值要求時，實際只錄到約 29.4 與 57.5 fps，且沒有掉格；CPU 負載也沒有讓偏差變大。只給 `ideal` 沒有效果，因為 Chromium 的裝置幀率與 track 的限速器都由它決定。把週期無條件捨去到整數毫秒（33 與 16 ms）後，錄到 29.9 與 59.8 fps，間隔中位數在週期的 1% 內，沒有重複影格，也沒有增加掉格；32.7 ms 下限（30.6）同樣達到幀率，但 30 fps 的中位數剛好落在 1% 邊界。
+本節描述 plan 076 於 2026-10-16 移除的隱藏擷取 renderer 的幀率要求，保留到 plan 076 step 8 改寫為止。文中引用的診斷工具已隨 renderer 移除，原生引擎的節奏診斷由 plan 078 負責。
+
+擷取要求的幀率略高於設定：30 fps 要求 30.3，60 fps 要求 62.5（`src/shared/quality.ts` 的 `CAPTURE_FRAME_RATE`），以 `{ ideal, max }` 放進 `getDisplayMedia`，套解析度上限的 `applyConstraints` 也再附上一次。Chromium 152（Electron 44.3）以 ScreenCaptureKit 擷取螢幕，這個要求會變成它的[最小影格間隔](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.78/content/browser/media/capture/screen_capture_kit_device_mac.mm#239)，是下限而非週期。Plan 041 的診斷確認偏差出在這一層：影格送到 video track 時就已經晚了，每個間隔都是下限再加上交付延遲；track 丟棄的影格最多 0.45%，檔案時間戳與送達時一致。因此照設定值要求時，實際只錄到約 29.4 與 57.5 fps，且沒有掉格；CPU 負載也沒有讓偏差變大。只給 `ideal` 沒有效果，因為 Chromium 的裝置幀率與 track 的限速器都由它決定。把週期無條件捨去到整數毫秒（33 與 16 ms）後，錄到 29.9 與 59.8 fps，間隔中位數在週期的 1% 內，沒有重複影格，也沒有增加掉格；32.7 ms 下限（30.6）同樣達到幀率，但 30 fps 的中位數剛好落在 1% 邊界。
 
 - 只有要求值改變。位元率目標、log 裡的 requested fps、驗證（標稱週期與容許差）和降級規則都仍以設定值為準。track 回報的是要求值（`getSettings().frameRate` 為 30.3 或 62.5），log 會把它顯示為 track fps：60 fps 錄影的 track 回報 62.5 或 60 不算降級，回報 30 以下仍算。
 - track 自己的限速器採用同一個值，只丟棄遠快於它的影格，所以會保留每個送達的影格。60 fps 錄影不會超過螢幕更新率：在 60 Hz 螢幕上量到 59.8 fps，沒有重複影格。更高更新率的螢幕上，16 ms 下限可能略高於 60；這種情況、其他 Mac，以及解析度上限的 `applyConstraints` 路徑（只有來源大於上限時才會執行）都沒有量測。
 - 先前照設定值要求的結果保留在[驗證歷史](../verification/history-2026-09.md#plan-041-結案--2026-09-26)。
 
 ## 分片與停止順序
+
+本節描述 plan 076 於 2026-10-16 移除的隱藏擷取 renderer 的 chunk 交付，保留到 plan 076 step 8 改寫為止。原生 host 改為在寫檔期間回報 `progress`，接著回 `stopped`，檔案完成後再回 `finished`（或 `writeError`）。
 
 ```mermaid
 sequenceDiagram
@@ -145,6 +147,8 @@ Renderer 把 Blob 轉 ArrayBuffer 的 Promise 串成 chain，避免非同步轉�
 
 ## 寫檔與失敗
 
+關於 append 佇列、週期 sync、積壓上限、轉成一般 MP4 與啟動失敗前排空的段落，仍描述已於 2026-10-16 隨隱藏 renderer 移除的 `FileWriter`，保留到 plan 076 step 8 改寫為止。現在由引擎寫入並完成檔案，[EngineFileWriter](../../../src/main/recording/engine-file-writer.ts) 預留暫存檔名、等待引擎的結果，再以相同的連結或複製規則發布。
+
 FileWriter 的 append、週期 sync 與 finish 都排在同一佇列。每次 append 只補寫剩餘緩衝區直到完整，並立即累計每次確認寫入的位元組；各段之間不會插入後續 chunk 或 sync。空 chunk 不呼叫 write。零、負數、非整數、非有限值或超出剩餘長度的進度以 output_write_failed 失敗；拋出的錯誤不重試。每 5 秒嘗試 fsync；首次 I/O 錯誤被記住，之後佇列作業回同一錯誤。ENOSPC 映射為 disk_full，其他寫入錯誤為 output_write_failed。
 
 成功 finish 等待佇列、sync，把檔案轉成一般 MP4（見[下文](#存檔時轉成一般-mp4)），再 close，以硬連結把暫存檔發布成 `.mp4`；正式檔撞名時依序嘗試 `-2`、`-3` 等尾碼。連結不會取代既有名稱（EEXIST 就換下一個尾碼，最多到 `-100`；之後存檔以 output_write_failed 失敗並保留 `.recording.mp4`），耗時固定且不需要剩餘空間，因此 15 秒與一小時的錄影儲存所需時間相同，低空間提前停止也仍能儲存。儲存的檔案就是錄影寫入的那個檔案，所以建立時間是錄影開始的時間。若磁碟區因其他原因拒絕連結，例如 exFAT（ENOTSUP）或部分網路磁碟區，這個與之後每個尾碼都改用原本的排他複製（`COPYFILE_EXCL`），複本 sync 後才移除暫存名稱；複製耗時與檔案大小成正比，且需要與檔案同樣大小的剩餘空間。發布失敗時，ENOSPC 與其他寫入一樣回報 disk_full，其餘回報 output_write_failed。程式仍要求 `COPYFILE_FICLONE`，但在 macOS 上從不會 clone：libuv 在 macOS 沒有實作 clone（Electron 44 中 `COPYFILE_FICLONE_FORCE` 回傳 ENOSYS），所以 plan 037 之前每次儲存，包括 APFS，都是完整複製。發布後盡力刪除暫存名稱，之後 Recorder 才以實際存檔路徑發 saved。清理失敗會留下暫存名稱，它是已儲存檔案的第二個連結（改用複製時則是完整副本），但不影響已成功儲存的影片。log 的 `finalize timing` 行記錄最後的 host 交付、佇列寫入、flush、轉成一般 MP4 的步驟（`to plain MP4`，或 `kept fragmented (<原因>)`）、close、發布（`by link` 或 `by copy (link <code>)`）與清理各花多少時間。失敗時先清除 session、stop host、立刻回 idle，再 abandon writer；已有計數 bytes 就保留 `.recording.mp4`，零 bytes 盡力刪除。部分檔案沒有自動修復或重新封裝；曾實測可播不代表所有中斷都可復原。
@@ -167,9 +171,11 @@ Writer 在擷取請求前開啟，而擷取請求可能為了權限提示等待�
 
 ### 存檔時轉成一般 MP4
 
+本節描述隱藏 renderer 的 `FragmentIndex`（`mp4-finalize.ts`），已於 2026-10-16 移除，保留到 plan 076 step 8 改寫為止；現在由原生引擎的 muxer（[native/capture/src/mux](../../../native/capture/src/mux)）寫入並完成 MP4。
+
 擷取 host 的 MediaRecorder 寫的是分段 MP4：開頭一個樣本表為空、長度為 0 的 `moov`，之後約每秒一組 `moof` 與 `mdat`，沒有 `sidx` 或 `mfra` 索引。這種檔案在寫入過程中耐得住當機，但播放器必須讀過每個片段的標頭，才知道長度與某個時間點在哪裡。2026-10-10 實測一支 36 分鐘、2.7 GB（2,106 個片段）的錄影：Chromium 顯示第一個畫面前，經由 `recordstuff-media:` 花了約 1.1 秒、1,722 次範圍請求、讀取 358 MB，而且每次開啟都重來一次，包括進度條的畫格預覽與全螢幕視窗；同樣的媒體改成一般 MP4 只要 27–41 ms、14–17 次請求、14–19 MB。在檔尾補上 `mfra` 沒有幫助，Chromium 仍會讀過每個片段。AVFoundation（QuickTime、快速查看）完全無法開啟那個分段檔（`-11832`），一般 MP4 則可以。
 
-所以 `FileWriter.finish` 在發布前就地把檔案轉成一般 MP4，做法與 OBS 的 hybrid MP4 相同（[`mp4_mux_finalise`](https://github.com/obsproject/obs-studio/blob/7d98bebe1115b12608837b622164ea5fe6d9483a/plugins/obs-outputs/mp4-mux.c#L2967-L3028)，該 revision 的靜態檢視）。錄影期間，[`FragmentIndex`](../../../src/main/recording/mp4-finalize.ts) 在每次 append 的位元組確認寫入後跟著讀：保留 `moov` 與每個 `moof`、跳過媒體，記下每個樣本的大小、長度、同步旗標與組成時間偏移，並把每個 `trun` 當成一個 chunk。每個片段的 `tfdt` 會修正 host 為前一個樣本猜測的長度（影像最多差幾格，聲音約 1 毫秒），與分段播放器的讀法一致，因此每個樣本的解碼與顯示時間都不變。finish 在最後一次 sync 之後：
+所以 `FileWriter.finish` 在發布前就地把檔案轉成一般 MP4，做法與 OBS 的 hybrid MP4 相同（[`mp4_mux_finalise`](https://github.com/obsproject/obs-studio/blob/7d98bebe1115b12608837b622164ea5fe6d9483a/plugins/obs-outputs/mp4-mux.c#L2967-L3028)，該 revision 的靜態檢視）。錄影期間，`FragmentIndex` 在每次 append 的位元組確認寫入後跟著讀：保留 `moov` 與每個 `moof`、跳過媒體，記下每個樣本的大小、長度、同步旗標與組成時間偏移，並把每個 `trun` 當成一個 chunk。每個片段的 `tfdt` 會修正 host 為前一個樣本猜測的長度（影像最多差幾格，聲音約 1 毫秒），與分段播放器的讀法一致，因此每個樣本的解碼與顯示時間都不變。finish 在最後一次 sync 之後：
 
 1. 在檔尾附加完整的 `moov`：沿用原本的 track box 與樣本描述，重建 `stts`、`stsc`、`stsz`、`stco`（超過 4 GiB 用 `co64`），需要時加上 `stss` 與 `ctts`，在 `mvhd`、`tkhd`、`mdhd` 寫入實際長度，並拿掉 `mvex`。接著 sync。
 2. 把舊 `moov` 的前 16 個位元組改寫成 64 位元的 `mdat` 標頭，涵蓋從該處到新 `moov` 之前的全部內容，讓舊標頭與所有片段都變成不透明的媒體資料。接著再 sync 一次。
@@ -207,7 +213,7 @@ Main 的來源 handler 可記錄具體拒絕原因，取代 renderer 的泛用 A
 
 ### 稽核加固
 
-「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在 start 的第一秒內忽略，之後會取消這次 start（plan 065）。準備例外會釋放 tracks。Renderer Blob 傳送與 main writer 等待佇列各有 64 MiB 上限。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
+「取消錄影」也可取消資料夾開啟與擷取準備；重複的開始切換在 start 的第一秒內忽略，之後會取消這次 start（plan 065）。準備例外會釋放 tracks。finish 共用同一個 Promise、拒絕後續 append，並與 abandon 協調，避免重複清理刪到較新的錄影。
 
 完整複製發佈前，先確認可用空間至少有整個錄影大小加 8 MiB。複製後的 open／sync／close 失敗會移除目的檔，保留原始錄影。成功發佈後先持久化 finalized-path checkpoint 再刪 sentinel；下次啟動遇到完成 checkpoint 不再誤報中斷。發佈與 checkpoint 之間的小型崩潰空窗無法證明完成，因此未完成 sentinel 明確說明完成狀態未知，可能已有正式檔。失敗時也一樣，會在發布失敗紀錄之前先把它的 id 記到 sentinel（`failureId`）：失敗的清理還在進行時程序就結束了（例如分享磁碟卡住後被強制結束），下次啟動會以同一個 id 回報留下的 sentinel，因此失敗紀錄只有一筆：已儲存的那筆，或在它沒能儲存時改用 sentinel 的那筆（2026-10-05）。
 

@@ -19,8 +19,5 @@
     "scripts/**/*.ts",
     "scripts/**/*.mts",
     "playwright.config.ts"
-  ],
-  "exclude": [
-    "scripts/fixtures/frame-cadence-renderer.ts"
   ]
 }

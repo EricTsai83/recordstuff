@@ -32,8 +32,8 @@ async function exitIfInterrupted(execution?: { groupGone: boolean }): Promise<vo
 }
 const require = createRequire(import.meta.url);
 const results = [];
-// The native modes (plan 076): the engine's finish after `stopped`, and its partial after a crash, held the same way.
-for (const mode of ["copy", "cleanup", "result", "native", "native-crash"]) {
+// Each mode holds one step of the native engine's file (plan 076; recording-lifecycle.ts).
+for (const mode of ["publish", "finish", "crash", "result"]) {
   const output = path.join(dir, mode); fs.mkdirSync(output);
   const logFd = fs.openSync(path.join(output, "electron.log"), "w");
   try {

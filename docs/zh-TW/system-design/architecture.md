@@ -6,6 +6,8 @@ Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理的角色
 
 ## 程序與責任
 
+下方的圖與程序說明仍描述 plan 076 於 2026-10-16 移除的隱藏 capture renderer，保留到 plan 076 step 8 改寫為止。現在錄影只走原生引擎：每次嘗試由 main fork 一個 Electron `utilityProcess`，載入 Rust 引擎（`native/capture`），由它擷取、編碼、封裝並寫檔。
+
 應用層分成 main、隱藏 capture renderer、只在設定視窗開啟期間存在的設定 renderer，以及只在倒數期間存在的倒數 overlay renderer。Electron 自身還會建立 GPU／helper 等程序；層數不等於作業系統看到的 PID 數。
 
 ```mermaid
@@ -53,10 +55,8 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `renderer/countdown/countdown.ts` / `preload/countdown.ts` | 繪製數字與淡化／唯一的數值訂閱 | 不持有時間、狀態，也不回傳 main |
 | `main/library/video-fullscreen.ts` | 全螢幕影片視窗的生命週期、所在螢幕、淡入淡出，以及交回的播放狀態 | 不決定播放哪支錄影或其來源網址（由設定視窗依清單查出） |
 | `renderer/video/video.ts` / `preload/video.ts` | 從指定時間播放、結束全螢幕的操作／回報就緒並帶著播放狀態離開 | 不負責視窗、淡入淡出或關閉視窗 |
-| `main/recording/capture-host.ts` | 隱藏 BrowserWindow、main port、ready／heartbeat | 不作檔案成功判定 |
-| `renderer/capture/capture-host.ts` | MediaStream、MediaRecorder、序號、Blob 傳送鏈 | 不讀設定檔、不選輸出路徑、不寫檔 |
-| `preload/index.ts` | 轉交 main 提供的 MessagePort | 不暴露 Node API |
-| `main/recording/file-writer.ts` | 每個錄影 session 的影片 handle、寫入佇列 | 不決定 UI 狀態 |
+| `main/recording/native-capture-host.ts` / `native-host-process.ts` | 每次嘗試的 `utilityProcess`、其 parent port、ready 與 heartbeat／載入 Rust 引擎並使用 host 協定 | 不作檔案成功判定 |
+| `main/recording/engine-file-writer.ts` / `file-writer.ts` | 預留並發布引擎寫出的檔案／發布、寫入錯誤分類與資料夾檢查 | 不決定 UI 狀態 |
 | `main/settings/settings.ts` | 已提交設定、序列化保存佇列 | 不修改正在錄影的設定快照 |
 | `main/menus/tray-model.ts` / `tray.ts` | Tray 扁平指令選單的純投影／原生圖示與通知 | 不放偏好設定，也不另建錄影狀態機 |
 | `main/app/ui-model.ts` | 兩個介面共用的 action union 與 context 快照；它們套用的設定鎖定規則在 `main/recording/recording-lock.ts` | 自己不做任何投影 |
@@ -71,7 +71,7 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 
 ## 信任邊界與 IPC
 
-所有 renderer 都使用 `sandbox: true`、`contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`，並禁止新視窗與導覽；隱藏的擷取視窗與倒數 overlay 另外停用 background throttling。Overlay 的 preload 只提供 `countdown.onValue`；main 以 `countdown:value` 傳送數字或 `null`，preload 只接受正整數或 `null`。打包版載入本機 HTML；開發版可載入 electron-vite URL。
+所有 renderer 都使用 `sandbox: true`、`contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`，並禁止新視窗與導覽；倒數 overlay 另外停用 background throttling。Overlay 的 preload 只提供 `countdown.onValue`；main 以 `countdown:value` 傳送數字或 `null`，preload 只接受正整數或 `null`。打包版載入本機 HTML；開發版可載入 electron-vite URL。
 
 設定面板有自己的 preload，只暴露四個呼叫。`settings:capture`、`settings:read` 與 `settings:choose` 會驗證來源必須是設定視窗的 main frame，否則拒絕。choose 請求帶的是群組 id 與選項 id，不是 action；main 依當下重新產生的模型解析這組 id，因此請求只能做到 App 當下提供、而且錄影狀態允許的事。保存依請求順序序列化，回應會告知實際提交的值。
 
@@ -82,7 +82,7 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | 面板 → main | `settings:choose { group, choice }` | 套用一個被提供的選項；回傳 view 與是否真的提交 |
 | main → 面板 | `settings:changed` | 狀態或 context 改變，重新繪製 |
 
-Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交給 preload；preload 用 `window.postMessage` 交給頁面。頁面檢查事件來源為自身 window 與固定標記，取得 port 後送 `ready`。Port 本身被 transfer，媒體 `ArrayBuffer` 用 structured clone 複製。
+Main 每次嘗試 fork 一個新的 `utilityProcess`，透過它的 parent port 交換下列訊息；host 載入完成後送 `ready`。本節其餘內容與佇列上限那段仍描述已移除的 capture renderer 的部分做法，保留到 step 8 改寫為止。
 
 雙方在接收處執行 type guard。驗證是必要欄位的形狀檢查，不是嚴格拒絕所有額外欄位或完整資源配額限制。協定沒有版本協商，因為 main／preload／renderer 隨同一 App 一起更新。
 
@@ -95,8 +95,9 @@ Main 建立 `MessageChannelMain`，透過 `capture-host-port` 將其中一端交
 | host → main | `ready` / `pong` | 通道就緒／心跳回應 |
 | host → main | `prepared { sessionId, mimeType, capture }` | stream 已檢查、已套用品質，MediaRecorder 已建立但尚未啟動 |
 | host → main | `started { sessionId }` | recorder 已啟動；main 沿用 `prepared` 的報告；尚不代表第一片資料已落盤 |
-| host → main | `chunk { sessionId, seq, bytes }` | 從 0 起連續序號的編碼資料 |
-| host → main | `stopped { sessionId }` | 最後 chunk 已送出；main 才能開始完成檔案 |
+| host → main | `progress { sessionId, bytes }` | 媒體到達期間引擎已寫入的位元組數 |
+| host → main | `stopped { sessionId }` | 擷取已結束；引擎仍會完成檔案 |
+| host → main | `finished { sessionId, file }` / `writeError { sessionId, code, detail }` | 引擎已完成檔案／使檔案無法完成的寫入錯誤 |
 | host → main | `error { sessionId, code, detail }` | host 觀察到的失敗；只接受 `HOST_ERROR_CODES` 中的代碼（資料夾、磁碟、期限與監督失敗由 main 自行判定） |
 
 沒有逐 chunk ACK 或背壓協定：renderer 序列化 Blob 轉換，FileWriter 序列化磁碟作業，改以上限約束兩個佇列：renderer 的交付與 writer 已接受未寫入的位元組各以 64 MiB 為上限，超過時結束錄影並保留已寫入的前段，而不是讓記憶體持續增長。心跳偵測程序回應，不等於媒體持續到達；媒體到達另有期限：先是首個非空 chunk，之後由停滯守衛在 10 秒沒有新資料時警告、30 秒時判定失敗（見[錄影設計](recording.md#期限與故障隔離)）。
@@ -119,6 +120,6 @@ Main 持有影片 handle；設定與 log 模組也會寫自己的檔案，因此
 
 ## 啟動與關閉
 
-Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。在 App 完成啟動前及 ready 後隱藏 Dock（App 套件不宣告 `LSUIElement`；macOS 上只在視窗開著時連同選單列的選單一起出現）、載入設定、註冊 display-media handler、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄影嘗試都建立新的 capture renderer，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併銷毀；錄影之間不保留 capture 或 overlay renderer，也沒有心跳 timer。
+Main 先建立 logger、註冊未捕捉錯誤處理並取得 single-instance lock。在 App 完成啟動前及 ready 後隱藏 Dock（App 套件不宣告 `LSUIElement`；macOS 上只在視窗開著時連同選單列的選單一起出現）、載入設定、組裝 Recorder／host／權限 watcher／Tray、訂閱事件並開始權限輪詢。每次錄影嘗試都建立新的 capture host 程序，有倒數時另建 overlay 視窗，嘗試結束時由 main 一併結束（host 可能先完成檔案）；錄影之間不保留 capture host 或 overlay renderer，也沒有心跳 timer。
 
 `window-all-closed` 不退出 App。`before-quit` 一律先等 `Recorder.shutdown()`（即使 tray 已 idle，也包含 failure cleanup），再等設定、視窗尺寸與 log 寫入以及失敗歷史保存，之後才再次 quit（[延後退出](desktop.md#延後退出)）；`will-quit` 停止權限輪詢並銷毀 host、overlay 與 Tray。硬斷電、main 強制終止、阻塞磁碟並不具有完整落盤保證。

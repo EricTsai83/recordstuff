@@ -5,7 +5,9 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { Recorder } from "../../src/main/recording/recorder";
-import { FileWriter, nodeFs } from "../../src/main/recording/file-writer";
+import { nodeFs } from "../../src/main/recording/file-writer";
+import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
+import { writeFileSync } from "node:fs";
 import { installQuitCoordinator } from "../../src/main/app/quit-coordinator";
 import { createQuitFeedback } from "../../src/main/app/quit-feedback";
 import { isLanguage } from "../../src/shared/i18n";
@@ -25,7 +27,7 @@ async function main(): Promise<void> {
   const gate = new Promise<void>(resolve => { release = resolve; });
   let deliver!: (message: HostMessage) => void;
   const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
-  let started = false, diskPending = false, prompts = 0, deferred = 0;
+  let started = false, diskPending = false, prompts = 0, deferred = 0, file: string | undefined;
   let savedPath: string | undefined;
   const events: Array<{ time: string; event: string }> = [];
   const record = (event: string): void => {
@@ -34,7 +36,7 @@ async function main(): Promise<void> {
   };
   const recorder = new Recorder({
     host: {
-      start: async () => { started = true; },
+      start: async (_sessionId, _quality, recordingPath) => { file = recordingPath; started = true; },
       record: sessionId => deliver({ type: "started", sessionId }),
       stop: sessionId => deliver({ type: "stopped", sessionId }),
       onMessage: fn => { deliver = fn; }, onFailure() {},
@@ -42,7 +44,8 @@ async function main(): Promise<void> {
     outputDir: () => dir, quality: () => DEFAULT_QUALITY,
     newSessionId: () => "dialog-fixture", ensureWritableDir: async () => undefined,
     shutdownTimeoutMs: 100, stopTimeoutMs: 100,
-    openWriter: (partial, final) => FileWriter.open(partial, final, { io: {
+    // The engine's file (plan 076): it finishes at once; publication is held.
+    openWriter: (partial, final) => EngineFileWriter.open(partial, final, { outcome: async () => ({ bytes: 3, finalizeMs: 1 }), io: {
       ...nodeFs,
       // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
       link: async (from, to) => {
@@ -109,7 +112,9 @@ async function main(): Promise<void> {
   deliver({ type: "prepared", sessionId: "dialog-fixture", mimeType: "video/mp4", capture: {
     videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
   } });
-  deliver({ type: "chunk", sessionId: "dialog-fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });
+  // The engine writes the file itself and reports the bytes written.
+  writeFileSync(file!, new Uint8Array([11, 22, 33]));
+  deliver({ type: "progress", sessionId: "dialog-fixture", bytes: 3 });
   record("ready: notification in about 3 seconds");
   await pause(3000);
   app.quit(); app.quit();
@@ -124,7 +129,7 @@ async function main(): Promise<void> {
   await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({
     language, prompts, deferred, maxLateMs, lateMs, bytes: [11, 22, 33], events,
     nativeObservation: "not recorded: an observer must confirm the banner and its complete text; delivery events are in notification.jsonl",
-    scope: "isolated synthetic capture; production Recorder, FileWriter, quit coordinator and native feedback",
+    scope: "isolated synthetic capture; production Recorder, EngineFileWriter, quit coordinator and native feedback",
   }, null, 2));
   app.quit();
 }

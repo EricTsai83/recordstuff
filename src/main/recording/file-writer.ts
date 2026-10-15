@@ -1,27 +1,17 @@
 /**
- * The only media-file writer in the app (docs/system-design/recording.md). Appends chunks in
- * arrival order, fsyncs every 5 seconds, and publishes without overwriting
- * `<stamp>.recording.mp4` → `<stamp>.mp4` once the last chunk is on disk: a hard
- * link where the volume supports one, otherwise a full copy.
- * Any failure keeps what was written; nothing is ever silently discarded.
- * Zero written bytes is never published: nonempty is necessary, not proof of a playable file.
- * Bytes accepted but not yet written are bounded; exceeding the bound fails the
- * recording instead of buffering slow or offline storage in memory.
- * Before publishing, the fragmented file becomes a plain MP4 in place (mp4-finalize.ts) when it can.
+ * A recording file's lifecycle in main (docs/system-design/recording.md); the native engine writes and finishes the
+ * file itself (plan 076, engine-file-writer.ts). Publishing never overwrites: `<stamp>.recording.mp4` → `<stamp>.mp4`
+ * is a hard link where the volume supports one, otherwise a full copy. Any failure keeps what was written; zero bytes
+ * are never published. Write failures are classified here, and the output folder is checked before a recording.
  */
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import type { ErrorCode } from "../../shared/state";
-import { RECORDING_HEALTH } from "./recording-health";
 import { errnoCode, messageOf } from "../lib/errors";
-import { FragmentIndex, mdatHeader } from "./mp4-finalize";
 
 export interface WritableHandle {
   write(data: Uint8Array): Promise<{ bytesWritten: number }>;
-  /** Writes at `position` without moving the append position; without it the file is published fragmented. */
-  writeAt?(data: Uint8Array, position: number): Promise<{ bytesWritten: number }>;
-  truncate?(length: number): Promise<void>;
   sync(): Promise<void>;
   close(): Promise<void>;
 }
@@ -42,8 +32,6 @@ export const nodeFs: FileWriterFs = {
     const handle = await fs.open(filePath, flags);
     return {
       write: (data) => handle.write(data),
-      writeAt: (data, position) => handle.write(data, 0, data.byteLength, position),
-      truncate: (length) => handle.truncate(length),
       sync: () => handle.sync(),
       close: () => handle.close(),
     };
@@ -71,9 +59,9 @@ export const nodeFs: FileWriterFs = {
 
 /** How long each step of a successful `finish` took, in milliseconds; diagnostics only. */
 export interface FinishTimings {
-  /** Queued writes and the final fsync. */
+  /** Kept for the `finalize timing` line's shape; the engine syncs its own file, so 0. */
   flushMs: number;
-  /** Appending the plain MP4's index and rewriting the old header, both synced; or deciding not to. */
+  /** The engine's making the file plain MP4, or deciding not to. */
   finalizeMs: number;
   /** Why the file was published fragmented, as it was written; absent when it became a plain MP4. */
   fragmented?: string;
@@ -137,13 +125,6 @@ export async function ensureWritableDir(dir: string, io: FileWriterFs = nodeFs, 
   }
 }
 
-export interface FileWriterOptions {
-  fsyncIntervalMs?: number;
-  /** Accepted-but-unwritten bytes allowed before an append is refused. */
-  backlogLimitBytes?: number;
-  io?: FileWriterFs;
-}
-
 /** How publication went: the steps `FinishTimings` reports after the file was closed. */
 export type PublishTimings = Pick<FinishTimings, "publishMs" | "cleanupMs" | "method" | "linkError" | "cleanupError">;
 
@@ -191,271 +172,5 @@ export async function publishRecording(io: FileWriterFs, recordingPath: string, 
     return { target, timings: { publishMs: published - began, cleanupMs: performance.now() - published,
       ...(linkError === undefined ? { method: "link" } : { method: "copy", linkError }),
       ...(cleanupError === undefined ? {} : { cleanupError }) } };
-  }
-}
-
-export class FileWriter {
-  private queue: Promise<void> = Promise.resolve();
-  private failure: FileWriteError | undefined;
-  /** Set when an append was refused; accepted bytes are still written, nothing after it is. */
-  private refused: FileWriteError | undefined;
-  private fsyncTimer: ReturnType<typeof setInterval> | undefined;
-  /** A background sync is queued or running; a slow volume must not stack one per tick ahead of the writes. */
-  private syncQueued = false;
-  private closed = false;
-  private terminal = false;
-  private finished: Promise<string> | undefined;
-  private _bytesWritten = 0;
-  private _backlogBytes = 0;
-  private abandoned: Promise<string | undefined> | undefined;
-  private cleanup: Promise<string | undefined> | undefined;
-  preservationUncertain = false;
-  /** Set once `finish` published the file. */
-  finishTimings: FinishTimings | undefined;
-  /** Follows what has been written, so `finish` can make the file a plain MP4; gone once it has been used. */
-  private index: FragmentIndex | undefined = new FragmentIndex();
-
-  private constructor(
-    readonly recordingPath: string,
-    readonly finalPath: string,
-    private readonly handle: WritableHandle,
-    private readonly io: FileWriterFs,
-    fsyncIntervalMs: number,
-    private readonly backlogLimitBytes: number,
-  ) {
-    this.fsyncTimer = setInterval(() => {
-      if (this.syncQueued) return;
-      this.syncQueued = true;
-      // enqueue retains the first failure; consume this background caller's rejection.
-      void this.enqueue(() => this.handle.sync()).catch(() => undefined).finally(() => { this.syncQueued = false; });
-    }, fsyncIntervalMs);
-  }
-
-  /** Opens `recordingPath` exclusively; a name collision is a hard failure. */
-  static async open(
-    recordingPath: string,
-    finalPath: string,
-    options: FileWriterOptions = {},
-  ): Promise<FileWriter> {
-    const io = options.io ?? nodeFs;
-    let handle: WritableHandle;
-    try {
-      handle = await io.open(recordingPath, "wx");
-    } catch (cause) {
-      throw new FileWriteError(classifyOpenError(cause), recordingPath, cause);
-    }
-    return new FileWriter(recordingPath, finalPath, handle, io, options.fsyncIntervalMs ?? 5000,
-      options.backlogLimitBytes ?? RECORDING_HEALTH.writerBacklogBytes);
-  }
-
-  get bytesWritten(): number {
-    return this._bytesWritten;
-  }
-
-  /** Bytes accepted by `append` and not yet confirmed written or discarded after a failure. */
-  get backlogBytes(): number {
-    return this._backlogBytes;
-  }
-
-  /**
-   * Appends in call order. Rejects with `FileWriteError` on the first disk
-   * error; all later appends reject with the same error without touching disk.
-   * An append that would push the backlog past its bound is refused at once,
-   * without queueing, and so is every later one: MediaRecorder cannot be
-   * throttled, so the recording ends. Bytes accepted before the refusal are
-   * still written, so the kept partial is a gapless prefix.
-   */
-  append(bytes: Uint8Array): Promise<void> {
-    if (this.terminal) return Promise.reject(new Error("FileWriter is closed"));
-    if (this.refused) return Promise.reject(this.refused);
-    if (this._backlogBytes + bytes.byteLength > this.backlogLimitBytes) {
-      // An earlier disk error stays the reported one.
-      this.refused = this.failure ?? new FileWriteError("output_write_failed", this.recordingPath,
-        `writer backlog limit ${this.backlogLimitBytes} bytes exceeded: ${this._backlogBytes} bytes pending, ${bytes.byteLength} arriving`);
-      return Promise.reject(this.refused);
-    }
-    let pending = bytes.byteLength;
-    this._backlogBytes += pending;
-    const run = this.enqueue(async () => {
-      let offset = 0;
-      while (offset < bytes.byteLength) {
-        const remaining = bytes.subarray(offset);
-        const { bytesWritten } = await this.handle.write(remaining);
-        if (!Number.isInteger(bytesWritten) || bytesWritten <= 0 || bytesWritten > remaining.byteLength) {
-          throw new Error(`Invalid write progress: ${bytesWritten} of ${remaining.byteLength} bytes`);
-        }
-        offset += bytesWritten;
-        this._bytesWritten += bytesWritten;
-        this._backlogBytes -= bytesWritten;
-        pending -= bytesWritten;
-      }
-      // Only bytes on disk: the index must describe the file, not what was meant to be in it.
-      this.index?.push(bytes);
-    });
-    // A failed or skipped append no longer holds its unwritten bytes.
-    const release = (): void => { this._backlogBytes -= pending; pending = 0; };
-    run.then(release, release);
-    return run;
-  }
-
-  /**
-   * Settles once every queued write and sync has run; resolves with the
-   * retained write/sync error, if any. Lets a start failure report a disk error
-   * the writer already holds instead of a generic cause.
-   */
-  async drain(): Promise<FileWriteError | undefined> {
-    await this.queue;
-    return this.failure ?? this.refused;
-  }
-
-  /**
-   * Flush, close, publish exclusively (`publishRecording`), then remove the temporary name. Draining
-   * first lets a retained write/sync error keep its code; with no confirmed
-   * bytes it then closes, removes the empty file and rejects with
-   * `capture_start_failed` instead of publishing an empty `.mp4`.
-   */
-  finish(): Promise<string> {
-    if (this.finished) return this.finished;
-    if (this.abandoned) return Promise.reject(new Error("FileWriter was abandoned"));
-    this.beginTerminal();
-    this.finished = this.finishOnce();
-    return this.finished;
-  }
-
-  private beginTerminal(): void {
-    this.terminal = true;
-    clearInterval(this.fsyncTimer);
-    this.fsyncTimer = undefined;
-  }
-
-  private async finishOnce(): Promise<string> {
-    const began = performance.now();
-    await this.enqueue(() => this.handle.sync());
-    const flushed = performance.now();
-    // A refused chunk means the recording is incomplete; the failure path keeps the partial.
-    if (this.refused) throw this.refused;
-    if (this._bytesWritten === 0) {
-      await this.abandonOnce();
-      throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
-    }
-    const fragmented = await this.makePlain();
-    const finalized = performance.now();
-    try {
-      await this.release();
-    } catch (cause) {
-      // A deferred write-back error can surface at close; ENOSPC is still disk_full.
-      throw new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
-    }
-    const closed = performance.now();
-    const published = await publishRecording(this.io, this.recordingPath, this.finalPath);
-    this.finishTimings = { flushMs: flushed - began, finalizeMs: finalized - flushed, ...(fragmented === undefined ? {} : { fragmented }),
-      closeMs: closed - finalized, ...published.timings };
-    return published.target;
-  }
-
-  /**
-   * Makes the complete, synced file a plain MP4 (mp4-finalize.ts): appends the whole movie's index and syncs it, then
-   * turns the old fragmented header into the start of one mdat and syncs again. Interrupted between the two, the file
-   * is still the fragmented one with an index after it, which players read as before. Never throws: a file it
-   * cannot or did not finish making plain is published as written. Returns why it stayed fragmented, if it did.
-   */
-  private async makePlain(): Promise<string | undefined> {
-    const index = this.index;
-    // The sample lists are no longer needed, whatever happens next.
-    this.index = undefined;
-    const handle = this.handle;
-    if (!index || !handle.writeAt) return "no positional writes";
-    const end = this._bytesWritten;
-    const plan = index.finalize(end);
-    if ("reason" in plan) return plan.reason;
-    const writeAt = async (data: Uint8Array, position: number): Promise<void> => {
-      for (let offset = 0; offset < data.byteLength;) {
-        const { bytesWritten } = await handle.writeAt!(data.subarray(offset), position + offset);
-        if (!Number.isInteger(bytesWritten) || bytesWritten <= 0) throw new Error(`Invalid write progress: ${bytesWritten}`);
-        offset += bytesWritten;
-      }
-    };
-    try {
-      await writeAt(plan.moov, end);
-      await handle.sync();
-    } catch (cause) {
-      // Without its whole index the file must stay exactly the fragmented one; what was appended goes.
-      await handle.truncate?.(end).then(() => handle.sync()).catch(() => undefined);
-      return `index not written: ${errnoCode(cause) ?? messageOf(cause)}`;
-    }
-    try {
-      await writeAt(mdatHeader(end - plan.mdatAt), plan.mdatAt);
-      await handle.sync();
-    } catch (cause) {
-      // Either header plays: the fragmented one before it, the plain one after.
-      return `header not confirmed: ${errnoCode(cause) ?? messageOf(cause)}`;
-    }
-    return undefined;
-  }
-
-  /**
-   * Close without renaming, keeping whatever was written under the
-   * `.recording.mp4` name. An empty file is removed. Never throws.
-   * Returns the kept partial path, or undefined if nothing was kept.
-   * Idempotent: once the empty path is freed, a same-second retry may reuse
-   * it, so a later call must not unlink again.
-   */
-  abandon(): Promise<string | undefined> {
-    this.beginTerminal();
-    this.abandoned ??= this.finished
-      ? this.finished.then(() => undefined, () => this.abandonOnce())
-      : this.abandonOnce();
-    return this.abandoned;
-  }
-
-  private abandonOnce(): Promise<string | undefined> {
-    return this.cleanup ??= this.cleanupOnce();
-  }
-
-  private async cleanupOnce(): Promise<string | undefined> {
-    // Never rejects: a failed write is already recorded, and the file is still closed and kept.
-    await this.queue;
-    try {
-      await this.release();
-    } catch {
-      // The path may exist, but closing could not be confirmed; `release` marked preservation uncertain.
-    }
-    if (this._bytesWritten > 0) return this.recordingPath;
-    try {
-      await this.io.unlink(this.recordingPath);
-    } catch {
-      // Leaving a zero-byte file behind is not worth surfacing.
-    }
-    return undefined;
-  }
-
-  private async release(): Promise<void> {
-    // Only after `beginTerminal`, which already stopped the fsync timer.
-    if (this.closed) return;
-    this.closed = true;
-    try {
-      await this.handle.close();
-    } catch (error) {
-      this.preservationUncertain = true;
-      throw error;
-    }
-  }
-
-  private enqueue(task: () => Promise<unknown>): Promise<void> {
-    const run = this.queue.then(async () => {
-      if (this.failure) throw this.failure;
-      try {
-        await task();
-      } catch (cause) {
-        this.failure =
-          cause instanceof FileWriteError
-            ? cause
-            : new FileWriteError(classifyWriteError(cause), this.recordingPath, cause);
-        throw this.failure;
-      }
-    });
-    // Keep the chain alive even when a caller ignores the rejection.
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 }

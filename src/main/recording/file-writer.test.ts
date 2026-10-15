@@ -2,577 +2,90 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FileWriteError, FileWriter, MAX_PUBLISH_ATTEMPTS, NO_MEDIA_DETAIL, classifyWriteError, ensureWritableDir, nodeFs, type FileWriterFs, type WritableHandle } from "./file-writer";
-import { ftyp, sampleRecording } from "./mp4-fixture";
+import { MAX_PUBLISH_ATTEMPTS, classifyWriteError, ensureWritableDir, nodeFs, publishRecording, type FileWriterFs } from "./file-writer";
 
 let dir: string;
-const activeWriters: FileWriter[] = [];
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordstuff-fw-"));
 });
 afterEach(async () => {
-  for (const writer of activeWriters.splice(0)) await writer.abandon();
   vi.useRealTimers();
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-const bytes = (...values: number[]) => new Uint8Array(values);
+/** A recording the engine finished under its temporary name. */
+async function recorded(name: string, ...values: number[]): Promise<string> {
+  const recording = path.join(dir, `${name}.recording.mp4`);
+  await fs.writeFile(recording, new Uint8Array(values));
+  return recording;
+}
 
-describe("FileWriter", () => {
-  it("appends in order, then finish publishes to the final path", async () => {
-    const recording = path.join(dir, "a.recording.mp4");
-    const final = path.join(dir, "a.mp4");
-    const writer = await FileWriter.open(recording, final);
-    const appends = [writer.append(bytes(1, 2)), writer.append(bytes(3)), writer.append(bytes(4, 5, 6))];
-    await Promise.all(appends);
-    expect(writer.bytesWritten).toBe(6);
-    const written = await fs.stat(recording);
-    expect(await writer.finish()).toBe(final);
-    expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2, 3, 4, 5, 6]));
+describe("publishRecording", () => {
+  it("links the recording under its final name and removes the temporary one", async () => {
+    const recording = await recorded("a", 1, 2, 3);
+    const { target, timings } = await publishRecording(nodeFs, recording, path.join(dir, "a.mp4"));
+    expect(target).toBe(path.join(dir, "a.mp4"));
+    expect(await fs.readFile(target)).toEqual(Buffer.from([1, 2, 3]));
     await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
-    // Linked, not copied: the same file under its final name, with no second name left.
-    const saved = await fs.stat(final);
-    expect(saved.ino).toBe(written.ino);
-    expect(saved.nlink).toBe(1);
-    expect(writer.finishTimings).toMatchObject({ method: "link" });
-    expect(writer.finishTimings).not.toHaveProperty("linkError");
-  });
-
-  it("publishes the capture host's fragmented MP4 as a plain one, its media untouched", async () => {
-    const final = path.join(dir, "p.mp4");
-    const file = sampleRecording();
-    const writer = await FileWriter.open(path.join(dir, "p.recording.mp4"), final);
-    // In uneven pieces, as the capture host hands them over.
-    for (let at = 0; at < file.length; at += 37) await writer.append(file.subarray(at, at + 37));
-    await writer.finish();
-    const saved = await fs.readFile(final);
-    const moovAt = ftyp.length;
-    expect(saved.subarray(0, moovAt)).toEqual(ftyp);
-    // The old header and every fragment are one mdat, and the whole index follows it.
-    expect(saved.toString("latin1", moovAt + 4, moovAt + 8)).toBe("mdat");
-    expect(Number(saved.readBigUInt64BE(moovAt + 8))).toBe(file.length - moovAt);
-    expect(saved.toString("latin1", file.length + 4, file.length + 8)).toBe("moov");
-    expect(saved.readUInt32BE(file.length)).toBe(saved.length - file.length);
-    expect(saved.subarray(moovAt + 16, file.length)).toEqual(file.subarray(moovAt + 16));
-    expect(writer.finishTimings).toMatchObject({ method: "link", finalizeMs: expect.any(Number) });
-    expect(writer.finishTimings).not.toHaveProperty("fragmented");
-  });
-
-  it("publishes the file exactly as written when its index cannot be appended whole, or cannot be written at all", async () => {
-    const file = sampleRecording();
-    let writes = 0;
-    // A volume that takes the start of the index, then fills up.
-    const full: FileWriterFs = { ...nodeFs, open: async (filePath, flags) => {
-      const handle = await nodeFs.open(filePath, flags);
-      return { ...handle, writeAt: async (data, position) => {
-        if (writes++ > 0) throw Object.assign(new Error("no space"), { code: "ENOSPC" });
-        return handle.writeAt!(data.subarray(0, 10), position);
-      } };
-    } };
-    const cut = await FileWriter.open(path.join(dir, "f.recording.mp4"), path.join(dir, "f.mp4"), { io: full });
-    await cut.append(file);
-    expect(await fs.readFile(await cut.finish())).toEqual(file);
-    expect(cut.finishTimings?.fragmented).toBe("index not written: ENOSPC");
-    const appendOnly: FileWriterFs = { ...nodeFs, open: async (filePath, flags) => {
-      const { write, sync, close } = await nodeFs.open(filePath, flags);
-      return { write, sync, close };
-    } };
-    const plainless = await FileWriter.open(path.join(dir, "n.recording.mp4"), path.join(dir, "n.mp4"), { io: appendOnly });
-    await plainless.append(file);
-    expect(await fs.readFile(await plainless.finish())).toEqual(file);
-    expect(plainless.finishTimings?.fragmented).toBe("no positional writes");
+    expect(timings).toMatchObject({ method: "link" });
   });
 
   it("copies exclusively when the volume refuses hard links, for every candidate name", async () => {
-    const recording = path.join(dir, "fat.recording.mp4");
+    const recording = await recorded("fat", 8, 9);
     const final = path.join(dir, "fat.mp4");
     await fs.writeFile(final, "old");
     const link = vi.fn(async () => { throw Object.assign(new Error("not supported"), { code: "ENOTSUP" }); });
-    const writer = await FileWriter.open(recording, final, { io: { ...nodeFs, link } });
-    await writer.append(bytes(8, 9));
-    const saved = await writer.finish();
-    expect(saved).toBe(path.join(dir, "fat-2.mp4"));
+    const { target, timings } = await publishRecording({ ...nodeFs, link }, recording, final);
+    expect(target).toBe(path.join(dir, "fat-2.mp4"));
     expect(link).toHaveBeenCalledTimes(1);
     expect(await fs.readFile(final, "utf8")).toBe("old");
-    expect(await fs.readFile(saved)).toEqual(Buffer.from([8, 9]));
+    expect(await fs.readFile(target)).toEqual(Buffer.from([8, 9]));
     await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(writer.finishTimings).toMatchObject({ method: "copy", linkError: "ENOTSUP" });
+    expect(timings).toMatchObject({ method: "copy", linkError: "ENOTSUP" });
   });
 
-  it("never copies over a name the link found taken", async () => {
+  it("never copies over a name the link found taken, and keeps every older file", async () => {
     const copyExclusive = vi.fn(nodeFs.copyExclusive);
-    const writer = await FileWriter.open(path.join(dir, "t.recording.mp4"), path.join(dir, "t.mp4"), { io: { ...nodeFs, copyExclusive } });
+    const recording = await recorded("t", 1);
     await fs.writeFile(path.join(dir, "t.mp4"), "old");
-    await writer.append(bytes(1));
-    expect(await writer.finish()).toBe(path.join(dir, "t-2.mp4"));
+    await fs.writeFile(path.join(dir, "t-2.mp4"), "another old");
+    const { target } = await publishRecording({ ...nodeFs, copyExclusive }, recording, path.join(dir, "t.mp4"));
+    expect(target).toBe(path.join(dir, "t-3.mp4"));
     expect(copyExclusive).not.toHaveBeenCalled();
     expect(await fs.readFile(path.join(dir, "t.mp4"), "utf8")).toBe("old");
+    expect(await fs.readFile(path.join(dir, "t-2.mp4"), "utf8")).toBe("another old");
   });
 
-  it("gives up publishing after the last candidate name and keeps the recording, on a volume that answers EEXIST for every name", async () => {
-    const recording = path.join(dir, "busy.recording.mp4");
+  it("gives up after the last candidate name and keeps the recording, on a volume that answers EEXIST for every name", async () => {
+    const recording = await recorded("busy", 7);
     const link = vi.fn(async () => { throw Object.assign(new Error("exists"), { code: "EEXIST" }); });
-    const writer = await FileWriter.open(recording, path.join(dir, "busy.mp4"), { io: { ...nodeFs, link } });
-    await writer.append(bytes(7));
-    await expect(writer.finish()).rejects.toMatchObject({ name: "FileWriteError", code: "output_write_failed" });
+    await expect(publishRecording({ ...nodeFs, link }, recording, path.join(dir, "busy.mp4")))
+      .rejects.toMatchObject({ name: "FileWriteError", code: "output_write_failed" });
     expect(link).toHaveBeenCalledTimes(MAX_PUBLISH_ATTEMPTS);
     expect(link).toHaveBeenLastCalledWith(recording, path.join(dir, `busy-${MAX_PUBLISH_ATTEMPTS}.mp4`));
     expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
   });
 
-  it("refuses to overwrite an existing recording file", async () => {
-    const recording = path.join(dir, "dup.recording.mp4");
-    await fs.writeFile(recording, "x");
-    await expect(FileWriter.open(recording, path.join(dir, "dup.mp4"))).rejects.toMatchObject({
-      name: "FileWriteError",
-      code: "output_open_failed",
-    });
-  });
-
-  it("reports an open refused for lack of space as disk_full", async () => {
-    const open = async () => { throw Object.assign(new Error("no space"), { code: "ENOSPC" }); };
-    await expect(FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), { io: { ...nodeFs, open } }))
-      .rejects.toMatchObject({ name: "FileWriteError", code: "disk_full" });
-  });
-
-  it.each([false, true])("preserves final files colliding before/after open (late=%s)", async (late) => {
-    const recording = path.join(dir, "same.recording.mp4");
-    const final = path.join(dir, "same.mp4");
-    if (!late) await fs.writeFile(final, "old");
-    const writer = await FileWriter.open(recording, final);
-    if (late) await fs.writeFile(final, "old");
-    await fs.writeFile(path.join(dir, "same-2.mp4"), "another old");
-    await writer.append(bytes(1, 2, 3));
-    const saved = await writer.finish();
-    expect(saved).toBe(path.join(dir, "same-3.mp4"));
-    expect(await fs.readFile(final, "utf8")).toBe("old");
-    expect(await fs.readFile(path.join(dir, "same-2.mp4"), "utf8")).toBe("another old");
-    expect(await fs.readFile(saved)).toEqual(Buffer.from([1, 2, 3]));
-    await expect(fs.stat(recording)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("still reports the saved file if temporary cleanup fails", async () => {
-    const recording = path.join(dir, "cleanup.recording.mp4");
+  it("still reports the saved file if removing the temporary name fails", async () => {
+    const recording = await recorded("cleanup", 7);
     const final = path.join(dir, "cleanup.mp4");
-    const writer = await FileWriter.open(recording, final, {
-      io: { ...nodeFs, unlink: async () => { throw new Error("cleanup failed"); } },
-    });
-    await writer.append(bytes(7));
-    expect(await writer.finish()).toBe(final);
+    const { target, timings } = await publishRecording({ ...nodeFs, unlink: async () => { throw new Error("cleanup failed"); } }, recording, final);
+    expect(target).toBe(final);
     expect(await fs.readFile(final)).toEqual(Buffer.from([7]));
     // The leftover temporary name is a second link to the saved file.
-    expect(await fs.readFile(recording)).toEqual(Buffer.from([7]));
     expect((await fs.stat(final)).nlink).toBe(2);
-    expect(writer.finishTimings).toMatchObject({ method: "link", cleanupError: "cleanup failed" });
+    expect(timings).toMatchObject({ method: "link", cleanupError: "cleanup failed" });
   });
 
-  it("abandon keeps a non-empty partial file and removes an empty one", async () => {
-    const kept = await FileWriter.open(path.join(dir, "k.recording.mp4"), path.join(dir, "k.mp4"));
-    await kept.append(bytes(9));
-    expect(await kept.abandon()).toBe(path.join(dir, "k.recording.mp4"));
-    expect(await fs.readFile(path.join(dir, "k.recording.mp4"))).toEqual(Buffer.from([9]));
-
-    const empty = await FileWriter.open(path.join(dir, "e.recording.mp4"), path.join(dir, "e.mp4"));
-    expect(await empty.abandon()).toBeUndefined();
-    await expect(fs.stat(path.join(dir, "e.recording.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("append after finish rejects", async () => {
-    const writer = await FileWriter.open(path.join(dir, "c.recording.mp4"), path.join(dir, "c.mp4"));
-    await writer.append(bytes(1));
-    await writer.finish();
-    await expect(writer.append(bytes(1))).rejects.toThrow(/closed/);
-  });
-
-  it("fsyncs on the interval and once more on finish", async () => {
-    vi.useFakeTimers();
-    try {
-      let syncs = 0;
-      // Fully in-memory handle so the fake clock, not real I/O, drives the test.
-      const io: FileWriterFs = {
-        ...nodeFs,
-        open: async () => ({
-          write: async (data) => ({ bytesWritten: data.byteLength }),
-          sync: async () => {
-            syncs += 1;
-          },
-          close: async () => undefined,
-        }),
-        link: async () => undefined,
-        copyExclusive: async () => undefined,
-        unlink: async () => undefined,
-      };
-      const writer = await FileWriter.open("/mem/s.recording.mp4", "/mem/s.mp4", { io, fsyncIntervalMs: 5000 });
-      await writer.append(bytes(1));
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(syncs).toBe(2);
-      await writer.finish();
-      expect(syncs).toBe(3);
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(syncs).toBe(3);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("queues at most one background sync while an earlier one is still pending", async () => {
-    vi.useFakeTimers();
-    try {
-      let syncs = 0;
-      let finishSync: (() => void) | undefined;
-      const io: FileWriterFs = {
-        ...nodeFs,
-        open: async () => ({
-          write: async (data) => ({ bytesWritten: data.byteLength }),
-          // A volume whose sync outlasts several intervals.
-          sync: () => { syncs += 1; return new Promise<void>((resolve) => { finishSync = resolve; }); },
-          close: async () => undefined,
-        }),
-        link: async () => undefined,
-        copyExclusive: async () => undefined,
-        unlink: async () => undefined,
-      };
-      const writer = await FileWriter.open("/mem/q.recording.mp4", "/mem/q.mp4", { io, fsyncIntervalMs: 5000 });
-      await writer.append(bytes(1));
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(syncs).toBe(1);
-      // A write accepted meanwhile waits behind that one sync only.
-      const write = writer.append(bytes(1));
-      finishSync!();
-      await write;
-      expect(syncs).toBe(1);
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(syncs).toBe(2);
-      finishSync!();
-      await writer.abandon();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("a disk-full write rejects with disk_full and keeps the partial file", async () => {
-    let writes = 0;
-    const io = wrapFs({
-      onOpen: (handle) => ({
-        sync: () => handle.sync(),
-        close: () => handle.close(),
-        write: async (data) => {
-          writes += 1;
-          if (writes === 2) throw Object.assign(new Error("no space"), { code: "ENOSPC" });
-          return handle.write(data);
-        },
-      }),
-    });
-    const recording = path.join(dir, "d.recording.mp4");
-    const writer = await FileWriter.open(recording, path.join(dir, "d.mp4"), { io });
-    activeWriters.push(writer);
-    await writer.append(bytes(1));
-    const failed = writer.append(bytes(2));
-    await expect(failed).rejects.toMatchObject({ code: "disk_full" });
-    // later appends fail fast with the same error and never hit the disk
-    await expect(writer.append(bytes(3))).rejects.toMatchObject({ code: "disk_full" });
-    expect(writes).toBe(2);
-    await expect(writer.finish()).rejects.toBeInstanceOf(FileWriteError);
+  it("reports a failing exclusive copy after a refused link as output_write_failed, and one out of space as disk_full", async () => {
+    const refused = async () => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); };
+    const failing: FileWriterFs = { ...nodeFs, link: refused, copyExclusive: async () => { throw Object.assign(new Error("EXDEV"), { code: "EXDEV" }); } };
+    const recording = await recorded("r", 1);
+    await expect(publishRecording(failing, recording, path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "output_write_failed" });
+    const full: FileWriterFs = { ...nodeFs, link: refused, copyExclusive: async () => { throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" }); } };
+    await expect(publishRecording(full, recording, path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "disk_full" });
     expect(await fs.readFile(recording)).toEqual(Buffer.from([1]));
-  });
-
-  it("a failing exclusive copy after a refused link reports output_write_failed", async () => {
-    const io: FileWriterFs = {
-      ...nodeFs,
-      link: async () => {
-        throw Object.assign(new Error("EPERM"), { code: "EPERM" });
-      },
-      copyExclusive: async () => {
-        throw Object.assign(new Error("EXDEV"), { code: "EXDEV" });
-      },
-    };
-    const writer = await FileWriter.open(path.join(dir, "r.recording.mp4"), path.join(dir, "r.mp4"), { io });
-    await writer.append(bytes(1));
-    await expect(writer.finish()).rejects.toMatchObject({ code: "output_write_failed" });
-    const partial = await writer.abandon();
-    expect(await fs.readFile(partial!)).toEqual(Buffer.from([1]));
     await expect(fs.stat(path.join(dir, "r.mp4"))).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("a copy that runs out of space after a refused link reports disk_full and keeps the partial", async () => {
-    const io: FileWriterFs = {
-      ...nodeFs,
-      link: async () => { throw Object.assign(new Error("not supported"), { code: "ENOTSUP" }); },
-      copyExclusive: async () => { throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" }); },
-    };
-    const writer = await FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), { io });
-    await writer.append(bytes(1, 2));
-    await expect(writer.finish()).rejects.toMatchObject({ code: "disk_full" });
-    expect(await fs.readFile((await writer.abandon())!)).toEqual(Buffer.from([1, 2]));
-  });
-});
-
-describe("zero-byte publication", () => {
-  it.each([0, 1, 2])("rejects finish after %i empty appends, closes, removes the file and allows a retry", async (count) => {
-    vi.useFakeTimers();
-    const close = vi.fn();
-    const io = wrapFs({ onOpen: (handle) => ({
-      write: (data) => handle.write(data), sync: () => handle.sync(),
-      close: async () => { close(); await handle.close(); },
-    }) });
-    const recording = path.join(dir, "empty.recording.mp4");
-    const final = path.join(dir, "empty.mp4");
-    const writer = await FileWriter.open(recording, final, { io });
-    const appends = Array.from({ length: count }, () => writer.append(new Uint8Array()));
-    const error = await writer.finish().catch((cause: unknown) => cause);
-    await Promise.all(appends);
-    expect(error).toBeInstanceOf(FileWriteError);
-    expect(error).toMatchObject({ code: "capture_start_failed", message: expect.stringContaining(NO_MEDIA_DETAIL) });
-    expect(writer.bytesWritten).toBe(0);
-    expect(close).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(await fs.readdir(dir)).toEqual([]);
-
-    // A retry may reuse the freed name before the owner's own abandon runs.
-    const retry = await FileWriter.open(recording, final);
-    await retry.append(bytes(4, 2));
-    expect(await writer.abandon()).toBeUndefined();
-    expect(await retry.finish()).toBe(final);
-    expect(await fs.readFile(final)).toEqual(Buffer.from([4, 2]));
-  });
-
-  it.each(["write", "background sync"])("keeps a %s failure's own code when nothing was written", async (failing) => {
-    vi.useFakeTimers();
-    const noSpace = () => Object.assign(new Error("no space"), { code: "ENOSPC" });
-    const writer = await FileWriter.open(path.join(dir, "nospace.recording.mp4"), path.join(dir, "nospace.mp4"), {
-      io: wrapFs({ onOpen: (handle) => ({
-        close: () => handle.close(),
-        sync: async () => { if (failing !== "write") throw noSpace(); await handle.sync(); },
-        write: async (data) => { if (failing === "write") throw noSpace(); return handle.write(data); },
-      }) }),
-    });
-    activeWriters.push(writer);
-    if (failing === "write") await expect(writer.append(bytes(1))).rejects.toMatchObject({ code: "disk_full" });
-    else await vi.advanceTimersByTimeAsync(5000);
-    await expect(writer.finish()).rejects.toMatchObject({ code: "disk_full" });
-    expect(await writer.abandon()).toBeUndefined();
-    expect(await fs.readdir(dir)).toEqual([]);
-  });
-});
-
-describe("complete writes", () => {
-  async function open(onOpen: (handle: WritableHandle) => WritableHandle) {
-    const writer = await FileWriter.open(path.join(dir, "short.recording.mp4"), path.join(dir, "short.mp4"), {
-      io: wrapFs({ onOpen }),
-    });
-    activeWriters.push(writer);
-    return writer;
-  }
-
-  it("completes 4096 bytes in seven-byte pieces and drains queued chunks before finish", async () => {
-    const calls: number[] = [];
-    const writer = await open((handle) => ({
-      sync: () => handle.sync(), close: () => handle.close(),
-      write: (data) => { calls.push(data.length); return handle.write(data.subarray(0, 7)); },
-    }));
-    const payload = Uint8Array.from({ length: 4096 }, (_, i) => i % 251);
-    const pending = [writer.append(new Uint8Array()), writer.append(payload), writer.append(bytes(9, 8, 7))];
-    const finished = writer.finish();
-    await Promise.all(pending);
-    const final = await finished;
-    expect(calls).not.toContain(0);
-    expect(calls).toHaveLength(Math.ceil(4096 / 7) + 1);
-    expect(writer.bytesWritten).toBe(4099);
-    expect(await fs.readFile(final)).toEqual(Buffer.concat([payload, bytes(9, 8, 7)]));
-  });
-
-  it("keeps timer sync and later chunks outside an unfinished short-write append", async () => {
-    vi.useFakeTimers();
-    let resume!: () => void;
-    const gate = new Promise<void>((resolve) => { resume = resolve; });
-    const order: string[] = [];
-    const writer = await open((handle) => ({
-      close: () => handle.close(),
-      sync: async () => { order.push("sync"); await handle.sync(); },
-      write: async (data) => {
-        order.push(`write:${data[0]}`);
-        if (order.length === 1) await gate;
-        return handle.write(data.subarray(0, 1));
-      },
-    }));
-    try {
-      const first = writer.append(bytes(1, 2));
-      await vi.advanceTimersByTimeAsync(5000);
-      const second = writer.append(bytes(3));
-      expect(order).toEqual(["write:1"]);
-      resume();
-      await Promise.all([first, second]);
-      const final = await writer.finish();
-      expect(order).toEqual(["write:1", "write:2", "sync", "write:3", "sync"]);
-      expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2, 3]));
-    } finally {
-      resume();
-    }
-  });
-
-  it.each(["ENOSPC", "EIO", "zero"])("retains progress within the first chunk on %s and latches failure", async (fault) => {
-    vi.useFakeTimers();
-    const writes = vi.fn();
-    const sync = vi.fn();
-    const close = vi.fn();
-    const writer = await open((handle) => ({
-      sync: async () => { sync(); await handle.sync(); },
-      close: async () => { close(); await handle.close(); },
-      write: async (data) => {
-        writes();
-        if (writes.mock.calls.length === 1) return handle.write(data.subarray(0, 2));
-        if (fault === "zero") return { bytesWritten: 0 };
-        throw Object.assign(new Error(fault), { code: fault });
-      },
-    }));
-    const failed = writer.append(bytes(1, 2, 3, 4));
-    const error = await failed.catch((cause: unknown) => cause);
-    expect(error).toMatchObject({ code: fault === "ENOSPC" ? "disk_full" : "output_write_failed" });
-    expect(writer.bytesWritten).toBe(2);
-    await expect(writer.append(bytes(5))).rejects.toBe(error);
-    await vi.advanceTimersByTimeAsync(10_000);
-    await expect(writer.finish()).rejects.toBe(error);
-    expect(await writer.abandon()).toBe(writer.recordingPath);
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(writes).toHaveBeenCalledTimes(2);
-    expect(sync).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(await fs.readFile(writer.recordingPath)).toEqual(Buffer.from([1, 2]));
-    await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it.each([0, -1, 0.5, NaN, Infinity, 4])("rejects invalid/no progress %s without counting or publishing", async (count) => {
-    const write = vi.fn(async () => ({ bytesWritten: count }));
-    const writer = await open((handle) => ({
-      write, sync: () => handle.sync(), close: () => handle.close(),
-    }));
-    await expect(writer.append(bytes(1, 2, 3))).rejects.toMatchObject({ code: "output_write_failed" });
-    expect(writer.bytesWritten).toBe(0);
-    expect(write).toHaveBeenCalledTimes(1);
-    await expect(writer.finish()).rejects.toBeInstanceOf(FileWriteError);
-    expect(await writer.abandon()).toBeUndefined();
-    await expect(fs.stat(writer.recordingPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-});
-
-it.each([false, true])("marks preservation uncertain when close fails, including finish first: %s", async finishFirst => {
-  const writer = await FileWriter.open(path.join(dir, "uncertain.recording.mp4"), path.join(dir, "uncertain.mp4"), {
-    io: wrapFs({ onOpen: handle => ({
-      write: data => handle.write(data), sync: () => handle.sync(),
-      close: async () => { await handle.close(); throw new Error("close failed"); },
-    }) }),
-  });
-  activeWriters.push(writer);
-  await writer.append(bytes(1, 2));
-  if (finishFirst) await expect(writer.finish()).rejects.toThrow("close failed");
-  await writer.abandon();
-  expect(writer.preservationUncertain).toBe(true);
-});
-
-it("classifies a close error during finish like any other write error", async () => {
-  const writer = await FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), {
-    io: wrapFs({ onOpen: handle => ({
-      write: data => handle.write(data), sync: () => handle.sync(),
-      close: async () => { await handle.close(); throw Object.assign(new Error("no space"), { code: "ENOSPC" }); },
-    }) }),
-  });
-  activeWriters.push(writer);
-  await writer.append(bytes(1));
-  await expect(writer.finish()).rejects.toMatchObject({ name: "FileWriteError", code: "disk_full", filePath: writer.recordingPath });
-  await expect(fs.stat(writer.finalPath)).rejects.toMatchObject({ code: "ENOENT" });
-});
-
-describe("bounded write backlog", () => {
-  /** Real file whose writes wait for the test; each release lets one pending write land. */
-  async function slow(limit: number) {
-    const gates: Array<() => void> = [];
-    const recording = path.join(dir, "slow.recording.mp4");
-    const writer = await FileWriter.open(recording, path.join(dir, "slow.mp4"), {
-      backlogLimitBytes: limit,
-      io: { ...nodeFs, open: async (file, flags) => {
-        const handle = await nodeFs.open(file, flags);
-        return { sync: () => handle.sync(), close: () => handle.close(),
-          write: async (data) => { await new Promise<void>((resolve) => gates.push(resolve)); return handle.write(data); } };
-      } },
-    });
-    activeWriters.push(writer);
-    const release = async (): Promise<void> => {
-      await vi.waitFor(() => expect(gates.length).toBeGreaterThan(0));
-      gates.shift()!();
-    };
-    return { writer, recording, release };
-  }
-
-  it("refuses the overflowing append at once and every later one, but still writes what it accepted", async () => {
-    const { writer, recording, release } = await slow(6);
-    const first = writer.append(bytes(1, 2, 3));
-    const second = writer.append(bytes(4, 5, 6));
-    expect(writer.backlogBytes).toBe(6);
-    const outcome = await Promise.race([writer.append(bytes(7)).then(() => "accepted", (error: unknown) => error),
-      new Promise((resolve) => setTimeout(() => resolve("waited"), 50))]);
-    // Refused without waiting for slow storage, and never queued.
-    expect(outcome).toMatchObject({ name: "FileWriteError", code: "output_write_failed", message: expect.stringContaining("backlog limit 6 bytes") });
-    expect(writer.backlogBytes).toBe(6);
-    await release();
-    await first;
-    // Room again, yet a later chunk would leave a gap, so it is refused too.
-    await expect(writer.append(bytes(8))).rejects.toBe(outcome);
-    await release();
-    await second;
-    expect(writer.backlogBytes).toBe(0);
-    await expect(writer.finish()).rejects.toBe(outcome);
-    expect(await writer.abandon()).toBe(recording);
-    expect(await fs.readFile(recording)).toEqual(Buffer.from([1, 2, 3, 4, 5, 6]));
-  });
-
-  it("frees the bound as writes land and keeps an earlier disk error over the backlog", async () => {
-    const { writer, release } = await slow(4);
-    const first = writer.append(bytes(1, 2, 3));
-    await release();
-    await first;
-    expect(writer.backlogBytes).toBe(0);
-    const second = writer.append(bytes(4, 5, 6, 7));
-    expect(writer.backlogBytes).toBe(4);
-    await release();
-    await second;
-    expect(writer.bytesWritten).toBe(7);
-
-    const failing = await FileWriter.open(path.join(dir, "full.recording.mp4"), path.join(dir, "full.mp4"), {
-      backlogLimitBytes: 2,
-      io: { ...nodeFs, open: async () => ({ sync: async () => undefined, close: async () => undefined,
-        write: async () => { throw Object.assign(new Error("no space"), { code: "ENOSPC" }); } }) },
-    });
-    activeWriters.push(failing);
-    const full = failing.append(bytes(1));
-    await expect(full).rejects.toMatchObject({ code: "disk_full" });
-    const error = await full.catch((cause: unknown) => cause);
-    await expect(failing.append(bytes(1, 2, 3))).rejects.toBe(error);
-  });
-
-  it("drain reports a retained background sync error only after queued work settles", async () => {
-    let failSync!: () => void;
-    const writer = await FileWriter.open(path.join(dir, "drain.recording.mp4"), path.join(dir, "drain.mp4"), {
-      fsyncIntervalMs: 5,
-      io: { ...nodeFs, open: async (file, flags) => {
-        const handle = await nodeFs.open(file, flags);
-        return { write: (data) => handle.write(data), close: () => handle.close(),
-          sync: () => new Promise<void>((_, reject) => { failSync = () => reject(Object.assign(new Error("no space"), { code: "ENOSPC" })); }) };
-      } },
-    });
-    activeWriters.push(writer);
-    await vi.waitFor(() => expect(failSync).toBeDefined());
-    let drained: unknown = "pending";
-    void writer.drain().then((error) => { drained = error; });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(drained).toBe("pending");
-    failSync();
-    await vi.waitFor(() => expect(drained).toMatchObject({ name: "FileWriteError", code: "disk_full" }));
-    const clean = await FileWriter.open(path.join(dir, "clean.recording.mp4"), path.join(dir, "clean.mp4"));
-    activeWriters.push(clean);
-    await clean.append(bytes(1));
-    expect(await clean.drain()).toBeUndefined();
   });
 });
 
@@ -618,56 +131,10 @@ describe("ensureWritableDir", () => {
   });
 });
 
-function wrapFs(hooks: { onOpen: (handle: WritableHandle) => WritableHandle }): FileWriterFs {
-  return {
-    ...nodeFs,
-    open: async (filePath, flags) => hooks.onOpen(await nodeFs.open(filePath, flags)),
-  };
-}
-
-describe("no timer outlives a writer (plan 049)", () => {
-  const memory = (): FileWriterFs => ({
-    ...nodeFs,
-    open: async () => ({ write: async (data) => ({ bytesWritten: data.byteLength }), sync: async () => undefined, close: async () => undefined }),
-    link: async () => undefined,
-    copyExclusive: async () => undefined,
-    unlink: async () => undefined,
-  });
-
-  it("clears the fsync interval when the file is finished and when it is abandoned", async () => {
-    vi.useFakeTimers();
-    try {
-      const finished = await FileWriter.open("/mem/a.recording.mp4", "/mem/a.mp4", { io: memory(), fsyncIntervalMs: 5000 });
-      expect(vi.getTimerCount()).toBe(1);
-      await finished.append(bytes(1));
-      await finished.finish();
-      expect(vi.getTimerCount()).toBe(0);
-      const abandoned = await FileWriter.open("/mem/b.recording.mp4", "/mem/b.mp4", { io: memory(), fsyncIntervalMs: 5000 });
-      expect(vi.getTimerCount()).toBe(1);
-      await abandoned.abandon();
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
-
 it("does not recreate a missing custom folder", async () => {
   const missing = path.join(dir, "offline");
   await expect(ensureWritableDir(missing, nodeFs, false)).rejects.toMatchObject({ code: "output_open_failed" });
   await expect(fs.stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
-});
-
-it("publishes once when finish is repeated and rejects late appends", async () => {
-  const final = path.join(dir, "once.mp4");
-  const writer = await FileWriter.open(path.join(dir, "once.recording.mp4"), final);
-  await writer.append(bytes(1, 2));
-  const first = writer.finish();
-  expect(writer.finish()).toBe(first);
-  await expect(writer.append(bytes(3))).rejects.toThrow();
-  expect(await first).toBe(final);
-  await writer.abandon();
-  expect(await fs.readFile(final)).toEqual(Buffer.from([1, 2]));
 });
 
 it("removes a copied destination if syncing it fails, retaining the recording", async () => {
@@ -693,16 +160,4 @@ it("refuses a full-copy publication without enough space for the recording", asy
   finally { statfs.mockRestore(); }
   expect(await fs.readFile(source, "utf8")).toBe("retained");
   await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
-});
-
-it("settles concurrent finish and abandon for empty media without circular waiting", async () => {
-  const recording = path.join(dir, "empty.recording.mp4");
-  const writer = await FileWriter.open(recording, path.join(dir, "empty.mp4"));
-  const finished = writer.finish();
-  const abandoned = writer.abandon();
-  await expect(finished).rejects.toMatchObject({ code: "capture_start_failed" });
-  await expect(abandoned).resolves.toBeUndefined();
-  await fs.writeFile(recording, "new recording");
-  await writer.abandon();
-  expect(await fs.readFile(recording, "utf8")).toBe("new recording");
 });

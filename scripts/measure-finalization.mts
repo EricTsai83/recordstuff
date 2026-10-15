@@ -26,7 +26,6 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
 import { APP_LOG_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
-import { ENGINE_USAGE, engineEnv, engineMismatch, takeEngineOption, type CaptureEngine } from "./lib/runner/capture-engine.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
@@ -59,21 +58,16 @@ interface Options {
   build: boolean;
   /** `quick` decodes every frame of the first saved take only; the timings never depend on it. */
   verify: "quick" | "full";
-  /** The engine that records (plan 076); native by default. */
-  engine: CaptureEngine;
 }
 
 function usage(message?: string): never {
   if (message) console.error(message);
-  console.error(`usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--verify quick|full] [--no-open-material] [--no-build] ${ENGINE_USAGE}`);
+  console.error(`usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--verify quick|full] [--no-open-material] [--no-build]`);
   process.exit(2);
 }
 
-function parseOptions(args: string[]): Options {
-  const engineOption = takeEngineOption(args);
-  if (!engineOption) usage("--engine takes native or chromium");
-  const argv = engineOption.rest;
-  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick", engine: engineOption.engine };
+function parseOptions(argv: string[]): Options {
+  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     const value = (): string => { const next = argv[++i]; if (next === undefined || next.startsWith("--")) usage(`${arg} needs a value`); return next; };
@@ -184,7 +178,7 @@ let fullyDecoded = false;
 async function recordTake(options: Options, index: number): Promise<Take> {
   const take: Take = { index, outcome: "no outcome", verified: false, deleted: false, freeBeforeBytes: freeBytes(options.dir) };
   const cursor = appLog.end();
-  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), ...engineEnv(options.engine), RECORDSTUFF_AUTORECORD: JSON.stringify({
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({
     seconds: options.seconds, quality: { videoQuality: options.quality, resolutionCap: "source", frameRate: options.fps }, outputDir: options.dir,
   }) };
   owned.launchedAt = Date.now();
@@ -203,16 +197,9 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   if (gap) take.detail = `log evidence gap: ${gap}`;
   const outcome = parseAutorecordOutcome(lines.join("\n"));
   if (outcome.failed) { take.outcome = "failed"; take.detail = outcome.failed; }
-  const wrongEngine = engineMismatch(lines, options.engine);
-  if (wrongEngine) {
-    take.outcome = "failed";
-    take.detail = wrongEngine;
-  }
   const sample = finalizationSample(lines);
-  // Another engine's timings are not this round's: the take fails and its file goes like a partial's.
-  if (sample && !wrongEngine) take.sample = sample;
-  if (!outcome.saved || wrongEngine) {
-    if (outcome.saved && !options.keep) fs.rmSync(outcome.saved, { force: true });
+  if (sample) take.sample = sample;
+  if (!outcome.saved) {
     // A failed or killed take keeps its partial file (FileWriter.abandon); without this they would pile up on the volume.
     const partials = partialsSince(options.dir, owned.launchedAt);
     if (partials.length) {
@@ -285,7 +272,7 @@ function summary(options: Options, volume: { mount: string; type: string }, take
   return [
     `# Finalization measurement — ${options.label || "unlabelled"}`,
     "",
-    `- Run: ${new Date().toISOString()}; ${takes.length} take(s) of ${options.seconds} s at ${options.quality} ${options.fps} fps, source resolution, ${options.engine} capture engine`,
+    `- Run: ${new Date().toISOString()}; ${takes.length} take(s) of ${options.seconds} s at ${options.quality} ${options.fps} fps, source resolution`,
     `- Folder: \`${options.dir}\` on ${volume.type} (${volume.mount}); publication method ${methods}`,
     `- Verification: ${options.verify === "full" ? "every take fully decoded" : "first saved take fully decoded; the others' streams, duration and first and last second"}`,
     `- Machine: ${spawnSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).stdout.trim()}, macOS ${spawnSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).stdout.trim()}; commit ${spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim()}${spawnSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim() ? " plus uncommitted changes" : ""}`,

@@ -1,10 +1,10 @@
 /**
  * Fault points of the controlled acceptance build (plan 035), free of Electron so they
- * can be tested against the production FileWriter, Recorder and failure history. Only
+ * can be tested against the production EngineFileWriter, Recorder and failure history. Only
  * a throwaway source copy made by acceptance:controlled imports this; no production
  * module does. Every fault is off until the runner arms it.
  */
-import { FileWriteError, FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/recording/file-writer";
+import { FileWriteError } from "../../src/main/recording/file-writer";
 import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
 import type { EngineFileReport } from "../../src/shared/protocol";
 import type { RecorderHost } from "../../src/main/recording/recorder";
@@ -52,12 +52,6 @@ export class ControlledFaults {
     return new Promise(resolve => this.held[target].push(resolve));
   }
 
-  /** The production FileWriter's file system, with the write and close faults in its handle. */
-  readonly io: FileWriterFs = { ...nodeFs, open: async (file, flags) => this.handle(await nodeFs.open(file, flags), file) };
-
-  readonly openWriter = (recordingPath: string, finalPath: string): Promise<FileWriter> =>
-    FileWriter.open(recordingPath, finalPath, { io: this.io });
-
   /**
    * The native engine's writer (plan 076). The engine writes and closes the file itself, so the close fault comes
    * where its outcome does: once the engine really finished the file, the outcome fails as a failed close would,
@@ -74,37 +68,6 @@ export class ControlledFaults {
       }
       return report;
     } });
-
-  private handle(inner: WritableHandle, file: string): WritableHandle {
-    let written = 0;
-    return {
-      write: async data => {
-        // Only a file that already holds data fails, so the failure keeps a partial.
-        const mode = this.current.write;
-        if (written > 0 && mode !== "off") {
-          this.current.write = "off";
-          this.note("write failed", { file, mode, bytesBefore: written });
-          throw fault(mode === "enospc" ? "ENOSPC" : "EIO", "write", file);
-        }
-        const result = await inner.write(data);
-        written += result.bytesWritten;
-        return result;
-      },
-      // Making the saved file a plain MP4 goes through unchanged, as in the app.
-      ...(inner.writeAt ? { writeAt: (data: Uint8Array, position: number) => inner.writeAt!(data, position) } : {}),
-      ...(inner.truncate ? { truncate: (length: number) => inner.truncate!(length) } : {}),
-      sync: () => inner.sync(),
-      close: async () => {
-        // The descriptor is released first; only the confirmation fails.
-        await inner.close();
-        if (this.current.close === "fail") {
-          this.current.close = "off";
-          this.note("close failed", { file });
-          throw fault("EIO", "close", file);
-        }
-      },
-    };
-  }
 
   /**
    * The production capture host with its `prepared` reply held in main while `prepare` is
