@@ -526,6 +526,29 @@ test("switching tabs from the keyboard ends a preview, or one waiting to start, 
   await expect(previews).toHaveCount(0);
 });
 
+test("another app taking the focus ends a preview while the pointer stays on the picture, and an unfocused window starts none", { tag: "@library" }, async () => {
+  const previews = page.locator(".clip-preview > video"), thumbs = page.locator(".clip-thumb");
+  await thumbs.nth(0).hover();
+  await expect(previews).toHaveCount(1);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hasFocus", { configurable: true, value: () => false });
+    window.dispatchEvent(new Event("blur"));
+  });
+  await expect(previews).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await thumbs.nth(1).hover();
+  await page.waitForTimeout(600);
+  await expect(previews).toHaveCount(0);
+  await page.evaluate(() => {
+    delete (document as unknown as { hasFocus?: unknown }).hasFocus;
+  });
+  await page.mouse.move(0, 0);
+  await thumbs.nth(1).hover();
+  await expect(previews).toHaveCount(1);
+  await page.mouse.move(0, 0);
+  await expect(previews).toHaveCount(0);
+});
+
 test("with reduced motion a preview plays nothing by itself, and shows the frame a press on its bar moves to", { tag: "@library" }, async () => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   try {

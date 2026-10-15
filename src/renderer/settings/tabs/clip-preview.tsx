@@ -40,6 +40,10 @@ addEventListener("pointercancel", release, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) stopPreview();
 });
+// Nor does a switch to another app: a window left open behind it, the pointer resting on a card, would loop the preview
+// for as long as it stays there (some 30% of a core, measured 2026-10-15). An unfocused window starts none either.
+addEventListener("blur", () => stopPreview());
+const watchable = (): boolean => !document.hidden && document.hasFocus();
 
 /** The pointer rests on card `id`'s picture: its preview starts unless the pointer leaves first. */
 export function hoverClip(id: string): void {
@@ -48,7 +52,7 @@ export function hoverClip(id: string): void {
   pendingId = id;
   timer = setTimeout(() => {
     pendingId = undefined;
-    if (document.hidden) return;
+    if (!watchable()) return;
     previewId = id;
     emit();
   }, PREVIEW_DELAY_MS);
