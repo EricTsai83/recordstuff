@@ -23,7 +23,22 @@ describe("countdown timeline", () => {
       countdown: 3, preparationMs: 290,
       ticks: [{ remaining: 3, atMs: 0 }, { remaining: 2, atMs: 1001 }, { remaining: 1, atMs: 2000 }],
       overlay: { window: { x: 1408, y: 37, width: 88, height: 88 }, display: { x: 0, y: 0, width: 1512, height: 982 } },
-      dismissal: { outcome: "dismissed", ms: 155 }, recordAfterAnchorMs: 3000, recordToStartedMs: 39, startedToFirstChunkMs: 1059,
+      dismissal: { outcome: "dismissed", ms: 155 }, recordAfterAnchorMs: 3000, recordToStartedMs: 39, startedToFirstChunkMs: 1059, firstChunkSource: "chunk",
+    });
+  });
+
+  it("reads the native engine's start and names its first progress report as such (plan 076)", () => {
+    const base = new Date(Date.UTC(2026, 8, 26, 5));
+    expect(countdownTimeline([
+      at(80, "capture host: timing: process ready 78 ms, display chosen 80 ms"),
+      at(300, "capture host: timing: probe 61 ms, prepare 210 ms (start 205 ms)"),
+      at(310, "recorder: session n1 prepared after 300 ms; countdown 0 s; sound off"),
+      at(312, "recorder: session n1 started 1 ms after record"),
+      at(313, "state → recording"),
+      at(1320, "recorder: session n1 first chunk 400000 bytes (engine progress)"),
+    ], base)).toMatchObject({
+      preparationMs: 310, recordToStartedMs: 1, startedToFirstChunkMs: 1007, firstChunkSource: "engine progress",
+      native: { processReadyMs: 78, displayChosenMs: 80, probeMs: 61, prepareMs: 210 },
     });
   });
 

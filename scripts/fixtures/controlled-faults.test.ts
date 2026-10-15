@@ -20,6 +20,40 @@ async function until(test: () => boolean): Promise<void> {
 }
 
 describe("controlled acceptance faults", () => {
+  it("fails the native engine's finished file once, as a failed close, keeping what it wrote (plan 076)", async () => {
+    const events: string[] = [];
+    const faults = new ControlledFaults(event => events.push(event));
+    const partial = path.join(dir, "n.recording.mp4"), final = path.join(dir, "n.mp4");
+    const outcome = async () => ({ bytes: 3, finalizeMs: 1 });
+    faults.set("close", "fail");
+    const writer = await faults.openEngineWriter(partial, final, outcome);
+    await fs.writeFile(partial, new Uint8Array([1, 2, 3]));
+    await expect(writer.finish()).rejects.toMatchObject({ code: "output_write_failed" });
+    expect(await writer.abandon()).toBe(partial);
+    expect([...await fs.readFile(partial)]).toEqual([1, 2, 3]);
+    expect(events).toContain("close failed");
+    // Once only: the next file finishes and is published.
+    const again = await faults.openEngineWriter(path.join(dir, "m.recording.mp4"), path.join(dir, "m.mp4"), outcome);
+    await fs.writeFile(path.join(dir, "m.recording.mp4"), new Uint8Array([4]));
+    expect(await again.finish()).toBe(path.join(dir, "m.mp4"));
+  });
+
+  it("turns the native engine's next progress into its write error once media arrived (plan 076)", () => {
+    const faults = new ControlledFaults();
+    let deliver!: (message: HostMessage) => void;
+    const heard: HostMessage[] = [];
+    const host = faults.host({ start: async () => {}, record: () => undefined, stop: () => undefined,
+      onMessage: fn => { deliver = fn; }, onFailure: () => undefined });
+    host.onMessage(message => heard.push(message));
+    faults.set("write", "enospc");
+    deliver({ type: "progress", sessionId: "s", bytes: 0 });
+    deliver({ type: "progress", sessionId: "s", bytes: 900 });
+    deliver({ type: "progress", sessionId: "s", bytes: 1800 });
+    expect(heard.map(message => message.type === "writeError" ? `writeError ${message.code}` : `${message.type} ${"bytes" in message ? message.bytes : ""}`))
+      .toEqual(["progress 0", "progress 900", "writeError disk_full", "progress 1800"]);
+    expect(faults.faults.write).toBe("off");
+  });
+
   it("fails one write, only once the file holds data, so the production writer keeps a partial", async () => {
     const events: string[] = [];
     const faults = new ControlledFaults(event => events.push(event));

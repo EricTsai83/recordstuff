@@ -8,6 +8,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { CAPTURE_KEYS } from "./capture-engine.mts";
 
 /** `~/Library/Logs/recordstuff/recordstuff.log`: the app's log (docs/system-design/desktop.md#logs). */
 export const APP_LOG_PATH = path.join(os.homedir(), "Library/Logs/recordstuff/recordstuff.log");
@@ -29,10 +30,13 @@ export function runnerArgs(argv: readonly string[] = process.argv): string[] {
   return args[0] === "--" ? args.slice(1) : args;
 }
 
-/** A copy of `process.env` without the inherited Electron variables. */
+/**
+ * A copy of `process.env` without the inherited Electron variables and the app's capture switches (capture-engine.mts),
+ * which a runner sets itself when it means to.
+ */
 export function scrubbedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...base };
-  for (const key of INHERITED_ELECTRON_KEYS) delete env[key];
+  for (const key of [...INHERITED_ELECTRON_KEYS, ...CAPTURE_KEYS]) delete env[key];
   return env;
 }
 

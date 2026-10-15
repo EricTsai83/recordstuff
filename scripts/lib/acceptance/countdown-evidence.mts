@@ -33,6 +33,13 @@ export interface CountdownTimeline {
   recordToStartedMs?: number;
   /** `state → recording` → first chunk, from log timestamps. */
   startedToFirstChunkMs?: number;
+  /**
+   * What the first chunk was: the hidden renderer's first `MediaRecorder` chunk, or the native engine's first progress
+   * report, which comes on a one-second tick once bytes are written (plan 076), so it bounds the first media from above.
+   */
+  firstChunkSource?: "chunk" | "engine progress";
+  /** The native engine's start (plan 076): its process ready and display chosen, from `start`; then probe and prepare. */
+  native?: { processReadyMs?: number; displayChosenMs?: number; probeMs?: number; prepareMs?: number };
 }
 
 /** Lines after the key press, in order; the session is named by its `prepared` line. */
@@ -76,7 +83,14 @@ export function countdownTimeline(lines: readonly string[], pressedAt: Date): Co
     } else if (/\] state → recording/.test(line) && at !== undefined) {
       recordingAt ??= at;
     } else if (patterns && patterns.firstChunk.test(line) && at !== undefined && recordingAt !== undefined) {
-      timeline.startedToFirstChunkMs ??= at - recordingAt;
+      if (timeline.startedToFirstChunkMs === undefined) {
+        timeline.startedToFirstChunkMs = at - recordingAt;
+        timeline.firstChunkSource = /\(engine progress\)/.test(line) ? "engine progress" : "chunk";
+      }
+    } else if (!session && (m = /capture host: timing: process ready (\d+) ms, display chosen (\d+) ms/.exec(line))) {
+      timeline.native = { ...timeline.native, processReadyMs: Number(m[1]), displayChosenMs: Number(m[2]) };
+    } else if (!session && (m = /capture host: timing: probe (\d+) ms, prepare (\d+) ms/.exec(line))) {
+      timeline.native = { ...timeline.native, probeMs: Number(m[1]), prepareMs: Number(m[2]) };
     }
   }
   return timeline;

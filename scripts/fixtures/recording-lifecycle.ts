@@ -1,9 +1,14 @@
-/** Isolated real Electron process; delays real filesystem work, never the user's app. */
+/**
+ * Isolated real Electron process; delays real filesystem work, never the user's app. The `native` modes play the native
+ * engine (plan 076): the host writes the file itself and reports progress, its outcome comes after `stopped`, and
+ * EngineFileWriter keeps or publishes what it wrote.
+ */
 import { app } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { FileWriter, nodeFs } from "../../src/main/recording/file-writer";
+import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
 import { RecordingResults } from "../../src/main/recording/recording-result";
 import { RecordingResultStore } from "../../src/main/recording/recording-result-store";
 import { Recorder } from "../../src/main/recording/recorder";
@@ -22,7 +27,10 @@ const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 let deliver!: (message: HostMessage) => void;
 let crash!: () => void;
 let started = false, diskPending = false, release!: () => void;
-let deferred = 0, terminal = 0, stablePath: string | undefined;
+let deferred = 0, terminal = 0, stablePath: string | undefined, partial: string | undefined;
+const native = mode.startsWith("native");
+/** Holds a step of the file's finishing until `release`, marking the disk work as pending meanwhile. */
+const held = async <T>(work: () => Promise<T>): Promise<T> => { diskPending = true; await gate; const value = await work(); diskPending = false; return value; };
 const gate = new Promise<void>(resolve => { release = resolve; });
 const resultStore = new RecordingResultStore(path.join(dir, "failure-history.json"));
 const results = new RecordingResults(resultStore);
@@ -36,10 +44,10 @@ const recorder = new Recorder({
     }, refresh() {}, notify() {},
   }),
   host: {
-    start: async () => { started = true; },
+    start: async (_sessionId, _quality, recordingPath) => { partial = recordingPath; started = true; },
     // Prepare then record, as the real host does; no countdown here.
     record: sessionId => deliver({ type: "started", sessionId }),
-    stop: sessionId => { if (mode === "copy") deliver({ type: "stopped", sessionId }); },
+    stop: sessionId => { if (mode === "copy" || mode === "native") deliver({ type: "stopped", sessionId }); },
     onMessage: fn => { deliver = fn; },
     onFailure: fn => { crash = () => fn("capture_host_crashed", "controlled fault"); },
   },
@@ -47,7 +55,11 @@ const recorder = new Recorder({
   newSessionId: () => "fixture", ensureWritableDir: async () => undefined,
   shutdownTimeoutMs: 100,
   stopTimeoutMs: 100, // Same production deadline path, shortened for the fixture.
-  openWriter: (partial, final) => FileWriter.open(partial, final, { io: {
+  // The engine's file: its outcome after `stopped` (native), or the size the kept partial is judged by after a crash.
+  openWriter: (partial, final) => native ? EngineFileWriter.open(partial, final, {
+    outcome: () => mode === "native" ? held(async () => ({ bytes: 3, finalizeMs: 1 })) : new Promise(() => {}),
+    ...(mode === "native-crash" ? { size: (file: string) => held(async () => (await fs.stat(file)).size) } : {}),
+  }) : FileWriter.open(partial, final, { io: {
     ...nodeFs,
     // Publication is a hard link here (a copy only where links are refused); hold whichever runs.
     link: async (from, to) => { diskPending = true; await gate; await nodeFs.link(from, to); diskPending = false; },
@@ -77,8 +89,12 @@ while (!started) await pause(1);
 deliver({ type: "prepared", sessionId: "fixture", mimeType: "video/mp4", capture: {
   videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
 } });
-deliver({ type: "chunk", sessionId: "fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });
-if (mode !== "copy") crash();
+if (native) {
+  // The engine writes the file itself and reports the bytes written so far.
+  await fs.writeFile(partial!, new Uint8Array([11, 22, 33]));
+  deliver({ type: "progress", sessionId: "fixture", bytes: 3 });
+} else deliver({ type: "chunk", sessionId: "fixture", seq: 0, bytes: new Uint8Array([11, 22, 33]).buffer });
+if (mode !== "copy" && mode !== "native") crash();
 app.quit(); app.quit();
 await pause(150);
 assert.equal(diskPending, true);
@@ -92,7 +108,7 @@ release();
 while (terminal === 0) await pause(1);
 assert.deepEqual([...await fs.readFile(stablePath!)], [11, 22, 33]);
 assert.equal(await recorder.shutdown(), true);
-if (mode !== "copy") { assert.equal(await results.persist(), true); assert.equal((await resultStore.load())[0]?.outcome, "partial"); }
+if (mode !== "copy" && mode !== "native") { assert.equal(await results.persist(), true); assert.equal((await resultStore.load())[0]?.outcome, "partial"); }
 await fs.writeFile(path.join(dir, "result.json"), JSON.stringify({ mode, deferred, terminal, stablePath, bytes: [11, 22, 33] }));
 app.quit();
 

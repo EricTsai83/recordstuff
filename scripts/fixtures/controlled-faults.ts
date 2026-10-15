@@ -4,7 +4,9 @@
  * a throwaway source copy made by acceptance:controlled imports this; no production
  * module does. Every fault is off until the runner arms it.
  */
-import { FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/recording/file-writer";
+import { FileWriteError, FileWriter, nodeFs, type FileWriterFs, type WritableHandle } from "../../src/main/recording/file-writer";
+import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
+import type { EngineFileReport } from "../../src/shared/protocol";
 import type { RecorderHost } from "../../src/main/recording/recorder";
 import type { ResultStorage } from "../../src/main/recording/recording-result-store";
 import type { RecordingFailure, RecordingResult } from "../../src/shared/recording-result";
@@ -56,6 +58,23 @@ export class ControlledFaults {
   readonly openWriter = (recordingPath: string, finalPath: string): Promise<FileWriter> =>
     FileWriter.open(recordingPath, finalPath, { io: this.io });
 
+  /**
+   * The native engine's writer (plan 076). The engine writes and closes the file itself, so the close fault comes
+   * where its outcome does: once the engine really finished the file, the outcome fails as a failed close would,
+   * and the file stays under its temporary name. The write fault is the host's (`host`).
+   */
+  readonly openEngineWriter = (recordingPath: string, finalPath: string,
+    outcome: (recordingPath: string) => Promise<EngineFileReport | undefined>): Promise<EngineFileWriter> =>
+    EngineFileWriter.open(recordingPath, finalPath, { outcome: async file => {
+      const report = await outcome(file);
+      if (this.current.close === "fail") {
+        this.current.close = "off";
+        this.note("close failed", { file });
+        throw new FileWriteError("output_write_failed", file, fault("EIO", "close", file));
+      }
+      return report;
+    } });
+
   private handle(inner: WritableHandle, file: string): WritableHandle {
     let written = 0;
     return {
@@ -100,6 +119,17 @@ export class ControlledFaults {
       stop: sessionId => inner.stop(sessionId),
       onFailure: listener => inner.onFailure(listener),
       onMessage: listener => inner.onMessage(message => {
+        // The native engine's write fault (plan 076): after media arrived, the engine says it could not write, as it
+        // does for a full or failing volume, so the recording fails with its partial kept.
+        const write = this.current.write;
+        if (message.type === "progress" && message.bytes > 0 && write !== "off") {
+          this.current.write = "off";
+          listener(message);
+          this.note("write failed", { session: message.sessionId, mode: write, bytesBefore: message.bytes });
+          listener({ type: "writeError", sessionId: message.sessionId, code: write === "enospc" ? "disk_full" : "output_write_failed",
+            detail: `${write === "enospc" ? "ENOSPC" : "EIO"}: controlled acceptance fault on the engine's write` });
+          return;
+        }
         if (message.type !== "prepared" || this.current.prepare !== "hold") { listener(message); return; }
         void this.hold("prepare", { sessionId: message.sessionId }).then(() => listener(message));
       }),

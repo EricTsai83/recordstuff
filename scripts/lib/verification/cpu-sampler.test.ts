@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
+  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, NATIVE_IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
   processRole, roleTreeFromPs, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
@@ -126,6 +126,11 @@ describe("CPU budget verdicts (plan 049)", () => {
     expect(CPU_BUDGET.regressionFraction).toBe(0.25);
   });
 
+  it("reports a recording beside another engine's baseline", () => {
+    expect(judgeRecording(summary(12), 30, undefined, { label: "the Chromium baseline", percent: 15 }).at(-1))
+      .toMatchObject({ check: "Against the Chromium baseline", verdict: "report", actual: "12.0% against 15.0% (-20%)" });
+  });
+
   it("reads this machine's recorded baseline and nothing for another machine or key", () => {
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cpu-baselines-")), "cpu-baselines.json");
     expect(cpuBaseline("measure:cpu recording 30", "MacBookPro18,1", file)).toBeUndefined();
@@ -179,6 +184,16 @@ describe("process roles and the idle contract (plan 049)", () => {
     expect(rolesFromPs(ps, 200)).toEqual({ main: 1, renderer: 1 });
     expect(rolesFromPs(ps, 999)).toEqual({});
     expect([...roleTreeFromPs(ps, 100)]).toEqual([[100, "main"], [101, "gpu"], [102, "utility:network"], [103, "utility:audio"], [300, "child:descendant"]]);
+  });
+
+  it("allows neither a pre-warmed renderer, the audio service nor a capture process to idle with the native engine (plan 076)", () => {
+    const base = { main: 1, gpu: 1, "utility:network": 1 };
+    expect(judgeRoles(base, NATIVE_IDLE_ROLES.launch).verdict).toBe("pass");
+    expect(judgeRoles({ ...base, renderer: 1 }, NATIVE_IDLE_ROLES.launch).actual).toContain("unexpected renderer ×1");
+    expect(judgeRoles(base, NATIVE_IDLE_ROLES.afterRecording).verdict).toBe("pass");
+    expect(judgeRoles({ ...base, "utility:audio": 1 }, NATIVE_IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:audio ×1");
+    expect(judgeRoles({ ...base, "utility:node": 1 }, NATIVE_IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:node ×1");
+    expect(NATIVE_IDLE_ROLES.settingsOpen).toBe(IDLE_ROLES.settingsOpen);
   });
 
   it("allows the pre-warmed renderer only at launch and the audio service only after a recording", () => {

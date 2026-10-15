@@ -158,6 +158,7 @@ export function configureControlled(dir: string) {
   return {
     outputDir,
     openWriter: faults.openWriter,
+    openEngineWriter: faults.openEngineWriter,
     host: (inner: RecorderHost): RecorderHost => faults.host(inner),
     beforePublish: (result: RecordingFailure): Promise<void> => faults.beforePublish(result),
     storage: (inner: ResultStorage): ResultStorage => faults.storage(inner),

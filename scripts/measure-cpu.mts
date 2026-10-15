@@ -21,9 +21,11 @@
  *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
  *   a plain MP4: a fragmented one costs the renderer more the longer it is, which a 60-second file cannot show.
  *
- * Each idle scenario also checks the app's processes by Chromium role against the idle contract
- * (`IDLE_ROLES`): after launch one pre-warmed renderer may exist, after a recording Chromium's audio
- * service may, and with Settings closed no renderer may remain after a recording. Five seconds after
+ * Each idle scenario also checks the app's processes by Chromium role against the idle contract of the engine that
+ * records (plan 076; `--engine native|chromium`, native by default): with the hidden renderer (`IDLE_ROLES`) one
+ * pre-warmed renderer may exist after launch and Chromium's audio service after a recording; with the native engine
+ * (`NATIVE_IDLE_ROLES`) neither may, nor the capture process. With Settings closed no renderer may remain after a
+ * recording. Five seconds after
  * every save the roles are snapshotted, and every snapshot of a launch must match the first: what
  * a recording starts once is expected, what it adds each time is a leak.
  *
@@ -45,10 +47,11 @@ import { fileURLToPath } from "node:url";
 import { confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, NATIVE_IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
   judgeSettingsOpen, judgeSteadyState, machineModel, readRoleTree, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/verification/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
+import { ENGINE_USAGE, baselineKey, engineFromLog, takeEngineOption, useLaunchdEngine } from "./lib/runner/capture-engine.mts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, osascriptAx } from "./lib/runner/native-ax.mts";
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
@@ -75,10 +78,13 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--out <dir>]";
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] ${ENGINE_USAGE} [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
-const argv = runnerArgs();
+const engineOption = takeEngineOption(runnerArgs());
+if (!engineOption) { console.error(usage); process.exit(2); }
+const { engine, rest: argv } = engineOption;
+const roles = engine === "native" ? NATIVE_IDLE_ROLES : IDLE_ROLES;
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === "--minutes") minutes = Number(argv[++i]);
@@ -140,6 +146,8 @@ async function launch(): Promise<{ pid: number; run: string; recordingKey: strin
   // Each wait is bounded by the launch's shared 60 s rather than its own default.
   const start = await waitForLog(log, from, /\] start: /, "`start:`", signal, 60_000);
   await waitForLog(log, start.at, /\] ready;/, "`ready;`", signal, 60_000);
+  const logged = engineFromLog(log.since(start.at).lines.map((line) => line.text));
+  if (logged !== engine) fail(`the app recorded through ${logged ?? "an engine it did not log"}, not the ${engine} engine this round asked for`);
   await waitForLog(log, start.at, /recording history: (loaded|load failed)/, "the history load", signal, 60_000);
   // The check's outcome or its skip; `feed failed …; trying GitHub` is the check still running.
   await waitForLog(log, start.at, /\] updates: (launch check skipped|current;|available;|check failed:)/, "the launch update check or its skip", signal, 60_000);
@@ -204,6 +212,12 @@ async function quitApp(): Promise<void> {
 
 const terminal = (line: string): boolean => ["saved", "failed"].includes(parseSessionRecord(line)?.kind ?? "");
 
+/** The hidden renderer's recorded baseline at `fps` on this machine, which a native round is reported beside. */
+function chromiumReference(fps: 30 | 60): { label: string; percent: number } | undefined {
+  const percent = cpuBaseline(baselineKey(`measure:cpu recording ${fps}`, "chromium"));
+  return percent === undefined ? undefined : { label: "the hidden renderer's baseline", percent };
+}
+
 interface Scenario { name: string; key: string; summary: Summary; verdicts: Verdict[]; roles?: RoleCounts; note?: string }
 /** `roles` and `residentBytes` (the app's memory in total) five seconds after the save. */
 interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: RoleCounts; residentBytes: number; samplerFailure: string | undefined }
@@ -230,8 +244,11 @@ async function main(): Promise<number> {
     if (error instanceof SamplerInterruptedError) { console.error(`INTERRUPTED: ${error.message}; nothing was launched`); return INTERRUPT_EXIT[error.signal]; }
     throw error;
   }
+  // `open` hands the bundle launchd's environment, not this one's: the engine goes there, and comes out again below.
+  const launchd = useLaunchdEngine(engine);
+  if (typeof launchd === "string") { console.error(`BLOCKED: ${launchd}`); return 2; }
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
-    if (cause instanceof DesktopBlockedError) { console.error(`BLOCKED: ${cause.message}`); process.exit(DESKTOP_BLOCKED_EXIT); }
+    if (cause instanceof DesktopBlockedError) { launchd.restore(); console.error(`BLOCKED: ${cause.message}`); process.exit(DESKTOP_BLOCKED_EXIT); }
     throw cause;
   });
   const scenarios: Scenario[] = [];
@@ -315,9 +332,10 @@ async function main(): Promise<number> {
     const median = percentile(averages, 0.5);
     const chosen = set.find((r) => r.summary.cpuPercent.average === median) ?? set[0]!;
     scenarios.push({ name: `R. Recording at ${fps} fps (median of ${set.length})`, key: `recording${fps}`, summary: chosen.summary,
-      verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(`measure:cpu recording ${fps}`, model)),
+      verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(baselineKey(`measure:cpu recording ${fps}`, engine), model),
+        engine === "native" ? chromiumReference(fps) : undefined),
         ...set.map((r, i) => ({ ...judgeCoverage(r.summary, RECORDING_SECONDS - 10, r.samplerFailure), check: `Sampled coverage, run ${i + 1}` })),
-        { ...judgeRoles(set.at(-1)!.roles, IDLE_ROLES.afterRecording), check: "Process roles 5 s after the last save" },
+        { ...judgeRoles(set.at(-1)!.roles, roles.afterRecording), check: "Process roles 5 s after the last save" },
         judgeSteadyState(set.map((r) => r.roles))],
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
   };
@@ -393,7 +411,7 @@ async function main(): Promise<number> {
     const idleAfterLaunch = window(aFrom, Date.now());
     const launchRoles = readRoles(appPid);
     scenarios.push({ name: "A. Idle after launch, Settings closed", key: "idleAfterLaunch", summary: idleAfterLaunch, roles: launchRoles,
-      verdicts: [judgeCoverage(idleAfterLaunch, minutes * 60, sampler.failure), ...judgeIdle(idleAfterLaunch), judgeRoles(launchRoles, IDLE_ROLES.launch)] });
+      verdicts: [judgeCoverage(idleAfterLaunch, minutes * 60, sampler.failure), ...judgeIdle(idleAfterLaunch), judgeRoles(launchRoles, roles.launch)] });
     note(`A: average ${idleAfterLaunch.cpuPercent.average.toFixed(3)}%, wake-ups ${idleAfterLaunch.wakeupsPerSecond.average.toFixed(2)}/s`);
     if (!skipRecording) {
       await openMaterial();
@@ -407,7 +425,7 @@ async function main(): Promise<number> {
       const idleAfter = window(bFrom, Date.now());
       const afterRoles = readRoles(appPid);
       const encoderQuiet = idleAfter.followed.cpuPercent.average < 0.1;
-      const rolesVerdict = judgeRoles(afterRoles, IDLE_ROLES.afterRecording);
+      const rolesVerdict = judgeRoles(afterRoles, roles.afterRecording);
       const steady = judgeSteadyState([...recordings.filter((r) => r.fps === 30).map((r) => r.roles), afterRoles]);
       scenarios.push({ name: "B. Idle after the recording", key: "idleAfterRecording", summary: idleAfter, roles: afterRoles, verdicts: [
         judgeCoverage(idleAfter, minutes * 60, sampler.failure), ...judgeIdle(idleAfter),
@@ -460,7 +478,7 @@ async function main(): Promise<number> {
       const settingsOpen = window(cFrom, Date.now());
       const settingsRoles = readRoles(appPid);
       scenarios.push({ name: "C. Settings open behind another app", key: "settingsOpen", summary: settingsOpen, roles: settingsRoles,
-        verdicts: [judgeCoverage(settingsOpen, SETTINGS_MINUTES * 60, sampler.failure), ...judgeSettingsOpen(settingsOpen), judgeRoles(settingsRoles, IDLE_ROLES.settingsOpen)] });
+        verdicts: [judgeCoverage(settingsOpen, SETTINGS_MINUTES * 60, sampler.failure), ...judgeSettingsOpen(settingsOpen), judgeRoles(settingsRoles, roles.settingsOpen)] });
       note(`C: average ${settingsOpen.cpuPercent.average.toFixed(3)}%`);
       await sendKeys(SETTINGS_SHORTCUT);
       await sleep(800);
@@ -521,11 +539,13 @@ async function main(): Promise<number> {
     let problem: string | undefined;
     try { problem = restoreSettings(); } catch (error) { problem = String(error); }
     if (problem) cleanup.push(`settings NOT restored: ${problem}; quit RecordStuff and restore ${SETTINGS_PATH} from the report folder's settings-before.json`);
+    launchd.restore();
     desktop.end();
   }
 
   const lines = log.all();
   const environment = {
+    engine,
     machine: model,
     chip: spawnSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).stdout.trim(),
     cores: os.cpus().length,
@@ -549,7 +569,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { engine, minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
@@ -560,7 +580,7 @@ const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(0)} MB`;
 function renderReport(result: string, environment: Record<string, unknown>, scenarios: Scenario[], recordings: Recording[], cleanup: string[]): string {
   const lines = [
     "# CPU budget (`pnpm measure:cpu`)", "",
-    `Result: **${result}**. CPU is a percentage of one core (the machine has ${String(environment["cores"])} cores); wake-ups are idle plus interrupt wake-ups per second; the app is its main process and every descendant, with ${ENCODER_SERVICE} reported apart.`, "",
+    `Result: **${result}**, recording through the ${String(environment["engine"])} engine. CPU is a percentage of one core (the machine has ${String(environment["cores"])} cores); wake-ups are idle plus interrupt wake-ups per second; the app is its main process and every descendant, with ${ENCODER_SERVICE} reported apart.`, "",
     "## Environment", "", "```json", JSON.stringify(environment, null, 2), "```", "",
   ];
   for (const scenario of scenarios) {
