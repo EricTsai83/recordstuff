@@ -8,6 +8,9 @@ name: Check
 # packages the unsigned installer as a short-lived build artifact, because no
 # maintainer machine can build it; nothing here signs, records or publishes
 # (docs/system-design/releases.md). Dispatch runs every job on any branch.
+# `pnpm check` and the installer build plan 076's native capture engine with the runner's Rust (`cargo test`, then a
+# load of the built module, then the installed one); Cargo's output is cached per job. Only the release builds go
+# without that cache, so what is published is built from source alone.
 #
 # The work is split across runners so the slowest part sets the time (2026-10-09; about 17 minutes before):
 # `pnpm check` and then the drills on its build, per platform; the background suite in four shards per
@@ -67,6 +70,10 @@ jobs:
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         if: runner.os == 'Windows'
         run: node node_modules/electron/install.js
+      # Plan 076's native capture engine: `pnpm check` builds and tests it with Cargo, whose output this keeps.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: native/capture
       - run: pnpm check
       # On the build pnpm check just made.
       - run: pnpm test:ui:drills
@@ -104,7 +111,10 @@ jobs:
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         if: runner.os == 'Windows'
         run: node node_modules/electron/install.js
+      # The background suite never records, so it needs no native capture engine (plan 076).
       - run: pnpm build
+        env:
+          RECORDSTUFF_SKIP_NATIVE: "1"
       - run: pnpm test:ui --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
@@ -134,6 +144,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
+      # Plan 076's native capture engine: `pnpm dist:win` builds it with Cargo, whose output this keeps.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: native/capture
       - run: pnpm dist:win
       - name: Install, inspect and uninstall the installer on this runner
         run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release.mts windows-smoke dist
@@ -159,6 +173,9 @@ jobs:
         with:
           node-version: 24.21.0
       - run: rustc --version && cargo --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: native/capture
       - name: Unit tests, including Media Foundation's encoders on synthetic media
         working-directory: native/capture
         env:

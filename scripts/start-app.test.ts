@@ -24,6 +24,8 @@ function certificate(name: string, ca = false): string {
 }
 
 const appDir = (root: string): string => path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
+/** The native capture engine inside the app, which verification requires (plan 076). */
+const ENGINE = "Contents/Resources/app.asar.unpacked/out/native/recordstuff-capture.node";
 /** A valid build record for the bundle `invoke` creates, as a previous `start:app` would leave it. */
 const stamped = (root: string): void => {
   mkdirSync(path.dirname(appDir(root)), { recursive: true });
@@ -59,8 +61,10 @@ async function invoke(overrides: Record<string, string> = {}, args: string[] = [
     symlinkSync(electron, path.join(root, "node_modules/electron"));
     copyFileSync(path.resolve("scripts/start-app.mjs"), path.join(root, "scripts/start-app.mjs"));
     if (args.includes("--open") || args.includes("--verify-app")) {
-      mkdirSync(path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac",
-        "RecordStuff.app/Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
+      const app = path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
+      mkdirSync(path.join(app, "Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
+      mkdirSync(path.join(app, ENGINE, ".."), { recursive: true });
+      writeFileSync(path.join(app, ENGINE), "");
     }
     prepare?.(root);
     writeFileSync(calls, "");
@@ -92,7 +96,12 @@ if (name === 'security' && args[0] === 'find-identity') {
 if (name === 'security' && args[0] === 'find-certificate') process.stdout.write(fs.readFileSync(env.PUBLIC_CERT));
 if (name === 'pnpm' && args.includes('--dir')) {
   const output = args.find(arg => arg.startsWith('-c.directories.output=')).split('=')[1];
-  fs.mkdirSync(path.join(env.ROOT, output, process.arch === 'arm64' ? 'mac-arm64' : 'mac', 'RecordStuff.app/Contents/Frameworks/RecordStuff Helper.app/Contents'), { recursive: true });
+  const app = path.join(env.ROOT, output, process.arch === 'arm64' ? 'mac-arm64' : 'mac', 'RecordStuff.app');
+  fs.mkdirSync(path.join(app, 'Contents/Frameworks/RecordStuff Helper.app/Contents'), { recursive: true });
+  if (!env.NO_ENGINE) {
+    fs.mkdirSync(path.join(app, ${JSON.stringify(ENGINE)}, '..'), { recursive: true });
+    fs.writeFileSync(path.join(app, ${JSON.stringify(ENGINE)}), '');
+  }
 }
 if (name === 'codesign' && args.some(arg => arg.startsWith('--extract-certificates='))) {
   const bundle = args.at(-1);
@@ -261,7 +270,10 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", { co
     // macOS pgrep uses POSIX ERE, unlike the JavaScript matching in the stub.
     const nativeGuard = spawnSync("/usr/bin/pgrep", guard.args, { encoding: "utf8" });
     expect([0, 1], nativeGuard.stderr).toContain(nativeGuard.status);
-    expect(result.commands.filter(call => call.args.some(arg => arg.startsWith("--extract-certificates=")))).toHaveLength(2);
+    // The outer app, its helper and the native capture engine (plan 076).
+    const certified = result.commands.filter(call => call.args.some(arg => arg.startsWith("--extract-certificates=")));
+    expect(certified).toHaveLength(3);
+    expect(certified.at(-1)?.args.at(-1)).toMatch(/app\.asar\.unpacked\/out\/native\/recordstuff-capture\.node$/);
     const builder = result.commands.find(call => call.args.includes("--dir"));
     expect(builder?.args).toContain(`-c.mac.identity=${hash}`);
     expect(builder?.args).toContain("-c.mac.notarize=false");
@@ -269,6 +281,24 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", { co
     expect(builder?.args).toContain("never");
     expect(builder?.args).toContain("electron-builder.local.yml");
     expect(result.commands.every(call => call.nodeMode === undefined && call.releaseSecret === undefined && call.discovery === "false")).toBe(true);
+  });
+
+  it("re-verifies a release from before the native capture engine only when told so (plan 076)", async () => {
+    const env = { RECORDSTUFF_SIGN_IDENTITY: hash };
+    const withEngine = await invoke(env, ["--verify-app", `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`]);
+    expect(withEngine.status, withEngine.stderr).toBe(0);
+    const old = (root: string): void => { rmSync(path.join(appDir(root), ENGINE)); };
+    const refused = await invoke(env, ["--verify-app", `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`], old);
+    expect(refused.stderr).toContain("The native capture engine is missing");
+    const allowed = await invoke(env, ["--verify-app", `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`, "--without-native-engine"], old);
+    expect(allowed.status, allowed.stderr).toBe(0);
+  });
+
+  it("refuses an app without the native capture engine, which could not record (plan 076)", async () => {
+    const result = await invoke({ NO_ENGINE: "1" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("The native capture engine is missing");
+    expect(result.commands.some(call => call.name === "open")).toBe(false);
   });
 
   it("builds a DMG from the verified app only and does not launch or publish", async () => {

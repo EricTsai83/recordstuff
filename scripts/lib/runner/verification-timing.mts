@@ -56,8 +56,11 @@ const pnpm = (name: string, script: string): PhaseSpec => ({ name, executable: "
 const runner = (name: string, script: string, blockedExit = true): PhaseSpec =>
   ({ name, executable: process.execPath, args: [...NODE_FLAGS, `scripts/${script}`], blockedExit, timeoutMs: HOUR });
 
+const BUILD = pnpm("build", "build");
+/** The built native capture engine loaded in Node, as the capture host loads it (plan 076). */
+const NATIVE_LOAD: PhaseSpec = { name: "native engine load", executable: process.execPath, args: ["scripts/native-load.mjs"], timeoutMs: HOUR };
 /** `pnpm check`, phase by phase, as `package.json` chains it. */
-const CHECK = [pnpm("typecheck", "typecheck"), pnpm("test", "test"), pnpm("build", "build")];
+const CHECK = [pnpm("typecheck", "typecheck"), pnpm("test", "test"), pnpm("native tests", "test:native"), BUILD, NATIVE_LOAD];
 
 /**
  * The background Playwright suite (plan 066): no desktop. Its global setup exits 2 when `out/` or the test clips are
@@ -84,13 +87,14 @@ export const RECIPES: readonly Recipe[] = [
   {
     name: "native-ui", purpose: "The native Settings, shortcut and player cases a background run cannot answer: frame, activation, real registration, window state and full screen (a desktop round)",
     replaces: "pnpm build && pnpm acceptance:settings-native && pnpm acceptance:shortcut-native && pnpm acceptance:player (shortcut-native builds again)",
-    phases: [CHECK[2]!, runner("settings native", "acceptance-settings-native.mts"), runner("shortcut native", "acceptance-shortcut-native.mts"), runner("player full screen", "acceptance-player.mts")],
+    phases: [BUILD, runner("settings native", "acceptance-settings-native.mts"), runner("shortcut native", "acceptance-shortcut-native.mts"), runner("player full screen", "acceptance-player.mts")],
   },
   {
     name: "recording", ownsApp: true, purpose: "Recording start/stop, capture, encoding or file writing: the smoke round",
     replaces: "pnpm check && pnpm start:app && pnpm acceptance (start:app builds the same inputs again)",
-    // start:app's `electron-vite build` is check's `pnpm build`; it runs once, inside start:app.
-    phases: [CHECK[0]!, CHECK[1]!, runner("build, package, sign and open", "start-app.mjs", false), runner("hotkey recording", "acceptance-hotkey.mts")],
+    // start:app's `electron-vite build` is check's `pnpm build`; it runs once, inside start:app, whose verification
+    // requires the signed native engine in the app it packaged.
+    phases: [CHECK[0]!, CHECK[1]!, CHECK[2]!, runner("build, package, sign and open", "start-app.mjs", false), runner("hotkey recording", "acceptance-hotkey.mts")],
   },
 ];
 

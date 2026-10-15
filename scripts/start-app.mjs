@@ -116,7 +116,7 @@ function assertNotRunning() {
  * defaults are the RecordStuff bundle's; the quit-dialog fixture's Electron copy keeps
  * Electron's identifier and runs without the hardened runtime.
  */
-function verifyBundle(appPath, identity, { identifier = "com.ericts.record", runtime = true } = {}) {
+function verifyBundle(appPath, identity, { identifier = "com.ericts.record", runtime = true, nativeEngine = identifier === "com.ericts.record" } = {}) {
   run("codesign", ["--verify", "--deep", "--strict", appPath]);
   // Check the outer app and all nested app/framework bundles, without following symlinks.
   const bundles = [appPath];
@@ -129,6 +129,14 @@ function verifyBundle(appPath, identity, { identifier = "com.ericts.record", run
     }
   }
   walk(path.join(appPath, "Contents"));
+  // RecordStuff records through its native capture engine (plan 076): the module must be there, signed by the same
+  // certificate, or the app cannot record.
+  if (nativeEngine) {
+    const engine = path.join(appPath, "Contents/Resources/app.asar.unpacked/out/native/recordstuff-capture.node");
+    if (!existsSync(engine)) throw new Error(`The native capture engine is missing: ${engine}`);
+    run("codesign", ["--verify", "--strict", engine]);
+    bundles.push(engine);
+  }
   const scratch = mkdtempSync(path.join(tmpdir(), "recordstuff-signature-"));
   try {
     for (const [index, bundle] of bundles.entries()) {
@@ -152,7 +160,7 @@ function verifyBundle(appPath, identity, { identifier = "com.ericts.record", run
   if (!`${requirement.stdout}${requirement.stderr}`.split(/\r?\n/).includes(expected)) {
     throw new Error("Unexpected designated requirement; refusing to open or package this app.");
   }
-  console.log(`Verified ${bundles.length} bundle identities; SHA-1 ${identity.hash}\n${requirement.stdout}${requirement.stderr}`);
+  console.log(`Verified ${bundles.length} signed bundles and modules; SHA-1 ${identity.hash}\n${requirement.stdout}${requirement.stderr}`);
   return { bundles: bundles.length, designatedRequirement: expected };
 }
 
@@ -199,10 +207,12 @@ function main() {
   const args = process.argv.slice(process.argv[2] === "--" ? 3 : 2);
   if (args[0] === "--verify-app") {
     const hash = process.env.RECORDSTUFF_SIGN_IDENTITY;
-    if (args.length !== 2 || !/^[A-Fa-f0-9]{40}$/.test(hash ?? "")) {
-      throw new Error("--verify-app requires an app path and RECORDSTUFF_SIGN_IDENTITY SHA-1.");
+    // `--without-native-engine`: a release from before plan 076's engine, re-verified by the current tooling.
+    const withoutEngine = args[2] === "--without-native-engine";
+    if (args.length !== (withoutEngine ? 3 : 2) || !/^[A-Fa-f0-9]{40}$/.test(hash ?? "")) {
+      throw new Error("--verify-app requires an app path and RECORDSTUFF_SIGN_IDENTITY SHA-1, optionally followed by --without-native-engine.");
     }
-    verifyBundle(path.resolve(args[1]), { hash: hash.toUpperCase() });
+    verifyBundle(path.resolve(args[1]), { hash: hash.toUpperCase() }, { nativeEngine: !withoutEngine });
     return;
   }
   if (args[0] === "--fixture-app") {
