@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchManifest } from './lib/release/release-manifest-client.mts';
-import { assertManifestShape, assertWindowsRecord, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release/release-manifest.mts';
+import { assertManifestShape, assertWindowsRecord, carriesNativeEngine, carriesWindows, diffManifest, expectedAssetNames, expectedDmgName, expectedWindowsInstallerName, REPOSITORY, WINDOWS_PLATFORM, WINDOWS_RECORD, type ReleaseManifest, type WindowsReleaseJson } from './lib/release/release-manifest.mts';
 
 export const signingSHA1 = '01B373511530BBF287CA35E54C10A5F017AAD637';
 /**
@@ -313,7 +313,8 @@ async function verifyDmg(directory: string, tag: string, c: ReleaseContext = con
     const app = path.join(mount, 'RecordStuff.app');
     if (run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(app, 'Contents/Info.plist')]) !== c.version) throw new Error('Packaged App version mismatch.');
     if (run('lipo', ['-archs', path.join(app, 'Contents/MacOS/RecordStuff')]) !== 'arm64') throw new Error('Packaged App architecture mismatch.');
-    const check = spawnSync(process.execPath, [path.join(root, 'scripts/start-app.mjs'), '--verify-app', app], {
+    // A release from before the native capture engine verifies without it (plan 076).
+    const check = spawnSync(process.execPath, [path.join(root, 'scripts/start-app.mjs'), '--verify-app', app, ...(carriesNativeEngine(c.version) ? [] : ['--without-native-engine'])], {
       cwd: root, encoding: 'utf8', env: { ...process.env, RECORDSTUFF_SIGN_IDENTITY: signingSHA1 },
     });
     if (check.error || check.status !== 0) throw new Error(`App signature/identity verification failed: ${failureReason(check)}`);
@@ -397,7 +398,8 @@ const TRAY_ICONS = ['idle', 'busy', 'countdown', 'recording', 'warning'].map(sta
  * runner is disposable; a machine with RecordStuff already installed is refused
  * rather than overwritten. Nothing here starts the app, so it proves no capture.
  */
-export async function verifyWindowsInstaller(directory: string, version: string) {
+/** `nativeEngine`: whether the install must carry the native capture engine; by default when `version` does (plan 076). */
+export async function verifyWindowsInstaller(directory: string, version: string, nativeEngine = carriesNativeEngine(version)) {
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Windows installer verification requires Windows x64.');
   const file = expectedWindowsInstallerName(version);
   const installer = path.join(directory, file);
@@ -455,6 +457,14 @@ export async function verifyWindowsInstaller(directory: string, version: string)
     const resources = path.join(location, 'resources');
     const missing = TRAY_ICONS.filter(name => !existsSync(path.join(resources, name)));
     if (missing.length) throw new Error(`The install lacks the tray icons ${missing.join(', ')}.`);
+    // RecordStuff records through its native capture engine (plan 076): the installed module must load as the capture host loads it.
+    if (nativeEngine) {
+      const engine = path.join(resources, 'app.asar.unpacked', 'out', 'native', 'recordstuff-capture.node');
+      if (!existsSync(engine)) throw new Error(`The install lacks the native capture engine at ${engine}.`);
+      const loaded = spawnSync(process.execPath, [path.join(root, 'scripts/native-load.mjs'), engine], { encoding: 'utf8', timeout: 60_000 });
+      if (loaded.error || loaded.status !== 0) throw new Error(`The installed native capture engine does not load: ${failureReason(loaded)}`);
+      console.log(loaded.stdout.trim());
+    }
     if (!existsSync(shortcut)) throw new Error(`The install created no Start-menu shortcut at ${shortcut}; Windows notifications need it.`);
     const appAsarSHA256 = await digest(path.join(resources, 'app.asar'));
     const uninstalled = spawnSync(uninstaller, uninstallArgs, { encoding: 'utf8', timeout: 180_000 });
@@ -503,7 +513,8 @@ async function main() {
   const packageVersion = () => JSON.parse(readFileSync(packageJsonPath, 'utf8')).version as string;
   if (mode === 'windows-smoke') {
     // CI on any branch: the installer `pnpm dist:win` just built for package.json's version; the argument is its directory.
-    const facts = await verifyWindowsInstaller(path.resolve(tag ?? 'dist'), packageVersion());
+    // A branch build carries the engine whatever package.json's last recorded version is.
+    const facts = await verifyWindowsInstaller(path.resolve(tag ?? 'dist'), packageVersion(), true);
     // The same record fields candidate-windows writes, so a branch run exercises them too.
     console.log(`Windows installer passed install, inspection and uninstall: ${JSON.stringify({ ...facts, node: process.versions.node, pnpm: pnpmVersion() })}`);
     return;

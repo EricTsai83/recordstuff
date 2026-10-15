@@ -14,6 +14,7 @@ For a feature or a substantial design change, open an issue describing the probl
 
 1. Fork the repository if you do not have write access, then clone your fork.
 2. Install Node.js and pnpm. The project requires Node ≥22.12; use Node 24 if you will run the TypeScript measurement scripts.
+   Install Rust's stable toolchain with [rustup](https://rustup.rs) as well: on macOS and Windows the build compiles the native capture engine (`native/capture`), which records, and `pnpm check` runs its tests. On Windows, Rust needs the Visual Studio C++ build tools that rustup offers to install. For work that never records, such as Settings UI, `RECORDSTUFF_SKIP_NATIVE=1` builds without it; a recording then fails to start.
 3. Install dependencies and create a branch for your change:
 
    ```bash

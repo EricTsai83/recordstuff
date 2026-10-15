@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { carriesNativeEngine } from './lib/release/release-manifest.mts';
 import { assertDmgContents, assertPublishedAssets, assertUnreleased, compareVersions, failureReason, isPrerelease, latestFlag, notes, PE_MACHINE_X64, peMachine, releaseMount, windowsVersionMatches, renderDownloadSection, releaseFactsFromManifest, renderVerificationRecord, replaceMarked, setPackageVersion, sha256sums, splitCommandLine, validateTag, type ReleaseFacts } from './release.mts';
 
 describe('release gates', () => {
@@ -52,6 +53,13 @@ describe('release gates', () => {
   it('lists every binary asset on its own line of SHA256SUMS', () => {
     expect(sha256sums([{ file: 'a.dmg', sha256: 'a'.repeat(64) }, { file: 'b.exe', sha256: 'b'.repeat(64) }]))
       .toBe(`${'a'.repeat(64)}  a.dmg\n${'b'.repeat(64)}  b.exe\n`);
+  });
+});
+
+describe('native capture engine gate (plan 076)', () => {
+  it('requires the engine after 2.2.0, pre-releases included, and lets older tags verify without it', () => {
+    for (const version of ['2.3.0', '2.3.0-rc.1', '2.2.1', '3.0.0']) expect(carriesNativeEngine(version), version).toBe(true);
+    for (const version of ['2.2.0', '2.2.0-rc.2', '1.1.1', '0.1.0']) expect(carriesNativeEngine(version), version).toBe(false);
   });
 });
 

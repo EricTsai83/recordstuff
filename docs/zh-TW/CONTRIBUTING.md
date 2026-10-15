@@ -14,6 +14,7 @@
 
 1. 若沒有 repository 的寫入權限，先 fork，再 clone 自己的 fork。
 2. 安裝 Node.js 與 pnpm。專案要求 Node ≥22.12；若要執行 TypeScript 量測腳本，請使用 Node 24。
+   也請以 [rustup](https://rustup.rs) 安裝 Rust 的 stable 工具鏈：在 macOS 與 Windows 上，建置會編譯負責錄影的原生錄影引擎（`native/capture`），`pnpm check` 也會執行它的測試。Windows 上的 Rust 需要 rustup 會提示安裝的 Visual Studio C++ 建置工具。只改不會錄影的部分（例如 Settings 介面）時，可以設 `RECORDSTUFF_SKIP_NATIVE=1` 略過；這樣建出的 App 無法開始錄影。
 3. 安裝依賴，並為修改建立分支：
 
    ```bash

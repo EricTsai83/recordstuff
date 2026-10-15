@@ -61,6 +61,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
+      # Plan 076's native capture engine is built from source with the runner's Rust, without a cache.
+      - run: rustc --version && cargo --version
       - run: pnpm check
       - name: Import fixed identity, build, and verify candidate
         env:
@@ -148,6 +150,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Electron runtime explicitly (Electron 44 has no postinstall)
         run: node node_modules/electron/install.js
+      # Plan 076's native capture engine is built from source with the runner's Rust, without a cache.
+      - run: rustc --version && cargo --version
       - run: pnpm check
       - run: pnpm dist:win
       - name: Install, inspect and uninstall the candidate, then record it

@@ -161,7 +161,9 @@ describe("verification summary", () => {
 describe("recipes", () => {
   const root = path.resolve(import.meta.dirname, "../../..");
   const scripts = (JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
-  const runnerScripts = (name: string): string[] => findRecipe(name)!.phases.flatMap(phase => phase.args.filter(arg => arg.startsWith("scripts/")));
+  // The desktop runners a recipe adds; check's own load of the native engine is no runner.
+  const runnerScripts = (name: string): string[] => findRecipe(name)!.phases
+    .flatMap(phase => phase.args.filter(arg => arg.startsWith("scripts/") && arg !== "scripts/native-load.mjs"));
   const builds = (name: string): number => findRecipe(name)!.phases
     .filter(phase => (phase.executable === "pnpm" && phase.args[0] === "build") || phase.args.includes("scripts/start-app.mjs")).length;
 
@@ -170,7 +172,8 @@ describe("recipes", () => {
   });
 
   it("cover the composites they replace", () => {
-    expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm build");
+    expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm test:native && pnpm build && node scripts/native-load.mjs");
+    expect(findRecipe("check")!.phases.map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "build", "scripts/native-load.mjs"]);
     // acceptance:regression = check and the background suite: no desktop runner (plan 066).
     expect(scripts["acceptance:regression"]).toBe("pnpm check && pnpm test:ui");
     expect(scripts["test:ui"]).toBe("playwright test --project=background");
@@ -186,11 +189,11 @@ describe("recipes", () => {
     expect(scripts.acceptance).toContain("scripts/acceptance-hotkey.mts");
     expect(runnerScripts("recording")).toEqual(["scripts/start-app.mjs", "scripts/acceptance-hotkey.mts"]);
     for (const name of ["settings", "shortcut-registration"]) {
-      expect(findRecipe(name)!.phases.slice(0, 4).map(phase => phase.args[0])).toEqual(["typecheck", "test", "build", "test:ui"]);
+      expect(findRecipe(name)!.phases.slice(0, 6).map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "build", "scripts/native-load.mjs", "test:ui"]);
       // A missing build or clip is blocked (exit 2), a failed case a failure.
-      expect(findRecipe(name)!.phases[3]!.blockedExit).toBe(true);
+      expect(findRecipe(name)!.phases[5]!.blockedExit).toBe(true);
     }
-    expect(findRecipe("recording")!.phases.slice(0, 2).map(phase => phase.args[0])).toEqual(["typecheck", "test"]);
+    expect(findRecipe("recording")!.phases.slice(0, 3).map(phase => phase.args[0])).toEqual(["typecheck", "test", "test:native"]);
   });
 });
 

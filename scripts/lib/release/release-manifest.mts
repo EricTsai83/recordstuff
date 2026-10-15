@@ -23,6 +23,11 @@ export const WINDOWS_RECORD = "release-win32-x64.json";
  * the tooling on main can still verify every earlier tag by its own asset set.
  */
 export const LAST_MACOS_ONLY_VERSION = "1.1.1";
+/**
+ * The last version published without plan 076's native capture engine. Every later version, its pre-releases
+ * included, must carry the engine's module, while older tags still verify without it.
+ */
+export const LAST_VERSION_WITHOUT_NATIVE_ENGINE = "2.2.0";
 
 export interface ReleaseManifest {
   version: string;
@@ -115,12 +120,22 @@ export function expectedWindowsInstallerName(version: string): string {
   return `RecordStuff-${version}-${WINDOWS_ARCHITECTURE}-unsigned-setup.exe`;
 }
 
-/** Whether `version` (stable or pre-release) is published for Windows too; its numeric core decides. */
-export function carriesWindows(version: string): boolean {
+/** Whether `version`'s numeric core (a pre-release counts as its version) is after `last`. */
+function after(version: string, last: string): boolean {
   const core = (v: string) => v.split(/[-+]/)[0]!.split(".").map(Number);
-  const a = core(version), b = core(LAST_MACOS_ONLY_VERSION);
+  const a = core(version), b = core(last);
   for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i]! > b[i]!;
   return false;
+}
+
+/** Whether `version` (stable or pre-release) is published for Windows too; its numeric core decides. */
+export function carriesWindows(version: string): boolean {
+  return after(version, LAST_MACOS_ONLY_VERSION);
+}
+
+/** Whether `version`'s apps must carry the native capture engine (plan 076); its numeric core decides. */
+export function carriesNativeEngine(version: string): boolean {
+  return after(version, LAST_VERSION_WITHOUT_NATIVE_ENGINE);
 }
 
 export function expectedAssetNames(version: string): string[] {

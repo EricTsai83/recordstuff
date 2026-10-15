@@ -4,7 +4,7 @@
 
 實作來源：[Recorder](../../../src/main/recording/recorder.ts)、[renderer CaptureHost](../../../src/renderer/capture/capture-host.ts)、[FileWriter](../../../src/main/recording/file-writer.ts)、[健康門檻](../../../src/main/recording/recording-health.ts)、[倒數數值](../../../src/shared/countdown.ts)、[session sentinel](../../../src/main/recording/session-sentinel.ts)、[品質函式](../../../src/shared/quality.ts)。
 
-由哪個引擎錄影（[capture-engine.ts](../../../src/main/recording/capture-engine.ts)，plan 076 步驟 5，2026-10-15）：macOS 上是原生引擎，也就是執行 Rust 模組（`native/capture`）的 `utilityProcess`，以 ScreenCaptureKit 擷取，把 RecordStuff 自己的視窗（包括開始後才開的）排除在每一段錄影之外，並自行寫出檔案；`RECORDSTUFF_CAPTURE_ENGINE=chromium` 會改回隱藏的擷取 renderer，供並排比較，直到原生引擎通過驗收（D7）。Windows 在其建置帶有該模組之前（步驟 6）仍由隱藏 renderer 錄影，可用 `=native` 選用原生引擎。以下各節仍描述隱藏 renderer 的路徑，plan 076 結案時改寫。
+由哪個引擎錄影（[capture-engine.ts](../../../src/main/recording/capture-engine.ts)，plan 076 步驟 5 與 6，2026-10-15）：macOS 上是原生引擎，也就是執行 Rust 模組（`native/capture`）的 `utilityProcess`，以 ScreenCaptureKit 擷取，把 RecordStuff 自己的視窗（包括開始後才開的）排除在每一段錄影之外，並自行寫出檔案；`RECORDSTUFF_CAPTURE_ENGINE=chromium` 會改回隱藏的擷取 renderer，供並排比較，直到原生引擎通過驗收（D7）。Windows 從步驟 6（2026-10-15）起，check、installer 與發布建置都帶有該模組，因此也改由原生引擎錄影；`=chromium` 同樣可以改回隱藏 renderer。以下各節仍描述隱藏 renderer 的路徑，plan 076 結案時改寫。
 
 ## 狀態與操作
 

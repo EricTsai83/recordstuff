@@ -33,11 +33,10 @@ const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
 
 /**
  * Plan 076's native capture engine (native/capture), built with Cargo before main and copied to
- * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. It is built on macOS, where it
- * records (capture-engine.ts), and on Windows only with `RECORDSTUFF_BUILD_NATIVE=1` (plan 076, step 3: CI's native
- * job builds and tests it; the Windows check and release builds take it up in step 6). A machine without Rust skips it
- * with a warning, and a native recording then fails at start with the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it
- * on purpose.
+ * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. It records on macOS and
+ * Windows (capture-engine.ts), so a build there without Cargo fails rather than making an app that cannot record.
+ * `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose, for work that never records (CI's background UI shards, a
+ * contributor without Rust); a recording then fails at start with the load error.
  */
 const nativeEngine = (): Plugin => {
   const manifest = resolve(__dirname, "native/capture/Cargo.toml");
@@ -48,7 +47,7 @@ const nativeEngine = (): Plugin => {
     name: "recordstuff-native-engine", apply: "build",
     buildStart() {
       built = false;
-      const wanted = process.platform === "darwin" || (process.platform === "win32" && process.env["RECORDSTUFF_BUILD_NATIVE"] === "1");
+      const wanted = process.platform === "darwin" || process.platform === "win32";
       if (!wanted || process.env["RECORDSTUFF_SKIP_NATIVE"] === "1") return;
       const cargo = [process.env["CARGO"], resolve(homedir(), process.platform === "win32" ? ".cargo/bin/cargo.exe" : ".cargo/bin/cargo"), "cargo"].find(c => c && (c === "cargo" || existsSync(c)))!;
       try {
@@ -56,7 +55,7 @@ const nativeEngine = (): Plugin => {
         built = true;
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-        this.warn("cargo was not found: the native capture engine was not built, so recording on macOS fails until Rust is installed");
+        this.error("cargo was not found: install Rust (https://rustup.rs) to build the native capture engine, or set RECORDSTUFF_SKIP_NATIVE=1 for a build that never records");
       }
     },
     writeBundle(options) {
