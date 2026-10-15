@@ -27,7 +27,7 @@ export interface ActionDeps {
   log(line: string): void;
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
-  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "setUpdates" | "notifications" | "setNotifications"
+  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
@@ -84,6 +84,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
           log(`settings: display ${JSON.stringify(settings.display)}`);
         },
         notifyFailure: () => tray.notifyDisplayWriteFailed(),
+      });
+    } else if ("setHideSystemUi" in action) {
+      // Only ScreenCaptureKit can leave the system's chrome out; Windows shows the switch unavailable (D6).
+      if (deps.platform !== "darwin") return;
+      await deps.savePreference("hide system UI", {
+        locked: true,
+        write: () => settings.setHideSystemUi(action.setHideSystemUi),
+        applied: () => log(`settings: hide menu bar and Dock ${settings.hideSystemUi ? "on" : "off"}`),
       });
     } else if ("setUpdateChecks" in action) {
       await deps.savePreference("update checks", { locked: true, write: () => settings.setUpdates({ enabled: action.setUpdateChecks }) });

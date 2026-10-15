@@ -427,6 +427,10 @@ export const ZH_TW = {
   "Click the system tray icon or press the shortcut to cancel.": "按一下系統匣圖示或按快捷鍵即可取消。",
   "Click the system tray icon to cancel.": "按一下系統匣圖示即可取消。",
   "Countdown sound": "倒數音效",
+  "Hide menu bar and Dock": "隱藏選單列與 Dock",
+  "Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.": "錄影中不會出現選單列、Dock、桌面圖示與小工具，你的螢幕上仍看得到。你打開的選單仍會被錄進去，因為它屬於該 App。",
+  "Hide taskbar": "隱藏工作列",
+  "Windows cannot leave the taskbar out of a recording.": "Windows 無法把工作列排除在錄影之外。",
   "The tick is not recorded.": "提示音不會被錄進影片。",
   "More about {label}": "{label}的說明",
   "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.":

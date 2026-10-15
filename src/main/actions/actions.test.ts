@@ -84,14 +84,20 @@ describe("createActionHandler", () => {
     const actions: AppAction[] = [
       { setDisplay: { kind: "primary" } }, { setUpdateChecks: false }, { setNotifications: false },
       { setTrayClick: "menu" }, { setFileNameTemplate: "{date}" }, { setLibraryLayout: "list" }, { setLibraryPreviewSound: true },
-      { setAppearance: "dark" }, { setLanguage: "zh-TW" }, { setCountdown: 3 }, { setCountdownSound: true },
+      { setAppearance: "dark" }, { setLanguage: "zh-TW" }, { setCountdown: 3 }, { setCountdownSound: true }, { setHideSystemUi: true },
       { setQuality: { level: "standard", resolutionCap: "1080p", frameRate: 30 } },
     ] as AppAction[];
     for (const action of actions) await act(action);
     expect(Object.fromEntries(saves.map(({ what, save }) => [what, save.locked === true]))).toEqual({
       display: true, "update checks": true, notifications: true, "tray click": false, "file name": true,
-      "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, quality: true,
+      "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, "hide system UI": true, quality: true,
     });
+  });
+
+  it("saves hiding the menu bar and Dock only on macOS (plan 076, D6)", async () => {
+    const windows = harness({ platform: "win32" });
+    await windows.act({ setHideSystemUi: true });
+    expect(windows.deps.savePreference).not.toHaveBeenCalled();
   });
 
   it("opens the download page for this platform when an update is available, Releases otherwise", async () => {

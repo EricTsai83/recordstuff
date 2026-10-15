@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw, AppWindow, Film, Play, Maximize } from "lucide-react";
+import { CircleAlert, CircleHelp, EyeOff, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw, AppWindow, Film, Play, Maximize } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -22,6 +22,7 @@ import { WindowActions } from "../window-actions";
 
 const icons = {
   screen: Monitor,
+  hideSystemUi: EyeOff,
   outputFolder: Folder,
   fileName: FileText,
   countdown: Timer,

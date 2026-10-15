@@ -62,6 +62,7 @@ export type AppAction =
   | { setQuality: Partial<QualitySettings> }
   | { setCountdown: CountdownSeconds }
   | { setCountdownSound: boolean }
+  | { setHideSystemUi: boolean }
   | { setAppearance: Appearance }
   | { setTrayClick: TrayClick }
   | { setFileNameTemplate: string }
@@ -85,6 +86,8 @@ export interface AppContext {
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;
+  /** The stored D6 switch (plan 076): macOS recordings leave out the menu bar and Dock; absent is off. */
+  hideSystemUi?: boolean;
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;

@@ -1,5 +1,5 @@
 /**
- * Persistent preferences: output folder, recording display, quality, countdown
+ * Persistent preferences: output folder, recording display, hiding the menu bar and Dock from it, quality, countdown
  * and its tick, shortcut, the menu bar icon's left click, notifications, update
  * checks, language and appearance, the recordings' file name pattern and the Recordings tab's layout.
  * See docs/system-design/desktop.md for the schema and reset rules.
@@ -56,6 +56,8 @@ export interface Settings {
   /** Whether the app sends any notification at all; the OS permission is separate. */
   notifications: boolean;
   display: DisplayPreference;
+  /** Whether macOS recordings leave out the menu bar, the Dock, desktop icons and widgets (plan 076, D6); off by default. */
+  hideSystemUi: boolean;
   /** Seconds before capture begins; 0 is Off (plan 040). */
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
@@ -100,6 +102,8 @@ export function defaultSettings(outputDir: string): Settings {
     updates: { enabled: true, lastAttempt: 0 },
     notifications: true,
     display: DEFAULT_DISPLAY_PREFERENCE,
+    // Off: an update must not change what existing recordings show, and what is on screen is what users expect.
+    hideSystemUi: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
@@ -185,6 +189,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const notifiedVersion = field<string | undefined>("notifiedVersion", isNotifiedVersion, undefined, "updates.notifiedVersion is invalid: announcing the next newer version", u);
   const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
+  const hideSystemUi = field("hideSystemUi", isBoolean, defaults.hideSystemUi, `hideSystemUi is not a boolean: using ${defaults.hideSystemUi ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
@@ -195,7 +200,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryPreviewSound = field("libraryPreviewSound", isBoolean, defaults.libraryPreviewSound, `libraryPreviewSound is not a boolean: using ${defaults.libraryPreviewSound ? "on" : "off"}`);
   const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
-  return { settings: { appearance, display, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
+  return { settings: { appearance, display, hideSystemUi, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
     fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
@@ -234,6 +239,13 @@ export class SettingsStore {
     if (!isDisplayPreference(display)) return Promise.reject(new Error("invalid display preference"));
     const snapshot = { ...display };
     return this.save((current) => ({ ...current, display: snapshot }));
+  }
+
+  get hideSystemUi(): boolean { return this.settings.hideSystemUi; }
+
+  setHideSystemUi(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported hide system UI: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, hideSystemUi: enabled }));
   }
 
   get outputDir(): string {
