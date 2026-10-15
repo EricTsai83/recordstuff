@@ -14,7 +14,7 @@ Out of scope: Windows hardware (CI only), new capture features, and the hands-on
 
 - **Frame gaps.** On a 60 Hz display at 30 fps, 0.66–2.17% of native frames were 50 ms apart against Chromium's none (2026-10-15). 076 found that ScreenCaptureKit sends idle frames when the screen does not change and fixed the slot that took the next picture a refresh late (PR #12): 0.22–0.44% remain, one or two per 15 s take, with capture never missing a refresh (longest gap between pictures 33.3 ms). Their cause is not known; the stop report's counters (`capture delivered … pictures and … without one, … apart at most`) are the starting evidence. The threshold is 2%; Chromium shows 0%.
 - **Development app.** Recording through the development Electron app (`pnpm matrix`, `pnpm audio:quality`) logs `RecordStuff's own app was not found among the shareable applications; its windows may be recorded`; the signed bundle reports `1 own app(s) excluded`. Its cause (the development app's bundle identity, or its having no window when the shareable content is read) is not established.
-- **Cadence diagnostics.** `pnpm diagnose:cadence` builds the hidden renderer's capture host itself and measures only that engine, which 076 removes; the native engine exposes no per-frame timestamps to it.
+- **Cadence diagnostics.** `pnpm diagnose:cadence` measured only the hidden renderer's capture host and was removed with it on 2026-10-16; the native engine has no per-frame diagnostic yet beyond the stop report's counters.
 
 ## Steps
 
@@ -29,7 +29,7 @@ Out of scope: Windows hardware (CI only), new capture features, and the hands-on
 
 ### 3. Cadence diagnostics for the native engine
 
-- [ ] Decide with the maintainer whether `pnpm diagnose:cadence` should measure the native engine (from the engine's per-frame log or a diagnostic export) or be retired once 076 removes the hidden renderer, and do that.
+- [ ] Decide with the maintainer whether the native engine needs a cadence diagnostic (from a per-frame log or a diagnostic export of each encoded frame's time and source), and build it if so; step 1 may need it first.
 
 ### 4. Documentation
 

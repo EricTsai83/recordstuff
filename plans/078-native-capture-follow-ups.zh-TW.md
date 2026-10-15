@@ -14,7 +14,7 @@
 
 - **影格間隔。**在 60 Hz 螢幕上錄 30 fps 時，原生有 0.66–2.17% 的影格間隔 50 ms，Chromium 為 0（2026-10-15）。076 發現螢幕沒有變化時 ScreenCaptureKit 會送 idle 影格，並修正了因此晚一次更新才拿到畫面的格位（PR #12）：還剩 0.22–0.44%，每段 15 秒 1–2 格，且擷取從未漏掉任何一次更新（畫面之間最長 33.3 ms）。原因不明；停止報告的計數（`capture delivered … pictures and … without one, … apart at most`）是調查的起點。門檻是 2%，Chromium 為 0%。
 - **開發版 App。**透過開發版 Electron App 錄影（`pnpm matrix`、`pnpm audio:quality`）時，log 會出現 `RecordStuff's own app was not found among the shareable applications; its windows may be recorded`；簽署 bundle 則回報 `1 own app(s) excluded`。原因（開發版 App 的 bundle 身分，或讀取可分享內容時它沒有視窗）尚未確定。
-- **節奏診斷。**`pnpm diagnose:cadence` 自行建立隱藏 renderer 的擷取 host，只量那個引擎，而 076 會移除它；原生引擎沒有提供逐格時間戳。
+- **節奏診斷。**`pnpm diagnose:cadence` 只量隱藏 renderer 的擷取 host，已於 2026-10-16 隨它一併移除；除了停止報告的計數之外，原生引擎還沒有逐格的診斷。
 
 ## 步驟
 
@@ -29,7 +29,7 @@
 
 ### 3. 原生引擎的節奏診斷
 
-- [ ] 和維護者決定 `pnpm diagnose:cadence` 要改量原生引擎（取自引擎的逐格 log 或診斷匯出），還是在 076 移除隱藏 renderer 後退役，然後照做。
+- [ ] 和維護者決定原生引擎是否需要節奏診斷（取自逐格 log，或每個編碼影格時間與來源的診斷匯出），需要的話就建立；步驟 1 可能會先需要它。
 
 ### 4. 文件
 

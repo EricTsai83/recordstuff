@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 完成（PR #6），步驟 5 已於 2026-10-15 完成，只剩移除 display-media handler，要等步驟 7 之後 D7 的旗標移除；步驟 6 已於 2026-10-15 完成。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 完成（PR #6），步驟 5 已於 2026-10-15 完成，其最後一項於 2026-10-16 完成；步驟 6 已於 2026-10-15 完成；步驟 7 已於 2026-10-16 完成，並依維護者指示移除 Chromium 路徑（動手案例移到 077，影格時序的未決問題移到 078）；接著是步驟 8。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -117,7 +117,8 @@
   - 2026-10-15 完成：host 從步驟 2 就已存在，recorder 的狀態也維持不變；步驟 5 改變的是由哪個引擎錄影（`capture-engine.ts`）。macOS 預設由原生引擎錄影，D7 的開發旗標改為 `RECORDSTUFF_CAPTURE_ENGINE=chromium`，用來改回隱藏 renderer 做並排比較。
   - Windows 在步驟 6 讓 check 與 release 建置帶上模組之前，預設仍是隱藏 renderer，可用 `=native` 選用；在那之前切換，Windows 會沒有可用的錄影引擎。因此 D7 的「Windows 一起切換」順延一步。
   - 在全新的簽署 bundle 上不設任何變數，log 寫著 `capture engine: native`，`pnpm acceptance -- --seconds 10 --skip-cancel --no-open-material` 以快捷鍵存出 10.3 秒、1920×1080 的檔案，可完整解碼，音訊與影像一樣長。沒有開測試素材時畫面靜止、沒有聲音，所以聲道能量與位元率如預期未通過；完整驗收屬於步驟 7。
-- [ ] D7 的旗標移除後，從 `src/main/index.ts` 移除 display-media handler 與 loopback 請求；保留螢幕選擇與其診斷。在那之前，main 只在由隱藏 renderer 錄影時註冊這個 handler。
+- [x] D7 的旗標移除後，從 `src/main/index.ts` 移除 display-media handler 與 loopback 請求；保留螢幕選擇與其診斷。
+  - 2026-10-16 隨 Chromium 路徑一併完成（步驟 7 的最後一項）。螢幕選擇（`DisplayMedia`）、其失敗與診斷保留：引擎的 host 透過它決定螢幕。
 - [x] Settings → Recording：D6 的開關與 zh-TW 字串；075 的「排除自己的視窗」規則移到這裡，永遠開啟。
   - 2026-10-15 完成：「隱藏選單列與 Dock」（英文 Hide menu bar and Dock）位於「螢幕」之後，預設關閉，錄影中鎖定，存在 settings.json 的 `hideSystemUi`；ⓘ 說明使用者打開的選單仍會被錄進去，因為它屬於該 App。Windows 上這一列是「隱藏工作列」，顯示為關閉且無法使用，並附註 Windows 無法把工作列排除在錄影之外。只有 macOS 會把開關傳給引擎；`RECORDSTUFF_HIDE_SYSTEM_UI` 已移除。
   - 開關打開時，引擎回報隱藏了 35 個系統視窗，畫面中原本是選單列的位置變成桌布；開關關閉時選單列有被錄進去。兩次錄影時 Dock 都不在畫面上，所以這裡沒有證明 Dock 被排除。
@@ -140,14 +141,17 @@
   - `measure:finalization` 自從存檔改在背景進行（2026-10-09）後就找不到樣本：現在不論順序都會把停止與存檔配對，並加入 stop→saved、finalize 與引擎完成時間。
   - `acceptance:lifecycle` 新增 `native`（在 `stopped` 之後延遲引擎的完成結果）與 `native-crash`（當機後保留引擎的 partial）；六種模式全部通過。受控 build 以 App 的引擎錄影，固定已取消，原生引擎的寫入與關檔故障分別透過其進度與完成結果注入。
   - `diagnose:cadence` 自行建立隱藏 renderer 的擷取 host，仍只量那個引擎；原生引擎沒有提供逐格時間戳給它。
-- [ ] macOS：完整的錄影驗收、與本計畫風險相關的 matrix 案例、音訊保真度測試、新的 CPU 基準（`pnpm measure:cpu -- --fps 60 --repeat 3`）、生命週期、錄影中退出與睡眠、權限被拒、螢幕移除、影格中沒有自己的視窗，以及 D6 的開關。
+- [x] macOS：完整的錄影驗收、與本計畫風險相關的 matrix 案例、音訊保真度測試、新的 CPU 基準（`pnpm measure:cpu -- --fps 60 --repeat 3`）、生命週期、錄影中退出與睡眠、權限被拒、螢幕移除、影格中沒有自己的視窗，以及 D6 的開關。
   - 第 1 輪，錄影品質（2026-10-15，主螢幕為 60 Hz 的 BenQ，1920×1080）。`pnpm acceptance -- --seconds 30` 以原生引擎在簽署 bundle 上通過（60 fps）。原生 `pnpm matrix -- quick` 共 9 次：30 fps 時約佔一個核心的 9–10%，Chromium 為 15%；閃光對嗶聲 −25 ms，Chromium 為 +68 到 +74 ms；但有 0.66–2.17% 的影格間隔 50 ms，Chromium 為 0（一次超過 2% 的門檻；第一次的第一個案例沒找到閃光，素材尚未全螢幕）。`pnpm audio:quality` 兩個引擎都通過每一項（時脈原生 −0.07 ppm、Chromium −1.45 ppm；增益與殘差相同）。
   - 間隔的原因於 2026-10-16 以停止報告的新計數（有畫面的影格、沒有畫面的送達、畫面之間最長的間隔）找到：擷取從未漏掉任何一次更新（最多相隔 33.3 ms），但每 15 秒送來 15–37 個 idle 影格，也就是螢幕沒有變化的更新，而 idle 更新所在的格位會晚一次更新才拿到下一張畫面。現在引擎會在這樣的格位再編碼一次最新的畫面（`frame_unchanged`）。再錄 3 次：0.22–0.44%，CPU 不變；其餘原因尚未找到。
   - 第 2 輪，CPU 基準（2026-10-16，同一個螢幕，使用含 idle 修正的簽署 bundle）：兩個引擎的 `pnpm measure:cpu -- --fps 60 --repeat 3` 都通過。原生錄影在 30 fps 佔一個核心的 10.4%（10.4–10.5%），60 fps 為 14.0%（14.0–14.2%），Chromium 為 15.3% 與 23.3%；啟動後待機 0.108% 對 0.056%，錄影後待機 0.036% 對 0.054%，且只剩 main、GPU 與 network（Chromium 錄影後會留下音訊服務），Settings 在其他 App 後面 0.136% 對 0.300%，播放 16.0% 對 16.9%。中位數成為這台機器的新基準（`cpu-baselines.json`）。
   - 第 3 輪，選單列（2026-10-16，簽署 bundle，原生）：`pnpm acceptance:tray` 通過 14 個案例（從選單開始與停止、錄影與待機選單、倒數的三種取消方式（含「退出」）、鍵盤操作、顯示最新錄影、選單點擊、待機時退出）；兩個案例因腳本輸入的時序競爭而未執行（選單打開時倒數已結束；macOS 先送出「開始」再處理排隊的快捷鍵），與引擎無關。
   - 第 4 輪，退出與自己的視窗（2026-10-16，簽署 bundle，原生）：`pnpm acceptance` 新增 `--settings-open` 與 `--quit-while-recording`。10 秒的錄影通過完整性檢查；在另一次錄影 1 秒時用快捷鍵打開的 Settings 出現在主螢幕截圖中，而錄影同一時刻的影格中沒有它，顯示的是它後面的視窗（選單列中 RecordStuff 的 App 選單也被排除；它的選單列圖示仍在，075 的 D14 也記錄沒有任何產品會隱藏自己的圖示）；第三次錄影 3 秒時退出 App，錄影存下（3.4 秒）且 App 結束。
   - 尚待完成：D6 的 Dock 需要 Dock 在畫面上；錄影中睡眠、螢幕移除與權限被拒需要維護者動手，依維護者指示（2026-10-16）連同 Dock 移到 [077](077-native-hands-on-acceptance.zh-TW.md)。剩下 0.22–0.44% 的影格間隔、開發版 App 自己視窗的警告與原生節奏診斷移到 [078](078-native-capture-follow-ups.zh-TW.md)。
-- [ ] Windows：步驟 3 的 CI 檢查與安裝檔冒煙測試；CI 無法顯示的部分（實際錄影品質、沒有自己的視窗、系統聲音內容、CPU、影格時序）列為未測試。
+- [x] Windows：步驟 3 的 CI 檢查與安裝檔冒煙測試；CI 無法顯示的部分（實際錄影品質、沒有自己的視窗、系統聲音內容、CPU、影格時序）列為未測試。
+  - 隨步驟 6 完成（PR #10）：`native-windows` job 錄下螢幕、區域、視窗與單一 process 聲音的實況、含 `cargo test` 與模組載入的 `pnpm check`，以及 installer smoke 載入安裝後的模組，都在 `windows-2025` 上通過。Windows 上未測試、需寫入結案與發布紀錄的項目：實際錄影品質與影格時序、影格中沒有自己的視窗、系統聲音內容、CPU、麥克風（runner 沒有麥克風），以及 077 的所有動手案例。
+- [x] 在維護者接受 macOS 結果後移除 Chromium 路徑（D7）。
+  - 2026-10-16 完成。維護者在 077 的動手案例之前接受了上述各輪結果，包括剩下的影格間隔（078）。移除的有：隱藏的擷取 renderer（`src/renderer/index.html`、`src/renderer/capture/` 與其 preload）、main 的 `CaptureHost`、display-media handler、`chunk` 訊息與寫入端的 chunk 佇列、backlog 與 drain、`FileWriter` class 與 `mp4-finalize.ts`（引擎在 Rust 中完成檔案；`file-writer.ts` 保留發布、錯誤分類與資料夾檢查）、`capture-engine.ts` 與 `RECORDSTUFF_CAPTURE_ENGINE`、Chromium 的影格率請求、runner 的 `--engine` 選項與依引擎分開的基準，以及只量隱藏 renderer 的 `pnpm diagnose:cadence`（原生節奏診斷由 078 決定）。測試與 fixture 改為引擎的形式：recorder 的測試回報 `progress` 並透過 `EngineFileWriter` 寫入，生命週期 fixture 的模式為 `publish`、`finish`、`crash` 與 `result`，受控 build 只注入引擎的故障。macOS 與 Windows 以外的平台沒有錄影引擎，也沒有為它們發布。移除後在全新的簽署 bundle 上，`pnpm acceptance -- --seconds 10 --skip-cancel --settings-open --quit-while-recording` 的每個案例都通過（錄影影格中沒有 Settings，退出時存下 3.2 秒的檔案），該次執行的 log 中也沒有隱藏 renderer 的任何痕跡。
 
 ### 8. 文件
 
