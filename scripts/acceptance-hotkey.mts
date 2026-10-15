@@ -1,5 +1,6 @@
 /**
- * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--skip-cancel] [--countdown-sound] [--out <dir>]`
+ * `pnpm acceptance [-- --seconds 10] [--no-open-material] [--skip-cancel] [--countdown-sound] [--settings-open]
+ *   [--quit-while-recording] [--out <dir>]`
  *
  * Unattended acceptance of the global recording shortcut (plan 016) against
  * the app that is already running (`pnpm start:app`): open the test material
@@ -30,6 +31,11 @@
  * flash. `--countdown-sound` turns the stored switch on for the round: if it
  * is off, the app is quit, the switch set and the same bundle relaunched, and
  * after the final quit only that key is set back.
+ *
+ * After those, on the desktop the material left (plan 076 step 7): `--settings-open` records again, opens Settings
+ * with its shortcut a second in and keeps the main display's screenshot and the recording's frame of that moment for
+ * review, since RecordStuff's own windows must be absent from the second (075's D14); `--quit-while-recording`
+ * records again and asks the app to quit three seconds in, which must save the recording and exit. It runs last.
  *
  * Exit 0 when the shortcut flow completed and no integrity check failed, was
  * blocked or is incomplete; channel energy is required evidence (plan 030), so
@@ -62,13 +68,14 @@ import {
   removeMaterialProfile,
 } from "./lib/acceptance/acceptance.mts";
 import { LogReader, evidenceSince, lineTime, type LogCursor } from "./lib/runner/log-reader.mts";
-import { hasTool, requireMediaTimeout, syncMarkers } from "./lib/verification/media-tools.mts";
+import { hasTool, mediaTimeout, requireMediaTimeout, syncMarkers } from "./lib/verification/media-tools.mts";
 import { readLogPairs, verifyRecording } from "./lib/verification/verify-recording.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText } from "./lib/verification/verify.mts";
 import { DIGIT_DIFF_THRESHOLD, TICK_EXCESS_DB, TICK_FLOOR_DBFS, countdownTimeline, digitCrops, digitRegion, skippedCrops, tickCheck, type CountdownTimeline, type TickCheck } from "./lib/acceptance/countdown-evidence.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
 import { StoredOverride } from "./lib/acceptance/stored-override.mts";
+import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_PATH = APP_LOG_PATH;
@@ -81,6 +88,8 @@ let seconds = 10;
 let openMaterial = true;
 let cancelCase = true;
 let countdownSound = false;
+let settingsCase = false;
+let quitCase = false;
 let outDir: string | undefined;
 const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
@@ -89,9 +98,11 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--no-open-material") openMaterial = false;
   else if (arg === "--skip-cancel") cancelCase = false;
   else if (arg === "--countdown-sound") countdownSound = true;
+  else if (arg === "--settings-open") settingsCase = true;
+  else if (arg === "--quit-while-recording") quitCase = true;
   else if (arg === "--out" && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else {
-    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--countdown-sound] [--out <dir>]");
+    console.error("usage: pnpm acceptance [-- --seconds N] [--no-open-material] [--skip-cancel] [--countdown-sound] [--settings-open] [--quit-while-recording] [--out <dir>]");
     process.exit(2);
   }
 }
@@ -473,6 +484,107 @@ async function main(): Promise<void> {
       if (cancel.length) guards.push(`cancel case: ${cancel.join("; ")}`);
     }
 
+    /** Starts a recording with the shortcut and waits until it records; returns its session and when it began recording. */
+    const startSession = async (what: string): Promise<{ session: string; next: LogCursor; recordingAt: number }> => {
+      const before = nextIndex();
+      recordingFrom = before;
+      stopSent = false;
+      cleanupSession = undefined;
+      await sendKey(script);
+      note(`${what}: sent ${accelerator} (start)`);
+      const pressedAgain = await waitFor(before, /hotkey: \S+ pressed/, `${what}: \`pressed\``);
+      const record = await waitForRecord(appLog, pressedAgain.at, (r): r is Extract<typeof r, { kind: "capture" }> => r.kind === "capture" && r.run === run,
+        `${what}: the capture record`, controller.signal);
+      cleanupSession = record.record.session;
+      const recordingLine = await waitFor(pressedAgain.at, /state → recording/, `${what}: \`state → recording\``);
+      return { session: record.record.session, next: record.next, recordingAt: lineTime(recordingLine.line)?.getTime() ?? Date.now() };
+    };
+
+    // RecordStuff's own windows stay out of a recording, a Settings window opened after the start included (075's D14,
+    // plan 076): the screen with Settings open and the recording at that moment are kept side by side for review.
+    let settingsSummary = "not run (pass --settings-open)";
+    if (settingsCase) {
+      const { session: settingsSession, next, recordingAt } = await startSession("Settings case");
+      await sleep(1000);
+      const beforeSettings = nextIndex();
+      await sendKey(keystrokeScript(acceleratorToKeystroke(SETTINGS_SHORTCUT) ?? fail(`cannot type ${SETTINGS_SHORTCUT}`)));
+      await waitFor(beforeSettings, /\] settings shortcut: .* pressed/, "the Settings shortcut's delivery");
+      await sleep(1500);
+      const shotAt = Date.now();
+      const screen = path.join(dir, "settings-screen.png");
+      // The main display only, which the recording is of; the pointer is left out as the recording shows it.
+      const shot = spawnSync("screencapture", ["-x", "-m", screen], { encoding: "utf8", timeout: 15_000 });
+      await sleep(1000);
+      // A session that already ended would take the stop key as a new start (plan 054): cleanup settles what runs.
+      const endedEarly = sessionEnded(appLog.since(next).lines.map((line) => line.text), run, settingsSession);
+      if (endedEarly) {
+        recordingFrom = undefined;
+        settingsSummary = `FAIL: the recording ended before the stop key (${endedEarly.kind})`;
+      } else {
+        await sendKey(script);
+        stopSent = true;
+        const settled = await waitForRecord(appLog, next,
+          (r): r is TerminalRecord => (r.kind === "saved" || r.kind === "failed") && r.run === run && r.session === settingsSession,
+          "the Settings case's terminal record", controller.signal);
+        recordingFrom = undefined;
+        if (settled.record.kind === "failed") settingsSummary = `FAIL: the recording failed: ${settled.record.code} ${settled.record.detail}`;
+        else {
+          const frame = path.join(dir, "settings-frame.png");
+          const offset = Math.max(0, (shotAt - recordingAt) / 1000);
+          const extracted = spawnSync("ffmpeg", ["-v", "error", "-y", "-ss", offset.toFixed(3), "-i", settled.record.path, "-frames:v", "1", frame],
+            { encoding: "utf8", timeout: mediaTimeout() });
+          const nonEmpty = (file: string): boolean => fs.existsSync(file) && fs.statSync(file).size > 0;
+          const missing = [
+            ...(shot.error || shot.status !== 0 || !nonEmpty(screen) ? [`no screenshot (${shot.error?.message ?? shot.stderr.trim() ?? shot.status})`] : []),
+            ...(extracted.error || extracted.status !== 0 || !nonEmpty(frame) ? [`no frame ${offset.toFixed(1)} s in (${extracted.error?.message ?? (extracted.stderr.trim() || "ffmpeg wrote no image")})`] : []),
+          ];
+          settingsSummary = missing.length ? `incomplete: ${missing.join("; ")}`
+            : `reported for review: the main display with Settings open ([settings-screen.png](settings-screen.png)) and the recording ${offset.toFixed(1)} s in, the same moment ([settings-frame.png](settings-frame.png)); Settings must be in the first and absent from the second. Saved ${settled.record.path}`;
+        }
+      }
+      if (!settingsSummary.startsWith("reported")) guards.push(`Settings case: ${settingsSummary}`);
+      note(`Settings case: ${settingsSummary}`);
+    }
+
+    // Quitting during a recording saves it, then the app exits (plan 076 step 7 through the native engine).
+    let quitSummary = "not run (pass --quit-while-recording)";
+    if (quitCase) {
+      const { session: quitSession, next } = await startSession("quit case");
+      await sleep(3000);
+      // Only a session still recording tests a quit during one; an ended one is left to cleanup.
+      const endedEarly = sessionEnded(appLog.since(next).lines.map((line) => line.text), run, quitSession);
+      if (endedEarly) {
+        recordingFrom = undefined;
+        fail(`quit case: the recording ended before the quit (${endedEarly.kind})`);
+      }
+      const bundle = await bundleOf(pid, controller.signal);
+      await command("osascript", ["-e", `tell application ${JSON.stringify(bundle)} to quit`], AbortSignal.timeout(15_000));
+      stopSent = true;
+      note("quit case: asked RecordStuff to quit while it records");
+      const settled = await waitForRecord(appLog, next,
+        (r): r is TerminalRecord => (r.kind === "saved" || r.kind === "failed") && r.run === run && r.session === quitSession,
+        "the quit case's terminal record", controller.signal);
+      recordingFrom = undefined;
+      const exitBy = Date.now() + 30_000;
+      while (appRunning() !== undefined && Date.now() < exitBy) await sleep(200);
+      const problems: string[] = [];
+      if (settled.record.kind === "failed") problems.push(`the recording failed: ${settled.record.code} ${settled.record.detail}`);
+      else if (settled.record.stoppedEarly) problems.push(`the recording stopped early (${settled.record.stoppedEarly}), not by the quit`);
+      if (appRunning() !== undefined) problems.push("RecordStuff did not exit within 30 s of the save");
+      let duration: number | undefined;
+      if (settled.record.kind === "saved") {
+        const probed = spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", settled.record.path],
+          { encoding: "utf8", timeout: mediaTimeout() });
+        duration = Number(probed.stdout?.trim());
+        if (probed.error) problems.push(`ffprobe did not finish: ${probed.error.message}`);
+        else if (!(duration > 2)) problems.push(`the saved file lasts ${probed.stdout.trim() || "?"} s`);
+      }
+      quitSummary = problems.length ? `FAIL: ${problems.join("; ")}`
+        : `pass: saved ${settled.record.kind === "saved" ? settled.record.path : ""} (${duration?.toFixed(1)} s) and RecordStuff exited`;
+      if (problems.length) guards.push(`quit case: ${problems.join("; ")}`);
+      note(`quit case: ${quitSummary}`);
+    }
+
     fs.writeFileSync(path.join(dir, "verify.json"), JSON.stringify(result, null, 2) + "\n");
     fs.writeFileSync(
       path.join(dir, "report.md"),
@@ -507,6 +619,14 @@ async function main(): Promise<void> {
         "## Cancel case",
         "",
         cancelSummary,
+        "",
+        "## Settings open during a recording",
+        "",
+        settingsSummary,
+        "",
+        "## Quit during a recording",
+        "",
+        quitSummary,
         "",
         "## Verifier",
         "",
