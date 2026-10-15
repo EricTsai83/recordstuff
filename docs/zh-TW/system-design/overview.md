@@ -2,14 +2,15 @@
 
 [English](../../system-design/overview.md) | [繁體中文](overview.md)
 
-RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下一個螢幕（預設主螢幕）與系統播放的聲音，再點一下停止，輸出可以直接開啟的 MP4。使用者不需要開專案、選編碼器或操作一般主視窗。
+RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下一個螢幕（預設主螢幕）與系統播放的聲音，再點一下停止，輸出可以直接開啟的 MP4。使用者不需要開專案、選編碼器或操作一般主視窗。錄影由 RecordStuff 的原生擷取引擎負責，它是一個 Rust 模組，所在的程序只在錄影開始、進行與存檔期間存在（plan 076；[原因](webrtc.md)）。
 
 ## 產品功能
 
 | 功能 | 使用者行為與結果 | 設計所在 |
 | --- | --- | --- |
 | 開始／停止 | 左鍵切換，開始前先倒數（預設 3 秒；設定中可選關閉、5 或 10 秒），倒數可用第二次點擊、快捷鍵或「取消錄影」取消；啟動及存檔期間忽略重複點擊 | [錄影管線](recording.md#倒數) |
-| 螢幕與系統音訊 | 預設跟隨主螢幕（找不到 id 時使用第一個來源）；指定螢幕則要求精確匹配；缺少或已結束音軌即失敗 | [架構](architecture.md) |
+| 螢幕與系統音訊 | 預設跟隨主螢幕；指定螢幕則要求精確匹配；螢幕或系統音訊無法開啟時，開始即失敗 | [架構](architecture.md) |
+| 不錄進去的內容 | RecordStuff 自己的視窗一律不錄，包括錄影中才開啟的視窗（選單列圖示仍在）；可選擇以「隱藏選單列與 Dock」不錄選單列、Dock、桌面圖示與小工具（預設關閉，僅限 macOS；Windows 上顯示為無法使用的「隱藏工作列」）。在其他 App 中打開的選單仍會隨該 App 錄進去 | [設計決策](decisions.md) |
 | 錄影狀態 | 待命時圓環、啟動或儲存中為沙漏、倒數時為碼錶並在被錄影螢幕右上角顯示數字、錄影中為實心圓點加 macOS `REC` | [桌面功能](desktop.md) |
 | 品質設定 | 精省／標準／高品質；1080p／1440p／4K／原尺寸；30／60 fps | [錄影管線](recording.md) |
 | 儲存位置 | 預設 `~/Movies/RecordStuff`，可選其他資料夾並保存 | [桌面功能](desktop.md) |
@@ -21,13 +22,13 @@ RecordStuff 在 macOS 選單列提供一個錄影按鈕：點一下錄下一個�
 | 外觀與通知 | 跟隨系統／淺色／深色；App 通知可獨立於 macOS 權限關閉 | [桌面功能](desktop.md) |
 | 診斷 | 所有狀態可從選單顯示 log | [桌面功能](desktop.md) |
 
-預設品質是「標準、原尺寸、30 fps」。系統音訊固定要求 AAC 256 kbps，不提供麥克風錄音與音訊品質選單。音訊軌存在不代表來源正在發聲；目前會偵測缺少／已結束音軌，不會偵測每一段是否靜音。
+預設品質是「標準、原尺寸、30 fps」，「隱藏選單列與 Dock」預設關閉。系統音訊固定要求 AAC 256 kbps（Windows 的編碼器最高 192 kbps），不提供麥克風錄音與音訊品質選單。沒有聲音播放時錄到的是靜音，所以有音訊軌不代表當時有聲音在播放。
 
 ## 平台與交付範圍
 
-Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備限制，只驗證過 macOS 版本，具體環境是 Apple M1 Pro／macOS 26／Electron 44.3。框架跨平台不等於錄影、系統音訊或安裝流程在所有平台都通過。
+RecordStuff 的擷取引擎只有 macOS 版（ScreenCaptureKit、VideoToolbox、AudioToolbox）與 Windows 版（Windows.Graphics.Capture、WASAPI、Media Foundation），其他平台沒有錄影引擎。因設備限制，RecordStuff 只驗證過 macOS 版本，具體環境是 Apple M1 Pro／macOS 26／Electron 44.3。Electron 本身跨平台，不等於這個 App 的錄影、系統音訊或安裝流程在所有平台都通過。
 
-依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本也附上只由 CI 建置與檢查、未簽章的 Windows x64 安裝檔。GitHub 的 Windows runner 執行 `pnpm check`，以目前使用者身分靜默安裝，檢查其登記、版本、架構、簽章狀態、系統匣圖示與開始選單捷徑，再解除安裝；沒有任何東西在 Windows 實機上跑過，因此錄影、系統音訊、通知與 Windows 系統匣分支（ICO 素材、首次啟動提示）在那裡都未驗證，Windows 專用文案（「系統匣」、「電腦進入睡眠」、只提 Ctrl 的快捷鍵訊息）也未在那裡看過；除了 Electron 44 本身要求的 Windows 10，App 不另外強制 Windows 最低版本。Linux 沒有專用打包／錄影驗證。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 與 Windows on Arm 也未驗證，且沒有發布建置；目前已驗的安裝產物是 arm64。
+依維護者 2026-10-03 的決定（[設計決策](decisions.md)），1.1.1 之後的每個版本也附上只由 CI 建置與檢查、未簽章的 Windows x64 安裝檔。GitHub 的 Windows runner 執行 `pnpm check`，透過引擎錄下螢幕、區域、視窗與單一程序聲音的短片並解碼，以目前使用者身分靜默安裝，檢查其登記、版本、架構、簽章狀態、系統匣圖示、開始選單捷徑與已安裝的引擎能否載入，再解除安裝；沒有任何東西在 Windows 實機上跑過，因此擷取品質、影格時間、自己的視窗是否不被錄到、系統音訊內容、CPU、通知與 Windows 系統匣分支（ICO 素材、首次啟動提示）在那裡都未驗證，Windows 專用文案（「系統匣」、「電腦進入睡眠」、只提 Ctrl 的快捷鍵訊息）也未在那裡看過；除了 Electron 44 本身要求的 Windows 10，App 不另外強制 Windows 最低版本。Linux 沒有打包，也沒有錄影引擎。macOS 程式有 Darwin 22（macOS 13）最低版本檢查，這只是程式門檻，不能視為已測遍 macOS 13 以上版本。Intel Mac 與 Windows on Arm 也未驗證，且沒有發布建置；目前已驗的安裝產物是 arm64。
 
 目標交付是可下載的 macOS 自簽 DMG，同一個 release 另附未驗證的 Windows x64 安裝檔：收件者不需 Node、pnpm、FFmpeg、編譯工具或簽章憑證。macOS 上安裝到 Applications，完成系統允許開啟與錄影授權後即可操作；Windows 上安裝檔以目前使用者身分安裝、不需管理員權限，並登記會保留使用者資料的解除安裝程式。Apple 認證／公證、Windows 程式碼簽章、App Store、Windows／Linux 實機驗收不是交付條件。未公證 App 首次開啟可能需要手動安全例外，SmartScreen 也可能對未簽章的 Windows 安裝檔提出警告，不能承諾免提示；見 [Apple 說明](https://support.apple.com/102445)。
 
@@ -35,7 +36,7 @@ Electron 是可用於 Windows、Linux、macOS 的框架；RecordStuff 因設備�
 
 錄影與設定留在本機；目前沒有登入、雲端儲存、上傳服務、遙測、錄影庫、編輯器或自動下載／安裝。更新檢查會連線至網站版本 feed，失敗時改查 GitHub Releases（Windows 上只查 GitHub Releases，因為 feed 只描述 macOS DMG），不傳送安裝識別碼；預設開啟的啟動檢查可以關閉。App 本身不提供遠端錄影 API。開發版的自動錄影環境變數在打包版被忽略。
 
-目前沒有區域／視窗選擇、暫停續錄、分段檔、FFmpeg 修復或專門的休眠處理。已有螢幕移除處理：使用中的擷取螢幕被移除時，錄影會以失敗收尾並盡力保留已寫入媒體。這些不列入本次交付的待辦。將來若有具體需求，再建立小範圍計畫。
+目前不提供區域、視窗或 App 選擇（引擎能錄，但沒有選擇介面），也沒有暫停續錄、分段檔或 FFmpeg 修復。系統強制睡眠時會停止並儲存錄影。已有螢幕移除處理：使用中的擷取螢幕被移除時，錄影會以失敗收尾並盡力保留已寫入媒體。這些不列入本次交付的待辦。將來若有具體需求，再建立小範圍計畫。
 
 ## 品質原則
 

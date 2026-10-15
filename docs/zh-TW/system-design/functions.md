@@ -52,110 +52,128 @@
 
 ## 狀態機 — main/recording/recorder.ts
 
-[原始碼](../../../src/main/recording/recorder.ts)。所有依賴可注入，便於不用 Electron 測 session 競態、I/O 與計時。
+[原始碼](../../../src/main/recording/recorder.ts)。所有依賴（host、writer 工廠、資料夾檢查、可用空間、sentinel、時鐘、期限、`RECORDING_HEALTH` 覆寫）都可注入，便於不用 Electron 測 session 競態、I/O 與計時。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
 | `formatTimestamp(date)` | Date → 本地時間安全檔名，不使用 UTC |
 | `errorCodeOf(cause, fallback)` | 已知 cause.code → ErrorCode；其他回 fallback |
-| `Recorder.constructor(deps)` | 補 clock、id、timeout、log 預設並訂閱 host 訊息／故障 |
+| `Recorder.constructor(deps)` | 補 clock、id、期限（start 8 秒、擷取請求 120 秒、stop 10 秒、退出為 stop＋3 秒）、log 預設，並訂閱 host 訊息／故障 |
 | `state` getter | 回目前權威狀態；不得由 Tray 另外維護一份業務狀態 |
 | `sessionId` getter | 進行中的 session id，供睡眠／喚醒 log 等診斷使用 |
+| `mediaPending` / `saving` / `waitingOnlyForSaves` | 仍有 session 或錄影工作（失敗清理、取消、存檔）進行中／擷取已停止、仍在存檔的錄影，舊的在前／退出只在等存檔 |
+| `whenMediaSettled()` | `mediaPending` 為 false 時 resolve；所有呼叫者共用同一個 promise |
 | `subscribe(listener)` | 加入事件集合 → unsubscribe 函式 |
+| `startIfIdle()` | Tray 的「開始錄影」：只在 idle 時呼叫 `toggle`（plan 048） |
 | `toggle()` | idle 開始、recording 停止、倒數中取消、needsPermission 發引導事件、已啟動至少 1 秒（`START_CANCEL_GRACE_MS`）的開始會被取消，其餘忽略 |
 | `cancelCountdown(reason)` | `record` 前取消這次嘗試；之後改為擷取開始後停止；錄影中才到達的選單「取消錄影」會停止錄影；其餘忽略 |
-| `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設 stop timeout，送 stop，再發布 stopping |
+| `stop()` | 僅 matching recording session → stopping（記下要求停止時間），設停止期限（`stop_timeout`），送 stop，再發布 stopping |
 | `systemWillSleep()` | Mac 即將睡眠（plan 050）：錄影中以 `stoppedEarly: "sleep"` 停止，倒數中或準備中的嘗試以 `sleep` 取消，arming 中的嘗試在擷取開始後停止；stopping 或沒有 session 時不動作 |
-| `shutdown()` | 立即取消開檔、準備中或倒數中的嘗試（plan 065）、`record` 後保留停止意圖、停止 recording、等 stopping／failure，並與退出期限競速 |
+| `shutdown()` / `resumeAdmission()` | 立即取消開檔、準備中或倒數中的嘗試（plan 065）、`record` 後保留停止意圖、停止 recording，等到沒有待處理的媒體工作，並與退出期限競速／退出被拒後重新接受錄影 |
 | `setPermission(status)` | 一律保存最新狀態；idle／needsPermission 時狀態有變才重新落定，不覆蓋忙碌 session 狀態 |
 | `outputDirChanged()` | 清掉記住的 outputDirUnavailable（needsPermission 時也清）；只有 idle 才更新狀態 |
-| `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立品質與倒數快照與 session、驗位置、開 writer、準備 overlay、start host；每階段處理 late 結果 |
-| `openUniqueWriter(session, stamp)` | 每個暫存檔名先寫中斷 sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
-| `markInFlight` / `clearInFlight` | 寫入 session sentinel（失敗只記錄一次、不阻擋）／每個終止結果都移除它 |
-| `handleHostMessage(message)` | 過濾 session；處理 prepared／started／progress／stopped／error；擷取前的 capture_failed 改為註明階段的 capture_start_failed；過期 prepared／started／progress 回 stop |
+| `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立品質與倒數快照與 session、在 start 期限內驗資料夾（超過期限仍未回應的檢查會被記住，之後同資料夾的嘗試等它）、開唯一 writer、準備 overlay，並在擷取請求期限內以暫存路徑呼叫 `host.start`；每階段處理 late 結果 |
+| `openUniqueWriter(session, stamp)` | 每個暫存檔名在建立前先記入 session sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
+| `handleHostMessage(message)` | 過濾 session；`prepared` → 倒數或 record；`started` → recording、首次媒體期限、磁碟監看；`progress` → mediaArrived；`writeError` → fail；stopping 時的 `stopped` → detach、idle 並在背景存檔，其他情況為 capture_failed；`error` → fail，擷取前的 capture_failed 改為註明階段的 capture_start_failed；過期的 `prepared`／`started`／`progress` → 對該 session 送 stop |
 | `beginCountdown(session)` | 進入 countdown N、顯示 overlay，並從同一個單調時間起點排好每個 tick、dismissal 與 N 秒 |
 | `dismissOverlay` / `recordAfterCountdown` | 在上限內等 overlay 確認離開（逾時則關閉並寫 log）／N 秒已過且 overlay 已消失才送 `record` |
 | `record(session)` | 進入 arming、設 `record → started` 期限並送 `record`；被拒即啟動失敗 |
-| `cancel(session, reason)` | detach session、清 timer、關 overlay、停 host、回到嘗試前的 idle、abandon writer、發 `cancelled`、移除 sentinel |
+| `detach(session)` / `requestHostStop(id)` | 移除 session、清 timer 與 overlay 並要求 host 停止／所有 stop 請求都經過這裡，拋出時只記 log、不往外傳 |
+| `cancel(session, reason)` | detach、回到嘗試前的 idle、abandon writer（移除空檔）、發 `cancelled`、移除 sentinel |
 | `present` / `closeOverlay` / `clearCountdown` | 呼叫 presenter 並記錄其錯誤／只關閉 overlay 一次／清除倒數 timer |
-| `mediaArrived(session, bytes, source)` | 引擎回報非空的 `progress`：清首片期限，started 後重設停滯保護 |
-| `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因與 session trace），再移除 sentinel |
+| `mediaArrived(session, bytes, source)` | 引擎回報非空的 `progress`：清首次媒體期限，started 後重設停滯保護 |
+| `finalize` / `save` / `endSaving` | 把停止的錄影列入 `saving`，超過 `saveSlowMs` 標為過慢（絕不放棄）；`writer.finish` 等引擎結果並發布；之後 checkpoint sentinel、發 `saved`（附提前停止原因與 session trace）並清 sentinel；失敗與一般 session 一樣回報，但不改動狀態；在第一格之前就結束的已取消開始視為取消 |
 | `armStall(session)` | 媒體開始後兩次 progress 之間的 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
-| `watchDisk(session)` | 錄影中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
-| `handleHostFailure(code, detail)` | 有 session 才進 fail；`record` 前改為註明階段的 capture_start_failed；idle 時不假造錄影錯誤 |
+| `watchDisk(session)` | 錄影中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止（`stoppedEarly: "lowDisk"`）；查詢失敗記錄一次 |
+| `displayRemoved()` | 以 capture_failed（`record` 前為 capture_start_failed）失敗並發螢幕診斷；stop 已送出後則保存已錄的內容 |
+| `handleHostFailure(code, detail)` | 有 session 且不在存檔中才進 fail；`record` 前改為註明階段的 capture_start_failed |
 | `cancelMarked(session, cause, detail)` | 已在 `prepared` 前被睡眠或退出標記的嘗試，遇到 host 錯誤或遺失、螢幕移除、請求逾時或被拒時，以該原因取消而非失敗 |
-| `fail(id, code, detail, flags)` | 先 detach session／清 deadline、倒數與健康 timer／關 overlay／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶檔案結果、session trace 與 partialPath，再移除 sentinel |
+| `fail(id, code, detail, flags)` / `reportFailure` | detach、立即 idle，再發布 pending 失敗、abandon writer（非空的部分檔案保留；無法確認保留時為 `unknown`）、發布結果、發 failed（帶 session trace 與可選 partialPath）、移除 sentinel；資料夾在開檔期限後才回應時清除 unavailable 旗標 |
 | `trace(session)` | captureStarted、saved、failed 帶的 session id、暫存路徑與錄影／要求停止時間（plan 029） |
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
-| `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
+| `settle(idle)` / `setState(state)` / `emit(event)` | 依最新權限回到 idle 或 needsPermission／替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
+
+[recording-health.ts](../../../src/main/recording/recording-health.ts)：`RECORDING_HEALTH` 是 main 端所有門檻的唯一位置：每 5 秒查詢可用空間，低於 1 GiB 警告、低於 200 MiB 正常停止；媒體開始後 10 秒沒有 `progress` 警告、30 秒失敗；存檔超過 30 秒仍在進行即視為過慢。引擎自己的上限（64 MiB 寫入積壓、完成檔案 120 秒）定義在 crate 中。
 
 ## Host 監督器 — main/recording/native-capture-host.ts
 
-[原始碼](../../../src/main/recording/native-capture-host.ts)：監督每次嘗試的 `utilityProcess`（[native-host-process.ts](../../../src/main/recording/native-host-process.ts)），由它載入 Rust 引擎。下表仍描述 plan 076 於 2026-10-16 移除的隱藏視窗監督器，保留到 plan 076 step 8 改寫為止。
+[原始碼](../../../src/main/recording/native-capture-host.ts)：`NativeCaptureHost` 以每次嘗試一個 `utilityProcess` 實作 recorder 的 `RecorderHost`。
 
 | 方法 | 契約與副作用 |
 | --- | --- |
-| `constructor(options)` | 保存 preload／HTML／devUrl，預設 ping 5 秒、ready 8 秒 |
-| `onMessage(listener)` / `onFailure(listener)` | 登錄有效訊息／host 故障 callback |
-| `start(id, quality)` | 先 teardown 既有 host，為本次嘗試建立新視窗並等待 ready；啟動本次 session 的心跳，再送 start；建立／load 失敗時清掉新視窗並 reject |
-| `record(id)` | 對被監看的 session 送 record；沒有 host 接收時拋錯 |
-| `stop(id)` | 有 port 才送 stop，無 port 時無作用 |
-| `destroy()` | 呼叫 teardown，供嘗試結束與 App 退出 |
-| `create()` | 建 sandbox 視窗／channel、裝 guards／crash handler、載頁／交 port、等 ready；格式錯誤的訊息只記錄欄位名稱與值的種類 |
-| `stopHeartbeat()` | 被監看的 session 回報 stopped／error 時，以及 teardown 時停止心跳 |
-| `ping()` | 先查兩次未回覆，逾限 teardown＋failed；否則累計 missedPongs 並送 ping |
-| `post(message)` | 透過目前 port 發 MainMessage |
-| `emitFailure(code, detail)` | 發送程序失敗事件，由 Recorder 決定 session 收尾 |
-| `teardown()` | 停心跳、close port、清 ready、destroy 視窗，允許下次重建 |
+| `constructor(options)` | 入口與 addon 路徑、`resolveDisplay`、`ownPids`、`hideSystemUi`、可選的 `displayPoint` 與 `excludeOwnWindows`（Windows）、log、可注入的 `fork`；預設 ping 5 秒、ready 8 秒 |
+| `onMessage(listener)` / `onFailure(listener)` | 登錄有效訊息／host 故障（`capture_host_crashed`、`capture_host_unresponsive`）callback |
+| `start(id, quality, recordingPath)` | 先 teardown 既有程序；要求暫存路徑並登記其檔案結果；fork 與選擇螢幕同時進行；ready 後啟動心跳；記錄兩者耗時；螢幕缺少或不是數字時改發 `error`（`capture_start_failed`），否則排除自身視窗（Windows）並送帶 `native` 的 `start`；啟動或 ready 失敗時清掉新程序並 reject |
+| `record(id)` | 對被監看的 session 送 record；沒有程序接收時拋錯 |
+| `stop(id)` | 有程序才送 stop |
+| `fileOutcome(recordingPath)` | 每個暫存路徑取一次：引擎的 `EngineFileReport`，或以 `FileWriteError` 形式的寫入錯誤、或程序未完成檔案就結束的原因 reject |
+| `destroy()` | 嘗試結束與 App 退出時 teardown |
+| `create()` / `launch()` | fork（`serviceName` 為 "RecordStuff Capture"，stdio 以 pipe 導出、每行記為 `capture host: …`）並讓 `ready` 與期限競速；exit 時 reject ready、結算完成中的檔案，目前程序在 session 期間結束則發 `capture_host_crashed`；message 時把完成中程序的 `finished`／`writeError` 交給其檔案、丟棄並依 type 記錄格式錯誤的訊息、重設未回覆的 pong，收到 `stopped` 時在 recorder 得知前先把程序列為完成中 |
+| `keepFinishing` / `fileEnded` | 保留已停止的程序最多 `FINISH_BOUND_MS`（150 秒）／結算檔案結果、記錄，並在沒有嘗試擁有該程序時結束它 |
+| `emit` / `stopHeartbeat()` | 被監看的 session 回報 stopped、error 或 writeError 時停止心跳，再通知 listeners／清除 ping timer 與被監看的 session |
+| `ping()` | 先查兩次未回覆，逾限 teardown 並發 `capture_host_unresponsive`；否則累計 missedPongs 並送 ping |
+| `post(message)` / `emitFailure(code, detail)` | 送出 MainMessage／通知故障 listeners |
+| `teardown()` | 使進行中的 start 失效、停心跳、除非程序正在完成檔案否則 reject 未結算的檔案結果、釋放自身視窗、除非程序正在完成檔案否則結束它 |
+| `releaseWindows(child)` | 程序結束後，或 `RELEASE_BOUND_MS`（5 秒）後讓視窗回到擷取範圍，除非之後的嘗試又排除了它們 |
 
-## 擷取與編碼 — renderer/capture/capture-host.ts
+[capture-exclusion.ts](../../../src/main/recording/capture-exclusion.ts)：`captureExclusion({ windows, onCreated })` 回傳一個開關：開啟時以 `setContentProtection(true)` 標記所有視窗及之後新建的每個視窗，關閉時停止監聽並取消它標記過的視窗。只在 Windows 上接線。
 
-本節描述 plan 076 於 2026-10-16 移除的隱藏 capture renderer，保留到 plan 076 step 8 改寫為止；現在由原生引擎在自己的程序中擷取與編碼。
+## 擷取 host 程序 — main/recording/native-host-process.ts
 
-| 函式／方法 | 契約與副作用 |
-| --- | --- |
-| `measureFrameSize(stream, options)` | DOM video 量 intrinsic 尺寸；等待 metadata／resize／timeout，回尺寸或 undefined；finally detach video |
-| `current()` / `matches(size)` / `check()` | 量測內 helper：讀正尺寸、比 expect、符合時 clear timer／resolve；timeout 回最後看到的尺寸 |
-| `CaptureHost.constructor(port, options)` | 訂閱 message、start port、送 ready，量測器可注入 |
-| `handle(data)` | isMainMessage 過濾，分派 ping→pong、start、record、stop |
-| `start(id, quality)` | 拒絕重疊與不支援 MIME；等待 stream、取消檢查、音軌檢查、applyQuality、建立未啟動的 MediaRecorder、監看軌道並回 prepared |
-| `record(id)` | 只接受已準備且軌道存活的該 session；掛事件、啟動 MediaRecorder、回 started；重複的 record 忽略 |
-| `release(prepared)` | 丟棄已準備的 session 並停止其軌道 |
-| `cancelled()` | start 內檢查取消 id；取消時移除 pending、停 tracks、送 stopped |
-| `refuse(code, detail)` | start 內拒絕路徑：移除 pending、停 tracks、送 error |
-| `stop(id)` | pending 轉 cancelled；已準備的 matching session 釋放並回 stopped；active matching id 只要求 stop 一次，inactive 時直接排 finish |
-| `enqueueChunk(session, blob)` | 空 Blob 忽略；配置 seq，chain 中轉 ArrayBuffer 並複製送 port；轉換失敗回 error |
-| `finish(session, then)` | finished 防重入；停 tracks、等全部 chunk 送完、清 active session，再執行 terminal callback |
-| `fail(id, code, detail)` / `send(message)` | 建 error／發 HostMessage，不改 main 狀態 |
-| `finiteOrUndefined(value)` | 有限 number → 原值，其他 → undefined |
-| `applyQuality(stream, quality, measure)` | 量來源、fit cap、重送 fps constraint、重測、計目標 → CaptureReport；降級／fallback 寫 warnings |
-| `stopTracks(stream)` | 對所有 MediaStreamTrack 呼叫 stop |
-| `describe(cause)` | Error name/message 或 String，用於診斷 |
-| `classifyGetDisplayMediaError(cause)` | NotAllowedError→permission_denied；NotFoundError→no_display；其他→capture_start_failed |
-
-頁面 message listener 檢查 source／標記／port 後建立 host。MediaRecorder callbacks 的先後順序是 chunk chain → terminal message，詳見 [錄影管線](recording.md)。
-
-## 影片儲存 — main/recording/file-writer.ts
-
-[原始碼](../../../src/main/recording/file-writer.ts)：保留 `publishRecording`、錯誤分類、`ensureWritableDir` 與 `nodeFs`（將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O）；`FileWriter` 類別已於 2026-10-16 隨隱藏 renderer 移除。[main/recording/engine-file-writer.ts](../../../src/main/recording/engine-file-writer.ts) 是 Recorder 的 writer：`EngineFileWriter.open` 獨占預留暫存檔名，`finish` 等引擎回報結果後發布，`abandon` 保留非空檔案。
+[原始碼](../../../src/main/recording/native-host-process.ts)是 `utilityProcess` 的入口。載入時若有 `parentPort`，就 `require` 第一個參數指名的 addon 並建立 `NativeHost`；載入失敗時把原因寫到 stderr 並以代碼 3 結束，main 因此收不到 `ready`。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
+| `NativeHost.constructor(port, engine, log, now, development)` | 以事件 callback 建立引擎、訂閱 port、送 `ready` |
+| `handle(data)` | 非 MainMessage 一律忽略；ping→pong；start（沒有 `native` 時拒絕）、record、stop |
+| `start(id, quality, native)` | 拒絕重疊；探測來源，以 `fitWithinCap` 決定輸出尺寸、`videoBitsPerSecond` 決定位元率，以 `AUDIO_BITS_PER_SECOND` 對指定路徑 `prepare`，記錄 probe／prepare 耗時，送出 `prepared`，其 CaptureReport 的 warnings 記載來源尺寸、AAC priming、排除的 App 數與隱藏的系統視窗數；prepare 期間收到 stop 則取消並回 `stopped`；失敗時把引擎代碼對應到 host 代碼 |
+| `record(id)` | 重複的 record 忽略；不是已準備好的這個 session 就拒絕；呼叫引擎的 `record` 並送 `started` |
+| `stop(id)` | 準備中的 session 標為取消；已準備的取消並回 `stopped`；錄影中則等 `stop`、記錄其報告（drain、補靜音、畫格提前量、過晚的聲音、擷取的畫面數與最大間隔），送 `stopped`，再等 `finish` 並送 `finished` 或 `writeError` |
+| `event(event)` | 有 session 時：`progress` → `progress`；代碼已知的 `writeError` → `writeError`；`captureError` → `error`（未知代碼為 capture_failed） |
+| `fail` / `send` | 送 `error`／發 HostMessage |
+| `engineFailure(cause)` | 拆開引擎 `code\|detail` 形式的 reject；其他形式為帶原訊息的 capture_start_failed |
+| `developmentCapture(env)` | 讀 `RECORDSTUFF_CAPTURE_SOURCE`（`window:<id>`、`area:x,y,w,h`、`apps:<pid>,…`）與 `RECORDSTUFF_CAPTURE_AUDIO`（`off`、`apps:<pid>,…`）；其他值都錄整個螢幕與全部系統聲音 |
+
+## 原生引擎 — native/capture
+
+[native/capture](../../../native/capture) 是建置出 `recordstuff-capture.node` 的 Rust crate（`cdylib` 與 `rlib`，napi-rs、N-API 8）。每個失敗都帶協定代碼；跨過 N-API 時 reject 的訊息是 `code|detail`。
+
+| 項目 | 契約與副作用 |
+| --- | --- |
+| [lib.rs](../../../native/capture/src/lib.rs) `NativeCapture` | JavaScript 類別。`new(onEvent)` 建立 thread-safe 事件 callback（`progress`、`writeError`、`captureError`）。`probe(displayId, displayPoint?, source?)` → 來源尺寸；`prepare(options)` → `PreparedInfo`；`record()` 同步；`stop()` 在擷取結束後 → `StopReport`；`finish()` 在檔案成為一般 MP4 或確定原因後 → `FinishReport`，以 `disk_full` 或 `output_write_failed` reject；`cancel()` 釋放已準備的 session；`microphones()` 列出輸入裝置。除 `record` 外都以 `AsyncTask` 在 Node 的 worker pool 執行。其他平台以 capture_start_failed reject |
+| [core/mod.rs](../../../native/capture/src/core/mod.rs) `Core` | session 中與平台無關的一半：`new` 接收 events、影格率、音訊位元率、輸入數與已開啟的檔案；`make_encoders` 在 `recordstuff-encoders` 執行緒建立編碼器；`first_frame` 等待擷取的第一張畫面；`record` 取得 `t0`、建立混音器、啟動 writer 與 `recordstuff-refresh` 執行緒；`drain` 在停止點結束兩條軌道，最多等 250 ms 取得到該時刻為止的聲音，其餘補靜音；`halt`／`halted` 包住平台停止擷取的動作；`end` flush 編碼器並要求 writer 完成檔案（`Finishing`，最多等 120 秒）；`release` 釋放從未錄影的 session 的編碼器 |
+| `Shared::frame` / `frame_unchanged` / `frame_without_picture` | 某個主機時間的完整畫格，保留為最新一格，由 `Pacer` 接納時編碼／畫面未變的刷新：在 pacer 的格位重新編碼最新畫面／沒有畫面的送達，只計數 |
+| `Shared::sound` / `wants_sound` / `fail` | 把某個輸入在某個主機時間的樣本放入混音器，在音訊鎖內混音、編碼並送出 AAC 封包，於停止點截斷／目前是否收聲音／只回報第一次擷取或編碼失敗（錄影中或收尾到停止點時為 capture_failed，之前為 capture_start_failed），收尾結束後不再回報 |
+| `refresh` | refresh 執行緒：在 `t0` 以關鍵影格編碼第一格、在格位編碼 pacer 暫留的畫格、靜止畫面每秒重複最後一格，並推進混音器的時鐘 |
+| `Events`、`VideoSink`、`VideoEncode`、`AudioEncode`、`Platform` | 平台實作的 trait：session 的回報、編碼後影像的去處、H.264 與 AAC 編碼器（含 priming 與 AudioSpecificConfig），以及畫格型別、編碼器與主機時鐘 |
+| [core/mixer.rs](../../../native/capture/src/core/mixer.rs) `Mixer` | 把多個輸入以單位增益混成一條立體聲音軌：每個輸入由 `AudioAligner` 對齊；音軌推進到所有輸入都已送達之處，或隨時鐘落後 24 000 frames（0.5 秒）推進，輸入沒送到的部分視為靜音，之後才到的計為過晚 |
+| [timing.rs](../../../native/capture/src/timing.rs) `AudioAligner` / `ticks` | 以計算樣本數放置 buffer：時間戳在容差（480 frames）內就接續上一段，有空隙補靜音，落後的樣本丟棄／奈秒換算為 timescale |
+| [pacing.rs](../../../native/capture/src/pacing.rs) `Pacer` | 以錄影開始為起點的影格率格線：`admit` 保留最接近每個格位的畫格，`due` 指出畫格仍待編碼的格位，`capture_interval_ns` 以四倍影格率向擷取請求 |
+| [writer.rs](../../../native/capture/src/writer.rs) `spawn` / `MediaSender` | 持有檔案與 muxer 的 `recordstuff-writer` 執行緒：每 5 秒 sync，媒體到達期間每秒回報位元組數，分類第一個寫入錯誤（`classify`：兩個平台的磁碟已滿 → disk_full，其他 → output_write_failed）；`send` 在超過 `BACKLOG_LIMIT_BYTES`（64 MiB）時以 output_write_failed 拒絕媒體；`finish` 經 channel 回覆 |
+| [mux/session.rs](../../../native/capture/src/mux/session.rs) `SessionMuxer` | 輸入編碼後樣本、輸出片段：每個影像樣本保留到下一個樣本給出其長度，影像片段在一秒後的第一個關鍵影格關閉、音訊片段每秒關閉，每個片段一條軌道；`finish` 讓影像止於停止點（在其之後的樣本不收），音訊在 priming 之後呈現 `audio_frames` |
+| [mux/mp4.rs](../../../native/capture/src/mux/mp4.rs) `HybridMp4` | `create` 寫入 `ftyp` 與含 `mvex` 的 `moov`；`write_fragment` 附加一組 `moof`＋`mdat`；`finish` 附加就地索引所有樣本的一般 `moov`，sync 後把舊 `moov` 開頭改寫為 64 位元 `mdat` 標頭，或保留分段檔案並說明原因 |
+| [mux/boxes.rs](../../../native/capture/src/mux/boxes.rs)、[avc.rs](../../../native/capture/src/avc.rs)、[aac.rs](../../../native/capture/src/aac.rs)、[nv12.rs](../../../native/capture/src/nv12.rs) | ISO BMFF box 建構與 `mdat_header_64`；Annex B H.264 轉為長度前綴樣本與 `avcC`；AAC-LC 的 AudioSpecificConfig；沒有視訊處理器的 Windows 裝置在 CPU 上做 BGRA → NV12。`mux/parse.rs` 是只給測試用的讀取器 |
+| [mac/session.rs](../../../native/capture/src/mac/session.rs) `Session` | `probe`、`prepare`（shareable content、content filter、一個同時擷取畫面與聲音的 `SCStream`，或另加一個只收聲音的 stream、VideoToolbox 與 AudioToolbox 編碼器、可選的麥克風）、`record`、`stop`（drain、停止 stream 與麥克風、end）、`cancel`；[content.rs](../../../native/capture/src/mac/content.rs) 建立排除 RecordStuff 視窗與聲音的 filter，開啟系統介面開關時也排除選單列、Dock、桌面圖示與小工具 |
+| [mac/microphone.rs](../../../native/capture/src/mac/microphone.rs) `MicrophoneCapture` / `list` | 以選定或預設輸入建立的 `AVCaptureSession`，轉為 48 kHz 立體聲 float 並以主機時鐘標記／輸入裝置清單 |
+| [win/session.rs](../../../native/capture/src/win/session.rs) `Session` | 依螢幕的實體像素點 `probe` 與 `prepare`（`capture.rs`：Windows.Graphics.Capture，GPU 或 CPU 轉 NV12）、WASAPI `SoundCapture` stream（排除 RecordStuff 程序樹的 process loopback、指定的程序樹或麥克風）、Media Foundation H.264（`video.rs`）與 AAC（`aac.rs`，96–192 kbps）；只顯示指定 App 視窗的來源會被拒絕 |
+
+Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipeline_test.rs`）；`live_test.rs` 會實際擷取，標為 `#[ignore]`，在 CI 的 Windows runner 與本機 macOS 上明確指定執行。
+
+## 影片儲存 — main/recording/engine-file-writer.ts
+
+[原始碼](../../../src/main/recording/engine-file-writer.ts)是 Recorder 的 writer；[main/recording/file-writer.ts](../../../src/main/recording/file-writer.ts) 保存它與資料夾檢查共用的部分：發布、錯誤分類與 `nodeFs`（將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O）。
+
+| 函式／方法 | 契約與副作用 |
+| --- | --- |
+| `EngineFileWriter.open(recordingPath, finalPath, options)` | 以 `wx` 建立空的暫存檔；任何失敗（包括檔名衝突）都以 `classifyOpenError` 的代碼拋出 `FileWriteError` |
+| `EngineFileWriter.finish()` | 只做一次：等待引擎對這個路徑的結果（寫入錯誤原樣傳出，其他錯誤轉為 output_write_failed）、讀取大小，0 位元組時刪檔並以 `NO_MEDIA_DETAIL` 拋出 capture_start_failed，否則 `publishRecording` 並記錄 `finishTimings`（引擎的 `finalizeMs` 與仍為分段格式的原因、大小檢查、發布） |
+| `EngineFileWriter.abandon()` | 不拋出、可重複呼叫：非空檔以暫存檔名保留並回傳路徑；空檔刪除；讀不到大小時設 `preservationUncertain` |
 | `FileWriteError.constructor(code, filePath, cause)` | 附 code／路徑／原始 cause 的 Error |
 | `errnoCode(cause)` / `messageOf(cause)`（[main/lib/errors.ts](../../../src/main/lib/errors.ts)） | 取得 errno／文字，未知 errno 為 undefined；main 所有讀 Node 錯誤的模組共用 |
 | `classifyWriteError(cause)` | ENOSPC → disk_full，其他 → output_write_failed |
 | `classifyOpenError(cause)` | ENOSPC → disk_full，其他 → output_open_failed（資料夾 probe 與獨占開檔） |
-| `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗依 `classifyOpenError` 拋出錯誤碼；probe 刪除 best effort |
+| `ensureWritableDir(dir, io, create)` | mkdir（只針對 RecordStuff 自己的資料夾）＋寫 probe；失敗依 `classifyOpenError` 拋出錯誤碼；probe 刪除 best effort |
 | `publishRecording(io, recordingPath, finalPath)` | 排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與計時 |
-
-下表描述已於 2026-10-16 隨隱藏 renderer 移除的 `mp4-finalize.ts`，保留到 plan 076 step 8 改寫為止；現在由原生引擎的 muxer（[native/capture/src/mux](../../../native/capture/src/mux)）寫入並完成 MP4。
-
-| 函式／方法 | 契約與副作用 |
-| --- | --- |
-| `FragmentIndex.push(bytes)` | 接著讀下一段已寫入的位元組，大小不拘：完整保留 ftyp、moov 與每個 moof（上限 16 MiB），其他 box 只跳過內容並記下每個 mdat 的資料範圍；讀取 moov 的 track 與 trex 預設值，以及每個 traf 的樣本，每個 trun 一個 chunk，以 `tfdt` 修正前一個樣本的長度；不拋出，保留第一個放棄的原因 |
-| `FragmentIndex.unusable` getter | 放棄的原因（若有） |
-| `FragmentIndex.finalize(end)` | 對 `end` 位元組、全部讀過且結束在 box 邊界、每個 chunk 都在某個 mdat 內的檔案：回傳新的 `moov`（重建樣本表、實際長度、沒有 mvex）與 `mdat` 標頭要寫的位置；否則回傳 `{ reason }` |
-| `mdatHeader(size)` | 指定大小的 16 位元組、64 位元 `mdat` 標頭 |
 
 ## 錄影檔資料庫 — main/library/recordings-library.ts
 
@@ -229,7 +247,7 @@
 | `frameRateDowngrade(requested, report)` | 60 requested 且 actual≤30 → rounded fps；其他 undefined |
 | `unknown(value, unit)` / `describeCapture(requested, report)` | 格式化未知欄位／本次要求、track、目標與 warnings 日誌 |
 
-[shared/protocol.ts](../../../src/shared/protocol.ts)：`isRecord()`、`isNonEmptyString()` 是 guards 的 helper；`isMainMessage()` 驗 start／record／stop／ping，`isHostMessage()` 驗 host 訊息：`prepared` 必須帶 mime type 與 CaptureReport，`started` 可兩者皆無；`progress` 要求有限的非負位元組數，`finished` 要求引擎的檔案報告。
+[shared/protocol.ts](../../../src/shared/protocol.ts)：main 與擷取 host 之間的 parent port 契約。`OUTPUT_MIME_TYPE` 是 H.264＋AAC MP4；`HOST_ERROR_CODES` 與 `ENGINE_WRITE_ERROR_CODES` 是 host 在 `error` 與 `writeError` 中唯一可送的代碼。`isMainMessage()` 接受 `start`（非空 session id、`isQualitySettings`、可選的 `native`，由 `isNativeStart` 檢查：整數螢幕 id、可選的整數座標點、非空錄影路徑、整數 PID、布林系統介面開關）、`record`、`stop` 與 `ping`。`isHostMessage()` 接受 `ready`／`pong`；帶 mime type 與 CaptureReport 的 `prepared`；`started`；可選有限 `tracksStoppedAt` 的 `stopped`；帶 `EngineFileReport`（有限的 bytes 與 finalizeMs、可選的分段原因）的 `finished`；有限非負位元組數的 `progress`；只帶列出代碼與字串 detail 的 `writeError` 與 `error`，`error` 可另帶 `displayFailure: "track_ended"`。`isRecord()`、`isNonEmptyString()`、`isPoint()` 與 `isEngineFileReport()` 是它的 helper；額外欄位會被容許。
 
 [shared/countdown.ts](../../../src/shared/countdown.ts)：`COUNTDOWN_CHOICES`（0、3、5、10）、`DEFAULT_COUNTDOWN`（3）與 `isCountdownSeconds`；`COUNTDOWN_TIMING`（tick、overlay 提前量、dismissal 上限、淡化、穩定間隔）與 `COUNTDOWN_OVERLAY`（字級占螢幕短邊的比例與 56–216 pt 上下限、視窗與字級的比例、邊距、字型、數字、以 56 pt 為基準的外框與陰影、減少透明度的數值），提示音數值 `COUNTDOWN_TICK`（523 Hz 正弦波、最後一個數字 ×1.5、小聲的四倍泛音、attack 4 ms、140 ms、−20 dBFS）、`DEFAULT_COUNTDOWN_SOUND`（開啟）、`tickFrequencyHz(digit)` 與頁面的 `COUNTDOWN_SOUND_QUERY`（plan 046），是所有時間、外觀與聲音數值唯一的定義處；`overlayFontPt(displayBounds)` 算出某個螢幕上的字級，`overlayBounds(displayBounds, workArea)` 以整數 pt 算出位於工作區右上角的正方形視窗；另定義 overlay preload 的數值 channel 與 bridge 型別。
 
@@ -339,8 +357,6 @@
 | `isOutputFolderFailure` / `isPermissionFailure` | 共用的復原分類：輸出資料夾類失敗提供變更資料夾；權限類失敗（含 no_audio_track）在 macOS 提供系統設定與重新啟動 |
 
 [session-sentinel.ts](../../../src/main/recording/session-sentinel.ts)：`SessionSentinels.write` 在暫存檔存在前以原子寫入記下它；`remove` 刪除且不拋出；`leftovers` 列出先前程序留下的 sentinel，略過本程序的 session，捨棄中斷寫入與無效內容，暫時無法讀取的則保留。`interruptionFailure` 將其轉為 ID 由 session 推導的 `app_terminated` 紀錄；`reportInterruptions` 在啟動時交給 `RecordingResults.restore`，待 `RecordingResults.saved` 確認紀錄已保存後才移除 sentinel。
-
-[recording-health.ts](../../../src/main/recording/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間與存檔過慢門檻的唯一位置。
 
 [keep-awake.ts](../../../src/main/recording/keep-awake.ts)：`KeepAwake.update` 從 `starting` 到狀態回到穩定前持有一個 `prevent-display-sleep` 電源 blocker，並記錄每次開始與停止；blocker 丟出錯誤時只記錄；`dispose` 在結束時釋放（plan 050）。
 

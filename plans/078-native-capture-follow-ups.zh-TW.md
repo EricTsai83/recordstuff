@@ -6,7 +6,7 @@
 
 ## 目標與範圍
 
-解決 076 驗收在 macOS 原生錄影引擎上留下的三個問題。成功的標準是：剩下的 50 ms 影格間隔找到原因並消除，或連同原因一起被接受；開發版 Electron App 和簽署 bundle 一樣把自己的視窗排除在錄影之外，或把這個限制寫進文件；影格節奏的診斷涵蓋實際錄影的引擎。
+解決 076 驗收與文件在原生錄影引擎上留下的問題。成功的標準是：剩下的 50 ms 影格間隔找到原因並消除，或連同原因一起被接受；開發版 Electron App 和簽署 bundle 一樣把自己的視窗排除在錄影之外，或把這個限制寫進文件；影格節奏的診斷涵蓋實際錄影的引擎。
 
 不在範圍內：Windows 實機（只由 CI 驗證）、新的擷取功能，以及 [077](077-native-hands-on-acceptance.zh-TW.md) 的動手驗收案例。
 
@@ -31,7 +31,11 @@
 
 - [ ] 和維護者決定原生引擎是否需要節奏診斷（取自逐格 log，或每個編碼影格時間與來源的診斷匯出），需要的話就建立；步驟 1 可能會先需要它。
 
-### 4. 文件
+### 4. Chromium 路徑留下的部分
+
+- [ ] 076 改寫文件時發現（2026-10-16），每一項都要和維護者決定：Windows 只用 Microsoft 的軟體 transform 編碼 H.264，而 D4 的本意是有 GPU 硬體編碼器時使用它（非同步 transform）；沒有 Media Feature Pack 的 Windows N 版以 `capture_start_failed` 失敗，而不是專屬的錯誤碼；`mp4_unsupported`、幀率降級提示與解析度上限提示（`capUnconfirmed`）已不會出現，因為只有隱藏 renderer 會產生它們；`quality.ts` 的 `estimatedBytesPerMinute` 仍依 Chromium 的量測把 60 fps 的估算加倍。
+
+### 5. 文件
 
 - [ ] 把結果寫進 [recording](../docs/zh-TW/system-design/recording.md)、[tooling](../docs/zh-TW/system-design/tooling.md) 與驗證紀錄，含翻譯。
 

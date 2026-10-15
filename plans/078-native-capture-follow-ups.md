@@ -6,7 +6,7 @@ Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the main
 
 ## Goal and boundaries
 
-Close three questions 076's acceptance left open about the native capture engine on macOS. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; and frame-timing diagnosis covers the engine that records.
+Close the questions 076's acceptance and documentation left open about the native capture engine on macOS. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; and frame-timing diagnosis covers the engine that records.
 
 Out of scope: Windows hardware (CI only), new capture features, and the hands-on cases in [077](077-native-hands-on-acceptance.md).
 
@@ -31,7 +31,11 @@ Out of scope: Windows hardware (CI only), new capture features, and the hands-on
 
 - [ ] Decide with the maintainer whether the native engine needs a cadence diagnostic (from a per-frame log or a diagnostic export of each encoded frame's time and source), and build it if so; step 1 may need it first.
 
-### 4. Documentation
+### 4. What the Chromium path left behind
+
+- [ ] Found while 076 rewrote its documentation (2026-10-16); decide each with the maintainer: Windows encodes H.264 with Microsoft's software transform only, while D4 meant a GPU's hardware encoder when one exists (an asynchronous transform); a Windows N edition without the Media Feature Pack fails as `capture_start_failed` instead of a code of its own; `mp4_unsupported`, the frame-rate downgrade notice and the resolution-cap notice (`capUnconfirmed`) can no longer fire, since only the hidden renderer produced them; and `estimatedBytesPerMinute` in `quality.ts` still doubles the 60 fps estimate from a Chromium measurement.
+
+### 5. Documentation
 
 - [ ] Record the outcome in [recording](../docs/system-design/recording.md), [tooling](../docs/system-design/tooling.md) and the verification record, with translations.
 

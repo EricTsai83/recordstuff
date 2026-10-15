@@ -2,7 +2,7 @@
 
 [English](../../system-design/repository.md) | [繁體中文](repository.md)
 
-同一個 repository 收錄兩項交付物與它們共用的文件：根目錄是 Electron 桌面 App，`website/` 是靜態官方網站。兩者共用 Git 歷史、發布流程與這組設計文件，其餘各自獨立——網站是自帶依賴與 lockfile 的獨立套件，App 不會從它匯入任何東西。
+同一個 repository 收錄兩項交付物與它們共用的文件：根目錄是 Electron 桌面 App，其原生擷取引擎位於 `native/capture/`；`website/` 是靜態官方網站。兩者共用 Git 歷史、發布流程與這組設計文件，其餘各自獨立——網站是自帶依賴與 lockfile 的獨立套件，App 不會從它匯入任何東西。
 
 本文說明「什麼放在哪裡、為什麼」。程序邊界與資料擁有權見[系統架構](architecture.md)，個別模組見[函式設計索引](functions.md)，操作這些目錄的指令見[建置、打包與驗收工具](tooling.md)。
 
@@ -11,6 +11,7 @@
 | 位置 | 內容 |
 | --- | --- |
 | `src/` | App 原始碼，依 Electron 程序切分 |
+| `native/capture/` | 原生擷取引擎，一個建置成 `recordstuff-capture.node` 放進 App 的 Rust crate（[見下方](#原生擷取引擎)） |
 | `scripts/` | 開發者工具：建置啟動、簽署、發布、錄影驗證與驗收 |
 | `tests/` | 同時需要瀏覽器 DOM 與 Node API 的跨程序測試，以及原始碼邊界檢查 |
 | `docs/` | 系統設計、驗證證據，以及繁體中文鏡像 |
@@ -18,11 +19,11 @@
 | `resources/` | App 執行期需要的資源，以及安裝說明 |
 | `build/` | electron-builder 使用的打包圖檔 |
 | `website/` | 發布於 record.ericts.com 的 Astro 網站，獨立套件 |
-| `.github/workflows/` | 發布與網站部署自動化 |
+| `.github/workflows/` | 檢查、發布與網站部署自動化 |
 | `.agents/`、`.claude/` | 開發期使用的 agent skill 定義 |
 | 根目錄設定 | `package.json`、`tsconfig*.json`、`electron.vite.config.ts`、`vitest.config.ts`、`electron-builder*.yml` |
 | 根目錄說明 | `README.md`、`CONTRIBUTING.md`、`AGENTS.md`／`CLAUDE.md`、`LICENSE` 與各自的 `*.zh-TW.md` |
-| `out/`、`dist/`、`node_modules/` | 產生物；不納入 Git，可重新建置 |
+| `out/`、`dist/`、`node_modules/`、`native/capture/target/` | 產生物；不納入 Git，可重新建置 |
 
 ## App 原始碼
 
@@ -30,7 +31,7 @@
 
 | 目錄 | 執行於 | 內容 |
 | --- | --- | --- |
-| `src/main/` | 主程序 | `index.ts`：建立並接起所有模組的 composition root；其餘每個模組一個資料夾（[見下方](#主程序模組)） |
+| `src/main/` | 主程序，以及擷取 `utilityProcess` | `index.ts`：建立並接起所有模組的 composition root；其餘每個模組一個資料夾（[見下方](#主程序模組)）；`recording/native-host-process.ts` 是 main 端的第二個入口，在擷取程序中執行 |
 | `src/renderer/` | Renderer 程序 | 頂層放三個 HTML 入口（`settings.html`、`countdown.html`、`video.html`）與放共用 token 及功能排版的 `ui.css`；每個頁面一個資料夾，另有頁面共用的部分（[見下方](#renderer-頁面)） |
 | `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 提供 overlay 的數值訂閱與取消訂閱；`video.ts` 承載全螢幕 ready／exit |
 | `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、擷取 host 協定、錄影品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
@@ -40,8 +41,8 @@
 | 資料夾 | 負責 |
 | --- | --- |
 | `lib/` | 不認識任何功能的程序層級工具：整檔原子替換、寫入排空佇列、讀取錯誤、檔案 log 與 App 名稱 |
-| `recording/` | 一次錄影的完整流程：狀態機（`recorder.ts`）、原生引擎擷取 host 的監管（`native-capture-host.ts`）與 host 程序本身（`native-host-process.ts`）、檔案預留與發布、健康門檻、中斷 sentinel、session log、倒數 overlay、防止睡眠、擷取與儲存通知、結果歷史（`recording-result*.ts`）、偏好設定鎖定（`recording-lock.ts`），以及僅供開發的無人值守錄影（`autorecord.ts`） |
-| `display/` | 錄影使用哪個螢幕，以及 main 這側的 display-media 請求 |
+| `recording/` | 一次錄影的完整流程：狀態機（`recorder.ts`）、原生引擎擷取 host 的監管（`native-capture-host.ts`）與 host 程序本身（`native-host-process.ts`）、在 Windows 上讓 RecordStuff 的視窗不被擷取（`capture-exclusion.ts`）、檔案預留與發布（`engine-file-writer.ts`、`file-writer.ts`）、健康門檻、中斷 sentinel、session log、倒數 overlay、防止睡眠、擷取與儲存通知、結果歷史（`recording-result*.ts`）、偏好設定鎖定（`recording-lock.ts`），以及僅供開發的無人值守錄影（`autorecord.ts`） |
+| `display/` | 錄影使用哪個螢幕（`display-source.ts`），以及每次嘗試錄的螢幕、main 的拒絕原因與螢幕診斷（`display-media.ts`） |
 | `permission/` | 螢幕錄影權限偵測與其通知 |
 | `library/` | 磁碟上的錄影檔：錄影檔分頁的資料庫、MP4 長度、輸出資料夾與全螢幕影片視窗 |
 | `shortcuts/` | 全域快捷鍵註冊：錄影鍵與設定鍵 |
@@ -62,6 +63,23 @@
 | `lib/` | 與頁面無關的工具：`cn`（`utils.ts`）、React 掛載與快捷鍵擷取 |
 | `testing/` | 只給 renderer 測試使用的輸入工具 |
 
+## 原生擷取引擎
+
+`native/capture/` 是一個 Rust crate（`Cargo.toml`、`Cargo.lock`，以及供 napi-rs 使用的 `build.rs`），建置成 `cdylib`，由建置流程複製為 `out/native/recordstuff-capture.node`，也建置成 `rlib` 供其測試使用。只有 `src/main/recording/native-host-process.ts` 會在擷取 `utilityProcess` 中載入它（見[系統架構](architecture.md#程序與責任)）。
+
+| `src/` 下的位置 | 內容 |
+| --- | --- |
+| `lib.rs` | N-API 介面：`NativeCapture` 類別（`probe`、`prepare`、`record`、`stop`、`finish`、`cancel`、`microphones`）、其選項與報告物件，以及事件 callback |
+| `core/` | 不論由誰擷取都相同的一個 session（`mod.rs`：階段、哪些畫格被編碼、到停止點為止的聲音、檔案）、音訊混音器（`mixer.rs`），以及使用假編碼器的測試（`tests.rs`） |
+| `pacing.rs`、`timing.rs` | 影格率格線（`Pacer`）；session 時鐘與以樣本數放置聲音（`AudioAligner`） |
+| `writer.rs` | 持有檔案與 muxer 的 writer 執行緒，及其 sync、進度、積壓上限與錯誤分類 |
+| `mux/` | ISO BMFF box（`boxes.rs`）、hybrid MP4（`mp4.rs`）、錄影的分段（`session.rs`），以及只給測試用的讀取器（`parse.rs`） |
+| `avc.rs`、`aac.rs`、`nv12.rs` | H.264 Annex B 轉 MP4 形式、AAC 的 AudioSpecificConfig、在 CPU 上做 BGRA 轉 NV12 |
+| `mac/` | 僅 macOS：ScreenCaptureKit session 與 content filter、VideoToolbox、AudioToolbox、AVFoundation 麥克風 |
+| `win/` | 僅 Windows：Windows.Graphics.Capture、Media Foundation H.264 與 AAC、WASAPI 聲音 |
+
+Crate 內的依賴依慣例朝單一方向，沒有測試強制：`timing` ← `pacing`；`mux`（`boxes` ← `mp4` ← `session`）← `writer` ← `core` ← `mac`、`win` ← `lib.rs`。`core` 不提及任何平台；`mac/` 與 `win/` 只在各自平台上編譯。與平台無關的測試以 `pnpm test:native`（`cargo test --lib`）在所有平台執行；各平台資料夾中的 `live_test.rs` 會實際擷取，除非以名稱指定，否則略過。
+
 ## 模組邊界
 
 資料夾之間的匯入只朝一個方向，因此資料夾在這個順序中的位置就是它的契約：
@@ -77,6 +95,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 - **沒有任何模組匯入 `index.ts`。** 它是 composition root；action 實際做的事放在 `actions/`，因此它只負責建立與接線。更新與受控驗收 runner 會依文字錨點修改它的副本，這也是它留在 `src/main/` 頂層的原因之一。
 - **Renderer 頁面彼此不互相匯入。** 兩個頁面共用的東西放在 `player/`、`components/` 或 `lib/`。只有測試會匯入 `testing/`。
 - **HTML 入口留在 `src/renderer/` 頂層，** 讓建置後的頁面維持在 `out/renderer/<name>.html`，也就是 main 與 fixture 載入它們的位置。
+- **原生引擎在 TypeScript 匯入關係之外。** 沒有任何模組匯入它；`native-host-process.ts` 在執行期從 main 傳入的路徑 `require` 它，`scripts/native-load.mjs` 只為檢查其方法而載入它。它對 TypeScript 的形狀由 `native-host-process.ts` 手寫宣告，並由 `native-load.mjs` 的方法清單檢查。
 - **開發者工具不進入 App 的匯入關係。** `src/` 不匯入 `scripts/`。在 `scripts/lib/` 內，`runner/` 與 `release/` 不匯入其他分組；`verification/` 建在它們之上，`audio/` 建在 `verification/` 之上，`acceptance/` 建在 `runner/` 與 `verification/` 之上。Fixture 只匯入 `src/`、`scripts/lib/` 與其他 fixture，`scripts/lib/` 不匯入任何入口檔。
 
 [`tests/source-boundaries.test.ts`](../../../tests/source-boundaries.test.ts) 在 `pnpm test` 中對 `src/` 與 `scripts/` 強制這些規則。新資料夾必須先在該測試中取得位置，裡面的檔案才能匯入任何東西。測試檔可以為了 fixture 跨資料夾匯入，但永遠不匯入 `index.ts`。
@@ -92,7 +111,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 
 `scripts/` 收錄支援開發、但不隨 App 出貨的一切：
 
-- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
+- **入口檔**放在該目錄頂層，大多與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`measure-cpu.mts`、`measure-finalization.mts`、`bench-publication.mts`、`acceptance-*.mts`、`preview-ui.mts`、`test-scope.mts`、`native-load.mjs`（載入建置或安裝後的引擎並檢查其方法；屬於 `pnpm check` 與 Windows 安裝檔 smoke）、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
 - **`scripts/lib/`** 放入口檔背後的共用實作，依用途分組：`runner/`（每個桌面 runner 共用的部分：程序、清理過的環境、桌面工作階段、round 結束、原生 accessibility、fixture 建置、log 讀取與 session record、計時，以及 bundle 的執行期輸入）、`acceptance/`（各驗收 runner 自己的邏輯）、`verification/`（錄影驗證、matrix、播放、媒體工具、收尾與 CPU 量測）、`audio/`（音質分析）與 `release/`（release manifest 與其用戶端，網站也會匯入）。
 - **`scripts/fixtures/`** 放測試替身與注入用的替代實作。
 
@@ -117,7 +136,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 
 - `build/` 是 electron-builder 的 `buildResources`：`icon.png`、macOS 的 `icon.icns`、Windows 的 `icon.ico`，以及 DMG 背景 `background.png` 與 `background@2x.png`。全部由 `pnpm icons` 以程式產生。
 - `resources/` 放 App 執行期所需資源：每個 tray 狀態（idle、busy、countdown、recording、warning）各一張 macOS template 圖（含 `@2x`）與一枚 Windows `.ico`（全部由 `pnpm icons` 產生，`scripts/make-icons.test.ts` 逐 byte 核對）、`entitlements.mac.plist`，以及雙語安裝指南。打包過濾只複製 `*.png` 與 `*.ico`，因此 entitlements 與指南不會進入出貨的 App。
-- `electron-builder.yml` 是共用打包設定，包含未簽章 Windows 安裝檔的 `win`／`nsis` 區段；`electron-builder.local.yml` 以 `extends` 延伸出本機免費自簽。`files` 只允許 `out/**` 與 `package.json`，因此 `src/`、`scripts/`、`docs/`、`plans/` 的任何內容都不會抵達使用者。
+- `electron-builder.yml` 是共用打包設定，包含未簽章 Windows 安裝檔的 `win`／`nsis` 區段；`electron-builder.local.yml` 以 `extends` 延伸出本機免費自簽。`files` 只允許 `out/**` 與 `package.json`，因此 `src/`、`native/`、`scripts/`、`docs/`、`plans/` 的任何內容都不會抵達使用者。`asarUnpack: out/native/**` 讓引擎留在 asar 封存之外，因為原生程式碼無法從封存內載入；macOS 上 electron-builder 會隨 App 一起簽署它（見[系統架構](architecture.md#引擎的打包與簽署)）。
 
 ## 網站
 
@@ -137,9 +156,9 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 
 ## 自動化與產生物
 
-`.github/workflows/release.yml` 在推送 `v*` tag 時建置、簽署、驗證並發布；`website.yml` 在網站變更、手動觸發，或穩定版發布後被呼叫時部署網站。`.agents/skills/` 與 `.claude/skills/` 是開發用 skill 定義，不屬於任何一項交付物。Claude Code 只使用 `.claude/skills/`，其他 agent 使用 `.agents/skills/`，因此兩者都需要的 skill 在兩個目錄各自保留一份。
+`.github/workflows/check.yml` 在兩個平台上執行 `pnpm check`（含 Cargo 測試與引擎載入）、背景 UI 套件與其 drills、Windows 安裝檔，以及 `native-windows` job 的引擎實際錄影；`release.yml` 在推送 `v*` tag 時建置、簽署、驗證並發布，並在不使用快取的情況下從原始碼編譯引擎；`website.yml` 在網站變更、手動觸發，或穩定版發布後被呼叫時部署網站。`.agents/skills/` 與 `.claude/skills/` 是開發用 skill 定義，不屬於任何一項交付物。Claude Code 只使用 `.claude/skills/`，其他 agent 使用 `.agents/skills/`，因此兩者都需要的 skill 在兩個目錄各自保留一份。
 
-所有產生物都不納管、且可重建：`pnpm build` 產生 `out/`，`pnpm start:app` 與 `pnpm dist:mac` 產生 `dist/`，網站建置產生 `website/dist/` 與 `website/.astro/`，`pnpm install` 產生 `node_modules/`，本機驗證產生 `docs/verification/measurements/`。
+所有產生物都不納管、且可重建：`pnpm build` 產生 `out/`（在 macOS 與 Windows 上，除非 `RECORDSTUFF_SKIP_NATIVE=1`，還包括由 Cargo 產生的 `out/native/recordstuff-capture.node`），Cargo 產生 `native/capture/target/`，`pnpm start:app` 與 `pnpm dist:mac` 產生 `dist/`，網站建置產生 `website/dist/` 與 `website/.astro/`，`pnpm install` 產生 `node_modules/`，本機驗證產生 `docs/verification/measurements/`。
 
 ## 結構由什麼維持
 
@@ -150,9 +169,10 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 | `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者 |
 | `tsconfig.tests.json` | `tests/` 同時以 DOM 與 Node 函式庫檢查型別，與 renderer 分開 |
 | `vitest.config.ts` | 測試只在 `src/`、`scripts/` 與 `tests/` 下以 `*.test.ts` 尋找 |
-| `electron.vite.config.ts` | main 入口（`index.ts` 與原生引擎的 `native-host-process.ts`）、三個 preload 入口、三個 renderer HTML 入口 |
+| `electron.vite.config.ts` | main 入口（`index.ts` 與原生引擎的 `native-host-process.ts`）、三個 preload 入口（`settings`、`countdown`、`video`）、三個 renderer HTML 入口，以及建置 `native/capture` 並複製到 `out/native/` 的 Cargo 步驟 |
+| `native/capture/Cargo.toml` | crate 類型（`cdylib`、`rlib`）、napi-rs，以及依平台區分的 macOS 與 Windows 綁定 |
 | `tests/source-boundaries.test.ts` | `src/` 與 `scripts/` 中哪些模組資料夾可以匯入哪些（[模組邊界](#模組邊界)） |
-| `electron-builder.yml` | 打包哪些內容（`out/**`、`package.json`）與複製哪些資源 |
+| `electron-builder.yml` | 打包哪些內容（`out/**`、`package.json`）、哪些留在 asar 封存之外（`out/native/**`）與複製哪些資源 |
 | `.gitignore` | 產生物、原始量測與簽署材料一律不納管 |
 | `website/scripts/check-links.mts` | 已發布網站的連結完整性 |
 
@@ -161,6 +181,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 - 會碰到 Electron、檔案系統或作業系統的邏輯：放進 `src/main/` 中它所屬模組的資料夾；其中值得測試的決策部分抽成 `*-model.ts`。新模組自成一個資料夾，並在[模組邊界](#模組邊界)中取得位置。
 - 新的 renderer 頁面：在 `src/renderer/` 下自成一個資料夾，HTML 入口放在 `src/renderer/` 頂層並登記於 `electron.vite.config.ts`。
 - 兩個程序都需要的型別或純函式：`src/shared/`，不得匯入 Electron 或 DOM。
+- 擷取、編碼或檔案格式的程式碼：放進它所屬的 `native/capture/src/` 資料夾，能與平台無關就與平台無關，測試放在旁邊；新的引擎方法也要加入 `native-host-process.ts` 的宣告與 `native-load.mjs` 的方法清單。
 - 使用者會讀到的文字：`src/shared/i18n.ts`，雙語同步。
 - Renderer 樣式（[三層](desktop.md#設定視窗)）：顏色是 `ui.css` 的 token（`:root` 與 `.dark`）；對 primitive 的改動是 `components/ui/` 中的 variant 或 prop；頁面自己的版面是呼叫端的 utilities，或 `ui.css` `@layer components` 中的規則。`tests/style-guard.test.ts` 讓其他地方不出現顏色與 `[data-slot]` selector。
 - 手動或由 CI 執行的工具：入口放 `scripts/`，邏輯放進它所屬的 `scripts/lib/` 分組以便測試。

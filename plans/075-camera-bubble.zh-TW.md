@@ -38,6 +38,8 @@
 
 ## 現況
 
+**076 提供了什麼（2026-10-16 結案）。**錄影只透過原生引擎進行。引擎會把 RecordStuff 自己的視窗排除在每一段錄影之外，包括開始後才開的：macOS 用 ScreenCaptureKit 的 App 篩選（2026-10-16 驗證：錄影中打開的 Settings 不在影格中；App 在選單列的選單也被排除，選單列圖示仍在），Windows 在錄影期間對每個視窗設定 `WDA_EXCLUDEFROMCAPTURE`（只由 CI 驗證）。因此泡泡需要相反的處理：引擎必須在排除 App 其他視窗的同時錄下泡泡（macOS 在篩選中加入例外，Windows 不保護那一個視窗），這仍由 075 實作。引擎也能錄單一視窗、螢幕的一個區域與指定的 App（只有引擎與測試，沒有選擇器），D6 能隱藏選單列與 Dock。下列項目描述 076 之前的狀態：其中關於擷取與保護的事實請當作歷史。
+
 - 程式中沒有以 `getUserMedia` 取得影像。倒數 overlay（`src/main/recording/countdown-overlay.ts`）是既有的模式：在被錄螢幕上的透明、無邊框、永遠置頂、不啟用 App、滑鼠可穿透的 macOS 面板，於準備階段建立、隨該次嘗試銷毀；鎖定的泡泡可以沿用這個模式。
 - 螢幕擷取會錄下所有可見視窗；沒有視窗使用內容保護，所以泡泡只要不明確加保護就會被錄進去。
 - Settings → Recording → Screen 以 `screen.getAllDisplays()` 畫出螢幕排列，不碰擷取（`display-arrangement.tsx`）。

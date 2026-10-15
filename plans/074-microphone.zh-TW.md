@@ -39,6 +39,8 @@ RecordStuff 採用的：預設關閉並保存設定；錄影中鎖定；使用�
 
 ## 現況
 
+**076 提供了什麼（2026-10-16 結案）。**錄影只透過原生引擎進行；下列項目描述的擷取 renderer、`getDisplayMedia`、`MediaRecorder` 與 Chromium 的音訊限制都已移除，請把它們當作當初做決定時的背景。引擎已經能接收麥克風：`prepare` 的音訊參數帶有 `microphone: true` 與可選的裝置 id，`microphones()` 列出輸入裝置並標示預設，macOS 透過 AVFoundation 擷取（尚未詢問過權限時拒絕，因為那時只會收到靜音），Windows 透過 WASAPI；每個輸入都以樣本數放到工作階段的時脈上，由核心的混音器以單位增益加總成一條 AAC 音軌，並讓沒有聲音或卡住的輸入不會拖住整條音軌（500 ms）。main 目前從不要求麥克風，開發用開關 `RECORDSTUFF_CAPTURE_AUDIO` 也沒有麥克風選項：在宣告用途說明之前，簽署的 RecordStuff 一開啟麥克風就會被 macOS 結束；麥克風只由引擎自己的 live 測試執行。074 仍負責：設定與介面、權限請求及其用途說明與 entitlement、裝置選擇與失敗處理，以及語音是否需要處理。麥克風本身的聲音在兩個平台都未測試（Windows runner 沒有麥克風）。
+
 以下是 076 之前的狀態；076 會以原生引擎取代下方的錄影 renderer，步驟 4 是以該引擎為準寫的。
 
 - 擷取主機（`src/renderer/capture/capture-host.ts`）只呼叫一次 `getDisplayMedia`；main 的 display-media handler（`src/main/index.ts`）回應所選螢幕與 `audio: "loopback"`。音訊條件關閉回音消除、降噪與 AGC，並保留 `restrictOwnAudio`，理由見[音訊品質 §15](../docs/zh-TW/system-design/audio-quality.md#15-系統擷取修正2026-09-14)。

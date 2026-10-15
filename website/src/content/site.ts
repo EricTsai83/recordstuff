@@ -156,6 +156,7 @@ export const windowsRetainedData = [
 /** RecordStuff's Recording and General tabs, in the app's order (src/main/settings/settings-model.ts). */
 export const settings = [
   { tab: "Recording", setting: "Screen", options: "Primary or a connected display", fallback: "Primary" },
+  { tab: "Recording", setting: "Hide menu bar and Dock", options: "On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings", fallback: "Off" },
   { tab: "Recording", setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
   { tab: "Recording", setting: "File name format", options: "A pattern of {date}, {time} and other placeholders", fallback: "{date} {time}" },
   { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },

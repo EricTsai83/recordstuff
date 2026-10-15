@@ -126,11 +126,6 @@ describe("CPU budget verdicts (plan 049)", () => {
     expect(CPU_BUDGET.regressionFraction).toBe(0.25);
   });
 
-  it("reports a recording beside another engine's baseline", () => {
-    expect(judgeRecording(summary(12), 30, undefined, { label: "the Chromium baseline", percent: 15 }).at(-1))
-      .toMatchObject({ check: "Against the Chromium baseline", verdict: "report", actual: "12.0% against 15.0% (-20%)" });
-  });
-
   it("reads this machine's recorded baseline and nothing for another machine or key", () => {
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cpu-baselines-")), "cpu-baselines.json");
     expect(cpuBaseline("measure:cpu recording 30", "MacBookPro18,1", file)).toBeUndefined();

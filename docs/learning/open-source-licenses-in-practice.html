@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>開源授權實務：別人的程式碼能怎麼用，又如何決定你的架構</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+}
+.flow-figure .flow-mobile { display: none; }
+.flow-figure .m-question { fill: var(--gray-100); stroke: var(--clay); stroke-width: 1.5; }
+.flow-figure .m-result { fill: var(--white); stroke: var(--gray-300); stroke-width: 1.5; }
+.flow-figure .m-edge { fill: none; stroke: var(--clay); stroke-width: 2; }
+.flow-figure .flow-desktop text, .flow-figure .flow-mobile text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; fill: var(--slate); }
+.flow-figure .m-q-text { font-size: 15px; font-weight: 650; }
+.flow-figure .m-branch { font-size: 13px; font-weight: 650; fill: var(--gray-700); }
+.flow-figure .m-text { font-size: 14px; }
+@media (max-width: 640px) {
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>開源授權實務：別人的程式碼能怎麼用，又如何決定你的架構</h1>
+
+<p class="deck">開源授權不只是 repo 裡的一個 <code>LICENSE</code> 檔。它決定你能不能直接依賴某個套件、能不能把一段程式碼搬進來、某個函式庫要用動態還是靜態連結、要不要多開一個行程，甚至決定某個功能值不值得自己重寫。本文從「什麼時候可以使用或參考別人的程式碼」這個一般問題出發，整理 MIT、Apache-2.0、GPL、AGPL、LGPL 的義務與觸發條件，說明常見的誤解、各種替代做法的代價，以及哪些條件會讓答案改變。範例是一個 MIT 授權的桌面錄影 App，如何參考一個大部分是 AGPL 的開源錄影專案。</p>
+
+<div class="callout warning">
+<p><strong>這不是法律建議。</strong>本文說明授權條款的一般讀法與工程上的取捨，幫助你提出對的問題。授權的實際效力取決於司法管轄區、條款版本與具體事實；涉及商業發佈、授權變更或爭議時，請以授權原文為準並諮詢律師。</p>
+</div>
+
+<h2>這篇文章要回答的問題</h2>
+
+<p>寫軟體時，別人的程式碼會以幾種方式進入你的工作：你把一個套件列為依賴；你從另一個專案複製一個函式；你把別人的 TypeScript 改寫成 Rust；或者你只是讀懂別人怎麼解一個難題，然後自己寫。這四件事在工程上看起來差不多，在授權上卻差很多。</p>
+
+<p>可遷移的問題是：<strong>我想用或想學別人的程式碼時，哪些做法是被允許的、要付出什麼義務，而這些義務又會怎麼限制我的架構與技術選擇？</strong>答案取決於三件事：對方的授權、你自己專案的授權與發佈方式，以及兩份程式碼最後如何結合。</p>
+
+<h2>先分清幾個基本概念</h2>
+
+<h3>著作權保護表達，不保護想法</h3>
+
+<p>程式碼受著作權保護的是「表達」：具體的原始碼文字、結構與組織。演算法、做法、檔案格式的規格、「先抓四倍頻率的畫面再挑最接近時間格的那張」這種想法本身，一般不受著作權保護（不過可能受專利保護，那是另一個問題）。這就是「讀程式碼學想法」和「複製程式碼」在授權上分開的原因。</p>
+
+<p>但界線不在於有沒有逐字複製。把一段程式碼逐行翻譯成另一種語言，表達的結構仍然來自原作；著作權法一般把翻譯視為衍生作品，GPLv2 甚至直接寫明「翻譯包含在『修改』之內」。改了變數名稱、換了語言，不會讓它變成你自己的作品。</p>
+
+<h3>沒有授權就是不能用</h3>
+
+<p>開源授權是「有條件的許可」：著作權人原本保有所有權利，授權書說明在什麼條件下允許你使用、修改與散佈。一個公開在 GitHub 上、但沒有授權檔的 repo，預設是保留所有權利；看得到不等於可以用。</p>
+
+<h3>衍生作品、散佈與網路使用</h3>
+
+<p>授權義務通常不是在你「使用」時發生，而是在特定動作時觸發：</p>
+
+<ul>
+  <li><strong>衍生作品（derivative work）：</strong>修改、翻譯，或把別人的程式碼與你的程式碼結合成一個作品。哪些結合方式算衍生作品，是 copyleft 授權爭議的核心。</li>
+  <li><strong>散佈（distribution，GPLv3 稱為 conveying）：</strong>把軟體的副本交給別人，例如發佈安裝檔、App、函式庫套件或內含軟體的硬體。只在公司內部使用、不交給外人，通常不算。</li>
+  <li><strong>網路使用：</strong>讓使用者透過網路與軟體互動，但不交出副本，例如 SaaS 服務。大多數授權不把它當成散佈；AGPL 是例外。</li>
+</ul>
+
+<h3>寬鬆授權與 copyleft</h3>
+
+<p><strong>寬鬆授權</strong>（permissive，例如 MIT、BSD、Apache-2.0）允許你把程式碼放進任何專案，包括閉源商業產品，主要條件是保留授權與著作權聲明。<strong>Copyleft</strong> 則要求衍生作品在散佈時繼續使用同一份授權並提供原始碼。不同 copyleft 授權的差別在「範圍」：MPL-2.0 只管被修改的那些檔案，LGPL 管函式庫本身，GPL 管整個程式，AGPL 再把觸發條件延伸到網路使用。</p>
+
+<h2>主要授權逐一看</h2>
+
+<h3>MIT：保留聲明即可</h3>
+
+<p>MIT 授權只有一個條件：著作權聲明與這段許可聲明，必須包含在軟體的「所有副本或實質部分」中。它允許商業使用、修改、再授權，也不要求公開你的原始碼。實務上最常被違反的方式是刪掉檔案開頭的著作權行、把複製過來的程式碼當成自己的，或在發佈的 App 裡完全沒有附上依賴套件的授權文字。MIT 沒有明文的專利授權條款。</p>
+
+<h3>Apache-2.0：明確的專利授權與 NOTICE 檔</h3>
+
+<p>Apache-2.0 也是寬鬆授權，但比 MIT 多了兩件工程上要注意的事：</p>
+
+<ul>
+  <li><strong>專利授權：</strong>每位貢獻者授予你使用其貢獻所涉專利的許可。如果你對該作品提起專利侵權訴訟，你得到的專利授權就會終止。對擔心專利風險的公司來說，這是選擇 Apache-2.0 套件的理由之一。</li>
+  <li><strong>散佈條件：</strong>要附上授權副本、在你修改過的檔案上標示已修改、保留原有的著作權與歸屬聲明；如果原作附有 <code>NOTICE</code> 檔，散佈時要把其中的歸屬聲明一起帶著，放在你自己的 NOTICE 檔、文件或軟體顯示的地方。</li>
+</ul>
+
+<p>依 FSF 的說法，Apache-2.0 可以與 GPLv3 結合，但與 GPLv2 不相容。Rust 生態系常見的「<code>MIT OR Apache-2.0</code>」雙授權，就是讓使用者自己選：要專利條款就選 Apache-2.0，要和 GPLv2 專案結合就選 MIT。</p>
+
+<h3>GPL：散佈時整個程式都要開放</h3>
+
+<p>GPL（v2 與 v3）是程式層級的強 copyleft。你可以私下修改和使用，不用公開任何東西；但一旦散佈以 GPL 程式碼為基礎的作品，整個作品都要以 GPL 授權，並提供對應的完整原始碼給收到的人。對閉源產品而言，這代表 GPL 程式碼不能和你的專有程式碼結合成同一個程式後發佈。</p>
+
+<h3>AGPL：網路使用也算</h3>
+
+<p>AGPLv3 是 GPLv3 加上第 13 條：如果你修改了程式，並讓使用者透過網路與它互動，就要向這些使用者提供你修改後版本的原始碼。它是為了堵住「不散佈副本、只提供服務」的 SaaS 情境。要注意的是，AGPL 在散佈上的義務和 GPLv3 一樣；把 AGPL 程式碼放進一個桌面 App 發佈，觸發的就是 GPL 那一套，而不是只在伺服器上才有事。</p>
+
+<h3>LGPL：函式庫層級，可替換是關鍵</h3>
+
+<p>LGPL 讓閉源程式可以使用一個開源函式庫，同時保障使用者「替換這個函式庫」的權利。以 LGPLv3 第 4 條為例，把 LGPL 函式庫和你的程式組成「合併作品」散佈時，你需要：</p>
+
+<ul>
+  <li>標明使用了該函式庫並受 LGPL 規範，附上 GPL 與 LGPL 授權全文；</li>
+  <li>提供函式庫部分的原始碼（包括你對它的修改）；</li>
+  <li>讓使用者能用修改過的函式庫重新組合：使用適當的共享函式庫機制（也就是動態連結，執行時載入使用者那份介面相容的函式庫），<em>或</em>提供足以重新連結的目的檔；</li>
+  <li>你的授權條款不得限制使用者為了除錯這些修改而進行逆向工程。</li>
+</ul>
+
+<p>所以「LGPL 只能動態連結」並不精確：靜態連結也可以，但你必須交出你程式的目的檔（object files）或同等的材料，讓使用者能換掉函式庫重新連結。對多數閉源產品來說這太麻煩，因此實務上幾乎都選動態連結。另一個常被忽略的點是：最終使用者授權合約（EULA）若一律禁止逆向工程，可能就和 LGPL 的要求衝突。</p>
+
+<h3>授權比較表</h3>
+
+<p>下表把觸發條件與義務並排。「範圍」指 copyleft 會延伸到多大的程式碼範圍。MPL-2.0 不在本文主題中，列出來是為了對照「檔案層級」的 copyleft。</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>授權</th><th>類型與範圍</th><th>什麼動作觸發義務</th><th>主要義務</th><th>能否放進閉源產品</th></tr></thead>
+<tbody>
+<tr><td>MIT</td><td>寬鬆</td><td>散佈副本或實質部分</td><td>保留著作權與許可聲明</td><td>可以</td></tr>
+<tr><td>Apache-2.0</td><td>寬鬆，含專利授權</td><td>散佈</td><td>附授權副本、標示修改、保留聲明、帶上 NOTICE 內容；提起專利訴訟則專利授權終止</td><td>可以</td></tr>
+<tr><td>MPL-2.0</td><td>弱 copyleft，檔案層級</td><td>散佈</td><td>被修改的 MPL 檔案以 MPL 提供原始碼；其他檔案可用自己的授權</td><td>可以，MPL 檔案本身維持開放</td></tr>
+<tr><td>LGPL 2.1 / 3</td><td>弱 copyleft，函式庫層級</td><td>散佈含該函式庫的作品</td><td>提供函式庫原始碼與修改、附授權全文、讓使用者能替換函式庫（通常靠動態連結）、不得禁止為此逆向工程</td><td>可以，通常以動態連結</td></tr>
+<tr><td>GPL 2 / 3</td><td>強 copyleft，程式層級</td><td>散佈衍生作品</td><td>整個作品以 GPL 授權並提供完整原始碼</td><td>實務上不行，除非取得其他授權</td></tr>
+<tr><td>AGPL 3</td><td>強 copyleft，程式層級，含網路</td><td>散佈，<strong>或</strong>修改後透過網路提供使用者互動</td><td>同 GPLv3，另需向網路使用者提供修改後的原始碼</td><td>實務上不行，SaaS 也受影響</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>影響決策的幾股力量</h2>
+
+<p>授權本身是固定的條文，真正難的是它和其他工程目標互相拉扯：</p>
+
+<ul>
+  <li><strong>省工 vs 自己專案的授權承諾：</strong>直接用現成程式碼最快，但你的專案對使用者承諾了某種授權。一個 MIT 專案的價值之一，是任何人都能把它放進閉源產品；引入 copyleft 程式碼就會破壞這個承諾。</li>
+  <li><strong>技術最佳解 vs 授權最佳解：</strong>最好的實作可能剛好在 GPL 或 AGPL 專案裡。用寬鬆授權的次佳方案，或自己實作，都要付出成本。</li>
+  <li><strong>依賴大小與維護 vs 重寫成本：</strong>依賴一個寬鬆授權的套件通常比重寫便宜，但它帶來體積、相容性與上游停止維護的風險。</li>
+  <li><strong>架構乾淨 vs 授權邊界：</strong>為了守住 LGPL 的可替換性，你可能必須用動態連結、固定的 ABI、額外的打包步驟，這些都是授權而不是技術需求造成的架構限制。</li>
+  <li><strong>下游的自由：</strong>你選的授權與依賴，會變成使用你的程式的人要面對的限制。</li>
+</ul>
+
+<h2>常見的天真做法與它們出錯的方式</h2>
+
+<ul>
+  <li><strong>「放在 GitHub 上就是開源。」</strong>沒有授權檔就是保留所有權利。要用，先找到授權，或聯絡作者。</li>
+  <li><strong>「repo 標示 MIT，所以整個 repo 都是 MIT。」</strong>大型專案常按目錄分授權：某些套件是 MIT，核心是 AGPL。要看的是你實際要用的那個檔案或套件的授權，而不是 repo 首頁的標籤。</li>
+  <li><strong>「我改寫成另一種語言了，所以不算複製。」</strong>逐行翻譯保留了原作的結構與表達，通常仍是衍生作品。</li>
+  <li><strong>「它跑在另一個行程裡，所以不受 GPL 影響。」</strong>行程邊界本身不是授權防火牆，下面會專門討論。</li>
+  <li><strong>「MIT 只要在 README 提一下作者。」</strong>MIT 要求的是授權文字與著作權聲明本身隨副本一起提供，不是一句致謝。</li>
+  <li><strong>「LGPL 就是可以隨便用。」</strong>靜態連結卻不提供目的檔、沒有附上函式庫原始碼、EULA 禁止逆向工程，都可能違反 LGPL。</li>
+  <li><strong>「只看直接依賴。」</strong>依賴的依賴也會被你一起散佈。FFmpeg 這類專案的授權甚至取決於建置選項：加上 <code>--enable-gpl</code> 就變成 GPL。</li>
+  <li><strong>「AGPL 只管伺服器。」</strong>散佈 AGPL 程式碼時，GPL 的全部義務都適用。</li>
+</ul>
+
+<h2>授權如何限制架構與技術選擇</h2>
+
+<h3>依賴寬鬆授權的套件，還是自己重寫</h3>
+
+<p>當你需要的功能有一個 MIT 或 Apache-2.0 的套件可用時，直接依賴通常是最便宜的做法，你只需要把它的授權聲明帶進你的發佈物。選擇自己重寫的理由多半不是授權，而是其他條件：套件設計和你的需求不合、它帶來大量你用不到的依賴、上游維護不穩，或你需要掌控它的行為。授權在這裡的作用是「允許」，不是「推動」。</p>
+
+<p>情況在「唯一好用的實作是 copyleft」時改變。這時你有幾條路，各有代價：</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>做法</th><th>你得到什麼</th><th>代價</th></tr></thead>
+<tbody>
+<tr><td>接受 copyleft，自己的專案改用相容授權</td><td>可以直接用最好的實作</td><td>下游使用者失去把你的專案放進閉源產品的自由；MIT 這類寬鬆授權允許再授權，合併後的作品可以整體以 copyleft 散佈，只要保留原本的版權與授權聲明；但已經發出的 MIT 授權無法收回，舊版本仍是 MIT。真正需要每位貢獻者同意的，是把他們的程式碼改成 MIT 不允許的條件，例如從 GPL 改成更寬鬆的授權</td></tr>
+<tr><td>購買商業授權（若對方提供雙授權）</td><td>閉源使用</td><td>費用與合約；只有著作權人能賣，社群貢獻多的專案未必提供</td></tr>
+<tr><td>找寬鬆授權的替代品</td><td>不改變自己的授權</td><td>品質或功能可能較差，要重新評估</td></tr>
+<tr><td>依公開規格自己實作，只參考對方的設計</td><td>完整掌控，授權乾淨</td><td>開發與測試成本最高；必須避免寫出實質相似的程式碼</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>FFmpeg：動態連結、靜態連結，或在核心路徑上避開它</h3>
+
+<p>FFmpeg 是多媒體軟體最常見的 LGPL 依賴。它的預設建置是 LGPL 2.1 或更新版本；啟用 <code>--enable-gpl</code>（例如為了 libx264）就變成 GPL，啟用 <code>--enable-nonfree</code> 則根本不能再散佈。FFmpeg 官方的法律頁面為想遵守 LGPL 的使用者列了一份檢查清單，重點包括：不要用這兩個選項建置、以動態連結使用 FFmpeg 的函式庫（在 Windows 上就是 DLL）、散佈你使用的那份 FFmpeg 原始碼（不論有沒有修改）、確保原始碼和你發佈的二進位檔完全對應，以及在產品中說明使用了 LGPL 授權的 FFmpeg。</p>
+
+<p>對一個閉源或寬鬆授權的 App 而言，這幾種用法的取捨如下：</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>用法</th><th>授權上要做的事</th><th>工程代價</th></tr></thead>
+<tbody>
+<tr><td>動態連結 LGPL 建置</td><td>附原始碼與授權全文、標示使用、允許替換</td><td>要打包多個共享函式庫並管理版本；App 體積增加</td></tr>
+<tr><td>靜態連結 LGPL 建置</td><td>以上全部，再加上提供讓使用者能重新連結的目的檔</td><td>發佈流程複雜，實務上少見</td></tr>
+<tr><td>呼叫隨附的 <code>ffmpeg</code> 執行檔</td><td>仍然在散佈 FFmpeg，那個執行檔的授權義務照樣適用；若是 GPL 建置，就要為它履行 GPL</td><td>行程啟動與資料傳遞的成本，錯誤處理較粗</td></tr>
+<tr><td>核心路徑不用 FFmpeg，改用作業系統的編碼器</td><td>FFmpeg 的義務不出現</td><td>每個平台各寫一套；格式支援只限於系統提供的編碼器</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>還有一個和授權無關、卻常被混在一起的問題：<strong>編解碼器的專利</strong>。FFmpeg 的授權是著作權授權，不包含 H.264、AAC 等格式的專利授權；FFmpeg 官方也明說這一點。使用作業系統內建的編碼器時，專利問題通常由平台方處理，但這要以你的平台和發佈方式確認，不能假設。</p>
+
+<h3>行程邊界不是授權防火牆</h3>
+
+<p>一個流行的想法是：把 GPL 或 AGPL 的程式放在另一個行程裡，用管線或 socket 溝通，就不受 copyleft 影響。GNU 的 GPL FAQ 的立場是：透過管線、socket、命令列參數溝通，<em>通常</em>表示是兩個獨立的程式；但如果溝通的語義足夠緊密，例如交換複雜的內部資料結構，仍可能被視為同一個程式的兩個部分。換句話說，判斷看的是兩者實質上是不是一個整體，而不是有沒有行程邊界。</p>
+
+<p>即使兩者真的是獨立程式，行程邊界也只回答了「我的程式要不要變成 GPL」，沒有免除另一半的義務：你只要散佈那個 GPL 或 AGPL 的程式，就要為它提供原始碼並履行授權。如果它是 AGPL 而且你修改後讓使用者透過網路使用，第 13 條同樣成立。行程邊界真正提供的是技術上的隔離，例如當機不會拖垮主程式；授權上的隔離要另外論證。</p>
+
+<h3>閉源或商業發佈者要做的事</h3>
+
+<ul>
+  <li><strong>盤點：</strong>列出所有隨產品散佈的程式碼，包括間接依賴、執行環境（例如 Electron 內含的 Chromium）與建置時打包進去的資產。</li>
+  <li><strong>寬鬆授權：</strong>在產品中附上每個套件的授權文字與著作權聲明，常見做法是「關於 → 第三方授權」頁面或安裝目錄中的授權檔；Apache-2.0 套件還要帶上其 NOTICE 內容。</li>
+  <li><strong>LGPL：</strong>動態連結、附授權全文與函式庫原始碼（或可取得原始碼的書面提供）、檢查 EULA 沒有禁止為除錯而逆向工程。</li>
+  <li><strong>GPL / AGPL：</strong>不要和專有程式碼結合；需要的話找替代品或洽談商業授權。</li>
+  <li><strong>自動化：</strong>Rust 的 <code>cargo-deny</code>、<code>cargo-about</code>，或 npm 生態系的授權掃描工具，可以在 CI 中阻擋不允許的授權並產生聲明檔。工具只能讀套件中繼資料，複製進來的程式碼片段要靠審查。</li>
+</ul>
+
+<h3>MIT 專案複製 AGPL 程式碼，會失去什麼</h3>
+
+<p>假設一個 MIT 專案從 AGPL 專案複製（或逐行翻譯）了一個模組。著作權人並沒有用 MIT 授權那段程式碼，所以你無法把它以 MIT 再授權。結果是：</p>
+
+<ul>
+  <li>專案作為一個整體散佈時，實際上要依 AGPL 履行義務；repo 上的 MIT 標示變得不正確。</li>
+  <li>下游使用者以為可以依 MIT 把它放進閉源產品，結果會在不知情下違反 AGPL。這正是使用者選擇 MIT 專案時想避免的事。</li>
+  <li>要修正，只能移除並重寫那段程式碼，或把整個專案改以 AGPL 散佈。後者不需要每位既有貢獻者同意：MIT 允許再授權，只要保留他們的版權與授權聲明，合併後的作品就能以 AGPL 散佈；只是已經以 MIT 發出的版本無法收回，那些版本仍可依 MIT 使用。</li>
+  <li>重寫時，曾經直接看著那段程式碼的人寫出的版本仍可能被質疑相似，因此事前避免遠比事後清理便宜。</li>
+</ul>
+
+<h3>其他專案怎麼處理</h3>
+
+<p>以下只列有公開紀錄的做法；細節以各專案的授權檔與公告為準。</p>
+
+<ul>
+  <li><strong>按目錄分授權：</strong>有些開源產品把可重用的底層套件以寬鬆授權釋出，核心產品用 AGPL，讓社群能重用元件，又保護產品本身。下面範例中的 Cap 就是這樣。</li>
+  <li><strong>雙授權：</strong>Qt 同時以 LGPL/GPL 與商業授權提供；不想履行 copyleft 的公司可以付費。這要求著作權人能夠代表所有程式碼授權。</li>
+  <li><strong>為了讓更多人使用而放寬授權：</strong>VideoLAN 在 2012 年前後把 libVLC 從 GPL 改為 LGPL，過程中逐一取得貢獻者同意。</li>
+  <li><strong>為了限制雲端服務而收緊授權：</strong>Grafana 在 2021 年從 Apache-2.0 改為 AGPLv3；MongoDB 在 2018 年從 AGPL 改為自訂的 SSPL；Elastic 在 2021 年離開 Apache-2.0，2024 年又加入 AGPL 作為選項。授權會變，依賴的授權要按版本記錄。</li>
+  <li><strong>寬鬆雙授權作為生態系慣例：</strong>Rust 的 API 指南建議 crate 採用 <code>MIT OR Apache-2.0</code>，Microsoft 的 <code>windows</code> crate 就是如此。</li>
+  <li><strong>以共享函式庫隔離 LGPL：</strong>Chromium 把 FFmpeg 建成獨立的共享函式庫，Electron 的 macOS 發佈中可以看到 <code>libffmpeg.dylib</code>，其授權說明列在 Electron 附帶的 <code>LICENSES.chromium.html</code>。</li>
+</ul>
+
+<h2>決策流程</h2>
+
+<p>把上面的內容收成三個依序回答的問題。它不能取代逐條閱讀授權，但可以讓你在動手之前知道自己走在哪條路上。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="lic-flow-d-title lic-flow-d-desc" viewBox="0 0 720 416">
+  <title id="lic-flow-d-title">使用別人的程式碼之前：授權決策流程</title>
+  <desc id="lic-flow-d-desc">先問程式碼是否會進入你發佈或對外提供的產品。只讀想法時，依規格自己寫並記錄參考來源。會進入產品時看授權類型：寬鬆授權可依賴或改寫並保留聲明；弱 copyleft 要守住函式庫邊界並提供該部分原始碼；強 copyleft 則要問整個產品能否改用相同授權，能就採用並提供完整原始碼，不能就不放進產品，改用替代套件、自己實作或購買商業授權。</desc>
+  <defs>
+    <marker id="lic-flow-d-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#D97757"></path></marker>
+  </defs>
+  <path class="m-edge" d="M330 48H386" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M170 76V146" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M330 178H358V156H386" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M358 178V224H386" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M170 206V296" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M330 328H358V306H386" marker-end="url(#lic-flow-d-arrow)"></path>
+  <path class="m-edge" d="M358 328V374H386" marker-end="url(#lic-flow-d-arrow)"></path>
+  <rect class="m-question" x="10" y="20" width="320" height="56" rx="8"></rect>
+  <text class="m-q-text" x="170" y="43" text-anchor="middle">程式碼會進入你發佈</text>
+  <text class="m-q-text" x="170" y="64" text-anchor="middle">或對外提供的產品？</text>
+  <rect class="m-result" x="390" y="20" width="320" height="56" rx="8"></rect>
+  <text class="m-branch" x="406" y="43">不會，只讀想法</text>
+  <text class="m-text" x="406" y="65">依規格自己寫，記錄參考來源</text>
+  <text class="m-branch" x="182" y="116">會</text>
+  <rect class="m-question" x="10" y="150" width="320" height="56" rx="8"></rect>
+  <text class="m-q-text" x="170" y="183" text-anchor="middle">授權屬於哪一類？</text>
+  <rect class="m-result" x="390" y="128" width="320" height="56" rx="8"></rect>
+  <text class="m-branch" x="406" y="151">寬鬆</text>
+  <text class="m-text" x="406" y="173">依賴或改寫，保留授權聲明</text>
+  <rect class="m-result" x="390" y="196" width="320" height="56" rx="8"></rect>
+  <text class="m-branch" x="406" y="219">弱 copyleft</text>
+  <text class="m-text" x="406" y="241">守住函式庫邊界，提供該部分原始碼</text>
+  <text class="m-branch" x="182" y="256">強 copyleft</text>
+  <rect class="m-question" x="10" y="300" width="320" height="56" rx="8"></rect>
+  <text class="m-q-text" x="170" y="333" text-anchor="middle">整個產品能改用相同授權嗎？</text>
+  <rect class="m-result" x="390" y="278" width="320" height="56" rx="8"></rect>
+  <text class="m-branch" x="406" y="301">能</text>
+  <text class="m-text" x="406" y="323">採用該授權，提供完整原始碼</text>
+  <rect class="m-result" x="390" y="346" width="320" height="56" rx="8"></rect>
+  <text class="m-branch" x="406" y="369">不能</text>
+  <text class="m-text" x="406" y="391">不放進產品；換套件、自寫或買授權</text>
+</svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="lic-flow-m-title lic-flow-m-desc" viewBox="0 0 360 572">
+  <title id="lic-flow-m-title">使用別人的程式碼之前：授權決策流程</title>
+  <desc id="lic-flow-m-desc">先問程式碼是否會進入你發佈或對外提供的產品。只讀想法時，依規格自己寫並記錄參考來源。會進入產品時看授權類型：寬鬆授權可依賴或改寫並保留聲明；弱 copyleft 要守住函式庫邊界並提供該部分原始碼；強 copyleft 則要問整個產品能否改用相同授權，能就採用並提供完整原始碼，不能就不放進產品，改用替代套件、自己實作或購買商業授權。</desc>
+  <defs>
+    <marker id="lic-flow-m-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#D97757"></path></marker>
+  </defs>
+  <path class="m-edge" d="M24 54V156" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 94H42" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 204V376" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 244H42" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 312H42" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 424V532H42" marker-end="url(#lic-flow-m-arrow)"></path>
+  <path class="m-edge" d="M24 464H42" marker-end="url(#lic-flow-m-arrow)"></path>
+  <rect class="m-question" x="6" y="10" width="348" height="44" rx="8"></rect>
+  <text class="m-q-text" x="180" y="37" text-anchor="middle">程式碼會進入你發佈或對外提供的產品？</text>
+  <rect class="m-result" x="44" y="66" width="310" height="56" rx="8"></rect>
+  <text class="m-branch" x="58" y="89">不會，只讀想法</text>
+  <text class="m-text" x="58" y="111">依規格自己寫，記錄參考來源</text>
+  <text class="m-branch" x="34" y="148">會</text>
+  <rect class="m-question" x="6" y="160" width="348" height="44" rx="8"></rect>
+  <text class="m-q-text" x="180" y="187" text-anchor="middle">授權屬於哪一類？</text>
+  <rect class="m-result" x="44" y="216" width="310" height="56" rx="8"></rect>
+  <text class="m-branch" x="58" y="239">寬鬆</text>
+  <text class="m-text" x="58" y="261">依賴或改寫，保留授權聲明</text>
+  <rect class="m-result" x="44" y="284" width="310" height="56" rx="8"></rect>
+  <text class="m-branch" x="58" y="307">弱 copyleft</text>
+  <text class="m-text" x="58" y="329">守住函式庫邊界，提供該部分原始碼</text>
+  <text class="m-branch" x="34" y="364">強 copyleft</text>
+  <rect class="m-question" x="6" y="380" width="348" height="44" rx="8"></rect>
+  <text class="m-q-text" x="180" y="407" text-anchor="middle">整個產品能改用相同授權嗎？</text>
+  <rect class="m-result" x="44" y="436" width="310" height="56" rx="8"></rect>
+  <text class="m-branch" x="58" y="459">能</text>
+  <text class="m-text" x="58" y="481">採用該授權，提供完整原始碼</text>
+  <rect class="m-result" x="44" y="504" width="310" height="56" rx="8"></rect>
+  <text class="m-branch" x="58" y="527">不能</text>
+  <text class="m-text" x="58" y="549">不放進產品；換套件、自寫或買授權</text>
+</svg>
+  <figcaption>三個問題依序回答：會不會進產品、授權屬於哪一類、你的產品能不能接受它的條件。每個結果都還有義務要做，沒有一條路是「什麼都不用做」。</figcaption>
+</figure>
+
+<h2>實例：一個 MIT 錄影 App 怎麼參考 AGPL 專案</h2>
+
+<p>RecordStuff 是一個以 MIT 授權發佈的桌面錄影 App，介面用 Electron，原生錄影引擎用 Rust 寫成，在 macOS 上透過 ScreenCaptureKit、在 Windows 上透過 Windows.Graphics.Capture 擷取畫面，再以平台的編碼器編碼（macOS 用 VideoToolbox 的硬體編碼，Windows 目前用 Microsoft 的軟體 H.264 編碼器），最後由自己的 MP4 封裝器（muxer）寫成檔案。開始寫原生引擎前，它研究了 Cap：另一個用 Rust 寫原生擷取的開源錄影 App。</p>
+
+<h3>先確認授權的實際範圍</h3>
+
+<p>規劃文件記錄了 Cap 在某個特定修訂版（<code>3d19c5cfa5e636107e78adde6d55be78404d4f23</code>）的授權狀態：<code>scap-*</code> 與 <code>camera*</code> 這些 crate 是 MIT，包括 <code>scap-screencapturekit</code>、<code>scap-direct3d</code>、<code>scap-targets</code> 與 <code>scap-ffmpeg</code>；其餘所有程式碼，包括錄影管線、編碼器與 muxer，都是 AGPLv3，不能複製進這個 MIT 專案。</p>
+
+<p>這一步避開了「repo 標著某個授權」的天真讀法：RecordStuff 最想參考的部分（錄影管線與 muxer）正好是 AGPL，而 MIT 的部分是底層的擷取綁定。記下修訂版也很重要，因為授權會隨版本改變，「當時是 MIT」只有對特定版本才成立。</p>
+
+<h3>寫下規則，再開始寫程式</h3>
+
+<p>規劃中的決策 D5 定下了使用規則：</p>
+
+<ul>
+  <li>Cap 的 MIT <code>scap-*</code> crate 在合適時可以依賴或改寫，保留其授權聲明，並記錄每個 crate 的名稱、授權與修訂版。</li>
+  <li>Cap 的 AGPL 程式碼只作設計參考：可以閱讀以理解做法，但不複製、不逐行翻譯；實作依據 Apple 與 Microsoft 的官方文件，以及 ISO BMFF（MP4 的基礎格式）規格。</li>
+</ul>
+
+<p>決策 D4 則處理 FFmpeg：編碼用平台的系統編碼器（macOS 的 VideoToolbox 與 AudioToolbox、Windows 的 Media Foundation），封裝用專案自己的 Rust muxer。錄影路徑不用 FFmpeg，讓 App 保持小巧，也不必處理 LGPL 連結；日後的匯出功能若需要 GIF、WebM 等格式，可能只為轉檔引入 FFmpeg。這是「核心路徑避開它」的選擇：代價是要在兩個平台各寫一套編碼流程，並自己實作 MP4 封裝。</p>
+
+<h3>實際做了什麼</h3>
+
+<p>檢查原生引擎的 <code>native/capture/Cargo.toml</code>：它本身宣告 <code>license = "MIT"</code>，<strong>目前沒有依賴任何 <code>scap-*</code> crate</strong>。它直接透過綁定 crate 呼叫系統 API：macOS 用 <code>objc2</code> 系列（如 <code>objc2-screen-capture-kit</code>），Windows 用 Microsoft 的 <code>windows</code> crate，與 Node.js 之間用 <code>napi</code>。從本機 Cargo 登錄快取讀到的授權欄位，<code>objc2</code>、<code>block2</code>、<code>napi</code> 是 MIT，<code>windows</code> 是 <code>MIT OR Apache-2.0</code>，<code>objc2-screen-capture-kit</code> 與 <code>dispatch2</code> 是 <code>Zlib OR Apache-2.0 OR MIT</code>，都是寬鬆授權。規劃文件沒有記錄為什麼最後沒用 <code>scap</code> crate，所以這裡不推測原因；D5 允許依賴它們，但沒有要求。</p>
+
+<p>參考來源則寫在程式碼裡。muxer 的模組說明直接記錄依據與「沒有複製」這件事：</p>
+
+<pre><span class="label">Rust</span><code>//! Written from ISO/IEC 14496-12 (boxes) and 14496-14/-15 (`esds`, `avcC`); no code was taken from other muxers.</code></pre>
+
+<p>畫面節奏（pacing）模組的說明也寫著，它挑選畫面的做法與 OBS 的影格率除數和 Cap 的 pacing 相同。這正是「學想法」的形態：做法（以錄影開始為基準的時間格，挑最接近的畫面）被引用並說明出處，程式碼則是依自己的量測寫成。在原始碼裡記錄規格與參考對象，日後有人質疑時，它就是程式碼來源的證據。</p>
+
+<h3>保留聲明的具體例子，與還要檢查的地方</h3>
+
+<p>專案根目錄的 <code>LICENSE</code> 是 MIT 全文。產品網站改寫了另一個 MIT 專案（T3 Code 的行銷網站）的版面與 CSS，於是在 <code>website/THIRD_PARTY.md</code> 中說明改寫了哪些部分、明確列出沒有包含的東西（圖示、截圖、文案、品牌素材），並附上對方的 MIT 授權全文與著作權行；字型則註明是 SIL Open Font License 1.1 與授權文字所在。這是寬鬆授權最典型的義務履行方式。</p>
+
+<p>同一套方法套到桌面 App 時，會浮出兩個值得確認的問題。第一，原生模組靜態編譯了上述 MIT 與 Apache-2.0 的 crate，依 MIT「所有副本或實質部分」的字面要求，保守的做法是在 App 內附上它們的授權聲明。第二，「錄影路徑沒有 FFmpeg」不等於「App 裡沒有 FFmpeg」：Electron 本身就帶著 Chromium 建置的 <code>libffmpeg.dylib</code>，它在本機一份 macOS 打包產物中確實存在，而 Chromium 的授權清單把 FFmpeg 列為 LGPL v2.1+。撰寫本文時，在那份打包產物中沒有找到 Electron 的 <code>LICENSE</code> 或 <code>LICENSES.chromium.html</code>。這兩點是否需要調整，要以實際發佈的安裝檔重新檢查後決定。</p>
+
+<p>這個例子示範了整個流程：先確認授權的實際範圍與版本，把規則寫在動手之前，依賴只選寬鬆授權，把 AGPL 程式碼當作只能閱讀的設計參考，在程式碼中記錄依據，最後回頭檢查發佈物是否帶齊了聲明。</p>
+
+<h2>邊界：哪些情況不能直接套用</h2>
+
+<ul>
+  <li><strong>不要假設「只是參考」就安全，當你一邊看著原始碼一邊寫：</strong>如果新程式碼的結構、命名、註解與原作高度一致，就算沒有複製貼上，也可能被視為衍生作品。依規格寫、不開著原作，並記錄依據。</li>
+  <li><strong>不要假設行程邊界能隔離 copyleft，當兩邊交換的是內部資料結構：</strong>緊密耦合的兩個行程可能仍被視為一個程式；而且無論如何，被散佈的那個 GPL 程式本身的義務不會消失。</li>
+  <li><strong>不要假設 LGPL 一定沒事，當你靜態連結、修改了函式庫或發佈到限制替換的平台：</strong>靜態連結需要提供可重新連結的材料；修改要公開；某些應用程式商店的條款與 GPL 系授權的衝突曾經讓 VLC 在 2011 年被移出 iOS App Store。</li>
+  <li><strong>不要假設 AGPL 與你無關，當你的產品是服務：</strong>修改過的 AGPL 程式碼即使從未散佈副本，只要使用者透過網路使用它，就有提供原始碼的義務。</li>
+  <li><strong>不要假設授權固定不變，當你升級依賴：</strong>專案會改授權；新版本可能不再是寬鬆授權。記錄你依賴的版本與當時的授權。</li>
+  <li><strong>不要假設這些結論適用於你，當你不發佈任何東西：</strong>純內部使用的工具，多數授權（AGPL 的網路條款除外）都不要求任何事。反過來，一旦開始對外發佈，前面的義務就全部回來。</li>
+  <li><strong>不要假設授權回答了專利問題：</strong>MIT 沒有明文專利授權；FFmpeg 的 LGPL 不包含編解碼器的專利授權。專利要另外評估。</li>
+</ul>
+
+<h2>帶走的判斷問題</h2>
+
+<ol>
+  <li>這段程式碼會不會進入我發佈或對外提供的產品？如果只是學想法，我能不能依公開規格或文件自己寫，並記錄依據？</li>
+  <li>我要用的「那個檔案或套件」本身是什麼授權、哪個版本？不是 repo 首頁寫的那個。</li>
+  <li>觸發義務的動作是什麼：散佈、修改、還是網路使用？我的產品會做哪一個？</li>
+  <li>copyleft 的範圍是檔案、函式庫還是整個程式？我的架構（連結方式、模組切分）落在範圍內還是外？</li>
+  <li>我的專案對下游承諾了什麼授權？引入這段程式碼會不會讓這個承諾變得不正確？</li>
+  <li>如果不能用，替代方案的代價是什麼：換套件、自己寫、買授權，還是讓這個功能離開核心路徑？</li>
+  <li>發佈物中是否帶齊所有授權聲明，包括間接依賴與執行環境？有沒有工具在 CI 中檢查？</li>
+</ol>
+
+<section class="sources">
+<h2>延伸閱讀</h2>
+<ul>
+  <li><a href="https://opensource.org/license/mit">Open Source Initiative：MIT License</a>（MIT 授權全文）</li>
+  <li><a href="https://www.apache.org/licenses/LICENSE-2.0">Apache License 2.0</a>（第 3 條專利授權、第 4 條散佈與 NOTICE）</li>
+  <li><a href="https://www.gnu.org/licenses/gpl-faq.html">GNU：GPL 常見問題</a>（行程間溝通、聚合與衍生作品的判斷）</li>
+  <li><a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License v3</a>（第 13 條網路互動）</li>
+  <li><a href="https://www.gnu.org/licenses/lgpl-3.0.html">GNU Lesser General Public License v3</a>（第 4 條合併作品）</li>
+  <li><a href="https://www.gnu.org/licenses/license-list.html">GNU：各授權與 GPL 的相容性</a>（Apache-2.0 與 GPLv2／GPLv3）</li>
+  <li><a href="https://www.mozilla.org/en-US/MPL/2.0/FAQ/">Mozilla：MPL 2.0 FAQ</a>（檔案層級 copyleft）</li>
+  <li><a href="https://ffmpeg.org/legal.html">FFmpeg：License and Legal Considerations</a>（LGPL 合規檢查清單與專利說明）</li>
+  <li><a href="https://rust-lang.github.io/api-guidelines/necessities.html">Rust API Guidelines：Necessities</a>（建議 crate 採寬鬆授權）</li>
+  <li><a href="https://embarkstudios.github.io/cargo-deny/">cargo-deny</a>（在 CI 中檢查依賴授權）</li>
+</ul>
+</section>
+
+</article>
+</main>
+
+
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+
+</body>
+</html>

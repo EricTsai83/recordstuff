@@ -1,89 +1,70 @@
-# Electron、Chromium 與 WebRTC 在 RecordStuff 的角色
+# 錄影為何離開 Chromium 的 WebRTC 擷取
 
 [English](../../system-design/webrtc.md) | [繁體中文](webrtc.md)
 
-更新：2026-09-14。
+更新日期：2026-10-16。
 
-本文件描述 plan 076 於 2026-10-16 移除的隱藏擷取 renderer（Chromium 的 `getDisplayMedia` 與 `MediaRecorder`）；RecordStuff 現在只透過原生引擎錄影，也就是在 Electron `utilityProcess` 中執行的 Rust 模組。本文件保留到 plan 076 step 8 改寫為止。
+這是一份設計紀錄。2026-10-16 之前，RecordStuff 透過隱藏 renderer 中的 Chromium 媒體堆疊錄影；plan 076 改用原生擷取引擎，也就是 Electron `utilityProcess` 中的 Rust 模組，並移除了 Chromium 路徑（commit `644f94f3`）。本文記錄那套堆疊帶來什麼、付出什麼、每項代價如何量測或解決，以及原生引擎為此換來的代價。目前錄影如何運作見[架構](architecture.md)與[錄影管線](recording.md)；已接受的取捨見[設計決策](decisions.md)。
 
-## WebRTC 在產品裡負責什麼？
+## Chromium 路徑原本是什麼
 
-RecordStuff 使用 Electron 內建 Chromium 提供的媒體 API，在本機完成錄影，目前沒有建立 WebRTC peer connection。WebRTC 與我們有關，是因為 Chromium 的擷取路徑可以重用 WebRTC 的原生音訊處理元件；即使沒有透過網路傳送聲音，也可能用到這些元件。
+一個隱藏、啟用沙箱的 renderer 呼叫 `getDisplayMedia`；main 的 display-media handler 回應所選的螢幕與 `audio: "loopback"`。`MediaRecorder` 把軌道編碼成 fragmented MP4（H.264，以及要求 256 kbps 的 AAC），每秒透過 `MessagePort` 交一個 chunk 給 main；main 的 `FileWriter` 負責附加、每 5 秒 sync 一次，並在存檔時轉為一般 MP4。
 
-這裡要分清楚三種意思：
+這些都不是 WebRTC 通訊：沒有 `RTCPeerConnection`、signaling、ICE／STUN／TURN 或上傳，`MessagePort` 只是本機 IPC。WebRTC 之所以相關，是因為 Chromium 可能在擷取路徑中套用它的原生 Audio Processing Module（回音消除、降噪、自動增益，為語音通話設計），即使是沒有網路的螢幕擷取也一樣（[Chromium 的處理配置](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc)）。
 
-| 名稱 | 在這份設計中的意義 |
-| --- | --- |
-| 瀏覽器媒體 API | `getDisplayMedia` 取得畫面與系統音訊軌；`MediaStream` 承載軌道；`MediaRecorder` 編碼成可寫入檔案的資料。通話產品也能使用這些 API。 |
-| WebRTC 通訊 | `RTCPeerConnection`、連線協商、ICE／STUN／TURN 與網路媒體傳輸。目前 RecordStuff 的錄影流程沒有實作這些功能。 |
-| 原生 WebRTC 元件 | Chromium 內部使用的實作，例如 Audio Processing Module（APM，音訊處理模組）。是否使用取決於擷取路徑與設定；我們沒有直接引入或設定它的 C++ 模組。 |
+## 它帶來什麼
 
-`getDisplayMedia` 屬於 [Screen Capture 規格](https://www.w3.org/TR/screen-capture/)；`MediaRecorder` 屬於 [MediaStream Recording 規格](https://www.w3.org/TR/mediastream-recording/)。呼叫這些 API 本身不會建立 peer connection，也不會把錄影上傳。
+- **不需要原生程式碼。**單一語言，除了 Node 不需要其他編譯工具鏈，除了 App 本身也沒有東西要簽章。這是最初設計選擇它的原因：避免自訂音訊裝置與原生 sidecar。
+- **免費得到平台擷取與硬體編碼。**Chromium 152 在 macOS 上本來就透過 ScreenCaptureKit 擷取螢幕並以硬體編碼 H.264；QuickTime 能播放結果。
+- **兩個平台同一份程式碼**，在 Electron 可攜性所及的範圍內。
 
-## 實際資料流與責任分工
+## 它的代價，以及每項代價如何收場
 
-```mermaid
-flowchart TD
-    OS[作業系統畫面與系統聲音] --> Engine[Electron / Chromium 擷取後端]
-    Main[Main：選擇螢幕與 loopback 音訊] --> Engine
-    Request[隱藏 renderer：getDisplayMedia 條件] --> Engine
-    Engine --> Tracks[MediaStream：影像與音訊軌]
-    Tracks --> Encoder[MediaRecorder：H.264 + AAC / fragmented MP4]
-    Encoder --> Port[本機 MessagePort：已編碼 chunks]
-    Port --> Writer[Main：Recorder 與 FileWriter]
-    Writer --> Disk[本機 MP4 檔案]
-    APM[依條件啟用的內部音訊處理，可能使用 WebRTC 元件] -. 實作細節 .-> Engine
-```
-
-| 層級 | 負責什麼 | 為什麼這個邊界重要 |
+| 限制 | 代表什麼 | 如何量測或解決 |
 | --- | --- | --- |
-| 作業系統 | 畫面、音訊來源與擷取權限 | 權限不足或音訊路由不同，不能靠提高編碼 bitrate 解決。 |
-| Electron main | 解析保存的螢幕選擇（預設主螢幕、指定目標精確匹配 id）、要求 `audio: "loopback"`，管理生命週期與寫檔 | 來源選擇與檔案存取不交給 sandbox 中的 capture renderer。 |
-| Chromium 媒體引擎 | 實作擷取、軌道設定、內部處理與錄影支援 | 即使應用程式碼沒改，升級 Electron／Chromium 也可能改變行為。 |
-| 隱藏 capture renderer | 提出擷取條件、讀取軌道設定、操作 `MediaRecorder`、送出 chunks | 我們在這裡表達音質政策，並取得執行時證據。 |
-| 本機 IPC 與 writer | 跨程序搬運編碼資料、保存檔案 | MessagePort 是本機 IPC，不是 `RTCDataChannel`；寫檔錯誤與擷取失真是不同問題。 |
+| 只能錄一個螢幕或一個視窗 | `getDisplayMedia` 只能排除本 App 受保護的視窗（Electron 對 Chromium 的修補）。它無法隱藏選單列或 Dock、無法錄區域或指定 App，也無法只錄單一 App 的聲音；在 macOS 上這些都需要 ScreenCaptureKit 的 `SCContentFilter`，而 Electron 與 Chromium 都沒有提供對應的 API。這些是維護者 2026-10-14 的需求，也是設計決策要求在改用原生前先實測到的限制 | 引擎自己過濾內容。「隱藏選單列與 Dock」是設定 → 錄影中的開關（macOS；引擎回報隱藏了 35 個系統視窗，選單列的位置錄到的是桌布）。視窗、區域與單一 App 的聲音都通過 macOS 的實際測試與 Windows 的 CI；選定 App 的視窗只在 macOS 上支援（Windows.Graphics.Capture 做不到，引擎在 Windows 上會拒絕）；選擇介面屬於之後的計畫 |
+| RecordStuff 自己的視窗 | 沒有逐視窗排除，倒數覆蓋層只好在擷取前 300 ms 離開，被錄螢幕上的任何 RecordStuff 視窗都會被錄進去 | ScreenCaptureKit 的 application filter 把整個 App 排除，包括開始後才開的視窗；Windows 上標為 `WDA_EXCLUDEFROMCAPTURE`。在 macOS 上，錄影中開啟的設定出現在螢幕上，但不在錄影同一時刻的畫面中（2026-10-16） |
+| 系統音訊上的語音處理 | 為語音設計的處理改變了已混好的系統音訊的高頻平衡，並讓立體聲塌成單聲；App 必須要求 `echoCancellation`、`noiseSuppression` 與 `autoGainControl` 為 false，而這些只是 runtime 不一定遵守的請求 | 2026-09-14 同時關閉三者後探測恢復（[音質 §15](audio-quality.md#15-系統擷取修正2026-09-14)）。引擎直接編碼 ScreenCaptureKit 或 WASAPI loopback 交來的樣本，路徑中沒有語音處理（[§16](audio-quality.md#16-原生音訊路徑為什麼能保留音質)）；`pnpm audio:quality` 兩種引擎都通過所有檢查，時鐘原生為 −0.07 ppm，Chromium 為 −1.45 ppm |
+| 幀率下限 | Chromium 把要求的幀率轉成 ScreenCaptureKit 的最小影格間隔，那是下限而不是週期，所以要求 30 或 60 實際錄到約 29.4 或 57.5 fps。renderer 改為要求 30.3 與 62.5 才錄到設定值 | 引擎向 ScreenCaptureKit 要求影格間隔的四分之一，並依顯示時間在格點上排定影格。步驟 2 中 30 fps 沒有掉格、60 fps 掉 0.06–0.22%；結案前的回合有 0.22–0.44% 的影格間隔達 50 ms，Chromium 為零，原因尚未找到（plan 078） |
+| chunk 交給 main | 在 Electron 44 的實驗中轉移 `ArrayBuffer` 會卡住 main，所以每秒的媒體都要複製，且沒有有界背壓；main 的事件迴圈卡住會延誤寫入；MP4 的索引與其他容器的 cues 需要回頭寫，chunk 串流無法乾淨做到；低動態的 Retina 錄影在關鍵影格間隔對齊 timeslice 之前，曾錯過第一個 chunk 的期限 | 由引擎自己寫檔（076 的 D3）：錄影中為 fragmented，存檔時轉為一般 MP4，並回報已寫入的位元組與寫入錯誤。停止與檔案完成是兩則不同的訊息，所以慢速磁碟的存檔不算在停止裡 |
+| renderer 預熱與音訊服務 | display-media handler 在啟動時就使用預設 session，所以 Electron 44 預熱了一個 renderer（約 65 MB），由第一次擷取接手；第一次擷取系統音訊會啟動 Chromium 的音訊服務，一直留到結束（約 49 MB，每秒 0.3 次喚醒） | 原生引擎兩者都沒有：第一個視窗開啟前沒有 renderer，錄影後只剩 main、GPU 與網路服務。錄影後待命量得單核 0.036%，Chromium 為 0.054%。擷取程序也不預先啟動（快約 50 ms 不值得約 73 MB，維護者 2026-10-15） |
+| 回報的數值 | `getSettings` 曾把 1080p 螢幕回報為 1080×606，所以 renderer 改從靜音影片量測影格；codec 與時間戳的控制只限於 `MediaRecorder` 提供的部分 | 引擎探測來源尺寸、設定編碼器屬性（至少每秒一個關鍵影格、位元率），並在單一單調時鐘上依樣本數為音訊蓋時間戳 |
 
-Renderer 要求 `video/mp4;codecs=avc1,mp4a.40.2` 並檢查支援度。AAC 是選定的錄影編碼，不能據此推論有 WebRTC 網路連線。FFmpeg 用於開發驗證工具，正式產品沒有啟動 FFmpeg 子程序錄影。停止、失敗與檔案保存行為見[錄影管線](recording.md)及[系統架構](architecture.md)。
+### 與 Chromium 的實測對照
 
-## 為什麼本機錄音也會受到語音處理影響？
+M1 Pro、60 Hz 1920×1080 螢幕、簽章 bundle，2026-10-14 到 2026-10-16（plan 076）：
 
-[WebRTC APM 介面](https://webrtc.googlesource.com/src/+/refs/heads/main/api/audio/audio_processing.h)說明其用途是即時語音通訊：回音消除處理播放聲音再次進入麥克風的問題；降噪減少不需要的背景聲；自動增益調整語音音量。這些目標對通話有用。目前我們擷取的來源是已混合好的數位系統聲音，沒有麥克風軌；音樂、左右聲道差異與小聲細節都是希望保留的內容。
-
-Chromium 的[螢幕擷取音訊處理路徑](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc)顯示，是否啟用回音消除會影響處理路徑的選擇。這是 upstream `main` 的實作背景，不是我們所用 Electron build 內部實際走哪條路徑的直接證據。使用這類處理不以建立網路通話為前提。
-
-目前政策要求 `echoCancellation: false`、`noiseSuppression: false`、`autoGainControl: false`，保留 `restrictOwnAudio: true` 及理想雙聲道要求。這是在調整擷取政策，Chromium 媒體引擎仍然負責擷取與編碼。排除自身音訊是另一項要求，也不代表保證排除所有原生應用程式聲音。
-
-證據有三個層次，不能互相替代：
-
-1. **要求的 constraints**：證明我們向引擎要求了什麼，不代表所有實作都遵守。
-2. **軌道回報的 settings**：顯示執行環境願意揭露的設定。明確回報效果仍開啟時發出警告；沒有回報代表未知。
-3. **解碼後的輸出量測**：證明訊號通過完整管線後保留了什麼，能找出設定值或合法 MP4 看不出來的損失。
-
-本機對照中，三個效果一起關閉後，兩次有效量測恢復高頻響應與左右聲道分離；另一次未通過測試訊號辨識，屬於 invalid，因此整批三次不是 pass。這支持在該環境使用這組政策，不能隔離證明是哪一個效果造成先前損失，也不能保證所有裝置。詳細理由與數據保留在[音質測試設計](audio-quality.md)。
-
-## 我們測什麼，為什麼要測？
-
-| 檢查 | 能揭露的失敗 | 不能證明的事 |
+| 項目 | 原生引擎 | Chromium |
 | --- | --- | --- |
-| Constraints 與警告的單元測試 | 改程式時重新打開效果，或忽略明確回報的不一致 | 真實瀏覽器的音訊處理結果與保真度 |
-| 測試訊號辨識與時間對齊 | 錄錯來源、標記缺失、輸入不適合比較 | 未辨識訊號的音質 |
-| 頻率響應 | 與聲音悶相關的高頻損失 | 任意語音／音樂的所有聽感問題 |
-| 聲道分離度 | 名義雙聲道實際接近相同訊號 | 每種 OS／音訊路由都正確 |
-| 削波、掉音與音量檢查 | 飽和、訊號中斷或非預期音量變化 | 所有主觀聆聽偏好 |
-| 重複實錄與環境快照 | 偶發失敗及對執行環境、路由的依賴 | 以單一機器保證全面相容 |
+| 錄影 CPU，30 fps（`pnpm measure:cpu`） | 單核 10.4% | 15.3% |
+| 錄影 CPU，60 fps | 14.0% | 23.3% |
+| 閃光到嗶聲的偏移（`pnpm matrix -- quick`） | −25 ms | +68 到 +74 ms |
+| 音訊與畫面的長度差 | 0 ms，含 10 分鐘的錄影 | +13 到 +15 ms |
+| 10 分鐘漂移 | 0 ms，600 組閃光與嗶聲全數配對 | — |
+| 音質（`pnpm audio:quality`） | 全部檢查通過 | 全部檢查通過 |
+| 間隔達 50 ms 的影格 | 0.22–0.44% | 0% |
+| 快捷鍵到 `prepared` | 457–535 ms | 347–369 ms |
 
-因此，「設定的單元測試通過」不能直接等同「音質已修好」。Electron、Chromium、擷取條件、codec 或音訊路由變更後，要重做實錄並保存原始報告；先確認測試訊號有效，再解讀品質指標。門檻、偵測器測試與 pass／fail／invalid 定義見[音質測試設計](audio-quality.md)。
+維護者於 2026-10-16 接受這些結果，包括影格間隔與較慢的開始，Chromium 路徑隨之移除。睡眠、螢幕移除、權限拒絕，以及「隱藏選單列與 Dock」下的 Dock，是留給 [plan 077](../../../plans/077-native-hands-on-acceptance.zh-TW.md) 的親手驗收案例；影格間隔與原生節奏診斷留給 [plan 078](../../../plans/078-native-capture-follow-ups.zh-TW.md)。
 
-## 目前邊界與未來擴充
+## 原生引擎換來的代價
 
-目前實作的錄影媒體路徑沒有 signaling service、peer 傳輸、STUN／TURN 依賴或雲端上傳。這個結論限定於該路徑，不是對所有開發工具或 Electron 網路行為做過全面稽核。
+- **Rust 工具鏈。**需要錄影的貢獻者要安裝 rustup 的 stable 工具鏈，Windows 上還要 Visual Studio C++ 建置工具；兩個 CI runner 都會建置 crate 並執行 `cargo test`。不需要錄影的工作可用 `RECORDSTUFF_SKIP_NATIVE=1` 建置。
+- **要簽一個 `.node`。**模組從 asar 封存中解出，以 App 的憑證與 hardened runtime 簽章；`start-app.mjs --verify-app` 會拒絕缺少它的 bundle。開發用 Electron 的 `utilityProcess` 會被拒絕擷取（`-3801`），所以錄影與量測都需要簽章的 bundle。
+- **平台程式碼寫兩份。**`native/capture/src/mac/` 與 `src/win/` 共用 session 狀態機、節奏控制、混音器與 muxer，但擷取與編碼要各寫一份。Windows 只由 CI 驗證：實際擷取品質、影格時間、自己的視窗是否不被錄到、系統音訊內容、CPU 與麥克風在那裡都未測。
+- **綁定可能落後。**`objc2` 與 `windows` crate 可能落後 Apple 或 Microsoft 的新 API；若長期需要某個 API，macOS 改用 Swift 仍是替代方案。
+- **原本由 Chromium 負責的程式碼。**ISO BMFF muxer、編碼器設定與時鐘，現在都要由本專案維持正確；Media Foundation 的 AAC 編碼器最高 192 kbps，低於 256 kbps 的要求。
 
-若未來加入即時分享，需要另外設計傳輸架構，明確決定連線協商、peer／server、連通性、驗證與媒體隱私。若加入麥克風旁白，也需要獨立音訊政策：回音消除可能有用，但不應自動把語音處理套到系統音訊軌。目前設計尚無這兩項功能。
+## 延續下來的原則
 
-## 程式碼對照
+- **請求不等於結果。**程式要求的、runtime 回報的，以及解碼後檔案中真正留下的，仍是三種強度不同的證據；[音質測試](audio-quality.md)因此量測解碼後的輸出。
+- **麥克風旁白需要獨立的音訊政策**（plan 074）。回音消除對麥克風可能有用，但系統音訊軌不應沿用語音處理。
+- **沒有傳輸。**錄影路徑沒有 signaling 服務、peer 傳輸、STUN／TURN 依賴或雲端上傳。加入即時分享會是另一套架構，需要另外決定 signaling、連線、驗證與媒體隱私。
 
-- [原生擷取 host](../../../src/main/recording/native-capture-host.ts) 與[其程序](../../../src/main/recording/native-host-process.ts)：取代已移除 capture renderer 的原生引擎。
-- [共用協定](../../../src/shared/protocol.ts)：MIME type 與本機訊息。
+## 程式地圖
+
+- [原生擷取 host](../../../src/main/recording/native-capture-host.ts) 與[它的程序](../../../src/main/recording/native-host-process.ts)：main 的監督器，以及載入引擎的 `utilityProcess`。
+- [擷取引擎](../../../native/capture/)：Rust crate，包含共用核心、平台模組與 muxer。
+- [共用協定](../../../src/shared/protocol.ts)：main 與擷取程序之間的訊息。
 - [品質政策](../../../src/shared/quality.ts)：要求的編碼品質。
-- [系統架構](architecture.md)：程序責任與 IPC 信任邊界。
-- [音質測試設計](audio-quality.md)：實測保真度、限制與回歸策略。
+- [音質測試](audio-quality.md)：已量測的音質、限制與回歸策略。

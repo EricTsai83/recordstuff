@@ -34,7 +34,7 @@ const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
 /**
  * Plan 076's native capture engine (native/capture), built with Cargo before main and copied to
  * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. It records on macOS and
- * Windows (capture-engine.ts), so a build there without Cargo fails rather than making an app that cannot record.
+ * Windows, so a build there without Cargo fails rather than making an app that cannot record.
  * `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose, for work that never records (CI's background UI shards, a
  * contributor without Rust); a recording then fails at start with the load error.
  */

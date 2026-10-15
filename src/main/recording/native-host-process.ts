@@ -1,10 +1,10 @@
 /**
- * The native engine's capture host (plan 076; which engine records is capture-engine.ts's): the entry of the
+ * The native engine's capture host (plan 076): the entry of the
  * Electron `utilityProcess` main forks for each attempt (native-capture-host.ts). It loads the Rust engine
- * (native/capture), whose path is its first argument, and speaks the hidden renderer host's protocol over the parent
+ * (native/capture), whose path is its first argument, and speaks the capture protocol (shared/protocol.ts) over the parent
  * port: `start` prepares capture into the file main created and answers `prepared`, `record` answers `started`, `stop`
  * answers `stopped` once capture has ended and then `finished` once the file is (or `writeError`), so a slow volume's
- * save is no part of the stop. The engine writes the file; instead of chunks the host reports `progress` (bytes written
+ * save is no part of the stop. The engine writes the file; the host reports `progress` (bytes written
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */

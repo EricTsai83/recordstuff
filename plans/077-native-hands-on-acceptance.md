@@ -12,7 +12,7 @@ Out of scope: Windows (CI only, as 076's D8 says), any engine change (a defect f
 
 ## Current state
 
-- 076 recorded the native engine's recording quality, CPU baseline and tray cases on 2026-10-15 and 2026-10-16 ([076 step 7](076-native-capture.md#7-verification-tools-and-acceptance)); these four cases were left for later at the maintainer's word.
+- 076 recorded the native engine's recording quality, CPU baseline and tray cases on 2026-10-15 and 2026-10-16 ([076's closure record](../docs/verification/history-2026-10.md#plan-076-closure--2026-10-16)); these four cases were left for later at the maintainer's word.
 - The Chromium path handled sleep (plan 050), display removal and permission denial; the native engine maps its failures to the same `HostErrorCode`s, but none of these four has run through it on hardware.
 - The maintainer's Dock appears to be hidden automatically, so 076's D6 round showed no Dock in either recording.
 
@@ -20,11 +20,11 @@ Out of scope: Windows (CI only, as 076's D8 says), any engine change (a defect f
 
 ### 1. Sleep during a recording
 
-- [ ] With a recording running through the native engine, the maintainer puts the Mac to sleep (Apple menu → Sleep, or closing the lid where the display allows). Expected per plan 050: the recording stops and saves before sleep, the saved notification appears after wake, and no sentinel is left. Record the log's stop and save lines and the file's integrity (`pnpm verify`).
+- [ ] With a recording running through the native engine, the maintainer puts the Mac to sleep (Apple menu → Sleep, or closing the lid where the display allows). Expected per plan 050: the recording stops and saves before sleep, the saved notification appears after wake, and no sentinel is left. Watch for a known risk found in 076's documentation: the engine ignores capture failures only once its drain to the stop has ended (up to 250 ms), so a stream that ends inside the drain still reports `capture_failed` and fails the stopping session. Record the log's stop and save lines and the file's integrity (`pnpm verify`).
 
 ### 2. Display removal during a recording
 
-- [ ] With a recording of an external display running, the maintainer unplugs that display. Expected: the session ends with the display failure the Chromium path gave (`track_ended`), the partial is kept or saved as recording.md says, and the next recording on the remaining display works. Reconnect afterwards.
+- [ ] With a recording of an external display running, the maintainer unplugs that display. Expected: main sees the display leave (`target_removed`; the native host never sends the Chromium path's `track_ended`) and ends the session with the display failure, the partial is kept or saved as recording.md says, and the next recording on the remaining display works. Reconnect afterwards.
 
 ### 3. Permission denial
 

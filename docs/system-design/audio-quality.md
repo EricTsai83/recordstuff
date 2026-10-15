@@ -2,9 +2,9 @@
 
 [English](audio-quality.md) | [繁體中文](../zh-TW/system-design/audio-quality.md)
 
-This chapter explains the development-only audio diagnostic system, fixture/report version 2. It is a guide to reasoning about audio failures, not a claim that every recording now sounds correct. Commands are in [tooling](tooling.md#audio-fidelity-regression); actual outcomes belong in the [verification record](../verification/README.md). The production recording path is described in [recording](recording.md).
+This chapter explains the development-only audio diagnostic system, fixture/report version 2. It is a guide to reasoning about audio failures, not a claim that every recording now sounds correct. Commands are in [tooling](tooling.md#audio-fidelity-regression); actual outcomes belong in the [verification record](../verification/README.md). The production recording path is described in [recording](recording.md); the audio part of it, and why it preserves what this suite measures, is in [§16](#16-the-native-audio-path--why-it-preserves-fidelity). Since 2026-10-16 (plan 076) recording runs only through the native capture engine, and every measurement this tool makes now goes through it. Findings from the earlier Chromium capture path (§15) are kept as history because they explain why the suite measures what it does.
 
-For the roles of Electron, Chromium, browser media APIs, and internal WebRTC audio processing, see [Electron, Chromium, and WebRTC](webrtc.md).
+For the roles Electron, Chromium, browser media APIs and internal WebRTC audio processing played in that earlier path, see [Why recording left Chromium's WebRTC capture](webrtc.md).
 
 ## 1. The question behind the test
 
@@ -16,7 +16,7 @@ The test is an experiment with a known input. We generate a reproducible signal,
 flowchart LR
     A[Known PCM fixture] --> B[afplay / OS output path]
     B --> C[System audio capture]
-    C --> D[Chromium MediaRecorder / AAC]
+    C --> D[Native engine: sample-count timing, mixer, AAC]
     D --> E[Saved MP4]
     E --> F[FFmpeg decode without remixing]
     F --> G{Can we identify the fixture?}
@@ -25,7 +25,7 @@ flowchart LR
     I --> J[Pass or measured failure]
 ```
 
-This experiment measures the complete playback → capture → encode path. A failure does not by itself identify the responsible stage. To isolate a cause, retain this test and change one stage at a time, or add a PCM observation point before encoding. A passing FFmpeg AAC control only proves that the control encoder preserves this fixture; it does not prove Chromium's AAC encoder behaves identically.
+This experiment measures the complete playback → capture → encode path. A failure does not by itself identify the responsible stage. To isolate a cause, retain this test and change one stage at a time, or add a PCM observation point before encoding. A passing FFmpeg AAC control only proves that the control encoder preserves this fixture; it does not prove the platform AAC encoder the app uses (AudioToolbox on macOS, Media Foundation on Windows) behaves identically.
 
 ## 2. Why metadata and bitrate are insufficient
 
@@ -217,7 +217,9 @@ Invariants: no upmixing/resampling to hide format faults; decode only the first 
 
 ## 15. System capture correction — 2026-09-14
 
-The production capture request now explicitly sets `echoCancellation: false`, `noiseSuppression: false`, and `autoGainControl: false`. It retains `restrictOwnAudio: true`, ideal two channels, and the 256 kbps AAC target. No equalizer, post-recording transcode, or new capture engine was introduced.
+> **History.** This section describes the Chromium capture path, which plan 076 removed on 2026-10-16. Its constraints no longer exist in the app; the finding is kept because it shows what speech-oriented processing does to a system mix and why the native path in §16 applies none. Read "now" below as "from 2026-09-14 until 2026-10-16".
+
+The production capture request then explicitly set `echoCancellation: false`, `noiseSuppression: false`, and `autoGainControl: false`. It retained `restrictOwnAudio: true`, ideal two channels, and the 256 kbps AAC target. No equalizer, post-recording transcode, or new capture engine was introduced at that time.
 
 Why these settings matter: echo cancellation, noise suppression, and automatic gain are useful for interactive voice capture, but a recorder should preserve the digital system mix, including music's spectral detail and dynamics. Processing designed for speech can change that signal. Chromium's [audio processing layout](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc) has a processed-display-capture path conditional on echo cancellation. This supports a plausible mechanism; our experiment establishes the effect of disabling the three constraints **together**, not the isolated contribution of each effect or every Chromium revision.
 
@@ -233,6 +235,45 @@ The same v2 fixture and analyzer thresholds were used for the comparison. The ea
 
 The final three-run batch contains **2 pass, 0 fail, 1 invalid**; it remains invalid overall. The first run's marker gap was contaminated (−18.81 dB versus the −30 dB identity gate), so its spectral measurements were suppressed. An earlier single trial also retained some early noise/gap failures despite restored high frequencies. All are preserved in the [evidence](../verification/README.md). We did not relax thresholds, filter the reference, delete failed trials, or turn the invalid batch into a passing claim.
 
-The capture host warns when `getSettings()` explicitly reports one of the disabled effects as true. An absent property is unknown, not proof that processing is off. Regression tests assert the explicit constraints and the warning behavior. Real probes remain necessary because a mocked constraint assertion cannot establish what an OS actually captured. Own-audio exclusion stays enabled because the experiment restored fidelity without removing it.
+The capture host warned when `getSettings()` explicitly reported one of the disabled effects as true. An absent property is unknown, not proof that processing is off. Regression tests asserted the explicit constraints and the warning behavior until the path was removed. Real probes remain necessary because a mocked constraint assertion cannot establish what an OS actually captured. Own-audio exclusion stayed enabled because the experiment restored fidelity without removing it.
 
-This correction applies to **new recordings made with the rebuilt app**. It does not restore information missing from old files. The local spectral/stereo result is improved; subjective comparisons using the user's original content and broader device/platform coverage remain separate evidence.
+This correction applied to **new recordings made with the rebuilt app**. It does not restore information missing from old files. The local spectral/stereo result is improved; subjective comparisons using the user's original content and broader device/platform coverage remain separate evidence.
+
+## 16. The native audio path — why it preserves fidelity
+
+Since plan 076 the app records through a native engine (Rust, `native/capture`) running in an Electron `utilityProcess`. The audio path has no speech processing, no resampling or remixing by RecordStuff, and no level control:
+
+| Stage | macOS | Windows |
+| --- | --- | --- |
+| System audio | ScreenCaptureKit, configured for 48 kHz, 2 channels, 32-bit float, excluding RecordStuff's own process audio | WASAPI process loopback: everything the system plays except RecordStuff's process tree, opened at 48 kHz stereo float |
+| One app's audio (engine and tests only; no picker yet) | ScreenCaptureKit app-filtered audio, same format | WASAPI process loopback of the chosen process tree |
+| Microphone (for plan 074; not exposed in the app yet) | AVFoundation, converted by the OS to 48 kHz stereo float (a mono microphone is heard in both channels) | WASAPI capture, the same format |
+| Timing | Each input is placed on the session clock by counting its samples ([timing.rs](../../native/capture/src/timing.rs) `AudioAligner`) | Same |
+| Mixing | [mixer.rs](../../native/capture/src/core/mixer.rs): the inputs' sum at unity gain | Same |
+| Encoding | AAC-LC through AudioToolbox at the quality's audio bitrate (256 kbps), float input | AAC-LC through Media Foundation, which takes 16-bit PCM and at most 192 kbps: the float samples are converted and a higher setting is lowered to 192 kbps with a session warning |
+| Container | The engine's MP4 muxer; the encoder's priming is skipped by an edit list | Same; Media Foundation does not publish its priming, so it is measured when the encoder is made |
+
+Why each choice matters for the gates in §7:
+
+- **Format.** The OS delivers the track's own format, 48 kHz stereo float, so the engine never converts sample rate or channel layout. Where the device differs, conversion happens in the OS before the engine sees the samples (on Windows the audio engine converts; on macOS ScreenCaptureKit delivers the configured format). A mono source stays mono information duplicated in two channels, which the separation gate would detect.
+- **No processing.** Nothing equivalent to Chromium's echo cancellation, noise suppression or automatic gain sits in the path, so the §15 failure mechanism cannot recur unless such processing is added deliberately.
+- **Sample-count timestamps.** Audio is not stamped with each buffer's own time. A buffer continues where the previous one ended as long as its time agrees within 10 ms (480 frames); when capture delivered nothing for longer, the gap is filled with silence, and when the audio clock runs ahead, the excess is dropped. Audio therefore cannot drift against video by more than that tolerance however long the recording lasts, and samples are never stretched or resampled to correct the clock. On stop, capture keeps running until the sound up to the stop has arrived, so the audio track is as long as the video's.
+- **Mixer.** The track is the sum of the inputs, stereo, at unity gain: nothing is levelled or collapsed, and with a single input the track is exactly that input's samples. The track advances to where every input has delivered, and also with the clock 500 ms behind it, so an input that sends nothing (WASAPI loopback while nothing plays, a stalled device) counts as silence rather than holding the track back; sound that arrives after that point is dropped and counted as late (`late_audio_frames` in the engine's stop report). Two loud inputs can sum past full scale; that matters for the microphone (074), not for the single system-audio input recorded today.
+- **Encoding.** The encoder receives float samples on macOS, so AAC quantization is the only lossy step. The priming edit list keeps the first audible sample at its time instead of shifting the track by the encoder's delay.
+
+This explains why the native path should pass the suite; it is not a measurement. The results are in §17. Windows audio content and fidelity are untested on hardware (plan 076, D8); CI only checks that each stream opens, delivers and stops.
+
+## 17. Native engine results — 2026-10-15
+
+Plan 076 step 7, round 1, on the reference M1 Pro (macOS 26.6, Electron 44.3.0), with the same fixture v2, analyzer and thresholds: `pnpm audio:quality -- record` passed every check through both the native engine and, for comparison, the Chromium path that was still present that day.
+
+| Measurement | Native | Chromium (history) | Gate |
+| --- | --- | --- | --- |
+| Clock offset | −0.07 ppm | −1.45 ppm | ±200 ppm |
+| Target/pilot response, worst probe | within 0.002 dB | within 0.002 dB | ±3 dB |
+| Pilot gain, worst probe | within 0.002 dB | within 0.002 dB | ±6 dB |
+| Channel separation, worst probe | 116.7 dB | 115.7 dB | ≥30 dB |
+| Residual/signal, worst probe | −51.6 dB | −58.6 dB | ≤−25 dB |
+| Minimum 10 ms level, worst probe | −0.008 dB | −0.007 dB | ≥−15 dB |
+
+Each engine had one valid run; this is a single-run comparison on one machine and route, not a repeated baseline. Separation figures this large sit near the analyzer's numerical floor and are not a calibrated dynamic range. Gains and residuals are alike within what one run can distinguish; the native clock offset is smaller. Raw reports are local (`docs/verification/measurements/`); the conclusion is recorded in [plan 076](../verification/history-2026-10.md#plan-076-closure--2026-10-16) step 7.

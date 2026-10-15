@@ -1,7 +1,7 @@
 {
   "MacBookPro18,1": {
     "recorded": "2026-10-16",
-    "source": "plans/076-native-capture.md step 7, round 2 (M1 Pro, macOS 26.6.2, Electron 44.3.0, primary display a 60 Hz BenQ at 1920 × 1080; medians of pnpm measure:cpu -- --fps 60 --repeat 3 through the native engine). The hidden renderer's, removed with it, were 15.3% and 23.3% on the same day, and its matrix baselines of 2026-09-28 (docs/verification/history-2026-09.md#plan-049-cpu-baseline--2026-09-28) have no native successor yet.",
+    "source": "plan 076, step 7 round 2, closed 2026-10-16 (docs/verification/history-2026-10.md#plan-076-closure--2026-10-16; M1 Pro, macOS 26.6.2, Electron 44.3.0, primary display a 60 Hz BenQ at 1920 × 1080; medians of pnpm measure:cpu -- --fps 60 --repeat 3 through the native engine). The hidden renderer's, removed with it, were 15.3% and 23.3% on the same day, and its matrix baselines of 2026-09-28 (docs/verification/history-2026-09.md#plan-049-cpu-baseline--2026-09-28) have no native successor yet.",
     "percent": {
       "measure:cpu recording 30": 10.4,
       "measure:cpu recording 60": 14.0
