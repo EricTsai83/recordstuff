@@ -8,7 +8,7 @@
  * invocation is one desktop round: build once, open the test material once,
  * then record `--repeat` takes through the development app with
  * `RECORDSTUFF_AUTORECORD`, whose `outputDir` points at `--dir` (in memory
- * only; settings.json is never written). Each take's stop-to-ready time and
+ * only; settings.json is never written). Each take's stop-to-ready and stop-to-saved times and
  * its phases come from the app log (`finalize timing`), its media from
  * ffprobe: `--verify quick` (default) fully decodes the first saved take and
  * checks the rest's streams, duration and first and last second, `full`
@@ -26,6 +26,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { MEASUREMENTS_DIR } from "./lib/verification/verify-recording.mts";
 import { APP_LOG_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
+import { ENGINE_USAGE, engineEnv, engineMismatch, takeEngineOption, type CaptureEngine } from "./lib/runner/capture-engine.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { createMaterialProfile, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
@@ -58,16 +59,21 @@ interface Options {
   build: boolean;
   /** `quick` decodes every frame of the first saved take only; the timings never depend on it. */
   verify: "quick" | "full";
+  /** The engine that records (plan 076); native by default. */
+  engine: CaptureEngine;
 }
 
 function usage(message?: string): never {
   if (message) console.error(message);
-  console.error("usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--verify quick|full] [--no-open-material] [--no-build]");
+  console.error(`usage: pnpm measure:finalization -- --dir <absolute folder> [--seconds 15] [--repeat 5] [--quality economy|standard|high] [--fps 30|60] [--label name] [--keep] [--verify quick|full] [--no-open-material] [--no-build] ${ENGINE_USAGE}`);
   process.exit(2);
 }
 
-function parseOptions(argv: string[]): Options {
-  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick" };
+function parseOptions(args: string[]): Options {
+  const engineOption = takeEngineOption(args);
+  if (!engineOption) usage("--engine takes native or chromium");
+  const argv = engineOption.rest;
+  const options: Options = { dir: "", seconds: 15, repeat: 5, quality: "standard", fps: 60, label: "", keep: false, openMaterial: true, build: true, verify: "quick", engine: engineOption.engine };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     const value = (): string => { const next = argv[++i]; if (next === undefined || next.startsWith("--")) usage(`${arg} needs a value`); return next; };
@@ -178,7 +184,7 @@ let fullyDecoded = false;
 async function recordTake(options: Options, index: number): Promise<Take> {
   const take: Take = { index, outcome: "no outcome", verified: false, deleted: false, freeBeforeBytes: freeBytes(options.dir) };
   const cursor = appLog.end();
-  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), ...engineEnv(options.engine), RECORDSTUFF_AUTORECORD: JSON.stringify({
     seconds: options.seconds, quality: { videoQuality: options.quality, resolutionCap: "source", frameRate: options.fps }, outputDir: options.dir,
   }) };
   owned.launchedAt = Date.now();
@@ -197,9 +203,16 @@ async function recordTake(options: Options, index: number): Promise<Take> {
   if (gap) take.detail = `log evidence gap: ${gap}`;
   const outcome = parseAutorecordOutcome(lines.join("\n"));
   if (outcome.failed) { take.outcome = "failed"; take.detail = outcome.failed; }
+  const wrongEngine = engineMismatch(lines, options.engine);
+  if (wrongEngine) {
+    take.outcome = "failed";
+    take.detail = wrongEngine;
+  }
   const sample = finalizationSample(lines);
-  if (sample) take.sample = sample;
-  if (!outcome.saved) {
+  // Another engine's timings are not this round's: the take fails and its file goes like a partial's.
+  if (sample && !wrongEngine) take.sample = sample;
+  if (!outcome.saved || wrongEngine) {
+    if (outcome.saved && !options.keep) fs.rmSync(outcome.saved, { force: true });
     // A failed or killed take keeps its partial file (FileWriter.abandon); without this they would pile up on the volume.
     const partials = partialsSince(options.dir, owned.launchedAt);
     if (partials.length) {
@@ -254,7 +267,7 @@ const mb = (bytes: number | undefined): string => bytes === undefined ? "?" : (b
 
 function describeTake(take: Take): string {
   const s = take.sample;
-  const phases = s ? `stop→ready ${s.stopToReadyMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, checkpoint ${s.checkpointMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→ready sample";
+  const phases = s ? `stop→ready ${s.stopToReadyMs ?? "?"} ms, stop→saved ${s.stopToSavedMs} ms (host ${s.hostMs ?? "?"}, writes ${s.writesMs ?? "?"}, flush ${s.flushMs ?? "?"}, finalize ${s.finalizeMs ?? "?"}${s.fragmented ? ` kept fragmented: ${s.fragmented}` : ""}, engine finish ${s.engineFinishMs ?? "—"}, close ${s.closeMs ?? "?"}, publish ${s.publishMs ?? "?"} by ${s.method ?? "?"}, cleanup ${s.cleanupMs ?? "?"}, checkpoint ${s.checkpointMs ?? "?"}, ui ${s.uiMs ?? "?"})` : "no stop→saved sample";
   const media = take.media ? `; ${take.media.durationSeconds?.toFixed(2) ?? "?"} s, video ${take.media.video}, audio ${take.media.audio}, decoded ${take.media.decoded}${take.media.decodeErrors ? `, decode errors: ${take.media.decodeErrors.slice(0, 200)}` : ""}` : "";
   const late = take.timedOut ? `; TIMED OUT, app ${take.timedOut === "forced" ? `killed after ${QUIT_GRACE_MS / 1000} s` : take.timedOut === "quit" ? "quit on SIGTERM" : "already gone"}` : "";
   const partials = take.partials ? `; partial ${take.partials.files.map((file) => path.basename(file)).join(", ")} ${take.partials.removed ? "removed" : "kept (--keep)"}` : "";
@@ -265,14 +278,14 @@ function summary(options: Options, volume: { mount: string; type: string }, take
   const samples = takes.flatMap((take) => take.sample ? [take.sample] : []);
   const pick = (key: keyof FinalizationSample): number[] => samples.flatMap((s) => typeof s[key] === "number" ? [s[key] as number] : []);
   const rows: Array<[string, number[]]> = [
-    ["stop→ready", pick("stopToReadyMs")], ["host handoff", pick("hostMs")], ["queued writes", pick("writesMs")], ["flush", pick("flushMs")],
-    ["close", pick("closeMs")], ["publish", pick("publishMs")], ["cleanup", pick("cleanupMs")], ["checkpoint", pick("checkpointMs")], ["UI settle", pick("uiMs")],
+    ["stop→ready", pick("stopToReadyMs")], ["stop→saved", pick("stopToSavedMs")], ["host handoff", pick("hostMs")], ["queued writes", pick("writesMs")], ["flush", pick("flushMs")],
+    ["finalize", pick("finalizeMs")], ["engine finish", pick("engineFinishMs")], ["close", pick("closeMs")], ["publish", pick("publishMs")], ["cleanup", pick("cleanupMs")], ["checkpoint", pick("checkpointMs")], ["UI settle", pick("uiMs")],
   ];
   const methods = [...new Set(samples.map((s) => s.method ?? "?"))].join(", ") || "—";
   return [
     `# Finalization measurement — ${options.label || "unlabelled"}`,
     "",
-    `- Run: ${new Date().toISOString()}; ${takes.length} take(s) of ${options.seconds} s at ${options.quality} ${options.fps} fps, source resolution`,
+    `- Run: ${new Date().toISOString()}; ${takes.length} take(s) of ${options.seconds} s at ${options.quality} ${options.fps} fps, source resolution, ${options.engine} capture engine`,
     `- Folder: \`${options.dir}\` on ${volume.type} (${volume.mount}); publication method ${methods}`,
     `- Verification: ${options.verify === "full" ? "every take fully decoded" : "first saved take fully decoded; the others' streams, duration and first and last second"}`,
     `- Machine: ${spawnSync("sysctl", ["-n", "machdep.cpu.brand_string"], { encoding: "utf8" }).stdout.trim()}, macOS ${spawnSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).stdout.trim()}; commit ${spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim()}${spawnSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.trim() ? " plus uncommitted changes" : ""}`,

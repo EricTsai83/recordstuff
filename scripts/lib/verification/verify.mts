@@ -715,6 +715,8 @@ export interface CpuFigures {
   encoder?: { present: boolean; averagePercent: number };
   /** This machine's recorded baseline for the same case, for the regression warning. */
   baselinePercent?: number;
+  /** Another engine's baseline for the same case, reported beside it (plan 076 compares native with Chromium). */
+  reference?: { label: string; percent: number };
 }
 
 /**
@@ -1125,6 +1127,10 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
   const cpuNotes: string[] = [];
   if (cpu?.baselinePercent !== undefined && cpu.averagePercent > cpu.baselinePercent * (1 + CPU_BUDGET.regressionFraction)) {
     cpuNotes.push(`More than ${CPU_BUDGET.regressionFraction * 100}% above this machine's baseline of ${cpu.baselinePercent.toFixed(1)}%: investigate`);
+  }
+  if (cpu?.reference) {
+    const change = (cpu.averagePercent / cpu.reference.percent - 1) * 100;
+    cpuNotes.push(`${change >= 0 ? "+" : ""}${change.toFixed(0)}% against ${cpu.reference.label} of ${cpu.reference.percent.toFixed(1)}%`);
   }
   if (cpu?.encoder && !cpu.encoder.present) cpuNotes.push(`${ENCODER_SERVICE} absent: suspect a software-encoding fallback`);
   checks.push({

@@ -37,6 +37,15 @@ describe("finalize timing line", () => {
       .toMatchObject({ method: "copy", linkError: "Operation not supported (os error 45)", cleanupMs: 3, cleanupError: "file is busy (locked)", checkpointMs: 2, bytes: 10 });
   });
 
+  it("reads the finalize phase the recorder logs since plan 076, plain or kept fragmented", () => {
+    const line = (finalize: string) => `recorder: session s9 finalize timing: host 4 ms, writes 0 ms, flush 0 ms, ${finalize}, close 1 ms, publish 2 ms by link, cleanup 0 ms, checkpoint 3 ms; 5000 bytes`;
+    expect(parseFinalizeTiming(line("finalize 21 ms to plain MP4"))).toEqual({
+      session: "s9", hostMs: 4, writesMs: 0, flushMs: 0, finalizeMs: 21, closeMs: 1, publishMs: 2, method: "link", cleanupMs: 0, checkpointMs: 3, bytes: 5000,
+    });
+    expect(parseFinalizeTiming(line("finalize 3 ms kept fragmented (index write failed (EIO))"))).toMatchObject({ finalizeMs: 3, fragmented: "index write failed (EIO)", closeMs: 1 });
+    expect(parseFinalizeTiming(line("finalize ? ms ?"))).toMatchObject({ flushMs: 0, closeMs: 1 });
+  });
+
   it("leaves unknown phases out and ignores other lines", () => {
     expect(parseFinalizeTiming("recorder: session s1 finalize timing: host ? ms, writes 0 ms, flush ? ms, close ? ms, publish ? ms by ?, cleanup ? ms; ? bytes"))
       .toEqual({ session: "s1", writesMs: 0 });
@@ -57,7 +66,7 @@ describe("one run's sample", () => {
 
   it("measures stop to ready from the state lines and keeps the phases", () => {
     expect(finalizationSample(run("/v/a b.mp4"))).toMatchObject({
-      stopToReadyMs: 643, uiMs: 3, path: "/v/a b.mp4", stoppedEarly: false, publishMs: 580, method: "copy",
+      stopToReadyMs: 643, stopToSavedMs: 640, uiMs: 3, path: "/v/a b.mp4", stoppedEarly: false, publishMs: 580, method: "copy",
     });
   });
 
@@ -66,6 +75,20 @@ describe("one run's sample", () => {
     for (const text of Object.values(EARLY_STOP_TEXT)) {
       expect(finalizationSample(run(`/v/a.mp4 (stopped early: ${text})`)), text).toMatchObject({ path: "/v/a.mp4", stoppedEarly: true });
     }
+  });
+
+  it("pairs a stop with a save that comes after idle, as background saves and the native engine do (plan 076)", () => {
+    expect(finalizationSample([
+      "[2026-10-15T10:00:15.000Z] state → stopping",
+      "[2026-10-15T10:00:15.010Z] recorder: session n1 host stopped; tracksStoppedAt=1",
+      "[2026-10-15T10:00:15.011Z] state → idle",
+      "[2026-10-15T10:00:15.030Z] capture host: engine finished 9000 bytes 20 ms after the stop, plain MP4",
+      "[2026-10-15T10:00:15.034Z] recorder: session n1 file finalized /v/n.mp4",
+      "[2026-10-15T10:00:15.034Z] recorder: session n1 finalize timing: host 10 ms, writes 0 ms, flush 0 ms, finalize 19 ms to plain MP4, close 1 ms, publish 2 ms by link, cleanup 0 ms, checkpoint 1 ms; 9000 bytes",
+    ])).toEqual({
+      session: "n1", hostMs: 10, writesMs: 0, flushMs: 0, finalizeMs: 19, closeMs: 1, publishMs: 2, method: "link", cleanupMs: 0, checkpointMs: 1, bytes: 9000,
+      stopToReadyMs: 11, stopToSavedMs: 34, engineFinishMs: 20, path: "/v/n.mp4", stoppedEarly: false,
+    });
   });
 
   it("has no sample when the stop ended in a failure", () => {

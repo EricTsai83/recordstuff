@@ -23,8 +23,9 @@ describe("controlled acceptance instrumentation", () => {
     expect(instrumented).toContain("defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
     expect(instrumented).toContain("  const recorder = new Recorder({\n    host: controlled.host(host),\n");
     expect(instrumented).toContain(": controlled.openWriter(recordingPath, finalPath),");
-    // The faults wrap the hidden renderer's FileWriter, so the controlled build records through it (plan 076 step 5).
-    expect(instrumented).toContain('captureEngine(process.platform, { RECORDSTUFF_CAPTURE_ENGINE: "chromium" })');
+    // Both engines' writers carry the faults (plan 076): the engine the app records through is the production choice.
+    expect(instrumented).toContain("? controlled.openEngineWriter(recordingPath, finalPath, (file) => nativeHost.fileOutcome(file))");
+    expect(instrumented).toContain("const engine = captureEngine(process.platform, process.env);");
     expect(instrumented).toContain("publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {");
     expect(instrumented).toContain('notify: code => permissionNotices.failed(code),');
     expect(instrumented).toContain('failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),');

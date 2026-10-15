@@ -5,9 +5,9 @@
 export const FAULT_MODES = {
   /** Holds each failure's settled result, so its pending result stays until released. */
   cleanup: ["off", "hold"],
-  /** Fails the next write to a recording file that already holds data, once. */
+  /** Fails the next write to a recording file that already holds data, once; with the native engine, its next progress. */
   write: ["off", "eio", "enospc"],
-  /** Fails the next close of a recording file after it really closed, once. */
+  /** Fails the next close of a recording file after it really closed, once; with the native engine, its finished file. */
   close: ["off", "fail"],
   /** Holds or rejects failure-history saves until changed. */
   "history-save": ["off", "hold", "fail"],
