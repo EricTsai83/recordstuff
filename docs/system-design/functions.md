@@ -41,7 +41,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | --- | --- |
 | createActionHandler | Bind the collaborators once and return the handler |
 | handler: quit gate | While a quit runs, answer false to every action but quit, touching nothing |
-| handler: preferences | Each `set…` action through `savePreference` with its lock: display, update checks, notifications, file name, countdown, countdown sound and quality need a settled recorder; tray click, library layout, appearance and language do not; the shortcut goes through `AppShortcuts.set` |
+| handler: preferences | Each `set…` action through `savePreference` with its lock: display, hiding the menu bar and Dock (macOS only), update checks, notifications, file name, countdown, countdown sound and quality need a settled recorder; tray click, library layout, appearance and language do not; the shortcut goes through `AppShortcuts.set` |
 | handler: commands | Open a Settings tab, a link, the output folder, the log or System Settings; start, stop or cancel; quit or relaunch; clear app data. Each answers the outcome the Settings row reads; a raced update click while recording answers true and opens nothing |
 
 ## Display selection

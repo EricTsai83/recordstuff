@@ -1,5 +1,5 @@
 /**
- * The native engine's capture host (plan 076, behind D7's `RECORDSTUFF_CAPTURE_ENGINE=native`): the entry of the
+ * The native engine's capture host (plan 076; which engine records is capture-engine.ts's): the entry of the
  * Electron `utilityProcess` main forks for each attempt (native-capture-host.ts). It loads the Rust engine
  * (native/capture), whose path is its first argument, and speaks the hidden renderer host's protocol over the parent
  * port: `start` prepares capture into the file main created and answers `prepared`, `record` answers `started`, `stop`

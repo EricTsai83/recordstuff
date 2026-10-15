@@ -33,11 +33,11 @@ const buildRecord = (target: "main" | "preload" | "renderer"): Plugin => ({
 
 /**
  * Plan 076's native capture engine (native/capture), built with Cargo before main and copied to
- * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. While the engine is a
- * prototype behind `RECORDSTUFF_CAPTURE_ENGINE=native` it is built on macOS, and on Windows only with
- * `RECORDSTUFF_BUILD_NATIVE=1` (plan 076, step 3: CI's native job builds and tests it; the Windows check and release
- * builds take it up in step 6). A machine without Rust skips it with a warning, and the flag then fails at start with
- * the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose.
+ * `out/native/recordstuff-capture.node`, which packaging unpacks from the asar archive. It is built on macOS, where it
+ * records (capture-engine.ts), and on Windows only with `RECORDSTUFF_BUILD_NATIVE=1` (plan 076, step 3: CI's native
+ * job builds and tests it; the Windows check and release builds take it up in step 6). A machine without Rust skips it
+ * with a warning, and a native recording then fails at start with the load error. `RECORDSTUFF_SKIP_NATIVE=1` skips it
+ * on purpose.
  */
 const nativeEngine = (): Plugin => {
   const manifest = resolve(__dirname, "native/capture/Cargo.toml");
@@ -56,7 +56,7 @@ const nativeEngine = (): Plugin => {
         built = true;
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-        this.warn("cargo was not found: the native capture engine was not built (needed only for RECORDSTUFF_CAPTURE_ENGINE=native)");
+        this.warn("cargo was not found: the native capture engine was not built, so recording on macOS fails until Rust is installed");
       }
     },
     writeBundle(options) {

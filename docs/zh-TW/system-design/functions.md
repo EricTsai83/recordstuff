@@ -41,7 +41,7 @@
 | --- | --- |
 | `createActionHandler(deps)` | 綁定協作者一次，回傳 handler |
 | handler：結束閘門 | 結束進行中時，除了 quit 以外的每個 action 都回 false，且不觸碰任何東西 |
-| handler：偏好設定 | 每個 `set…` action 都經 `savePreference` 並帶著自己的鎖：螢幕、更新檢查、通知、檔名、倒數、倒數音效與品質需要 recorder 已 settle；tray 點擊、錄影檔版面、外觀與語言不需要；快捷鍵經 `AppShortcuts.set` |
+| handler：偏好設定 | 每個 `set…` action 都經 `savePreference` 並帶著自己的鎖：螢幕、隱藏選單列與 Dock（僅 macOS）、更新檢查、通知、檔名、倒數、倒數音效與品質需要 recorder 已 settle；tray 點擊、錄影檔版面、外觀與語言不需要；快捷鍵經 `AppShortcuts.set` |
 | handler：指令 | 開啟設定分頁、連結、輸出資料夾、log 或系統設定；開始、停止或取消；結束或重新啟動；清除 App 資料。每個都回傳設定列要讀的結果；錄影中搶先按下的更新連結回 true 且不開啟任何東西 |
 
 ## 螢幕選擇

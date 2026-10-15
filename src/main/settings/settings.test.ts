@@ -165,7 +165,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -247,7 +247,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -267,7 +267,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -321,7 +321,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -421,7 +421,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -687,6 +687,30 @@ describe("countdown sound (plan 046)", () => {
     expect(store().countdownSound).toBe(true);
     await expect(first.setCountdownSound("off" as never)).rejects.toThrow("unsupported countdown sound");
     expect(store().countdownSound).toBe(true);
+  });
+});
+
+describe("hide menu bar and Dock (plan 076, D6)", () => {
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("reads a file written before the field existed as off, silently, so an update records what it did before", () => {
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { hideSystemUi: false }, warnings: [] });
+    expect(new SettingsStore({ filePath: path.join(dir, "missing.json"), defaultOutputDir: DEFAULT }).hideSystemUi).toBe(false);
+  });
+
+  it.each(["on", 1, null])("reads a non-boolean %j as off with a warning", (hideSystemUi) => {
+    expect(parseSettings(JSON.stringify({ ...current, hideSystemUi }))).toMatchObject({
+      settings: { hideSystemUi: false, outputDir: "/a" }, warnings: ["hideSystemUi is not a boolean: using off"],
+    });
+  });
+
+  it("saves the switch with the other fields, and refuses a non-boolean", async () => {
+    const first = store();
+    await first.setHideSystemUi(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, hideSystemUi: true });
+    expect(store().hideSystemUi).toBe(true);
+    await expect(first.setHideSystemUi("off" as never)).rejects.toThrow("unsupported hide system UI");
+    expect(store().hideSystemUi).toBe(true);
   });
 });
 

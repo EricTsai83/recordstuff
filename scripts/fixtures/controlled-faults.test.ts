@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ControlledFaults } from "./controlled-faults";
 import { Recorder } from "../../src/main/recording/recorder";
 import { RecordingResults } from "../../src/main/recording/recording-result";
@@ -55,6 +55,14 @@ describe("controlled acceptance faults", () => {
     expect(faults.faults.close).toBe("off");
     await expect(fs.access(final)).rejects.toThrow();
     expect([...await fs.readFile(partial)]).toEqual([8, 9]);
+  });
+
+  it("passes the recording's path through to the capture host, which the native engine needs", async () => {
+    const faults = new ControlledFaults();
+    const start = vi.fn(async () => {});
+    const host = faults.host({ start, record: () => undefined, stop: () => undefined, onMessage: () => undefined, onFailure: () => undefined });
+    await host.start("A", DEFAULT_QUALITY, "/tmp/A.recording.mp4");
+    expect(start).toHaveBeenCalledWith("A", DEFAULT_QUALITY, "/tmp/A.recording.mp4");
   });
 
   it("keeps a real Recorder failure pending in the history until the held cleanup is released", async () => {

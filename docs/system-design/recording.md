@@ -4,6 +4,8 @@
 
 Sources: [Recorder](../../src/main/recording/recorder.ts), [renderer CaptureHost](../../src/renderer/capture/capture-host.ts), [FileWriter](../../src/main/recording/file-writer.ts), [health thresholds](../../src/main/recording/recording-health.ts), [countdown values](../../src/shared/countdown.ts), [session sentinels](../../src/main/recording/session-sentinel.ts), [quality](../../src/shared/quality.ts).
 
+Which engine records ([capture-engine.ts](../../src/main/recording/capture-engine.ts), plan 076 step 5, 2026-10-15): on macOS the native engine, a `utilityProcess` running the Rust module (`native/capture`) that captures with ScreenCaptureKit, leaves RecordStuff's own windows out of every recording (those opened after the start included) and writes the file itself; `RECORDSTUFF_CAPTURE_ENGINE=chromium` brings back the hidden capture renderer for side-by-side comparison until the native engine passes acceptance (D7). Windows records through the hidden renderer until its builds carry the module (step 6); `=native` opts in there. The sections below still describe the hidden renderer's path; they are rewritten when plan 076 closes.
+
 ## State and user actions
 
 ```mermaid

@@ -75,7 +75,7 @@ function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
@@ -84,7 +84,7 @@ const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
-  screen: "source", outputFolder: "source", fileName: "source",
+  screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
@@ -218,6 +218,22 @@ function countdownCancelText(ctx: AppContext, shortcutWorks: boolean): string {
   return t(mac
     ? shortcutWorks ? "Click the menu bar icon or press the shortcut to cancel." : "Click the menu bar icon to cancel."
     : shortcutWorks ? "Click the system tray icon or press the shortcut to cancel." : "Click the system tray icon to cancel.", ctx.language);
+}
+
+/**
+ * D6 (plan 076): ScreenCaptureKit leaves the menu bar, the Dock, desktop icons and widgets out of the recording while
+ * the user still sees them, so a menu one opens still records: it is that app's window. Windows.Graphics.Capture cannot
+ * leave the taskbar out, so there the switch is shown unavailable with why, rather than missing.
+ */
+function hideSystemUiGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  if (ctx.platform !== "darwin") {
+    return { ...group("hideSystemUi", t("Hide taskbar", language), false, switchChoices(language, false, (value) => ({ setHideSystemUi: value }))),
+      note: t("Windows cannot leave the taskbar out of a recording.", language) };
+  }
+  return { ...group("hideSystemUi", t("Hide menu bar and Dock", language), enabled,
+    switchChoices(language, ctx.hideSystemUi ?? false, (value) => ({ setHideSystemUi: value }))),
+  info: t("Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.", language) };
 }
 
 /**
@@ -477,6 +493,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
   const unlocked = preferencesUnlocked(state);
   return [
     screenGroup(ctx, unlocked),
+    hideSystemUiGroup(ctx, unlocked),
     outputFolderGroup(ctx, unlocked),
     fileNameGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),

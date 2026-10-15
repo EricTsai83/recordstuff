@@ -32,6 +32,10 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
   source = replaceOnce(source, "let appLanguage: () => Language = () => DEFAULT_LANGUAGE;",
     `import { configureControlled } from "../../scripts/fixtures/controlled-acceptance";\n` +
     `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;`);
+  // The write and close faults wrap the hidden renderer's FileWriter, so the controlled build records through it on
+  // every platform; the native engine's own writer gets its faults when plan 076 step 7 adapts these tools.
+  source = replaceOnce(source, "  const engine = captureEngine(process.platform, process.env);",
+    "  const engine = captureEngine(process.platform, { RECORDSTUFF_CAPTURE_ENGINE: \"chromium\" });");
   source = replaceOnce(source, "defaultOutputDir: defaultOutputDir(),", "defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
   source = replaceOnce(source, "  const recorder = new Recorder({\n    host,\n", "  const recorder = new Recorder({\n    host: controlled.host(host),\n");
   source = replaceOnce(source, "      : FileWriter.open(recordingPath, finalPath),", "      : controlled.openWriter(recordingPath, finalPath),");

@@ -95,7 +95,7 @@ export class ControlledFaults {
    */
   host(inner: RecorderHost): RecorderHost {
     return {
-      start: (sessionId, quality) => inner.start(sessionId, quality),
+      start: (sessionId, quality, recordingPath) => inner.start(sessionId, quality, recordingPath),
       record: sessionId => inner.record(sessionId),
       stop: sessionId => inner.stop(sessionId),
       onFailure: listener => inner.onFailure(listener),

@@ -73,6 +73,7 @@ describe("settingsView", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
+      "hideSystemUi",
       "outputFolder",
       "fileName",
       "countdown",
@@ -104,6 +105,7 @@ describe("settingsView", () => {
     }
     expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "countdownSound")).toBe("on");
+    expect(checked(idle, context, "hideSystemUi")).toBe("off");
     expect(checked(idle, context, "videoQuality")).toBe("standard");
     expect(checked(idle, context, "resolutionCap")).toBe("source");
     expect(checked(idle, context, "frameRate")).toBe("30");
@@ -113,6 +115,27 @@ describe("settingsView", () => {
     // A context without the choice is an app from before it: the click that records.
     expect(checked(idle, context, "trayClick")).toBe("record");
     expect(checked(idle, { ...context, trayClick: "menu" }, "trayClick")).toBe("menu");
+  });
+
+  it("offers hiding the menu bar and Dock on macOS, locked while recording, and shows why Windows cannot (plan 076, D6)", () => {
+    const row = group(idle, context, "hideSystemUi")!;
+    expect(row).toMatchObject({ label: "Hide menu bar and Dock", control: "switch", tab: "recording", section: "source", enabled: true });
+    expect(row.info).toBe("Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.");
+    expect(checked(idle, { ...context, hideSystemUi: true }, "hideSystemUi")).toBe("on");
+    expect(settingsAction(idle, context, "hideSystemUi", "on")).toEqual({ setHideSystemUi: true });
+    expect(settingsAction(idle, { ...context, hideSystemUi: true }, "hideSystemUi", "off")).toEqual({ setHideSystemUi: false });
+    for (const state of busy) {
+      expect(group(state, context, "hideSystemUi")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, context, "hideSystemUi", "on"), state.type).toBeUndefined();
+    }
+    expect(group(idle, { ...context, language: "zh-TW" }, "hideSystemUi")?.label).toBe("隱藏選單列與 Dock");
+
+    const windows = { ...context, platform: "win32" as const, hideSystemUi: true };
+    expect(group(idle, windows, "hideSystemUi")).toMatchObject({ label: "Hide taskbar", enabled: false,
+      note: "Windows cannot leave the taskbar out of a recording." });
+    expect(checked(idle, windows, "hideSystemUi")).toBe("off");
+    expect(settingsAction(idle, windows, "hideSystemUi", "on")).toBeUndefined();
+    expect(group(idle, { ...windows, language: "zh-TW" }, "hideSystemUi")?.note).toBe("Windows 無法把工作列排除在錄影之外。");
   });
 
   it("never leaks an action to the renderer", () => {
@@ -170,7 +193,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "countdown", "countdown", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "countdown", "countdown", "video", "video", "video"]);
   });
 });
 
@@ -295,7 +318,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "outputFolder", "fileName", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -485,7 +508,7 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],

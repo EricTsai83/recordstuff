@@ -37,6 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import { CaptureHost } from "./recording/capture-host";
 import { NativeCaptureHost } from "./recording/native-capture-host";
+import { captureEngine } from "./recording/capture-engine";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -252,7 +253,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // ahead of time, which then idles. With the native engine nothing else uses the session until a window opens, so the
   // protocol is registered as the first window is made, before it loads anything (plan 076, step 4).
   const registerMedia = (): void => protocol.handle(MEDIA_SCHEME, request => library.handle(request));
-  if (process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native") app.once("browser-window-created", registerMedia);
+  const engine = captureEngine(process.platform, process.env);
+  if (engine === "native") app.once("browser-window-created", registerMedia);
   else registerMedia();
   appLanguage = () => settings.language;
   log(
@@ -291,10 +293,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     changed: () => refreshUi(),
     log,
   });
-  // Plan 076's prototype engine, behind D7's development flag until it replaces the hidden capture renderer: a
-  // `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit (macOS) or Windows.Graphics.Capture
-  // (Windows) and writes the file itself.
-  const nativeEngine = (process.platform === "darwin" || process.platform === "win32") && process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native";
+  // Plan 076's native engine (capture-engine.ts): a `utilityProcess` running the Rust engine, which captures with
+  // ScreenCaptureKit (macOS) or Windows.Graphics.Capture (Windows) and writes the file itself. It leaves RecordStuff's
+  // own windows out of every recording, those opened after the start included (075's D14).
+  const nativeEngine = engine === "native";
   const excludeWindowsFromCapture = captureExclusion<BrowserWindow>({
     windows: () => BrowserWindow.getAllWindows(),
     onCreated: (listener) => {
@@ -303,7 +305,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return () => app.removeListener("browser-window-created", created);
     },
   });
-  log(`capture engine: ${nativeEngine ? "native (RECORDSTUFF_CAPTURE_ENGINE=native)" : "chromium"}`);
+  log(`capture engine: ${engine}${process.env["RECORDSTUFF_CAPTURE_ENGINE"] ? ` (RECORDSTUFF_CAPTURE_ENGINE=${process.env["RECORDSTUFF_CAPTURE_ENGINE"]})` : ""}`);
   // Only the hidden capture renderer asks Chromium for the display. The native engine leaves the default session
   // untouched: using it at launch makes Electron start a renderer ahead of time, which then idles (plan 076, step 4).
   if (!nativeEngine) session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
@@ -325,7 +327,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     resolveDisplay: () => new Promise((resolve) => displayMedia.answer(() => true, (source) => resolve(source?.display_id || undefined))),
     // Main first: the engine takes its bundle identifier as the prefix of RecordStuff's helpers.
     ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
-    hideSystemUi: () => process.env["RECORDSTUFF_HIDE_SYSTEM_UI"] === "1",
+    // D6: only ScreenCaptureKit can leave the system's chrome out.
+    hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
     ...(process.platform === "win32" ? {
       // The engine finds the display by the physical point at its centre: Electron's ids name no monitor there.
       displayPoint: (displayId: string) => {
@@ -465,7 +468,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
-    displays: displays(), display: settings.display, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     platform: process.platform,
     outputDir: settings.outputDir,
     homeDir: os.homedir(),

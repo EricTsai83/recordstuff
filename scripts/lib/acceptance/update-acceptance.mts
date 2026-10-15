@@ -59,7 +59,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | { lockedChoices: readonly string[] };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
@@ -97,7 +97,9 @@ export function assertLockContract(s: LockSnapshot): void {
     const available = policy !== "locked";
     // Turning the countdown off disables its sound control even when idle.
     const countdownOff = s.settings.groups.find(g => g.id === "countdown")?.choices.some(c => c.checked && c.id === "0");
-    const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff);
+    // Hide taskbar on Windows is unavailable at all times, and says why in its note (plan 076, D6).
+    const unavailable = group.id === "hideSystemUi" && group.note !== undefined;
+    const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !unavailable;
     assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group; a partly locked one locks exactly its listed choices.
     if (available) for (const choice of [...group.choices, ...group.actions ?? []]) {
