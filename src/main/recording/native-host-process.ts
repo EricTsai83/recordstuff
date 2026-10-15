@@ -3,8 +3,9 @@
  * Electron `utilityProcess` main forks for each attempt (native-capture-host.ts). It loads the Rust engine
  * (native/capture), whose path is its first argument, and speaks the hidden renderer host's protocol over the parent
  * port: `start` prepares capture into the file main created and answers `prepared`, `record` answers `started`, `stop`
- * answers `stopped` once the file is finished. The engine writes the file; instead of chunks the host reports
- * `progress` (bytes written while media arrives) and `writeError`. A crash in native code ends this process only;
+ * answers `stopped` once capture has ended and then `finished` once the file is (or `writeError`), so a slow volume's
+ * save is no part of the stop. The engine writes the file; instead of chunks the host reports `progress` (bytes written
+ * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
 import { OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type NativeStart } from "../../shared/protocol";
@@ -17,19 +18,28 @@ interface PreparedInfo {
   /** Where the engine's prepare spent its time. */
   timings?: string;
 }
-interface StopReport {
-  bytes: number; fragmented?: string | null; finalizeMs: number; drainMs?: number; drainPaddedFrames?: number;
-  frameLeadAvgMs?: number; frameLeadMaxMs?: number;
-}
+interface StopReport { drainMs?: number; drainPaddedFrames?: number; frameLeadAvgMs?: number; frameLeadMaxMs?: number; lateAudioFrames?: number[] }
+interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string }
+/** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
+export interface CaptureSource {
+  kind: "display" | "window" | "area" | "apps";
+  windowId?: number;
+  area?: { x: number; y: number; width: number; height: number };
+  pids?: number[];
+}
+/** Whose sound the track holds; the microphone is 074's. */
+export interface AudioOptions { system: "all" | "apps" | "off"; pids?: number[]; microphone: boolean; microphoneId?: string }
 interface NativeCapture {
-  probe(displayId: number, displayPoint?: { x: number; y: number }): Promise<ProbeResult>;
+  probe(displayId: number, displayPoint?: { x: number; y: number }, source?: CaptureSource): Promise<ProbeResult>;
   prepare(options: {
     displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
+    source?: CaptureSource; audio?: AudioOptions;
   }): Promise<PreparedInfo>;
   record(): void;
   stop(): Promise<StopReport>;
+  finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
@@ -42,6 +52,30 @@ export interface ParentPort {
 
 const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "mp4_unsupported", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
+
+const NUMBER_LIST = /^\d+(,\d+)*$/;
+const numbers = (text: string): number[] => text.split(",").map(Number);
+
+/**
+ * Step 4's development switches, until a later plan's pickers choose: `RECORDSTUFF_CAPTURE_SOURCE` is `window:<id>`,
+ * `area:<x>,<y>,<width>,<height>` (the display's pixels) or `apps:<pid>,…`, and `RECORDSTUFF_CAPTURE_AUDIO` is `off`
+ * or `apps:<pid>,…`. Anything else, or nothing, records as today. The microphone has no switch: macOS ends a signed
+ * RecordStuff that opens one before 074 declares its use.
+ */
+export function developmentCapture(env: Record<string, string | undefined>): { source?: CaptureSource; audio?: AudioOptions } {
+  const result: { source?: CaptureSource; audio?: AudioOptions } = {};
+  const [kind, value = ""] = (env["RECORDSTUFF_CAPTURE_SOURCE"] ?? "").split(":", 2);
+  if (kind === "window" && /^\d+$/.test(value)) result.source = { kind: "window", windowId: Number(value) };
+  if (kind === "area" && NUMBER_LIST.test(value) && numbers(value).length === 4) {
+    const [x, y, width, height] = numbers(value) as [number, number, number, number];
+    result.source = { kind: "area", area: { x, y, width, height } };
+  }
+  if (kind === "apps" && NUMBER_LIST.test(value)) result.source = { kind: "apps", pids: numbers(value) };
+  const [audio, pids = ""] = (env["RECORDSTUFF_CAPTURE_AUDIO"] ?? "").split(":", 2);
+  if (audio === "off") result.audio = { system: "off", microphone: false };
+  if (audio === "apps" && NUMBER_LIST.test(pids)) result.audio = { system: "apps", pids: numbers(pids), microphone: false };
+  return result;
+}
 
 /** The engine rejects with `code|detail`. */
 export function engineFailure(cause: unknown): { code: string; detail: string } {
@@ -61,6 +95,7 @@ export class NativeHost {
     /** A line for main's log: the host's stdout reaches it as `capture host: …`. */
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
+    private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
     port.on("message", ({ data }) => this.handle(data));
@@ -105,7 +140,11 @@ export class NativeHost {
     try {
       const began = this.now();
       // napi-rs reads an absent optional object as None and refuses null, so the point is left out on macOS.
-      const source = await this.capture.probe(native.displayId, native.displayPoint);
+      const { source: chosen, audio } = this.development;
+      if (chosen || audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
+      const source = chosen
+        ? await this.capture.probe(native.displayId, native.displayPoint, chosen)
+        : await this.capture.probe(native.displayId, native.displayPoint);
       const probed = this.now();
       const size = fitWithinCap(source, quality.resolutionCap);
       const videoBps = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality);
@@ -113,6 +152,7 @@ export class NativeHost {
         displayId: native.displayId, ...(native.displayPoint ? { displayPoint: native.displayPoint } : {}), width: size.width, height: size.height, frameRate: quality.frameRate,
         videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
+        ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
       });
       this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
         `${prepared.timings ? ` (${prepared.timings})` : ""}`);
@@ -182,20 +222,30 @@ export class NativeHost {
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return;
     }
+    let stopped: StopReport;
+    const began = this.now();
     try {
-      const began = this.now();
-      const report = await this.capture.stop();
-      this.log(`timing: stop ${Math.round(this.now() - began)} ms (sound up to the stop ${Math.round(report.drainMs ?? 0)} ms, ` +
-        `${report.drainPaddedFrames ?? 0} frame(s) filled with silence; file ${Math.round(report.finalizeMs)} ms; ` +
-        `frames stamped ${(report.frameLeadAvgMs ?? 0).toFixed(1)} ms ahead on average, ${(report.frameLeadMaxMs ?? 0).toFixed(1)} ms at most)`);
-      this.session = undefined;
-      this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now(),
-        file: { bytes: report.bytes, finalizeMs: report.finalizeMs, ...(report.fragmented ? { fragmented: report.fragmented } : {}) } });
+      stopped = await this.capture.stop();
     } catch (cause) {
       this.session = undefined;
+      this.fail(sessionId, "capture_failed", engineFailure(cause).detail);
+      return;
+    }
+    this.log(`timing: stop ${Math.round(this.now() - began)} ms (sound up to the stop ${Math.round(stopped.drainMs ?? 0)} ms, ` +
+      `${stopped.drainPaddedFrames ?? 0} frame(s) filled with silence; ` +
+      `frames stamped ${(stopped.frameLeadAvgMs ?? 0).toFixed(1)} ms ahead on average, ${(stopped.frameLeadMaxMs ?? 0).toFixed(1)} ms at most` +
+      `${stopped.lateAudioFrames?.some((frames) => frames > 0) ? `; audio frames too late to mix, by input: ${stopped.lateAudioFrames.join(", ")}` : ""})`);
+    // Engine events after this are the file's, which `finish` answers for.
+    this.session = undefined;
+    this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
+    try {
+      const file = await this.capture.finish();
+      this.log(`timing: file finished ${Math.round(file.finalizeMs)} ms after the stop`);
+      this.send({ type: "finished", sessionId,
+        file: { bytes: file.bytes, finalizeMs: file.finalizeMs, ...(file.fragmented ? { fragmented: file.fragmented } : {}) } });
+    } catch (cause) {
       const { code, detail } = engineFailure(cause);
-      if (WRITE_CODES.includes(code)) this.send({ type: "writeError", sessionId, code: code as "disk_full" | "output_write_failed", detail });
-      else this.fail(sessionId, "capture_failed", detail);
+      this.send({ type: "writeError", sessionId, code: WRITE_CODES.includes(code) ? code as "disk_full" | "output_write_failed" : "output_write_failed", detail });
     }
   }
 
@@ -229,7 +279,7 @@ if (parentPort) {
     if (!addonPath) throw new Error("no engine path was given");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const engine = require(addonPath) as EngineModule;
-    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent));
+    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env));
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
     console.error(`native capture host: the engine could not be loaded from ${addonPath ?? "?"}: ${cause instanceof Error ? cause.message : String(cause)}`);

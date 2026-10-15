@@ -19,8 +19,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod mixer;
+
 use crate::pacing::Pacer;
-use crate::timing::{AudioAligner, NANOS_PER_SECOND};
+use crate::timing::NANOS_PER_SECOND;
+use mixer::Mixer;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 
 const PREPARED: u8 = 0;
@@ -33,6 +36,8 @@ pub const SAMPLE_RATE: u32 = 48_000;
 pub const CHANNELS: u32 = 2;
 /// 10 ms: how far an audio buffer's time may disagree with the sample count before it is corrected.
 const AUDIO_TOLERANCE_FRAMES: u64 = 480;
+/// 500 ms: how far behind the clock the audio track may wait for an input that delivers nothing (see mixer.rs).
+const MIX_LATENCY_FRAMES: u64 = 24_000;
 /// While the screen stays still, the last frame is encoded again this often.
 const REFRESH_NS: u64 = NANOS_PER_SECOND;
 /// How long `stop` waits for the sound up to the stop; what has not come by then is silence.
@@ -98,6 +103,54 @@ pub trait Platform: 'static {
     fn now_ns() -> u64;
 }
 
+/// What the recording's picture shows (plan 076, step 4: the engine and its tests; the pickers are a later plan).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// The whole display, without RecordStuff's windows: today's recording.
+    Display,
+    /// One window wherever it is on the display, even when covered: its CGWindowID on macOS, its HWND on Windows.
+    Window(u64),
+    /// Part of the display, in its pixels from its top-left corner.
+    Area { x: u32, y: u32, width: u32, height: u32 },
+    /// The display showing only these processes' windows (macOS; Windows.Graphics.Capture cannot).
+    Apps(Vec<i32>),
+}
+
+/// Whose sound the system part of the track holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SystemAudio {
+    /// Everything the system plays except RecordStuff: today's recording.
+    All,
+    /// Only these processes' sound (with their children on Windows).
+    Apps(Vec<i32>),
+    Off,
+}
+
+/// The track's inputs besides the picture's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AudioRequest {
+    pub system: SystemAudio,
+    /// The microphone mixed into the track (074): `Some(None)` is the system's default input, `Some(Some(id))` a
+    /// device `microphones` listed.
+    pub microphone: Option<Option<String>>,
+}
+
+impl Default for AudioRequest {
+    fn default() -> Self {
+        Self { system: SystemAudio::All, microphone: None }
+    }
+}
+
+/// An audio input device, for choosing the microphone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Microphone {
+    /// Stable across launches: AVCaptureDevice's unique ID, the endpoint ID on Windows.
+    pub id: String,
+    pub name: String,
+    /// Whether it is the system's default input now.
+    pub default: bool,
+}
+
 pub struct PrepareRequest {
     pub display_id: u32,
     /// A point on the display in physical screen pixels: how Windows finds it (Electron's display ids name no
@@ -112,6 +165,8 @@ pub struct PrepareRequest {
     pub own_pids: Vec<i32>,
     pub hide_system_ui: bool,
     pub path: PathBuf,
+    pub source: Source,
+    pub audio: AudioRequest,
 }
 
 pub struct Prepared {
@@ -127,15 +182,50 @@ pub struct Prepared {
     pub timings: String,
 }
 
+/// What `end` reports once capture has stopped: the file is still being finished (see `Finishing`).
 pub struct Stopped {
-    pub bytes: u64,
-    pub fragmented: Option<String>,
-    pub finalize_ms: f64,
     /// How long the sound up to the stop took to arrive, and how much of it was filled with silence.
     pub drain_ms: f64,
     pub drain_padded_frames: u64,
     /// How far ahead of the host clock frames were stamped when handed over, on average and at most.
     pub frame_lead_ms: (f64, f64),
+    /// Frames each audio input delivered too late to be mixed (see mixer.rs).
+    pub late_audio_frames: Vec<u64>,
+}
+
+/// The finished file.
+#[derive(Debug)]
+pub struct Finished {
+    pub bytes: u64,
+    /// Why the file stayed fragmented, when it did.
+    pub fragmented: Option<String>,
+    pub finalize_ms: f64,
+}
+
+type FinishOutcome = std::sync::mpsc::Receiver<Result<crate::mux::mp4::FinishReport, WriteFailure>>;
+
+/// The writer making the file plain after capture stopped, which can outlast any stop deadline on a slow volume.
+pub struct Finishing {
+    /// The writer's answer and its thread; None when nothing was recorded.
+    outcome: Option<(FinishOutcome, Option<JoinHandle<()>>)>,
+    began: Instant,
+}
+
+impl Finishing {
+    /// Blocks until the file is plain or why it is not is known.
+    pub fn wait(self) -> Result<Finished, WriteFailure> {
+        let Some((result, thread)) = self.outcome else {
+            return Ok(Finished { bytes: 0, fragmented: None, finalize_ms: 0.0 });
+        };
+        let outcome = result
+            .recv_timeout(FINISH_TIMEOUT)
+            .map_err(|_| WriteFailure { code: "output_write_failed", detail: "finishing the file did not complete within 120 s".into() })?;
+        if let Some(thread) = thread {
+            let _ = thread.join();
+        }
+        let report = outcome?;
+        Ok(Finished { bytes: report.bytes, fragmented: report.fragmented, finalize_ms: self.began.elapsed().as_secs_f64() * 1000.0 })
+    }
 }
 
 struct VideoState<P: Platform> {
@@ -152,15 +242,34 @@ struct VideoState<P: Platform> {
 
 struct AudioState<A> {
     encoder: Option<A>,
-    aligner: Option<AudioAligner>,
+    /// Made at `record`, when the track's start is known.
+    mixer: Option<Mixer>,
+    /// How many inputs the platform feeds: system audio, chosen apps' audio, the microphone.
+    inputs: usize,
     priming: u32,
     scratch: Vec<f32>,
 }
 
-impl<A> AudioState<A> {
+impl<A: AudioEncode> AudioState<A> {
     /// Changes the cutoff; taking `&mut self` means the audio lock is held.
     fn audio_target_set(&mut self, target: &AtomicU64, frames: u64) {
         target.store(frames, Ordering::Release);
+    }
+
+    /// Mixes the track up to `until` into the encoder; returns the packets it made.
+    fn advance(&mut self, until: u64) -> Result<Vec<Vec<u8>>, String> {
+        let mut packets = Vec::new();
+        let (Some(mixer), Some(encoder)) = (self.mixer.as_mut(), self.encoder.as_mut()) else { return Ok(packets) };
+        if mixer.mix(until, &mut self.scratch) == 0 {
+            return Ok(packets);
+        }
+        encoder.push(&self.scratch);
+        encoder.drain(&mut |packet| packets.push(packet))?;
+        Ok(packets)
+    }
+
+    fn mixed(&self) -> u64 {
+        self.mixer.as_ref().map_or(0, Mixer::mixed)
     }
 }
 
@@ -216,7 +325,7 @@ impl<P: Platform> Shared<P> {
         let mut guard = self.video.lock().unwrap();
         let video = &mut *guard;
         let phase = self.phase.load(Ordering::Acquire);
-        let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts <= self.stop_ns.load(Ordering::Acquire);
+        let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
         let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
         video.pending = eligible && !wanted && video.pacer.is_some();
         if wanted {
@@ -238,39 +347,45 @@ impl<P: Platform> Shared<P> {
         matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
     }
 
-    /// `frames` frames of sound captured at `pts` host time; `sample(frame, channel)` reads one, channel 0 or 1.
-    pub fn sound(&self, pts: u64, frames: usize, sample: impl Fn(usize, usize) -> f32) -> Result<(), String> {
+    /// `frames` frames of `input`'s sound captured at `pts` host time; `sample(frame, channel)` reads one, channel 0
+    /// or 1 (a mono input gives the same sample for both). Inputs are numbered from 0 in the order the platform told
+    /// `Core::new` it has them.
+    pub fn sound(&self, input: usize, pts: u64, frames: usize, sample: impl Fn(usize, usize) -> f32) -> Result<(), String> {
         if !self.wants_sound() || frames == 0 {
             return Ok(());
         }
         let mut guard = self.audio.lock().unwrap();
         let audio = &mut *guard;
-        let t0 = self.t0_ns.load(Ordering::Acquire);
-        // Input frame n is what played at t0 + n / rate; the file's edit list skips the encoder's priming, so sound at
-        // presentation time t is what played at t0 + t.
-        let aligner = audio.aligner.get_or_insert_with(|| AudioAligner::new(SAMPLE_RATE, t0, AUDIO_TOLERANCE_FRAMES));
-        let placement = aligner.place(pts, frames as u64);
-        let Some(encoder) = audio.encoder.as_mut() else { return Ok(()) };
         // After `stop`, sound only up to it: the track ends where the video does. `audio_target` is only changed under
         // this lock, so a buffer is cut by the target in force while it is placed.
-        let room = self.audio_target.load(Ordering::Acquire).saturating_sub(encoder.frames_in());
-        let silence = placement.silence.min(room);
-        encoder.push_silence(silence as usize);
-        let start = (placement.skip as usize).min(frames);
-        let end = start + ((frames - start) as u64).min(room - silence) as usize;
-        audio.scratch.clear();
-        for frame in start..end {
-            audio.scratch.push(sample(frame, 0));
-            audio.scratch.push(sample(frame, 1));
-        }
-        encoder.push(&audio.scratch);
-        let mut packets = Vec::new();
-        encoder.drain(&mut |packet| packets.push(packet))?;
-        drop(guard);
+        let target = self.audio_target.load(Ordering::Acquire);
+        let Some(mixer) = audio.mixer.as_mut() else { return Ok(()) };
+        // Input frame n is what played at t0 + n / rate; the file's edit list skips the encoder's priming, so sound at
+        // presentation time t is what played at t0 + t.
+        mixer.add(input, pts, frames, sample, target);
+        let until = mixer.ready().min(target);
+        let packets = audio.advance(until)?;
+        // Sent under the audio lock: packets carry no time, so the writer's order is the track's, and another input
+        // or the clock must not send theirs in between.
         for data in packets {
             self.send(Media::Audio { data });
         }
         Ok(())
+    }
+
+    /// Advances the track with the clock past an input that delivers nothing (see mixer.rs).
+    fn sound_clock(&self, now_ns: u64) {
+        let mut audio = self.audio.lock().unwrap();
+        let target = self.audio_target.load(Ordering::Acquire);
+        let Some(limit) = audio.mixer.as_ref().map(|mixer| mixer.clock_limit(now_ns).min(target)) else { return };
+        match audio.advance(limit) {
+            // Under the audio lock, as in `sound`.
+            Ok(packets) => packets.into_iter().for_each(|data| self.send(Media::Audio { data })),
+            Err(detail) => {
+                drop(audio);
+                self.fail(detail);
+            }
+        }
     }
 
     fn has_frame(&self) -> bool {
@@ -298,7 +413,8 @@ pub struct Core<P: Platform> {
 }
 
 impl<P: Platform> Core<P> {
-    pub fn new(events: Arc<dyn Events>, frame_rate: u32, audio_bitrate: u32, file: File) -> Self {
+    /// `audio_inputs` is how many sound inputs the platform feeds `Shared::sound`.
+    pub fn new(events: Arc<dyn Events>, frame_rate: u32, audio_bitrate: u32, audio_inputs: usize, file: File) -> Self {
         let shared = Arc::new(Shared {
             events,
             phase: AtomicU8::new(PREPARED),
@@ -306,7 +422,7 @@ impl<P: Platform> Core<P> {
             failed: AtomicBool::new(false),
             failure: Mutex::new(None),
             video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0 }),
-            audio: Mutex::new(AudioState { encoder: None, aligner: None, priming: 0, scratch: Vec::new() }),
+            audio: Mutex::new(AudioState { encoder: None, mixer: None, inputs: audio_inputs, priming: 0, scratch: Vec::new() }),
             writer: Mutex::new(None),
             frames_seen: AtomicU64::new(0),
             frame_rate,
@@ -379,7 +495,9 @@ impl<P: Platform> Core<P> {
         let t0 = P::now_ns();
         self.shared.t0_ns.store(t0, Ordering::Release);
         let config = {
-            let audio = self.shared.audio.lock().unwrap();
+            let mut audio = self.shared.audio.lock().unwrap();
+            // Before the phase lets sound in, which it does only once the first frame is encoded.
+            audio.mixer = Some(Mixer::new(SAMPLE_RATE, t0, audio.inputs, AUDIO_TOLERANCE_FRAMES, MIX_LATENCY_FRAMES));
             let encoder = audio.encoder.as_ref().ok_or_else(|| CaptureError::new("capture_start_failed", "prepared without an audio encoder"))?;
             AudioSpec {
                 config: encoder.audio_specific_config(),
@@ -453,18 +571,25 @@ impl<P: Platform> Core<P> {
         let deadline = began + DRAIN_TIMEOUT;
         loop {
             let mut audio = self.shared.audio.lock().unwrap();
-            let started = audio.aligner.is_some();
-            let Some(encoder) = audio.encoder.as_mut() else { return (0.0, 0) };
-            let missing = target.saturating_sub(encoder.frames_in());
-            if missing == 0 || Instant::now() >= deadline {
-                // No sound at all yet: the track is empty and `stop` leaves it so.
-                if !started {
-                    return (began.elapsed().as_secs_f64() * 1000.0, 0);
-                }
-                encoder.push_silence(missing as usize);
-                return (began.elapsed().as_secs_f64() * 1000.0, missing);
+            if audio.mixer.is_none() || audio.encoder.is_none() {
+                return (0.0, 0);
+            }
+            let ready = audio.mixer.as_ref().map_or(0, Mixer::ready).min(target);
+            let mut packets = audio.advance(ready).unwrap_or_default();
+            let missing = target.saturating_sub(audio.mixed());
+            let done = missing == 0 || Instant::now() >= deadline;
+            if done {
+                // What has not arrived by now is silence.
+                packets.extend(audio.advance(target).unwrap_or_default());
+            }
+            // Under the audio lock, as in `Shared::sound`.
+            for data in packets {
+                self.shared.send(Media::Audio { data });
             }
             drop(audio);
+            if done {
+                return (began.elapsed().as_secs_f64() * 1000.0, missing);
+            }
             std::thread::sleep(Duration::from_millis(2));
         }
     }
@@ -485,9 +610,9 @@ impl<P: Platform> Core<P> {
         self.shared.phase.load(Ordering::Acquire) == STOPPING
     }
 
-    /// After `drain` and the platform's halt: flushes the encoders and finishes the file. Blocks until the file is
-    /// plain or why it is not is known.
-    pub fn finish(&mut self, stop_ns: u64, (drain_ms, drain_padded_frames): (f64, u64)) -> Result<Stopped, WriteFailure> {
+    /// After `drain` and the platform's halt: flushes the encoders and asks the writer to finish the file, which goes
+    /// on in the background (`Finishing`). Capture has ended when this returns.
+    pub fn end(&mut self, stop_ns: u64, (drain_ms, drain_padded_frames): (f64, u64)) -> (Stopped, Finishing) {
         {
             // Encoded samples reach the writer before the flush returns, and before the file is finished below.
             let mut video = self.shared.video.lock().unwrap();
@@ -498,43 +623,29 @@ impl<P: Platform> Core<P> {
         }
         let mut packets = Vec::new();
         let mut audio_frames = None;
+        let late_audio_frames;
         {
             let mut audio = self.shared.audio.lock().unwrap();
+            let mixed = audio.mixed();
             if let Some(mut encoder) = audio.encoder.take() {
-                if audio.aligner.is_some() {
+                if mixed > 0 {
                     let _ = encoder.finish(&mut |packet| packets.push(packet));
                     audio_frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
                 }
             }
+            late_audio_frames = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::late);
         }
         for data in packets {
             self.shared.send(Media::Audio { data });
         }
-        let Some(sender) = self.shared.writer.lock().unwrap().take() else {
-            return Ok(Stopped { bytes: 0, fragmented: None, finalize_ms: 0.0, drain_ms, drain_padded_frames, frame_lead_ms: (0.0, 0.0) });
-        };
-        let began = Instant::now();
-        let outcome = sender
-            .finish(stop_ns, audio_frames)
-            .recv_timeout(FINISH_TIMEOUT)
-            .map_err(|_| WriteFailure { code: "output_write_failed", detail: "finishing the file did not complete within 120 s".into() })?;
-        if let Some(thread) = self.writer.take() {
-            let _ = thread.join();
-        }
-        let report = outcome?;
         let count = self.shared.lead_count.load(Ordering::Relaxed).max(1) as f64;
         let frame_lead_ms = (
             self.shared.lead_sum_us.load(Ordering::Relaxed) as f64 / count / 1000.0,
             self.shared.lead_max_us.load(Ordering::Relaxed).max(i64::MIN / 2) as f64 / 1000.0,
         );
-        Ok(Stopped {
-            frame_lead_ms,
-            bytes: report.bytes,
-            fragmented: report.fragmented,
-            finalize_ms: began.elapsed().as_secs_f64() * 1000.0,
-            drain_ms,
-            drain_padded_frames,
-        })
+        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames };
+        let outcome = self.shared.writer.lock().unwrap().take().map(|sender| (sender.finish(stop_ns, audio_frames), self.writer.take()));
+        (stopped, Finishing { outcome, began: Instant::now() })
     }
 
     /// Releases the encoders of a session that never recorded.
@@ -576,6 +687,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         std::thread::sleep(wake);
         wake = Duration::from_millis(100);
         let now = P::now_ns();
+        shared.sound_clock(now);
         let mut guard = shared.video.lock().unwrap();
         let video = &mut *guard;
         if shared.phase.load(Ordering::Acquire) != RECORDING {

@@ -181,12 +181,79 @@ describe("NativeCaptureHost", () => {
     expect(ctx.logs.some((line) => line.includes("dropped malformed message"))).toBe(true);
   });
 
-  it("keeps the engine's report of the finished file for the writer, once", async () => {
+  it("keeps a stopped process until it finished the file, and hands the writer its report once", async () => {
+    const excluded: boolean[] = [];
+    const ctx = setup("7", { excludeOwnWindows: (on) => excluded.push(on) });
+    const child = await started(ctx);
+    const outcome = ctx.host.fileOutcome("/out/a.recording.mp4");
+    child.deliver({ type: "stopped", sessionId: "s1" });
+    // The recorder goes idle at `stopped` and tears the attempt down; capture has ended, so windows come back at once.
+    ctx.host.destroy();
+    expect([child.killed, excluded]).toEqual([false, [true, false]]);
+    child.deliver({ type: "finished", sessionId: "s1", file: { bytes: 99, finalizeMs: 3 } });
+    await expect(outcome).resolves.toEqual({ bytes: 99, finalizeMs: 3 });
+    expect(child.killed).toBe(true);
+    expect(ctx.logs).toContain("capture host: engine finished 99 bytes 3 ms after the stop, plain MP4");
+    await expect(ctx.host.fileOutcome("/out/a.recording.mp4")).rejects.toThrow("never stopped a recording into this file");
+  });
+
+  it("gives the writer the engine's write error when the file could not be finished", async () => {
     const ctx = setup();
     const child = await started(ctx);
-    child.deliver({ type: "stopped", sessionId: "s1", file: { bytes: 99, finalizeMs: 3 } });
-    expect(ctx.host.takeReport("/out/a.recording.mp4")).toEqual({ bytes: 99, finalizeMs: 3 });
-    expect(ctx.host.takeReport("/out/a.recording.mp4")).toBeUndefined();
+    child.deliver({ type: "stopped", sessionId: "s1" });
+    ctx.host.destroy();
+    child.deliver({ type: "writeError", sessionId: "s1", code: "disk_full", detail: "No space left" });
+    await expect(ctx.host.fileOutcome("/out/a.recording.mp4")).rejects.toMatchObject({ name: "FileWriteError", code: "disk_full", filePath: "/out/a.recording.mp4" });
+    expect(child.killed).toBe(true);
+    // The recorder heard the stop already; the file's outcome is the writer's alone.
+    expect(ctx.messages.map((m) => m.type)).toEqual(["ready", "stopped"]);
+  });
+
+  it("fails the file, not the session, when the process exits while finishing it", async () => {
+    const ctx = setup();
+    const child = await started(ctx);
+    child.deliver({ type: "stopped", sessionId: "s1" });
+    ctx.host.destroy();
+    child.emit("exit", 11);
+    await expect(ctx.host.fileOutcome("/out/a.recording.mp4")).rejects.toThrow("capture process exited with 11 before the file was finished");
+    expect(ctx.failures).toEqual([]);
+  });
+
+  it("ends a process that never reports the file, after a bound past the engine's own", async () => {
+    const ctx = setup();
+    const child = await started(ctx);
+    child.deliver({ type: "stopped", sessionId: "s1" });
+    ctx.host.destroy();
+    const outcome = expect(ctx.host.fileOutcome("/out/a.recording.mp4")).rejects.toThrow("did not finish the file within 150000 ms");
+    await vi.advanceTimersByTimeAsync(149_000);
+    expect(child.killed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    await outcome;
+    expect(child.killed).toBe(true);
+  });
+
+  it("starts the next recording while the last one's file is still being finished", async () => {
+    const ctx = setup();
+    const first = await started(ctx);
+    first.deliver({ type: "stopped", sessionId: "s1" });
+    ctx.host.destroy();
+    const start = ctx.host.start("s2", DEFAULT_QUALITY, "/out/b.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    const second = ctx.children.at(-1)!;
+    second.deliver({ type: "ready" });
+    await start;
+    expect([first.killed, second === first]).toEqual([false, false]);
+    first.deliver({ type: "finished", sessionId: "s1", file: { bytes: 5, finalizeMs: 1 } });
+    await expect(ctx.host.fileOutcome("/out/a.recording.mp4")).resolves.toMatchObject({ bytes: 5 });
+    expect([first.killed, second.killed]).toEqual([true, false]);
+  });
+
+  it("has no file to hand over for an attempt torn down before it stopped", async () => {
+    const ctx = setup();
+    const child = await started(ctx);
+    ctx.host.destroy();
+    expect(child.killed).toBe(true);
+    await expect(ctx.host.fileOutcome("/out/a.recording.mp4")).rejects.toThrow("never stopped a recording into this file");
   });
 
   it("reports a crash when the process exits during a session, and not after it ended", async () => {

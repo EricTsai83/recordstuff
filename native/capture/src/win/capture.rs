@@ -1,12 +1,15 @@
-//! The display through Windows.Graphics.Capture. Each frame arrives as a BGRA texture of the frame pool, which has
+//! The display or one window through Windows.Graphics.Capture, the whole of it or an area. Each frame arrives as a BGRA texture of the frame pool, which has
 //! only two and reuses them, so it is converted at once on the GPU, by the Direct3D 11 video processor, into an NV12
-//! texture at the recording's size (scaled, BT.709 limited range): what the H.264 encoder takes. Textures are kept in
+//! texture at the recording's size (cut to the area, scaled, BT.709 limited range): what the H.264 encoder takes. Textures are kept in
 //! a pool and go back to it when the core lets go of the frame; only frames that are encoded are read back to memory
 //! (video.rs), not every captured one.
 //!
 //! A device without a video processor (WARP, on a virtual machine or a runner without a GPU) cannot convert: each
-//! frame is copied as it came into a staging texture instead, and frames that are encoded are converted on the CPU
-//! as they are read back.
+//! frame (its area) is copied as it came into a staging texture instead, and frames that are encoded are converted on
+//! the CPU as they are read back.
+//!
+//! A window that changes size is scaled to the recording's size as it is, so its picture stretches; the item closing
+//! (the window closed, the display removed) ends the recording as a capture failure.
 
 use std::sync::{Arc, Mutex};
 
@@ -15,7 +18,7 @@ use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
-use windows::Win32::Foundation::{HMODULE, POINT};
+use windows::Win32::Foundation::{HMODULE, HWND, POINT, RECT};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_NV12, DXGI_RATIONAL, DXGI_SAMPLE_DESC};
@@ -24,6 +27,7 @@ use windows::Win32::Graphics::Gdi::{HMONITOR, MONITOR_DEFAULTTONULL, MONITOR_DEF
 use windows::Win32::System::WinRT::Direct3D11::{CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess};
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext};
+use windows::Win32::UI::WindowsAndMessaging::IsWindow;
 use windows::core::{IInspectable, Interface};
 
 use super::{CaptureError, Mta, hundreds_to_ns, start_failed};
@@ -51,6 +55,41 @@ pub fn item(monitor: HMONITOR) -> Result<GraphicsCaptureItem, CaptureError> {
     let interop = windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
         .map_err(|e| start_failed("Windows.Graphics.Capture is not available", e))?;
     unsafe { interop.CreateForMonitor::<GraphicsCaptureItem>(monitor) }.map_err(|e| start_failed("the display could not be captured", e))
+}
+
+/// The window `id` (its HWND).
+pub fn window_item(id: u64) -> Result<GraphicsCaptureItem, CaptureError> {
+    let hwnd = HWND(id as usize as *mut core::ffi::c_void);
+    if !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
+        return Err(CaptureError::new("capture_start_failed", format!("window {id:#x} does not exist (closed?)")));
+    }
+    let interop = windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
+        .map_err(|e| start_failed("Windows.Graphics.Capture is not available", e))?;
+    unsafe { interop.CreateForWindow::<GraphicsCaptureItem>(hwnd) }.map_err(|e| start_failed("the window could not be captured", e))
+}
+
+/// A part of the captured surface, in its pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Area {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Area {
+    /// This area within a surface of `size`, or the whole surface without one; never empty.
+    fn within(area: Option<Area>, size: SizeInt32) -> Area {
+        let (width, height) = (size.Width.max(1) as u32, size.Height.max(1) as u32);
+        match area {
+            None => Area { x: 0, y: 0, width, height },
+            Some(area) => {
+                let x = area.x.min(width - 1);
+                let y = area.y.min(height - 1);
+                Area { x, y, width: area.width.min(width - x).max(1), height: area.height.min(height - y).max(1) }
+            }
+        }
+    }
 }
 
 /// The Direct3D device capture, conversion and read-back share. Its immediate context is used by one thread at a time.
@@ -140,11 +179,11 @@ const BT709_LIMITED: u32 = (1 << 2) | (1 << 4);
 const RGB_FULL: u32 = 0;
 
 impl Processor {
-    fn new(gpu: &Gpu, source: SizeInt32, width: u32, height: u32) -> Result<Self, CaptureError> {
+    fn new(gpu: &Gpu, source: SizeInt32, area: Area, width: u32, height: u32) -> Result<Self, CaptureError> {
         let fail = super::failing;
         let video_device: ID3D11VideoDevice = gpu.device.cast().map_err(fail("no Direct3D video device"))?;
         let video_context: ID3D11VideoContext = gpu.context.lock().unwrap().cast().map_err(fail("no Direct3D video context"))?;
-        let (enumerator, processor) = Self::make(&video_device, &video_context, source, width, height)?;
+        let (enumerator, processor) = Self::make(&video_device, &video_context, source, area, width, height)?;
         Ok(Self { video_device, video_context, enumerator, processor })
     }
 
@@ -152,6 +191,7 @@ impl Processor {
         video_device: &ID3D11VideoDevice,
         video_context: &ID3D11VideoContext,
         source: SizeInt32,
+        area: Area,
         width: u32,
         height: u32,
     ) -> Result<(ID3D11VideoProcessorEnumerator, ID3D11VideoProcessor), CaptureError> {
@@ -175,6 +215,8 @@ impl Processor {
             video_context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
             video_context.VideoProcessorSetStreamColorSpace(&processor, 0, &D3D11_VIDEO_PROCESSOR_COLOR_SPACE { _bitfield: RGB_FULL });
             video_context.VideoProcessorSetOutputColorSpace(&processor, &D3D11_VIDEO_PROCESSOR_COLOR_SPACE { _bitfield: BT709_LIMITED });
+            let rect = RECT { left: area.x as i32, top: area.y as i32, right: (area.x + area.width) as i32, bottom: (area.y + area.height) as i32 };
+            video_context.VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&rect));
         }
         Ok((enumerator, processor))
     }
@@ -186,6 +228,9 @@ struct Converter {
     gpu: Arc<Mta<Gpu>>,
     processor: Option<Processor>,
     source: SizeInt32,
+    /// The area asked for, and the part of the current surface it covers.
+    asked: Option<Area>,
+    area: Area,
     width: u32,
     height: u32,
     pool: Pool,
@@ -193,12 +238,13 @@ struct Converter {
 
 impl Converter {
     /// The converter, and why frames are converted on the CPU when they are.
-    fn new(gpu: Arc<Mta<Gpu>>, source: SizeInt32, width: u32, height: u32) -> (Self, Option<String>) {
-        let (processor, cpu) = match Processor::new(&gpu.0, source, width, height) {
+    fn new(gpu: Arc<Mta<Gpu>>, source: SizeInt32, asked: Option<Area>, width: u32, height: u32) -> (Self, Option<String>) {
+        let area = Area::within(asked, source);
+        let (processor, cpu) = match Processor::new(&gpu.0, source, area, width, height) {
             Ok(processor) => (Some(processor), None),
             Err(error) => (None, Some(error.detail)),
         };
-        (Self { gpu, processor, source, width, height, pool: Arc::new(Mutex::new(Vec::new())) }, cpu)
+        (Self { gpu, processor, source, asked, area, width, height, pool: Arc::new(Mutex::new(Vec::new())) }, cpu)
     }
 
     fn take(&self) -> windows::core::Result<Slot> {
@@ -208,8 +254,8 @@ impl Converter {
         let (width, height, format, usage, bind, cpu) = match self.processor {
             Some(_) => (self.width, self.height, DXGI_FORMAT_NV12, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET.0 as u32, 0),
             None => (
-                self.source.Width as u32,
-                self.source.Height as u32,
+                self.area.width,
+                self.area.height,
                 DXGI_FORMAT_B8G8R8A8_UNORM,
                 D3D11_USAGE_STAGING,
                 0,
@@ -244,10 +290,12 @@ impl Converter {
     /// Converts or copies one captured BGRA texture.
     fn convert(&mut self, bgra: &ID3D11Texture2D, size: SizeInt32) -> Result<Frame, String> {
         if size != self.source {
-            // The display's mode changed: the processor is made for one input size, and copies are made at it.
+            // The display's mode or the window's size changed: the processor is made for one input size, and copies
+            // are made at the area's.
+            self.area = Area::within(self.asked, size);
             if let Some(processor) = &mut self.processor {
-                let (enumerator, made) =
-                    Processor::make(&processor.video_device, &processor.video_context, size, self.width, self.height).map_err(|e| e.detail)?;
+                let (enumerator, made) = Processor::make(&processor.video_device, &processor.video_context, size, self.area, self.width, self.height)
+                    .map_err(|e| e.detail)?;
                 (processor.enumerator, processor.processor) = (enumerator, made);
             }
             self.source = size;
@@ -257,8 +305,10 @@ impl Converter {
         }
         let (texture, view) = self.take().map_err(|e| format!("a frame texture could not be made: {e}"))?;
         let Some(processor) = &self.processor else {
-            unsafe { self.gpu.0.context.lock().unwrap().CopyResource(&texture, bgra) };
-            let image = Image::Bgra { width: size.Width as u32, height: size.Height as u32 };
+            let area = self.area;
+            let region = D3D11_BOX { left: area.x, top: area.y, front: 0, right: area.x + area.width, bottom: area.y + area.height, back: 1 };
+            unsafe { self.gpu.0.context.lock().unwrap().CopySubresourceRegion(&texture, 0, 0, 0, 0, bgra, 0, Some(&region)) };
+            let image = Image::Bgra { width: area.width, height: area.height };
             return Ok(Arc::new(Mta(Captured { texture, image, view, pool: self.pool.clone() })));
         };
         let output = view.as_ref().expect("the video processor's textures have output views");
@@ -287,10 +337,12 @@ impl Converter {
     }
 }
 
-/// Capture of one display, delivering converted frames to the core from the frame pool's thread.
+/// Capture of one display or window, delivering converted frames to the core from the frame pool's thread.
 pub struct DisplayCapture {
     pool: Direct3D11CaptureFramePool,
     session: GraphicsCaptureSession,
+    item: GraphicsCaptureItem,
+    closed: i64,
 }
 
 unsafe impl Send for DisplayCapture {}
@@ -301,6 +353,7 @@ impl DisplayCapture {
     pub fn start(
         gpu: Arc<Mta<Gpu>>,
         item: &GraphicsCaptureItem,
+        area: Option<Area>,
         width: u32,
         height: u32,
         min_interval_ns: u64,
@@ -312,8 +365,15 @@ impl DisplayCapture {
             .and_then(|inspectable: IInspectable| inspectable.cast())
             .map_err(fail("no WinRT Direct3D device"))?;
         let size = item.Size().map_err(fail("the display's size"))?;
-        let (converter, cpu) = Converter::new(gpu, size, width, height);
+        let (converter, cpu) = Converter::new(gpu, size, area, width, height);
         let converter = Mta(Mutex::new(converter));
+        let on_close = shared.clone();
+        let closed = item
+            .Closed(&TypedEventHandler::<GraphicsCaptureItem, IInspectable>::new(move |_, _| {
+                on_close.fail("what was being captured went away (the window closed or the display was removed)".into());
+                Ok(())
+            }))
+            .map_err(fail("listening for the item's closing"))?;
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(&device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, size)
             .map_err(fail("the capture frame pool"))?;
         let device_for_resize = Mta(device);
@@ -351,10 +411,11 @@ impl DisplayCapture {
         // Windows 11 24H2 and later deliver at most this often; earlier versions on every change.
         let _ = session.SetMinUpdateInterval(windows::Foundation::TimeSpan { Duration: (min_interval_ns / 100) as i64 });
         session.StartCapture().map_err(fail("starting capture"))?;
-        Ok((Self { pool, session }, borderless, cpu))
+        Ok((Self { pool, session, item: item.clone(), closed }, borderless, cpu))
     }
 
     pub fn stop(&self) {
+        let _ = self.item.RemoveClosed(self.closed);
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }

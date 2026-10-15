@@ -11,11 +11,16 @@
  *
  * On Windows the engine finds the display by a point on it, and cannot leave RecordStuff's windows out of the
  * recording itself: from `start` until the attempt is torn down, main marks them excluded from capture.
+ *
+ * After `stopped` the engine still finishes the file, which on a slow volume can take long after the recorder went
+ * idle and tore the attempt down: that process is kept until it reports `finished` or the write error that kept the
+ * file from being finished (`fileOutcome` hands either to the writer), exits, or outlives `FINISH_BOUND_MS`.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
 import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
 import type { RecorderHost } from "./recorder";
+import { FileWriteError } from "./file-writer";
 
 export interface NativeCaptureHostOptions {
   /** The built native-host-process.js. */
@@ -43,6 +48,18 @@ type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
 
 /** How long windows stay excluded after the capture process was told to end, if it does not report its exit. */
 const RELEASE_BOUND_MS = 5000;
+/** Past the engine's own 120 s bound for finishing a file: a process still silent then is ended, the file kept. */
+const FINISH_BOUND_MS = 150_000;
+
+interface FileOutcome {
+  promise: Promise<EngineFileReport>;
+  settled: boolean;
+  resolve: (report: EngineFileReport) => void;
+  reject: (cause: Error) => void;
+}
+
+/** A process that stopped capturing and is finishing `recordingPath`. */
+interface Finishing { sessionId: string; recordingPath: string; bound: ReturnType<typeof setTimeout> }
 
 export class NativeCaptureHost implements RecorderHost {
   private child: UtilityProcess | undefined;
@@ -51,8 +68,9 @@ export class NativeCaptureHost implements RecorderHost {
   private watching: string | undefined;
   private missedPongs = 0;
   private abandonReady: ((cause: Error) => void) | undefined;
-  /** What the engine reported for each file it finished, by temporary path; read once by EngineFileWriter. */
-  private readonly reports = new Map<string, EngineFileReport>();
+  /** How each attempt's file ended, by temporary path; taken once by EngineFileWriter. */
+  private readonly outcomes = new Map<string, FileOutcome>();
+  private readonly finishing = new Map<UtilityProcess, Finishing>();
   private recordingPath: string | undefined;
   private excluding = false;
   /** Counts exclusions: a deferred release lets windows back in only if no exclusion came after its own. */
@@ -77,17 +95,22 @@ export class NativeCaptureHost implements RecorderHost {
     this.failureListeners.add(listener);
   }
 
-  /** The engine's report for `recordingPath`, once; undefined before it stopped or when it did not report. */
-  takeReport(recordingPath: string): EngineFileReport | undefined {
-    const report = this.reports.get(recordingPath);
-    this.reports.delete(recordingPath);
-    return report;
+  /**
+   * Settles once the engine has finished `recordingPath`: with its report, or rejecting with the write error (a
+   * `FileWriteError`) or why the engine ended without finishing it. Taken once.
+   */
+  fileOutcome(recordingPath: string): Promise<EngineFileReport> {
+    const outcome = this.outcomes.get(recordingPath);
+    if (!outcome) return Promise.reject(new Error("the capture host never stopped a recording into this file"));
+    return outcome.promise.finally(() => this.outcomes.delete(recordingPath));
   }
 
   async start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void> {
     this.teardown();
     const generation = this.generation;
     if (!recordingPath) throw new Error("the native engine needs the recording file's path");
+    this.recordingPath = recordingPath;
+    this.expectFile(recordingPath);
     const now = this.options.now ?? (() => performance.now());
     const began = now();
     let chosenAt = began;
@@ -104,7 +127,6 @@ export class NativeCaptureHost implements RecorderHost {
     const readyAt = now();
     if (generation !== this.generation) throw new Error("capture host was invalidated during startup");
     this.watching = sessionId;
-    this.recordingPath = recordingPath;
     this.missedPongs = 0;
     this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
     const chosen = await choice;
@@ -144,15 +166,40 @@ export class NativeCaptureHost implements RecorderHost {
   }
 
   private async create(): Promise<void> {
+    const { child, ready } = this.launch();
+    this.child = child;
+    let readyTimer: ReturnType<typeof setTimeout> | undefined;
+    let abandon: ((cause: Error) => void) | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      abandon = reject;
+      this.abandonReady = reject;
+      readyTimer = setTimeout(() => reject(new Error("capture host did not report ready before the deadline")), this.readyTimeoutMs);
+    });
+    deadline.catch(() => undefined);
+    try {
+      await Promise.race([ready, deadline]);
+    } finally {
+      if (readyTimer) clearTimeout(readyTimer);
+      if (this.abandonReady === abandon) this.abandonReady = undefined;
+    }
+  }
+
+  /** Forks a process; `ready` settles when it reports ready, whether or not an attempt owns it by then. */
+  private launch(): { child: UtilityProcess; ready: Promise<void> } {
     const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
     const child = fork(this.options.entryPath, [this.options.addonPath]);
-    this.child = child;
     for (const stream of [child.stdout, child.stderr]) {
       stream?.on("data", (chunk: Buffer) => {
         for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host: ${line.trim()}`);
       });
     }
+    let resolveReady!: () => void;
+    let rejectReady!: (cause: Error) => void;
+    const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
     child.on("exit", (code) => {
+      rejectReady(new Error(`capture host exited with ${code} before it reported ready`));
+      const finishing = this.finishing.get(child);
+      if (finishing) this.fileEnded(child, finishing, new Error(`capture process exited with ${code} before the file was finished`));
       if (this.child !== child) return;
       const lost = this.watching !== undefined;
       // Gone: nothing is left to capture RecordStuff's windows.
@@ -161,39 +208,66 @@ export class NativeCaptureHost implements RecorderHost {
       this.log(`capture host: process exited (${code})${lost ? " during a session" : ""}`);
       if (lost) this.emitFailure("capture_host_crashed", `capture process exited with ${code}`);
     });
-
-    let readyTimer: ReturnType<typeof setTimeout> | undefined;
-    let abandon: ((cause: Error) => void) | undefined;
-    const ready = new Promise<void>((resolve, reject) => {
-      abandon = reject;
-      this.abandonReady = reject;
-      readyTimer = setTimeout(() => reject(new Error("capture host did not report ready before the deadline")), this.readyTimeoutMs);
-      child.on("message", (data: unknown) => {
-        if (this.child !== child) return;
-        if (!isHostMessage(data)) {
-          this.log(`capture host: dropped malformed message of type ${typeof data === "object" && data ? String((data as { type?: unknown }).type) : typeof data}`);
-          return;
-        }
-        if (data.type === "ready") resolve();
-        if (data.type === "pong") this.missedPongs = 0;
-        this.emit(data);
-      });
+    child.on("message", (data: unknown) => {
+      const finishing = this.finishing.get(child);
+      if (finishing && isHostMessage(data) && (data.type === "finished" || data.type === "writeError") && data.sessionId === finishing.sessionId) {
+        this.fileEnded(child, finishing, data.type === "finished" ? data.file : new FileWriteError(data.code, finishing.recordingPath, data.detail));
+        return;
+      }
+      if (isHostMessage(data) && data.type === "ready") resolveReady();
+      if (this.child !== child) return;
+      if (!isHostMessage(data)) {
+        this.log(`capture host: dropped malformed message of type ${typeof data === "object" && data ? String((data as { type?: unknown }).type) : typeof data}`);
+        return;
+      }
+      if (data.type === "pong") this.missedPongs = 0;
+      // Before the recorder hears it and tears the attempt down: this process now finishes the file.
+      if (data.type === "stopped" && data.sessionId === this.watching && this.recordingPath) this.keepFinishing(child, data.sessionId, this.recordingPath);
+      this.emit(data);
     });
-    ready.catch(() => undefined);
-    try {
-      await ready;
-    } finally {
-      if (readyTimer) clearTimeout(readyTimer);
-      if (this.abandonReady === abandon) this.abandonReady = undefined;
+    return { child, ready };
+  }
+
+  private expectFile(recordingPath: string): void {
+    let resolve!: (report: EngineFileReport) => void;
+    let reject!: (cause: Error) => void;
+    const promise = new Promise<EngineFileReport>((done, fail) => { resolve = done; reject = fail; });
+    // Read only when the recording is saved; a failed attempt never asks.
+    promise.catch(() => undefined);
+    const outcome: FileOutcome = {
+      promise, settled: false,
+      resolve: (report) => { outcome.settled = true; resolve(report); },
+      reject: (cause) => { outcome.settled = true; reject(cause); },
+    };
+    this.outcomes.set(recordingPath, outcome);
+  }
+
+  private keepFinishing(child: UtilityProcess, sessionId: string, recordingPath: string): void {
+    const bound = setTimeout(() => {
+      this.log(`capture host: the file was not finished within ${FINISH_BOUND_MS} ms of the stop; ending the process`);
+      const finishing = this.finishing.get(child);
+      if (finishing) this.fileEnded(child, finishing, new Error(`the capture process did not finish the file within ${FINISH_BOUND_MS} ms`));
+    }, FINISH_BOUND_MS);
+    this.finishing.set(child, { sessionId, recordingPath, bound });
+  }
+
+  /** The file's outcome is known: the writer hears it, and a process no attempt owns any more is ended. */
+  private fileEnded(child: UtilityProcess, finishing: Finishing, result: EngineFileReport | Error): void {
+    clearTimeout(finishing.bound);
+    this.finishing.delete(child);
+    const outcome = this.outcomes.get(finishing.recordingPath);
+    if (result instanceof Error) {
+      this.log(`capture host: the file was not finished: ${result.message}`);
+      outcome?.reject(result);
+    } else {
+      this.log(`capture host: engine finished ${result.bytes} bytes ${Math.round(result.finalizeMs)} ms after the stop` +
+        `${result.fragmented ? `, left fragmented: ${result.fragmented}` : ", plain MP4"}`);
+      outcome?.resolve(result);
     }
+    if (this.child !== child) child.kill();
   }
 
   private emit(message: HostMessage): void {
-    if (message.type === "stopped" && message.file && this.recordingPath && message.sessionId === this.watching) {
-      this.reports.set(this.recordingPath, message.file);
-      this.log(`capture host: engine finished ${message.file.bytes} bytes in ${Math.round(message.file.finalizeMs)} ms` +
-        `${message.file.fragmented ? `, left fragmented: ${message.file.fragmented}` : ", plain MP4"}`);
-    }
     if ((message.type === "stopped" || message.type === "error" || message.type === "writeError") && message.sessionId === this.watching) {
       this.stopHeartbeat();
     }
@@ -231,11 +305,18 @@ export class NativeCaptureHost implements RecorderHost {
     this.abandonReady?.(new Error("capture host was torn down before it reported ready"));
     this.abandonReady = undefined;
     this.stopHeartbeat();
-    this.recordingPath = undefined;
     const child = this.child;
     this.child = undefined;
-    if (this.excluding) this.releaseWindows(child);
-    child?.kill();
+    // A process finishing the file has stopped capturing: it is ended once the file's outcome is known.
+    const finishing = child !== undefined && this.finishing.has(child);
+    const outcome = this.recordingPath === undefined ? undefined : this.outcomes.get(this.recordingPath);
+    if (!finishing && outcome && !outcome.settled) {
+      outcome.reject(new Error("the capture host ended before the recording stopped"));
+      this.outcomes.delete(this.recordingPath!);
+    }
+    this.recordingPath = undefined;
+    if (this.excluding) this.releaseWindows(finishing ? undefined : child);
+    if (!finishing) child?.kill();
   }
 
   /**

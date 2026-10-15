@@ -21,7 +21,7 @@ describe("EngineFileWriter", () => {
 
   it("publishes what the engine wrote under the final name and reports the engine's finalize", async () => {
     const [recording, final] = paths();
-    const writer = await EngineFileWriter.open(recording, final, { report: (file) => file === recording ? { bytes: 5, finalizeMs: 12 } : undefined });
+    const writer = await EngineFileWriter.open(recording, final, { outcome: async (file) => file === recording ? { bytes: 5, finalizeMs: 12 } : undefined });
     await fs.writeFile(recording, "media");
     await expect(writer.finish()).resolves.toBe(final);
     expect(await fs.readFile(final, "utf8")).toBe("media");
@@ -29,6 +29,38 @@ describe("EngineFileWriter", () => {
     expect(writer.bytesWritten).toBe(5);
     expect(writer.finishTimings).toMatchObject({ finalizeMs: 12, method: "link" });
     expect(writer.finishTimings?.fragmented).toBeUndefined();
+  });
+
+  it("waits for the engine to finish the file before publishing it", async () => {
+    const [recording, final] = paths();
+    let finished: (report: { bytes: number; finalizeMs: number }) => void = () => undefined;
+    const writer = await EngineFileWriter.open(recording, final, { outcome: () => new Promise((resolve) => { finished = resolve; }) });
+    await fs.writeFile(recording, "media");
+    let published: string | undefined;
+    const finishing = writer.finish().then((target) => { published = target; });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(published).toBeUndefined();
+    await expect(fs.stat(final)).rejects.toMatchObject({ code: "ENOENT" });
+    finished({ bytes: 5, finalizeMs: 900 });
+    await finishing;
+    expect(published).toBe(final);
+    expect(writer.finishTimings).toMatchObject({ finalizeMs: 900 });
+  });
+
+  it("publishes nothing when the engine could not finish the file, and keeps what it wrote", async () => {
+    const [recording, final] = paths();
+    const writer = await EngineFileWriter.open(recording, final, {
+      outcome: async () => { throw new FileWriteError("disk_full", recording, "No space left"); },
+    });
+    await fs.writeFile(recording, "partial");
+    await expect(writer.finish()).rejects.toMatchObject({ code: "disk_full" });
+    await expect(writer.abandon()).resolves.toBe(recording);
+    await expect(fs.stat(final)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const [crashed, crashedFinal] = paths("b");
+    const other = await EngineFileWriter.open(crashed, crashedFinal, { outcome: async () => { throw new Error("capture process exited with 11"); } });
+    await fs.writeFile(crashed, "partial");
+    await expect(other.finish()).rejects.toMatchObject({ name: "FileWriteError", code: "output_write_failed" });
   });
 
   it("takes the next free name when the final one is taken", async () => {

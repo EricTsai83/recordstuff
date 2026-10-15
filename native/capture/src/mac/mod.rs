@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod content;
+pub mod microphone;
 pub mod session;
 pub mod video;
 
@@ -29,5 +30,7 @@ pub fn now_ns() -> u64 {
     host_ns(unsafe { CMClock::host_time_clock().time() })
 }
 
+#[cfg(test)]
+mod live_test;
 #[cfg(test)]
 mod pipeline_test;

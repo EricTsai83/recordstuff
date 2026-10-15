@@ -4,6 +4,9 @@
  * `.recording.mp4` name by creating it empty and exclusively, as FileWriter's open does, publishes the finished file
  * under its final name exactly as FileWriter does (`publishRecording`), and on a failure keeps whatever the engine
  * wrote. Zero bytes are never published.
+ *
+ * The engine finishes the file after it reported `stopped`, so a slow volume's save is not part of the stop: `finish`
+ * first waits for the engine's outcome for this file (`finished`, or the write error that kept it from being finished).
  */
 import fs from "node:fs/promises";
 import type { EngineFileReport } from "../../shared/protocol";
@@ -14,8 +17,11 @@ export interface EngineFileWriterOptions {
   io?: FileWriterFs;
   /** The file's size now; defaults to `fs.stat`. */
   size?: (filePath: string) => Promise<number>;
-  /** What the engine reported when it finished this file, if it did. */
-  report?: (recordingPath: string) => EngineFileReport | undefined;
+  /**
+   * Settles once the engine has finished this file: with its report, or rejecting with the write error (a
+   * `FileWriteError`) or the reason the engine ended before finishing it. Undefined when nothing reports.
+   */
+  outcome?: (recordingPath: string) => Promise<EngineFileReport | undefined>;
 }
 
 export class EngineFileWriter implements RecorderWriter {
@@ -30,7 +36,7 @@ export class EngineFileWriter implements RecorderWriter {
     readonly finalPath: string,
     private readonly io: FileWriterFs,
     private readonly size: (filePath: string) => Promise<number>,
-    private readonly report: (recordingPath: string) => EngineFileReport | undefined,
+    private readonly outcome: (recordingPath: string) => Promise<EngineFileReport | undefined>,
   ) {}
 
   /** Creates `recordingPath` empty and exclusively; a name collision is a hard failure, as for FileWriter. */
@@ -43,7 +49,7 @@ export class EngineFileWriter implements RecorderWriter {
       throw new FileWriteError(classifyOpenError(cause), recordingPath, cause);
     }
     return new EngineFileWriter(recordingPath, finalPath, io,
-      options.size ?? (async (file) => (await fs.stat(file)).size), options.report ?? (() => undefined));
+      options.size ?? (async (file) => (await fs.stat(file)).size), options.outcome ?? (() => Promise.resolve(undefined)));
   }
 
   get bytesWritten(): number {
@@ -55,7 +61,7 @@ export class EngineFileWriter implements RecorderWriter {
     return Promise.reject(new Error("the native engine writes this recording; main appends nothing"));
   }
 
-  /** Publishes what the engine finished; the engine has closed the file before it reported `stopped`. */
+  /** Publishes what the engine finished, once it has; the engine closed the file before it reported that. */
   finish(): Promise<string> {
     if (this.abandoned) return Promise.reject(new Error("EngineFileWriter was abandoned"));
     this.finished ??= this.finishOnce();
@@ -63,6 +69,13 @@ export class EngineFileWriter implements RecorderWriter {
   }
 
   private async finishOnce(): Promise<string> {
+    let report: EngineFileReport | undefined;
+    try {
+      report = await this.outcome(this.recordingPath);
+    } catch (cause) {
+      // What was written stays, under the temporary name: the recorder abandons the writer after this failure.
+      throw cause instanceof FileWriteError ? cause : new FileWriteError("output_write_failed", this.recordingPath, cause);
+    }
     const began = performance.now();
     this._bytesWritten = await this.size(this.recordingPath);
     if (this._bytesWritten === 0) {
@@ -70,7 +83,6 @@ export class EngineFileWriter implements RecorderWriter {
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
     const checked = performance.now();
-    const report = this.report(this.recordingPath);
     const published = await publishRecording(this.io, this.recordingPath, this.finalPath);
     this.finishTimings = { flushMs: 0, finalizeMs: report?.finalizeMs ?? 0, ...(report?.fragmented ? { fragmented: report.fragmented } : {}),
       closeMs: checked - began, ...published.timings };
