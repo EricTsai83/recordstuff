@@ -239,7 +239,14 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     // 60 Hz capture paced to 30 fps: about 12 frames in 400 ms, never two in one slot.
     assert!((9..=15).contains(&(encoded.len() - 1)), "{} frames", encoded.len() - 1);
     assert!(encoded.windows(2).all(|w| w[1].1 - w[0].1 > 16_000_000), "{encoded:?}");
-    assert_eq!(stopped.drain_padded_frames, 0, "sound kept up, so nothing was filled in");
+    // Sound kept up, so nothing was filled in; on a loaded runner the feeder thread can miss the deadline (CI saw 534
+    // frames), and then the drain must have waited the deadline out before filling in.
+    assert!(
+        stopped.drain_padded_frames == 0 || stopped.drain_ms >= 240.0,
+        "{} frames filled in after only {} ms",
+        stopped.drain_padded_frames,
+        stopped.drain_ms
+    );
     assert_eq!(finished.fragmented, None);
 
     let file = rig.file();
