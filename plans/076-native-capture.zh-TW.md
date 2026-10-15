@@ -135,7 +135,11 @@
 
 ### 7. 驗證工具與驗收
 
-- [ ] 讓 `pnpm acceptance`、`pnpm matrix`、`pnpm audio:quality`、`pnpm measure:cpu` 與 `pnpm acceptance:lifecycle` 改用新的 host，報告格式不變。受控 build（`pnpm acceptance:controlled` 與 tray runner 的受控案例）從步驟 5 起固定由隱藏 renderer 錄影，因為它的寫入與關閉錯誤注入包在該路徑的 FileWriter 上；要讓引擎的寫入也能注入錯誤，再取消這個固定。
+- [x] 讓 `pnpm acceptance`、`pnpm matrix`、`pnpm audio:quality`、`pnpm measure:cpu` 與 `pnpm acceptance:lifecycle` 改用新的 host，報告格式不變。受控 build（`pnpm acceptance:controlled` 與 tray runner 的受控案例）從步驟 5 起固定由隱藏 renderer 錄影，因為它的寫入與關閉錯誤注入包在該路徑的 FileWriter 上；要讓引擎的寫入也能注入錯誤，再取消這個固定。
+  - 2026-10-15 完成（不需要桌面）。會啟動 App 的 runner 接受 `--engine native|chromium`（預設 native），把 shell 的擷取開關從 App 的環境中移除，確認 App 記錄的引擎，並在報告中寫出；`measure:cpu` 在這一輪透過 launchd 設定引擎。`measure:cpu` 以原生引擎自己的待機契約判定（`NATIVE_IDLE_ROLES`：沒有預熱 renderer、沒有音訊服務、沒有擷取 process），CPU 基準依引擎分開，原生的一輪會在自己的數字旁列出隱藏 renderer 的基準。`audio:quality` 的指紋涵蓋引擎原始碼，建置上限放寬為 10 分鐘。`pnpm acceptance` 的開始時間軸讀取原生引擎的 process、probe 與 prepare 時間，並把它每秒一次的第一個進度回報標示清楚。
+  - `measure:finalization` 自從存檔改在背景進行（2026-10-09）後就找不到樣本：現在不論順序都會把停止與存檔配對，並加入 stop→saved、finalize 與引擎完成時間。
+  - `acceptance:lifecycle` 新增 `native`（在 `stopped` 之後延遲引擎的完成結果）與 `native-crash`（當機後保留引擎的 partial）；六種模式全部通過。受控 build 以 App 的引擎錄影，固定已取消，原生引擎的寫入與關檔故障分別透過其進度與完成結果注入。
+  - `diagnose:cadence` 自行建立隱藏 renderer 的擷取 host，仍只量那個引擎；原生引擎沒有提供逐格時間戳給它。
 - [ ] macOS：完整的錄影驗收、與本計畫風險相關的 matrix 案例、音訊保真度測試、新的 CPU 基準（`pnpm measure:cpu -- --fps 60 --repeat 3`）、生命週期、錄影中退出與睡眠、權限被拒、螢幕移除、影格中沒有自己的視窗，以及 D6 的開關。
 - [ ] Windows：步驟 3 的 CI 檢查與安裝檔冒煙測試；CI 無法顯示的部分（實際錄影品質、沒有自己的視窗、系統聲音內容、CPU、影格時序）列為未測試。
 
