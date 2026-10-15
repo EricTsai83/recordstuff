@@ -10,7 +10,7 @@ RecordStuff is one menu-bar button with no main window. The user cannot open the
 
 Two consequences run through every module.
 
-**Visible state must be truthful, because it is the only state the user has.** A recorder that shows `REC` while nothing is being written is worse than one that refuses to start, so no surface is allowed to report success before the fact that would justify it exists. This is the first design priority in [overview.md](overview.md#design-priorities), and most of what looks like extra work elsewhere in the codebase — measuring actual frames instead of trusting `getSettings`, validating audio tracks instead of assuming the request succeeded, renaming the file before emitting `saved` — is that priority being paid for.
+**Visible state must be truthful, because it is the only state the user has.** A recorder that shows `REC` while nothing is being written is worse than one that refuses to start, so no surface is allowed to report success before the fact that would justify it exists. This is the first design priority in [overview.md](overview.md#design-priorities), and most of what looks like extra work elsewhere in the codebase — reporting the size the engine prepared instead of the one requested, waiting for the engine's `finished` instead of assuming the file is complete, publishing the file before emitting `saved` — is that priority being paid for.
 
 **Every surface is a projection of one state, never a second copy of it.** The tray, the settings panel, the notifications and the log all read from the same authoritative state and context. This is why [`tray-model.ts`](../../src/main/menus/tray-model.ts) is a pure function to a flat command list, why [`settings-model.ts`](../../src/main/settings/settings-model.ts) declares each preference exactly once, and why [`ui-model.ts`](../../src/main/app/ui-model.ts) holds the action union and the preference-lock rule that both interfaces share instead of each interface having its own.
 
@@ -18,15 +18,15 @@ Two consequences run through every module.
 
 ### Main decides; everything else is a mechanism
 
-[`main/recording/recorder.ts`](../../src/main/recording/recorder.ts) owns the authoritative `RecordingState`, the session IDs, the ordering and the deadlines, and it touches no Electron or DOM API. The renderers acquire and encode media, the writer moves bytes, the tray draws — none of them may conclude that a recording succeeded. The hidden capture renderer exists only because DOM media APIs require a renderer, not because capture is a peer authority; it reports `started`, `chunk` and `stopped` as facts about itself, and main interprets them.
+[`main/recording/recorder.ts`](../../src/main/recording/recorder.ts) owns the authoritative `RecordingState`, the session IDs, the ordering and the deadlines, and it touches no Electron or DOM API. The native capture engine acquires, encodes and writes media, the writer publishes the file, the tray draws — none of them may conclude that a recording succeeded. The engine runs in its own `utilityProcess` so that a native crash ends that process and not the app, not because capture is a peer authority; it reports `prepared`, `started`, `progress`, `stopped` and `finished` as facts about itself, and main interprets them.
 
 This is what makes the two entry points safe: a tray left click and the global shortcut both call `Recorder.toggle()`, so there is one decision point that starts when idle, stops when recording, cancels a countdown, re-issues permission guidance in `needsPermission`, cancels a start that has lasted a second (plan 065), and ignores a double press within that second and presses while stopping. Adding a third entry point means calling the same function, not adding a branch.
 
 ### A claim requires an observable fact
 
-Each user-visible assertion is tied to something the app actually observed. `saved` is emitted only after the temporary file has been drained, synced, closed and renamed. Recording quality is reported from a measured frame size, falling back to track settings only when frames cannot be read, because `getSettings` once reported an incorrect height on a multi-monitor setup. Audio is validated through returned tracks, which proves a track exists and is live — not that sound is playing. A `CaptureReport` omits fields it does not know instead of filling them in.
+Each user-visible assertion is tied to something the app actually observed. `saved` is emitted only after the engine reported the file finished and main published it under its final name. Recording quality is reported from the size the engine probed and prepared, never from the request, because Chromium's `getSettings` once reported an incorrect height on a multi-monitor setup. A start whose system audio cannot be opened fails, but an audio track proves only that capture ran — not that sound was playing, since the engine fills quiet stretches with silence. A `CaptureReport` omits fields it does not know instead of filling them in.
 
-The inverse rule matters as much: a request is not a guarantee. Bitrate coefficients, the 256 kbps AAC target, the unprocessed-audio constraints and every deadline in [recording.md](recording.md#deadlines-and-supervision) are what the app asks for, and the documentation says so wherever a number appears.
+The inverse rule matters as much: a request is not a guarantee. Bitrate coefficients, the 256 kbps AAC target and every deadline in [recording.md](recording.md#deadlines-and-supervision) are what the app asks for, and the documentation says so wherever a number appears.
 
 ### Failure is an event, and the folder is the record
 
@@ -48,12 +48,14 @@ flowchart TB
     subgraph Mech[Mechanism layer]
       Tray[Tray / Menu / Notification]
       Panel[SettingsWindow]
-      Host[CaptureHost supervisor]
-      Writer[FileWriter]
+      Host[NativeCaptureHost supervisor]
+      Writer[EngineFileWriter: reserve and publish]
       Log[FileLogger]
     end
+    subgraph Engine[Capture utilityProcess, one per attempt]
+      Capture[Rust engine: capture, encode, mux, write the file]
+    end
     subgraph Sandbox[Sandboxed renderers]
-      Capture[capture-host: getDisplayMedia / MediaRecorder]
       Page[settings panel page]
     end
     Models --> Decide
@@ -63,7 +65,7 @@ flowchart TB
     Panel <-->|settings IPC| Page
 ```
 
-The direction is the point: the decision layer reads pure functions and drives mechanisms, and nothing below decides anything. Both renderers are sandboxed, context-isolated and Node-free, so the capture page holds a stream and the settings page holds a rendered view — neither holds state the app depends on. Testability follows from the same direction: the state machine and every model are unit-testable without Electron, which is why `*.test.ts` sits beside them.
+The direction is the point: the decision layer reads pure functions and drives mechanisms, and nothing below decides anything. The renderers are sandboxed, context-isolated and Node-free and hold a rendered view; the capture process holds the media and the file being written, and reports what happened to them. Neither holds state the app depends on. Testability follows from the same direction: the state machine and every model are unit-testable without Electron, which is why `*.test.ts` sits beside them.
 
 ## One recording, end to end
 
@@ -71,10 +73,10 @@ Each stage of a recording belongs to a different document. These are the layer c
 
 1. **Intent to decision.** A tray left click ([`tray.ts`](../../src/main/menus/tray.ts)) or the global shortcut ([`hotkey.ts`](../../src/main/shortcuts/hotkey.ts)) calls `Recorder.toggle()`; nothing else in the app starts a recording.
 2. **Decision to durable slot.** The writer opens the `.recording.mp4` temporary file *before* capture is requested, so a folder problem is reported as a folder problem and anything captured later already has somewhere to land.
-3. **Decision to mechanism.** The host receives `start { sessionId, quality }` over the MessagePort carrying the quality snapshot, while main selects the display through its own `chooseDisplayMedia` handler — source selection never moves into the sandbox.
-4. **Mechanism acquires.** The renderer checks support, rejects absent or ended audio tracks and measures actual frames before reporting `started`, which is a report about itself rather than a verdict that recording succeeded.
-5. **Mechanism back to decision, repeatedly.** Every chunk is gated on the session ID and a consecutive sequence number before its bytes reach the single writer queue.
-6. **Commitment.** After stop, the file is drained, synced, closed and renamed; `saved` exists only after the rename.
+3. **Decision to mechanism.** Main forks a capture process for this attempt and resolves the display while it starts; the process receives `start` with the session ID, the quality snapshot, the display, the temporary file's path, RecordStuff's own processes and the Hide menu bar and Dock choice — source selection never moves into the engine.
+4. **Mechanism acquires.** The engine probes the display, opens capture with RecordStuff's windows (and, when chosen, the menu bar and Dock) left out, prepares the encoders and the file, and reports `prepared`; at the countdown's zero `record` begins encoding and the engine reports `started`, which is a report about itself rather than a verdict that recording succeeded.
+5. **Mechanism back to decision, repeatedly.** The engine writes the file itself and reports `progress` with the bytes written about once a second; each message is gated on the session ID, and the stall guard watches the bytes grow.
+6. **Commitment.** After `stop` the engine reports `stopped` once capture and the encoders have stopped, and the recorder returns to idle; the engine then makes the file plain MP4 and reports `finished`, main publishes it under its final name, and `saved` exists only after that.
 7. **Decision to projections.** Returning to idle redraws the tray and the window, and the `saved` event schedules the notification and lists the folder again for Recordings — the surfaces react to the recorder's state and events instead of being told separately.
 
 Failure at any point takes one path: detach the session, clear deadlines, stop the host, return to idle, preserve whatever bytes exist ([recording.md](recording.md#file-completion-and-failure)). Permission changes apply only while idle or `needsPermission`, so polling never interrupts a running session.
@@ -83,8 +85,8 @@ Failure at any point takes one path: detach the session, clear deadlines, stop t
 
 Most of RecordStuff's life is spent idle, so idle has a budget (plan 049): about 0% of one core and a few wake-ups per second, measured by `pnpm measure:cpu` ([CPU budget](tooling.md#cpu-budget)). With Settings closed, only this may run:
 
-- **Processes.** The main process and Electron's GPU and network-service processes. Until the first window opens there is also one renderer that hosts no page: Electron 44 launches it ahead of time when the default session is first used ([electron/electron#53144](https://github.com/electron/electron/pull/53144)), which the display-media handler needs at launch, so the first capture host starts in it; nothing re-creates it, and it costs about 65 MB and no measurable CPU. The first system-audio capture starts Chromium's out-of-process audio service, which Chromium 152 keeps until the app quits (about 49 MB, 0.3 wake-ups per second). The capture host window and the countdown overlay exist only from starting to saving and are destroyed when the state settles; the Settings window is destroyed when it closes. So with Settings closed no renderer remains after a recording.
-- **One timer.** [PermissionWatcher](../../src/main/permission/permission.ts) polls `getMediaAccessStatus('screen')` every 5 seconds, 0.2 wake-ups per second; it is how a revoked permission is noticed while no window is open, so it stays until measurements show it matters. The capture host's 5-second ping and the writer's fsync interval exist only during a session, and unit tests assert that neither they nor any deadline outlives a saved, failed or cancelled session. Every other timer is a bounded one-shot (session deadlines, the overlay fade, the saved-notification delay, the shortcut-capture lease while Settings is open, history retry backoff, the quit feedback).
+- **Processes.** The main process and Electron's GPU and network-service processes, nothing else. No renderer runs before the first window: Electron 44 launches one ahead of time when the default session is first used ([electron/electron#53144](https://github.com/electron/electron/pull/53144)), and nothing uses it at launch, since the library's media protocol is registered as the first window is made. The capture `utilityProcess` is forked when an attempt starts and ends once its file is finished (or after 150 s past the stop); it was not started ahead of time, because about 50 ms of start was not worth an idle process of about 73 MB (maintainer, 2026-10-15). Capture starts no Chromium audio service. The countdown overlay exists only from preparation until the countdown ends, and the Settings window is destroyed when it closes. So with Settings closed no renderer and no capture process remain after a recording.
+- **One timer.** [PermissionWatcher](../../src/main/permission/permission.ts) polls `getMediaAccessStatus('screen')` every 5 seconds, 0.2 wake-ups per second; it is how a revoked permission is noticed while no window is open, so it stays until measurements show it matters. The capture host's 5-second ping exists only during an attempt, and unit tests assert that neither it nor any deadline outlives a saved, failed or cancelled session. Every other timer is a bounded one-shot (session deadlines, the bound on a finishing capture process, the overlay fade, the saved-notification delay, the shortcut-capture lease while Settings is open, history retry backoff, the quit feedback).
 - **Listeners only.** Display changes, power suspend and resume, global shortcuts and tray clicks wake the app only when they happen. The update check runs at launch at most once a day.
 
 A change that adds a timer, polling, a watcher, a window or renderer that stays alive, or tray work keeps this list true and is measured, per the [testing policy](../testing.md#select-tests-from-behavior).
@@ -97,15 +99,15 @@ Each of these holds across modules, and each already has a place where it is enf
 | --- | --- | --- |
 | One authoritative recording state; failure is an event, not a state | `main/recording/recorder.ts` | [recording.md](recording.md#state-and-user-actions) |
 | One decision point per user intent (`Recorder.toggle()`) | `main/menus/tray.ts`, `main/shortcuts/hotkey.ts` | [desktop.md](desktop.md#recording-shortcut) |
-| One media writer per recording; tmp file, then rename | `main/recording/file-writer.ts` | [recording.md](recording.md#file-completion-and-failure) |
-| Session ID and consecutive `seq` gate every host message | `main/recording/recorder.ts` | [recording.md](recording.md#chunk-and-stop-ordering) |
+| One file per recording, written by the engine; main reserves the temporary name and publishes the finished file | `native/capture/src/writer.rs`, `main/recording/engine-file-writer.ts` | [recording.md](recording.md#file-completion-and-failure) |
+| The session ID gates every host message | `main/recording/recorder.ts` | [recording.md](recording.md#message-and-stop-ordering) |
 | Quality is snapshotted per session, never re-read mid-recording | `main/recording/recorder.ts`, `shared/quality.ts` | [recording.md](recording.md#quality-and-encoding) |
 | Each preference is declared once, with stable ids | `main/settings/settings-model.ts` | [desktop.md](desktop.md#settings-window) |
 | Starting, recording and saving lock every preference but language | `main/recording/recording-lock.ts`, re-checked at the action handler | [desktop.md](desktop.md#settings-window) |
 | A renderer sends ids, never actions; ids resolve against a freshly built model | `main/settings/settings-window.ts` | [architecture.md](architecture.md#trust-boundaries-and-ipc) |
 | Settings saves are serialized and derived from the last committed value | `main/settings/settings.ts` | [desktop.md](desktop.md#settings-and-output-folder) |
 | Pure modules depend on no Electron or DOM API | `shared/*`, `*-model.ts` | [architecture.md](architecture.md#processes-and-responsibilities) |
-| A request is not a guarantee, and documentation says which is which | quality, audio constraints, deadlines | [recording.md](recording.md#quality-and-encoding) |
+| A request is not a guarantee, and documentation says which is which | quality, audio bit rate, deadlines | [recording.md](recording.md#quality-and-encoding) |
 
 ## Where to go next
 
@@ -114,7 +116,7 @@ The design set has a spine, a set of specialist topics, and a delivery track. Re
 | Purpose | Documents |
 | --- | --- |
 | The spine — read these to work on the app | [Product overview](overview.md) → this document → [Architecture](architecture.md) → [Recording pipeline](recording.md) → [Desktop features](desktop.md) |
-| Specialist topics — read when the change touches media | [Electron, Chromium and WebRTC](webrtc.md), [Audio quality testing](audio-quality.md) |
+| Specialist topics — read when the change touches media | [Why recording left Chromium's WebRTC capture](webrtc.md), [Audio quality testing](audio-quality.md) |
 | Delivery — read when the change ships something | [Delivery](delivery.md), [Release automation](releases.md), [Signing](signing.md), [Tooling](tooling.md) |
 | Reference — look up rather than read through | [Function reference](functions.md), [Design decisions](decisions.md), [Verification record](../verification/README.md) |
 

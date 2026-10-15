@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>從瀏覽器 API 到作業系統 API：native 是什麼，什麼時候值得往下走</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.92rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.table-scroll table { max-width: none; }
+.wide-table { min-width: 0; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.fig-call svg { max-width: 400px; }
+.fig-isolation svg { max-width: 560px; }
+.flow-figure .flow-mobile { display: none; }
+@media (max-width: 640px) {
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .wide-table { min-width: 620px; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>從瀏覽器 API 到作業系統 API：native 是什麼，什麼時候值得往下走</h1>
+
+<p class="deck">用網頁技術（Electron、Tauri 或其他 WebView 外殼）做的桌面 App，遲早會碰到一個瀏覽器給不了的功能。這時有好幾條路：繼續用 runtime 給的 API、寫一個原生模組、把原生程式碼放進獨立的 process、換一個框架，或整個改寫成原生 App。本文先說明「native API」在技術上是什麼、為什麼 JavaScript 必須靠 runtime 才碰得到它，再把每條路的前提、代價與會讓結論翻轉的條件攤開比較。範例是一個 Electron 螢幕錄影 App 把擷取從 Chromium 移到 Rust 的過程，它只是一個例子，不是答案。</p>
+
+<h2>這篇文章要回答的問題</h2>
+
+<p>一個用 TypeScript 寫的桌面 App，UI、設定、狀態機和測試都在同一個語言裡，開發起來很順。某天產品要一個功能，而這個功能只有作業系統才提供，瀏覽器沒有對應的 API。可遷移的問題是：</p>
+
+<p><strong>一個建立在網頁技術上的桌面 App，什麼時候應該往下寫原生程式碼？往下寫的話，要寫在哪一層、用什麼語言、放在哪個 process？又什麼時候乾脆換框架？</strong></p>
+
+<p>這些選擇彼此牽連。語言決定你能用哪些綁定（binding）；process 的位置決定當機會帶走多少東西、系統權限算在誰頭上；框架決定 UI 用哪個網頁引擎、哪些工具能留下來。要做好判斷，得先知道「native」到底指什麼。</p>
+
+<h2>三層 API：瀏覽器、runtime、作業系統</h2>
+
+<p>一段 JavaScript 能做什麼，取決於執行它的環境把哪些能力交給它：</p>
+
+<ul>
+  <li><strong>瀏覽器 API</strong>：<code>getDisplayMedia</code>、<code>MediaRecorder</code>、<code>fetch</code> 這類由 Web 標準定義、瀏覽器實作的介面。它們為了安全與跨平台而刻意收窄：能做的事由標準決定，不由作業系統決定。</li>
+  <li><strong>runtime API</strong>：Node.js 的 <code>fs</code>、<code>child_process</code>，或 Electron 的 <code>Tray</code>、<code>Notification</code>、<code>desktopCapturer</code>。它們由 runtime 的作者用 C/C++ 包好作業系統的功能再交給 JavaScript，範圍比瀏覽器寬，但仍只涵蓋作者選擇包的部分。</li>
+  <li><strong>作業系統 API</strong>：macOS 的 ScreenCaptureKit、AVFoundation、CoreGraphics，Windows 的 Windows.Graphics.Capture、WASAPI、Media Foundation。這是功能真正所在的地方，也是新功能最先出現的地方。</li>
+</ul>
+
+<p>以螢幕錄影為例：Chromium 的 <code>getDisplayMedia</code> 能擷取一個螢幕或一個視窗，Electron 另外打了補丁，讓 App 自己的受保護視窗不被錄進去。但它不能把選單列、Dock 或桌面圖示排除在錄影之外，不能只錄一塊區域或幾個指定的 App，也不能只錄某一個 App 的聲音。在 macOS 上這些都要用 ScreenCaptureKit 的 <code>SCContentFilter</code>，而 Electron 或 Chromium 沒有任何 API 把它交給 JavaScript。這就是「瀏覽器給不了」的典型樣子：不是效能不夠，而是能力根本不在那一層。</p>
+
+<h2>native API 是什麼：二進位的呼叫慣例</h2>
+
+<p>作業系統不是用某種程式語言「提供」API，而是用一套<strong>二進位層級的呼叫慣例</strong>（calling convention 與 ABI）：參數放在哪些暫存器或堆疊位置、物件長什麼樣子、誰負責釋放記憶體、錯誤怎麼回報。任何能產生符合這套慣例的機器碼的語言，都能呼叫它。桌面平台主要有四種：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+<thead><tr><th>慣例</th><th>平台與例子</th><th>呼叫方式</th></tr></thead>
+<tbody>
+<tr><td>C</td><td>兩邊都有：CoreGraphics 的 <code>CGMainDisplayID</code>、Win32 的 <code>SetWindowDisplayAffinity</code></td><td>依函式名稱連結，直接呼叫。最簡單，幾乎所有語言都支援。</td></tr>
+<tr><td>Objective-C runtime</td><td>macOS 的 AppKit、AVFoundation、ScreenCaptureKit</td><td>呼叫方法其實是送「訊息」：用 selector（方法名稱）呼叫 <code>objc_msgSend</code>，由 runtime 在執行期查出實作。所以程式可以先問物件「你認不認得這個 selector」，再決定要不要呼叫。</td></tr>
+<tr><td>COM</td><td>Windows 的 WASAPI、Media Foundation、Direct3D 11</td><td>物件是一個指向函式表（vtable）的指標；每個介面都繼承 <code>IUnknown</code>（查詢介面、參考計數），方法回傳 <code>HRESULT</code> 錯誤碼。</td></tr>
+<tr><td>WinRT</td><td>Windows 的 Windows.Graphics.Capture</td><td>建立在 COM 之上，另外附帶描述型別的中繼資料（<code>.winmd</code>），讓 C++、C#、Rust 等語言能自動產生「投影」（projection）來呼叫。</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Swift 在 macOS 上能直接呼叫 Objective-C 與 C 的框架，是 Apple 的第一語言；C++ 可以透過 Objective-C++ 呼叫 Apple 的框架，也是 Windows 上 COM 與 C++/WinRT 的原生語言；Rust 則透過綁定函式庫做同樣的事：<code>objc2</code> 系列（或 <code>cidre</code>）對應 Apple 的框架，Microsoft 自己維護的 <code>windows-rs</code> 從 Windows 的中繼資料產生綁定。</p>
+
+<p>下面三段 Rust 程式碼來自本文範例的錄影引擎，分別示範三種慣例。重點不是語法，而是「同一個編譯語言可以直接走三種慣例」：</p>
+
+<pre class="language-typescript"><span class="label">Rust</span><code><span class="c">// C：宣告 CoreGraphics 的函式，直接呼叫</span>
+unsafe extern <span class="s">"C"</span> <span class="o">{</span>
+    fn <span class="f">CGMainDisplayID</span><span class="o">(</span><span class="o">)</span> <span class="o">-</span><span class="o">&gt;</span> u32<span class="o">;</span>
+<span class="o">}</span>
+unsafe <span class="o">{</span> <span class="f">CGMainDisplayID</span><span class="o">(</span><span class="o">)</span> <span class="o">}</span><span class="o">;</span>
+
+<span class="c">// Objective-C runtime：先問物件認不認得這個 selector，再送訊息</span>
+<span class="k">if</span> filter<span class="o">.</span><span class="p">respondsToSelector</span><span class="o">(</span>sel<span class="o">!</span><span class="o">(</span>setIncludeMenuBar<span class="o">:</span><span class="o">)</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">let</span> _<span class="o">:</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span> unsafe <span class="o">{</span> msg_send<span class="o">!</span><span class="o">[</span><span class="o">&amp;</span>filter<span class="o">,</span> setIncludeMenuBar<span class="o">:</span> <span class="n">false</span><span class="o">]</span> <span class="o">}</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="c">// WinRT 加上 COM interop 介面：用螢幕的 handle 建立擷取項目</span>
+<span class="k">let</span> interop <span class="o">=</span> windows<span class="o">:</span><span class="o">:</span>core<span class="o">:</span><span class="o">:</span>factory<span class="o">:</span><span class="o">:</span><span class="o">&lt;</span><span class="t">GraphicsCaptureItem</span><span class="o">,</span> <span class="t">IGraphicsCaptureItemInterop</span><span class="o">&gt;</span><span class="o">(</span><span class="o">)</span><span class="o">?</span><span class="o">;</span>
+<span class="k">let</span> item <span class="o">=</span> unsafe <span class="o">{</span> interop<span class="o">.</span><span class="p">CreateForMonitor</span><span class="o">:</span><span class="o">:</span><span class="o">&lt;</span><span class="t">GraphicsCaptureItem</span><span class="o">&gt;</span><span class="o">(</span>monitor<span class="o">)</span> <span class="o">}</span><span class="o">?</span><span class="o">;</span></code></pre>
+
+<p>第二段也說明了綁定函式庫的一個代價：<code>setIncludeMenuBar</code> 只有較新的 macOS 才有，程式在執行期先確認物件支援，才直接送出訊息。當綁定還沒跟上某個新 API，或需要依系統版本決定是否呼叫時，就得退回這種較低階、編譯器幫不上忙的寫法。</p>
+
+<h2>為什麼 JavaScript 需要 runtime 幫忙</h2>
+
+<p>編譯語言產生的是機器碼，可以直接按照上面的慣例跳進系統函式。JavaScript 不是：它在 V8 這類虛擬機裡執行，只能操作虛擬機給它的值和函式，沒有辦法自己載入一個動態函式庫、把參數排進暫存器、跳到一個函式指標。這個「跳過去」的動作必須由 runtime 用原生程式碼完成，再把結果包成 JavaScript 的值。</p>
+
+<p>因此 JavaScript 碰觸作業系統只有三種方式：</p>
+
+<ol>
+  <li><strong>runtime 內建</strong>：等 runtime 的作者把你要的功能包進去（例如等 Electron 新增某個 API）。你不寫原生程式碼，但功能的範圍和時程都不由你決定。</li>
+  <li><strong>執行期 FFI</strong>（foreign function interface）：runtime 或套件提供「載入某個函式庫、照某個簽名呼叫某個函式」的通用機制，例如 Node.js 的 <code>koffi</code> 套件、Deno 的 <code>Deno.dlopen</code>、Bun 的 <code>bun:ffi</code>。不用編譯，但型別與記憶體管理全在 JavaScript 這邊描述，錯一個參數就是當機；面對 Objective-C 訊息、COM 物件與回呼（callback）時尤其笨重。</li>
+  <li><strong>原生模組</strong>（native addon）：用 C、C++、Rust 等語言寫一個動態函式庫（Node.js 裡副檔名是 <code>.node</code>），由 runtime 用 <code>require()</code> 載入。模組在原生那一側自由呼叫作業系統，只把整理好的介面交給 JavaScript。</li>
+</ol>
+
+<p>原生模組和 runtime 之間也需要一套慣例。早期 Node.js 的原生模組直接使用 V8 的 C++ API，每次 Node 或 Electron 升級都可能要重新編譯。<strong>Node-API</strong>（舊稱 N-API）是 Node.js 為此提供的穩定 C 介面：模組只依賴 Node-API，原則上就不必為每個 Node 或 Electron 版本重新編譯，但仍然要為每個作業系統與 CPU 架構各編一份。</p>
+
+<p>直接用 Node-API 的 C 函式寫模組很繁瑣，所以多數專案會用產生器：C++ 有官方的 <code>node-addon-api</code>，Rust 有 <strong>napi-rs</strong>。napi-rs 讓你在 Rust 的型別與方法上加標註，自動產生 Node-API 的膠水程式碼與 TypeScript 型別宣告。下面是範例錄影引擎對 JavaScript 公開的介面（省略了實作）：</p>
+
+<pre class="language-shell"><span class="label">Rust</span><code><span class="sh-comment">#[napi]</span>
+<span class="sh-command">pub</span> struct NativeCapture { /* 錄影工作階段、事件回呼 */ }
+
+<span class="sh-comment">#[napi]</span>
+<span class="sh-command">impl</span> NativeCapture {
+<span class="sh-comment">    #[napi(constructor)]</span>
+    <span class="sh-command">pub</span> fn new(on_event: Function&lt;EngineEvent, ()&gt;) -&gt; Result&lt;Self&gt; { /* … */ }
+
+<span class="sh-comment">    #[napi(ts_return_type = "Promise&lt;PreparedInfo&gt;")]</span>
+    <span class="sh-command">pub</span> fn prepare(&amp;self, options: PrepareOptions) -&gt; AsyncTask&lt;PrepareTask&gt; { /* … */ }
+
+<span class="sh-comment">    #[napi]</span>
+    <span class="sh-command">pub</span> fn record(&amp;self) -&gt; Result&lt;()&gt; { /* … */ }
+
+<span class="sh-comment">    #[napi(ts_return_type = "Promise&lt;StopReport&gt;")]</span>
+    <span class="sh-command">pub</span> fn stop(&amp;self) -&gt; AsyncTask&lt;StopTask&gt; { /* … */ }
+<span class="sh-command">}</span></code></pre>
+
+<p>從 TypeScript 看，這只是一個有 <code>prepare</code>、<code>record</code>、<code>stop</code> 方法的類別，耗時的工作回傳 Promise，不會卡住事件迴圈。介面刻意做得很窄：只有幾個粗粒度的操作和一個事件回呼，每一幀畫面、每一段聲音都留在原生那一側。這是混合語言時最重要的設計原則：<strong>跨語言邊界的次數越少、資料越小越好</strong>。</p>
+
+<figure class="flow-figure fig-call">
+  <svg id="mermaid-mv9vdp5x-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 444.046875 828" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mv9vdp5x-title mermaid-mv9vdp5x-desc"><title id="mermaid-mv9vdp5x-title">從 TypeScript 到作業系統 API 的呼叫路徑</title><desc id="mermaid-mv9vdp5x-desc">TypeScript 程式透過 runtime 提供的 Node-API 進入原生模組；napi-rs 產生這層膠水。原生模組再透過綁定函式庫，以各平台的呼叫慣例呼叫作業系統 API：macOS 上是 Objective-C runtime 與 C，Windows 上是 C、COM 與 WinRT。</desc><style>#mermaid-mv9vdp5x-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mv9vdp5x-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mv9vdp5x-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mv9vdp5x-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mv9vdp5x-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mv9vdp5x-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mv9vdp5x-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mv9vdp5x-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mv9vdp5x-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mv9vdp5x-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mv9vdp5x-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mv9vdp5x-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mv9vdp5x-my-svg .marker.cross{stroke:#D97757;}#mermaid-mv9vdp5x-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mv9vdp5x-my-svg p{margin:0;}#mermaid-mv9vdp5x-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mv9vdp5x-my-svg .cluster-label text{fill:#05060a;}#mermaid-mv9vdp5x-my-svg .cluster-label span{color:#05060a;}#mermaid-mv9vdp5x-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mv9vdp5x-my-svg .label text,#mermaid-mv9vdp5x-my-svg span{fill:#141413;color:#141413;}#mermaid-mv9vdp5x-my-svg .node rect,#mermaid-mv9vdp5x-my-svg .node circle,#mermaid-mv9vdp5x-my-svg .node ellipse,#mermaid-mv9vdp5x-my-svg .node polygon,#mermaid-mv9vdp5x-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mv9vdp5x-my-svg .rough-node .label text,#mermaid-mv9vdp5x-my-svg .node .label text,#mermaid-mv9vdp5x-my-svg .image-shape .label,#mermaid-mv9vdp5x-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mv9vdp5x-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mv9vdp5x-my-svg .rough-node .label,#mermaid-mv9vdp5x-my-svg .node .label,#mermaid-mv9vdp5x-my-svg .image-shape .label,#mermaid-mv9vdp5x-my-svg .icon-shape .label{text-align:center;}#mermaid-mv9vdp5x-my-svg .node.clickable{cursor:pointer;}#mermaid-mv9vdp5x-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mv9vdp5x-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mv9vdp5x-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mv9vdp5x-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mv9vdp5x-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vdp5x-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mv9vdp5x-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vdp5x-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mv9vdp5x-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mv9vdp5x-my-svg .cluster text{fill:#05060a;}#mermaid-mv9vdp5x-my-svg .cluster span{color:#05060a;}#mermaid-mv9vdp5x-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mv9vdp5x-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mv9vdp5x-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mv9vdp5x-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mv9vdp5x-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mv9vdp5x-my-svg .icon-shape,#mermaid-mv9vdp5x-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vdp5x-my-svg .icon-shape p,#mermaid-mv9vdp5x-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mv9vdp5x-my-svg .icon-shape .label rect,#mermaid-mv9vdp5x-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vdp5x-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mv9vdp5x-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mv9vdp5x-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node rect,#mermaid-mv9vdp5x-my-svg [data-look="neo"].cluster rect,#mermaid-mv9vdp5x-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mv9vdp5x-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vdp5x-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mv9vdp5x-my-svg-gradient);stroke-width:1px;}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mv9vdp5x-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vdp5x-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mv9vdp5x-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mv9vdp5x-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vdp5x-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mv9vdp5x-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vdp5x-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mv9vdp5x-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M209.07421875,108L209.07421875,206" id="mermaid-mv9vdp5x-my-svg-L_TS_NAPI_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 94 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vdp5x-L_TS_NAPI_0" data-points="W3sieCI6MjA5LjA3NDIxODc1LCJ5IjoxMDh9LHsieCI6MjA5LjA3NDIxODc1LCJ5IjoyMTB9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M209.07421875,306L209.07421875,342" id="mermaid-mv9vdp5x-my-svg-L_NAPI_MOD_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vdp5x-L_NAPI_MOD_0" data-points="W3sieCI6MjA5LjA3NDIxODc1LCJ5IjozMDZ9LHsieCI6MjA5LjA3NDIxODc1LCJ5IjozNDZ9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M209.07421875,466L209.07421875,502" id="mermaid-mv9vdp5x-my-svg-L_MOD_BIND_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vdp5x-L_MOD_BIND_0" data-points="W3sieCI6MjA5LjA3NDIxODc1LCJ5Ijo0NjZ9LHsieCI6MjA5LjA3NDIxODc1LCJ5Ijo1MDZ9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M187.07421875,602L187.07421875,614.9289321881345Q187.07421875,622 180.00315093813452,622L99.13356781186548,622Q92.0625,622 92.0625,629.0710678118655L92.0625,700" id="mermaid-mv9vdp5x-my-svg-L_BIND_MAC_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 183.68344116210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vdp5x-L_BIND_MAC_0" data-points="W3sieCI6MTg3LjA3NDIxODc1LCJ5Ijo2MDJ9LHsieCI6MTg3LjA3NDIxODc1LCJ5Ijo2MjJ9LHsieCI6OTIuMDYyNSwieSI6NjIyfSx7IngiOjkyLjA2MjUsInkiOjcwNH1d" data-look="neo" marker-end="url(#mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M231.07421875,602L231.07421875,614.9289321881345Q231.07421875,622 238.14528656186548,622L319.0148696881345,622Q326.0859375,622 326.0859375,629.0710678118655L326.0859375,700" id="mermaid-mv9vdp5x-my-svg-L_BIND_WIN_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 183.68344116210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vdp5x-L_BIND_WIN_0" data-points="W3sieCI6MjMxLjA3NDIxODc1LCJ5Ijo2MDJ9LHsieCI6MjMxLjA3NDIxODc1LCJ5Ijo2MjJ9LHsieCI6MzI2LjA4NTkzNzUsInkiOjYyMn0seyJ4IjozMjYuMDg1OTM3NSwieSI6NzA0fV0=" data-look="neo" marker-end="url(#mermaid-mv9vdp5x-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(208.77734375, 159)"><g class="label" data-id="mermaid-mv9vdp5x-L_TS_NAPI_0" transform="translate(0, -10)"><g><rect class="background" x="-51.203125" y="-1" width="102.40625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">require()</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 載入</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(91.6015625, 653)"><g class="label" data-id="mermaid-mv9vdp5x-L_BIND_MAC_0" transform="translate(0, -10)"><g><rect class="background" x="-56.0390625" y="-1" width="112.078125" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">objc_msgSend</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(325.7890625, 653)"><g class="label" data-id="mermaid-mv9vdp5x-L_BIND_WIN_0" transform="translate(0, -10)"><g><rect class="background" x="-42.203125" y="-1" width="84.40625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">vtable</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 呼叫</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-TS-0" data-look="neo" transform="translate(209.07421875, 60)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>TypeScript / JavaScript<br />在 V8 裡執行</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-NAPI-1" data-look="neo" transform="translate(209.07421875, 258)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Node-API<br />runtime 提供的穩定 C ABI</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-MOD-2" data-look="neo" transform="translate(209.07421875, 406)"><rect class="basic label-container" x="-76" y="-60" width="152" height="120"/><g class="label" transform="translate(-60, -48)"><rect/><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>原生模組（.node）<br />Rust + napi-rs 產生的膠水</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-BIND-3" data-look="neo" transform="translate(209.07421875, 554)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>綁定函式庫<br />objc2、windows-rs</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-MAC-4" data-look="neo" transform="translate(92.0625, 764)"><rect class="basic label-container" x="-80.0625" y="-60" width="160.125" height="120"/><g class="label" transform="translate(-64.0625, -48)"><rect/><foreignObject width="128.125" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>macOS<br />Objective-C runtime、C<br />ScreenCaptureKit</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vdp5x-my-svg-flowchart-WIN-5" data-look="neo" transform="translate(326.0859375, 752)"><rect class="basic label-container" x="-113.9609375" y="-48" width="227.921875" height="96"/><g class="label" transform="translate(-97.9609375, -36)"><rect/><foreignObject width="195.921875" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Windows<br />C、COM、WinRT<br />Windows.Graphics.Capture</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mv9vdp5x-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mv9vdp5x-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mv9vdp5x-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>每個箭頭都跨過一個邊界。JavaScript 自己跨不過第一個，要靠 runtime 載入原生模組；從原生模組往下，編譯語言都能直接照系統的慣例呼叫。</figcaption>
+</figure>
+
+<h2>原生程式碼要放在哪個 process</h2>
+
+<p>決定寫原生模組之後，下一個問題是它在哪裡執行。原生程式碼沒有 JavaScript 的安全網：一個空指標、一個用錯的參數，或系統框架自己判定狀態不對而中止，都會讓整個 process 立刻結束，<code>try/catch</code> 接不到。所以「放在哪個 process」其實是「當機時要犧牲多少」。以 Electron 為例有三個選項：</p>
+
+<figure class="flow-figure fig-isolation">
+  <svg id="mermaid-mv9vj55l-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart flow-desktop" viewBox="4 4 552 310" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mv9vj55l-title mermaid-mv9vj55l-desc"><title id="mermaid-mv9vj55l-title">原生程式碼可以放在哪個 process</title><desc id="mermaid-mv9vj55l-desc">main process 可以直接載入原生模組、把它放進 Electron utilityProcess，或啟動一個獨立執行檔（sidecar）。三者在當機影響範圍、溝通方式與權限歸屬上不同。</desc><style>#mermaid-mv9vj55l-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mv9vj55l-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mv9vj55l-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mv9vj55l-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mv9vj55l-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mv9vj55l-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mv9vj55l-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mv9vj55l-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mv9vj55l-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mv9vj55l-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mv9vj55l-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mv9vj55l-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mv9vj55l-my-svg .marker.cross{stroke:#D97757;}#mermaid-mv9vj55l-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mv9vj55l-my-svg p{margin:0;}#mermaid-mv9vj55l-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mv9vj55l-my-svg .cluster-label text{fill:#05060a;}#mermaid-mv9vj55l-my-svg .cluster-label span{color:#05060a;}#mermaid-mv9vj55l-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mv9vj55l-my-svg .label text,#mermaid-mv9vj55l-my-svg span{fill:#141413;color:#141413;}#mermaid-mv9vj55l-my-svg .node rect,#mermaid-mv9vj55l-my-svg .node circle,#mermaid-mv9vj55l-my-svg .node ellipse,#mermaid-mv9vj55l-my-svg .node polygon,#mermaid-mv9vj55l-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mv9vj55l-my-svg .rough-node .label text,#mermaid-mv9vj55l-my-svg .node .label text,#mermaid-mv9vj55l-my-svg .image-shape .label,#mermaid-mv9vj55l-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mv9vj55l-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mv9vj55l-my-svg .rough-node .label,#mermaid-mv9vj55l-my-svg .node .label,#mermaid-mv9vj55l-my-svg .image-shape .label,#mermaid-mv9vj55l-my-svg .icon-shape .label{text-align:center;}#mermaid-mv9vj55l-my-svg .node.clickable{cursor:pointer;}#mermaid-mv9vj55l-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mv9vj55l-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mv9vj55l-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mv9vj55l-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mv9vj55l-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vj55l-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mv9vj55l-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vj55l-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mv9vj55l-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mv9vj55l-my-svg .cluster text{fill:#05060a;}#mermaid-mv9vj55l-my-svg .cluster span{color:#05060a;}#mermaid-mv9vj55l-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mv9vj55l-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mv9vj55l-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mv9vj55l-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mv9vj55l-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mv9vj55l-my-svg .icon-shape,#mermaid-mv9vj55l-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vj55l-my-svg .icon-shape p,#mermaid-mv9vj55l-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mv9vj55l-my-svg .icon-shape .label rect,#mermaid-mv9vj55l-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vj55l-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mv9vj55l-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mv9vj55l-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mv9vj55l-my-svg [data-look="neo"].node rect,#mermaid-mv9vj55l-my-svg [data-look="neo"].cluster rect,#mermaid-mv9vj55l-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mv9vj55l-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vj55l-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mv9vj55l-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mv9vj55l-my-svg-gradient);stroke-width:1px;}#mermaid-mv9vj55l-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vj55l-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mv9vj55l-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mv9vj55l-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vj55l-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mv9vj55l-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mv9vj55l-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vj55l-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mv9vj55l-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vj55l-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mv9vj55l-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M247,108L247,120.92893218813452Q247,128 239.92893218813452,128L95.07106781186548,128Q88,128 88,135.07106781186548L88,206" id="mermaid-mv9vj55l-my-svg-L_MAIN_A_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 247.67166137695312 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vj55l-L_MAIN_A_0" data-points="W3sieCI6MjQ3LCJ5IjoxMDh9LHsieCI6MjQ3LCJ5IjoxMjh9LHsieCI6ODgsInkiOjEyOH0seyJ4Ijo4OCwieSI6MjEwfV0=" data-look="neo" marker-end="url(#mermaid-mv9vj55l-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M280,108L280,206" id="mermaid-mv9vj55l-my-svg-L_MAIN_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 94 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vj55l-L_MAIN_B_0" data-points="W3sieCI6MjgwLCJ5IjoxMDh9LHsieCI6MjgwLCJ5IjoyMTB9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vj55l-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M313,108L313,120.92893218813452Q313,128 320.0710678118655,128L464.9289321881345,128Q472,128 472,135.07106781186548L472,206" id="mermaid-mv9vj55l-my-svg-L_MAIN_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 247.6717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vj55l-L_MAIN_C_0" data-points="W3sieCI6MzEzLCJ5IjoxMDh9LHsieCI6MzEzLCJ5IjoxMjh9LHsieCI6NDcyLCJ5IjoxMjh9LHsieCI6NDcyLCJ5IjoyMTB9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vj55l-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(87.7578125, 159)"><g class="label" data-id="mermaid-mv9vj55l-L_MAIN_A_0" transform="translate(0, -10)"><g><rect class="background" x="-33.7578125" y="-1" width="67.515625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">函式呼叫</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(279.7265625, 159)"><g class="label" data-id="mermaid-mv9vj55l-L_MAIN_B_0" transform="translate(0, -10)"><g><rect class="background" x="-49.7265625" y="-1" width="99.453125" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">MessagePort</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(471.8828125, 159)"><g class="label" data-id="mermaid-mv9vj55l-L_MAIN_C_0" transform="translate(0, -10)"><g><rect class="background" x="-50.3828125" y="-1" width="100.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">stdio</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> /</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> socket</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mv9vj55l-my-svg-flowchart-MAIN-0" data-look="neo" transform="translate(280, 60)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>main process<br />狀態機、檔案、UI</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vj55l-my-svg-flowchart-A-1" data-look="neo" transform="translate(88, 246)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>A. 載入 main<br />當機帶走 App</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vj55l-my-svg-flowchart-B-2" data-look="neo" transform="translate(280, 258)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>B. utilityProcess<br />當機只結束子 process</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vj55l-my-svg-flowchart-C-3" data-look="neo" transform="translate(472, 258)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>C. sidecar<br />權限歸屬要驗證</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mv9vj55l-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mv9vj55l-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mv9vj55l-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <svg id="mermaid-mv9vkmji-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart flow-mobile" viewBox="4 4 360 432" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mv9vkmji-title mermaid-mv9vkmji-desc"><title id="mermaid-mv9vkmji-title">原生程式碼可以放在哪個 process（窄版）</title><desc id="mermaid-mv9vkmji-desc">main process 可以直接載入原生模組、把它放進 Electron utilityProcess，或啟動一個獨立執行檔（sidecar）。三者在當機影響範圍、溝通方式與權限歸屬上不同。</desc><style>#mermaid-mv9vkmji-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mv9vkmji-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mv9vkmji-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mv9vkmji-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mv9vkmji-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mv9vkmji-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mv9vkmji-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mv9vkmji-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mv9vkmji-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mv9vkmji-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mv9vkmji-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mv9vkmji-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mv9vkmji-my-svg .marker.cross{stroke:#D97757;}#mermaid-mv9vkmji-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mv9vkmji-my-svg p{margin:0;}#mermaid-mv9vkmji-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mv9vkmji-my-svg .cluster-label text{fill:#05060a;}#mermaid-mv9vkmji-my-svg .cluster-label span{color:#05060a;}#mermaid-mv9vkmji-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mv9vkmji-my-svg .label text,#mermaid-mv9vkmji-my-svg span{fill:#141413;color:#141413;}#mermaid-mv9vkmji-my-svg .node rect,#mermaid-mv9vkmji-my-svg .node circle,#mermaid-mv9vkmji-my-svg .node ellipse,#mermaid-mv9vkmji-my-svg .node polygon,#mermaid-mv9vkmji-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mv9vkmji-my-svg .rough-node .label text,#mermaid-mv9vkmji-my-svg .node .label text,#mermaid-mv9vkmji-my-svg .image-shape .label,#mermaid-mv9vkmji-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mv9vkmji-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mv9vkmji-my-svg .rough-node .label,#mermaid-mv9vkmji-my-svg .node .label,#mermaid-mv9vkmji-my-svg .image-shape .label,#mermaid-mv9vkmji-my-svg .icon-shape .label{text-align:center;}#mermaid-mv9vkmji-my-svg .node.clickable{cursor:pointer;}#mermaid-mv9vkmji-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mv9vkmji-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mv9vkmji-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mv9vkmji-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mv9vkmji-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vkmji-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mv9vkmji-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vkmji-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mv9vkmji-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mv9vkmji-my-svg .cluster text{fill:#05060a;}#mermaid-mv9vkmji-my-svg .cluster span{color:#05060a;}#mermaid-mv9vkmji-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mv9vkmji-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mv9vkmji-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mv9vkmji-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mv9vkmji-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mv9vkmji-my-svg .icon-shape,#mermaid-mv9vkmji-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mv9vkmji-my-svg .icon-shape p,#mermaid-mv9vkmji-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mv9vkmji-my-svg .icon-shape .label rect,#mermaid-mv9vkmji-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mv9vkmji-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mv9vkmji-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mv9vkmji-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mv9vkmji-my-svg [data-look="neo"].node rect,#mermaid-mv9vkmji-my-svg [data-look="neo"].cluster rect,#mermaid-mv9vkmji-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mv9vkmji-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vkmji-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mv9vkmji-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mv9vkmji-my-svg-gradient);stroke-width:1px;}#mermaid-mv9vkmji-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vkmji-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mv9vkmji-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mv9vkmji-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vkmji-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mv9vkmji-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mv9vkmji-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vkmji-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mv9vkmji-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mv9vkmji-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mv9vkmji-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M164,195L176.92893218813452,195Q184,195 184,187.92893218813452L184,67.07106781186548Q184,60 191.07106781186548,60L200,60" id="mermaid-mv9vkmji-my-svg-L_MAIN_A_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 161.67166137695312 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vkmji-L_MAIN_A_0" data-points="W3sieCI6MTY0LCJ5IjoxOTV9LHsieCI6MTg0LCJ5IjoxOTV9LHsieCI6MTg0LCJ5Ijo2MH0seyJ4IjoyMDQsInkiOjYwfV0=" data-look="neo" marker-end="url(#mermaid-mv9vkmji-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M164,208L200,208" id="mermaid-mv9vkmji-my-svg-L_MAIN_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vkmji-L_MAIN_B_0" data-points="W3sieCI6MTY0LCJ5IjoyMDh9LHsieCI6MjA0LCJ5IjoyMDh9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vkmji-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M164,221L176.92893218813452,221Q184,221 184,228.07106781186548L184,360.9289321881345Q184,368 191.07106781186548,368L200,368" id="mermaid-mv9vkmji-my-svg-L_MAIN_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 173.6717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mv9vkmji-L_MAIN_C_0" data-points="W3sieCI6MTY0LCJ5IjoyMjF9LHsieCI6MTg0LCJ5IjoyMjF9LHsieCI6MTg0LCJ5IjozNjh9LHsieCI6MjA0LCJ5IjozNjh9XQ==" data-look="neo" marker-end="url(#mermaid-mv9vkmji-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"/><g class="nodes"><g class="node default" id="mermaid-mv9vkmji-my-svg-flowchart-MAIN-0" data-look="neo" transform="translate(88, 208)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>main<br />process</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vkmji-my-svg-flowchart-A-1" data-look="neo" transform="translate(280, 60)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>A. 載入 main<br />函式呼叫<br />當機帶走 App</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vkmji-my-svg-flowchart-B-2" data-look="neo" transform="translate(280, 208)"><rect class="basic label-container" x="-76" y="-60" width="152" height="120"/><g class="label" transform="translate(-60, -48)"><rect/><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>B. utilityProcess<br />MessagePort<br />當機只結束子 process</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mv9vkmji-my-svg-flowchart-C-3" data-look="neo" transform="translate(280, 368)"><rect class="basic label-container" x="-76" y="-60" width="152" height="120"/><g class="label" transform="translate(-60, -48)"><rect/><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>C. sidecar<br />stdio / socket<br />權限歸屬要驗證</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mv9vkmji-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mv9vkmji-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mv9vkmji-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>從 A 到 C 隔離越強，但溝通成本與「系統把權限算在誰頭上」的不確定性也越高。</figcaption>
+</figure>
+
+<h3>A. 直接載入 main process</h3>
+
+<p>最簡單：<code>require()</code> 之後直接呼叫，沒有訊息往返，沒有額外的 process。代價是原生程式碼和整個 App 同生共死。對一個小而成熟、只做純計算的模組（例如雜湊或壓縮）這通常可以接受；對一個長時間持有系統資源、每秒處理幾十張影像的模組，一次當機就會讓托盤圖示消失、正在進行的工作中斷，而且沒有人能回報發生了什麼事。</p>
+
+<h3>B. Electron 的 utilityProcess</h3>
+
+<p><code>utilityProcess</code> 是 Electron 提供的子 process：裡面跑的是 Node.js 環境，可以 <code>require()</code> 原生模組，和 main 之間用 <code>MessagePort</code> 傳訊息。原生程式碼當機只會結束這個子 process，main 看到它結束，就能把這次工作標成失敗、清理資源、通知使用者。代價是一次 process 啟動的時間、要設計訊息協定，以及子 process 和 App 主體並不完全相同（下面的範例會遇到一個這樣的差異）。</p>
+
+<h3>C. 獨立執行檔（sidecar）</h3>
+
+<p>把原生程式碼編成一個完整的執行檔，由 App 啟動，透過標準輸入輸出或 socket 溝通。Tauri 稱這種做法為 sidecar。它的隔離最強，也不受 Node 或 Electron 版本影響，甚至可以用和 App 完全無關的語言撰寫。但在 macOS 上，螢幕錄影、麥克風這類隱私權限是授給「某個 App」的；一個獨立執行檔會被算在誰頭上、使用者看到的權限提示會是什麼名字，都必須實際驗證，不能假設。</p>
+
+<div class="callout warning">
+<p>權限歸屬在 utilityProcess 上也不是理所當然的。範例專案在簽署過的 App 套件裡，螢幕與系統音訊權限確實套用到了 utilityProcess；但在開發用、未簽署的 Electron 裡，同一個 utilityProcess 被系統拒絕擷取（錯誤 <code>-3801</code>），所以所有錄影量測都必須在簽署過的套件上做。凡是涉及系統權限的原生功能，都要把「權限在這個 process 安排下是否有效」當成第一個驗證項目。</p>
+</div>
+
+<h2>語言怎麼選：Swift、C++ 或 Rust</h2>
+
+<p>只要能產生符合系統慣例的機器碼，任何編譯語言都行。真正的差別在綁定、跨平台、安全性和團隊：</p>
+
+<div class="table-scroll">
+<table class="wide-table">
+<thead><tr><th></th><th>Swift</th><th>C++（macOS 上是 Objective-C++）</th><th>Rust</th></tr></thead>
+<tbody>
+<tr><td>macOS 框架</td><td>第一語言，Apple 的新 API 第一天就能用，文件與範例最多</td><td>透過 Objective-C++ 直接呼叫，也是第一手</td><td>透過社群綁定（<code>objc2</code>、<code>cidre</code>），新 API 可能落後，必要時退回直接送訊息</td></tr>
+<tr><td>Windows API</td><td>就這個用途幫助不大，通常要再加一種語言</td><td>COM 與 C++/WinRT 的原生語言</td><td>Microsoft 維護的 <code>windows-rs</code>，從中繼資料產生，覆蓋完整</td></tr>
+<tr><td>接上 Node-API</td><td>通常要經過一層 C 介面</td><td>官方的 <code>node-addon-api</code></td><td>napi-rs，連 TypeScript 型別一起產生</td></tr>
+<tr><td>記憶體安全</td><td>大致安全</td><td>全靠紀律與工具</td><td><code>unsafe</code> 區塊以外由編譯器保證</td></tr>
+<tr><td>兩個平台共用</td><td>多半只有 macOS 那一半</td><td>可以共用，但兩邊寫法差異大</td><td>同一個語言，可共用狀態機、編碼後處理、檔案格式與測試</td></tr>
+<tr><td>主要代價</td><td>Windows 需要第二種原生語言</td><td>記憶體錯誤的風險、建置設定複雜</td><td>CI 與貢獻者需要 Rust 工具鏈，綁定可能落後</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>這張表沒有通用的贏家。只做 macOS、而且需要最新 Apple API 的產品，Swift 幾乎總是對的；已經有一大片 C++ 程式碼與人力的團隊，C++ 的成本最低；要在兩個平台上共用同一套媒體處理邏輯、又擔心原生程式碼當機的團隊，Rust 的吸引力最大。TypeScript 加 Rust 也不是冷門組合：Signal Desktop 是 Electron 加上 Rust 寫的 libsignal，1Password 8 是 Electron 加 Rust 核心，Cap 用 Tauri 做 TypeScript UI、Rust 做錄影後端。</p>
+
+<h2>決策框架：每條路的代價</h2>
+
+<p>把所有選項放在一起比較。「能力」指能碰到多少作業系統功能；「隔離」指原生程式碼出錯時影響多大；成本分成一次性的與之後每次發版都要付的。</p>
+
+<div class="table-scroll">
+<table class="wide-table">
+<thead><tr><th>選項</th><th>能力</th><th>隔離</th><th>一次性成本</th><th>持續成本</th><th>團隊需要</th></tr></thead>
+<tbody>
+<tr><td>只用瀏覽器／runtime 已有的 API</td><td>受標準與 runtime 限制</td><td>最好（沒有原生程式碼）</td><td>無</td><td>無；但功能只能等別人加</td><td>只要 TypeScript</td></tr>
+<tr><td>執行期 FFI</td><td>C 函式容易，Objective-C、COM、回呼很笨重</td><td>差（在呼叫者的 process 裡）</td><td>低</td><td>簽名寫錯就當機，型別沒有編譯器把關</td><td>要懂 C ABI</td></tr>
+<tr><td>原生模組載入 main</td><td>完整</td><td>差：當機帶走整個 App</td><td>中：新語言、建置、簽署</td><td>每個平台與架構各編一份</td><td>一種原生語言</td></tr>
+<tr><td>原生模組放 utilityProcess</td><td>完整（權限要驗證）</td><td>好：當機只結束子 process</td><td>中：再加一套訊息協定</td><td>同上，加上 process 啟動時間</td><td>一種原生語言加 IPC 設計</td></tr>
+<tr><td>獨立執行檔／sidecar</td><td>完整（權限歸屬要另外證明）</td><td>最好</td><td>中到高：自己的打包、簽署、啟動與溝通</td><td>版本對應、多一個要簽署公證的二進位</td><td>任一語言</td></tr>
+<tr><td>換框架（例如 Electron → Tauri）</td><td>同樣要寫原生（Rust）才有新能力</td><td>看後端怎麼放</td><td>高：重寫 main 端程式與測試工具</td><td>不同平台用不同網頁引擎</td><td>Rust 加網頁</td></tr>
+<tr><td>整個改寫成原生 App</td><td>完整，UI 也最貼近系統</td><td>原生程式碼就是 App</td><td>最高：每個平台一套 UI</td><td>每個平台各維護一份 App</td><td>每個平台的 UI 技術</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>讀這張表的方法是由上往下：<strong>選能滿足需求的第一列</strong>。每往下一列，都應該有一個上一列做不到、而且已經量到的理由。注意「換框架」那一列的能力欄：從 Electron 換到 Tauri，本身並不會讓你得到 ScreenCaptureKit，你還是要寫一樣的 Rust 程式碼。框架決定的是外殼，不是你能碰到多少作業系統。</p>
+
+<h2>其他產品怎麼選</h2>
+
+<p>螢幕錄影是一個很好的觀察對象，因為瀏覽器 API 和原生 API 的落差在這裡特別明顯：</p>
+
+<ul>
+  <li><strong>OBS</strong>：用 C/C++ 寫成的原生 App，每個平台各有一個擷取外掛。它的需求是最大的能力與效能，願意付每個平台各寫一份的代價。</li>
+  <li><strong>Cap</strong>：Tauri 外殼，TypeScript UI，Rust 後端；macOS 用 ScreenCaptureKit（透過 <code>cidre</code> 綁定），Windows 用 Windows.Graphics.Capture。一種原生語言涵蓋兩個平台。</li>
+  <li><strong>Screen Studio、CleanShot X</strong>：只做 macOS 的原生 App。只有一個平台時，最直接的路就是 Apple 自己的語言與框架。</li>
+  <li><strong>Loom 的瀏覽器擴充、Screenity</strong>：完全建立在瀏覽器 API 上，換來的是零安裝與跨平台，也因此只能做瀏覽器允許的事，例如無法把選單列排除在錄影之外。</li>
+  <li><strong>Signal Desktop、1Password 8</strong>：不是錄影工具，但同樣是 Electron UI 加 Rust 核心。它們的原生部分是加密與資料處理，說明「UI 留在網頁技術、敏感或吃重的核心放進編譯語言」是很常見的分工。</li>
+</ul>
+
+<p>這些選擇各自對應不同的前提：需要多少平台、需要多少作業系統能力、團隊原本擅長什麼、已經有多少程式碼。沒有一個是另一個的錯誤版本。</p>
+
+<h2>範例：一個 Electron 錄影 App 把擷取移到 Rust</h2>
+
+<p>範例是一個常駐選單列的開源螢幕錄影 App。它原本完全用 Electron 與 TypeScript：一個隱藏的 renderer 呼叫 Chromium 的 <code>getDisplayMedia</code> 取得螢幕與系統聲音，用 <code>MediaRecorder</code> 編碼成 MP4 片段，每秒把一段送給 main process 寫檔。專案的設計決策裡早有一條：「只有在量到具體的限制之後，才考慮原生擷取」。</p>
+
+<h3>前提：什麼條件成立了</h3>
+
+<ul>
+  <li><strong>能力限制被具體指出</strong>：使用者要求隱藏選單列與 Dock、錄一塊區域或指定的 App、只錄某個 App 的聲音。上面說過，這些都需要 <code>SCContentFilter</code>，沒有任何 Electron 或 Chromium API 提供。這不是「原生應該比較快」的猜測，而是一張做不到的功能清單。</li>
+  <li><strong>兩個平台</strong>：App 同時發佈 macOS 與 Windows 版，需要的能力在 Windows 上對應 Windows.Graphics.Capture 與 WASAPI。</li>
+  <li><strong>大量 Electron 相依的程式碼與工具</strong>：main、shared 與 preload 約 14,600 行，測試與驗收工具約 32,000 行。</li>
+</ul>
+
+<h3>三個選擇與被放棄的替代方案</h3>
+
+<p><strong>語言：兩個平台都用 Rust。</strong>替代方案是 macOS 用 Swift、Windows 用 C++ 或 Rust。Swift 在 macOS 上最直接，也最先拿到 Apple 的新 API，但兩種原生語言意味著兩套擷取管線、兩個 MP4 封裝器（muxer）、兩套測試。選 Rust 之後，錄影的狀態機、音訊時間戳、混音和 MP4 封裝器都在一個共用的核心裡，兩個平台只各自實作「從系統拿到畫面與聲音、交給系統編碼器」那一段。專案的決策紀錄寫明了翻轉條件：如果某個需要的 Apple API 長期無法從 Rust 使用，就重新考慮 macOS 改用 Swift。</p>
+
+<p><strong>位置：每次錄影開一個 utilityProcess。</strong>載入 main 被放棄，因為原生當機會結束整個 App；獨立執行檔被放棄，因為必須先證明 macOS 的螢幕權限會套用在它身上。utilityProcess 還保留了原本的結構：舊架構本來就有一個獨立的擷取 process（隱藏 renderer）透過訊息和 main 溝通，所以 main 裡的錄影狀態機幾乎不必改。</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// main：每次錄影 fork 一個新的 utilityProcess，把原生模組的路徑當參數傳入</span>
+<span class="k">const</span> child <span class="o">=</span> utilityProcess<span class="o">.</span><span class="p">fork</span><span class="o">(</span>entryPath<span class="o">,</span> <span class="o">[</span>addonPath<span class="o">]</span><span class="o">,</span> <span class="o">{</span> serviceName<span class="o">:</span> <span class="s">"RecordStuff Capture"</span><span class="o">,</span> stdio<span class="o">:</span> <span class="s">"pipe"</span> <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+child<span class="o">.</span><span class="p">on</span><span class="o">(</span><span class="s">"exit"</span><span class="o">,</span> <span class="o">(</span>code<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+  <span class="c">// 子 process 結束：這次錄影標成失敗，已經寫到磁碟的部分保留下來</span>
+<span class="o">}</span><span class="o">)</span><span class="o">;</span>
+
+<span class="c">// utilityProcess 裡（簡化）：載入 .node，把引擎的事件轉成給 main 的訊息</span>
+<span class="k">const</span> engine <span class="o">=</span> <span class="f">require</span><span class="o">(</span>process<span class="o">.</span><span class="p">argv</span><span class="o">[</span><span class="n">2</span><span class="o">]</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> capture <span class="o">=</span> <span class="k">new</span> engine<span class="o">.</span><span class="p">NativeCapture</span><span class="o">(</span><span class="o">(</span>event<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> parentPort<span class="o">.</span><span class="p">postMessage</span><span class="o">(</span>event<span class="o">)</span><span class="o">)</span><span class="o">;</span></code></pre>
+
+<p><strong>框架：留在 Electron，不換 Tauri。</strong>Tauri 同樣是 TypeScript 加 Rust，看起來很順手。但換框架要重寫那約 14,600 行程式碼與 32,000 行測試工具，Mac 上的網頁引擎也會從 Chromium 換成 WebKit（WKWebView），換來的是 App 大小與記憶體的改善，而專案先前已經決定不為了大小與記憶體重寫。另一方面，新的 Rust 擷取模組不依賴 Electron，未來真的要換框架時可以原封不動帶走，所以這個決定不是死路。</p>
+
+<h3>量到了什麼，也付出了什麼</h3>
+
+<p>在同一台 M1 Pro 上和原本的 Chromium 路徑對照：</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>量測</th><th>Rust 引擎</th><th>Chromium 路徑</th></tr></thead>
+<tbody>
+<tr><td>錄影時 CPU（一個核心的百分比），30 fps</td><td>10.4%</td><td>15.3%</td></tr>
+<tr><td>錄影時 CPU，60 fps</td><td>14.0%</td><td>23.3%</td></tr>
+<tr><td>按下快捷鍵到準備好錄影</td><td>457–535 ms</td><td>347–369 ms</td></tr>
+<tr><td>畫面與聲音的對齊（閃光對嗶聲）</td><td>−25 ms</td><td>+68 至 +74 ms</td></tr>
+<tr><td>相隔 50 ms 的畫面比例</td><td>0.22–0.44%</td><td>無</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>CPU、影音同步和功能都變好了，但不是每一項都變好。啟動慢了約 0.1 秒，拆開來看，其中 74–88 ms 是 utilityProcess 自己的啟動，其餘是查詢可擷取內容與 ScreenCaptureKit 開始擷取。團隊量過「預先啟動 process」：大約省 50 ms，代價是閒置時多一個約 73 MB 的 process，最後決定不做，因為啟動時間仍落在倒數計時之內。畫面偶爾相隔 50 ms 的問題，原因尚未找到，維護者記錄後接受。</p>
+
+<p>隔離的價值也被實際驗證了兩次。第一次是刻意的：錄影中途強制結束 utilityProcess，留下一個 8.0 秒、可以播放的片段檔。第二次是意外：加入「只錄一個視窗」時，擷取 process 一開始就直接結束了。原因是視窗篩選需要和 macOS 的視窗伺服器（window server）建立連線，一般 App 啟動時就有這個連線，utilityProcess 沒有，CoreGraphics 於是以 <code>CGS_REQUIRE_INIT</code> 中止 process。修正只要在使用前呼叫一次 <code>CGMainDisplayID()</code> 建立連線（就是前面那段 C 呼叫）。如果模組是載入在 main 裡，同樣的錯誤只會讓整個 App 消失；在子 process 裡，它只是一次失敗的錄影和一行日誌。這也提醒了另一件事：<strong>子 process 不是 App 的完整複本</strong>，系統框架對「App」的某些假設在那裡可能不成立。</p>
+
+<p>代價則持續存在：</p>
+
+<ul>
+  <li>CI 的 macOS 與 Windows 兩個 job 都要裝 Rust 工具鏈並快取建置；沒有 Cargo 的建置會直接失敗，而不是做出一個不能錄影的 App。</li>
+  <li><code>.node</code> 檔必須從 Electron 的 asar 封包裡解開，並和 App 一起簽署；驗證腳本會拒絕缺少它或簽署不對的套件。</li>
+  <li>平台相關的程式碼仍然要寫兩次（<code>mac/</code> 與 <code>win/</code>），只有核心是共用的；而沒有 Windows 實機的團隊，Windows 那一半只能靠 CI 驗證，真實硬體上的畫質、音訊內容與 CPU 都列為未驗證。</li>
+  <li>綁定函式庫可能晚於 Apple 或 Microsoft 的新 API。</li>
+</ul>
+
+<h3>同一個專案裡的反例</h3>
+
+<p>這個專案更早之前也寫過一個原生模組，結局相反。為了讀取 macOS 通知權限的狀態，它寫了一個 Node-API 橋接到 <code>UserNotifications</code> 框架，後來整個撤掉。原因是：當這個 <code>.node</code> 載入失敗（例如架構不對，或比執行環境新的版本），程式會把所有通知都靜默略過，連 Electron 本來會自動發出的授權請求都一起消失，結果比完全不知道權限狀態還糟。這個功能只是「顯示一個狀態」，帶來的好處很小，卻引入了一個新的失敗模式。兩個案例的差別在於：錄影引擎解決的是做不到的功能，通知橋接解決的只是一點資訊不足。</p>
+
+<h2>換框架什麼時候值得</h2>
+
+<p>「既然都要寫 Rust 了，為什麼不乾脆換到 Tauri？」是很自然的問題。Tauri 的後端是 Rust，UI 用作業系統內建的 WebView：macOS 上是 WKWebView（WebKit），Windows 上是 WebView2（Chromium 核心），Linux 上是 WebKitGTK。它不打包 Chromium，所以 App 通常小很多，閒置記憶體也較低。值不值得換，取決於這些條件：</p>
+
+<ul>
+  <li><strong>值得考慮</strong>：專案剛開始，或和 Electron 綁在一起的程式碼與測試工具還很少；App 大小與記憶體是產品的核心指標，而且已經量到它們造成實際問題；團隊本來就熟 Rust；能接受 macOS 與 Windows 用不同網頁引擎，並為兩個引擎都做 UI 測試。</li>
+  <li><strong>不值得</strong>：主要動機是「需要某個作業系統功能」，因為這在 Electron 裡寫原生模組就能得到，換框架不會讓那段原生程式碼變少；或者大量測試、驗收工具、打包與簽署流程都和 Electron 綁在一起，重寫的成本遠高於大小與記憶體的收益。</li>
+</ul>
+
+<p>一個實用的做法是讓原生程式碼不依賴外殼：用 napi-rs 包一個純 Rust 的核心，核心本身不知道 Electron 的存在。這樣「先在 Electron 裡寫原生」與「以後換 Tauri」就不互相排斥，換框架時只需要換掉最外面那層綁定。</p>
+
+<h2>不要這樣做的時候</h2>
+
+<ul>
+  <li><strong>瀏覽器或 runtime 的 API 已經夠用時</strong>，不要因為「原生應該比較快」就往下寫。沒有量到具體的能力限制或效能問題之前，原生程式碼只會增加建置、簽署與跨平台驗證的負擔。</li>
+  <li><strong>好處只是一點方便或資訊時</strong>，不要引入會讓核心功能一起失效的原生依賴（上面通知橋接的教訓）。如果一定要，載入失敗時必須退回原本的行為，而不是靜默停用功能。</li>
+  <li><strong>只支援一個平台而且需要最新系統 API 時</strong>，不要為了「以後可能跨平台」選 Rust 或 C++；Swift 與 Apple 的第一手工具會更省事。</li>
+  <li><strong>原生程式碼很小、只做純計算、而且非常成熟時</strong>，不需要為它開一個 utilityProcess；載入 main 的簡單性在這裡勝出。</li>
+  <li><strong>還沒驗證系統權限會套用到某個 process 時</strong>，不要把需要隱私權限的功能放進獨立執行檔或子 process 就上線。</li>
+  <li><strong>只是因為要寫一點 Rust 就換框架</strong>，不划算；框架決定外殼，不決定作業系統能力。</li>
+</ul>
+
+<h2>帶走的判斷問題</h2>
+
+<ol>
+  <li>需要的能力在哪一層？瀏覽器、runtime，還是只有作業系統有？能不能列出一張「現在做不到」的具體清單？</li>
+  <li>這個能力用的是哪種呼叫慣例（C、Objective-C、COM、WinRT）？你考慮的語言有沒有成熟的綁定，新 API 出來時要等多久？</li>
+  <li>要支援幾個平台？共用的部分（狀態機、檔案格式、測試）大到值得用同一種原生語言嗎？</li>
+  <li>原生程式碼當機時，你願意犧牲什麼？只是這次工作，還是整個 App？</li>
+  <li>系統權限會算在哪個 process 頭上？在簽署過的正式套件裡驗證過了嗎？</li>
+  <li>JavaScript 和原生之間的介面夠窄嗎？大量資料是否留在原生那一側？</li>
+  <li>原生核心是否不依賴外殼，讓將來換框架時可以帶走？</li>
+  <li>CI、簽署、貢獻者環境多出來的成本，誰來付？每次發版都要付嗎？</li>
+  <li>哪個量測結果或外部變化（例如 runtime 新增了 API、綁定長期落後、團隊組成改變）會讓你推翻這個決定？</li>
+</ol>
+
+<section class="sources">
+<h2>延伸閱讀</h2>
+<ul>
+  <li><a href="https://nodejs.org/api/n-api.html">Node.js：Node-API</a>（ABI 穩定的原生模組介面）</li>
+  <li><a href="https://napi.rs/">napi-rs</a>（用 Rust 撰寫 Node-API 模組並產生 TypeScript 型別）</li>
+  <li><a href="https://www.electronjs.org/docs/latest/api/utility-process">Electron：utilityProcess</a></li>
+  <li><a href="https://www.electronjs.org/docs/latest/api/session">Electron：setDisplayMediaRequestHandler</a>（Electron 如何回應 <code>getDisplayMedia</code>）</li>
+  <li><a href="https://developer.apple.com/documentation/screencapturekit/sccontentfilter">Apple：SCContentFilter</a></li>
+  <li><a href="https://developer.apple.com/documentation/objectivec/1456712-objc_msgsend">Apple：objc_msgSend</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/screen-capture">Microsoft Learn：Windows.Graphics.Capture 螢幕擷取</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/windows/win32/com/the-component-object-model">Microsoft Learn：The Component Object Model</a></li>
+  <li><a href="https://github.com/microsoft/windows-rs">windows-rs</a>（Microsoft 的 Rust 綁定）</li>
+  <li><a href="https://github.com/madsmtm/objc2">objc2</a>（Rust 的 Objective-C runtime 與 Apple 框架綁定）</li>
+  <li><a href="https://v2.tauri.app/reference/webview-versions/">Tauri：各平台的 WebView</a>與 <a href="https://v2.tauri.app/develop/sidecar/">sidecar</a></li>
+</ul>
+</section>
+
+</article>
+</main>
+
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

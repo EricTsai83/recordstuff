@@ -4,6 +4,28 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 076 結案 — 2026-10-16
+
+錄影原本透過隱藏 renderer 裡 Chromium 的 `getDisplayMedia` 與 `MediaRecorder` 進行，只能錄一個螢幕或一個視窗，也只能排除本 App 受保護的視窗；它無法隱藏選單列或 Dock，無法錄指定區域或選定的 App，也無法只錄一個 App 的聲音。Plan 076 在 macOS 與 Windows 上以原生 Rust 引擎（napi-rs）取代這條路徑：引擎在 Electron 的 `utilityProcess` 中擷取、編碼、封裝並寫檔，Chromium 路徑則已移除。設計見[錄影](../system-design/recording.md)、[架構](../system-design/architecture.md)與[設計決策](../system-design/decisions.md)中十列原生引擎的決策；[錄影為何離開 Chromium 的 WebRTC 擷取](../system-design/webrtc.md)是舊路徑的設計紀錄。
+
+- **決定（2026-10-14，維護者）。** D1 兩個平台都用 Rust；D2 每次嘗試一個 `utilityProcess`；D3 由引擎寫檔，main 保留檔名、資料夾、剩餘空間檢查、sentinel、歷史紀錄與通知；D4 使用平台的編碼器（VideoToolbox 與 AudioToolbox；Media Foundation），搭配為本專案撰寫的 hybrid MP4 muxer，錄影路徑不使用 FFmpeg；D5 可改寫 Cap 的 MIT crate，其 AGPL 程式碼只供閱讀；D6「隱藏選單列與 Dock」開關，僅 macOS，預設關閉；D7 Chromium 路徑在 macOS 驗收前留在開發旗標之後，之後移除；D8 Windows 只由 CI 驗證。2026-10-15 維護者決定不預先啟動擷取程序（約省 50 ms，代價是約 73 MB 的閒置程序）。
+- **原型關卡（2026-10-14，M1 Pro，括號內為 Chromium）。** 快捷鍵到 `prepared` 457–535 ms（347–369 ms）；每個檔案的音訊與畫面長度相同，包括 10 分鐘的錄影（+13 至 +15 ms）；10 分鐘漂移 0 ms，600 組閃光與嗶聲全部對上；錄影中結束擷取程序，留下 8.0 s 可播放的部分檔案。較慢的啟動落在倒數之內，已被接受。
+- **引擎（步驟 3–4）。** 兩個平台共用一個 session 核心，負責 pacer、停止規則與停止前的聲音；音訊時間由樣本數計算，在同一個時鐘上補入靜音；所有輸入混成一條 AAC 音軌，某個輸入沒有聲音時，mixer 落後它 500 ms 繼續前進。引擎把 `stopped` 與 `finished` 分開，慢速磁碟的收尾不再受 10 s 停止期限限制：在桌面上，`stopped` 後 0–1 ms recorder 即回到閒置，19–22 ms 後檔案完成。視窗、區域與 App 來源、單一 App 的聲音和麥克風目前只在引擎與其測試中；面向使用者的部分由 074 與 075 加入。
+- **Windows（D8）。** `native-windows` job 在 `windows-2025` 上錄下螢幕、區域、視窗與單一程序的聲音；安裝程式 smoke 會載入安裝後的模組。未在 Windows 實機上測試：擷取品質與影格時序、錄影中不出現自己的視窗、系統聲音內容、CPU、麥克風，以及 077 的所有案例。編碼器是 Microsoft 的軟體 H.264；硬體編碼器與剩下的 Chromium 時期提示移到 [078](../../../plans/078-native-capture-follow-ups.zh-TW.md)。
+- **macOS 驗收（2026-10-15/16，60 Hz 1920×1080 螢幕，簽署 bundle）。** `pnpm acceptance` 在 60 fps 通過。`pnpm matrix -- quick`：閃光到嗶聲 −25 ms，Chromium 為 +68 至 +74 ms；間隔 50 ms 的影格在 idle 影格修正（PR #12）前為 0.66–2.17%，修正後 0.22–0.44%，Chromium 為 0，剩下部分的原因尚未找到。`pnpm audio:quality` 兩個引擎都通過所有檢查。`pnpm measure:cpu -- --fps 60 --repeat 3`：錄影在 30／60 fps 佔一個核心的 10.4%／14.0%，Chromium 為 15.3%／23.3%；錄影後閒置 0.036%，Chromium 為 0.054%，且不留下 renderer 或音訊服務；這些中位數是參考 Mac 的 baseline。`pnpm acceptance:tray` 通過 14 個案例（兩個因輸入競態而未執行）；錄影中開啟的設定視窗出現在螢幕截圖上，卻不在同一時刻的錄影影格中；錄影中結束 App 會把錄影存檔。維護者在移除 Chromium 路徑前接受了這些結果與剩下的影格間隔（2026-10-16）。
+- **過程中發現。** `pnpm measure:cpu` 的設定視窗情境最高量到一個核心的 39%：一張卡片的 hover 預覽在其他 App 後方不斷循環。runner 會先移開游標（PR #7），設定視窗失去焦點時也會停止預覽（PR #8）。
+- **移到其他計畫。** 錄影中睡眠、移除螢幕、權限被拒以及 D6 的 Dock 需要維護者動手：[077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)。剩下的影格間隔、開發版 App 自己的視窗、原生節奏診斷，以及 Chromium 路徑留下的部分：[078](../../../plans/078-native-capture-follow-ups.zh-TW.md)。
+- **學習文章。** 來源都隨 076 結案的三篇：[原生 API 與技術選擇](../../learning/native-apis-and-tech-stack-choices.html)、[編解碼器、容器與不怕當機的錄影](../../learning/codecs-containers-and-crash-safe-recording.html)與[開源授權實務](../../learning/open-source-licenses-in-practice.html)，依維護者要求，每篇都以選擇的取捨為中心。
+- **Pull request。** #5 Windows 引擎、#6 引擎、#7 與 #8 hover 預覽、#9 macOS 整合與 D6 開關、#10 兩個平台的建置、#11 驗證工具、#12 idle 影格修正、#13 `pnpm acceptance` 的結束與自身視窗案例、#14 移除 Chromium 路徑；文件另以一個 pull request 完成。
+
+### 驗證
+
+- 每個 pull request 都在 macOS 與 Windows 上通過 `check.yml`，兩個不穩定的 Windows 案例重跑後通過（#11 的 recorder 測試等待真實 writer、#13 的 UI 分片關閉逾時）。移除後，`pnpm check` 在本機通過；在新的簽署 bundle 上，`pnpm acceptance -- --seconds 10 --skip-cancel --settings-open --quit-while-recording` 每個案例都通過，log 中沒有隱藏 renderer 的痕跡。
+- 審查：Codex GPT-6.1 Sol 審查了每個 pull request；其發現（controlled pin 與錄影路徑、重新驗證舊版本、收尾的引擎檢查與 launchd 還原、四個 runner 防護、launchd 擷取開關防護）都在合併前修正。
+- 文件：連結與錨點、中英文一致、學習文章的 validator 與 `git diff --check`。
+
+未完成：077 的動手驗收案例、078 的後續事項，以及上面列為未在 Windows 測試的項目。
+
 ## Plan 073 結案 — 2026-10-14
 
 App 裡原本沒有任何地方列出所有快捷鍵：Shortcut 卡片只顯示錄影快捷鍵，tray 與「錄影」選單只顯示錄影與開啟的快捷鍵，播放器、縮放與視窗的按鍵則沒有任何地方寫出來。Plan 073 新增一個地方列出這些快捷鍵，以及每一個現在能否使用（[桌面設計](../system-design/desktop.md#鍵盤快捷鍵分頁)）。

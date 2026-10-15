@@ -38,6 +38,8 @@ Sources: Cap `apps/desktop/src-tauri/src/windows.rs`, `apps/desktop/src/routes/c
 
 ## Current state
 
+**What 076 provides (closed 2026-10-16).** Recording runs only through the native engine. RecordStuff's own windows are left out of every recording by the engine, those opened after the start included: ScreenCaptureKit's application filter on macOS (verified 2026-10-16: Settings opened during a recording was absent from its frames; the app's menu-bar menus are left out too, its status item stays) and `WDA_EXCLUDEFROMCAPTURE` on every window while an attempt runs on Windows (CI only). The bubble therefore needs the opposite: the engine has to record it while excluding the app's other windows (on macOS an exception in the filter, on Windows leaving that one window unprotected), which 075 still builds. The engine also captures one window, an area of the display and chosen apps (engine and tests only, no picker), and D6 hides the menu bar and Dock. The bullets below describe the state before 076: read their capture and protection facts as history.
+
 - No code calls `getUserMedia` for video. The countdown overlay (`src/main/recording/countdown-overlay.ts`) is the existing pattern for a transparent, frameless, always-on-top, non-activating, click-through macOS panel on the recorded display, created at preparation and destroyed with the attempt; the locked bubble can use the same pattern.
 - Screen capture records every visible window; no window uses content protection, so the bubble is recorded unless explicitly protected.
 - Settings → Recording → Screen draws the displays' arrangement from `screen.getAllDisplays()` without touching capture (`display-arrangement.tsx`).

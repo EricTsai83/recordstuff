@@ -21,7 +21,7 @@ pub const VIDEO_TIMESCALE: u32 = 90_000;
 pub const AAC_FRAMES: u32 = 1024;
 const SYNC_INTERVAL: Duration = Duration::from_secs(5);
 const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
-/// As `RECORDING_HEALTH.writerBacklogBytes`.
+/// Encoded media waiting for the disk beyond this fails the recording instead of filling memory with it.
 pub const BACKLOG_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 
 pub enum Media {

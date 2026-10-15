@@ -52,109 +52,128 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 ## Recording state machine
 
-[main/recording/recorder.ts](../../src/main/recording/recorder.ts). Injected dependencies make timing, stale sessions, and I/O failures testable without Electron.
+[main/recording/recorder.ts](../../src/main/recording/recorder.ts). Injected dependencies (host, writer factory, folder check, free space, sentinels, clock, deadlines, `RECORDING_HEALTH` overrides) make timing, stale sessions, and I/O failures testable without Electron.
 
 | Function/method | Contract |
 | --- | --- |
 | formatTimestamp | Date → local-time filename timestamp |
 | errorCodeOf | Known cause.code or caller-provided fallback |
-| Recorder constructor | Apply clock/ID/deadline/log defaults and subscribe to host messages/failures |
+| Recorder constructor | Apply clock/ID/deadline/log defaults (start 8 s, capture request 120 s, stop 10 s, quit stop + 3 s) and subscribe to host messages/failures |
 | state getter | Current authoritative RecordingState |
 | sessionId getter | In-flight session ID for diagnostics such as sleep/wake logging |
+| mediaPending / saving / waitingOnlyForSaves | A session or recording work (a failure's cleanup, a cancel, a save) is still in flight / recordings whose capture stopped and are still being saved, oldest first / quit waits only for saves |
+| whenMediaSettled | Resolve once `mediaPending` is false; shared by every caller |
 | subscribe | Register event listener and return unsubscribe |
+| startIfIdle | The tray's Start recording: `toggle` only from idle (plan 048) |
 | toggle | Start when idle, stop when recording, cancel a countdown, request permission guidance when blocked, cancel a start that has lasted at least 1 s (`START_CANCEL_GRACE_MS`), otherwise ignore |
 | cancelCountdown | Before `record`: cancel the attempt; after it: request stop once capture starts; a menu's Cancel recording arriving while recording stops the recording; otherwise ignore |
-| stop | Matching recording session → stopping (recording its stop-request time), arm deadline, send stop, then publish stopping |
+| stop | Matching recording session → stopping (recording its stop-request time), arm the stop deadline (`stop_timeout`), send stop, then publish stopping |
 | systemWillSleep | The Mac is going to sleep (plan 050): stop a recording with `stoppedEarly: "sleep"`, cancel a countdown or a preparing attempt with reason `sleep`, stop an arming one once capture starts; nothing while stopping or without a session |
-| shutdown | Cancel an opening, preparing or countdown attempt at once (plan 065), keep stop intent after `record`, stop a recording, wait completion/failure while racing the quit deadline |
+| shutdown / resumeAdmission | Cancel an opening, preparing or countdown attempt at once (plan 065), keep stop intent after `record`, stop a recording, wait until no media work is pending while racing the quit deadline / admit recordings again after a declined quit |
 | setPermission | Always store the latest status; while idle/needsPermission re-settle on a change, never replace a busy state |
 | outputDirChanged | Clear the remembered outputDirUnavailable, also while needsPermission; update the state only when idle |
-| start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe, unique writer, overlay prepare, host start; clean late results |
-| openUniqueWriter | Write the interruption sentinel for each temporary name, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
-| markInFlight / clearInFlight | Write the session sentinel (a failure logs once and never blocks) / remove it on every terminal outcome |
-| handleHostMessage | Filter session, dispatch prepared/started/progress/stopped/error, map a pre-capture capture_failed to capture_start_failed with the phase, stop stale capture |
+| start | Preflight (a refusal emits a failed event marked `preflight`, naming no session), quality and countdown snapshots, session, folder probe within the start deadline (a check that outlives it is remembered so later attempts on that folder wait on it), unique writer, overlay prepare, `host.start` with the temporary path under the capture-request deadline; clean late results |
+| openUniqueWriter | Name each temporary file in the session sentinel before it exists, then try temporary/final filename pairs; retry temporary EEXIST up to ten attempts |
+| handleHostMessage | Filter session; `prepared` → countdown or record; `started` → recording, first-media deadline, disk watch; `progress` → mediaArrived; `writeError` → fail; `stopped` while stopping → detach, idle and save in the background, otherwise capture_failed; `error` → fail, a pre-capture capture_failed becoming capture_start_failed with the phase; a stale `prepared`/`started`/`progress` → stop that session |
 | beginCountdown | Enter countdown N, show the overlay and schedule every tick, the dismissal and N seconds from one monotonic anchor |
 | dismissOverlay / recordAfterCountdown | Await the overlay's dismissal within its bound (then close it and log) / send `record` once N seconds passed and the overlay is gone |
 | record | Enter arming, arm the `record → started` deadline and send `record`; a refusal fails the start |
-| cancel | Detach session, clear timers, close the overlay, stop the host, return to the pre-attempt idle, abandon the writer, emit `cancelled`, remove the sentinel |
+| detach / requestHostStop | Drop the session, its timers and overlay and ask the host to stop / every stop request, logging a throw instead of propagating it |
+| cancel | Detach, return to the pre-attempt idle, abandon the writer (removing the empty file), emit `cancelled`, remove the sentinel |
 | present / closeOverlay / clearCountdown | Call the presenter, logging its errors / close the overlay once / clear countdown timers |
 | mediaArrived | The engine's nonempty `progress`: clear the first-media deadline and reset the stall guard after started |
-| finalize | Wait writes, ensure session still current, finish file, then idle/saved with any early-stop reason and the session trace, then remove the sentinel |
+| finalize / save / endSaving | List the stopped recording in `saving` and mark it slow after `saveSlowMs` (never abandoned); `writer.finish` waits for the engine's outcome and publishes; then checkpoint the sentinel, emit `saved` with any early-stop reason and the session trace, and clear the sentinel; a failure is reported like any session's without touching the state; a stop that ended a cancelled start before its first frame is a cancel |
 | armStall | Timer between progress reports after media began: log once at the warning bound, fail with capture_failed at the second |
-| watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop below the stop threshold; a failed poll logs once |
-| handleHostFailure | Fail only when a session exists; before `record` as capture_start_failed naming the phase |
+| watchDisk | While recording, poll free space on one non-overlapping timer; log once below the warning threshold, request one normal stop (`stoppedEarly: "lowDisk"`) below the stop threshold; a failed poll logs once |
+| displayRemoved | Fail with capture_failed (capture_start_failed before `record`) and a display diagnostic; after the stop was sent, save what was recorded |
+| handleHostFailure | Fail only when a session exists and is not saving; before `record` as capture_start_failed naming the phase |
 | cancelMarked | An attempt sleep or quit marked before `prepared` is cancelled with that reason instead of failing on a host error or loss, display removal, or a timed-out or refused request |
-| fail | Detach session, clear deadline, countdown and health timers, close the overlay, stop host, idle immediately, report a writer-retained disk error instead of capture_start_failed, abandon writer, emit failure with its file outcome, session trace and optional partial path, remove the sentinel |
+| fail / reportFailure | Detach, idle immediately, then publish a pending failure, abandon the writer (a nonempty partial is kept; unconfirmed preservation is `unknown`), publish the outcome, emit failed with the session trace and optional partial path, remove the sentinel; a folder that answered after its opening deadline clears the unavailable flag |
 | trace | The session's id, temporary path and recording/stop-request times carried on captureStarted, saved and failed (plan 029) |
 | clearTimer / clearDisk / clearHealth | Cancel and clear the session deadline / free-space poll / poll and stall timers |
-| setState / emit | Replace state and emit / notify registered listeners, logging a throwing one so the others and the recorder's own cleanup still run |
+| settle / setState / emit | Return to idle or needsPermission by the latest permission / replace state and emit / notify registered listeners, logging a throwing one so the others and the recorder's own cleanup still run |
 
-## Main capture supervisor
+[main/recording/recording-health.ts](../../src/main/recording/recording-health.ts): `RECORDING_HEALTH` holds every main-side threshold: free-space poll every 5 s, warning below 1 GiB, a normal stop below 200 MiB; a stall warning after 10 s without `progress` once media began and failure at 30 s; a save still running after 30 s is said to be slow. The engine's own bounds (the 64 MiB write backlog, 120 s to finish a file) live in the crate.
 
-[main/recording/native-capture-host.ts](../../src/main/recording/native-capture-host.ts) supervises the per-attempt `utilityProcess` ([native-host-process.ts](../../src/main/recording/native-host-process.ts)) that loads the Rust engine. The table below still describes the hidden-window supervisor that plan 076 removed on 2026-10-16; it is kept until plan 076 step 8 rewrites it.
+## Capture host supervisor
+
+[main/recording/native-capture-host.ts](../../src/main/recording/native-capture-host.ts): `NativeCaptureHost` implements the recorder's `RecorderHost` over one `utilityProcess` per attempt.
 
 | Method | Contract |
 | --- | --- |
-| constructor | Paths/dev URL plus default 5-second ping and 8-second readiness deadline |
-| onMessage / onFailure | Register valid-message and host-failure callbacks |
-| start | Tear down any previous host, create a fresh window for this attempt and wait for ready; begin the session heartbeat, then post start with session quality; a creation/load failure tears the new window down and rejects |
-| record | Post record for the watched session; throws when no host is attached to it |
-| stop | Post stop when a port exists |
+| constructor | Entry and addon paths, `resolveDisplay`, `ownPids`, `hideSystemUi`, optional `displayPoint` and `excludeOwnWindows` (Windows), a log, an injectable `fork`; default 5-second ping and 8-second readiness deadline |
+| onMessage / onFailure | Register valid-message and host-failure (`capture_host_crashed`, `capture_host_unresponsive`) callbacks |
+| start | Tear down any previous process; require the temporary path and register its file outcome; fork and choose the display concurrently; on ready start the heartbeat; log both timings; a display that is missing or not numeric becomes an `error` (`capture_start_failed`); otherwise exclude own windows (Windows) and post `start` with `native`; a launch or ready failure tears the new process down and rejects |
+| record | Post record for the watched session; throws when no process is attached to it |
+| stop | Post stop when a process exists |
+| fileOutcome | Once per temporary path: the engine's `EngineFileReport`, or a rejection with its write error as `FileWriteError` or why the process ended without finishing |
 | destroy | Tear down when an attempt settles and during app quit |
-| create | Build sandbox window/channel, install guards/crash handlers, load page, hand off port, wait ready; log a malformed message as field names and value kinds only |
-| stopHeartbeat | End the heartbeat when the watched session reports stopped or failed, and on teardown |
-| ping | Check for two unanswered pings before sending another; on failure tear down and emit |
-| post / emitFailure | Send MainMessage / notify failure listeners |
-| teardown | Stop the heartbeat, close port, destroy window; invalidates an in-flight start |
+| create / launch | Fork (`serviceName` "RecordStuff Capture", piped stdio whose lines are logged as `capture host: …`) and race `ready` against the deadline; on exit reject readiness, settle a finishing file and, for the current process during a session, emit `capture_host_crashed`; on message route a finishing process's `finished`/`writeError` to its file, drop and log a malformed message by type, reset missed pongs, and on `stopped` keep the process as finishing before the recorder hears it |
+| keepFinishing / fileEnded | Hold a stopped process up to `FINISH_BOUND_MS` (150 s) / settle the file outcome, log it, and kill the process once no attempt owns it |
+| emit / stopHeartbeat | Stop the heartbeat when the watched session reports stopped, error or writeError, then notify listeners / clear the ping timer and watched session |
+| ping | Check for two unanswered pings before sending another; on failure tear down and emit `capture_host_unresponsive` |
+| post / emitFailure | Send a MainMessage / notify failure listeners |
+| teardown | Invalidate an in-flight start, stop the heartbeat, reject an unsettled file outcome unless the process is finishing, release own windows, kill the process unless it is finishing |
+| releaseWindows | Let windows back into capture once the process has exited, or after `RELEASE_BOUND_MS` (5 s), unless a later attempt excluded them again |
 
-## Renderer capture and encoding
+[main/recording/capture-exclusion.ts](../../src/main/recording/capture-exclusion.ts): `captureExclusion({ windows, onCreated })` returns a switch that, when on, marks every window and each one created afterwards with `setContentProtection(true)` and, when off, stops listening and unmarks the windows it marked. Wired only on Windows.
 
-This section describes the hidden capture renderer (`renderer/capture/capture-host.ts`) that plan 076 removed on 2026-10-16; it is kept until plan 076 step 8 rewrites it. The native engine now captures and encodes in its own process.
+## Capture host process
+
+[main/recording/native-host-process.ts](../../src/main/recording/native-host-process.ts) is the `utilityProcess` entry. At load, with a `parentPort`, it `require`s the addon named by its first argument and constructs `NativeHost`; a load failure writes the reason to stderr and exits with code 3, so main sees no `ready`.
 
 | Function/method | Contract |
 | --- | --- |
-| measureFrameSize | Observe muted video intrinsic dimensions until matching size, error, or timeout; detach video in finally |
-| current / matches / check | Read positive dimensions, match optional expected size, resolve measurement and clear timer |
-| CaptureHost constructor | Subscribe/start port, inject frame measurer, send ready |
-| handle | Validate MainMessage; ping→pong, start, record, or stop |
-| start | Reject overlap/unsupported MIME, request stream, handle cancellation/audio validation, apply quality, build an inactive MediaRecorder, watch its tracks and send prepared |
-| record | Refuse unless this session is prepared and live; register callbacks, start MediaRecorder, send started; ignore a duplicate |
-| release | Drop a prepared session and stop its tracks |
-| cancelled | During pending start, discard canceled stream, remove pending ID, send stopped |
-| refuse | Remove pending ID, stop tracks, and report start failure |
-| stop | Cancel pending ID, release a matching prepared session and reply stopped, or stop matching active recorder once; inactive recorder schedules terminal cleanup |
-| enqueueChunk | Skip empty Blob; allocate seq, serialize ArrayBuffer conversion and copying; report conversion failure |
-| finish | Once-only terminal path: stop tracks, drain send chain, clear session, invoke terminal callback |
-| fail / send | Construct error / post typed HostMessage |
-| finiteOrUndefined | Finite numeric value or undefined |
-| applyQuality | Measure source, fit cap, repeat fps constraint, remeasure, calculate bitrate and warnings → CaptureReport |
-| stopTracks | Stop every stream track |
-| describe | Format Error name/message or unknown cause |
-| classifyGetDisplayMediaError | NotAllowedError→permission_denied; NotFoundError→no_display; otherwise capture_start_failed |
+| NativeHost constructor | Build the engine with its event callback, subscribe to the port, send `ready` |
+| handle | Ignore anything but a MainMessage; ping→pong; start (refused without `native`), record, stop |
+| start | Refuse overlap; probe the source, take the output size with `fitWithinCap` and the bit rate with `videoBitsPerSecond`, `prepare` into the given path with `AUDIO_BITS_PER_SECOND`, log probe/prepare timings and send `prepared` with a CaptureReport whose warnings name the source size, AAC priming, excluded apps and hidden windows; a stop during prepare cancels and answers `stopped`; a failure maps the engine's code to a host code |
+| record | Ignore a duplicate; refuse unless this session is prepared; call the engine's `record` and send `started` |
+| stop | Mark a preparing session cancelled; cancel a prepared one and answer `stopped`; for a recording, await `stop`, log its report (drain, padding, frame lead, late audio, capture's pictures and gaps), send `stopped`, then await `finish` and send `finished` or `writeError` |
+| event | While a session exists: `progress` → `progress`; `writeError` with a known code → `writeError`; `captureError` → `error` (unknown codes as capture_failed) |
+| fail / send | Send `error` / post a HostMessage |
+| engineFailure | Split the engine's `code\|detail` rejection; anything else is capture_start_failed with the message |
+| developmentCapture | Read `RECORDSTUFF_CAPTURE_SOURCE` (`window:<id>`, `area:x,y,w,h`, `apps:<pid>,…`) and `RECORDSTUFF_CAPTURE_AUDIO` (`off`, `apps:<pid>,…`); anything else records the display with all system audio |
 
-The page's window-message callback checks source/marker/port before creating the host. Recorder callbacks preserve chunk-chain-before-terminal-message ordering.
+## Native engine
+
+[native/capture](../../native/capture) is the Rust crate (`cdylib` and `rlib`, napi-rs with N-API 8) that builds `recordstuff-capture.node`. Every failure carries a protocol code; across N-API a rejection's message is `code|detail`.
+
+| Item | Contract |
+| --- | --- |
+| [lib.rs](../../native/capture/src/lib.rs) `NativeCapture` | The JavaScript class. `new(onEvent)` builds a thread-safe event callback (`progress`, `writeError`, `captureError`). `probe(displayId, displayPoint?, source?)` → the source's size; `prepare(options)` → `PreparedInfo`; `record()` synchronous; `stop()` → `StopReport` once capture ended; `finish()` → `FinishReport` once the file is plain or why not is known, rejecting with `disk_full` or `output_write_failed`; `cancel()` releases a prepared session; `microphones()` lists input devices. Everything but `record` runs as an `AsyncTask` on Node's worker pool. Other platforms reject with capture_start_failed |
+| [core/mod.rs](../../native/capture/src/core/mod.rs) `Core` | The platform-independent half of a session: `new` takes the events, frame rate, audio bit rate, input count and the opened file; `make_encoders` on the `recordstuff-encoders` thread; `first_frame` waits for capture's first picture; `record` takes `t0`, makes the mixer, spawns the writer and the `recordstuff-refresh` thread; `drain` ends both tracks at the stop and waits up to 250 ms for the sound up to it, padding the rest with silence; `halt`/`halted` bracket the platform's capture stop; `end` flushes the encoders and asks the writer to finish (`Finishing`, waited up to 120 s); `release` drops encoders of a session that never recorded |
+| `Shared::frame` / `frame_unchanged` / `frame_without_picture` | A complete frame at a host time, kept as the newest and encoded when `Pacer` admits it / an idle refresh: re-encode the newest picture at the pacer's slot / a delivery without a picture, counted |
+| `Shared::sound` / `wants_sound` / `fail` | One input's frames at a host time into the mixer, then mix, encode and send AAC packets under the audio lock, cut at the stop / whether sound is taken now / report the first capture or encoding failure once (capture_failed while recording or draining to the stop, capture_start_failed before), never once the drain has ended |
+| `refresh` | The refresh thread: the first frame at `t0` as a key frame, a frame the pacer held back at its slot, the last frame again every second of a still screen, and the mixer's clock advance |
+| `Events`, `VideoSink`, `VideoEncode`, `AudioEncode`, `Platform` | The traits a platform implements: the session's reports, encoded video's destination, the H.264 and AAC encoders (with priming and the AudioSpecificConfig), and the frame type, encoders and host clock |
+| [core/mixer.rs](../../native/capture/src/core/mixer.rs) `Mixer` | One stereo track from several inputs at unity gain: each input aligned by an `AudioAligner`; the track advances to where every input has delivered, or with the clock 24 000 frames (0.5 s) behind it, counting what an input did not deliver as silence and what arrives later as late |
+| [timing.rs](../../native/capture/src/timing.rs) `AudioAligner` / `ticks` | Place a buffer by counting samples: continue where the last ended while its timestamp agrees within the tolerance (480 frames), fill a gap with silence, drop samples that fall behind / nanoseconds to a timescale |
+| [pacing.rs](../../native/capture/src/pacing.rs) `Pacer` | A frame-rate grid anchored at the recording's start: `admit` keeps the frame nearest each slot, `due` names a slot whose frame is pending, `capture_interval_ns` asks capture for four times the frame rate |
+| [writer.rs](../../native/capture/src/writer.rs) `spawn` / `MediaSender` | The `recordstuff-writer` thread owning the file and muxer: syncs every 5 s, reports bytes once a second while media arrives, classifies the first write error (`classify`: a full disk on either platform → disk_full, otherwise output_write_failed); `send` refuses media past `BACKLOG_LIMIT_BYTES` (64 MiB) with output_write_failed; `finish` answers on a channel |
+| [mux/session.rs](../../native/capture/src/mux/session.rs) `SessionMuxer` | Encoded samples in, fragments out: holds each video sample until the next gives its duration, closes a video fragment at the first key frame after a second and an audio fragment every second, one track per fragment; `finish` ends video at the stop (a sample at or after it is left out) and presents `audio_frames` of audio after the priming |
+| [mux/mp4.rs](../../native/capture/src/mux/mp4.rs) `HybridMp4` | `create` writes `ftyp` and a `moov` with `mvex`; `write_fragment` appends one `moof` + `mdat`; `finish` appends a plain `moov` indexing every sample in place, syncs and rewrites the old `moov`'s start as a 64-bit `mdat` header, or keeps the fragmented file and says why |
+| [mux/boxes.rs](../../native/capture/src/mux/boxes.rs), [avc.rs](../../native/capture/src/avc.rs), [aac.rs](../../native/capture/src/aac.rs), [nv12.rs](../../native/capture/src/nv12.rs) | ISO BMFF box building and `mdat_header_64`; Annex B H.264 to length-prefixed samples and `avcC`; the AAC-LC AudioSpecificConfig; BGRA → NV12 on the CPU for Windows devices without a video processor. `mux/parse.rs` is a test-only reader |
+| [mac/session.rs](../../native/capture/src/mac/session.rs) `Session` | `probe`, `prepare` (shareable content, content filters, one `SCStream` for picture and sound or a second audio-only stream, VideoToolbox and AudioToolbox encoders, the optional microphone), `record`, `stop` (drain, halt the streams and microphone, end), `cancel`; [content.rs](../../native/capture/src/mac/content.rs) builds the filters that leave out RecordStuff's windows and sound and, with the system-UI switch, the menu bar, Dock, desktop icons and widgets |
+| [mac/microphone.rs](../../native/capture/src/mac/microphone.rs) `MicrophoneCapture` / `list` | An `AVCaptureSession` on the chosen or default input, converted to 48 kHz stereo float and stamped on the host clock / the input devices |
+| [win/session.rs](../../native/capture/src/win/session.rs) `Session` | `probe` and `prepare` by the display's physical point (`capture.rs`: Windows.Graphics.Capture, GPU or CPU NV12 conversion), WASAPI `SoundCapture` streams (process loopback excluding RecordStuff's tree, a chosen process tree or the microphone), Media Foundation H.264 (`video.rs`) and AAC (`aac.rs`, 96–192 kbps); chosen apps' windows are refused |
+
+Rust tests live beside the code (`core/tests.rs`, `#[cfg(test)]` modules, `pipeline_test.rs`); `live_test.rs` captures for real and is `#[ignore]`d, run explicitly on CI's Windows runner and locally on macOS.
 
 ## Media storage
 
-[main/recording/file-writer.ts](../../src/main/recording/file-writer.ts) keeps `publishRecording`, the error classification, `ensureWritableDir` and `nodeFs` (open, link, exclusive copy, unlink, mkdir and writeFile for injected I/O); the `FileWriter` class was removed with the hidden renderer on 2026-10-16. [main/recording/engine-file-writer.ts](../../src/main/recording/engine-file-writer.ts) is the Recorder's writer: `EngineFileWriter.open` reserves the temporary name exclusively, `finish` waits for the engine's outcome and publishes, `abandon` keeps a nonempty file.
+[main/recording/engine-file-writer.ts](../../src/main/recording/engine-file-writer.ts) is the Recorder's writer; [main/recording/file-writer.ts](../../src/main/recording/file-writer.ts) holds what it shares with the folder check: publication, error classification and `nodeFs` (open, link, exclusive copy, unlink, mkdir and writeFile for injected I/O).
 
 | Function/method | Contract |
 | --- | --- |
+| EngineFileWriter.open | Create the temporary file empty with `wx`; a failure, a name collision included, throws `FileWriteError` with `classifyOpenError`'s code |
+| EngineFileWriter.finish | Once: await the engine's outcome for this path (a write error passes through, anything else becomes output_write_failed), read the size, remove a zero-byte file and throw capture_start_failed with `NO_MEDIA_DETAIL`, otherwise `publishRecording` and record `finishTimings` (the engine's `finalizeMs` and fragmented reason, the size check, publication) |
+| EngineFileWriter.abandon | Never throws, idempotent: keep a nonempty file under its temporary name and return its path; remove an empty one; an unreadable size sets `preservationUncertain` |
 | FileWriteError constructor | Error carrying code, path, and original cause |
 | errnoCode / messageOf ([main/lib/errors.ts](../../src/main/lib/errors.ts)) | Optional filesystem errno / error text, shared by every main module that reads a Node error |
 | classifyWriteError | ENOSPC→disk_full; otherwise output_write_failed |
 | classifyOpenError | ENOSPC→disk_full; otherwise output_open_failed (the folder probe and the exclusive open) |
-| ensureWritableDir | mkdir and write probe; throw classifyOpenError's code on failure; remove probe best effort |
+| ensureWritableDir | mkdir (only for RecordStuff's own folders) and write probe; throw classifyOpenError's code on failure; remove probe best effort |
 | publishRecording | Exclusive hard link with collision suffixes up to `MAX_PUBLISH_ATTEMPTS` (100) names (exclusive copy once a link is refused other than EEXIST), best-effort temporary removal → actual final path and timings |
-
-The table below describes `mp4-finalize.ts`, removed with the hidden renderer on 2026-10-16 and kept until plan 076 step 8 rewrites it; the native engine's muxer ([native/capture/src/mux](../../native/capture/src/mux)) now writes and finishes the MP4.
-
-| Function/method | Contract |
-| --- | --- |
-| FragmentIndex.push | Follow the next written bytes in pieces of any size: keep ftyp, moov and each moof whole (up to 16 MiB), skip every other box's body, record each mdat's payload range; read the moov's tracks and trex defaults and each traf's samples, one chunk per trun, `tfdt` correcting the previous sample's duration; never throw, keep the first reason it gave up |
-| FragmentIndex.unusable | The reason it gave up, if any |
-| FragmentIndex.finalize | For a file of `end` bytes, all pushed and ending on a box boundary, with every chunk inside one mdat: the new `moov` (rebuilt sample tables, real durations, no mvex) and where the `mdat` header goes; otherwise `{ reason }` |
-| mdatHeader | The 16-byte, 64-bit `mdat` header for a given size |
 
 ## Recordings library
 
@@ -232,7 +251,7 @@ The table below describes `mp4-finalize.ts`, removed with the hidden renderer on
 
 [shared/video-player.ts](../../src/shared/video-player.ts): `formatDuration(seconds)` writes a length or a position as `1:23`, or `1:02:03` from an hour, counting whole seconds down, so a recording card's length and its player's total read the same; an unknown length reads `0:00`. `playbackState` and `isFullScreenChoice` validate what the full-screen window and the player send.
 
-[shared/protocol.ts](../../src/shared/protocol.ts): `isRecord` and `isNonEmptyString` support `isMainMessage` and `isHostMessage`; `prepared` requires a mime type and a CaptureReport, `started` may carry neither; `progress` requires finite nonnegative bytes and `finished` an engine file report.
+[shared/protocol.ts](../../src/shared/protocol.ts): the parent-port contract between main and the capture host. `OUTPUT_MIME_TYPE` is H.264 + AAC MP4; `HOST_ERROR_CODES` and `ENGINE_WRITE_ERROR_CODES` are the only codes a host may send in `error` and `writeError`. `isMainMessage` accepts `start` (nonempty session id, `isQualitySettings`, optional `native` checked by `isNativeStart`: integer display id, optional integer point, nonempty recording path, integer PIDs, boolean system-UI switch), `record`, `stop` and `ping`. `isHostMessage` accepts `ready`/`pong`; `prepared` with a mime type and a CaptureReport; `started`; `stopped` with an optional finite `tracksStoppedAt`; `finished` with an `EngineFileReport` (finite bytes and finalizeMs, optional fragmented reason); `progress` with finite nonnegative bytes; `writeError` and `error` only with their listed codes and a string detail, `error` optionally with `displayFailure: "track_ended"`. `isRecord`, `isNonEmptyString`, `isPoint` and `isEngineFileReport` are its helpers; extra fields are tolerated.
 
 [shared/countdown.ts](../../src/shared/countdown.ts): `COUNTDOWN_CHOICES` (0, 3, 5, 10), `DEFAULT_COUNTDOWN` (3) and `isCountdownSeconds`; `COUNTDOWN_TIMING` (tick, overlay lead, dismissal bound, fades, settle) and `COUNTDOWN_OVERLAY` (the font fraction of the display's shorter side and its 56–216 pt clamp, the window-to-font ratio, insets, font, digit, outline and shadows at the 56 pt reference size, reduced-transparency values), the tick's values `COUNTDOWN_TICK` (sine at 523 Hz, the last digit ×1.5, a quiet fourth partial, 4 ms attack, 140 ms, −20 dBFS), `DEFAULT_COUNTDOWN_SOUND` (on), `tickFrequencyHz(digit)` and the page's `COUNTDOWN_SOUND_QUERY` (plan 046), the one place every timing, appearance and sound value lives; `overlayFontPt(displayBounds)` gives the digit's size for a display and `overlayBounds(displayBounds, workArea)` the square window, in whole points, at the top-right of its work area; the value channel and bridge type the overlay preload exposes.
 
@@ -339,8 +358,6 @@ The table below describes `mp4-finalize.ts`, removed with the hidden renderer on
 | isOutputFolderFailure / isPermissionFailure | The shared recovery categories: output-folder failures offer the folder action; permission failures, including no_audio_track, offer System Settings and Relaunch on macOS |
 
 [main/recording/session-sentinel.ts](../../src/main/recording/session-sentinel.ts): `SessionSentinels.write` atomically names a session's temporary file before it exists; `remove` deletes it without throwing; `leftovers` lists sentinels of earlier processes, skipping this process's sessions, discarding interrupted writes and invalid content, and keeping ones it cannot read now. `interruptionFailure` turns one into an `app_terminated` entry with a session-derived ID; `reportInterruptions` hands them to `RecordingResults.restore` at launch and removes them only once `RecordingResults.saved` confirms their entries were saved.
-
-[main/recording/recording-health.ts](../../src/main/recording/recording-health.ts): `RECORDING_HEALTH`, the single place for the stall, free-space and slow-save thresholds.
 
 [main/recording/keep-awake.ts](../../src/main/recording/keep-awake.ts): `KeepAwake.update` holds one `prevent-display-sleep` power blocker from `starting` until the state settles and logs each start and stop; a blocker that throws is logged only; `dispose` releases it on quit (plan 050).
 

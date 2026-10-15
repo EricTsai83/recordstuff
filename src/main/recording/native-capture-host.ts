@@ -1,12 +1,11 @@
 /**
- * Supervises the native engine's capture host (plan 076, behind D7's development flag), as capture-host.ts does the
- * hidden renderer: every `start` forks a fresh `utilityProcess` for that attempt (native-host-process.ts), validates
+ * Supervises the native engine's capture host (plan 076): every `start` forks a fresh `utilityProcess` for that attempt (native-host-process.ts), validates
  * every inbound message, and detects a crash (the process exits) or a hang (two missed pongs while a session is in
  * flight). The owner calls `destroy` when the attempt settles, which ends the process, so nothing idles between
  * recordings.
  *
- * Before posting `start` it resolves the display through the same `DisplayMedia` request the renderer host's
- * display-media handler answers, so display choice, its diagnostics and the countdown's display are unchanged. The
+ * Before posting `start` it resolves the display through `DisplayMedia`, which keeps display choice, its diagnostics and
+ * the countdown's display in main. The
  * display is chosen while the process starts, so neither waits for the other.
  *
  * On Windows the engine finds the display by a point on it, and cannot leave RecordStuff's windows out of the

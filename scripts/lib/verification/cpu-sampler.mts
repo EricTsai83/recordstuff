@@ -254,11 +254,8 @@ export function judgeSettingsOpen(summary: Summary): Verdict[] {
   return [{ check: "CPU average", limit: `≤ ${averagePercent}%`, actual: pct(summary.cpuPercent.average), verdict: summary.cpuPercent.average <= averagePercent ? "pass" : "fail" }];
 }
 
-/**
- * A recording: the frame rate's threshold fails; the encoder and a baseline regression are reported. `reference` is
- * another engine's baseline on this machine, reported beside it (plan 076 compares the native engine with Chromium's).
- */
-export function judgeRecording(summary: Summary, fps: 30 | 60, baselinePercent?: number, reference?: { label: string; percent: number }): Verdict[] {
+/** A recording: the frame rate's threshold fails; the encoder and a baseline regression are reported. */
+export function judgeRecording(summary: Summary, fps: 30 | 60, baselinePercent?: number): Verdict[] {
   const limit = CPU_BUDGET.recording[fps].averagePercent;
   const average = summary.cpuPercent.average;
   const verdicts: Verdict[] = [{
@@ -270,11 +267,6 @@ export function judgeRecording(summary: Summary, fps: 30 | 60, baselinePercent?:
   if (baselinePercent !== undefined) {
     const limit = baselinePercent * (1 + CPU_BUDGET.regressionFraction);
     verdicts.push({ check: "Against the recorded baseline", limit: `≤ ${pct(limit)} (baseline ${pct(baselinePercent)} + 25%)`, actual: pct(average), verdict: average > limit ? "warn" : "pass" });
-  }
-  if (reference) {
-    const change = (average / reference.percent - 1) * 100;
-    verdicts.push({ check: `Against ${reference.label}`, limit: "reported", verdict: "report",
-      actual: `${pct(average)} against ${pct(reference.percent)} (${change >= 0 ? "+" : ""}${change.toFixed(0)}%)` });
   }
   return verdicts;
 }

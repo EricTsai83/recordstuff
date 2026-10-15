@@ -214,8 +214,8 @@ interface Session {
   hostStoppedAt?: number;
   /**
    * `stopped` arrived and the finalizer owns the attempt: late host errors and
-   * loss, a duplicate `stopped`, chunks and display removal are ignored; only
-   * a disk error from the writer can still fail it.
+   * loss, a duplicate `stopped`, progress and display removal are ignored; only
+   * the engine's outcome for the file can still fail it.
    */
   finalizing: boolean;
   /**
@@ -754,7 +754,7 @@ export class Recorder {
     }
     if (!session || message.sessionId !== session.id) {
       // A session we already gave up on (e.g. start timed out while the host
-      // was still inside getDisplayMedia) must not keep capturing unseen.
+      // was still preparing) must not keep capturing unseen.
       if (message.type === "prepared" || message.type === "started" || message.type === "progress") {
         this.deps.log(`recorder: stopping stale session ${message.sessionId} (${message.type})`);
         this.requestHostStop(message.sessionId);
@@ -811,7 +811,7 @@ export class Recorder {
           session.hostStoppedAt = this.monotonic();
           this.clearTimer(session);
           session.finalizing = true;
-          // Every chunk is the writer's now: the recording is over, and saving it goes on in the background, owned like
+          // The file is the engine's to finish now: the recording is over, and saving it goes on in the background, owned like
           // any other recording work (quit waits for it), while the next recording may already start (2026-10-09).
           this.session = undefined;
           this.closeOverlay(session);
@@ -831,7 +831,7 @@ export class Recorder {
   }
 
   /**
-   * Media arrived (a chunk, or the native engine's progress): the first-media deadline and the stall guard hear it.
+   * Media arrived (the engine's progress): the first-media deadline and the stall guard hear it.
    * Empty media is not media, so it neither satisfies the deadline nor resets the guard.
    */
   private mediaArrived(session: Session, bytes: number, source?: "engine progress"): void {
@@ -1099,9 +1099,9 @@ export class Recorder {
   }
 
   /**
-   * One inter-chunk timer after media began: warn once at the first bound,
+   * One timer between media reports after media began: warn once at the first bound,
    * fail at the second with the partial file preserved. Heartbeats only prove
-   * the renderer answers; this proves media still arrives.
+   * the capture process answers; this proves media still arrives.
    */
   private armStall(session: Session): void {
     if (session.stall) clearTimeout(session.stall);

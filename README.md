@@ -42,6 +42,7 @@ Open settings with **⌥⌘,**:
 | Setting | Options | Default |
 | --- | --- | --- |
 | Screen | Primary display / a connected display | Primary display |
+| Hide menu bar and Dock | On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings (macOS only) | Off |
 | Output folder | Any folder | Movies → RecordStuff |
 | Countdown | Off / 3 / 5 / 10 s, optional tick | 3 s, tick on |
 | Video quality | Economy / Standard / High | Standard |
@@ -67,7 +68,7 @@ pnpm dist:mac     # Self-signed DMG in dist/
 pnpm dist:win     # Unsigned Windows x64 installer in dist/
 ```
 
-Requires Node ≥22.12 and, for self-signed builds, a local `RecordStuff Dev` signing identity.
+Requires Node ≥22.12, Rust's stable toolchain (it builds the native capture engine) and, for self-signed builds, a local `RecordStuff Dev` signing identity.
 
 - [Contributing](CONTRIBUTING.md): setup, code map, testing and pull requests
 - [System design](docs/system-design/README.md) · [Tooling](docs/system-design/tooling.md) · [Verification record](docs/verification/README.md) · [Plans](plans/README.md) · [Releases](docs/system-design/releases.md)

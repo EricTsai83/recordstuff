@@ -42,6 +42,7 @@ SHA-256：`3dc930eb66072a93596aabd796ef2ac164df4c0050139e053b5f1d17c4a9d994`。
 | 設定 | 選項 | 預設 |
 | --- | --- | --- |
 | 螢幕 | 主螢幕／已連接螢幕 | 主螢幕 |
+| 隱藏選單列與 Dock | 開啟／關閉；錄影中不出現選單列、Dock、桌面圖示與小工具（僅限 macOS） | 關閉 |
 | 儲存位置 | 任意資料夾 | 影片 → RecordStuff |
 | 倒數 | 關閉／3／5／10 秒，可開倒數音效 | 3 秒，倒數音效開啟 |
 | 影像品質 | 精省／標準／高品質 | 標準 |
@@ -67,7 +68,7 @@ pnpm dist:mac     # 自簽 DMG → dist/
 pnpm dist:win     # 未簽章 Windows x64 安裝程式 → dist/
 ```
 
-需要 Node ≥22.12；自簽建置需要本機的 `RecordStuff Dev` 簽署憑證。
+需要 Node ≥22.12 與 Rust stable 工具鏈（用來建置原生擷取引擎）；自簽建置需要本機的 `RecordStuff Dev` 簽署憑證。
 
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、程式碼導覽、測試與 PR
 - [System design](docs/zh-TW/system-design/README.md) · [工具](docs/zh-TW/system-design/tooling.md) · [驗證紀錄](docs/zh-TW/verification/README.md) · [計畫](plans/README.zh-TW.md) · [發布](docs/zh-TW/system-design/releases.md)

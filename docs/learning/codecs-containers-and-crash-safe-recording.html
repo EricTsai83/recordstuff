@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>編解碼器、容器與不怕當機的錄影：每一個選擇的取捨</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+pre.language-shell { background: #11110f; }
+pre code .sh-command { color: #ff946e; font-weight: 400; }
+pre code .sh-flag { color: #cfc6a2; font-weight: 400; }
+pre code .sh-string { color: #8fb86a; }
+pre code .sh-var { color: #cfc6a2; }
+pre code .sh-comment { color: #858177; font-style: italic; }
+pre code .sh-prompt { color: #ff946e; font-weight: 400; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+.flow-figure .flow-mobile { display: none; }
+.fig-node rect { fill: var(--white); stroke: var(--oat); stroke-width: 1.5; }
+.fig-node.fail rect { fill: var(--gray-100); stroke: var(--gray-500); stroke-dasharray: 6 4; }
+.fig-label { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 15px; font-weight: 650; }
+.fig-note { fill: var(--gray-700); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 13px; font-weight: 500; }
+.fig-arrow { stroke: var(--clay); stroke-width: 2; fill: none; }
+.fig-arrow.fail { stroke: var(--gray-500); stroke-dasharray: 5 4; }
+.bx rect { fill: var(--white); stroke: var(--gray-300); stroke-width: 1.2; }
+.bx.index rect { fill: #F7E6DE; stroke: var(--clay); }
+.bx.payload rect { fill: var(--gray-100); stroke: var(--gray-500); }
+.bx.ghost rect { fill: none; stroke: var(--gray-500); stroke-dasharray: 4 3; }
+.bx text, .bx-text { fill: var(--slate); font-family: ui-monospace, SFMono-Regular, Menlo, "PingFang TC", "Noto Sans TC", monospace; font-size: 13px; font-weight: 600; }
+.bx.ghost text { fill: var(--gray-700); font-size: 11px; font-weight: 500; }
+.bx-head { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 12px; font-weight: 600; }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 600px; }
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>編解碼器、容器與不怕當機的錄影：每一個選擇的取捨</h1>
+
+<p class="deck">錄影工具最容易被低估的風險不是畫質，而是「還沒按停止就當機了，檔案還在不在」。本文從 codec 和容器的分工講起，拆開 MP4 的索引與資料，說明 muxer 為什麼總要在最後回頭補寫，再逐一比較幾個架構選擇：硬體或軟體編碼器、自己寫 muxer 或連結 FFmpeg、一般／fragmented／hybrid MP4、由誰寫檔、多久 sync 一次，以及收尾失敗時怎麼辦。每個選擇都會講清楚它依賴的條件、替代方案的代價、其他產品怎麼選，以及哪些情況會讓結論翻轉。貫穿範例是 RecordStuff 在 2026 年 10 月換上的 Rust 原生錄影引擎。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#problem">問題：錄影檔什麼時候才算「存在」</a></li>
+    <li><a href="#model">心智模型：codec、容器、索引與資料</a></li>
+    <li><a href="#bmff">MP4 的內部：ISO BMFF 的 box</a></li>
+    <li><a href="#seek-back">為什麼 muxer 要回頭寫</a></li>
+    <li><a href="#layouts">三種寫 MP4 的方式：一般、fragmented、hybrid</a></li>
+    <li><a href="#recovery">當機之後能救回什麼</a></li>
+    <li><a href="#choices">六個選擇與它們的取捨</a></li>
+    <li><a href="#example">實例：RecordStuff 的一次錄影</a></li>
+    <li><a href="#table">決策總表</a></li>
+    <li><a href="#boundaries">不要這樣做的情況</a></li>
+    <li><a href="#criteria">可以帶走的判斷準則</a></li>
+  </ol>
+</nav>
+
+<h2 id="problem">問題：錄影檔什麼時候才算「存在」</h2>
+
+<p>想像使用者錄了一場一小時的會議，第 59 分鐘時，錄影程式當掉了。原因可能是程式本身的 bug、作業系統把它殺掉、筆電沒電，或是磁碟滿了。使用者的期待很單純：至少留下當機前那 59 分鐘。</p>
+
+<p>最直覺的寫法是這樣：編碼器每產生一段壓縮好的畫面和聲音，就追加到檔案尾端；按下停止時，再寫一份「目錄」，記錄每一格在哪裡、多大、什麼時間播放。這正是一般 MP4 的寫法。正常停止時，它的結果最好：檔案精簡、相容性最高，任何播放器都能直接打開。</p>
+
+<p>問題出在沒有正常停止的時候。磁碟上已經有 59 分鐘、可能好幾 GB 的壓縮資料，但目錄還沒寫。播放器不知道一格從哪裡開始、在哪裡結束，也不知道它屬於畫面還是聲音，多數播放器會直接說「檔案已損毀」。<strong>資料都在，檔案卻等於壞了。</strong>更天真的做法是把整段錄影留在記憶體、停止時一次寫出，那連資料都不會留下。</p>
+
+<p>這件事牽動好幾股互相拉扯的力量：</p>
+
+<ul>
+  <li><strong>當機時保留多少。</strong>理想是保留到中斷前一兩秒。</li>
+  <li><strong>正常存檔後的相容性與開檔速度。</strong>QuickTime、瀏覽器、剪輯軟體都要能打開，而且要立刻打開。</li>
+  <li><strong>從停止到可用的時間。</strong>收尾時間不應該隨錄影長度增加；一小時的錄影不能讓使用者等一分鐘。</li>
+  <li><strong>程式大小與授權。</strong>多帶一套媒體函式庫，就多一份體積和授權義務。</li>
+  <li><strong>可擴充性。</strong>今天輸出 H.264 MP4，明天可能要 MOV、HEVC 或 MKV。</li>
+  <li><strong>實作與驗證的成本。</strong>每多一種檔案形式，就多一組要測的失敗情境。</li>
+</ul>
+
+<p>所以本文要回答的是：<strong>寫檔管線要怎麼設計，才能讓任何時刻中斷都留下可播放的檔案，正常結束時又得到相容性最好的檔案，而且收尾時間不隨錄影長度增加？</strong>要回答這個問題，得先把「檔案」拆開來看。</p>
+
+<h2 id="model">心智模型：codec、容器、索引與資料</h2>
+
+<p>影音檔牽涉兩件常被混為一談的事：</p>
+
+<ul>
+  <li><strong>Codec（編解碼格式）</strong>決定「一格畫面或一段聲音怎麼壓縮成位元組」。影像有 H.264、HEVC（H.265）、AV1；聲音有 AAC、Opus。<strong>Encoder（編碼器）</strong>則是某個 codec 的實作：H.264 可以由 Apple 的 VideoToolbox、Microsoft 的 Media Foundation、開源的 x264 產生，三者輸出的都是合法的 H.264。</li>
+  <li><strong>Container（容器）</strong>決定「這些壓縮好的片段怎麼放進一個檔案」：有幾條 track（影像軌、音訊軌）、每個片段屬於哪條 track、什麼時候播放、用什麼 codec 參數解碼。MP4、MOV、MKV、WebM 都是容器。寫容器的程式叫 <strong>muxer</strong>，讀容器的叫 <strong>demuxer</strong>。</li>
+</ul>
+
+<p>兩者互相獨立：同一段 H.264 可以放進 MP4，也可以放進 MKV。只換容器、不碰壓縮資料的轉換叫 <strong>remux</strong>，速度大致等於複製檔案；要換 codec 才需要解碼再重新編碼（<strong>transcode</strong>），又慢又會損失畫質。這個區分很重要，因為「當機後救檔」幾乎都是容器層的問題，不是 codec 的問題。</p>
+
+<p>容器裡又有兩種性質完全不同的資料：</p>
+
+<ul>
+  <li><strong>Payload（資料本體）</strong>：壓縮後的樣本本身，佔檔案的 99% 以上。它在編碼器交出來的那一刻就定了，寫下去之後不必再改。</li>
+  <li><strong>Index（索引）與 metadata</strong>：每個樣本的位置、大小、時長，哪些是關鍵影格，codec 參數，總長度。它很小，但<strong>要等到最後一個樣本出現，才寫得完整</strong>。</li>
+</ul>
+
+<p>不怕當機的錄影，本質上就是在處理一個問題：<strong>在 payload 持續寫入的同時，讓索引隨時都處於「可讀」的狀態。</strong></p>
+
+<p>後文會反覆用到以下名詞：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>名詞</th><th>白話解釋</th></tr></thead>
+  <tbody>
+    <tr><td>樣本（sample）</td><td>容器裡的最小單位：一格壓縮後的畫面，或一個 AAC 封包（1024 個聲音 frame）。</td></tr>
+    <tr><td>關鍵影格（key frame、sync sample）</td><td>不依賴其他影格就能解碼的畫面。播放器只能從關鍵影格開始播，所以跳轉、截斷後的恢復都以它為起點。</td></tr>
+    <tr><td>timescale、tick</td><td>容器用整數記時間：timescale 是「一秒有幾個 tick」。影像常用 90,000，聲音常用取樣率（48,000）。</td></tr>
+    <tr><td>解碼時間與顯示時間</td><td>有 B-frame（雙向預測影格）時，解碼順序和顯示順序不同，容器要另外記差值（<code>ctts</code>）。沒有 B-frame 時兩者相同。</td></tr>
+    <tr><td>Priming（編碼延遲）</td><td>AAC 編碼器輸出的開頭一小段不是真正的聲音，而是編碼器自己的延遲。播放時必須跳過，否則聲音會比畫面晚。</td></tr>
+    <tr><td>sync／fsync</td><td>要求作業系統把已寫入、但還在記憶體快取裡的資料真正落到磁碟上。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="bmff">MP4 的內部：ISO BMFF 的 box</h2>
+
+<p>MP4 和 MOV 都屬於 <strong>ISO Base Media File Format（ISO BMFF，ISO/IEC 14496-12）</strong>這個家族，源頭是 Apple 的 QuickTime 檔案格式。它的基本單位叫 <strong>box</strong>（QuickTime 稱為 atom）：開頭 4 bytes 是大小，接著 4 bytes 是類型（例如 <code>moov</code>），然後是內容。box 可以層層巢狀。大小欄位寫 1 時，後面會多出 8 bytes 的 64 位元大小，檔案超過 4 GiB 時就需要它。</p>
+
+<p>一個「一般」（非 fragmented）MP4 長這樣：</p>
+
+<pre><span class="label">Text</span><code>ftyp              檔案類型與相容品牌（isom、avc1、mp41…）
+mdat              所有樣本的位元組，一個接一個，沒有任何邊界資訊
+moov              整部影片的索引
+  mvhd            影片的 timescale 與總長度
+  trak            每條 track 一個
+    tkhd          track 編號、長度、畫面大小
+    edts / elst   edit list：媒體時間如何對應到播放時間
+    mdia
+      mdhd        這條 track 的 timescale 與長度
+      hdlr        vide（影像）或 soun（聲音）
+      minf / stbl sample table，索引的主體：
+        stsd      codec 參數（avc1 + avcC、mp4a + esds）
+        stts      每個樣本的時長
+        stsz      每個樣本的大小
+        stsc      樣本如何分組成 chunk
+        stco      每個 chunk 在檔案中的絕對位置（超過 4 GiB 用 co64）
+        stss      哪些樣本是關鍵影格</code></pre>
+
+<p>播放器要找到第 n 格畫面，先用 <code>stts</code> 算出時間，再用 <code>stsc</code>、<code>stco</code>、<code>stsz</code> 算出它在檔案裡的位置與長度。注意：這些表格的<strong>每一列</strong>都要等對應的樣本寫下去之後才知道，而 <code>stco</code> 記的是<strong>從檔案開頭算起的絕對位置</strong>。所以完整的 <code>moov</code> 只能在最後寫。</p>
+
+<p>Fragmented MP4 換了一種組織方式。開頭的 <code>moov</code> 只描述 track 與 codec 參數，sample table 全部是空的，另外放一個 <code>mvex</code> 宣告「後面還有 fragment」。接著每隔一段時間寫一個 fragment，也就是一個 <code>moof</code>（這一段的小索引）加上一個 <code>mdat</code>（這一段的樣本）：</p>
+
+<pre><span class="label">Text</span><code>ftyp
+moov              track 與 codec 參數；sample table 全空
+  mvex / trex     宣告這是 fragmented 檔
+moof              第 1 段的索引
+  mfhd            序號
+  traf            一條 track 在這一段的內容
+    tfhd          哪條 track；位置從這個 moof 的第一個 byte 起算
+    tfdt          這一段第一個樣本的解碼時間
+    trun          這一段每個樣本的時長、大小、是否為關鍵影格
+mdat              第 1 段的樣本
+moof / mdat       第 2 段……</code></pre>
+
+<p>關鍵在於：每個 fragment 都是<strong>自我描述</strong>的。它的位置是相對於自己的 <code>moof</code> 計算，時間由 <code>tfdt</code> 直接給出，所以 fragment 寫下去之後，再也不需要修改。讀取端一段一段往下讀，讀到不完整的最後一段就停下來。</p>
+
+<h3>Edit list 與 AAC 的 priming</h3>
+
+<p>索引不只記錄「樣本在哪裡」，也記錄「從哪裡開始播」。AAC 編碼器輸出的前幾個封包，包含編碼器自身的延遲。Apple 的 QuickTime 檔案格式文件以 2112 個 frame 作為 Apple AAC 編碼器的典型 priming 值，在 48 kHz 下約 44 ms。如果直接從第一個樣本開始播，聲音就會比畫面晚 44 ms。</p>
+
+<p>這些 priming 樣本不能直接丟掉，因為解碼器需要它們來「暖機」。正確做法是保留樣本，再用 <code>elst</code>（edit list）告訴播放器：「這條 track 從媒體時間 2112 開始播」。最後一個 AAC 封包也會補滿 1024 個 frame，多出來的尾巴同樣由 edit 的長度排除。這是容器層的修正，不需要動到任何壓縮資料。</p>
+
+<h2 id="seek-back">為什麼 muxer 要回頭寫</h2>
+
+<p>有了上面的結構，就能理解一個普遍現象：<strong>多數容器在結束時，都必須回到檔案前面改寫某些欄位，或在尾端補寫某些東西。</strong>原因是容器的某些欄位記錄的是「總量」或「絕對位置」，而這些值要到最後才知道。</p>
+
+<ul>
+  <li><strong>一般 MP4：</strong><code>mdat</code> 開頭的大小欄位，要等所有樣本寫完才知道，muxer 通常先寫一個佔位的標頭，最後再回頭補上。完整的 <code>moov</code> 則追加在尾端。如果要求 <code>moov</code> 放在檔案前面（俗稱 faststart，方便網路邊下載邊播），就得把整個檔案重寫一遍。FFmpeg 的 <code>-movflags +faststart</code> 就是在收尾時多跑一輪，把資料往後搬。另一種做法是先預留空間（FFmpeg 的 <code>moov_size</code> 選項），但預留不夠時，寫檔就會失敗。</li>
+  <li><strong>MKV（Matroska）：</strong>以 EBML 元素組成，每個元素都有大小欄位。Segment 的總大小、影片長度、用來跳轉的索引 Cues，以及開頭指向 Cues 的 SeekHead，都要在結束時補寫或回頭改寫。不過 Matroska 允許「未知大小」的元素，所以一個寫到一半就中斷的 MKV，仍然能從頭依序播放，只是長度未知、跳轉比較差。這也是 OBS 長期建議「先錄 MKV，需要時再 remux 成 MP4」的原因。</li>
+  <li><strong>WebM（Matroska 的子集）：</strong>瀏覽器的 MediaRecorder 是邊錄邊把資料片段交給網頁，自己沒辦法回頭改寫已經交出去的片段。因此一種常見的情況是：錄出來的 WebM 缺少長度與 Cues，播放器的進度條無法正常跳轉，必須事後再處理。</li>
+</ul>
+
+<p>由此可以歸納出一條通則：<strong>只要容器的索引參照了絕對位置或總量，muxer 就只有三條路：回頭改寫、整檔重寫，或事先預留空間。</strong>Fragmented 的設計則換了一個思路：讓每一段都自我描述，從根本上避開回頭改寫。這條通則，也決定了後面「由誰寫檔」的答案：如果寫檔的一方只拿得到一串只能往後追加的片段，它就無法回頭改寫，除非它自己也懂這個格式。</p>
+
+<h2 id="layouts">三種寫 MP4 的方式：一般、fragmented、hybrid</h2>
+
+<p>把同一段錄影寫成三種形式，差別一眼就能看出來：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-lay-d-title fig-lay-d-desc" viewBox="0 0 680 300" style="max-width: 680px"><title id="fig-lay-d-title">一般、fragmented 與 hybrid MP4 的檔案配置</title><desc id="fig-lay-d-desc">一般 MP4 是 ftyp、存放全部樣本的 mdat，以及最後才寫的完整 moov 索引。Fragmented MP4 是 ftyp、空表的 moov，接著一段段的 moof 與 mdat，截斷時只失去最後不完整的一段。Hybrid MP4 存檔後是 ftyp、一個從舊 moov 位置開始涵蓋所有 fragment 的 mdat，以及尾端追加的完整 moov；資料沒有搬動。</desc>
+    <text class="fig-label" x="0" y="42">一般 MP4</text><text class="fig-note" x="0" y="60">結束時寫索引</text>
+    <g class="bx"><rect x="130" y="24" width="46" height="44" rx="4"></rect><text x="153" y="51" text-anchor="middle">ftyp</text></g>
+    <g class="bx payload"><rect x="176" y="24" width="380" height="44" rx="4"></rect><text x="366" y="51" text-anchor="middle">mdat：全部樣本</text></g>
+    <g class="bx index"><rect x="556" y="24" width="114" height="44" rx="4"></rect><text x="613" y="51" text-anchor="middle">moov：索引</text></g>
+    <text class="fig-note" x="130" y="88">索引最後才寫；在那之前中斷，播放器找不到任何一格</text>
+
+    <text class="fig-label" x="0" y="136">fragmented</text><text class="fig-note" x="0" y="154">邊錄邊自帶索引</text>
+    <g class="bx"><rect x="130" y="118" width="46" height="44" rx="4"></rect><text x="153" y="145" text-anchor="middle">ftyp</text></g>
+    <g class="bx index"><rect x="176" y="118" width="84" height="44" rx="4"></rect><text x="218" y="145" text-anchor="middle">moov 空表</text></g>
+    <g class="bx index"><rect x="260" y="118" width="44" height="44" rx="4"></rect><text x="282" y="145" text-anchor="middle">moof</text></g>
+    <g class="bx payload"><rect x="304" y="118" width="70" height="44" rx="4"></rect><text x="339" y="145" text-anchor="middle">mdat</text></g>
+    <g class="bx index"><rect x="374" y="118" width="44" height="44" rx="4"></rect><text x="396" y="145" text-anchor="middle">moof</text></g>
+    <g class="bx payload"><rect x="418" y="118" width="70" height="44" rx="4"></rect><text x="453" y="145" text-anchor="middle">mdat</text></g>
+    <g class="bx index"><rect x="488" y="118" width="44" height="44" rx="4"></rect><text x="510" y="145" text-anchor="middle">moof</text></g>
+    <g class="bx payload"><rect x="532" y="118" width="60" height="44" rx="4"></rect><text x="562" y="145" text-anchor="middle">mdat</text></g>
+    <g class="bx ghost"><rect x="592" y="118" width="78" height="44" rx="4"></rect><text x="631" y="145" text-anchor="middle">截斷的一段</text></g>
+    <text class="fig-note" x="130" y="182">每段 moof 只描述自己的樣本；截斷時只丟掉最後不完整的一段</text>
+
+    <text class="fig-label" x="0" y="236">hybrid</text><text class="fig-note" x="0" y="254">存檔後</text>
+    <g class="bx"><rect x="130" y="212" width="46" height="56" rx="4"></rect><text x="153" y="245" text-anchor="middle">ftyp</text></g>
+    <g class="bx payload"><rect x="176" y="212" width="380" height="56" rx="4"></rect></g>
+    <text class="bx-head" x="366" y="229" text-anchor="middle">mdat（16 bytes 標頭覆寫在舊 moov 的開頭）</text>
+    <g class="bx ghost"><rect x="182" y="238" width="70" height="24" rx="3"></rect><text x="217" y="254" text-anchor="middle">舊 moov</text></g>
+    <g class="bx ghost"><rect x="256" y="238" width="40" height="24" rx="3"></rect><text x="276" y="254" text-anchor="middle">moof</text></g>
+    <g class="bx ghost"><rect x="300" y="238" width="60" height="24" rx="3"></rect><text x="330" y="254" text-anchor="middle">樣本</text></g>
+    <g class="bx ghost"><rect x="364" y="238" width="40" height="24" rx="3"></rect><text x="384" y="254" text-anchor="middle">moof</text></g>
+    <g class="bx ghost"><rect x="408" y="238" width="60" height="24" rx="3"></rect><text x="438" y="254" text-anchor="middle">樣本</text></g>
+    <g class="bx ghost"><rect x="472" y="238" width="78" height="24" rx="3"></rect><text x="511" y="254" text-anchor="middle">…</text></g>
+    <g class="bx index"><rect x="556" y="212" width="114" height="56" rx="4"></rect><text x="613" y="245" text-anchor="middle">moov：完整索引</text></g>
+    <text class="fig-note" x="130" y="290">只追加 moov、改寫 16 bytes；新索引直接指向原地的樣本</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-lay-m-title fig-lay-m-desc" viewBox="0 0 360 320" style="max-width: 360px"><title id="fig-lay-m-title">一般、fragmented 與 hybrid MP4 的檔案配置</title><desc id="fig-lay-m-desc">一般 MP4 的索引最後才寫；fragmented MP4 每段自帶索引，截斷只失去最後一段；hybrid MP4 存檔時把舊 moov 的開頭改寫成 mdat 標頭並在尾端追加完整索引，資料不搬動。</desc>
+    <text class="fig-label" x="0" y="16">一般 MP4：結束時寫索引</text>
+    <g class="bx"><rect x="0" y="26" width="40" height="40" rx="4"></rect><text x="20" y="51" text-anchor="middle">ftyp</text></g>
+    <g class="bx payload"><rect x="40" y="26" width="226" height="40" rx="4"></rect><text x="153" y="51" text-anchor="middle">mdat：全部樣本</text></g>
+    <g class="bx index"><rect x="266" y="26" width="94" height="40" rx="4"></rect><text x="313" y="51" text-anchor="middle">moov 索引</text></g>
+    <text class="fig-note" x="0" y="84">中斷時沒有索引，整個檔案讀不出來</text>
+
+    <text class="fig-label" x="0" y="118">fragmented：邊錄邊自帶索引</text>
+    <g class="bx"><rect x="0" y="128" width="40" height="40" rx="4"></rect><text x="20" y="153" text-anchor="middle">ftyp</text></g>
+    <g class="bx index"><rect x="40" y="128" width="56" height="40" rx="4"></rect><text x="68" y="153" text-anchor="middle">空moov</text></g>
+    <g class="bx index"><rect x="96" y="128" width="44" height="40" rx="4"></rect><text x="118" y="153" text-anchor="middle">moof</text></g>
+    <g class="bx payload"><rect x="140" y="128" width="52" height="40" rx="4"></rect><text x="166" y="153" text-anchor="middle">mdat</text></g>
+    <g class="bx index"><rect x="192" y="128" width="44" height="40" rx="4"></rect><text x="214" y="153" text-anchor="middle">moof</text></g>
+    <g class="bx payload"><rect x="236" y="128" width="52" height="40" rx="4"></rect><text x="262" y="153" text-anchor="middle">mdat</text></g>
+    <g class="bx ghost"><rect x="288" y="128" width="72" height="40" rx="4"></rect><text x="324" y="152" text-anchor="middle">截斷</text></g>
+    <text class="fig-note" x="0" y="186">截斷時只丟掉最後不完整的一段</text>
+
+    <text class="fig-label" x="0" y="220">hybrid：存檔後</text>
+    <g class="bx"><rect x="0" y="230" width="40" height="56" rx="4"></rect><text x="20" y="263" text-anchor="middle">ftyp</text></g>
+    <g class="bx payload"><rect x="40" y="230" width="226" height="56" rx="4"></rect></g>
+    <text class="bx-head" x="153" y="246" text-anchor="middle">mdat（標頭蓋在舊 moov 上）</text>
+    <g class="bx ghost"><rect x="46" y="254" width="58" height="26" rx="3"></rect><text x="75" y="271" text-anchor="middle">舊 moov</text></g>
+    <g class="bx ghost"><rect x="108" y="254" width="40" height="26" rx="3"></rect><text x="128" y="271" text-anchor="middle">moof</text></g>
+    <g class="bx ghost"><rect x="152" y="254" width="50" height="26" rx="3"></rect><text x="177" y="271" text-anchor="middle">樣本</text></g>
+    <g class="bx ghost"><rect x="206" y="254" width="54" height="26" rx="3"></rect><text x="233" y="271" text-anchor="middle">…</text></g>
+    <g class="bx index"><rect x="266" y="230" width="94" height="56" rx="4"></rect><text x="313" y="254" text-anchor="middle">moov</text><text x="313" y="272" text-anchor="middle">完整索引</text></g>
+    <text class="fig-note" x="0" y="306">只追加 moov、改寫 16 bytes，不搬動資料</text>
+  </svg>
+  <figcaption>橘色框是索引，灰色框是樣本資料，虛線框是已經「失效」的內容。Hybrid 在錄影時和 fragmented 一模一樣，存檔時才變成一般 MP4：舊的 moov 和每個 moof 變成大 mdat 裡沒人參照的位元組，新 moov 的 <code>stco</code> 直接指向各段樣本原本的位置。</figcaption>
+</figure>
+
+<p>Hybrid 的技巧值得多看一眼。錄影時，檔案就是一個標準的 fragmented MP4。存檔時只做兩件事：</p>
+
+<ol>
+  <li>在檔案尾端<strong>追加</strong>一個完整的 <code>moov</code>。它的 sample table 列出所有樣本，<code>stco</code> 直接指向它們在各個 fragment 裡的現有位置。</li>
+  <li>把開頭那個舊 <code>moov</code> 的前 16 bytes，<strong>改寫</strong>成一個 64 位元的 <code>mdat</code> 標頭。這個 mdat 從舊 moov 的位置一路涵蓋到新 moov 之前，於是舊的 moov 和所有 moof 都變成 mdat 裡的「不透明資料」，播放器會直接略過。</li>
+</ol>
+
+<p>結果檔案從頭讀起是 <code>ftyp</code>、<code>mdat</code>、<code>moov</code>，就是一個一般 MP4。整個過程沒有複製或搬動任何樣本，所以收尾時間只和索引大小有關，與影片長度無關。</p>
+
+<p>三種形式各有代價：</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th></th><th>一般 MP4（結束時寫索引）</th><th>Fragmented MP4</th><th>Hybrid MP4</th></tr></thead>
+  <tbody>
+    <tr><td>中途中斷</td><td>沒有 moov，多數播放器打不開；只能靠工具掃描 mdat 重建</td><td>可以播到最後一個完整的 fragment</td><td>和 fragmented 相同（錄影時就是 fragmented）</td></tr>
+    <tr><td>正常存檔後的播放</td><td>相容性最好，開檔最快</td><td>播放器要讀過每一段的 moof 才知道長度；有些播放器打不開</td><td>和一般 MP4 相同</td></tr>
+    <tr><td>收尾成本</td><td>補 mdat 大小、追加 moov</td><td>幾乎沒有</td><td>追加 moov、改寫 16 bytes、sync 兩次；與長度無關</td></tr>
+    <tr><td>實作與測試</td><td>最簡單</td><td>中等</td><td>最多：兩種形式，加上收尾每一步的失敗處理</td></tr>
+    <tr><td>需要的條件</td><td>能回頭寫檔</td><td>只需要往後追加，可以寫到 pipe 或網路串流</td><td>能在檔案任意位置寫入；錄影期間在記憶體保存整份 sample table</td></tr>
+    <tr><td>誰這樣選</td><td>FFmpeg 的 mov/mp4 muxer 預設；AVFoundation 的 AVAssetWriter 預設</td><td>Chromium 的 MediaRecorder 輸出 MP4 時；OBS 的 fragmented MP4／MOV 選項；AVAssetWriter 設定 <code>movieFragmentInterval</code> 時</td><td>OBS 的 Hybrid MP4；RecordStuff</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Fragmented 的「播放器要讀每一段」不只是理論。RecordStuff 舊的錄影路徑曾經直接存 fragmented MP4。2026-10-10 量測一段 36 分鐘、2.7 GB、2,106 個 fragment 的錄影：Chromium 要先讀約 358 MB、花約 1.1 秒，才顯示第一格；同樣的資料轉成一般 MP4 後，只需要 27 到 41 ms。AVFoundation（QuickTime、Quick Look）則完全打不開那個 fragmented 檔（錯誤 <code>-11832</code>），轉成一般 MP4 後就能開。</p>
+
+<p>還有第四條路：<strong>錄成本來就耐中斷的格式，存檔後再複製成新檔。</strong>OBS 的「錄 MKV、自動 remux 成 MP4」選項，以及 Cap 把錄影寫成一段段 DASH segment、停止後在背景 remux 成新 MP4 的做法，都屬於這一類。它的代價是收尾時要把整個檔案複製一遍，時間和需要的磁碟空間都與長度成正比，換來的好處是錄影時的格式可以自由選擇。</p>
+
+<h2 id="recovery">當機之後能救回什麼</h2>
+
+<p>「當機」其實包含幾種不同的情況，能保住的東西也不一樣：</p>
+
+<ul>
+  <li><strong>錄影程序當掉或被殺。</strong>程式已經呼叫 <code>write</code> 寫出的資料，就算還沒落盤，也已經在作業系統的 page cache 裡，作業系統會照常把它寫到磁碟。會遺失的，只有程式自己還沒交出去的部分：編碼器裡的影格，以及 muxer 還沒寫出的 fragment。</li>
+  <li><strong>作業系統當機或斷電。</strong>只有 sync 過的資料有機會留下，而且前提是檔案系統與磁碟確實照 sync 的要求寫入；沒有 sync 的資料則沒有任何保障。這是定期 sync 真正在防的情況。</li>
+  <li><strong>磁碟滿或寫入錯誤。</strong>檔案可能停在某個 box 的中間。讀取端必須能辨認「最後一個 box 不完整」，然後在那裡停下。</li>
+</ul>
+
+<p>不同檔案形式的救援難度天差地遠。一般 MP4 少了 <code>moov</code>，只能用工具（例如 untrunc 一類的程式）拿同一台機器、同一種設定錄出的完好檔案當參考，逐格猜出樣本邊界來重建，結果沒有保證。Fragmented 檔則不需要救，播放器本來就能播到最後完整的一段。如果需要一般 MP4（例如要給 QuickTime 開），用 FFmpeg remux 一次即可：</p>
+
+<pre class="language-shell"><span class="label">Shell</span><code><span class="sh-comment"># 只換容器、不重新編碼：讀 fragmented 檔，寫成一般 MP4，並把 moov 放到前面</span>
+<span class="sh-command">ffmpeg</span> <span class="sh-flag">-i</span> partial.recording.mp4 <span class="sh-flag">-c</span> copy <span class="sh-flag">-movflags</span> +faststart recovered.mp4</code></pre>
+
+<p>這行指令也說明了 FFmpeg 適合待的位置：它是很好用的<strong>事後</strong>工具，但這一步需要把整個檔案讀寫一遍。</p>
+
+<p>RecordStuff 的做法是不自動修復。每次錄影開始前，主程序會先寫一個 sentinel 檔，記錄這次錄影的暫存檔路徑；正常結束後再刪掉。下次啟動時，如果發現殘留的 sentinel，就在歷史紀錄中加一筆「RecordStuff 沒有正常結束」，並附上 partial 檔的位置，不掃描、也不改寫任何檔案。實測在錄影中途直接殺掉錄影程序，留下一個可以播放 8.0 秒的 partial 檔。兩條 track 的長度差了 147 ms，因為影像和聲音各自大約每秒寫一次 fragment，中斷時各自停在不同的位置。</p>
+
+<div class="callout warning">
+<p><strong>「可播放」要說清楚是被誰播放。</strong>前面提到，AVFoundation 打不開舊路徑產生的 fragmented 檔。新引擎中斷後留下的 fragmented 檔，在 QuickTime 能不能開，目前沒有驗證過。所以「中斷後的檔案可以播放」這個保證，目前只對 Chromium、ffprobe 這類讀得懂 fragment 的工具成立；對其他播放器，最穩當的說法是「資料都在，remux 一次就能用」。</p>
+</div>
+
+<h2 id="choices">六個選擇與它們的取捨</h2>
+
+<p>以下每個選擇都用同一個框架來看：它依賴哪些條件、替代方案要付出什麼代價、其他產品怎麼選、RecordStuff 怎麼選，以及什麼情況會讓結論翻轉。其他產品的做法只寫有公開資料可查的部分，不確定的地方會明白標出。</p>
+
+<h3>1. 硬體編碼器或軟體編碼器</h3>
+
+<p><strong>選項。</strong>硬體編碼器由專用晶片處理，例如 Apple 晶片的 media engine（透過 VideoToolbox 使用），以及 GPU 廠商的編碼器（在 Windows 上透過 Media Foundation 的 encoder transform 使用）。軟體編碼器則在 CPU 上執行，代表是 x264；Microsoft 也提供 Media Foundation 的軟體 H.264 編碼器。</p>
+
+<p><strong>硬體適合的條件。</strong>錄影時，使用者正在用電腦做別的事，CPU 預算要留給他；要即時編碼；位元率設得夠寬裕，讓不同編碼器之間的壓縮效率差距不那麼重要；輸出是本機檔案，而不是低頻寬的直播。</p>
+
+<p><strong>硬體的代價。</strong>同樣的位元率下，畫質通常比不上 x264 的慢速 preset；可調的參數少；行為會隨 GPU、驅動程式和作業系統版本改變，所以在一台機器上的驗證，能推廣的範圍比較小；而且未必存在。虛擬機器常常沒有 GPU。Windows 的 N 版本沒有安裝 Media Feature Pack 時，連 Media Foundation 的編碼器都沒有。</p>
+
+<p><strong>軟體的代價。</strong>1080p60 即時編碼會吃掉可觀的 CPU。x264 採 GPL 授權（另有商業授權），打包進非 GPL 的 App 會產生授權問題。</p>
+
+<p><strong>其他產品。</strong>OBS 兩種都提供，讓使用者選 x264 或各平台的硬體編碼器。QuickTime 透過 AVFoundation 使用系統編碼器。Chromium 的 MediaRecorder 在平台提供硬體編碼器時會使用它，在 Mac 上就是 VideoToolbox。</p>
+
+<p><strong>RecordStuff。</strong>macOS 用 VideoToolbox（影像）和 AudioToolbox（AAC）。Windows 依設計是「GPU 提供時用硬體，否則用 Microsoft 的軟體編碼器」；不過目前的程式碼還在用軟體 H.264 encoder transform，硬體編碼器（非同步的 encoder transform）仍是待辦。編碼器的設定是為錄影、而不是串流調整的：關閉 frame reordering（不產生 B-frame），讓解碼順序等於顯示順序，容器就不需要 <code>ctts</code>，每一格的時長也能直接由下一格的時間推出來；並且至少每秒一個關鍵影格，讓每個 fragment 都從關鍵影格開始。代價是少了 B-frame，壓縮效率略低一些。</p>
+
+<p><strong>什麼會翻轉結論。</strong>需要在很低的位元率下保住畫質，例如有上傳大小限制；需要跨機器產生可重現的輸出，例如做測試基準；某個 GPU 系列的硬體編碼器有 bug；或目標平台根本沒有硬體編碼器。最後一種情況一定要有軟體備援。</p>
+
+<h3>2. 自己寫 muxer，或連結 FFmpeg／libav</h3>
+
+<p><strong>FFmpeg 是什麼。</strong>FFmpeg 是一個開源專案，主要包含幾個函式庫：libavcodec（編解碼器）、libavformat（容器的 mux／demux）、libavfilter（濾鏡）、libswscale（縮放與色彩轉換），以及大家熟悉的 <code>ffmpeg</code>、<code>ffprobe</code> 命令列工具。libav 通常指這組函式庫，也是曾經從 FFmpeg 分出去、後來停止維護的專案名稱。</p>
+
+<p><strong>連結 FFmpeg 的好處。</strong>幾百種容器與 codec，經年累月磨出來的邊界情況處理，以及現成的 faststart、fragment 等選項。如果產品要在錄影時讓使用者自選 MKV、WebM、MOV，這是最省事的路。</p>
+
+<p><strong>連結 FFmpeg 的代價。</strong></p>
+
+<ul>
+  <li><strong>體積與建置。</strong>依編譯選項不同，大小可以從數 MB 到數十 MB。每個平台都要建置、簽章，並跟上版本更新與 API 變動。</li>
+  <li><strong>授權。</strong>FFmpeg 預設以 LGPL 2.1 以上版本授權；啟用 GPL 元件（例如 x264、x265）後，整個建置就變成 GPL。以 LGPL 發佈時，常見做法是動態連結：保留授權聲明、提供（或承諾提供）該函式庫的原始碼，並讓使用者可以換上自己修改過的版本。靜態連結則還需要提供讓使用者重新連結的目的檔。對一個以 MIT 授權、發佈已簽章 App 的專案，這些都做得到，但每次發佈都多了一份要持續遵守的義務。這裡只是工程上的概要，不是法律意見。</li>
+  <li><strong>控制權。</strong>不怕當機的檔案配置、收尾的 sync 順序、失敗時退回哪一種形式，這些正是錄影工具最在意的細節，卻得透過別人的抽象層去控制。</li>
+</ul>
+
+<p><strong>自己寫的代價。</strong>每多一種容器，就是一份新工作；要自己讀規格，處理 edit list、64 位元大小、<code>colr</code>、<code>esds</code> 這類細節；還要自己驗證各家播放器的相容性。好消息是，只寫一種容器家族的範圍不大：RecordStuff 的 MP4 writer 連同測試大約 750 行。</p>
+
+<p><strong>FFmpeg 適合放在哪裡。</strong>可以分成三個位置來看：</p>
+
+<ul>
+  <li><strong>錄影路徑：</strong>這裡最在意即時性、耐中斷和小體積，可以不放 FFmpeg。</li>
+  <li><strong>匯出與轉檔：</strong>例如 GIF、WebM、MKV。這時速度不必即時，格式種類才是重點，正是 FFmpeg 擅長的。</li>
+  <li><strong>開發工具：</strong>用 <code>ffprobe</code>、<code>ffmpeg</code> 解碼成品、量測指標，不隨 App 發佈，也就沒有發佈上的授權義務。</li>
+</ul>
+
+<p><strong>其他產品。</strong>OBS 本身採 GPL，也大量使用 FFmpeg，但它的 Hybrid MP4 是 OBS 自己寫的 muxer（<code>plugins/obs-outputs/mp4-mux.c</code>）。Cap 的錄影管線用到 FFmpeg，包括停止後的 remux；它的這部分程式碼採 AGPLv3。</p>
+
+<p><strong>RecordStuff。</strong>錄影路徑用自己寫的 ISO BMFF muxer，涵蓋 MP4 和 MOV；這次只輸出 H.264 + AAC 的 MP4。其他格式留給未來的匯出功能，到時可以只為轉檔引入 FFmpeg。</p>
+
+<p><strong>什麼會翻轉結論。</strong>錄影時就必須提供多種容器；團隊沒有人能維護格式細節；產品已經為了其他功能（例如剪輯器）帶上 FFmpeg；或者專案本身就是 GPL。</p>
+
+<h3>3. 一般、fragmented 還是 hybrid</h3>
+
+<p>三者的比較在<a href="#layouts">前一節的表格</a>裡。這裡把它們依賴的條件說清楚：</p>
+
+<ul>
+  <li><strong>一般 MP4：</strong>只有在中斷的代價很低時才合理，例如很短的片段、可以重錄，或者有可靠的外部救援流程。</li>
+  <li><strong>只用 fragmented：</strong>適合讀取端本來就吃 fragment 的情況，例如瀏覽器的 MSE、DASH／HLS（CMAF）串流；或者輸出目標根本不能回頭寫，例如 pipe、上傳串流。</li>
+  <li><strong>Hybrid：</strong>適合輸出是本機檔案、存檔後要給 QuickTime 和剪輯軟體開，同時又要耐中斷的情況。前提是能在檔案任意位置寫入，而且錄影期間在記憶體保存整份 sample table。RecordStuff 每個樣本保存大小與時長各 4 bytes，60 fps 錄一小時約 216,000 格，影像部分不到 2 MB。</li>
+</ul>
+
+<p>Hybrid 多出來的代價是：要測兩種形式，收尾的每一步都要有失敗處理，而且「最後的檔案一定是一般 MP4」這件事不保證成立（見<a href="#choice-finish">第 6 個選擇</a>）。</p>
+
+<p><strong>什麼會翻轉結論。</strong>輸出改成不能回頭寫的目標，就只剩 fragmented；檔案本來就要再經過剪輯器處理，像 Cap 那樣錄 segment、事後 remux 就更自然；如果目標播放器全都讀得懂 fragment，hybrid 的收尾就沒有必要。</p>
+
+<h3>4. 由誰寫檔：擷取引擎自己寫，或把 chunk 串給另一個程序</h3>
+
+<p><strong>背景。</strong>Electron 這類桌面 App 有一個主程序（main process），負責視窗、選單和檔案，它的 JavaScript 跑在單一的 event loop 上。RecordStuff 舊的錄影路徑是這樣分工的：一個隱藏的 Chromium renderer 用 MediaRecorder 編碼，每秒把一段 fragmented MP4 透過 IPC 交給主程序；主程序的 <code>FileWriter</code> 依序追加寫入、每 5 秒 sync 一次；存檔時，再由 TypeScript 寫的 <code>mp4-finalize.ts</code> 解析這些不是自己寫出的 fragment，建立索引，把檔案變成一般 MP4。</p>
+
+<p><strong>RecordStuff 的決定（plan 076 的 D3）。</strong>改由原生引擎自己完成擷取、編碼、mux 與寫檔，並定期 sync。錄影時寫成可以從中斷恢復的 fragmented 形式，存檔時變成一般 MP4。主程序保留檔案的生命週期：檔名與資料夾、開始前的剩餘空間檢查、sentinel、歷史紀錄、通知，以及包含結束與睡眠處理的狀態機。引擎則以事件回報寫了多少 bytes，以及寫入錯誤（磁碟滿、寫入失敗）。理由有三個：</p>
+
+<ol>
+  <li><strong>多數容器要回頭寫才能收尾。</strong>MP4 的 moov、MKV 的大小欄位與 Cues 都是如此。一串只能往後追加的 chunk，接收端無法乾淨地回頭改寫，除非它也懂這個格式。只有一種格式時，這還勉強可行，舊路徑就是讓主程序去解析 MP4；可是一旦輸出格式可以選擇，muxer 的邏輯就會被拆到兩個程序、兩種語言裡。</li>
+  <li><strong>主程序的 event loop 卡住時，不再拖延寫檔。</strong>主程序的 event loop 可能因為 UI、IPC、GC 或某個同步呼叫而停頓。原生引擎的寫檔執行緒不受它影響：擷取和編碼器的 callback 把樣本丟進 channel 就返回，從不等待磁碟。</li>
+  <li><strong>媒體相關的程式碼集中在同一種語言。</strong></li>
+</ol>
+
+<p><strong>代價。</strong>引擎必須自己處理磁碟錯誤，例如把 ENOSPC 歸類成 <code>disk_full</code>；也要限制等待寫入的資料量，RecordStuff 設在 64 MB，超過就讓錄影以 <code>output_write_failed</code> 失敗，而不是一直佔用記憶體到程序被殺。主程序也失去直接觀察寫檔的能力，只能依靠進度事件判斷寫檔是否停滯。</p>
+
+<p><strong>被否決的替代方案。</strong></p>
+
+<ul>
+  <li>沿用「chunk 交給主程序既有的 writer」：今天改動最少，但會擋住其他容器。</li>
+  <li>把原生模組直接載入主程序：最簡單，但原生程式碼一當掉，整個 App 就跟著結束。</li>
+  <li>做成獨立的執行檔：隔離最徹底，但必須先證明 macOS 的螢幕錄製權限也套用在它身上。</li>
+</ul>
+
+<p>最後的選擇是放在 Electron 的 <code>utilityProcess</code>：它當掉時只結束那個子程序，已經寫出的資料留在磁碟上。</p>
+
+<p><strong>其他產品。</strong>以 MediaRecorder 為基礎的網頁錄影工具，本質上就是 chunk 串流模型：瀏覽器把 Blob 片段交給頁面，由頁面處理後續。OBS 是單一原生程序，由它的輸出模組自己寫檔。</p>
+
+<p><strong>什麼會翻轉結論。</strong>擷取程序被沙盒限制、不能寫檔；輸出只能是網路串流；或者確定永遠只輸出一種只需要往後追加的格式。在這些情況下，chunk 串流反而更簡單。</p>
+
+<h3>5. 多久 sync 一次，fragment 多長</h3>
+
+<p><strong>Sync。</strong>前面提過，sync 防的是作業系統當機和斷電，不是程序當機。RecordStuff 的目標是每 5 秒 sync 一次，讓斷電時通常只失去最後幾秒和一個 fragment；但這是預定的檢查點間隔，不是保證：sync 能保住多少要看檔案系統與磁碟是否如實把資料寫下，一次卡住的寫入或 sync 也會讓之後的檢查點延後。代價是 sync 在慢速磁碟上（網路磁碟、USB 硬碟）可能要等很久。由於 sync 發生在寫檔執行緒上，等待只會讓資料在 channel 裡排隊，不會卡住擷取；排隊的上限就是前面的 64 MB。</p>
+
+<p><strong>Fragment 長度。</strong>RecordStuff 的影像 fragment 在滿一秒後的第一個關鍵影格結束，聲音每一秒結束一段，兩條 track 各自分段，以免晚到的聲音拖住影像。Fragment 越短，中斷時遺失越少，但每段都有 moof 的額外開銷：<code>trun</code> 每個樣本佔 12 bytes，fragment 越多，播放器開檔時要掃的 box 也越多。Fragment 越長，額外開銷越小，但中斷時遺失越多。</p>
+
+<p><strong>什麼會翻轉結論。</strong>常常斷電的環境，sync 要更頻繁；很慢的網路磁碟，可能要降低頻率並提示使用者；直播類輸出則需要更短的 fragment。</p>
+
+<h3 id="choice-finish">6. 收尾失敗怎麼辦</h3>
+
+<p>Hybrid 的收尾會寫檔兩次，每一次都可能失敗。設計原則只有一條：<strong>每一步之前與之後，檔案都必須是某一種播放器讀得懂的形式。</strong>RecordStuff 的順序是：</p>
+
+<ol>
+  <li>sync，確認所有 fragment 都已落盤。</li>
+  <li>在尾端追加完整的 moov，然後 sync。如果失敗，就把檔案截回追加之前的長度，退回原本的 fragmented 檔。</li>
+  <li>把舊 moov 的前 16 bytes 改寫成 mdat 標頭，然後 sync。如果寫入失敗，標頭可能只寫了一半，這時兩種形式都讀不懂，所以要把原本的 16 bytes 寫回去。如果是 sync 失敗，程式碼假設 16 bytes 落在同一個磁區內，要嘛整個寫進去、要嘛完全沒寫進去，因此不論哪種結果，檔案都還讀得懂。</li>
+</ol>
+
+<p>只要沒有變成一般 MP4，引擎就在回報中寫明原因（例如 <code>index not written: …</code>），並照常發佈這個 fragmented 檔，而不是把它當成錄影失敗。如果在步驟 2 和 3 之間中斷，檔案就是「fragmented 檔，後面多了一份沒人用的索引」，讀得懂 fragment 的播放器仍然照常播放。</p>
+
+<p>另一半的問題是<strong>時間</strong>。在 RecordStuff 的第一版原型裡，引擎要等檔案收尾完成，才回報 <code>stopped</code>；而 Recorder 對停止設了 10 秒的期限。在很慢的磁碟上，收尾可能超過 10 秒，錄影就會被當成 <code>stop_timeout</code> 結束，偏偏這時檔案正在收尾。後來的修正把兩件事分開：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-stop-d-title fig-stop-d-desc" viewBox="0 0 680 250" style="max-width: 680px"><title id="fig-stop-d-title">停止與收尾分開的錄影時間線</title><desc id="fig-stop-d-desc">錄影中每秒追加 fragment、每 5 秒 sync。停止時先結束擷取並清空編碼器，回報 stopped，Recorder 回到閒置。接著在背景收尾：追加 moov 並 sync，改寫標頭並 sync，回報 finished，得到一般 MP4。錄影中當機或收尾失敗，都留下仍可播放的 fragmented 檔並回報原因。</desc><defs><marker id="fig-stop-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker><marker id="fig-stop-d-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#87867F"></path></marker></defs>
+    <g class="fig-node"><rect x="0" y="8" width="150" height="84" rx="8"></rect><text class="fig-label" x="75" y="38" text-anchor="middle">錄影中</text><text class="fig-note" x="75" y="58" text-anchor="middle">每秒追加 fragment</text><text class="fig-note" x="75" y="76" text-anchor="middle">每 5 秒 sync</text></g>
+    <g class="fig-node"><rect x="176" y="8" width="150" height="84" rx="8"></rect><text class="fig-label" x="251" y="38" text-anchor="middle">停止擷取</text><text class="fig-note" x="251" y="58" text-anchor="middle">清空編碼器</text><text class="fig-note" x="251" y="76" text-anchor="middle">回報 stopped</text></g>
+    <g class="fig-node"><rect x="352" y="8" width="150" height="84" rx="8"></rect><text class="fig-label" x="427" y="38" text-anchor="middle">背景收尾</text><text class="fig-note" x="427" y="58" text-anchor="middle">追加 moov＋sync</text><text class="fig-note" x="427" y="76" text-anchor="middle">改寫標頭＋sync</text></g>
+    <g class="fig-node"><rect x="528" y="8" width="150" height="84" rx="8"></rect><text class="fig-label" x="603" y="38" text-anchor="middle">finished</text><text class="fig-note" x="603" y="58" text-anchor="middle">一般 MP4</text><text class="fig-note" x="603" y="76" text-anchor="middle">實測約 20 ms 後</text></g>
+    <path class="fig-arrow" d="M 152 50 L 173 50" marker-end="url(#fig-stop-d-head)"></path>
+    <path class="fig-arrow" d="M 328 50 L 349 50" marker-end="url(#fig-stop-d-head)"></path>
+    <path class="fig-arrow" d="M 504 50 L 525 50" marker-end="url(#fig-stop-d-head)"></path>
+    <g class="fig-node fail"><rect x="176" y="168" width="326" height="70" rx="8"></rect><text class="fig-label" x="339" y="197" text-anchor="middle">仍是 fragmented 檔</text><text class="fig-note" x="339" y="219" text-anchor="middle">播到最後一個完整 fragment，並回報原因</text></g>
+    <path class="fig-arrow fail" d="M 75 94 L 75 203 L 173 203" marker-end="url(#fig-stop-d-fail)"></path>
+    <path class="fig-arrow fail" d="M 427 94 L 427 165" marker-end="url(#fig-stop-d-fail)"></path>
+    <text class="fig-note" x="84" y="150">當機或被殺</text>
+    <text class="fig-note" x="436" y="133">收尾失敗</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-stop-m-title fig-stop-m-desc" viewBox="0 0 360 486" style="max-width: 360px"><title id="fig-stop-m-title">停止與收尾分開的錄影時間線</title><desc id="fig-stop-m-desc">錄影中、停止擷取並回報 stopped、背景收尾、finished 依序發生；錄影中當機或收尾失敗都留下仍可播放的 fragmented 檔。</desc><defs><marker id="fig-stop-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker><marker id="fig-stop-m-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#87867F"></path></marker></defs>
+    <g class="fig-node"><rect x="80" y="8" width="220" height="80" rx="8"></rect><text class="fig-label" x="190" y="34" text-anchor="middle">錄影中</text><text class="fig-note" x="190" y="54" text-anchor="middle">每秒追加 fragment</text><text class="fig-note" x="190" y="72" text-anchor="middle">每 5 秒 sync</text></g>
+    <g class="fig-node"><rect x="80" y="108" width="220" height="80" rx="8"></rect><text class="fig-label" x="190" y="134" text-anchor="middle">停止擷取</text><text class="fig-note" x="190" y="154" text-anchor="middle">清空編碼器</text><text class="fig-note" x="190" y="172" text-anchor="middle">回報 stopped</text></g>
+    <g class="fig-node"><rect x="80" y="208" width="220" height="80" rx="8"></rect><text class="fig-label" x="190" y="234" text-anchor="middle">背景收尾</text><text class="fig-note" x="190" y="254" text-anchor="middle">追加 moov＋sync</text><text class="fig-note" x="190" y="272" text-anchor="middle">改寫標頭＋sync</text></g>
+    <g class="fig-node"><rect x="80" y="308" width="220" height="80" rx="8"></rect><text class="fig-label" x="190" y="334" text-anchor="middle">finished</text><text class="fig-note" x="190" y="354" text-anchor="middle">一般 MP4</text><text class="fig-note" x="190" y="372" text-anchor="middle">實測約 20 ms 後</text></g>
+    <path class="fig-arrow" d="M 190 90 L 190 105" marker-end="url(#fig-stop-m-head)"></path>
+    <path class="fig-arrow" d="M 190 190 L 190 205" marker-end="url(#fig-stop-m-head)"></path>
+    <path class="fig-arrow" d="M 190 290 L 190 305" marker-end="url(#fig-stop-m-head)"></path>
+    <g class="fig-node fail"><rect x="80" y="410" width="220" height="68" rx="8"></rect><text class="fig-label" x="190" y="438" text-anchor="middle">仍是 fragmented 檔</text><text class="fig-note" x="190" y="460" text-anchor="middle">播到最後完整的一段</text></g>
+    <path class="fig-arrow fail" d="M 80 48 L 40 48 L 40 444 L 77 444" marker-end="url(#fig-stop-m-fail)"></path>
+    <path class="fig-arrow fail" d="M 300 248 L 330 248 L 330 444 L 303 444" marker-end="url(#fig-stop-m-fail)"></path>
+    <text class="fig-note" x="44" y="250">當機</text>
+    <text class="fig-note" x="334" y="350">失敗</text>
+  </svg>
+  <figcaption>實線是正常路徑，虛線是兩種失敗路徑；兩者最後都留下讀得懂的檔案。<code>stopped</code> 之後 Recorder 就回到閒置，使用者可以馬上開始下一段錄影；收尾在背景進行，主程序最多等 150 秒。</figcaption>
+</figure>
+
+<p>現在引擎的 <code>stop</code> 在擷取與編碼器都停止後就回報 <code>stopped</code>，另一個 <code>finish</code> 則在檔案變成一般 MP4，或確定變不成、且知道原因之後，才回報 <code>finished</code>（或寫入錯誤）。在一台 Mac 上實測，Recorder 在 <code>stopped</code> 之後 0 到 1 ms 回到閒置，檔案在其後 19 到 22 ms 收尾完成。慢到足以超過舊期限的磁碟，這次沒有找到可以重現的環境，所以「慢速磁碟不再觸發 <code>stop_timeout</code>」目前是由事件順序與單元測試證明，沒有實際在慢速磁碟上驗證過。</p>
+
+<p><strong>其他產品。</strong>Cap 同樣先結束錄影狀態，再交給另一個登錄表處理收尾。根據 RecordStuff 對 OBS 原始碼的靜態檢視，OBS 的 Hybrid MP4 收尾在步驟之間沒有加上 sync 屏障，而且 OBS 和 Cap 都沒有限制收尾的時間。</p>
+
+<p><strong>什麼會翻轉結論。</strong>如果收尾變成與長度成正比的工作（例如 remux 複製），就需要顯示進度，可能也要讓使用者取消。如果某個流程要求「存檔完成」之前什麼都不能做，例如自動上傳，那就必須等 <code>finished</code>，而不是 <code>stopped</code>。</p>
+
+<h2 id="example">實例：RecordStuff 的一次錄影</h2>
+
+<p>RecordStuff 是一個常駐 macOS 與 Windows 選單列的錄影 App，以 Electron 和 TypeScript 寫成。在 plan 076 中，它把擷取、編碼、mux 與寫檔，從 Chromium 移到一個用 Rust 寫的原生模組（<code>native/capture/</code>），在 Electron 的 <code>utilityProcess</code> 裡執行。下面依序走過一次錄影，看前面那些選擇如何落實。</p>
+
+<h3>一個時鐘</h3>
+
+<p>每次錄影只用一個單調遞增的時鐘：macOS 用 mach absolute time，Windows 用 QueryPerformanceCounter。影像樣本保留擷取時的時間戳。聲音則<strong>依累計的樣本數</strong>放進 track，不採信每個 buffer 自帶的時間戳：只要時間戳與計數的差距在容忍範圍（10 ms）以內，buffer 就接在上一個後面。時間戳跑在前面時（裝置有一段時間沒送資料），中間補上靜音；落在後面時（聲音時鐘跑太快），就丟掉多出來的樣本。所以不管錄多久，聲音相對畫面的漂移都不會超過容忍值。這個「對齊器」叫 <code>AudioAligner</code>，在 <code>timing.rs</code>。實測 10 分鐘錄影的漂移是 0 ms：600 組閃光與嗶聲全部對上。</p>
+
+<h3>編碼器與寫檔執行緒</h3>
+
+<p>VideoToolbox 的設定如前所述：即時模式、不重排影格、至少每秒一個關鍵影格。AudioToolbox 的 AAC 編碼器在建立時，會透過 <code>kAudioConverterPrimeInfo</code> 回報它的 priming frame 數。Windows 的 Media Foundation AAC 編碼器不公開這個值，所以引擎建立編碼器時，先餵一段靜音來實際量測。</p>
+
+<p>編碼好的樣本經由 channel，送到一個專門的寫檔執行緒。這條執行緒擁有檔案與 muxer：收到 H.264 的參數（<code>avcC</code>）後，才寫出開頭的 <code>ftyp</code> 與空表 <code>moov</code>；在那之前到達的 AAC 封包會先暫存起來。之後，影像在滿一秒後的第一個關鍵影格切段，聲音每秒切段，每段用一次寫入追加到檔尾；每 5 秒 sync 一次，每秒回報一次寫了多少 bytes。</p>
+
+<h3>Edit list：讓 priming 消失在播放時間裡</h3>
+
+<p>Muxer 的 track 設定裡有一個 <code>skip</code> 欄位，就是編碼器回報的 priming。寫 <code>trak</code> 時，它變成一個 edit：</p>
+
+<pre class="language-typescript"><span class="label">Rust</span><code><span class="c">// 節錄自 native/capture/src/mux/mp4.rs 的 write_trak，註解為本文所加</span>
+<span class="k">if</span> track<span class="o">.</span><span class="p">config</span><span class="o">.</span><span class="p">skip</span> <span class="o">&gt;</span> <span class="n">0</span> <span class="o">|</span><span class="o">|</span> track<span class="o">.</span><span class="p">presented</span><span class="o">.</span><span class="p">is_some</span><span class="o">(</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c">// 一個 edit：從媒體時間 skip（AAC 的 priming）開始播。</span>
+    <span class="c">// fragmented 時還不知道總長，segment duration 寫 0，表示「播到最後」。</span>
+    <span class="k">let</span> edts <span class="o">=</span> w<span class="o">.</span><span class="p">open</span><span class="o">(</span>b<span class="s">"edts"</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> elst <span class="o">=</span> w<span class="o">.</span><span class="p">open_full</span><span class="o">(</span>b<span class="s">"elst"</span><span class="o">,</span> <span class="n">1</span><span class="o">,</span> <span class="n">0</span><span class="o">)</span><span class="o">;</span>
+    w<span class="o">.</span><span class="p">u32</span><span class="o">(</span><span class="n">1</span><span class="o">)</span>
+        <span class="o">.</span><span class="p">u64</span><span class="o">(</span><span class="k">if</span> plain <span class="o">{</span> track<span class="o">.</span><span class="p">duration_in</span><span class="o">(</span>movie_timescale<span class="o">)</span> <span class="o">}</span> <span class="k">else</span> <span class="o">{</span> <span class="n">0</span> <span class="o">}</span><span class="o">)</span>
+        <span class="o">.</span><span class="p">u64</span><span class="o">(</span>u64<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>track<span class="o">.</span><span class="p">config</span><span class="o">.</span><span class="p">skip</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+    w<span class="o">.</span><span class="p">u16</span><span class="o">(</span><span class="n">1</span><span class="o">)</span><span class="o">.</span><span class="p">u16</span><span class="o">(</span><span class="n">0</span><span class="o">)</span><span class="o">;</span>
+    w<span class="o">.</span><span class="p">close</span><span class="o">(</span>elst<span class="o">)</span><span class="o">;</span>
+    w<span class="o">.</span><span class="p">close</span><span class="o">(</span>edts<span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>單元測試用 2112 個 frame 的 priming 檢查這段：50 個 AAC 封包，包含 priming、一秒的聲音和尾端補齊的部分。fragmented 階段，edit 是 <code>(0, 2112)</code>，也就是「長度未知，從 2112 開始」；收尾後，edit 變成 <code>(48_128, 2112)</code>，track 長度也是 48,128，尾端補齊的部分被排除在外。有一個細節值得注意：有 edit 的影片，會把整部影片的 timescale 設成聲音的取樣率，這樣 edit 才能剛好停在最後一個樣本上，不會被捨入成整數毫秒。</p>
+
+<h3>收尾</h3>
+
+<p>停止時，引擎先清空影像與聲音編碼器，把剩下的樣本送進 channel，接著回報 <code>stopped</code>，再請寫檔執行緒收尾。收尾的核心就是前一節的三步：</p>
+
+<pre class="language-typescript"><span class="label">Rust</span><code><span class="c">// 節錄自 HybridMp4::finish，省略部分分支，註解為本文所加</span>
+self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">sync</span><span class="o">(</span><span class="o">)</span><span class="o">?</span><span class="o">;</span>                               <span class="c">// 1. 所有 fragment 先落盤</span>
+<span class="k">let</span> end <span class="o">=</span> self<span class="o">.</span><span class="p">end</span><span class="o">;</span>
+<span class="k">let</span> mut w <span class="o">=</span> <span class="t">BoxWriter</span><span class="o">:</span><span class="o">:</span><span class="k">new</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+<span class="f">write_moov</span><span class="o">(</span><span class="o">&amp;</span>mut w<span class="o">,</span> <span class="o">&amp;</span>self<span class="o">.</span><span class="p">tracks</span><span class="o">,</span> <span class="n">true</span><span class="o">)</span><span class="o">;</span>          <span class="c">// 完整索引，stco 指向各段樣本的原位置</span>
+<span class="k">if</span> <span class="k">let</span> <span class="f">Err</span><span class="o">(</span>cause<span class="o">)</span> <span class="o">=</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">write_at</span><span class="o">(</span><span class="o">&amp;</span>w<span class="o">.</span><span class="p">bytes</span><span class="o">,</span> end<span class="o">)</span><span class="o">.</span><span class="p">and_then</span><span class="o">(</span><span class="o">|</span>_<span class="o">|</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">sync</span><span class="o">(</span><span class="o">)</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c">// 2. 索引寫不進去：截回原長度，仍是 fragmented 檔</span>
+    <span class="k">let</span> _ <span class="o">=</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">truncate</span><span class="o">(</span>end<span class="o">)</span><span class="o">.</span><span class="p">and_then</span><span class="o">(</span><span class="o">|</span>_<span class="o">|</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">sync</span><span class="o">(</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">return</span> <span class="f">Ok</span><span class="o">(</span><span class="o">(</span><span class="t">FinishReport</span> <span class="o">{</span> bytes<span class="o">:</span> end<span class="o">,</span> fragmented<span class="o">:</span> <span class="f">Some</span><span class="o">(</span>format<span class="o">!</span><span class="o">(</span><span class="s">"index not written: {cause}"</span><span class="o">)</span><span class="o">)</span> <span class="o">}</span><span class="o">,</span> self<span class="o">.</span><span class="p">out</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span>
+<span class="k">let</span> total <span class="o">=</span> end <span class="o">+</span> w<span class="o">.</span><span class="p">len</span><span class="o">(</span><span class="o">)</span> <span class="k">as</span> u64<span class="o">;</span>
+<span class="k">if</span> <span class="k">let</span> <span class="f">Err</span><span class="o">(</span>cause<span class="o">)</span> <span class="o">=</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">write_at</span><span class="o">(</span><span class="o">&amp;</span><span class="f">mdat_header_64</span><span class="o">(</span>end <span class="o">-</span> self<span class="o">.</span><span class="p">moov_at</span><span class="o">)</span><span class="o">,</span> self<span class="o">.</span><span class="p">moov_at</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c">// 3. 標頭可能只寫了一半：把舊 moov 的前 16 bytes 寫回去</span>
+    <span class="k">return</span> match self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">write_at</span><span class="o">(</span><span class="o">&amp;</span>self<span class="o">.</span><span class="p">moov_head</span><span class="o">,</span> self<span class="o">.</span><span class="p">moov_at</span><span class="o">)</span><span class="o">.</span><span class="p">and_then</span><span class="o">(</span><span class="o">|</span>_<span class="o">|</span> self<span class="o">.</span><span class="p">out</span><span class="o">.</span><span class="p">sync</span><span class="o">(</span><span class="o">)</span><span class="o">)</span> <span class="o">{</span>
+        <span class="f">Ok</span><span class="o">(</span><span class="o">(</span><span class="o">)</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">Ok</span><span class="o">(</span><span class="o">(</span><span class="t">FinishReport</span> <span class="o">{</span> bytes<span class="o">:</span> total<span class="o">,</span> fragmented<span class="o">:</span> <span class="f">Some</span><span class="o">(</span>format<span class="o">!</span><span class="o">(</span><span class="s">"header not written: {cause}"</span><span class="o">)</span><span class="o">)</span> <span class="o">}</span><span class="o">,</span> self<span class="o">.</span><span class="p">out</span><span class="o">)</span><span class="o">)</span><span class="o">,</span>
+        <span class="f">Err</span><span class="o">(</span>restore<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">Err</span><span class="o">(</span>io<span class="o">:</span><span class="o">:</span><span class="t">Error</span><span class="o">:</span><span class="o">:</span><span class="k">new</span><span class="o">(</span>cause<span class="o">.</span><span class="p">kind</span><span class="o">(</span><span class="o">)</span><span class="o">,</span> format<span class="o">!</span><span class="o">(</span><span class="s">"header not written ({cause}) nor restored ({restore})"</span><span class="o">)</span><span class="o">)</span><span class="o">)</span><span class="o">,</span>
+    <span class="o">}</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>注意索引的內容是在每個 fragment <strong>確實寫入之後</strong>才更新的。這樣索引描述的永遠是磁碟上真正存在的東西，而不是「原本打算寫進去的東西」。測試會檢查幾件事：</p>
+
+<ul>
+  <li>截在 fragment 中間的檔案，仍然讀得出所有完整的 fragment。</li>
+  <li>索引寫入失敗時，檔案會退回 fragmented。</li>
+  <li>標頭只寫了一半時，原本的 16 bytes 會被寫回去。</li>
+  <li>收尾後的檔案頂層依序是 <code>ftyp</code>、<code>mdat</code>、<code>moov</code>，每個樣本的位元組與時間都和寫入時相同。</li>
+</ul>
+
+<h3>和舊路徑對照</h3>
+
+<p>舊路徑的檔案配置一樣是 hybrid，差別在於<strong>誰懂這個格式</strong>。MediaRecorder 寫出 fragmented MP4，主程序的 TypeScript 再一路跟著解析它寫出的每個 fragment，記錄每個樣本的大小、時長和位置，存檔時用同樣的「追加 moov、改寫 16 bytes」完成收尾。當年為 36 分鐘錄影建索引只花了 16 ms，索引大小 1.5 MB。</p>
+
+<p>但它必須理解一個<strong>別人寫的</strong>檔案。遇到它看不懂的結構，例如 track 不從 0 開始，需要它不會寫的 edit list，就只能放棄，維持 fragmented。新引擎自己寫檔，priming 就能直接用 edit list 處理，不必去理解別人的檔案。另外，在同一台 Mac 上量測整體結果：每個檔案的音訊與畫面長度差，從 +13 到 +15 ms 變成 0 ms；錄影時的 CPU 從 15.3%／23.3% 降到 10.4%／14.0%（30／60 fps，單核百分比）。兩條路徑在 Mac 上都使用 VideoToolbox 硬體編碼，所以 CPU 的差異來自整條管線，而不是硬體與軟體編碼器的差別。</p>
+
+<h2 id="table">決策總表</h2>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
+  <tbody>
+    <tr><td>編碼器</td><td>平台編碼器：VideoToolbox／AudioToolbox；Media Foundation（目前用軟體 H.264）</td><td>即時錄影、CPU 要留給使用者、位元率寬裕</td><td>每位元畫質略低、行為因機器而異、要處理沒有編碼器的環境</td><td>低位元率要求畫質、需要可重現輸出、沒有硬體</td></tr>
+    <tr><td>Muxer</td><td>自己寫 ISO BMFF（MP4／MOV）</td><td>錄影時只輸出一種容器家族；在意耐中斷的細節與體積</td><td>新容器都是新工作；相容性要自己驗證</td><td>錄影時就要多種容器；已經帶著 FFmpeg；GPL 專案</td></tr>
+    <tr><td>FFmpeg 的位置</td><td>不在錄影路徑；只在開發量測，未來的匯出可用</td><td>匯出與錄影的需求不同</td><td>匯出時才付授權與體積成本</td><td>錄影時就需要轉檔</td></tr>
+    <tr><td>檔案形式</td><td>Hybrid MP4</td><td>本機檔案、可任意位置寫入、要給 QuickTime 開</td><td>兩種形式、收尾的失敗處理、記憶體中的 sample table</td><td>不能回頭寫的輸出；事後本來就要 remux</td></tr>
+    <tr><td>誰寫檔</td><td>擷取引擎（<code>utilityProcess</code> 裡的寫檔執行緒）</td><td>格式要可擴充；主程序 event loop 可能停頓</td><td>引擎自己處理磁碟錯誤與排隊上限</td><td>沙盒不能寫檔；永遠只用只追加的格式</td></tr>
+    <tr><td>Sync 與分段</td><td>每 5 秒 sync；約每秒一個 fragment</td><td>能接受斷電時遺失數秒</td><td>慢速磁碟上的 sync 等待；每段的額外開銷</td><td>常斷電；慢速網路磁碟；直播</td></tr>
+    <tr><td>收尾失敗</td><td>停止與收尾分開；失敗就保留 fragmented 檔並說明原因</td><td>收尾時間短且固定</td><td>「存檔後一定是一般 MP4」不再保證</td><td>收尾變成複製；後續流程需要完整檔案</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="boundaries">不要這樣做的情況</h2>
+
+<ul>
+  <li><strong>不要在輸出不能回頭寫時用 hybrid。</strong>寫到 pipe、socket 或上傳串流時，收尾的第二步根本做不到。這時直接用 fragmented，並讓讀取端去處理 fragment。</li>
+  <li><strong>不要在錄的是短片、而且可以重錄時，為耐中斷付出這麼多複雜度。</strong>錄 5 秒 GIF 素材的工具，用一般 MP4 加上「失敗就重錄」就夠了。</li>
+  <li><strong>不要為了「以後可能要很多格式」，就把 FFmpeg 放進錄影路徑。</strong>格式需求真的出現時，通常是匯出功能，而匯出不需要即時、也不需要耐中斷。</li>
+  <li><strong>不要自己寫 muxer，如果錄影當下就必須支援多種容器，或者團隊沒有人能維護格式規格。</strong>這時 libavformat 的成熟度，比自己掌控細節更值錢。</li>
+  <li><strong>不要讓接收 chunk 的一方去解析它沒寫過的格式</strong>，除非你能接受「看不懂就放棄」。RecordStuff 的舊路徑正是這樣，它確實能在看不懂時安全地退回 fragmented，但也因此無法正確處理需要 edit list 的情況。</li>
+  <li><strong>不要把 sync 當成防程序當機的手段，也不要把它放在擷取執行緒上。</strong>程序當機不需要 sync；把 sync 放在擷取執行緒上，慢速磁碟就會讓錄影掉格。</li>
+  <li><strong>不要把收尾放在停止的期限裡。</strong>只要收尾可能碰到慢速磁碟，就要把「停止擷取」和「檔案完成」分成兩個事件。</li>
+</ul>
+
+<h2 id="criteria">可以帶走的判斷準則</h2>
+
+<ul>
+  <li><strong>你的容器的索引參照了什麼？</strong>參照絕對位置或總量的索引，一定要回頭寫。先確定寫檔的一方做得到。</li>
+  <li><strong>中斷有哪幾種，各自能保住什麼？</strong>程序當機、斷電、磁碟滿，要分開回答。sync 只回答其中一種。</li>
+  <li><strong>每一個寫檔步驟之前與之後，檔案是哪一種讀得懂的形式？</strong>如果答不出來，那一步就需要回復機制，或者要換個順序。</li>
+  <li><strong>收尾時間和錄影長度有關嗎？</strong>有關的話（remux、faststart），就要有進度顯示、空間檢查，以及不受停止期限限制的生命週期。</li>
+  <li><strong>「可播放」是指被誰播放？</strong>列出目標播放器，並分別驗證中斷檔和正常檔。</li>
+  <li><strong>FFmpeg 解決的是哪一個位置的問題？</strong>錄影、匯出、開發量測，三者的授權、體積與即時性要求都不同。</li>
+  <li><strong>編碼器的設定是否在幫 muxer 的忙？</strong>不重排影格、固定的關鍵影格間隔，會讓 fragment 切段、時長計算和收尾都簡單很多。</li>
+  <li><strong>什麼證據能翻轉你的選擇？</strong>先寫下來：需要的新格式、新的輸出目標、新的播放器、測到的失敗。下次遇到時，就知道該重新評估哪一個決定。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>ISO/IEC 14496-12（ISO Base Media File Format）、14496-14（MP4 檔案格式）、14496-15（AVC 在 ISO BMFF 中的封裝）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/quicktime-file-format">QuickTime File Format</a>（含 AAC priming 與 edit list 的說明）、<a href="https://developer.apple.com/documentation/avfoundation/avassetwriter">AVAssetWriter</a>（<code>movieFragmentInterval</code>）、<a href="https://developer.apple.com/documentation/videotoolbox">VideoToolbox</a>。</li>
+  <li>Matroska：<a href="https://www.matroska.org/technical/elements.html">元素規格</a>（Cues、SeekHead 與未知大小的元素）。</li>
+  <li>FFmpeg：<a href="https://ffmpeg.org/ffmpeg-formats.html#mov_002c-mp4_002c-ismv">mov／mp4 muxer 選項</a>（<code>faststart</code>、<code>moov_size</code>、fragment 選項）、<a href="https://ffmpeg.org/legal.html">授權與法律說明</a>。</li>
+  <li>OBS Studio：<a href="https://github.com/obsproject/obs-studio/blob/7d98bebe1115b12608837b622164ea5fe6d9483a/plugins/obs-outputs/mp4-mux.c#L2967-L3028"><code>mp4_mux_finalise</code></a>（Hybrid MP4 的收尾，RecordStuff 在此版本做過靜態檢視）。</li>
+  <li>Cap：<a href="https://github.com/CapSoftware/Cap/blob/8d808e09e0541efdf5e8318f57bbf3b2ed88bc76/crates/enc-ffmpeg/src/remux.rs"><code>remux.rs</code></a>（錄 segment、停止後 remux 成新 MP4）。</li>
+  <li>專案文件：plan 076「原生錄影引擎」（D3、D4 與各步驟的量測；計畫結案後內容併入系統設計文件）、<a href="../system-design/recording.md#plain-mp4-at-save">錄影設計：存檔時轉成一般 MP4</a>（舊路徑的量測與設計）、<a href="../system-design/decisions.md">設計決策</a>。</li>
+  <li>原始碼：<code>native/capture/src/mux/mp4.rs</code>（hybrid MP4 writer）、<code>mux/session.rs</code>（分段規則）、<code>mux/parse.rs</code>（測試用的讀取器）、<code>writer.rs</code>（寫檔執行緒）、<code>timing.rs</code>（單一時鐘與 <code>AudioAligner</code>）、<code>core/mod.rs</code>（<code>stopped</code> 與 <code>finished</code> 的分離）。</li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

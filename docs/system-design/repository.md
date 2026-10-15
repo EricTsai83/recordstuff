@@ -2,7 +2,7 @@
 
 [English](repository.md) | [繁體中文](../zh-TW/system-design/repository.md)
 
-One repository holds two deliverables and the documentation for both: the Electron desktop app at the root, and the static website under `website/`. They share a Git history, a release flow and this documentation set, but nothing else — the website is a separate package with its own dependencies and lockfile, and the app never imports from it.
+One repository holds two deliverables and the documentation for both: the Electron desktop app at the root, with its native capture engine under `native/capture/`, and the static website under `website/`. They share a Git history, a release flow and this documentation set, but nothing else — the website is a separate package with its own dependencies and lockfile, and the app never imports from it.
 
 This document describes where things live and why. [Architecture](architecture.md) explains process boundaries and data ownership, [the function reference](functions.md) covers individual modules, and [tooling](tooling.md) covers the commands that act on these directories.
 
@@ -11,6 +11,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | Path | What it holds |
 | --- | --- |
 | `src/` | Application source, split by Electron process |
+| `native/capture/` | The native capture engine, a Rust crate built into the app as `recordstuff-capture.node` ([below](#native-capture-engine)) |
 | `scripts/` | Developer tools: build/launch, signing, release, recording verification and acceptance |
 | `tests/` | Cross-process tests that need both browser DOM and Node APIs, and the source-boundary check |
 | `docs/` | System design, verification evidence, and the Traditional Chinese mirror |
@@ -18,11 +19,11 @@ This document describes where things live and why. [Architecture](architecture.m
 | `resources/` | Runtime assets copied into the app, plus the installation guide |
 | `build/` | Packaging artwork consumed by electron-builder |
 | `website/` | The Astro site published at record.ericts.com; its own package |
-| `.github/workflows/` | Release and website deployment automation |
+| `.github/workflows/` | Checks, release and website deployment automation |
 | `.agents/`, `.claude/` | Agent skill definitions used during development |
 | Root configs | `package.json`, `tsconfig*.json`, `electron.vite.config.ts`, `vitest.config.ts`, `electron-builder*.yml` |
 | Root guides | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`/`CLAUDE.md`, `LICENSE`, and the `*.zh-TW.md` translations |
-| `out/`, `dist/`, `node_modules/` | Generated; ignored by Git and rebuildable |
+| `out/`, `dist/`, `node_modules/`, `native/capture/target/` | Generated; ignored by Git and rebuildable |
 
 ## Application source
 
@@ -30,7 +31,7 @@ This document describes where things live and why. [Architecture](architecture.m
 
 | Directory | Runs in | Contents |
 | --- | --- | --- |
-| `src/main/` | Main process | `index.ts`, the composition root that builds and wires every module, and one folder per module ([below](#main-process-modules)) |
+| `src/main/` | Main process, and the capture `utilityProcess` | `index.ts`, the composition root that builds and wires every module, and one folder per module ([below](#main-process-modules)); `recording/native-host-process.ts` is the second main-side entry, run in the capture process |
 | `src/renderer/` | Renderer processes | The three HTML entries (`settings.html`, `countdown.html`, `video.html`) and `ui.css`, the shared tokens and feature layout, at the top; one folder per page and the parts pages share ([below](#renderer-pages)) |
 | `src/preload/` | Preload, sandboxed | One file per renderer: `settings.ts` carries the settings panel's IPC contract; `countdown.ts` exposes the overlay value subscription and its unsubscribe; `video.ts` carries fullscreen ready/exit |
 | `src/shared/` | Both | State (`state.ts`), the capture host protocol, recording quality arithmetic, the settings-panel contract, display preferences, appearance, shortcut validation, and translations (`i18n.ts`) |
@@ -40,8 +41,8 @@ This document describes where things live and why. [Architecture](architecture.m
 | Folder | What it owns |
 | --- | --- |
 | `lib/` | Process-wide helpers that know no feature: atomic file replacement, the write-drain queue, reading errors, the file log, and the app name |
-| `recording/` | One recording session end to end: the state machine (`recorder.ts`), supervision of the native engine's capture host (`native-capture-host.ts`) and the host process itself (`native-host-process.ts`), file reservation and publication, health thresholds, interruption sentinels, session log lines, the countdown overlay, keep-awake, capture and saved notices, the result history (`recording-result*.ts`), the preference lock (`recording-lock.ts`) and development-only unattended recording (`autorecord.ts`) |
-| `display/` | Which screen a recording uses, and main's side of display-media requests |
+| `recording/` | One recording session end to end: the state machine (`recorder.ts`), supervision of the native engine's capture host (`native-capture-host.ts`) and the host process itself (`native-host-process.ts`), keeping RecordStuff's windows out of capture on Windows (`capture-exclusion.ts`), file reservation and publication (`engine-file-writer.ts`, `file-writer.ts`), health thresholds, interruption sentinels, session log lines, the countdown overlay, keep-awake, capture and saved notices, the result history (`recording-result*.ts`), the preference lock (`recording-lock.ts`) and development-only unattended recording (`autorecord.ts`) |
+| `display/` | Which screen a recording uses (`display-source.ts`), and the display each attempt records, main's refusal reason and the display diagnostic (`display-media.ts`) |
 | `permission/` | Screen-recording permission detection and its notices |
 | `library/` | The recordings on disk: the Recordings tab's library, MP4 duration, the output folder and the full-screen video window |
 | `shortcuts/` | Global shortcut registration: the recording key and the Settings key |
@@ -62,6 +63,23 @@ This document describes where things live and why. [Architecture](architecture.m
 | `lib/` | Page-independent helpers: `cn` (`utils.ts`), React mounting and shortcut capture |
 | `testing/` | Input helpers for renderer tests only |
 
+## Native capture engine
+
+`native/capture/` is a Rust crate (`Cargo.toml`, `Cargo.lock`, `build.rs` for napi-rs) built as a `cdylib`, which the build copies to `out/native/recordstuff-capture.node`, and as an `rlib` for its tests. Only `src/main/recording/native-host-process.ts` loads it, in the capture `utilityProcess` ([architecture](architecture.md#processes-and-responsibilities)).
+
+| Path under `src/` | What it holds |
+| --- | --- |
+| `lib.rs` | The N-API surface: the `NativeCapture` class (`probe`, `prepare`, `record`, `stop`, `finish`, `cancel`, `microphones`), its option and report objects, and the event callback |
+| `core/` | One session whatever captures it (`mod.rs`: phases, which frames are encoded, the sound up to the stop, the file), the audio mixer (`mixer.rs`) and their tests with fake encoders (`tests.rs`) |
+| `pacing.rs`, `timing.rs` | The frame-rate grid (`Pacer`); the session clock and sample-counted audio placement (`AudioAligner`) |
+| `writer.rs` | The writer thread that owns the file and the muxer, its sync, progress, backlog bound and error classification |
+| `mux/` | ISO BMFF boxes (`boxes.rs`), the hybrid MP4 (`mp4.rs`), a recording's fragmenting (`session.rs`) and a test-only reader (`parse.rs`) |
+| `avc.rs`, `aac.rs`, `nv12.rs` | H.264 Annex B to MP4 form, the AAC AudioSpecificConfig, BGRA to NV12 on the CPU |
+| `mac/` | macOS only: ScreenCaptureKit session and content filters, VideoToolbox, AudioToolbox, the AVFoundation microphone |
+| `win/` | Windows only: Windows.Graphics.Capture, Media Foundation H.264 and AAC, WASAPI sound |
+
+Inside the crate, dependencies point one way by convention, not by a test: `timing` ← `pacing`; `mux` (`boxes` ← `mp4` ← `session`) ← `writer` ← `core` ← `mac`, `win` ← `lib.rs`. `core` never names a platform; `mac/` and `win/` compile only on their own platform. Platform-independent tests run everywhere with `pnpm test:native` (`cargo test --lib`); `live_test.rs` in each platform folder captures for real and is ignored unless asked for by name.
+
 ## Module boundaries
 
 Imports between folders point one way, so a folder's place in this order is its contract:
@@ -77,6 +95,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 - **Nothing imports `index.ts`.** It is the composition root; what an action does lives in `actions/`, so the root only builds and wires. The update and controlled acceptance runners patch a copy of it by text anchors, which is one more reason it stays at the top of `src/main/`.
 - **Renderer pages do not import one another.** What two pages share lives in `player/`, `components/` or `lib/`. Only tests import `testing/`.
 - **The HTML entries stay at the top of `src/renderer/`,** so the built pages remain `out/renderer/<name>.html`, where main and the fixtures load them.
+- **The native engine is outside the TypeScript import graph.** Nothing imports it; `native-host-process.ts` `require`s it at run time from the path main passes, and `scripts/native-load.mjs` loads it only to check its methods. Its TypeScript-facing shape is declared by hand in `native-host-process.ts` and checked by `native-load.mjs`'s method list.
 - **Developer tools never reach into the app's import graph.** Nothing in `src/` imports `scripts/`. Inside `scripts/lib/`, `runner/` and `release/` import no other group; `verification/` builds on them, `audio/` on `verification/`, and `acceptance/` on `runner/` and `verification/`. Fixtures import only `src/`, `scripts/lib/` and other fixtures, and nothing in `scripts/lib/` imports an entry point.
 
 [`tests/source-boundaries.test.ts`](../../tests/source-boundaries.test.ts) enforces these rules for `src/` and `scripts/` in `pnpm test`. A new folder needs its place in that test before its files may import anything. Test files may reach across folders for their fixtures, but never into `index.ts`.
@@ -92,7 +111,7 @@ Four conventions hold across this tree:
 
 `scripts/` holds everything that supports development but ships with nothing:
 
-- **Entry points** at the top level, one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `acceptance-*.mts`, `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
+- **Entry points** at the top level, mostly one per `package.json` script: `start-app.mjs`, `make-icons.mjs`, `probe-recording.mjs`, `verify-recording.mts`, `run-matrix.mts`, `audio-quality.mts`, `measure-cpu.mts`, `measure-finalization.mts`, `bench-publication.mts`, `acceptance-*.mts`, `preview-ui.mts`, `test-scope.mts`, `native-load.mjs` (loads the built or installed engine and checks its methods; part of `pnpm check` and the Windows installer smoke), `create-signing-identity.mts`, `release.mts`, and `cleanup-release-keychain.py`. `test-material.html`, the page played during sync and audio-quality runs, sits beside them.
 - **`scripts/lib/`** for the shared implementation behind those entry points, grouped by purpose: `runner/` (what every desktop runner shares: processes, the scrubbed environment, desktop sessions, round exits, native accessibility, fixture builds, the log reader and session records, timing and the bundle's runtime inputs), `acceptance/` (each acceptance runner's own logic), `verification/` (recording verification, the matrix, playback, media tools, finalization and CPU measurement), `audio/` (audio-quality analysis) and `release/` (the release manifest and its client, which the website also imports).
 - **`scripts/fixtures/`** for test doubles and injected stand-ins.
 
@@ -117,7 +136,7 @@ Translation follows two different rules by design: documentation under `docs/` m
 
 - `build/` is electron-builder's `buildResources`: `icon.png`, the macOS `icon.icns`, the Windows `icon.ico`, and the DMG background pair `background.png` / `background@2x.png`. All of it is generated by `pnpm icons` from code.
 - `resources/` holds what the app needs at runtime: one macOS tray template image (with `@2x`) and one Windows `.ico` per tray state — idle, busy, countdown, recording, warning (all produced by `pnpm icons`, which `scripts/make-icons.test.ts` checks byte for byte) — `entitlements.mac.plist`, and the bilingual install guide. The packaging filter copies only `*.png` and `*.ico`, so the entitlements file and the guide stay out of the shipped bundle.
-- `electron-builder.yml` is the shared packaging configuration, including the `win`/`nsis` sections of the unsigned Windows installer; `electron-builder.local.yml` extends it for free local self-signing. The `files` filter admits only `out/**` and `package.json`, which is why nothing under `src/`, `scripts/`, `docs/` or `plans/` can reach a user.
+- `electron-builder.yml` is the shared packaging configuration, including the `win`/`nsis` sections of the unsigned Windows installer; `electron-builder.local.yml` extends it for free local self-signing. The `files` filter admits only `out/**` and `package.json`, which is why nothing under `src/`, `native/`, `scripts/`, `docs/` or `plans/` can reach a user. `asarUnpack: out/native/**` keeps the engine outside the asar archive, since native code cannot load from inside it; on macOS electron-builder signs it with the app ([architecture](architecture.md#packaging-and-signing-the-engine)).
 
 ## Website
 
@@ -137,9 +156,9 @@ The app's update check reads this site's `release.json`, so `scripts/lib/release
 
 ## Automation and generated paths
 
-`.github/workflows/release.yml` builds, signs, verifies and publishes on a `v*` tag push; `website.yml` deploys the site on website changes, on manual dispatch, or when called after a stable release. `.agents/skills/` and `.claude/skills/` hold development skill definitions and are not part of either deliverable. Claude Code uses only `.claude/skills/` and the other agents use `.agents/skills/`, so a skill both need keeps a separate copy in each directory.
+`.github/workflows/check.yml` runs `pnpm check` (Cargo tests and the engine's load included), the background UI suite and its drills on both platforms, the Windows installer, and the `native-windows` job's live engine recordings; `release.yml` builds, signs, verifies and publishes on a `v*` tag push, compiling the engine from source without a cache; `website.yml` deploys the site on website changes, on manual dispatch, or when called after a stable release. `.agents/skills/` and `.claude/skills/` hold development skill definitions and are not part of either deliverable. Claude Code uses only `.claude/skills/` and the other agents use `.agents/skills/`, so a skill both need keeps a separate copy in each directory.
 
-Everything generated is ignored and rebuildable: `out/` from `pnpm build`, `dist/` from `pnpm start:app` and `pnpm dist:mac`, `website/dist/` and `website/.astro/` from the site build, `node_modules/` from `pnpm install`, and `docs/verification/measurements/` from local verification runs.
+Everything generated is ignored and rebuildable: `out/` from `pnpm build` (with `out/native/recordstuff-capture.node` from Cargo on macOS and Windows unless `RECORDSTUFF_SKIP_NATIVE=1`), `native/capture/target/` from Cargo, `dist/` from `pnpm start:app` and `pnpm dist:mac`, `website/dist/` and `website/.astro/` from the site build, `node_modules/` from `pnpm install`, and `docs/verification/measurements/` from local verification runs.
 
 ## What keeps the layout consistent
 
@@ -150,9 +169,10 @@ The structure is enforced by configuration, not convention alone:
 | `tsconfig.node.json` / `tsconfig.web.json` | Which directories typecheck against Node/Electron versus DOM libraries; `src/shared/` appears in both. |
 | `tsconfig.tests.json` | `tests/` typechecks against both DOM and Node libraries, separately from the renderer |
 | `vitest.config.ts` | Tests are found only under `src/`, `scripts/` and `tests/`, as `*.test.ts` |
-| `electron.vite.config.ts` | The main entries (`index.ts` and the native engine's `native-host-process.ts`), three preload entries and three renderer HTML entries |
+| `electron.vite.config.ts` | The main entries (`index.ts` and the native engine's `native-host-process.ts`), three preload entries (`settings`, `countdown`, `video`) and three renderer HTML entries, plus the Cargo build of `native/capture` copied to `out/native/` |
+| `native/capture/Cargo.toml` | The crate's types (`cdylib`, `rlib`), napi-rs, and the platform-gated macOS and Windows bindings |
 | `tests/source-boundaries.test.ts` | Which module folders in `src/` and `scripts/` may import which ([module boundaries](#module-boundaries)) |
-| `electron-builder.yml` | What is packaged (`out/**`, `package.json`) and which resources are copied |
+| `electron-builder.yml` | What is packaged (`out/**`, `package.json`), what stays outside the asar archive (`out/native/**`) and which resources are copied |
 | `.gitignore` | Generated output, raw measurements, and signing material stay untracked |
 | `website/scripts/check-links.mts` | Link integrity for the published site |
 
@@ -161,6 +181,7 @@ The structure is enforced by configuration, not convention alone:
 - Logic that touches Electron, the filesystem or the OS: the `src/main/` folder of the module it belongs to, with the decision part extracted into a `*-model.ts` if it deserves a test. A new module gets its own folder and its place in [the boundaries](#module-boundaries).
 - A new renderer page: its own folder under `src/renderer/`, with its HTML entry at the top of `src/renderer/` and in `electron.vite.config.ts`.
 - Types or pure functions both processes need: `src/shared/`, importing neither Electron nor DOM.
+- Capture, encoding or file-format code: the folder of `native/capture/src/` it belongs to, platform-independent where it can be, with its test beside it; a new engine method also goes into `native-host-process.ts`'s declaration and `native-load.mjs`'s method list.
 - Anything a user reads: `src/shared/i18n.ts`, in both languages.
 - A renderer style ([three layers](desktop.md#settings-window)): a colour is a token in `ui.css` (`:root` and `.dark`); a change to a primitive is a variant or prop in `components/ui/`; a page's own layout is utilities at the call site or a rule in `ui.css`'s `@layer components`. `tests/style-guard.test.ts` keeps colours and `[data-slot]` selectors out of the rest.
 - A tool you run by hand or from CI: `scripts/` as an entry point, with the logic in the `scripts/lib/` group it belongs to so it can be tested.

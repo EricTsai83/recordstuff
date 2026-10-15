@@ -2,9 +2,9 @@
 
 [English](../../system-design/audio-quality.md) | [繁體中文](audio-quality.md)
 
-本章說明開發用音質診斷系統，對應素材與報告第 2 版。目的是教讀者如何推理音訊問題，不代表所有錄音的音質已經正確。[工具文件](tooling.md#音質迴歸測試)提供指令，[驗證紀錄](../verification/README.md)保存實際結果，[錄影流程](recording.md)則說明正式程式如何擷取與儲存。
+本章說明開發用音質診斷系統，對應素材與報告第 2 版。目的是教讀者如何推理音訊問題，不代表所有錄音的音質已經正確。[工具文件](tooling.md#音質迴歸測試)提供指令，[驗證紀錄](../verification/README.md)保存實際結果，[錄影流程](recording.md)則說明正式程式如何擷取與儲存；其中音訊的部分，以及它為什麼能保留本套件量測的內容，見[第 16 節](#16-原生音訊路徑為什麼能保留音質)。自 2026-10-16（plan 076）起，錄影只透過原生擷取引擎進行，本工具的所有量測現在都經過它。舊 Chromium 擷取路徑的發現（第 15 節）保留為歷史，因為它們說明了本套件為什麼量這些項目。
 
-Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理的角色，見 [Electron、Chromium 與 WebRTC](webrtc.md)。
+Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理在那條舊路徑中的角色，見[錄影為何離開 Chromium 的 WebRTC 擷取](webrtc.md)。
 
 ## 1. 從問題出發：使用者說「聽起來悶」
 
@@ -16,7 +16,7 @@ Electron、Chromium、瀏覽器媒體 API 與內部 WebRTC 音訊處理的角色
 flowchart LR
     A[已知 PCM 素材] --> B[afplay／OS 播放路徑]
     B --> C[系統音訊擷取]
-    C --> D[Chromium MediaRecorder／AAC]
+    C --> D[原生引擎：樣本數計時、混音器、AAC]
     D --> E[儲存 MP4]
     E --> F[FFmpeg 解碼，不混音]
     F --> G{能否辨識測試素材？}
@@ -25,7 +25,7 @@ flowchart LR
     I --> J[通過或量測失敗]
 ```
 
-這個實驗量的是整條「播放 → 擷取 → 編碼」路徑。失敗本身無法指出是哪一段造成。定位原因時，應保留同一測試，每次只改一個環節，或在編碼前增加 PCM 觀察點。FFmpeg AAC 對照組通過，只能證明該對照編碼器保留了這份素材，不能證明 Chromium 的 AAC 編碼器表現相同。
+這個實驗量的是整條「播放 → 擷取 → 編碼」路徑。失敗本身無法指出是哪一段造成。定位原因時，應保留同一測試，每次只改一個環節，或在編碼前增加 PCM 觀察點。FFmpeg AAC 對照組通過，只能證明該對照編碼器保留了這份素材，不能證明 App 使用的平台 AAC 編碼器（macOS 的 AudioToolbox、Windows 的 Media Foundation）表現相同。
 
 ## 2. 為什麼取樣率、聲道數與位元率不夠
 
@@ -219,7 +219,9 @@ Cap 的[音訊整合測試](https://github.com/CapSoftware/Cap/blob/17e17902691c
 
 ## 15. 系統擷取修正：2026-09-14
 
-正式擷取請求現在明確設定 `echoCancellation: false`、`noiseSuppression: false`、`autoGainControl: false`。保留 `restrictOwnAudio: true`、ideal 兩聲道與 AAC 256 kbps 目標，沒有新增等化器、錄後轉檔或另一套擷取引擎。
+> **歷史。**本節描述的是 Chromium 擷取路徑，plan 076 已於 2026-10-16 移除它。這些 constraint 已不存在於 App 中；保留這項發現，是因為它說明了為語音設計的處理會對系統混音造成什麼影響，以及第 16 節的原生路徑為什麼完全不做這類處理。下文的「現在」請讀作「2026-09-14 到 2026-10-16 之間」。
+
+當時正式擷取請求明確設定 `echoCancellation: false`、`noiseSuppression: false`、`autoGainControl: false`。保留 `restrictOwnAudio: true`、ideal 兩聲道與 AAC 256 kbps 目標，當時沒有新增等化器、錄後轉檔或另一套擷取引擎。
 
 為什麼這些設定重要：回音消除、降噪與自動增益對即時語音擷取有用途，但錄音程式應保留數位系統混音，包括音樂的頻譜細節與動態。為語音設計的處理可能改變這些內容。Chromium 的[音訊處理配置](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc)中，有依回音消除設定決定是否啟用的 processed display capture 路徑，支持這個可能機制。不過本次實驗證明的是**同時關閉三個設定**的效果，沒有分別隔離每一項的貢獻，也沒有驗證每個 Chromium 版本。
 
@@ -235,6 +237,45 @@ Cap 的[音訊整合測試](https://github.com/CapSoftware/Cap/blob/17e17902691c
 
 最後三次量測是 **2 pass、0 fail、1 invalid**，整批仍為 invalid。第 1 次標記間隔混入聲音（−18.81 dB，未達辨識要求的 −30 dB），因此沒有輸出頻譜判定。更早的單次試驗雖然高頻已恢復，開頭仍有部分雜訊／間隔失敗。這些都保留在[驗證紀錄](../verification/README.md)，沒有放寬門檻、濾掉參考素材、刪除失敗試驗，或把無效 batch 改稱通過。
 
-若 `getSettings()` 明確回報任一要求關閉的效果仍為 true，擷取端會加入 warning。屬性缺少代表未知，不代表已證明關閉。迴歸測試確認明確的設定與 warning 行為；真正的探測錄音仍然必要，因為假的 constraint 斷言不能證明 OS 實際擷取了什麼。排除自身聲音繼續保留，因為不移除它就已經恢復了本機音質。
+若 `getSettings()` 明確回報任一要求關閉的效果仍為 true，擷取端會加入 warning（直到這條路徑移除為止）。屬性缺少代表未知，不代表已證明關閉。迴歸測試當時確認明確的設定與 warning 行為；真正的探測錄音仍然必要，因為假的 constraint 斷言不能證明 OS 實際擷取了什麼。排除自身聲音當時繼續保留，因為不移除它就已經恢復了本機音質。
 
 此修正只影響**使用重建版本之後的新錄音**，無法恢復舊檔已遺失的資訊。本機高頻與立體聲結果已改善；使用者原始內容的聽感比較，以及更多裝置／平台覆蓋，仍是另外需要的證據。
+
+## 16. 原生音訊路徑：為什麼能保留音質
+
+自 plan 076 起，App 透過在 Electron `utilityProcess` 中執行的原生引擎（Rust，`native/capture`）錄影。音訊路徑中沒有語音處理、RecordStuff 不做重新取樣或重新混音，也沒有音量控制：
+
+| 階段 | macOS | Windows |
+| --- | --- | --- |
+| 系統音訊 | ScreenCaptureKit，設定為 48 kHz、2 聲道、32-bit float，並排除 RecordStuff 自己程序的聲音 | WASAPI process loopback：系統播放的所有聲音，但排除 RecordStuff 的程序樹，以 48 kHz 立體聲 float 開啟 |
+| 單一 App 的聲音（僅引擎與測試；尚無選擇器） | ScreenCaptureKit 依 App 篩選的聲音，格式相同 | 所選程序樹的 WASAPI process loopback |
+| 麥克風（供 plan 074；App 尚未開放） | AVFoundation，由 OS 轉成 48 kHz 立體聲 float（單聲道麥克風會出現在兩個聲道） | WASAPI capture，格式相同 |
+| 計時 | 每個輸入以樣本數放到 session 時鐘上（[timing.rs](../../../native/capture/src/timing.rs) 的 `AudioAligner`） | 相同 |
+| 混音 | [mixer.rs](../../../native/capture/src/core/mixer.rs)：各輸入以單位增益相加 | 相同 |
+| 編碼 | 經 AudioToolbox 的 AAC-LC，使用品質設定的音訊碼率（256 kbps），輸入為 float | 經 Media Foundation 的 AAC-LC；它只接受 16-bit PCM、最高 192 kbps：float 樣本會先轉換，更高的設定會降為 192 kbps 並在 session 中發出警告 |
+| 容器 | 引擎自己的 MP4 muxer；編碼器的 priming 以 edit list 略過 | 相同；Media Foundation 不公開它的 priming，所以在建立編碼器時量測 |
+
+每個選擇對第 7 節的門檻為什麼重要：
+
+- **格式。**OS 直接交付音軌本身的格式，48 kHz 立體聲 float，因此引擎從不轉換取樣率或聲道配置。裝置格式不同時，轉換發生在 OS 裡、引擎拿到樣本之前（Windows 由音訊引擎轉換；macOS 由 ScreenCaptureKit 交付設定的格式）。單聲道來源仍只是複製到兩個聲道的單聲道資訊，聲道分離門檻會偵測到。
+- **不做處理。**路徑中沒有任何相當於 Chromium 回音消除、降噪或自動增益的處理，所以除非刻意加入這類處理，第 15 節的失敗機制不會再發生。
+- **以樣本數決定時間戳。**音訊不採用每個 buffer 自己的時間。只要 buffer 的時間與樣本數的差距在 10 ms（480 個 frame）以內，它就接在上一個 buffer 結束的位置；擷取超過這段時間沒有交付任何東西時，缺口以靜音補上；音訊時鐘跑快時，多出的樣本會丟棄。因此無論錄多久，音訊相對影像的漂移都不會超過這個容許值，也從不為了校正時鐘而拉伸或重新取樣。停止時，擷取會繼續到停止時刻之前的聲音都已送達，所以音軌與影像一樣長。
+- **混音器。**音軌是各輸入的立體聲總和，單位增益：不調整音量、不合併聲道；只有一個輸入時，音軌就是該輸入的原始樣本。音軌推進到每個輸入都已交付的位置，同時也跟著時鐘、落後它 500 ms 推進，所以完全沒送資料的輸入（沒有聲音時的 WASAPI loopback、卡住的裝置）會被視為靜音，而不會拖住音軌；在那之後才送達的聲音會被丟棄並計為遲到（引擎停止報告中的 `late_audio_frames`）。兩個大聲的輸入相加可能超過滿刻度；這和麥克風（074）有關，與目前只錄單一系統音訊輸入的情況無關。
+- **編碼。**macOS 上編碼器收到的是 float 樣本，所以 AAC 量化是唯一的有損步驟。priming 的 edit list 讓第一個可聽見的樣本留在原本的時間，而不會讓整條音軌因編碼器延遲而位移。
+
+這說明原生路徑為什麼應該通過本套件，但它不是量測；結果見第 17 節。Windows 的音訊內容與保真度尚未在實機上測試（plan 076，D8）；CI 只檢查每個串流能開啟、交付並停止。
+
+## 17. 原生引擎結果：2026-10-15
+
+plan 076 第 7 步第 1 輪，在參考機 M1 Pro（macOS 26.6、Electron 44.3.0）上，使用相同的 v2 素材、分析器與門檻：`pnpm audio:quality -- record` 透過原生引擎通過所有檢查；作為對照，當天仍存在的 Chromium 路徑也通過。
+
+| 量測 | 原生 | Chromium（歷史） | 門檻 |
+| --- | --- | --- | --- |
+| 時鐘偏移 | −0.07 ppm | −1.45 ppm | ±200 ppm |
+| 目標／pilot 響應，最差的探測音 | 0.002 dB 內 | 0.002 dB 內 | ±3 dB |
+| pilot 增益，最差的探測音 | 0.002 dB 內 | 0.002 dB 內 | ±6 dB |
+| 聲道分離，最差的探測音 | 116.7 dB | 115.7 dB | ≥30 dB |
+| 殘餘／訊號，最差的探測音 | −51.6 dB | −58.6 dB | ≤−25 dB |
+| 最低 10 ms 音量，最差的探測音 | −0.008 dB | −0.007 dB | ≥−15 dB |
+
+兩種引擎各有一次有效量測；這是同一台機器、同一條路由上的單次比較，不是重複量測的基準。這麼大的聲道分離數字接近分析器的數值下限，不是經校準的動態範圍。在單次量測能分辨的範圍內，增益與殘餘相近；原生引擎的時鐘偏移較小。原始報告留在本機（`docs/verification/measurements/`）；結論記錄在 [plan 076](../verification/history-2026-10.md#plan-076-結案--2026-10-16) 第 7 步。
