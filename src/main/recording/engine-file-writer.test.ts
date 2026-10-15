@@ -103,9 +103,9 @@ describe("EngineFileWriter", () => {
     expect(writer.preservationUncertain).toBe(true);
   });
 
-  it("refuses appends: media never passes through main", async () => {
+  it("reports a reservation refused for lack of space as disk_full", async () => {
     const [recording, final] = paths();
-    const writer = await EngineFileWriter.open(recording, final);
-    await expect(writer.append()).rejects.toThrow("main appends nothing");
+    const open = async () => { throw Object.assign(new Error("no space"), { code: "ENOSPC" }); };
+    await expect(EngineFileWriter.open(recording, final, { io: { ...nodeFs, open } })).rejects.toMatchObject({ name: "FileWriteError", code: "disk_full" });
   });
 });

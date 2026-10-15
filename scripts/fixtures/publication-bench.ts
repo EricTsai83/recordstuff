@@ -1,13 +1,13 @@
 /**
  * Only bundled into a measurement directory by `pnpm bench:publication` and
  * run under Electron's own Node (ELECTRON_RUN_AS_NODE), so publication uses the
- * app's libuv. Each file is written through the production FileWriter into the
- * target folder in fixed chunks, published by `finish` and reported as one
- * JSON line; nothing is recorded and no window opens.
+ * app's libuv. Each file is reserved by the production EngineFileWriter, written into the target folder in fixed
+ * chunks and synced as the native engine writes its file (plan 076), published by `finish` and reported as one JSON
+ * line; nothing is recorded and no window opens.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { FileWriter } from "../../src/main/recording/file-writer";
+import { EngineFileWriter } from "../../src/main/recording/engine-file-writer";
 
 interface BenchConfig {
   dir: string;
@@ -25,12 +25,17 @@ async function main(): Promise<void> {
   for (let round = 1; round <= config.repeat; round += 1) {
     for (const bytes of config.sizes) {
       const stem = path.join(config.dir, `bench-${process.pid}-${round}-${bytes}`);
-      const writer = await FileWriter.open(`${stem}.recording.mp4`, `${stem}.mp4`);
+      const writer = await EngineFileWriter.open(`${stem}.recording.mp4`, `${stem}.mp4`);
       const began = performance.now();
       try {
-        for (let written = 0; written < bytes; written += chunk.length) {
-          await writer.append(bytes - written >= chunk.length ? chunk : chunk.subarray(0, bytes - written));
-        }
+        // As the engine writes: appended in order, then synced once finished.
+        const file = fs.openSync(`${stem}.recording.mp4`, "a");
+        try {
+          for (let written = 0; written < bytes; written += chunk.length) {
+            fs.writeSync(file, bytes - written >= chunk.length ? chunk : chunk.subarray(0, bytes - written));
+          }
+          fs.fsyncSync(file);
+        } finally { fs.closeSync(file); }
         const wrote = performance.now();
         const saved = await writer.finish();
         console.log(JSON.stringify({ round, bytes, writeMs: wrote - began, finishMs: performance.now() - wrote, ...writer.finishTimings }));

@@ -19,12 +19,6 @@ const RUNNERS = [
     args: (scratch: string): string[] => ["--dir", path.join(scratch, "takes"), "--repeat", "1", "--no-open-material", "--label", `vitest-interrupt-${process.pid}`],
     stopping: "stopping this round's build, app and material",
   },
-  {
-    name: "diagnose:cadence",
-    script: "scripts/diagnose-frame-cadence.mts",
-    args: (): string[] => ["--rates", "30", "--runs", "1", "--no-open-material"],
-    stopping: "stopping this round's build, fixture, load and material",
-  },
 ] as const;
 
 let scratch: string | undefined;

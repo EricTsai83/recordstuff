@@ -34,10 +34,9 @@ export function instrumentControlledAcceptance(source: string, runDir: string): 
     `const controlled = configureControlled(${JSON.stringify(runDir)});\nlet appLanguage: () => Language = () => DEFAULT_LANGUAGE;`);
   source = replaceOnce(source, "defaultOutputDir: defaultOutputDir(),", "defaultOutputDir: controlled.outputDir || defaultOutputDir(),");
   source = replaceOnce(source, "  const recorder = new Recorder({\n    host,\n", "  const recorder = new Recorder({\n    host: controlled.host(host),\n");
-  source = replaceOnce(source, "      : FileWriter.open(recordingPath, finalPath),", "      : controlled.openWriter(recordingPath, finalPath),");
   // The native engine's writer (plan 076), whose outcome carries the close fault; its write fault is the host's.
-  source = replaceOnce(source, "      ? EngineFileWriter.open(recordingPath, finalPath, { outcome: (file) => nativeHost.fileOutcome(file) })",
-    "      ? controlled.openEngineWriter(recordingPath, finalPath, (file) => nativeHost.fileOutcome(file))");
+  source = replaceOnce(source, "EngineFileWriter.open(recordingPath, finalPath, { outcome: (file) => host.fileOutcome(file) }),",
+    "controlled.openEngineWriter(recordingPath, finalPath, (file) => host.fileOutcome(file)),");
   source = replaceOnce(source, PUBLISH, PUBLISH
     .replace("publishFailure: result => recordingResults.receive(result, {",
       "publishFailure: async result => { await controlled.beforePublish(result); return recordingResults.receive(result, {")

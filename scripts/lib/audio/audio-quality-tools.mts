@@ -1,7 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { INTERRUPT_EXIT, electronPattern, pgrepPids, recordStuffPids, startBuild, stopGroup } from "../runner/processes.mts";
 import { scrubbedEnv } from "../runner/runner-env.mts";
-import { engineEnv, engineFromLog, type CaptureEngine } from "../runner/capture-engine.mts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,11 +33,10 @@ let built = false;
 
 /** Uses the actual application capture host and encoder; only terminates children it owns. */
 /**
- * The engine's source files, relative to scripts/, for the report's implementation fingerprint: the hidden renderer's
- * capture host, or the native engine's host process with every Rust source and the lock file (plan 076).
+ * The recording engine's source files, relative to scripts/, for the report's implementation fingerprint: the native
+ * engine's host process with every Rust source and the lock file (plan 076).
  */
-export function engineSources(engine: CaptureEngine): string[] {
-  if (engine === "chromium") return ["../src/renderer/capture/capture-host.ts"];
+export function engineSources(): string[] {
   const crate = path.join(ROOT, "native/capture");
   const rust = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
     entry.isDirectory() ? rust(path.join(dir, entry.name)) : entry.name.endsWith(".rs") ? [path.join(dir, entry.name)] : []);
@@ -46,7 +44,7 @@ export function engineSources(engine: CaptureEngine): string[] {
     ...[path.join(crate, "Cargo.lock"), ...rust(path.join(crate, "src"))].sort().map((file) => path.relative(path.join(ROOT, "scripts"), file).split(path.sep).join("/"))];
 }
 
-export async function recordAudio(output: string, engine: CaptureEngine = "native"): Promise<string> {
+export async function recordAudio(output: string): Promise<string> {
   if (process.platform !== "darwin") throw new Error("Automatic audio capture requires macOS; use fixture/verify elsewhere");
   for (const tool of ["ffmpeg", "ffprobe"]) {
     const available = spawnSync(tool, ["-version"], { stdio: "ignore", timeout: 5000 });
@@ -86,7 +84,7 @@ export async function recordAudio(output: string, engine: CaptureEngine = "nativ
   }
   const material = path.join(output, "reference.wav");
   fs.writeFileSync(material, wav(fixture()));
-  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), ...engineEnv(engine), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: 16, quality: { resolutionCap: "1080p" } }) };
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: 16, quality: { resolutionCap: "1080p" } }) };
   console.log("Recording 16 seconds; playing diagnostic tones after capture starts. Keep other audio quiet and output volume fixed.");
   return await new Promise<string>((resolve, reject) => {
     const app = spawn(electron, [ROOT], { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -121,9 +119,7 @@ export async function recordAudio(output: string, engine: CaptureEngine = "nativ
     });
     app.on("close", code => {
       const outcome = parseAutorecordOutcome(log);
-      const logged = engineFromLog(log.split("\n"));
-      if (logged !== engine) finish(new Error(`The app recorded through ${logged ?? "an engine it did not log"}, not the ${engine} engine asked for; see capture.log`));
-      else if (code !== 0 || !played || !outcome.saved || outcome.failed) {
+      if (code !== 0 || !played || !outcome.saved || outcome.failed) {
         finish(new Error(outcome.failed ?? `Recording did not complete (exit ${code}, playback ${played}); see capture.log`));
       } else finish(undefined, outcome.saved);
     });

@@ -4,7 +4,7 @@
  *   [--label name] [--keep]`
  *
  * How a save's publication cost grows with file size on one volume, without
- * recording: each size is written through the production FileWriter (bundled
+ * recording: each size is reserved by the production EngineFileWriter, written as the engine would (bundled
  * from `scripts/fixtures/publication-bench.ts`) under Electron's own Node, then
  * published by `finish`, which links where the volume allows and copies
  * otherwise. Needs no screen permission, desktop, material or `out/`. Files
@@ -93,7 +93,7 @@ function summary(options: Options, volume: { mount: string; type: string }, resu
   return [
     `# Publication benchmark — ${options.label || "unlabelled"}`,
     "",
-    `- Run: ${new Date().toISOString()}; sizes ${options.sizes.map(mib).join(", ")}; ${options.repeat} round(s); ${mib(CHUNK_BYTES)} chunks through the production FileWriter under Electron's Node`,
+    `- Run: ${new Date().toISOString()}; sizes ${options.sizes.map(mib).join(", ")}; ${options.repeat} round(s); ${mib(CHUNK_BYTES)} chunks written as the native engine writes and published through the production EngineFileWriter under Electron's Node`,
     `- Folder: \`${options.dir}\` on ${volume.type} (${volume.mount})`,
     "",
     "| Size | Method | Publish | Finish (flush + close + publish + cleanup) | Failed |",

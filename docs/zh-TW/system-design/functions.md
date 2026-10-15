@@ -72,17 +72,16 @@
 | `start()` | preflight（拒絕時送出標記 `preflight`、不指名 session 的 failed 事件）、建立品質與倒數快照與 session、驗位置、開 writer、準備 overlay、start host；每階段處理 late 結果 |
 | `openUniqueWriter(session, stamp)` | 每個暫存檔名先寫中斷 sentinel，再嘗試暫存／最終檔名 pair；暫存 EEXIST 最多 10 次，其他錯誤直接拋出 |
 | `markInFlight` / `clearInFlight` | 寫入 session sentinel（失敗只記錄一次、不阻擋）／每個終止結果都移除它 |
-| `handleHostMessage(message)` | 過濾 session；處理 prepared／started／chunk／stopped／error；擷取前的 capture_failed 改為註明階段的 capture_start_failed；過期 prepared／started／chunk 回 stop |
+| `handleHostMessage(message)` | 過濾 session；處理 prepared／started／progress／stopped／error；擷取前的 capture_failed 改為註明階段的 capture_start_failed；過期 prepared／started／progress 回 stop |
 | `beginCountdown(session)` | 進入 countdown N、顯示 overlay，並從同一個單調時間起點排好每個 tick、dismissal 與 N 秒 |
 | `dismissOverlay` / `recordAfterCountdown` | 在上限內等 overlay 確認離開（逾時則關閉並寫 log）／N 秒已過且 overlay 已消失才送 `record` |
 | `record(session)` | 進入 arming、設 `record → started` 期限並送 `record`；被拒即啟動失敗 |
 | `cancel(session, reason)` | detach session、清 timer、關 overlay、停 host、回到嘗試前的 idle、abandon writer、發 `cancelled`、移除 sentinel |
 | `present` / `closeOverlay` / `clearCountdown` | 呼叫 presenter 並記錄其錯誤／只關閉 overlay 一次／清除倒數 timer |
-| `handleChunk(session, seq, bytes)` | 驗連續 seq、清首片 timer、started 後的非空媒體重設停滯保護、append；write reject 轉 fail |
+| `mediaArrived(session, bytes, source)` | 引擎回報非空的 `progress`：清首片期限，started 後重設停滯保護 |
 | `finalize(session)` | 等 pending append，確認 session 未失效，finish writer；成功 idle＋saved（附提前停止原因與 session trace），再移除 sentinel |
-| `armStall(session)` | 媒體開始後的 chunk 間隔 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
+| `armStall(session)` | 媒體開始後兩次 progress 之間的 timer：警告門檻記錄一次，第二門檻以 capture_failed 失敗 |
 | `watchDisk(session)` | 錄影中以單一不重疊 timer 查詢可用空間；低於警告門檻記錄一次，低於停止門檻只要求一次正常停止；查詢失敗記錄一次 |
-| `retainedWriteError(session)` | 在上限內排空 writer，回傳其保留的寫入／sync 錯誤；只用於改報 capture_start_failed |
 | `handleHostFailure(code, detail)` | 有 session 才進 fail；`record` 前改為註明階段的 capture_start_failed；idle 時不假造錄影錯誤 |
 | `cancelMarked(session, cause, detail)` | 已在 `prepared` 前被睡眠或退出標記的嘗試，遇到 host 錯誤或遺失、螢幕移除、請求逾時或被拒時，以該原因取消而非失敗 |
 | `fail(id, code, detail, flags)` | 先 detach session／清 deadline、倒數與健康 timer／關 overlay／stop／idle，writer 已保留磁碟錯誤時取代 capture_start_failed，後 abandon，最後 failed 帶檔案結果、session trace 與 partialPath，再移除 sentinel |
@@ -90,9 +89,9 @@
 | `clearTimer` / `clearDisk` / `clearHealth` | 取消並清除 session deadline／可用空間查詢／查詢與停滯 timer |
 | `setState(state)` / `emit(event)` | 替換狀態並發事件／依序呼叫 listeners；某個 listener 拋出時只記 log，其他 listener 與 recorder 自身的清理照常執行 |
 
-## Host 監督器 — main/recording/capture-host.ts
+## Host 監督器 — main/recording/native-capture-host.ts
 
-[原始碼](../../../src/main/recording/capture-host.ts)。這個 CaptureHost 與 renderer 同名類別在不同程序。
+[原始碼](../../../src/main/recording/native-capture-host.ts)：監督每次嘗試的 `utilityProcess`（[native-host-process.ts](../../../src/main/recording/native-host-process.ts)），由它載入 Rust 引擎。下表仍描述 plan 076 於 2026-10-16 移除的隱藏視窗監督器，保留到 plan 076 step 8 改寫為止。
 
 | 方法 | 契約與副作用 |
 | --- | --- |
@@ -111,7 +110,7 @@
 
 ## 擷取與編碼 — renderer/capture/capture-host.ts
 
-[原始碼](../../../src/renderer/capture/capture-host.ts)。沒有檔案或任意 Node API。
+本節描述 plan 076 於 2026-10-16 移除的隱藏 capture renderer，保留到 plan 076 step 8 改寫為止；現在由原生引擎在自己的程序中擷取與編碼。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -138,7 +137,7 @@
 
 ## 影片儲存 — main/recording/file-writer.ts
 
-[原始碼](../../../src/main/recording/file-writer.ts)。nodeFs 將 open（取得的 handle 也能指定位置寫入與截斷）／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O。
+[原始碼](../../../src/main/recording/file-writer.ts)：保留 `publishRecording`、錯誤分類、`ensureWritableDir` 與 `nodeFs`（將 open／link／排他複製／unlink／mkdir／writeFile 適配成可替換 I/O）；`FileWriter` 類別已於 2026-10-16 隨隱藏 renderer 移除。[main/recording/engine-file-writer.ts](../../../src/main/recording/engine-file-writer.ts) 是 Recorder 的 writer：`EngineFileWriter.open` 獨占預留暫存檔名，`finish` 等引擎回報結果後發布，`abandon` 保留非空檔案。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -147,20 +146,9 @@
 | `classifyWriteError(cause)` | ENOSPC → disk_full，其他 → output_write_failed |
 | `classifyOpenError(cause)` | ENOSPC → disk_full，其他 → output_open_failed（資料夾 probe 與獨占開檔） |
 | `ensureWritableDir(dir, io)` | mkdir＋寫 probe；失敗依 `classifyOpenError` 拋出錯誤碼；probe 刪除 best effort |
-| `FileWriter.constructor(...)` | 保存 handle／路徑／I/O，啟動週期 sync 佇列 |
-| `FileWriter.open(recordingPath, finalPath, options)` | wx 開暫存檔 → writer，失敗包成 FileWriteError |
-| `bytesWritten` getter | 回傳每次 write 確認寫入量的總和，包含 append 失敗前的部分進度 |
-| `backlogBytes` getter | append 已接受、但尚未確認寫入或因失敗釋放的位元組數 |
-| `append(bytes)` | closed 或已拒絕時 reject；會超過積壓上限的 append 立即拒絕且不排入佇列（沿用先前的磁碟錯誤）；否則在佇列中補完剩餘 buffer 並累計確認進度；空輸入不 write，零／無效計數 reject |
-| `drain()` | 等待佇列作業後回傳已保留的失敗或拒絕（若有） |
-| `finish()` | enqueue sync；曾拒絕 append 時 reject；`makePlain`；release、排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與 `finishTimings`；失敗 reject |
-| `finishTimings` | 成功 finish 後的 flush、轉檔、close、發布與清理毫秒數，若維持分段格式則附原因，`link` 或 `copy`，以及改用複製時連結的錯誤碼；僅供診斷 |
-| `makePlain()` | 有索引的計畫且 handle 能指定位置寫入時：附加完整 `moov` 並 sync，再把 16 位元組的 `mdat` 標頭寫在舊 `moov` 上並 sync；附加到一半的索引會被截掉；不拋出 → 維持分段格式的原因，或 undefined（[存檔時轉成一般 MP4](recording.md#存檔時轉成一般-mp4)） |
-| `abandon()` | 等佇列、best effort release；有 bytes 留暫存路徑，空檔盡力刪除；不拋出 |
-| `release()` | 一次性 closed／close handle；fsync timer 已由 `beginTerminal` 停止 |
-| `enqueue(task)` | 依序執行；首個 failure 被記住，後續回同一錯誤，內部 queue 保持可接續 |
+| `publishRecording(io, recordingPath, finalPath)` | 排他硬連結並以尾碼避撞名，最多 `MAX_PUBLISH_ATTEMPTS`（100）個名稱（連結因 EEXIST 以外的原因被拒後改用排他複製）、盡力刪除暫存名稱 → 實際最終路徑與計時 |
 
-[main/recording/mp4-finalize.ts](../../../src/main/recording/mp4-finalize.ts) 在寫入過程中為分段 MP4 建立索引（[存檔時轉成一般 MP4](recording.md#存檔時轉成一般-mp4)）。
+下表描述已於 2026-10-16 隨隱藏 renderer 移除的 `mp4-finalize.ts`，保留到 plan 076 step 8 改寫為止；現在由原生引擎的 muxer（[native/capture/src/mux](../../../native/capture/src/mux)）寫入並完成 MP4。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
@@ -241,7 +229,7 @@
 | `frameRateDowngrade(requested, report)` | 60 requested 且 actual≤30 → rounded fps；其他 undefined |
 | `unknown(value, unit)` / `describeCapture(requested, report)` | 格式化未知欄位／本次要求、track、目標與 warnings 日誌 |
 
-[shared/protocol.ts](../../../src/shared/protocol.ts)：`isRecord()`、`isNonEmptyString()` 是 guards 的 helper；`isMainMessage()` 驗 start／record／stop／ping，`isHostMessage()` 驗七種 host 訊息：`prepared` 必須帶 mime type 與 CaptureReport，`started` 可兩者皆無；chunk 要求非負整數 seq 與 ArrayBuffer。
+[shared/protocol.ts](../../../src/shared/protocol.ts)：`isRecord()`、`isNonEmptyString()` 是 guards 的 helper；`isMainMessage()` 驗 start／record／stop／ping，`isHostMessage()` 驗 host 訊息：`prepared` 必須帶 mime type 與 CaptureReport，`started` 可兩者皆無；`progress` 要求有限的非負位元組數，`finished` 要求引擎的檔案報告。
 
 [shared/countdown.ts](../../../src/shared/countdown.ts)：`COUNTDOWN_CHOICES`（0、3、5、10）、`DEFAULT_COUNTDOWN`（3）與 `isCountdownSeconds`；`COUNTDOWN_TIMING`（tick、overlay 提前量、dismissal 上限、淡化、穩定間隔）與 `COUNTDOWN_OVERLAY`（字級占螢幕短邊的比例與 56–216 pt 上下限、視窗與字級的比例、邊距、字型、數字、以 56 pt 為基準的外框與陰影、減少透明度的數值），提示音數值 `COUNTDOWN_TICK`（523 Hz 正弦波、最後一個數字 ×1.5、小聲的四倍泛音、attack 4 ms、140 ms、−20 dBFS）、`DEFAULT_COUNTDOWN_SOUND`（開啟）、`tickFrequencyHz(digit)` 與頁面的 `COUNTDOWN_SOUND_QUERY`（plan 046），是所有時間、外觀與聲音數值唯一的定義處；`overlayFontPt(displayBounds)` 算出某個螢幕上的字級，`overlayBounds(displayBounds, workArea)` 以整數 pt 算出位於工作區右上角的正方形視窗；另定義 overlay preload 的數值 channel 與 bridge 型別。
 
@@ -256,8 +244,6 @@
 | `close()` / `destroy()` | 立即銷毀並讓等待中的 dismissal resolve；`destroy` 是 App 在穩定狀態與退出時的保險 |
 
 [renderer/countdown/countdown.ts](../../../src/renderer/countdown/countdown.ts)：`overlayStyle()` 把共用外觀數值轉成 CSS custom properties；`createCountdownView(stage, onDigit?)` 在兩個疊放的面之間交叉淡化，收到 `null` 時整體淡出，每個新數字呼叫一次選填的 `onDigit`；`playTick` 依 `COUNTDOWN_TICK` 以 Web Audio 合成一聲提示音；`soundRequested` 讀取頁面的 query（plan 046）。[preload/countdown.ts](../../../src/preload/countdown.ts) 只提供 `countdown.onValue`，只轉交正整數或 `null`。[shared/state.ts](../../../src/shared/state.ts) 的 `isErrorCode()` 以 ERROR_CODES 白名單檢查字串。
-
-[preload/index.ts](../../../src/preload/index.ts) 沒有具名函式：唯一 ipcRenderer callback 接收 `capture-host-port` 後將 event.ports 轉交 window，沒有 contextBridge API。
 
 [shared/i18n.ts](../../../src/shared/i18n.ts)：`isLanguage(value)` 驗 en／zh-TW；`documentLanguage(language)` 是設定頁與全螢幕頁設定的 `<html lang>`（`zh-Hant` 或 `en`）；`translate(key, language, values)` 預設英文，依 ZH_TW 取得中文模板並代入所有具名 placeholder；編譯器要求 key 的每個 placeholder 都有值，標籤表使用 `PlainMessageKey`（沒有 placeholder 的文案）。`notice(body)` 包裝通知標題與內文；trayModel 的 `text`／`model` helper 產生翻譯與呈現模型。通知函式接受 optional language，預設英文。
 
@@ -354,7 +340,7 @@
 
 [session-sentinel.ts](../../../src/main/recording/session-sentinel.ts)：`SessionSentinels.write` 在暫存檔存在前以原子寫入記下它；`remove` 刪除且不拋出；`leftovers` 列出先前程序留下的 sentinel，略過本程序的 session，捨棄中斷寫入與無效內容，暫時無法讀取的則保留。`interruptionFailure` 將其轉為 ID 由 session 推導的 `app_terminated` 紀錄；`reportInterruptions` 在啟動時交給 `RecordingResults.restore`，待 `RecordingResults.saved` 確認紀錄已保存後才移除 sentinel。
 
-[recording-health.ts](../../../src/main/recording/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間、writer 積壓與啟動排空門檻的唯一位置。
+[recording-health.ts](../../../src/main/recording/recording-health.ts)：`RECORDING_HEALTH` 是停滯、可用空間與存檔過慢門檻的唯一位置。
 
 [keep-awake.ts](../../../src/main/recording/keep-awake.ts)：`KeepAwake.update` 從 `starting` 到狀態回到穩定前持有一個 `prevent-display-sleep` 電源 blocker，並記錄每次開始與停止；blocker 丟出錯誤時只記錄；`dispose` 在結束時釋放（plan 050）。
 
@@ -443,13 +429,13 @@
 | 同檔 `mainDisplaySize()`、`outputDir()` | macOS 主螢幕／使用者設定或預設位置 |
 | 同檔 `sleep(ms)`、`electronPids()`、`electronMainPid()` | 回歸間隔；本 checkout 的 Electron.app 所有程序，以及它的主程序（CPU 取樣程式追蹤的根） |
 | 同檔 `logSince(start)` | 從本案例的 cursor 跨輪替讀 log；遺失歷史視為案例失敗 |
-| 同檔 `recordOnce(entry, key)` | 用環境變數啟動開發 App，以共用 CPU 取樣程式追蹤它的程序樹，等待結果，回 outcome；CPU 以錄影第 3 秒之後判定（lib/verification/matrix.mts 的 `cpuWindow`），並附第 95 百分位、VTEncoderXPCService 與本機 baseline |
+| 同檔 `recordOnce(entry, key)` | 用環境變數啟動開發 App，以共用 CPU 取樣程式追蹤它的程序樹，等待結果，回 outcome；CPU 以錄影第 3 秒之後判定（lib/verification/matrix.mts 的 `cpuWindow`），並附第 95 百分位、VTEncoderXPCService 與本機 baseline（有記錄時；原生引擎尚無） |
 | 同檔 `main()` | 驗工具（先 ffmpeg／ffprobe，再檢查 CPU 取樣程式需要的 clang，缺少即在任何動作前 blocked exit 2）／平台、開素材頁、以能量與同步為必要證據依序 recordOnce＋verify、寫結果、cleanup，依 `verdictExitCode` 退出 |
 | 同檔 `unmetChecks(result)` | 案例判定與每個讓它未通過的檢查及原因 |
 | [lib/verification/cpu-sampler.mts](../../../scripts/lib/verification/cpu-sampler.mts) `compileSampler(dir)`、`CpuSampler` | 以 clang 編譯 [cpu-sampler.c](../../../scripts/lib/verification/cpu-sampler.c)（沒有 Command Line Tools 時丟出 `SamplerBlockedError`）；持續讀取它每秒輸出的 `proc_pid_rusage` 計數，範圍是根程序、其子孫程序與追蹤的系統 helper（例如 VTEncoderXPCService），直到停止 |
 | 同檔 `parseSample`、`intervals`、`summarize`、`percentile` | 解析 helper 的一行；逐程序的每秒 CPU、喚醒與能耗，並標出 App 程序組合的變化；計算一段範圍的平均、nearest-rank 第 95 百分位與最大值，除非預期有變化，否則捨棄有變化的區間 |
 | 同檔 `CPU_BUDGET`、`judgeIdle`、`judgeSettingsOpen`、`judgeRecording`、`judgeCoverage`、`cpuBaseline`、`machineModel` | plan 049 的預算與判定（錄影門檻、編碼器回報、25% baseline 警告與 80% 取樣覆蓋）；從 cpu-baselines.json 讀本機記錄的 baseline |
-| 同檔 `processRole`、`rolesFromPs`、`readRoles`、`IDLE_ROLES`、`judgeRoles`、`judgeSteadyState` | 從命令列判斷 Chromium 程序的角色；App 程序樹的角色；各情境的待機契約；每次錄影後角色相同 |
+| 同檔 `processRole`、`rolesFromPs`、`readRoles`、`IDLE_ROLES`、`judgeRoles`、`judgeSteadyState` | 從命令列判斷 Chromium 程序的角色；App 程序樹的角色；原生引擎各情境的待機契約；每次錄影後角色相同 |
 | [measure-cpu.mts](../../../scripts/measure-cpu.mts) `launch()`、`seed()`／`restoreSettings()`、`main()` | 啟動已結束的打包 App，等啟動工作結束；只在 App 結束時寫入倒數、錄影螢幕與品質，並在沒有程序後只把這三個鍵設回原值；執行 A、R、B、C 情境，寫出 report.md／report.json，結束 App 並確認退出，以 0／1／2／130／143 結束 |
 
 ### 純量測邏輯 — scripts/lib/verification/verify.mts

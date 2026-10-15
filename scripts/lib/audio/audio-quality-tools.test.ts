@@ -2,9 +2,8 @@ import fs from "node:fs";
 import { expect, it } from "vitest";
 import { engineSources } from "./audio-quality-tools.mts";
 
-it("fingerprints the engine that records: the hidden renderer's host, or the native engine's sources (plan 076)", () => {
-  expect(engineSources("chromium")).toEqual(["../src/renderer/capture/capture-host.ts"]);
-  const native = engineSources("native");
+it("fingerprints the native engine's sources (plan 076)", () => {
+  const native = engineSources();
   expect(native).toContain("../src/main/recording/native-host-process.ts");
   expect(native).toContain("../native/capture/Cargo.lock");
   expect(native).toContain("../native/capture/src/core/mixer.rs");

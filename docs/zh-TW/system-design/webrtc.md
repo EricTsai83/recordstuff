@@ -4,6 +4,8 @@
 
 更新：2026-09-14。
 
+本文件描述 plan 076 於 2026-10-16 移除的隱藏擷取 renderer（Chromium 的 `getDisplayMedia` 與 `MediaRecorder`）；RecordStuff 現在只透過原生引擎錄影，也就是在 Electron `utilityProcess` 中執行的 Rust 模組。本文件保留到 plan 076 step 8 改寫為止。
+
 ## WebRTC 在產品裡負責什麼？
 
 RecordStuff 使用 Electron 內建 Chromium 提供的媒體 API，在本機完成錄影，目前沒有建立 WebRTC peer connection。WebRTC 與我們有關，是因為 Chromium 的擷取路徑可以重用 WebRTC 的原生音訊處理元件；即使沒有透過網路傳送聲音，也可能用到這些元件。
@@ -80,8 +82,7 @@ Chromium 的[螢幕擷取音訊處理路徑](https://chromium.googlesource.com/c
 
 ## 程式碼對照
 
-- [Main 入口](../../../src/main/index.ts)：display-media handler 與 loopback 來源選擇。
-- [Capture renderer](../../../src/renderer/capture/capture-host.ts)：constraints、settings、`MediaRecorder` 與 chunks。
+- [原生擷取 host](../../../src/main/recording/native-capture-host.ts) 與[其程序](../../../src/main/recording/native-host-process.ts)：取代已移除 capture renderer 的原生引擎。
 - [共用協定](../../../src/shared/protocol.ts)：MIME type 與本機訊息。
 - [品質政策](../../../src/shared/quality.ts)：要求的編碼品質。
 - [系統架構](architecture.md)：程序責任與 IPC 信任邊界。

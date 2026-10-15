@@ -1,6 +1,6 @@
 /**
- * Messages exchanged over the MessagePort between main and the hidden capture
- * host (docs/system-design/recording.md). Hand-written type guards; there are only a few shapes.
+ * Messages exchanged over the parent port between main and the native engine's capture host, a `utilityProcess`
+ * (plan 076; docs/system-design/recording.md). Hand-written type guards; there are only a few shapes.
  * This module must not import Electron.
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
@@ -8,25 +8,6 @@ import type { ErrorCode } from "./state";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
-
-/** Nominal MediaRecorder slice/keyframe interval; actual delivery can be delayed. */
-export const CHUNK_INTERVAL_MS = 1000;
-
-/**
- * Encoded bytes the capture page holds as Blobs not yet read and posted; past this
- * the page fails the session with `capture_failed`. A chunk counts until it is
- * posted, not until main has read it: posted messages wait in the port, outside
- * this bound. Main's writer bound, `RECORDING_HEALTH.writerBacklogBytes` (which the
- * page cannot import), counts them once main's handler has appended them.
- */
-export const HANDOFF_BACKLOG_LIMIT_BYTES = 64 * 1024 * 1024;
-
-/**
- * Main hands the capture page its MessagePort on this channel, and the preload
- * forwards it to the page as this message; the preload keeps its own copy
- * because a sandboxed preload imports nothing at runtime (src/preload/channels.test.ts).
- */
-export const CAPTURE_HOST_PORT_CHANNEL = "capture-host-port";
 
 /**
  * The failures a live capture host can observe. Folder, disk, deadline, host
@@ -63,9 +44,8 @@ export interface NativeStart {
 
 export type MainMessage =
   /**
-   * Prepare capture: stream, checks, quality and an inactive MediaRecorder.
-   * `quality` is main's snapshot for this session; the host never reads settings itself.
-   * `native` is present only for the native engine's host (plan 076, D7).
+   * Prepare capture: the display, the encoders and the file, not yet recording. `quality` is main's snapshot for this
+   * session; the host never reads settings itself. `native` carries what the engine needs besides.
    */
   | { type: "start"; sessionId: string; quality: QualitySettings; native?: NativeStart }
   /** Begin encoding the prepared session (plan 040); refused for any other session. */
@@ -73,7 +53,7 @@ export type MainMessage =
   | { type: "stop"; sessionId: string }
   | { type: "ping" };
 
-/** Write failures the native engine, which writes the file itself (plan 076, D3), reports; the same codes as FileWriter's. */
+/** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
 export const ENGINE_WRITE_ERROR_CODES = ["disk_full", "output_write_failed"] as const satisfies readonly ErrorCode[];
 export type EngineWriteErrorCode = (typeof ENGINE_WRITE_ERROR_CODES)[number];
 
@@ -88,20 +68,18 @@ export type HostMessage =
   | { type: "ready" }
   /** Capture is prepared and not recording; `capture` is what the tracks reported and what the encoder was asked for. */
   | { type: "prepared"; sessionId: string; mimeType: string; capture: CaptureReport }
-  /** MediaRecorder started; the capture report was already sent in `prepared`. */
+  /** Recording began; the capture report was already sent in `prepared`. */
   | { type: "started"; sessionId: string }
-  /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture/capture-host.ts. */
-  | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
   | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
   /**
-   * Native engine only, after `stopped`: the file is finished. The engine finishes it after capture stopped, so a slow
+   * After `stopped`: the file is finished. The engine finishes it after capture stopped, so a slow
    * volume's save is no part of the stop; a `writeError` instead says why it could not be.
    */
   | { type: "finished"; sessionId: string; file: EngineFileReport }
   | { type: "error"; sessionId: string; code: HostErrorCode; detail: string; displayFailure?: "track_ended" }
-  /** Native engine only: media is still being written, `bytes` so far; what the stall guard watches instead of chunks. */
+  /** Media is still being written, `bytes` so far; what the stall guard watches. */
   | { type: "progress"; sessionId: string; bytes: number }
-  /** Native engine only: writing the file failed; what was written is kept. */
+  /** Writing the file failed; what was written is kept. */
   | { type: "writeError"; sessionId: string; code: EngineWriteErrorCode; detail: string }
   | { type: "pong" };
 
@@ -161,14 +139,6 @@ export function isHostMessage(value: unknown): value is HostMessage {
       );
     case "started":
       return isNonEmptyString(value["sessionId"]);
-    case "chunk":
-      return (
-        isNonEmptyString(value["sessionId"]) &&
-        typeof value["seq"] === "number" &&
-        Number.isInteger(value["seq"]) &&
-        value["seq"] >= 0 &&
-        value["bytes"] instanceof ArrayBuffer
-      );
     case "stopped":
       return isNonEmptyString(value["sessionId"]) &&
         (value["tracksStoppedAt"] === undefined ||

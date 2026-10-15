@@ -9,25 +9,22 @@ import { inspectAudio, recordAudio } from "./lib/audio/audio-quality-tools.mts";
 import { DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { summarize } from "./lib/audio/audio-quality-summary.mts";
 import { runnerArgs } from "./lib/runner/runner-env.mts";
-import { ENGINE_USAGE, takeEngineOption } from "./lib/runner/capture-engine.mts";
 import { engineSources } from "./lib/audio/audio-quality-tools.mts";
 
-const engineOption = takeEngineOption(runnerArgs());
-const args = engineOption?.rest ?? [];
-const engine = engineOption?.engine ?? "native";
+const args = runnerArgs();
 const [mode, target, repeatFlag, count] = args;
 const repeats = count === undefined ? 1 : Number(count);
-if (!engineOption || !mode || !target || !["fixture", "verify", "record"].includes(mode) ||
+if (!mode || !target || !["fixture", "verify", "record"].includes(mode) ||
     !(args.length === 2 || (mode === "record" && args.length === 4 && repeatFlag === "--repeat")) ||
     !Number.isInteger(repeats) || repeats < 1 || repeats > 10) {
-  console.error(`usage: pnpm audio:quality -- fixture <new.wav> | verify <fixture-v2-recording> | record <new-directory> [--repeat 1..10] ${ENGINE_USAGE}`);
+  console.error(`usage: pnpm audio:quality -- fixture <new.wav> | verify <fixture-v2-recording> | record <new-directory> [--repeat 1..10]`);
   process.exit(2);
 }
 const exitCode = (verdict: string): number => verdict === "pass" ? 0 : verdict === "invalid" ? 2 : 1;
 // The files whose change can change what a recording's audio is: this tool's own and the recording engine's (plan 076).
-const implementation = Object.fromEntries(["./lib/audio/audio-quality.mts", "./lib/audio/audio-quality-tools.mts", ...engineSources(engine)]
+const implementation = Object.fromEntries(["./lib/audio/audio-quality.mts", "./lib/audio/audio-quality-tools.mts", ...engineSources()]
   .map(file => [file, createHash("sha256").update(fs.readFileSync(new URL(file, import.meta.url))).digest("hex")]));
-const environment = { engine, implementation, fixtureSha256: createHash("sha256").update(wav(fixture())).digest("hex"), platform: process.platform, release: os.release(), arch: process.arch, node: process.version };
+const environment = { implementation, fixtureSha256: createHash("sha256").update(wav(fixture())).digest("hex"), platform: process.platform, release: os.release(), arch: process.arch, node: process.version };
 const inspect = (file: string) => ({ date: new Date().toISOString(), file, environment, ...inspectAudio(file) });
 let output: string | undefined;
 try {
@@ -61,7 +58,7 @@ try {
     for (let i = 0; i < repeats; i++) {
       const run: string = repeats === 1 ? directory : path.join(directory, `run-${i + 1}`);
       if (run !== output) fs.mkdirSync(run);
-      const file = await recordAudio(run, engine);
+      const file = await recordAudio(run);
       const report = inspect(file);
       fs.writeFileSync(path.join(run, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
       reports.push(report);

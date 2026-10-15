@@ -4,6 +4,8 @@
 
 Updated: 2026-09-14.
 
+This document describes the hidden capture renderer (`getDisplayMedia` and `MediaRecorder` in Chromium) that plan 076 removed on 2026-10-16; RecordStuff now records only through its native engine, a Rust module in an Electron `utilityProcess`. It is kept until plan 076 step 8 rewrites it.
+
 ## What role does WebRTC have?
 
 RecordStuff records locally through the media APIs provided by Electron's Chromium engine. It does not create a WebRTC peer connection. WebRTC is relevant because Chromium can reuse its native audio processing components in capture paths, including paths that do not send audio over a network.
@@ -80,8 +82,7 @@ Adding live sharing would introduce a separate transport architecture and would 
 
 ## Code map
 
-- [Main entry](../../src/main/index.ts): display-media request handler and loopback source selection.
-- [Capture renderer](../../src/renderer/capture/capture-host.ts): constraints, settings, `MediaRecorder`, and chunks.
+- [Native capture host](../../src/main/recording/native-capture-host.ts) and [its process](../../src/main/recording/native-host-process.ts): the native engine that replaced the removed capture renderer.
 - [Shared protocol](../../src/shared/protocol.ts): MIME type and local messages.
 - [Quality policy](../../src/shared/quality.ts): requested encoding quality.
 - [Architecture](architecture.md): process ownership and IPC trust boundaries.

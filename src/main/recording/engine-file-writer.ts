@@ -1,5 +1,5 @@
 /**
- * The Recorder's writer when the native engine writes the file (plan 076, D3, behind D7's development flag). The
+ * The Recorder's writer: the native engine writes the file (plan 076, D3). The
  * engine captures, encodes, muxes and writes; main keeps the file's lifecycle. This writer reserves the temporary
  * `.recording.mp4` name by creating it empty and exclusively, as FileWriter's open does, publishes the finished file
  * under its final name exactly as FileWriter does (`publishRecording`), and on a failure keeps whatever the engine
@@ -54,11 +54,6 @@ export class EngineFileWriter implements RecorderWriter {
 
   get bytesWritten(): number {
     return this._bytesWritten;
-  }
-
-  /** The engine writes the file; media never passes through main. */
-  append(): Promise<void> {
-    return Promise.reject(new Error("the native engine writes this recording; main appends nothing"));
   }
 
   /** Publishes what the engine finished, once it has; the engine closed the file before it reported that. */

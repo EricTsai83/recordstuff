@@ -61,7 +61,6 @@ describe("isHostMessage", () => {
         capture: { ...capture, width: 1920, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, warnings: ["w"] },
       }),
     ).toBe(true);
-    expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new ArrayBuffer(1) })).toBe(true);
     expect(isHostMessage({ type: "stopped", sessionId: "a" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "no_audio_track", detail: "" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "mp4_unsupported", detail: "x" })).toBe(true);
@@ -72,10 +71,9 @@ describe("isHostMessage", () => {
       expect(isHostMessage({ type: "stopped", sessionId: "a", tracksStoppedAt })).toBe(false);
     }
   });
-  it("rejects malformed chunks and unknown error codes", () => {
-    expect(isHostMessage({ type: "chunk", sessionId: "a", seq: -1, bytes: new ArrayBuffer(1) })).toBe(false);
-    expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 1.5, bytes: new ArrayBuffer(1) })).toBe(false);
-    expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new Uint8Array(1) })).toBe(false);
+  it("rejects the removed capture page's chunks and unknown error codes", () => {
+    // Media never passes through main since plan 076: the engine writes the file and reports progress.
+    expect(isHostMessage({ type: "chunk", sessionId: "a", seq: 0, bytes: new ArrayBuffer(1) })).toBe(false);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "made_up", detail: "" })).toBe(false);
     // Only main can find a folder, disk, deadline, supervision or launch-time failure; a live host never can.
     for (const code of ["app_terminated", "disk_full", "output_open_failed", "output_write_failed", "stop_timeout",

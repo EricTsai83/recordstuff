@@ -46,7 +46,6 @@
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
-import { engineFromLog } from "./lib/runner/capture-engine.mts";
 import { escapeRegExp, recordStuffPids, command } from "./lib/runner/processes.mts";
 import { confirmedIdle, quitIdleApp, sessionEnded, settleRecording, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance/acceptance-runtime.mts";
 import { inputDiagnostics } from "./lib/acceptance/acceptance-diagnostics.mts";
@@ -263,7 +262,6 @@ async function main(): Promise<void> {
   let lines: string[];
   let accelerator: string;
   let run: string;
-  let engine = "not logged";
   let script: string;
   try {
     if (soundOverride) {
@@ -285,7 +283,6 @@ async function main(): Promise<void> {
     const state = currentState(lines);
     if (!confirmedIdle(lines)) fail(`the app is in state ${state}; it must be idle (screen recording permission granted, no session running)`);
     run = currentRunId(lines) ?? fail("the running app's start line has no run id (built before session records); rebuild it with `pnpm start:app`");
-    engine = engineFromLog(lines) ?? "not logged";
     const keystroke = acceleratorToKeystroke(accelerator) ?? fail(`cannot type accelerator ${accelerator} through System Events`);
     script = keystrokeScript(keystroke);
     fs.mkdirSync(dir, { recursive: true });
@@ -365,7 +362,7 @@ async function main(): Promise<void> {
     if (capture.record.run !== run) fail(`the capture record belongs to run ${capture.record.run}, not ${run}: the app restarted`);
     session = capture.record.session;
     cleanupSession = session;
-    note(`session ${session} (run ${run}, ${engine} capture engine)`);
+    note(`session ${session} (run ${run})`);
     const startLatency = (lineTime(pressed.line)?.getTime() ?? 0) - new Date(sentStart).getTime();
     note(`recording (press → pressed ${startLatency} ms; pressed → recording ${(lineTime(recording.line)?.getTime() ?? 0) - (lineTime(pressed.line)?.getTime() ?? 0)} ms, preparation and any countdown included)`);
 
@@ -591,7 +588,7 @@ async function main(): Promise<void> {
       [
         "# Global shortcut acceptance (`pnpm acceptance`)",
         "",
-        `Run ${now()} on ${os.hostname()}, macOS ${os.release()}, pid ${pid}, app run \`${run}\`, ${engine} capture engine, session \`${session}\`, shortcut \`${accelerator}\`, ${seconds} s requested. Keys were sent by System Events from this script; the material was ${openMaterial ? "opened fullscreen in Chrome app mode with autoplay allowed" : "shown by the operator"}. Material SHA-256 \`${createHash("sha256").update(fs.readFileSync(MATERIAL)).digest("hex")}\`.`,
+        `Run ${now()} on ${os.hostname()}, macOS ${os.release()}, pid ${pid}, app run \`${run}\`, session \`${session}\`, shortcut \`${accelerator}\`, ${seconds} s requested. Keys were sent by System Events from this script; the material was ${openMaterial ? "opened fullscreen in Chrome app mode with autoplay allowed" : "shown by the operator"}. Material SHA-256 \`${createHash("sha256").update(fs.readFileSync(MATERIAL)).digest("hex")}\`.`,
         "",
         `Result: **${failing.length === 0 && guards.length === 0 ? "pass" : "fail"}** (${failing.length} check(s) not passed; integrity tier${openMaterial ? ", test material: audio bitrate reported only" : ""}${guards.length ? `; evidence guards: ${guards.join("; ")}` : ""}).`,
         "",

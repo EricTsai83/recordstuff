@@ -31,16 +31,16 @@
 | 目錄 | 執行於 | 內容 |
 | --- | --- | --- |
 | `src/main/` | 主程序 | `index.ts`：建立並接起所有模組的 composition root；其餘每個模組一個資料夾（[見下方](#主程序模組)） |
-| `src/renderer/` | Renderer 程序 | 頂層放四個 HTML 入口（隱藏擷取 host 的 `index.html`、`settings.html`、`countdown.html`、`video.html`）與放共用 token 及功能排版的 `ui.css`；每個頁面一個資料夾，另有頁面共用的部分（[見下方](#renderer-頁面)） |
-| `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`index.ts` 只把 MessagePort 交給擷取頁面、不對外開放任何 API；`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 提供 overlay 的數值訂閱與取消訂閱；`video.ts` 承載全螢幕 ready／exit |
-| `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、MessagePort 協定、錄影品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
+| `src/renderer/` | Renderer 程序 | 頂層放三個 HTML 入口（`settings.html`、`countdown.html`、`video.html`）與放共用 token 及功能排版的 `ui.css`；每個頁面一個資料夾，另有頁面共用的部分（[見下方](#renderer-頁面)） |
+| `src/preload/` | Preload，sandbox | 每個 renderer 各一個：`settings.ts` 承載設定面板的 IPC 契約；`countdown.ts` 提供 overlay 的數值訂閱與取消訂閱；`video.ts` 承載全螢幕 ready／exit |
+| `src/shared/` | 兩邊共用 | 狀態（`state.ts`）、擷取 host 協定、錄影品質運算、設定面板契約、螢幕偏好、外觀、快捷鍵驗證，以及翻譯（`i18n.ts`） |
 
 ### 主程序模組
 
 | 資料夾 | 負責 |
 | --- | --- |
 | `lib/` | 不認識任何功能的程序層級工具：整檔原子替換、寫入排空佇列、讀取錯誤、檔案 log 與 App 名稱 |
-| `recording/` | 一次錄影的完整流程：狀態機（`recorder.ts`）、擷取頁面監管、寫檔、健康門檻、中斷 sentinel、session log、倒數 overlay、防止睡眠、擷取與儲存通知、結果歷史（`recording-result*.ts`）、偏好設定鎖定（`recording-lock.ts`），以及僅供開發的無人值守錄影（`autorecord.ts`） |
+| `recording/` | 一次錄影的完整流程：狀態機（`recorder.ts`）、原生引擎擷取 host 的監管（`native-capture-host.ts`）與 host 程序本身（`native-host-process.ts`）、檔案預留與發布、健康門檻、中斷 sentinel、session log、倒數 overlay、防止睡眠、擷取與儲存通知、結果歷史（`recording-result*.ts`）、偏好設定鎖定（`recording-lock.ts`），以及僅供開發的無人值守錄影（`autorecord.ts`） |
 | `display/` | 錄影使用哪個螢幕，以及 main 這側的 display-media 請求 |
 | `permission/` | 螢幕錄影權限偵測與其通知 |
 | `library/` | 磁碟上的錄影檔：錄影檔分頁的資料庫、MP4 長度、輸出資料夾與全螢幕影片視窗 |
@@ -54,7 +54,6 @@
 
 | 資料夾 | 內容 |
 | --- | --- |
-| `capture/` | 隱藏擷取 host，由 `index.html` 載入 |
 | `settings/` | 設定頁：入口、外框（`settings-app.tsx`）、`tabs/` 下每個分頁一個模組、復原與縮放提示、controller（`settings-controller.ts`，是 `controller/` 依職責分開後的唯一介面），以及這個頁面的測試 |
 | `countdown/` | 倒數數字與它專用的 `countdown.css` |
 | `video/` | 全螢幕影片頁 |
@@ -69,7 +68,7 @@
 
 ```text
 main:      lib ← recording, display, permission, library, shortcuts ← app ← settings ← menus ← actions ← index.ts
-renderer:  lib ← components ← player ← capture, countdown, settings, video
+renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← 入口檔
 ```
 
@@ -93,8 +92,8 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 
 `scripts/` 收錄支援開發、但不隨 App 出貨的一切：
 
-- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`diagnose-frame-cadence.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
-- **`scripts/lib/`** 放入口檔背後的共用實作，依用途分組：`runner/`（每個桌面 runner 共用的部分：程序、清理過的環境、桌面工作階段、round 結束、原生 accessibility、fixture 建置、log 讀取與 session record、計時，以及 bundle 的執行期輸入）、`acceptance/`（各驗收 runner 自己的邏輯）、`verification/`（錄影驗證、matrix、播放、媒體工具、frame cadence、收尾與 CPU 量測）、`audio/`（音質分析）與 `release/`（release manifest 與其用戶端，網站也會匯入）。
+- **入口檔**放在該目錄頂層，與 `package.json` script 一對一：`start-app.mjs`、`make-icons.mjs`、`probe-recording.mjs`、`verify-recording.mts`、`run-matrix.mts`、`audio-quality.mts`、`acceptance-*.mts`、`create-signing-identity.mts`、`release.mts`、`cleanup-release-keychain.py`。`test-material.html`——同步與音質量測時播放的素材頁——也放在同一層。
+- **`scripts/lib/`** 放入口檔背後的共用實作，依用途分組：`runner/`（每個桌面 runner 共用的部分：程序、清理過的環境、桌面工作階段、round 結束、原生 accessibility、fixture 建置、log 讀取與 session record、計時，以及 bundle 的執行期輸入）、`acceptance/`（各驗收 runner 自己的邏輯）、`verification/`（錄影驗證、matrix、播放、媒體工具、收尾與 CPU 量測）、`audio/`（音質分析）與 `release/`（release manifest 與其用戶端，網站也會匯入）。
 - **`scripts/fixtures/`** 放測試替身與注入用的替代實作。
 
 工具使用 `.mts`／`.mjs`，因為它們直接由 Node 執行，不經過 App 的打包流程；測試則是放在旁邊的一般 `*.test.ts`。
@@ -148,10 +147,10 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 
 | 檔案 | 約束了什麼 |
 | --- | --- |
-| `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者。在 renderer 端執行的 fixture `scripts/fixtures/frame-cadence-renderer.ts` 從 Node 設定排除，改以 DOM 設定檢查 |
+| `tsconfig.node.json`／`tsconfig.web.json` | 哪些目錄以 Node／Electron 或 DOM 函式庫檢查型別；`src/shared/` 同時出現在兩者 |
 | `tsconfig.tests.json` | `tests/` 同時以 DOM 與 Node 函式庫檢查型別，與 renderer 分開 |
 | `vitest.config.ts` | 測試只在 `src/`、`scripts/` 與 `tests/` 下以 `*.test.ts` 尋找 |
-| `electron.vite.config.ts` | 一個 main 入口、四個 preload 入口、四個 renderer HTML 入口 |
+| `electron.vite.config.ts` | main 入口（`index.ts` 與原生引擎的 `native-host-process.ts`）、三個 preload 入口、三個 renderer HTML 入口 |
 | `tests/source-boundaries.test.ts` | `src/` 與 `scripts/` 中哪些模組資料夾可以匯入哪些（[模組邊界](#模組邊界)） |
 | `electron-builder.yml` | 打包哪些內容（`out/**`、`package.json`）與複製哪些資源 |
 | `.gitignore` | 產生物、原始量測與簽署材料一律不納管 |

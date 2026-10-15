@@ -67,8 +67,8 @@ const nativeEngine = (): Plugin => {
   };
 };
 
-// Main, one preload per renderer, and four renderer entries (hidden capture
-// host, settings panel, countdown overlay, fullscreen video).
+// Main with the native engine's host process, one preload per renderer, and three renderer entries (settings panel,
+// countdown overlay, fullscreen video).
 export default defineConfig({
   // electron-vite externalizes dependencies by default (`build.externalizeDeps`).
   main: {
@@ -88,7 +88,6 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, "src/preload/index.ts"),
           settings: resolve(__dirname, "src/preload/settings.ts"),
           countdown: resolve(__dirname, "src/preload/countdown.ts"),
           video: resolve(__dirname, "src/preload/video.ts"),
@@ -101,7 +100,6 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, "src/renderer/index.html"),
           settings: resolve(__dirname, "src/renderer/settings.html"),
           countdown: resolve(__dirname, "src/renderer/countdown.html"),
           video: resolve(__dirname, "src/renderer/video.html"),

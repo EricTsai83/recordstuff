@@ -28,11 +28,11 @@ class Host implements RecorderHost {
 }
 
 class Writer implements RecorderWriter {
+  /** What the engine wrote to the file. */
   bytes = 0;
   /** Resolves the abandon; left pending to model a slow failure cleanup. */
   release: () => void = () => undefined;
   constructor(readonly recordingPath: string, readonly finalPath: string, private readonly slow: boolean) {}
-  async append(bytes: Uint8Array): Promise<void> { this.bytes += bytes.byteLength; }
   async finish(): Promise<string> { return this.finalPath; }
   async abandon(): Promise<string | undefined> {
     if (this.slow) await new Promise<void>((resolve) => { this.release = resolve; });
@@ -86,7 +86,9 @@ function app(options: { maxBytes: number; keep: number; slow: number[] }) {
     await vi.waitFor(() => expect(recorder.sessionId).toBe(id));
     await new Promise((resolve) => setTimeout(resolve, 5));
     host.emit({ type: "prepared", sessionId: id, mimeType: "video/mp4", capture: REPORT(height) });
-    host.emit({ type: "chunk", sessionId: id, seq: 0, bytes: new Uint8Array([1, 2, 3]).buffer });
+    // The engine writes the file itself and reports how much (plan 076).
+    [...writers.values()].at(-1)!.bytes = 3;
+    host.emit({ type: "progress", sessionId: id, bytes: 3 });
     await vi.waitFor(() => expect(recorder.state.type).toBe("recording"));
   };
   const idle = () => vi.waitFor(() => expect(recorder.state.type).toBe("idle"));

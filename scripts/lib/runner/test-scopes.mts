@@ -88,8 +88,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "recording",
-    covers: "recording logic below the UI: recorder, capture host and protocol, file writing, MP4 finishing. Unit tests only: capture needs the recording row of docs/testing.md",
-    unit: ["src/main/recording/", "src/renderer/capture/", "src/shared/protocol.test.ts", "tests/capture-protocol.test.ts"],
+    covers: "recording logic below the UI: recorder, the native engine's host and protocol, file publication. Unit tests only: capture needs the recording row of docs/testing.md",
+    unit: ["src/main/recording/", "src/shared/protocol.test.ts"],
     ui: [],
   },
   {
