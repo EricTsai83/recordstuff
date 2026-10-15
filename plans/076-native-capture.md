@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-Status: in progress; step 1 decided on 2026-10-14, steps 2 and 3 done on 2026-10-14, step 4 done on 2026-10-15 (PR #6). Created: 2026-10-14. Priority: next, before 074 and 075, because its result decides where 074 mixes the microphone and how 075 keeps RecordStuff's windows out of the recording. Hard dependencies: none. Execute the steps in order under [the plan index](README.md).
+Status: in progress; step 1 decided on 2026-10-14, steps 2 and 3 done on 2026-10-14, step 4 done on 2026-10-15 (PR #6), step 5 done on 2026-10-15 except removing the display-media handler, which waits for D7's flag to go after step 7. Created: 2026-10-14. Priority: next, before 074 and 075, because its result decides where 074 mixes the microphone and how 075 keeps RecordStuff's windows out of the recording. Hard dependencies: none. Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
@@ -109,13 +109,19 @@ All of step 1 was decided by the maintainer on 2026-10-14.
   - macOS: verified by live tests on this Mac (a window, an area, one app's windows and sound, each 3 s with audio and video equally long) and through the signed app (an area and a Finder window, `RECORDSTUFF_CAPTURE_SOURCE`). Recording a window first ended the capture process (`CGS_REQUIRE_INIT`, no window-server connection), now fixed. The microphone refuses while macOS has not been asked for access, since AVFoundation then delivers silence; its sound is untested here, as the test's host app has not been granted it.
   - Windows: Windows.Graphics.Capture windows and crops, process loopback per process, WASAPI microphone; chosen apps' windows are refused (Windows.Graphics.Capture cannot). The `native-windows` job passed on commit `985221bd` (run 38692860341): an area recorded at 640×360 and a window the test opened at 786×592, each 3001 ms with an audio track as long (the area's, with system sound off, all silence the clock filled in); one process's sound opened, read and stopped. The runner has no audio input, so the Windows microphone is untested, as is everything step 3 listed.
 - [x] Quality: the existing settings in `src/shared/quality.ts` (size cap, frame rate, bit rates) applied natively; the `CaptureReport` keeps its fields so the Recorder, logs and warnings stay as they are. In place since step 2 (`native-host-process.ts`).
-- Found on the way: `pnpm measure:cpu`'s scenario C (Settings open behind another app) measured 38.5% and 39.0% in two native runs and 10.0% in a Chromium run, against 0.15–0.18% in two other runs on the same build. The busy process was Settings' renderer with the GPU process; its cause is not established (a card's hover preview playing under the pointer fits). It is not limited to the native engine.
+- Found on the way: `pnpm measure:cpu`'s scenario C (Settings open behind another app) measured 38.5% and 39.0% in two native runs and 10.0% in a Chromium run, against 0.15–0.18% in two other runs on the same build. The busy process was Settings' renderer with the GPU process; it was not limited to the native engine. Cause, found on 2026-10-15: the pointer left resting on a library card, whose hover preview then looped behind Finder (33.6% with `--hover-card`). The runner now parks the pointer first (PR #7), and Settings stops a preview when it loses the focus and starts none without it (PR #8; `--hover-card` then measured 0.33%).
 
 ### 5. Integration
 
-- [ ] Replace the hidden capture renderer with a `utilityProcess` host that loads the module and speaks the existing protocol (`ready`, `ping`/`pong`, `start` → `prepared` with the file path from main, `record`, progress and write errors, `stop` → finished, failures), so `recorder.ts` keeps its states, deadlines, countdown and quit handling; adjust only what the new host needs.
-- [ ] Remove the display-media handler and loopback request from `src/main/index.ts` once D7's flag is gone; keep display selection and its diagnostics.
-- [ ] Settings → Recording: the D6 switch, with zh-TW strings; 075's own-window rule moves here and is always on.
+- [x] Replace the hidden capture renderer with a `utilityProcess` host that loads the module and speaks the existing protocol (`ready`, `ping`/`pong`, `start` → `prepared` with the file path from main, `record`, progress and write errors, `stop` → finished, failures), so `recorder.ts` keeps its states, deadlines, countdown and quit handling; adjust only what the new host needs.
+  - Done 2026-10-15: the host exists since step 2 and the recorder kept its states; what step 5 changes is which engine records (`capture-engine.ts`). On macOS the native engine does by default, and D7's development flag is now `RECORDSTUFF_CAPTURE_ENGINE=chromium`, which brings back the hidden renderer for side-by-side comparison.
+  - Windows keeps the hidden renderer by default, with `=native` as the opt-in, until its check and release builds carry the module in step 6; switching it before would leave Windows without a recording engine. This sequences D7's "Windows switches with it" one step later.
+  - On a fresh signed bundle with no variable set, the log said `capture engine: native` and `pnpm acceptance -- --seconds 10 --skip-cancel --no-open-material` saved a 10.3 s 1920×1080 file through the shortcut, decodable, with audio and video equally long. Without the test material the screen was still and silent, so channel energy and the bit rates failed as expected; the full acceptance is step 7's.
+- [ ] Remove the display-media handler and loopback request from `src/main/index.ts` once D7's flag is gone; keep display selection and its diagnostics. Until then main registers the handler only when the hidden renderer records.
+- [x] Settings → Recording: the D6 switch, with zh-TW strings; 075's own-window rule moves here and is always on.
+  - Done 2026-10-15: Hide menu bar and Dock (隱藏選單列與 Dock), after Screen, off by default and locked while recording, saved as `hideSystemUi` in settings.json; its ⓘ says a menu one opens is still recorded, as part of its app. On Windows the row is Hide taskbar, off and unavailable, noting that Windows cannot leave the taskbar out. The engine gets the switch only on macOS; `RECORDSTUFF_HIDE_SYSTEM_UI` is gone.
+  - With the switch on, the engine reported 35 system windows hidden and the frame showed the wallpaper where the menu bar had been; with it off the menu bar was recorded. The Dock was not on screen in either run, so its absence is not shown here.
+  - The native engine leaves RecordStuff out of every recording with ScreenCaptureKit's application filter, which also covers windows opened after the start, and `WDA_EXCLUDEFROMCAPTURE` on Windows; nothing turns it off. A Settings window on the recorded display was not recorded in this round: step 7's acceptance checks own windows absent from frames.
 
 ### 6. Build and release
 
@@ -124,7 +130,7 @@ All of step 1 was decided by the maintainer on 2026-10-14.
 
 ### 7. Verification tools and acceptance
 
-- [ ] Adapt `pnpm acceptance`, `pnpm matrix`, `pnpm audio:quality`, `pnpm measure:cpu` and `pnpm acceptance:lifecycle` to the new host, with the same reports.
+- [ ] Adapt `pnpm acceptance`, `pnpm matrix`, `pnpm audio:quality`, `pnpm measure:cpu` and `pnpm acceptance:lifecycle` to the new host, with the same reports. The controlled build (`pnpm acceptance:controlled` and the tray runner's controlled cases) records through the hidden renderer since step 5, because its write and close faults wrap that path's FileWriter; give the engine's writer its faults and drop the pin.
 - [ ] macOS: full recording acceptance, the matrix cases the plan's risks touch, the audio fidelity suite, a new CPU baseline (`pnpm measure:cpu -- --fps 60 --repeat 3`), lifecycle, quit and sleep during recording, permission denial, display removal, own windows absent from frames, and the D6 switch.
 - [ ] Windows: the CI checks of step 3 and the installer smoke; everything CI cannot show (real capture quality, own windows absent, system audio content, CPU, frame timing) is listed as untested.
 
