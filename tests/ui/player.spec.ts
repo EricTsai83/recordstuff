@@ -275,6 +275,26 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
   // P19: every page's console errors fail the test at teardown (fixtures.ts).
 });
 
+test("the player grows and shrinks with the window and stays inside it", async () => {
+  /** The player's size in a `width`×`height` window, measured once the dialog's animations have finished. */
+  const stageIn = async (width: number, height: number): Promise<{ width: number; height: number; inside: boolean }> => {
+    await app.evaluate((h, size) => h.settingsWindow()!.setSize(size.width, size.height), { width, height });
+    await expect.poll(() => app.evaluate(h => h.settingsWindow()!.getSize().join("×"))).toBe(`${width}×${height}`);
+    await eventually(() => read<boolean>(page, `document.querySelector(".player").getAnimations().every(animation => animation.playState !== "running")`));
+    return read(page, `(() => { const r = document.querySelector(".player").getBoundingClientRect();
+      return { width: r.width, height: r.height, inside: r.left >= -0.5 && r.top >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5 }; })()`);
+  };
+  await openCard(0);
+  const small = await stageIn(960, 640), large = await stageIn(1800, 1100);
+  await keep(page, "player-large-window-light.png");
+  const back = await stageIn(960, 640);
+  expect(small.inside && large.inside && back.inside, `the player stays inside the window ${JSON.stringify({ small, large, back })}`).toBe(true);
+  expect(large.width > small.width * 1.5 && large.height > small.height * 1.5,
+    `a larger window gives a larger player ${JSON.stringify({ small, large })}`).toBe(true);
+  expect(Math.abs(back.width - small.width) < 1, `the player shrinks back with the window ${JSON.stringify({ small, back })}`).toBe(true);
+  await page.locator("#player-close").click();
+});
+
 test("P20 a key seek, a volume key and a click on the picture each give feedback, and after a click the seek bar's arrows mark keyboard input", async () => {
   await openCard(0);
   await eventually(async () => !(await playback(page, ".player .pc > video")).paused, 5000);
