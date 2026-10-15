@@ -14,7 +14,8 @@
  *   set; `--repeat N` (odd) records each set N times and judges the median run.
  * - B. Idle after the recording: from 30 seconds after the last save, `--minutes`, with the encoder
  *   back to nothing.
- * - C. Settings open behind another app: 3 minutes.
+ * - C. Settings open behind another app: 3 minutes, the pointer parked on the menu bar (`--hover-card`: on the
+ *   first card, its preview playing).
  * - P. Playback (plan 072): the last 30 fps recording, reached as a person does (the tray's Show last recording
  *   focuses its card's Play button, confirmed by its element id, Return plays it), judged over 50 s after a 5-second settle, per role: the app,
  *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
@@ -74,8 +75,8 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--out <dir>]";
-let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false;
+const usage = "usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--out <dir>]";
+let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
@@ -86,6 +87,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--skip-recording") skipRecording = true;
   else if (arg === "--skip-settings") skipSettings = true;
   else if (arg === "--skip-playback") skipPlayback = true;
+  else if (arg === "--hover-card") hoverCard = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
@@ -427,8 +429,34 @@ async function main(): Promise<number> {
       await command("osascript", ["-e", 'tell application "Finder" to activate'], AbortSignal.timeout(5000));
       note("C. Settings open behind Finder; settling 10 s");
       await sleep(10_000);
+      // What C measures depends on what Settings shows: a card's hover preview plays while the pointer rests on it, which
+      // the scenario never arranges. Where the pointer and the window are, and a screenshot with the pointer, at both ends.
+      // The pointer is parked on the menu bar, over no window, so the scenario measures Settings at rest wherever the
+      // steps before it left the pointer; `--hover-card` rests it on the first card's picture instead, which plays its
+      // preview (a diagnostic of what a person resting the pointer there costs).
+      const settingsFrame = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff")?.frame;
+      const park = hoverCard && settingsFrame
+        ? { x: settingsFrame.x + Math.round(settingsFrame.width * 0.32), y: settingsFrame.y + Math.round(settingsFrame.height * 0.3) }
+        : { x: 400, y: 10 };
+      await command("osascript", ["-l", "JavaScript", "-e",
+        `ObjC.import("CoreGraphics"); const e = $.CGEventCreateMouseEvent($(), 5, $.CGPointMake(${park.x}, ${park.y}), 0); $.CGEventPost(0, e); "moved"`],
+      AbortSignal.timeout(5000)).catch(() => "");
+      note(`C: pointer ${hoverCard ? "rested on the first card" : "parked on the menu bar"} at ${park.x},${park.y}`);
+      await sleep(1000);
+      const observeScene = async (when: string): Promise<void> => {
+        const pointer = await command("osascript", ["-l", "JavaScript", "-e",
+          'ObjC.import("AppKit"); const p = $.NSEvent.mouseLocation; const h = $.NSScreen.screens.objectAtIndex(0).frame.size.height; `${Math.round(p.x)},${Math.round(h - p.y)}`'],
+        AbortSignal.timeout(5000)).then((output) => output.trim(), () => "unknown");
+        const frame = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff")?.frame;
+        const shot = path.join(dir, `settings-open-${when}.png`);
+        const taken = await command("screencapture", ["-x", "-C", shot], AbortSignal.timeout(10_000)).then(() => true, () => false);
+        note(`C ${when}: pointer at ${pointer}; Settings at ${frame ? `${frame.x},${frame.y} ${frame.width}x${frame.height}` : "unknown"}; ` +
+          `${taken ? `screenshot ${path.relative(dir, shot)}` : "no screenshot"}`);
+      };
+      await observeScene("start");
       const cFrom = Date.now();
       await sleep(SETTINGS_MINUTES * 60_000);
+      await observeScene("end");
       const settingsOpen = window(cFrom, Date.now());
       const settingsRoles = readRoles(appPid);
       scenarios.push({ name: "C. Settings open behind another app", key: "settingsOpen", summary: settingsOpen, roles: settingsRoles,
