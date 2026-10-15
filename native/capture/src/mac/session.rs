@@ -21,18 +21,18 @@ use objc2_core_media::{CMAudioFormatDescriptionGetStreamBasicDescription, CMSamp
 use objc2_core_video::CVImageBuffer;
 use objc2_foundation::{NSError, NSObject, NSObjectProtocol};
 use objc2_screen_capture_kit::{
-    SCFrameStatus, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamFrameInfoStatus, SCStreamOutput, SCStreamOutputType,
+    SCContentFilter, SCFrameStatus, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamFrameInfoStatus, SCStreamOutput, SCStreamOutputType,
 };
 
 use super::audio::AacEncoder;
 use super::content::{self, describe};
 use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
-use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, VideoEncode};
+use super::microphone::MicrophoneCapture;
+use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
 use crate::pacing::Pacer;
-use crate::writer::WriteFailure;
 
-pub use crate::core::{Events, PrepareRequest, Prepared, Stopped};
+pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
@@ -41,16 +41,12 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const PIXEL_FORMAT_420V: u32 = u32::from_be_bytes(*b"420v");
 
 /// The source's size in pixels, for choosing the output size before `prepare`.
-pub fn probe(display_id: u32, _display_point: Option<(i32, i32)>) -> Result<(u32, u32), CaptureError> {
+pub fn probe(display_id: u32, _display_point: Option<(i32, i32)>, source: &Source) -> Result<(u32, u32), CaptureError> {
     let content = content::shareable_content()?;
     // Kept for the `prepare` that follows.
     content::remember(&content);
     let display = content::find_display(&content, display_id)?;
-    let filter = content::filter(&content, &display, &[], false);
-    let scale = content::point_pixel_scale(&filter.filter).max(1.0);
-    let width = (unsafe { display.width() } as f64 * scale).round() as u32;
-    let height = (unsafe { display.height() } as f64 * scale).round() as u32;
-    Ok((width, height))
+    content::source_size(&content, &display, source)
 }
 
 pub struct Frame {
@@ -104,23 +100,26 @@ impl AudioEncode for AacEncoder {
     }
 }
 
-type Shared = core::Shared<Mac>;
+pub(super) type Shared = core::Shared<Mac>;
 
-fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType) {
-    if kind == SCStreamOutputType::Screen {
+/// A stream's sample: `video` says whether its frames are the recording's, `sound` which input its sound is, if any.
+fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType, video: bool, sound_input: Option<usize>) {
+    if kind == SCStreamOutputType::Screen && video {
         if unsafe { frame_status(sample) } != Some(SCFrameStatus::Complete.0) {
             return;
         }
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
         shared.frame(Frame { image }, host_ns(unsafe { sample.presentation_time_stamp() }));
     } else if kind == SCStreamOutputType::Audio && shared.wants_sound() {
-        if let Err(detail) = sound(shared, sample) {
+        let Some(input) = sound_input else { return };
+        if let Err(detail) = sound(shared, input, sample, host_ns(unsafe { sample.presentation_time_stamp() })) {
             shared.fail(detail);
         }
     }
 }
 
-fn sound(shared: &Shared, sample: &CMSampleBuffer) -> Result<(), String> {
+/// Hands a sample buffer of 32-bit float sound at 48 kHz, captured at `pts` host time, to the core as `input`.
+pub(super) fn sound(shared: &Shared, input: usize, sample: &CMSampleBuffer, pts: u64) -> Result<(), String> {
     let format = unsafe { sample.format_description() }.ok_or("audio without a format")?;
     let asbd = unsafe { CMAudioFormatDescriptionGetStreamBasicDescription(&format).as_ref() }.ok_or("audio without a stream description")?;
     if asbd.mFormatFlags & kAudioFormatFlagIsFloat == 0 || asbd.mBitsPerChannel != 32 {
@@ -135,7 +134,6 @@ fn sound(shared: &Shared, sample: &CMSampleBuffer) -> Result<(), String> {
     if frames == 0 {
         return Ok(());
     }
-    let pts = host_ns(unsafe { sample.presentation_time_stamp() });
 
     // Copied out of the block buffer, as OBS does: planar data holds each channel's frames in turn.
     // (CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer refused ScreenCaptureKit's buffers with -12737.)
@@ -150,7 +148,7 @@ fn sound(shared: &Shared, sample: &CMSampleBuffer) -> Result<(), String> {
         return Err(format!("audio could not be read: {status}"));
     }
     let second = usize::from(channels > 1);
-    shared.sound(pts, frames, |frame, which| {
+    shared.sound(input, pts, frames, |frame, which| {
         let which = if which == 0 { 0 } else { second };
         if planar { samples[which * frames + frame] } else { samples[frame * channels + which] }
     })
@@ -170,6 +168,10 @@ unsafe fn frame_status(sample: &CMSampleBuffer) -> Option<isize> {
 
 pub struct DelegateIvars {
     shared: Arc<Shared>,
+    /// Whether this stream's frames are the recording's picture (an audio-only stream's are not).
+    video: bool,
+    /// The core input this stream's sound is, if it carries any.
+    sound: Option<usize>,
 }
 
 define_class!(
@@ -182,7 +184,8 @@ define_class!(
     unsafe impl SCStreamOutput for Delegate {
         #[unsafe(method(stream:didOutputSampleBuffer:ofType:))]
         fn stream_did_output(&self, _stream: &SCStream, sample: &CMSampleBuffer, kind: SCStreamOutputType) {
-            deliver(&self.ivars().shared, sample, kind);
+            let ivars = self.ivars();
+            deliver(&ivars.shared, sample, kind, ivars.video, ivars.sound);
         }
     }
 
@@ -195,16 +198,76 @@ define_class!(
 );
 
 impl Delegate {
-    fn new(shared: Arc<Shared>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(DelegateIvars { shared });
+    fn new(shared: Arc<Shared>, video: bool, sound: Option<usize>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(DelegateIvars { shared, video, sound });
         unsafe { msg_send![super(this), init] }
     }
 }
 
-pub struct Session {
+/// One `SCStream` with its outputs.
+struct Stream {
     stream: Unsent<SCStream>,
     _delegate: Unsent<Delegate>,
     _queues: (dispatch2::DispatchRetained<DispatchQueue>, dispatch2::DispatchRetained<DispatchQueue>),
+}
+
+impl Stream {
+    /// A stream of `filter` with `config`, its frames the picture when `video`, its sound `sound`'s input if any.
+    fn new(filter: &SCContentFilter, config: &SCStreamConfiguration, shared: Arc<Shared>, video: bool, sound: Option<usize>, name: &str) -> Result<Self, CaptureError> {
+        let delegate = Delegate::new(shared, video, sound);
+        let stream = unsafe {
+            SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), filter, config, Some(ProtocolObject::from_ref(&*delegate)))
+        };
+        let screen_queue = DispatchQueue::new(&format!("com.ericts.record.capture.{name}.screen"), None);
+        let audio_queue = DispatchQueue::new(&format!("com.ericts.record.capture.{name}.audio"), None);
+        let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);
+        unsafe {
+            // A screen output even on an audio-only stream, whose frames are ignored: without one ScreenCaptureKit
+            // logs every frame it drops.
+            stream
+                .addStreamOutput_type_sampleHandlerQueue_error(output, SCStreamOutputType::Screen, Some(&screen_queue))
+                .map_err(|e| CaptureError::new("capture_start_failed", format!("{name} screen output: {}", describe(&e))))?;
+            if sound.is_some() {
+                stream
+                    .addStreamOutput_type_sampleHandlerQueue_error(output, SCStreamOutputType::Audio, Some(&audio_queue))
+                    .map_err(|e| CaptureError::new("capture_start_failed", format!("{name} audio output: {}", describe(&e))))?;
+            }
+        }
+        Ok(Self { stream: Unsent(stream), _delegate: Unsent(delegate), _queues: (screen_queue, audio_queue) })
+    }
+
+    fn start(&self, what: &str) -> Result<(), CaptureError> {
+        wait_for(START_TIMEOUT, what, |block| unsafe { self.stream.0.startCaptureWithCompletionHandler(Some(block)) }).map_err(|detail| {
+            let code = if detail.contains("-3801") { "permission_denied" } else { "capture_start_failed" };
+            CaptureError::new(code, format!("{what}: {detail}"))
+        })
+    }
+
+    fn stop(&self) {
+        let _ = wait_for(STOP_TIMEOUT, "stopping capture", |block| unsafe { self.stream.0.stopCaptureWithCompletionHandler(Some(block)) });
+    }
+}
+
+/// The audio-only stream's configuration: sound as the picture's stream takes it, and the smallest, rarest frames.
+fn audio_only_config() -> Retained<SCStreamConfiguration> {
+    let config = unsafe { SCStreamConfiguration::new() };
+    unsafe {
+        config.setWidth(2);
+        config.setHeight(2);
+        config.setMinimumFrameInterval(CMTime { value: 1, timescale: 1, flags: CMTimeFlags::Valid, epoch: 0 });
+        config.setQueueDepth(3);
+        config.setCapturesAudio(true);
+        config.setSampleRate(SAMPLE_RATE as isize);
+        config.setChannelCount(CHANNELS as isize);
+        config.setExcludesCurrentProcessAudio(true);
+    }
+    config
+}
+
+pub struct Session {
+    /// The picture's stream first, then the sound's when it has its own.
+    streams: Vec<Stream>,
+    microphone: Option<MicrophoneCapture>,
     core: Core<Mac>,
 }
 
@@ -236,14 +299,26 @@ impl Session {
         let content = content::recent_or_fetch()?;
         mark("content");
         let display = content::find_display(&content, request.display_id)?;
-        let filter = content::filter(&content, &display, &request.own_pids, request.hide_system_ui);
+        let filter = content::video_filter(&content, &display, &request.source, &request.own_pids, request.hide_system_ui)?;
+        let audio_filter = content::audio_filter(&content, &display, &request.source, &request.audio.system, &request.own_pids)?;
+        let source_rect = match request.source {
+            Source::Area { x, y, width, height } => {
+                Some(content::area_rect(&display, content::point_pixel_scale(&filter.filter).max(1.0), (x, y, width, height))?)
+            }
+            _ => None,
+        };
         mark("filter");
+
+        // The core's sound inputs: the system's (or chosen apps'), then the microphone.
+        let system_input = (request.audio.system != SystemAudio::Off).then_some(0);
+        let microphone_input = request.audio.microphone.as_ref().map(|_| usize::from(system_input.is_some()));
+        let inputs = usize::from(system_input.is_some()) + usize::from(microphone_input.is_some());
 
         let file = OpenOptions::new()
             .write(true)
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
-        let core = Core::<Mac>::new(events, request.frame_rate, request.audio_bitrate, file);
+        let core = Core::<Mac>::new(events, request.frame_rate, request.audio_bitrate, inputs, file);
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
@@ -253,6 +328,8 @@ impl Session {
             Ok((video, audio))
         })?;
 
+        // The picture's stream carries the sound too when its filter is the sound's.
+        let picture_sound = if audio_filter.is_none() { system_input } else { None };
         let config = unsafe { SCStreamConfiguration::new() };
         unsafe {
             config.setWidth(request.width as usize);
@@ -262,39 +339,39 @@ impl Session {
             config.setPixelFormat(PIXEL_FORMAT_420V);
             config.setShowsCursor(true);
             config.setQueueDepth(6);
-            config.setCapturesAudio(true);
-            config.setSampleRate(SAMPLE_RATE as isize);
-            config.setChannelCount(CHANNELS as isize);
-            config.setExcludesCurrentProcessAudio(true);
+            if let Some(rect) = source_rect {
+                config.setSourceRect(rect);
+            }
+            config.setCapturesAudio(picture_sound.is_some());
+            if picture_sound.is_some() {
+                config.setSampleRate(SAMPLE_RATE as isize);
+                config.setChannelCount(CHANNELS as isize);
+                config.setExcludesCurrentProcessAudio(true);
+            }
         }
-
-        let delegate = Delegate::new(core.shared());
-        let stream = unsafe {
-            SCStream::initWithFilter_configuration_delegate(
-                SCStream::alloc(),
-                &filter.filter,
-                &config,
-                Some(ProtocolObject::from_ref(&*delegate)),
-            )
-        };
-        let screen_queue = DispatchQueue::new("com.ericts.record.capture.screen", None);
-        let audio_queue = DispatchQueue::new("com.ericts.record.capture.audio", None);
-        let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);
-        unsafe {
-            stream
-                .addStreamOutput_type_sampleHandlerQueue_error(output, SCStreamOutputType::Screen, Some(&screen_queue))
-                .map_err(|e| CaptureError::new("capture_start_failed", format!("screen output: {}", describe(&e))))?;
-            stream
-                .addStreamOutput_type_sampleHandlerQueue_error(output, SCStreamOutputType::Audio, Some(&audio_queue))
-                .map_err(|e| CaptureError::new("capture_start_failed", format!("audio output: {}", describe(&e))))?;
+        let mut streams = vec![Stream::new(&filter.filter, &config, core.shared(), true, picture_sound, "picture")?];
+        if let (Some(audio_filter), Some(input)) = (audio_filter.as_ref(), system_input) {
+            streams.push(Stream::new(audio_filter, &audio_only_config(), core.shared(), false, Some(input), "sound")?);
         }
-        let mut session = Session { stream: Unsent(stream), _delegate: Unsent(delegate), _queues: (screen_queue, audio_queue), core };
-        wait_for(START_TIMEOUT, "starting capture", |block| unsafe { session.stream.0.startCaptureWithCompletionHandler(Some(block)) })
-            .map_err(|detail| {
-                let code = if detail.contains("-3801") { "permission_denied" } else { "capture_start_failed" };
-                CaptureError::new(code, format!("starting capture: {detail}"))
-            })?;
+        let mut session = Session { streams, microphone: None, core };
+        for (index, stream) in session.streams.iter().enumerate() {
+            let what = if index == 0 { "starting capture" } else { "starting the sound's capture" };
+            if let Err(error) = stream.start(what) {
+                session.halt();
+                return Err(error);
+            }
+        }
         mark("stream start");
+        if let (Some(device), Some(input)) = (request.audio.microphone.as_ref(), microphone_input) {
+            match MicrophoneCapture::start(device.as_deref(), session.core.shared(), input) {
+                Ok(microphone) => session.microphone = Some(microphone),
+                Err(error) => {
+                    session.halt();
+                    return Err(error);
+                }
+            }
+            mark("microphone start");
+        }
         if let Err(error) = Core::<Mac>::encoders_made(encoders) {
             session.halt();
             return Err(error);
@@ -324,18 +401,23 @@ impl Session {
         self.core.record()
     }
 
-    /// Stops capture and the encoders, and finishes the file. Blocks until the file is plain or why it is not is known.
-    pub fn stop(mut self) -> Result<Stopped, WriteFailure> {
+    /// Stops capture and the encoders; the file is finished in the background (`Finishing::wait`).
+    pub fn stop(mut self) -> (Stopped, Finishing) {
         let stop_ns = now_ns();
         let drained = self.core.drain(stop_ns);
         self.halt();
-        self.core.finish(stop_ns, drained)
+        self.core.end(stop_ns, drained)
     }
 
     /// Ends capture and frame refreshes; frames and sound arriving afterwards are ignored.
     fn halt(&mut self) {
         self.core.halt();
-        let _ = wait_for(STOP_TIMEOUT, "stopping capture", |block| unsafe { self.stream.0.stopCaptureWithCompletionHandler(Some(block)) });
+        for stream in &self.streams {
+            stream.stop();
+        }
+        if let Some(microphone) = self.microphone.take() {
+            microphone.stop();
+        }
         self.core.halted();
     }
 

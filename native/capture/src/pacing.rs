@@ -5,7 +5,13 @@
 //! at the recording's start is kept, as OBS's frame-rate divisor and Cap's pacing do: a 60 Hz display then gives 30
 //! fps exactly, each kept frame two refreshes after the last. Not twice: a minimum interval equal to the refresh
 //! period made ScreenCaptureKit drop the refreshes that came a little early (measured 2026-10-14: 1.8% of 30 fps
-//! frames 50 ms apart at twice the rate, against 0.06% at 60 fps, whose interval was half the refresh period).
+//! frames 50 ms apart at twice the rate, against 0.06% at 60 fps, whose interval was half the refresh period). Asking
+//! for every refresh by name (no minimum interval) was no better (step 4, 2026-10-15: 0.17% dropped at 30 and at 60
+//! fps against 0.06% and 0.11% with a quarter, for about the same processor time).
+//!
+//! Frames keep ScreenCaptureKit's display time, about 11 ms ahead of their arrival. Stamping them on arrival moved the
+//! flash-to-beep offset from -7 and -15 ms to +5 and +3 ms but dropped 1.4% and 16% of the frames: arrival jitters with
+//! the callback's scheduling, and the grid keeps the wrong ones (step 4, 2026-10-15).
 
 use crate::timing::NANOS_PER_SECOND;
 

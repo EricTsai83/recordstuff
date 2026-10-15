@@ -43,8 +43,9 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "writeError", sessionId: "a", code: "disk_full", detail: "x" })).toBe(true);
     // A host may report only the write failures the engine can observe.
     expect(isHostMessage({ type: "writeError", sessionId: "a", code: "stop_timeout", detail: "x" })).toBe(false);
-    expect(isHostMessage({ type: "stopped", sessionId: "a", file: { bytes: 1, finalizeMs: 2, fragmented: "why" } })).toBe(true);
-    expect(isHostMessage({ type: "stopped", sessionId: "a", file: { bytes: 1 } })).toBe(false);
+    expect(isHostMessage({ type: "finished", sessionId: "a", file: { bytes: 1, finalizeMs: 2, fragmented: "why" } })).toBe(true);
+    expect(isHostMessage({ type: "finished", sessionId: "a", file: { bytes: 1 } })).toBe(false);
+    expect(isHostMessage({ type: "finished", sessionId: "a" })).toBe(false);
   });
   it("accepts every host → main shape", () => {
     expect(isHostMessage({ type: "ready" })).toBe(true);

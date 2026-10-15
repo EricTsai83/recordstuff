@@ -248,7 +248,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     reveal: file => shell.showItemInFolder(file),
     log,
   });
-  protocol.handle(MEDIA_SCHEME, request => library.handle(request));
+  // The library's media protocol lives on the default session, and using that session makes Electron start a renderer
+  // ahead of time, which then idles. With the native engine nothing else uses the session until a window opens, so the
+  // protocol is registered as the first window is made, before it loads anything (plan 076, step 4).
+  const registerMedia = (): void => protocol.handle(MEDIA_SCHEME, request => library.handle(request));
+  if (process.env["RECORDSTUFF_CAPTURE_ENGINE"] === "native") app.once("browser-window-created", registerMedia);
+  else registerMedia();
   appLanguage = () => settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
@@ -286,17 +291,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     changed: () => refreshUi(),
     log,
   });
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    displayMedia.answer(
-      // Only preparation asks for a display; a counting-down session already holds its stream.
-      (sessionId) => recorder.state.type === "starting" && host instanceof CaptureHost && host.ownsDisplayRequest(request.frame, sessionId),
-      (source) => {
-        if (source) callback({ video: source, audio: "loopback" });
-        else (callback as () => void)();
-      },
-    );
-  }, { useSystemPicker: false });
-
   // Plan 076's prototype engine, behind D7's development flag until it replaces the hidden capture renderer: a
   // `utilityProcess` running the Rust engine, which captures with ScreenCaptureKit (macOS) or Windows.Graphics.Capture
   // (Windows) and writes the file itself.
@@ -310,6 +304,20 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
   });
   log(`capture engine: ${nativeEngine ? "native (RECORDSTUFF_CAPTURE_ENGINE=native)" : "chromium"}`);
+  // Only the hidden capture renderer asks Chromium for the display. The native engine leaves the default session
+  // untouched: using it at launch makes Electron start a renderer ahead of time, which then idles (plan 076, step 4).
+  if (!nativeEngine) session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (host instanceof CaptureHost) host.phase("display requested");
+    displayMedia.answer(
+      // Only preparation asks for a display; a counting-down session already holds its stream.
+      (sessionId) => recorder.state.type === "starting" && host instanceof CaptureHost && host.ownsDisplayRequest(request.frame, sessionId),
+      (source) => {
+        if (host instanceof CaptureHost) host.phase("display answered");
+        if (source) callback({ video: source, audio: "loopback" });
+        else (callback as () => void)();
+      },
+    );
+  }, { useSystemPicker: false });
   const nativeHost = nativeEngine ? new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     // Native code cannot load from inside the asar archive; packaging unpacks out/native.
@@ -369,7 +377,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
       isSameFolder(dir, settings.defaultOutputDir) || dir === outputDirOverride),
     openWriter: (recordingPath, finalPath) => nativeHost
-      ? EngineFileWriter.open(recordingPath, finalPath, { report: (file) => nativeHost.takeReport(file) })
+      ? EngineFileWriter.open(recordingPath, finalPath, { outcome: (file) => nativeHost.fileOutcome(file) })
       : FileWriter.open(recordingPath, finalPath),
     fileName: date => formatFileName(settings.fileNameTemplate, date),
     freeSpace: async (dir) => { const volume = await fs.statfs(dir); return volume.bavail * volume.bsize; },

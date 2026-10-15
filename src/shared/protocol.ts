@@ -77,7 +77,7 @@ export type MainMessage =
 export const ENGINE_WRITE_ERROR_CODES = ["disk_full", "output_write_failed"] as const satisfies readonly ErrorCode[];
 export type EngineWriteErrorCode = (typeof ENGINE_WRITE_ERROR_CODES)[number];
 
-/** What the native engine reports about the file once it stopped: its size, and why it stayed fragmented, if it did. */
+/** What the native engine reports once it finished the file: its size, and why it stayed fragmented, if it did. */
 export interface EngineFileReport {
   bytes: number;
   finalizeMs: number;
@@ -92,7 +92,12 @@ export type HostMessage =
   | { type: "started"; sessionId: string }
   /** `bytes` is structured-cloned, never transferred: see `enqueueChunk` in src/renderer/capture/capture-host.ts. */
   | { type: "chunk"; sessionId: string; seq: number; bytes: ArrayBuffer }
-  | { type: "stopped"; sessionId: string; tracksStoppedAt?: number; file?: EngineFileReport }
+  | { type: "stopped"; sessionId: string; tracksStoppedAt?: number }
+  /**
+   * Native engine only, after `stopped`: the file is finished. The engine finishes it after capture stopped, so a slow
+   * volume's save is no part of the stop; a `writeError` instead says why it could not be.
+   */
+  | { type: "finished"; sessionId: string; file: EngineFileReport }
   | { type: "error"; sessionId: string; code: HostErrorCode; detail: string; displayFailure?: "track_ended" }
   /** Native engine only: media is still being written, `bytes` so far; what the stall guard watches instead of chunks. */
   | { type: "progress"; sessionId: string; bytes: number }
@@ -167,8 +172,9 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "stopped":
       return isNonEmptyString(value["sessionId"]) &&
         (value["tracksStoppedAt"] === undefined ||
-          (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"]))) &&
-        (value["file"] === undefined || isEngineFileReport(value["file"]));
+          (typeof value["tracksStoppedAt"] === "number" && Number.isFinite(value["tracksStoppedAt"])));
+    case "finished":
+      return isNonEmptyString(value["sessionId"]) && isEngineFileReport(value["file"]);
     case "progress":
       return isNonEmptyString(value["sessionId"]) && typeof value["bytes"] === "number" && Number.isFinite(value["bytes"]) && value["bytes"] >= 0;
     case "writeError":

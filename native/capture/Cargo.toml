@@ -26,12 +26,25 @@ objc2-video-toolbox = "0.3"
 objc2-audio-toolbox = "0.3"
 objc2-core-audio-types = "0.3"
 objc2-app-kit = "0.3"
+# The microphone (074) through AVCaptureSession.
+objc2-av-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "dispatch2",
+    "objc2-core-media",
+    "AVCaptureAudioDataOutput",
+    "AVCaptureDevice",
+    "AVCaptureInput",
+    "AVCaptureOutputBase",
+    "AVCaptureSession",
+    "AVMediaFormat",
+] }
 
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.62"
 windows = { version = "0.62", features = [
     "Foundation",
     "Graphics",
+    "Win32_Devices_FunctionDiscovery",
     "Graphics_Capture",
     "Graphics_DirectX",
     "Graphics_DirectX_Direct3D11",
@@ -56,6 +69,8 @@ windows = { version = "0.62", features = [
     "Win32_System_WinRT_Direct3D11",
     "Win32_System_WinRT_Graphics_Capture",
     "Win32_UI_HiDpi",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [build-dependencies]

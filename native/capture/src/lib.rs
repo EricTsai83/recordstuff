@@ -1,7 +1,9 @@
 //! RecordStuff's native capture engine (plan 076): capture, encoding and the hybrid MP4 file, loaded by the capture
-//! host in an Electron `utilityProcess` (src/main/native-capture/host-process.ts). Its JavaScript interface is
+//! host in an Electron `utilityProcess` (src/main/recording/native-host-process.ts). Its JavaScript interface is
 //! `NativeCapture`: `probe` the display, `prepare` capture into the file main created, `record`, then `stop` (or
-//! `cancel` before recording). Events arrive on the callback given to the constructor.
+//! `cancel` before recording), which answers once capture has ended, and `finish`, which answers once the file is
+//! plain or why it is not is known: a slow volume's save is no part of the stop. Events arrive on the callback given
+//! to the constructor.
 //!
 //! A failure rejects with a message `code|detail`, where `code` is one of the capture host's error codes.
 
@@ -46,6 +48,81 @@ pub struct DisplayPoint {
     pub y: i32,
 }
 
+/// What the picture shows; absent is the whole display.
+#[napi(object)]
+pub struct CaptureSource {
+    /// `display`, `window`, `area` or `apps`.
+    pub kind: String,
+    /// `window`: its CGWindowID on macOS, its HWND on Windows.
+    pub window_id: Option<i64>,
+    /// `area`: in the display's pixels from its top-left corner.
+    pub area: Option<Area>,
+    /// `apps`: the processes whose windows are shown (macOS).
+    pub pids: Option<Vec<i32>>,
+}
+
+#[napi(object)]
+#[derive(Clone, Copy)]
+pub struct Area {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The track's sound; absent is today's: everything the system plays except RecordStuff, and no microphone.
+#[napi(object)]
+pub struct AudioOptions {
+    /// `all`, `apps` or `off`.
+    pub system: String,
+    /// `apps`: whose sound.
+    pub pids: Option<Vec<i32>>,
+    /// Mixes the microphone in.
+    pub microphone: bool,
+    /// The device `microphones` listed; absent is the system's default input.
+    pub microphone_id: Option<String>,
+}
+
+#[napi(object)]
+pub struct MicrophoneInfo {
+    pub id: String,
+    pub name: String,
+    pub default: bool,
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn source(source: Option<CaptureSource>) -> Result<core::Source> {
+    let Some(source) = source else { return Ok(core::Source::Display) };
+    let missing = |what: &str| failure("capture_start_failed", format!("a {} source needs its {what}", source.kind));
+    Ok(match source.kind.as_str() {
+        "display" => core::Source::Display,
+        "window" => core::Source::Window(u64::try_from(source.window_id.ok_or_else(|| missing("windowId"))?).map_err(|_| missing("windowId"))?),
+        "area" => {
+            let area = source.area.ok_or_else(|| missing("area"))?;
+            if area.width < 2 || area.height < 2 {
+                return Err(failure("capture_start_failed", format!("an area of {}x{} pixels is too small to record", area.width, area.height)));
+            }
+            core::Source::Area { x: area.x, y: area.y, width: area.width, height: area.height }
+        }
+        "apps" => core::Source::Apps(source.pids.clone().filter(|pids| !pids.is_empty()).ok_or_else(|| missing("pids"))?),
+        other => return Err(failure("capture_start_failed", format!("unknown capture source {other:?}"))),
+    })
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn audio(audio: Option<AudioOptions>) -> Result<core::AudioRequest> {
+    let Some(audio) = audio else { return Ok(core::AudioRequest::default()) };
+    let system = match audio.system.as_str() {
+        "all" => core::SystemAudio::All,
+        "apps" => core::SystemAudio::Apps(
+            audio.pids.clone().filter(|pids| !pids.is_empty()).ok_or_else(|| failure("capture_start_failed", "app audio needs its pids"))?,
+        ),
+        "off" => core::SystemAudio::Off,
+        other => return Err(failure("capture_start_failed", format!("unknown system audio {other:?}"))),
+    };
+    Ok(core::AudioRequest { system, microphone: audio.microphone.then_some(audio.microphone_id) })
+}
+
 #[napi(object)]
 pub struct PrepareOptions {
     /// The display's CGDirectDisplayID on macOS; unused on Windows.
@@ -62,6 +139,8 @@ pub struct PrepareOptions {
     pub hide_system_ui: bool,
     /// The temporary recording file main created; the engine writes it from the start.
     pub path: String,
+    pub source: Option<CaptureSource>,
+    pub audio: Option<AudioOptions>,
 }
 
 #[napi(object)]
@@ -80,16 +159,23 @@ pub struct PreparedInfo {
 
 #[napi(object)]
 pub struct StopReport {
-    pub bytes: f64,
-    /// Why the file stayed fragmented, when it did.
-    pub fragmented: Option<String>,
-    pub finalize_ms: f64,
     /// How long the sound up to the stop took to arrive, and how many of its frames were filled with silence.
     pub drain_ms: f64,
     pub drain_padded_frames: f64,
     /// How far ahead of the host clock frames were stamped when handed over: average and maximum, in ms.
     pub frame_lead_avg_ms: f64,
     pub frame_lead_max_ms: f64,
+    /// Frames each audio input delivered too late to be mixed.
+    pub late_audio_frames: Vec<f64>,
+}
+
+#[napi(object)]
+pub struct FinishReport {
+    pub bytes: f64,
+    /// Why the file stayed fragmented, when it did.
+    pub fragmented: Option<String>,
+    /// From the stop's end to the file's.
+    pub finalize_ms: f64,
 }
 
 #[napi(object)]
@@ -135,10 +221,16 @@ impl core::Events for Emitter {
 type Session = platform::session::Session;
 #[cfg(not(any(target_os = "macos", windows)))]
 type Session = ();
+#[cfg(any(target_os = "macos", windows))]
+type Finishing = core::Finishing;
+#[cfg(not(any(target_os = "macos", windows)))]
+type Finishing = ();
 
 #[napi]
 pub struct NativeCapture {
     session: Arc<Mutex<Option<Session>>>,
+    /// The stopped session's file, until `finish` takes it.
+    finishing: Arc<Mutex<Option<Finishing>>>,
     events: Arc<EventCallback>,
 }
 
@@ -147,12 +239,19 @@ impl NativeCapture {
     #[napi(constructor)]
     pub fn new(on_event: Function<EngineEvent, ()>) -> Result<Self> {
         let events = on_event.build_threadsafe_function().callee_handled::<false>().build()?;
-        Ok(Self { session: Arc::new(Mutex::new(None)), events: Arc::new(events) })
+        Ok(Self { session: Arc::new(Mutex::new(None)), finishing: Arc::new(Mutex::new(None)), events: Arc::new(events) })
     }
 
+    /// The source's size in pixels, for choosing the output size: the display's, the window's or the area's.
     #[napi(ts_return_type = "Promise<ProbeResult>")]
-    pub fn probe(&self, display_id: u32, display_point: Option<DisplayPoint>) -> AsyncTask<ProbeTask> {
-        AsyncTask::new(ProbeTask { display_id, display_point: display_point.map(|p| (p.x, p.y)) })
+    pub fn probe(&self, display_id: u32, display_point: Option<DisplayPoint>, source: Option<CaptureSource>) -> AsyncTask<ProbeTask> {
+        AsyncTask::new(ProbeTask { display_id, display_point: display_point.map(|p| (p.x, p.y)), source: Some(source) })
+    }
+
+    /// The audio input devices, for choosing the microphone.
+    #[napi(ts_return_type = "Promise<MicrophoneInfo[]>")]
+    pub fn microphones(&self) -> AsyncTask<MicrophonesTask> {
+        AsyncTask::new(MicrophonesTask)
     }
 
     #[napi(ts_return_type = "Promise<PreparedInfo>")]
@@ -173,9 +272,17 @@ impl NativeCapture {
         Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
     }
 
+    /// Ends capture and encoding; the file is then finished in the background, until `finish` answers.
     #[napi(ts_return_type = "Promise<StopReport>")]
     pub fn stop(&self) -> AsyncTask<StopTask> {
-        AsyncTask::new(StopTask { session: self.session.clone() })
+        AsyncTask::new(StopTask { session: self.session.clone(), finishing: self.finishing.clone() })
+    }
+
+    /// Waits for the stopped session's file. Rejects with `disk_full` or `output_write_failed` when it could not be
+    /// finished; nothing stopped is an empty report.
+    #[napi(ts_return_type = "Promise<FinishReport>")]
+    pub fn finish(&self) -> AsyncTask<FinishTask> {
+        AsyncTask::new(FinishTask { finishing: self.finishing.clone() })
     }
 
     #[napi(ts_return_type = "Promise<void>")]
@@ -187,6 +294,7 @@ impl NativeCapture {
 pub struct ProbeTask {
     display_id: u32,
     display_point: Option<(i32, i32)>,
+    source: Option<Option<CaptureSource>>,
 }
 
 impl Task for ProbeTask {
@@ -195,13 +303,37 @@ impl Task for ProbeTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         #[cfg(any(target_os = "macos", windows))]
-        return platform::session::probe(self.display_id, self.display_point).map_err(|e| failure(e.code, e.detail));
+        {
+            let source = source(self.source.take().flatten())?;
+            platform::session::probe(self.display_id, self.display_point, &source).map_err(|e| failure(e.code, e.detail))
+        }
         #[cfg(not(any(target_os = "macos", windows)))]
         Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
     }
 
     fn resolve(&mut self, _env: Env, (width, height): Self::Output) -> Result<Self::JsValue> {
         Ok(ProbeResult { width, height })
+    }
+}
+
+pub struct MicrophonesTask;
+
+impl Task for MicrophonesTask {
+    type Output = Vec<MicrophoneInfo>;
+    type JsValue = Vec<MicrophoneInfo>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let found = platform::microphone::list().map_err(|e| failure(e.code, e.detail))?;
+            Ok(found.into_iter().map(|m| MicrophoneInfo { id: m.id, name: m.name, default: m.default }).collect())
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        Ok(Vec::new())
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
     }
 }
 
@@ -233,6 +365,8 @@ impl Task for PrepareTask {
                 own_pids: options.own_pids,
                 hide_system_ui: options.hide_system_ui,
                 path: options.path.into(),
+                source: source(options.source)?,
+                audio: audio(options.audio)?,
             };
             let (session, prepared) =
                 Session::prepare(request, Arc::new(Emitter(self.events.clone()))).map_err(|e| failure(e.code, e.detail))?;
@@ -263,6 +397,11 @@ impl Task for PrepareTask {
 
 pub struct StopTask {
     session: Arc<Mutex<Option<Session>>>,
+    finishing: Arc<Mutex<Option<Finishing>>>,
+}
+
+fn nothing_stopped() -> StopReport {
+    StopReport { drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0, late_audio_frames: Vec::new() }
 }
 
 impl Task for StopTask {
@@ -271,25 +410,55 @@ impl Task for StopTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         let Some(session) = self.session.lock().unwrap().take() else {
-            return Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 });
+            return Ok(nothing_stopped());
         };
         #[cfg(any(target_os = "macos", windows))]
         {
-            let stopped = session.stop().map_err(|e| failure(e.code, e.detail))?;
+            let (stopped, finishing) = session.stop();
+            *self.finishing.lock().unwrap() = Some(finishing);
             Ok(StopReport {
-                bytes: stopped.bytes as f64,
-                fragmented: stopped.fragmented,
-                finalize_ms: stopped.finalize_ms,
                 drain_ms: stopped.drain_ms,
                 drain_padded_frames: stopped.drain_padded_frames as f64,
                 frame_lead_avg_ms: stopped.frame_lead_ms.0,
                 frame_lead_max_ms: stopped.frame_lead_ms.1,
+                late_audio_frames: stopped.late_audio_frames.iter().map(|&frames| frames as f64).collect(),
             })
         }
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             let () = session;
-            Ok(StopReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0, drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0 })
+            let _ = &self.finishing;
+            Ok(nothing_stopped())
+        }
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub struct FinishTask {
+    finishing: Arc<Mutex<Option<Finishing>>>,
+}
+
+impl Task for FinishTask {
+    type Output = FinishReport;
+    type JsValue = FinishReport;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let nothing = FinishReport { bytes: 0.0, fragmented: None, finalize_ms: 0.0 };
+        let Some(finishing) = self.finishing.lock().unwrap().take() else {
+            return Ok(nothing);
+        };
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let finished = finishing.wait().map_err(|e| failure(e.code, e.detail))?;
+            Ok(FinishReport { bytes: finished.bytes as f64, fragmented: finished.fragmented, finalize_ms: finished.finalize_ms })
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let () = finishing;
+            Ok(nothing)
         }
     }
 

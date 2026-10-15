@@ -1,6 +1,8 @@
-//! What ScreenCaptureKit may capture, and the filter for one recording: the chosen display without RecordStuff's own
+//! What ScreenCaptureKit may capture, and the filters for one recording: the chosen display without RecordStuff's own
 //! windows and sound (075's D14, always), and optionally without the menu bar, the Dock, desktop icons and widgets
-//! (076's D6).
+//! (076's D6); or one window, part of the display, or only chosen apps' windows (step 4, engine only). Sound follows a
+//! stream's filter, so when the picture's filter is not the sound's (a window, chosen apps, or chosen apps' sound) the
+//! sound comes from a second, audio-only stream with its own filter.
 
 use std::sync::Mutex;
 use std::sync::mpsc::channel;
@@ -9,10 +11,12 @@ use std::time::{Duration, Instant};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::{AnyThread, msg_send, sel};
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSArray, NSError, NSObjectProtocol};
 use objc2_screen_capture_kit::{SCContentFilter, SCDisplay, SCRunningApplication, SCShareableContent, SCWindow};
 
 use super::{CaptureError, Unsent};
+use crate::core::{Source, SystemAudio};
 
 /// SCStreamErrorUserDeclined: the user has not granted screen recording.
 const USER_DECLINED: isize = -3801;
@@ -160,4 +164,135 @@ pub fn filter(content: &SCShareableContent, display: &SCDisplay, own_pids: &[i32
 pub fn point_pixel_scale(filter: &SCContentFilter) -> f64 {
     let info = unsafe { SCShareableContent::infoForFilter(filter) };
     f64::from(unsafe { info.pointPixelScale() })
+}
+
+/// Connects this process to the window server once. A window filter needs the connection, which an app has but the
+/// capture `utilityProcess` does not: without it CoreGraphics aborts the process (`CGS_REQUIRE_INIT`). Asking for the
+/// main display makes it.
+fn window_server() {
+    static CONNECTED: std::sync::Once = std::sync::Once::new();
+    unsafe extern "C" {
+        fn CGMainDisplayID() -> u32;
+    }
+    CONNECTED.call_once(|| {
+        unsafe { CGMainDisplayID() };
+    });
+}
+
+fn find_window(content: &SCShareableContent, window_id: u64) -> Result<Retained<SCWindow>, CaptureError> {
+    window_server();
+    let windows = unsafe { content.windows() };
+    windows
+        .iter()
+        .find(|window| u64::from(unsafe { window.windowID() }) == window_id)
+        .ok_or_else(|| CaptureError::new("capture_start_failed", format!("window {window_id} is not available for capture (closed?)")))
+}
+
+/// The running apps among `pids` that are not RecordStuff's own.
+fn chosen_apps(content: &SCShareableContent, pids: &[i32], own_pids: &[i32]) -> Result<Vec<Retained<SCRunningApplication>>, CaptureError> {
+    let own: Vec<i32> = own_apps(content, own_pids).iter().map(|app| unsafe { app.processID() }).collect();
+    let apps: Vec<_> = unsafe { content.applications() }
+        .iter()
+        .filter(|app| {
+            let pid = unsafe { app.processID() };
+            pids.contains(&pid) && !own.contains(&pid)
+        })
+        .collect();
+    if apps.is_empty() {
+        return Err(CaptureError::new("capture_start_failed", format!("none of the chosen apps ({pids:?}) is running with anything to capture")));
+    }
+    Ok(apps)
+}
+
+/// The picture's filter for `source`: what `filter` gives for the display, or one window, or chosen apps' windows.
+/// An area is the display's filter cut by `area_rect`.
+pub fn video_filter(
+    content: &SCShareableContent,
+    display: &SCDisplay,
+    source: &Source,
+    own_pids: &[i32],
+    hide_system_ui: bool,
+) -> Result<Filter, CaptureError> {
+    match source {
+        Source::Display | Source::Area { .. } => Ok(filter(content, display, own_pids, hide_system_ui)),
+        Source::Window(id) => {
+            let window = find_window(content, *id)?;
+            let filter = unsafe { SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window) };
+            Ok(Filter { filter, excluded_apps: 0, hidden_windows: 0, warnings: Vec::new() })
+        }
+        Source::Apps(pids) => {
+            let apps = chosen_apps(content, pids, own_pids)?;
+            let hidden = if hide_system_ui { system_ui_windows(content, &own_apps(content, own_pids)) } else { Vec::new() };
+            let filter = unsafe {
+                SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
+                    SCContentFilter::alloc(),
+                    display,
+                    &NSArray::from_retained_slice(&apps),
+                    &NSArray::from_retained_slice(&hidden),
+                )
+            };
+            Ok(Filter { filter, excluded_apps: 0, hidden_windows: hidden.len(), warnings: Vec::new() })
+        }
+    }
+}
+
+/// The filter of the audio-only stream, when the picture's stream cannot carry the sound asked for: `None` when it
+/// can (the display or an area of it, with everything the system plays) or when no system sound is wanted.
+pub fn audio_filter(
+    content: &SCShareableContent,
+    display: &SCDisplay,
+    source: &Source,
+    audio: &SystemAudio,
+    own_pids: &[i32],
+) -> Result<Option<Retained<SCContentFilter>>, CaptureError> {
+    match (audio, source) {
+        (SystemAudio::Off, _) | (SystemAudio::All, Source::Display | Source::Area { .. }) => Ok(None),
+        (SystemAudio::All, _) => Ok(Some(filter(content, display, own_pids, false).filter)),
+        (SystemAudio::Apps(pids), _) => {
+            let apps = chosen_apps(content, pids, own_pids)?;
+            Ok(Some(unsafe {
+                SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
+                    SCContentFilter::alloc(),
+                    display,
+                    &NSArray::from_retained_slice(&apps),
+                    &NSArray::new(),
+                )
+            }))
+        }
+    }
+}
+
+/// The area in the display's points, which `SCStreamConfiguration.sourceRect` takes, from its pixels; refused when it
+/// does not lie on the display.
+pub fn area_rect(display: &SCDisplay, scale: f64, (x, y, width, height): (u32, u32, u32, u32)) -> Result<CGRect, CaptureError> {
+    let (display_width, display_height) = (unsafe { display.width() } as f64 * scale, unsafe { display.height() } as f64 * scale);
+    if f64::from(x + width) > display_width.round() || f64::from(y + height) > display_height.round() {
+        return Err(CaptureError::new(
+            "capture_start_failed",
+            format!("the area {width}x{height} at {x},{y} does not lie on the {display_width:.0}x{display_height:.0} display"),
+        ));
+    }
+    Ok(CGRect::new(
+        CGPoint::new(f64::from(x) / scale, f64::from(y) / scale),
+        CGSize::new(f64::from(width) / scale, f64::from(height) / scale),
+    ))
+}
+
+/// The source's size in pixels.
+pub fn source_size(content: &SCShareableContent, display: &SCDisplay, source: &Source) -> Result<(u32, u32), CaptureError> {
+    match source {
+        Source::Display | Source::Apps(_) => {
+            let filter = filter(content, display, &[], false);
+            let scale = point_pixel_scale(&filter.filter).max(1.0);
+            Ok(((unsafe { display.width() } as f64 * scale).round() as u32, (unsafe { display.height() } as f64 * scale).round() as u32))
+        }
+        Source::Area { width, height, .. } => Ok((*width, *height)),
+        Source::Window(id) => {
+            let window = find_window(content, *id)?;
+            let filter = unsafe { SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window) };
+            let scale = point_pixel_scale(&filter).max(1.0);
+            let frame = unsafe { window.frame() };
+            Ok(((frame.size.width * scale).round() as u32, (frame.size.height * scale).round() as u32))
+        }
+    }
 }

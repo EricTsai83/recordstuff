@@ -125,10 +125,14 @@ struct Rig {
 
 impl Rig {
     fn new(name: &str) -> Self {
+        Self::with_inputs(name, 1)
+    }
+
+    fn with_inputs(name: &str, inputs: usize) -> Self {
         let path = std::env::temp_dir().join(format!("recordstuff-core-{name}-{}.mp4", std::process::id()));
         let file = File::create(&path).unwrap();
         let heard = Arc::new(Heard::default());
-        let core = Core::<Fake>::new(heard.clone(), 30, 192_000, file);
+        let core = Core::<Fake>::new(heard.clone(), 30, 192_000, inputs, file);
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
         let (e, f) = (encoded.clone(), fail.clone());
@@ -155,7 +159,7 @@ impl Rig {
             if sound {
                 // Sound arrives in 480-frame buffers stamped with when they began.
                 while next_sound + 10_000_000 <= Fake::now_ns() {
-                    self.shared.sound(next_sound, 480, |_, _| 0.1).unwrap();
+                    self.shared.sound(0, next_sound, 480, |_, _| 0.1).unwrap();
                     next_sound += 10_000_000;
                 }
             }
@@ -163,12 +167,13 @@ impl Rig {
         }
     }
 
-    fn stop(&mut self) -> (u64, Stopped) {
+    fn stop(&mut self) -> (u64, Stopped, Finished) {
         let stop_ns = Fake::now_ns();
         let drained = self.core.drain(stop_ns);
         self.core.halt();
         self.core.halted();
-        (stop_ns, self.core.finish(stop_ns, drained).unwrap())
+        let (stopped, finishing) = self.core.end(stop_ns, drained);
+        (stop_ns, stopped, finishing.wait().unwrap())
     }
 
     fn file(&self) -> crate::mux::parse::Mp4 {
@@ -211,20 +216,20 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     let feeding = Arc::new(AtomicBool::new(true));
     let feeder = {
         let (shared, feeding) = (rig.shared.clone(), feeding.clone());
-        let mut next = rig.shared.audio.lock().unwrap().aligner.as_ref().map(|a| a.position()).unwrap();
+        let mut next = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(0)).unwrap();
         let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
         std::thread::spawn(move || {
             while feeding.load(Ordering::Acquire) {
                 let at = t0 + next * NANOS_PER_SECOND / 48_000;
                 if at + 10_000_000 <= Fake::now_ns() {
-                    shared.sound(at, 480, |_, _| 0.1).unwrap();
+                    shared.sound(0, at, 480, |_, _| 0.1).unwrap();
                     next += 480;
                 }
                 std::thread::sleep(Duration::from_millis(1));
             }
         })
     };
-    let (_, stopped) = rig.stop();
+    let (_, stopped, finished) = rig.stop();
     feeding.store(false, Ordering::Release);
     feeder.join().unwrap();
 
@@ -235,7 +240,7 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     assert!((9..=15).contains(&(encoded.len() - 1)), "{} frames", encoded.len() - 1);
     assert!(encoded.windows(2).all(|w| w[1].1 - w[0].1 > 16_000_000), "{encoded:?}");
     assert_eq!(stopped.drain_padded_frames, 0, "sound kept up, so nothing was filled in");
-    assert_eq!(stopped.fragmented, None);
+    assert_eq!(finished.fragmented, None);
 
     let file = rig.file();
     assert!(file.tracks[0].samples[0].sync);
@@ -251,16 +256,21 @@ fn nothing_captured_after_the_stop_is_kept() {
     rig.shared.frame(1, Fake::now_ns());
     rig.core.record().unwrap();
     rig.capture(Duration::from_millis(150), Duration::from_millis(33), true);
+    // No frame for longer than a slot, so the pacer would take the next one at once.
+    std::thread::sleep(Duration::from_millis(50));
     let stop_ns = Fake::now_ns();
     let drained = rig.core.drain(stop_ns);
     let encoded = rig.encoded.lock().unwrap().len();
+    // A frame stamped at the stop itself is after it: the video ends there.
+    rig.shared.frame(998, stop_ns);
+    assert_eq!(rig.encoded.lock().unwrap().len(), encoded, "the frame at the stop");
     // A frame and sound stamped after the stop, arriving while capture still runs.
     rig.shared.frame(999, stop_ns + 40_000_000);
-    rig.shared.sound(stop_ns + 1_000_000, 4_800, |_, _| 0.5).unwrap();
+    rig.shared.sound(0, stop_ns + 1_000_000, 4_800, |_, _| 0.5).unwrap();
     assert_eq!(rig.encoded.lock().unwrap().len(), encoded);
     rig.core.halt();
     rig.core.halted();
-    rig.core.finish(stop_ns, drained).unwrap();
+    rig.core.end(stop_ns, drained).1.wait().unwrap();
     let file = rig.file();
     let (video_ms, audio_ms) = lengths(&file);
     assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
@@ -274,7 +284,7 @@ fn sound_that_does_not_arrive_by_the_deadline_becomes_silence() {
     rig.capture(Duration::from_millis(200), Duration::from_millis(33), true);
     // The sound stops arriving 100 ms before the stop.
     rig.capture(Duration::from_millis(100), Duration::from_millis(33), false);
-    let (_, stopped) = rig.stop();
+    let (_, stopped, _) = rig.stop();
     assert!(stopped.drain_ms >= 240.0, "waited {} ms", stopped.drain_ms);
     // About 100 ms, and the part of the last buffer that had not been handed over.
     assert!((4_000..=6_000).contains(&stopped.drain_padded_frames), "{} frames of silence", stopped.drain_padded_frames);
@@ -284,16 +294,53 @@ fn sound_that_does_not_arrive_by_the_deadline_becomes_silence() {
 }
 
 #[test]
-fn a_recording_without_any_sound_waits_out_the_deadline_and_fills_nothing_in() {
+fn a_recording_without_any_sound_gets_a_silent_track_as_long_as_its_video() {
     let mut rig = Rig::new("mute");
     rig.shared.frame(1, Fake::now_ns());
     rig.core.record().unwrap();
-    rig.capture(Duration::from_millis(100), Duration::from_millis(33), false);
-    let (_, stopped) = rig.stop();
-    // Sound may still be on its way, so the deadline is waited out; with none at all the track stays empty.
-    assert_eq!(stopped.drain_padded_frames, 0);
+    // Longer than the mixer's latency, so the clock has already moved the track on.
+    rig.capture(Duration::from_millis(700), Duration::from_millis(33), false);
+    let (_, stopped, _) = rig.stop();
+    // Sound may still be on its way, so the deadline is waited out; the rest is silence up to the stop.
     assert!((240.0..400.0).contains(&stopped.drain_ms), "waited {} ms", stopped.drain_ms);
-    assert!(rig.file().tracks[0].samples.len() >= 2);
+    assert!(stopped.drain_padded_frames > 0 && stopped.drain_padded_frames < 30_000, "{} frames", stopped.drain_padded_frames);
+    let file = rig.file();
+    assert!(file.tracks[0].samples.len() >= 2);
+    let (video_ms, audio_ms) = lengths(&file);
+    assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
+}
+
+#[test]
+fn a_second_input_that_stops_delivering_holds_the_track_back_only_for_the_mixing_latency() {
+    let mut rig = Rig::with_inputs("two", 2);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // Both inputs for 300 ms, then only the first for a second: the second (a microphone, say) went quiet.
+    let mut next = 0u64;
+    let feed = |next: &mut u64, both: bool| {
+        let at = t0 + *next * NANOS_PER_SECOND / 48_000;
+        rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+        if both {
+            rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+        }
+        *next += 480;
+    };
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_millis(1_300) {
+        while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+            feed(&mut next, began.elapsed() < Duration::from_millis(300));
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    // The track went on past where the second input stopped: up to the clock less the latency, at least.
+    let mixed = rig.shared.audio.lock().unwrap().mixed();
+    assert!(mixed > 24_000, "only {mixed} frames mixed");
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.late_audio_frames, [0, 0]);
+    let (video_ms, audio_ms) = lengths(&rig.file());
+    assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
 }
 
 #[test]

@@ -5,16 +5,17 @@
 //! so the recording is listed as untested. Any other error fails.
 //!
 //! System audio alone and the display alone come first, each its own test that CI runs in its own process, so a
-//! crash in one part names that part.
+//! crash in one part names that part. Step 4's sources follow: a window the test opens, an area of the display, one
+//! process's sound and the microphone, which a runner usually lacks (then untested, as above).
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::audio::SoundCapture;
+use super::audio::{Sound, SoundCapture};
 use super::capture::{self, DisplayCapture, Gpu};
 use super::com;
 use super::session::{Session, Win};
-use crate::core::{CaptureError, Core, Events, PrepareRequest};
+use crate::core::{AudioRequest, CaptureError, Core, Events, PrepareRequest, Prepared, Source, Stopped, SystemAudio};
 use crate::pacing::Pacer;
 use crate::mux::parse::parse;
 use crate::writer::WriteFailure;
@@ -33,14 +34,16 @@ impl Events for Heard {
 }
 
 /// Failures that mean this session has nothing to capture, rather than that the engine is wrong.
-const UNAVAILABLE: [&str; 7] = [
+const UNAVAILABLE: [&str; 9] = [
     "no display contains",
     "Windows.Graphics.Capture is not available",
     "the display could not be captured",
+    "the window could not be captured",
     "delivered no frame",
     "system audio capture is not available",
     "system audio capture was refused",
     "system audio capture did not open",
+    "microphone: ",
 ];
 
 fn summary(line: &str) {
@@ -66,7 +69,7 @@ fn untested(what: &str, error: &CaptureError, heard: &Heard) -> bool {
 fn idle_core(heard: Arc<Heard>) -> (Core<Win>, std::path::PathBuf) {
     let path = std::env::temp_dir().join(format!("recordstuff-live-part-{}.mp4", std::process::id()));
     let file = std::fs::File::create(&path).unwrap();
-    (Core::<Win>::new(heard, 30, 192_000, file), path)
+    (Core::<Win>::new(heard, 30, 192_000, 1, file), path)
 }
 
 #[test]
@@ -76,7 +79,7 @@ fn live_sound_alone_opens_reads_and_stops() {
     let heard = Arc::new(Heard::default());
     let (core, path) = idle_core(heard.clone());
     eprintln!("sound: starting process loopback");
-    let mut sound = match SoundCapture::start(std::process::id(), core.shared()) {
+    let mut sound = match SoundCapture::start(&Sound::AllExcept(std::process::id()), 0, core.shared()) {
         Ok(sound) => sound,
         Err(error) if untested("system audio", &error, &heard) => return,
         Err(error) => panic!("sound failed to start: {}: {}", error.code, error.detail),
@@ -104,7 +107,7 @@ fn live_display_alone_delivers_frames() {
         let gpu = Gpu::new()?;
         eprintln!("display: {}x{}, software device {}; starting capture", size.Width, size.Height, gpu.0.software);
         let (width, height) = ((size.Width as u32).min(1280) & !1, (size.Height as u32).min(720) & !1);
-        DisplayCapture::start(gpu, &item, width, height, Pacer::capture_interval_ns(30), core.shared())
+        DisplayCapture::start(gpu, &item, None, width, height, Pacer::capture_interval_ns(30), core.shared())
     })();
     let (display, borderless, cpu) = match started {
         Ok(started) => started,
@@ -125,12 +128,38 @@ fn live_display_alone_delivers_frames() {
 }
 
 #[test]
-#[ignore = "records the display and system audio; CI's Windows job runs it"]
-fn live_capture_records_the_primary_display_and_system_audio() {
-    let path = std::env::temp_dir().join(format!("recordstuff-live-{}.mp4", std::process::id()));
+#[ignore = "captures one process's sound and the microphone; CI's Windows job runs it"]
+fn live_one_process_sound_and_the_microphone_open_read_and_stop() {
+    com();
+    match super::audio::microphones() {
+        Ok(found) => summary(&format!("Windows audio inputs: {:?}", found.iter().map(|m| (&m.name, m.default)).collect::<Vec<_>>())),
+        Err(error) => summary(&format!("Windows audio inputs could not be listed: {}", error.detail)),
+    }
+    for (what, sound) in [("one process's sound", Sound::Only(std::process::id())), ("the microphone", Sound::Microphone(None))] {
+        let heard = Arc::new(Heard::default());
+        let (core, path) = idle_core(heard.clone());
+        eprintln!("{what}: starting");
+        let mut capture = match SoundCapture::start(&sound, 0, core.shared()) {
+            Ok(capture) => capture,
+            Err(error) if untested(what, &error, &heard) => continue,
+            Err(error) => panic!("{what} failed to start: {}: {}", error.code, error.detail),
+        };
+        std::thread::sleep(Duration::from_secs(1));
+        capture.stop();
+        drop(capture);
+        assert!(heard.0.lock().unwrap().is_empty(), "{what}: {:?}", heard.0.lock().unwrap());
+        drop(core);
+        let _ = std::fs::remove_file(&path);
+        summary(&format!("Windows live {what}: opened, read for 1 s and stopped"));
+    }
+}
+
+/// Records `source` with `audio` for three seconds through a whole session and reads the file back; `None` when the
+/// session cannot capture (said in the job summary).
+fn record(name: &str, source: Source, audio: AudioRequest, (width, height): (u32, u32)) -> Option<(Prepared, Stopped, crate::mux::parse::Mp4)> {
+    let path = std::env::temp_dir().join(format!("recordstuff-live-{name}-{}.mp4", std::process::id()));
     std::fs::File::create(&path).unwrap();
     let heard = Arc::new(Heard::default());
-    let (width, height) = super::session::probe(0, None).map(|(w, h)| (w.min(1920) & !1, h.min(1080) & !1)).unwrap_or((1280, 720));
     let request = PrepareRequest {
         display_id: 0,
         display_point: None,
@@ -142,50 +171,157 @@ fn live_capture_records_the_primary_display_and_system_audio() {
         own_pids: vec![std::process::id() as i32],
         hide_system_ui: false,
         path: path.clone(),
+        source,
+        audio,
     };
-    eprintln!("session: preparing {width}x{height}");
+    eprintln!("{name}: preparing {width}x{height}");
     let (mut session, prepared) = match Session::prepare(request, heard.clone()) {
         Ok(prepared) => prepared,
         // Only when nothing else failed: a frame that arrived but could not be converted fails the test.
-        Err(error) if untested("capture", &error, &heard) => {
+        Err(error) if untested(name, &error, &heard) => {
             let _ = std::fs::remove_file(&path);
-            return;
+            return None;
         }
-        Err(error) => panic!("prepare failed: {}: {}", error.code, error.detail),
+        Err(error) => panic!("{name}: prepare failed: {}: {}", error.code, error.detail),
     };
     summary(&format!(
-        "Windows live capture prepared {}x{}, AAC priming {} frames, timings: {}; warnings: {:?}",
+        "Windows live {name} prepared {}x{}, AAC priming {} frames, timings: {}; warnings: {:?}",
         prepared.width, prepared.height, prepared.priming_frames, prepared.timings, prepared.warnings
     ));
     session.record().unwrap();
-    eprintln!("session: recording for 3 s");
+    eprintln!("{name}: recording for 3 s");
     std::thread::sleep(Duration::from_secs(3));
     let frames_seen = session.frames_seen();
-    eprintln!("session: stopping after {frames_seen} frames");
-    let stopped = session.stop().unwrap_or_else(|failure| panic!("stop failed: {}: {}", failure.code, failure.detail));
-    assert!(heard.0.lock().unwrap().is_empty(), "{:?}", heard.0.lock().unwrap());
-    assert_eq!(stopped.fragmented, None);
+    eprintln!("{name}: stopping after {frames_seen} frames");
+    let (stopped, finishing) = session.stop();
+    let finished = finishing.wait().unwrap_or_else(|failure| panic!("{name}: finishing the file failed: {}: {}", failure.code, failure.detail));
+    assert!(heard.0.lock().unwrap().is_empty(), "{name}: {:?}", heard.0.lock().unwrap());
+    assert_eq!(finished.fragmented, None);
 
     let file = parse(&std::fs::read(&path).unwrap()).unwrap();
+    let _ = std::fs::remove_file(&path);
     assert_eq!(file.top, ["ftyp", "mdat", "moov"]);
     let (video, audio) = (&file.tracks[0], &file.tracks[1]);
     let video_ms = video.duration as f64 * 1000.0 / f64::from(video.timescale);
     let audio_ms = audio.edit.map_or(0.0, |(presented, _)| presented as f64 * 1000.0 / 48_000.0);
     summary(&format!(
-        "Windows live capture recorded {} frames seen, {} video samples ({} key) over {video_ms:.0} ms, {} audio packets presenting {audio_ms:.0} ms; drain {:.0} ms, {} frames of silence filled in",
+        "Windows live {name} recorded {} frames seen, {} video samples ({} key) over {video_ms:.0} ms, {} audio packets presenting {audio_ms:.0} ms; drain {:.0} ms, {} frames of silence filled in, late audio frames {:?}",
         frames_seen,
         video.samples.len(),
         video.samples.iter().filter(|s| s.sync).count(),
         audio.samples.len(),
         stopped.drain_ms,
-        stopped.drain_padded_frames
+        stopped.drain_padded_frames,
+        stopped.late_audio_frames,
     ));
     assert!(video.samples[0].sync);
-    assert!((2_800.0..3_400.0).contains(&video_ms), "video lasts {video_ms} ms");
+    assert!((2_800.0..3_400.0).contains(&video_ms), "{name}: video lasts {video_ms} ms");
     // A still runner desktop gives one frame a second at least; a changing one up to 30.
-    assert!(video.samples.len() >= 3, "{} video samples", video.samples.len());
-    if !audio.samples.is_empty() {
-        assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
+    assert!(video.samples.len() >= 3, "{name}: {} video samples", video.samples.len());
+    // The mixer keeps the track going whether or not anything played.
+    assert!((video_ms - audio_ms).abs() < 1.0, "{name}: video {video_ms} ms, audio {audio_ms} ms");
+    Some((prepared, stopped, file))
+}
+
+#[test]
+#[ignore = "records the display and system audio; CI's Windows job runs it"]
+fn live_capture_records_the_primary_display_and_system_audio() {
+    let (width, height) =
+        super::session::probe(0, None, &Source::Display).map(|(w, h)| (w.min(1920) & !1, h.min(1080) & !1)).unwrap_or((1280, 720));
+    record("capture", Source::Display, AudioRequest::default(), (width, height));
+}
+
+#[test]
+#[ignore = "records an area of the display; CI's Windows job runs it"]
+fn live_area_records_its_size() {
+    let source = Source::Area { x: 16, y: 8, width: 640, height: 360 };
+    let size = match super::session::probe(0, None, &source) {
+        Ok(size) => size,
+        Err(error) if untested("area", &error, &Heard::default()) => return,
+        Err(error) => panic!("probe failed: {}: {}", error.code, error.detail),
+    };
+    assert_eq!(size, (640, 360));
+    let off = AudioRequest { system: SystemAudio::Off, microphone: None };
+    if let Some((prepared, _, _)) = record("area", source, off, size) {
+        assert_eq!((prepared.width, prepared.height), (640, 360));
     }
-    let _ = std::fs::remove_file(&path);
+}
+
+/// A plain window this test owns, shown and pumped on its own thread until dropped.
+struct TestWindow {
+    hwnd: u64,
+    done: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl TestWindow {
+    fn open() -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        use windows::core::w;
+        let done = Arc::new(AtomicBool::new(false));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let pumping = done.clone();
+        let thread = std::thread::spawn(move || {
+            let hwnd = unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    w!("STATIC"),
+                    w!("RecordStuff live window test"),
+                    WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                    100,
+                    100,
+                    800,
+                    600,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            };
+            let _ = sender.send(hwnd.as_ref().map(|hwnd| hwnd.0 as usize as u64).map_err(|e| e.to_string()));
+            let Ok(hwnd) = hwnd else { return };
+            let mut message = MSG::default();
+            while !pumping.load(Ordering::Acquire) {
+                while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE) }.as_bool() {
+                    unsafe {
+                        let _ = TranslateMessage(&message);
+                        DispatchMessageW(&message);
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let _ = unsafe { DestroyWindow(hwnd) };
+        });
+        let hwnd = receiver.recv().unwrap().expect("a window could be created");
+        Self { hwnd, done, thread: Some(thread) }
+    }
+}
+
+impl Drop for TestWindow {
+    fn drop(&mut self) {
+        self.done.store(true, std::sync::atomic::Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+#[test]
+#[ignore = "records a window it opens; CI's Windows job runs it"]
+fn live_window_records_a_window_of_its_own() {
+    com();
+    let window = TestWindow::open();
+    // Shown and composed before capture asks for it.
+    std::thread::sleep(Duration::from_millis(500));
+    let source = Source::Window(window.hwnd);
+    let (width, height) = match super::session::probe(0, None, &source) {
+        Ok(size) => size,
+        Err(error) if untested("window", &error, &Heard::default()) => return,
+        Err(error) => panic!("probe failed: {}: {}", error.code, error.detail),
+    };
+    summary(&format!("Windows live window: the test's window is {width}x{height} pixels"));
+    assert!(width >= 200 && height >= 100, "{width}x{height}");
+    record("window", source, AudioRequest::default(), (width & !1, height & !1));
+    drop(window);
 }

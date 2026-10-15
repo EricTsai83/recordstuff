@@ -329,6 +329,7 @@ export class SettingsWindow {
     const options = settingsWindowOptions({ platform: process.platform, preloadPath: path.join(__dirname, "../preload/settings.js"),
       title: view.title, size: this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea: display.workArea });
     const size = { width: options.width, height: options.height };
+    const madeAt = performance.now();
     const window = new BrowserWindow(options);
     this.window = window;
     this.painted = false;
@@ -359,6 +360,9 @@ export class SettingsWindow {
       clearTimeout(revealTimer);
       if (this.window !== window || this.painted || window.isDestroyed()) return;
       this.painted = true;
+      // When the window opens with its content, measured from its making (plan 076 step 4: a renderer started ahead of
+      // time, or none).
+      this.options.log?.(`settings: window shown ${Math.round(performance.now() - madeAt)} ms after it was made`);
       // Painted while hidden: it stays hidden, and the next open shows it as it is.
       if (this.hiddenByUser) return;
       window.show();

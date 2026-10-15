@@ -23,6 +23,7 @@ export interface CaptureHostOptions {
   pingIntervalMs?: number;
   readyTimeoutMs?: number;
   log?: (message: string) => void;
+  now?: () => number;
 }
 
 type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
@@ -35,6 +36,9 @@ export class CaptureHost implements RecorderHost {
   /** The session the heartbeat is watching, if any. */
   private watching: string | undefined;
   private missedPongs = 0;
+  /** When the current attempt's `start` began, for the start's timing line (plan 076, step 4). */
+  private startedAt: number | undefined;
+  private readonly phases: string[] = [];
   /** Rejects the `create` still waiting for `ready`, so a teardown settles it at once. */
   private abandonReady: ((cause: Error) => void) | undefined;
   private readonly messageListeners = new Set<(message: HostMessage) => void>();
@@ -60,8 +64,11 @@ export class CaptureHost implements RecorderHost {
   async start(sessionId: string, quality: QualitySettings): Promise<void> {
     this.teardown();
     const generation = this.generation;
+    this.startedAt = this.now();
+    this.phases.length = 0;
     try {
       await this.create();
+      this.phase("window ready");
     } catch (cause) {
       if (generation === this.generation) this.teardown();
       throw cause;
@@ -71,6 +78,18 @@ export class CaptureHost implements RecorderHost {
     this.missedPongs = 0;
     this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
     this.post({ type: "start", sessionId, quality });
+  }
+
+  /**
+   * Notes when a step of the current start happened; `prepared` logs them all, as the native host logs its own
+   * phases, so the two engines' starts can be compared.
+   */
+  phase(label: string): void {
+    if (this.startedAt !== undefined) this.phases.push(`${label} ${Math.round(this.now() - this.startedAt)} ms`);
+  }
+
+  private now(): number {
+    return (this.options.now ?? (() => performance.now()))();
   }
 
   /** The request must originate from this attempt's actual main frame. */
@@ -153,6 +172,11 @@ export class CaptureHost implements RecorderHost {
         }
         if (message.type === "ready") resolve();
         if (message.type === "pong") this.missedPongs = 0;
+        if (message.type === "prepared" && message.sessionId === this.watching && this.startedAt !== undefined) {
+          this.phase("prepared");
+          this.log(`capture host: timing: ${this.phases.join(", ")} (from start)`);
+          this.startedAt = undefined;
+        }
         // The session is over once the host reports it stopped or failed;
         // nothing is expected from the renderer until the next start.
         if ((message.type === "stopped" || message.type === "error") && message.sessionId === this.watching) {

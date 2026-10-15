@@ -123,6 +123,18 @@ describe("capture host supervision", () => {
     expect(s.port().sent).toEqual([{ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY }]);
   });
 
+  it("logs where its start spent its time once the session is prepared", async () => {
+    const s = setup();
+    await s.start();
+    s.host.phase("display requested");
+    s.host.phase("display answered");
+    s.port().emit({ type: "prepared", sessionId: "s1", mimeType: "video/mp4", capture: {
+      width: 1920, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [],
+    } });
+    expect(s.logs).toContainEqual(expect.stringMatching(
+      /^capture host: timing: window ready \d+ ms, display requested \d+ ms, display answered \d+ ms, prepared \d+ ms \(from start\)$/));
+  });
+
   it("drops malformed messages and forwards valid ones", async () => {
     const s = setup();
     await s.start();

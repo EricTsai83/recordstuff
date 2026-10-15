@@ -1,6 +1,7 @@
-//! Windows capture (plan 076, step 3): Windows.Graphics.Capture for the display, WASAPI process loopback for system
-//! audio, and Media Foundation's H.264 and AAC encoders. Every time is QueryPerformanceCounter time in nanoseconds:
-//! capture frames carry `SystemRelativeTime` and audio packets their QPC position, both QPC in 100 ns units.
+//! Windows capture (plan 076, steps 3 and 4): Windows.Graphics.Capture for the display, a window or part of the
+//! display, WASAPI for system audio, a chosen process's sound and the microphone, and Media Foundation's H.264 and AAC
+//! encoders. Every time is QueryPerformanceCounter time in nanoseconds: capture frames carry `SystemRelativeTime` and
+//! audio packets their QPC position, both QPC in 100 ns units.
 
 pub mod aac;
 pub mod audio;
@@ -8,6 +9,11 @@ pub mod capture;
 mod mft;
 pub mod session;
 pub mod video;
+
+/// The audio inputs, for choosing the microphone.
+pub mod microphone {
+    pub use super::audio::microphones as list;
+}
 
 use std::sync::OnceLock;
 

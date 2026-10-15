@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { NativeHost, engineFailure, type ParentPort } from "./native-host-process";
+import { NativeHost, developmentCapture, engineFailure, type ParentPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
@@ -22,7 +22,8 @@ function fakeEngine() {
       excludedApps: 2, hiddenWindows: 0, warnings: [], timings: "content 0 ms, first frame 12 ms; total 40 ms",
     })),
     record: vi.fn(),
-    stop: vi.fn(async () => ({ bytes: 1234, finalizeMs: 4, fragmented: null, drainMs: 31, drainPaddedFrames: 0, frameLeadAvgMs: 4.2, frameLeadMaxMs: 9 })),
+    stop: vi.fn(async () => ({ drainMs: 31, drainPaddedFrames: 0, frameLeadAvgMs: 4.2, frameLeadMaxMs: 9 })),
+    finish: vi.fn(async (): Promise<{ bytes: number; finalizeMs: number; fragmented?: string | null }> => ({ bytes: 1234, finalizeMs: 4, fragmented: null })),
     cancel: vi.fn(async () => undefined),
   };
   return { engine, factory: (onEvent: (event: Event) => void) => { emit = onEvent; return engine; }, emit: (event: Event) => emit(event) };
@@ -48,7 +49,44 @@ describe("engineFailure", () => {
   });
 });
 
+describe("developmentCapture", () => {
+  it("reads a window, an area or apps, and whose sound, and ignores anything else", () => {
+    expect(developmentCapture({})).toEqual({});
+    expect(developmentCapture({ RECORDSTUFF_CAPTURE_SOURCE: "window:1234" })).toEqual({ source: { kind: "window", windowId: 1234 } });
+    expect(developmentCapture({ RECORDSTUFF_CAPTURE_SOURCE: "area:10,20,640,360" })).toEqual({ source: { kind: "area", area: { x: 10, y: 20, width: 640, height: 360 } } });
+    expect(developmentCapture({ RECORDSTUFF_CAPTURE_SOURCE: "apps:5,6", RECORDSTUFF_CAPTURE_AUDIO: "apps:5" })).toEqual({
+      source: { kind: "apps", pids: [5, 6] }, audio: { system: "apps", pids: [5], microphone: false },
+    });
+    expect(developmentCapture({ RECORDSTUFF_CAPTURE_AUDIO: "off" })).toEqual({ audio: { system: "off", microphone: false } });
+    for (const value of ["window:", "area:1,2,3", "apps:x", "display", "window:-1"]) {
+      expect(developmentCapture({ RECORDSTUFF_CAPTURE_SOURCE: value })).toEqual({});
+    }
+  });
+});
+
 describe("NativeHost", () => {
+  it("probes and prepares the development source and sound when they are set, and logs them", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const logs: string[] = [];
+    const source = { kind: "area" as const, area: { x: 0, y: 0, width: 800, height: 450 } };
+    new NativeHost(port, fake.factory, (line) => logs.push(line), undefined, { source, audio: { system: "off", microphone: false } });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    expect(fake.engine.probe).toHaveBeenCalledWith(1, undefined, source);
+    expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ source, audio: { system: "off", microphone: false } }));
+    expect(logs[0]).toContain("development capture: source");
+  });
+
+  it("logs audio that arrived too late to mix", async () => {
+    const { port, engine, logs } = await prepared();
+    engine.stop.mockResolvedValueOnce({ drainMs: 1, drainPaddedFrames: 0, frameLeadAvgMs: 0, frameLeadMaxMs: 0, lateAudioFrames: [0, 480] } as never);
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    expect(logs.find((line) => line.startsWith("timing: stop"))).toContain("audio frames too late to mix, by input: 0, 480");
+  });
+
   it("prepares within the cap the setting names, at the setting's bit rate, and reports the capture", async () => {
     const { port, engine } = await prepared();
     expect(port.sent[0]).toEqual({ type: "ready" });
@@ -74,20 +112,47 @@ describe("NativeHost", () => {
     await flush();
     expect(logs[0]).toMatch(/^timing: probe \d+ ms, prepare \d+ ms \(content 0 ms, first frame 12 ms; total 40 ms\)$/);
     expect(logs[1]).toMatch(/^timing: record \d+\.\d ms$/);
-    expect(logs[2]).toMatch(/^timing: stop \d+ ms \(sound up to the stop 31 ms, 0 frame\(s\) filled with silence; file 4 ms; frames stamped 4\.2 ms ahead on average, 9\.0 ms at most\)$/);
+    expect(logs[2]).toMatch(/^timing: stop \d+ ms \(sound up to the stop 31 ms, 0 frame\(s\) filled with silence; frames stamped 4\.2 ms ahead on average, 9\.0 ms at most\)$/);
+    expect(logs[3]).toBe("timing: file finished 4 ms after the stop");
   });
 
-  it("records only the prepared session, then reports the finished file at stop", async () => {
+  it("records only the prepared session, then reports the stop before the finished file", async () => {
     const { port, engine } = await prepared();
     port.deliver({ type: "record", sessionId: "other" });
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "other", code: "capture_start_failed" });
     port.deliver({ type: "record", sessionId: "s1" });
     expect(engine.record).toHaveBeenCalledTimes(1);
     expect(port.sent.at(-1)).toEqual({ type: "started", sessionId: "s1" });
+    let finished: (file: { bytes: number; finalizeMs: number; fragmented?: string | null }) => void = () => undefined;
+    engine.finish.mockImplementationOnce(() => new Promise((resolve) => { finished = resolve; }));
     port.deliver({ type: "stop", sessionId: "s1" });
     await flush();
-    expect(port.sent.at(-1)).toMatchObject({ type: "stopped", sessionId: "s1", file: { bytes: 1234, finalizeMs: 4 } });
-    expect((port.sent.at(-1) as { file: object }).file).not.toHaveProperty("fragmented");
+    // Capture has ended; the file is still being finished.
+    expect(port.sent.at(-1)).toMatchObject({ type: "stopped", sessionId: "s1" });
+    expect(port.sent.at(-1)).not.toHaveProperty("file");
+    finished({ bytes: 1234, finalizeMs: 4, fragmented: null });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "finished", sessionId: "s1", file: { bytes: 1234, finalizeMs: 4 } });
+  });
+
+  it("reports why the file stayed fragmented", async () => {
+    const { port, engine } = await prepared();
+    engine.finish.mockResolvedValueOnce({ bytes: 9, finalizeMs: 2, fragmented: "index not written: EIO" });
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "finished", sessionId: "s1", file: { bytes: 9, finalizeMs: 2, fragmented: "index not written: EIO" } });
+  });
+
+  it("ignores engine events once stopped: the file's outcome is what finish answers", async () => {
+    const { port, engine, emit } = await prepared();
+    engine.finish.mockImplementationOnce(() => new Promise(() => undefined));
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    const sent = port.sent.length;
+    emit({ kind: "writeError", code: "disk_full", detail: "No space left" });
+    expect(port.sent).toHaveLength(sent);
   });
 
   it("turns engine events into progress, write errors and capture errors of the current session", async () => {
@@ -103,13 +168,26 @@ describe("NativeHost", () => {
     ]);
   });
 
-  it("reports a failed finish as a write error when the engine names one", async () => {
+  it("reports a failed finish after the stop as a write error, with the engine's code", async () => {
     const { port, engine } = await prepared();
-    engine.stop.mockRejectedValueOnce(new Error("output_write_failed|finish failed: EIO"));
+    engine.finish.mockRejectedValueOnce(new Error("disk_full|finish failed: No space left"));
     port.deliver({ type: "record", sessionId: "s1" });
     port.deliver({ type: "stop", sessionId: "s1" });
     await flush();
-    expect(port.sent.at(-1)).toEqual({ type: "writeError", sessionId: "s1", code: "output_write_failed", detail: "finish failed: EIO" });
+    expect(port.sent.slice(-2)).toEqual([
+      expect.objectContaining({ type: "stopped", sessionId: "s1" }),
+      { type: "writeError", sessionId: "s1", code: "disk_full", detail: "finish failed: No space left" },
+    ]);
+  });
+
+  it("reports a stop the engine refused as a capture failure", async () => {
+    const { port, engine } = await prepared();
+    engine.stop.mockRejectedValueOnce(new Error("capture_failed|gone"));
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s1", code: "capture_failed", detail: "gone" });
+    expect(engine.finish).not.toHaveBeenCalled();
   });
 
   it("cancels a prepared session at stop without recording", async () => {
