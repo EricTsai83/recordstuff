@@ -8,7 +8,7 @@
 
 解決 076 驗收與文件在原生錄影引擎上留下的問題。成功的標準是：剩下的 50 ms 影格間隔找到原因並消除，或連同原因一起被接受；開發版 Electron App 和簽署 bundle 一樣把自己的視窗排除在錄影之外，或把這個限制寫進文件；影格節奏的診斷涵蓋實際錄影的引擎。
 
-不在範圍內：Windows 實機（只由 CI 驗證）、新的擷取功能，以及 [077](077-native-hands-on-acceptance.zh-TW.md) 的動手驗收案例。
+不在範圍內：Windows 實機回合（Windows 只由 CI 驗證，步驟 4 的硬體編碼器也一樣）、新的擷取功能，以及 [077](077-native-hands-on-acceptance.zh-TW.md) 的動手驗收案例。
 
 ## 目前狀態
 
@@ -33,7 +33,19 @@
 
 ### 4. Chromium 路徑留下的部分
 
-- [ ] 076 改寫文件時發現（2026-10-16），每一項都要和維護者決定：Windows 只用 Microsoft 的軟體 transform 編碼 H.264，而 D4 的本意是有 GPU 硬體編碼器時使用它（非同步 transform）；沒有 Media Feature Pack 的 Windows N 版以 `capture_start_failed` 失敗，而不是專屬的錯誤碼；`mp4_unsupported`、幀率降級提示與解析度上限提示（`capUnconfirmed`）已不會出現，因為只有隱藏 renderer 會產生它們；`quality.ts` 的 `estimatedBytesPerMinute` 仍依 Chromium 的量測把 60 fps 的估算加倍。
+- [ ] **Windows 硬體 H.264（維護者 2026-10-16 決定：實作，並和 Cap 一樣預設開啟）。** Windows 目前只用 Microsoft 的軟體 transform 編碼，而 D4 的本意是有 GPU 硬體編碼器時使用它。透過 Media Foundation 的非同步硬體 transform 實作，畫面留在 GPU 上，依照 Cap（revision `83237e9`，AGPL 程式碼只參考設計）、OBS 與 Chromium 的做法；三者都不會在沒有退路的情況下信任硬體編碼器：
+  - 在擷取裝置所在的 adapter 上列舉硬體編碼器（以其 LUID 呼叫 `MFTEnum2`）；WARP 上不使用，因為那裡的畫面在 CPU 上轉換。和 Cap 一樣跳過 AMD（OBS 在 AMD 的 Media Foundation 編碼器出問題後放棄了這類編碼器），AMD 使用軟體編碼器。
+  - 錄影前做一次自我測試，依 adapter、驅動與尺寸快取結果：編碼幾張灰色畫面再解碼回來，檢查灰色，因為有些驅動能開啟 session，卻不報錯地輸出綠色或黑色畫面。任何失敗，以及第一個關鍵影格送到 muxer 前的任何錯誤，都默默改用軟體編碼器。
+  - 錄影中由 watchdog 監測（有輸入沒輸出、連續輸入失敗、5 秒沒有輸出、`MEError`），觸發時以已寫入的內容結束錄影，視為擷取失敗，之後的錄影改用軟體編碼器。
+  - 開發用開關可強制使用軟體編碼器；和 Cap 一樣沒有使用者設定。
+  - `windows-2025` 的 CI 沒有 GPU：測試列舉不到編碼器、退回軟體、以軟體編碼器跑自我測試，以及用會注入卡住、錯誤與格式變更的假非同步 transform 測試事件處理。真實 GPU（NVIDIA、Intel）、畫面正確性與 CPU 仍未測試，照實列出，依使用者回報修正。
+- [ ] **沒有 Media Foundation 的 Windows（維護者 2026-10-16 決定：專屬錯誤碼，加上錄影前檢查）。** 沒有 Media Feature Pack 的 Windows N 版無法編碼，目前以 `capture_start_failed` 失敗（「再試一次……或調低畫質」），既沒說出原因，也沒說出補救方法；缺少 `mfplat.dll` 時模組是否還能載入尚未驗證，要最先確認。一個錯誤碼對應一種原因與補救：
+  - 新增錯誤碼（暫名 `media_components_missing`），有自己的原因、說明（到 設定 → 應用程式 → 選用功能 安裝 Media Feature Pack，然後重新開機）與圖示；模組因此無法載入、Media Foundation 無法啟動，或找不到 H.264 或 AAC 編碼器時使用。
+  - 和 macOS 缺螢幕錄製權限一樣在錄影前檢查：main 在啟動時確認 Media Foundation 存在；不存在時「開始錄影」不可用並說明原因，設定視窗顯示提示，按鈕可開啟 `ms-settings:optionalfeatures`。錯誤碼保留作為檢查看不到的情況的最後防線。
+- [ ] **移除 `mp4_unsupported`（維護者 2026-10-16 決定：不留 legacy code）。** 只有隱藏 renderer 會產生它，所以錯誤碼、原因、說明與圖示一併移除。失敗紀錄遇到不認得的錯誤碼會拒絕整份檔案，以免降版的 App 覆寫新版的紀錄；因此含有舊 `mp4_unsupported` 紀錄的失敗紀錄會變成無法讀取。維護者接受這個小風險（這個錯誤碼只在 Chromium 無法錄 MP4 時出現，實務上是 Windows N 版，而 Windows 版自 2026-10-03 才發布）。
+- [ ] **讓無法讀取的失敗紀錄有出路（維護者 2026-10-16 決定）。** 目前設定視窗只顯示「無法讀取失敗紀錄。檔案已保留；請查看 log。」，在使用者手動刪除檔案前，新的失敗都存不進去。在這句旁邊加上「重設失敗紀錄」按鈕：先確認，把讀不到的檔案保留為備份（`keepFile(…, "reset-backup")`），建立空白紀錄，不必重開就能再存失敗；提示也不再叫使用者看 log。它也涵蓋因其他原因損毀的紀錄，而降版保護仍在，因為只有使用者的操作會取代檔案。
+- [ ] **移除幀率降級與解析度上限提示（維護者 2026-10-16 決定）。** 兩者都在比對 Chromium 實際給的與要求的。引擎自己把畫面縮放到指定大小，並以選定的幀率產生影格，螢幕沒變化時重複上一張畫面，所以 host 回報的就是要求的幀率，也從不設定 `capUnconfirmed`。移除 `frameRateDowngrade`、`capUnconfirmed`、選單列通知、設定視窗的擷取警告，以及它們的字串與測試。
+- [ ] **檔案大小估算改依原生引擎（維護者 2026-10-16 決定）。** `estimatedBytesPerMinute` 因為 MediaRecorder 實際約為目標的兩倍，而把 60 fps 的影片估算加倍。原生引擎在 30 與 60 fps 都是目標的 101–102%（8.10 Mbps 實測 8.25–8.28、14.90 實測 15.11–15.19、16.20 實測 16.33–16.47；2026-10-15/16 以測試素材跑 `pnpm matrix -- quick` 與 `pnpm acceptance`），所以估算直接等於目標、不再加倍；靜止的畫面錄出來會更小。
 
 ### 5. 文件
 
