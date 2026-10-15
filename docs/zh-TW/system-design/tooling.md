@@ -23,7 +23,7 @@
 | pnpm dist:mac | 自簽 App 驗證後，在 dist/ 旁邊產生 DMG |
 | `pnpm dist:win` | `electron-vite build` 後在 dist/ 產生未簽章、每位使用者安裝的 Windows x64 NSIS 安裝檔（`electron-builder --win nsis --x64 --publish never`）；不簽章。只有 CI 的 Windows runner 執行過（[細節](#windows-打包與-ci)） |
 | `pnpm diagnose:cadence` | 經由隔離的 capture host fixture 錄影測試素材，比對 track 送達的影格時間戳與計數和檔案 pts，找出幀率不足發生在哪一層（[說明](#影格節奏診斷)）；僅限 macOS，不做通過／失敗判定 |
-| pnpm acceptance | 對執行中的 App，使用其實際設定（含倒數）：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、分別回報準備時間、每格倒數、`record → started` 與第一片、裁出最初影格的數字區域、驗完整性層級（test-material 模式），再以第二次按鍵取消另一次嘗試；把報告寫到 docs/verification/measurements（已 gitignore，只留本機） |
+| pnpm acceptance | 對執行中的 App，使用其實際設定（含倒數）：全螢幕開素材、以 System Events 送全域快捷鍵開始／停止錄影、分別回報準備時間、每格倒數、`record → started` 與第一片、裁出最初影格的數字區域、驗完整性層級（test-material 模式），再以第二次按鍵取消另一次嘗試；把報告寫到 docs/verification/measurements（已 gitignore，只留本機）；`--settings-open` 會再錄一次，保留 Settings 開啟時主螢幕的截圖，以及錄影中同一時刻的影格，RecordStuff 自己的視窗必須不出現在影格中（plan 076、075 的 D14）；`--quit-while-recording` 在另一次錄影進行 3 秒時退出 App，必須存下錄影並結束 |
 | `pnpm acceptance:playback` | 以 QuickTime Player 的 AppleScript 字典播放一個已存檔的錄影，判定長度、尺寸、即時播放、跳轉、畫面隨跳轉改變及播放到結尾；報告寫在 docs/verification/measurements，截圖只在未通過時保留（[說明](#播放檢查)） |
 | `pnpm acceptance:player` | 需要桌面的播放器案例（plan 066 縮減）：簽入的片段（tests/ui/media）從卡片播放，並在 App 自己的 `VideoFullScreen` 於螢幕上全螢幕：全螢幕蓋住螢幕、F 與 Escape 離開、設定視窗取回焦點；在 macOS 上，每次進入全螢幕前會先等待事先隱藏載入的全螢幕頁面（與 `SettingsWindow.show` 的準備方式相同），log 的 `video fullscreen timing` 行會寫 `warm page`；報告、案例與一張截圖寫到 docs/verification/measurements。播放器的控制項、按鍵、拖曳、靜止與喚回、雙向交接的時間與 16:9 畫面在 `pnpm test:ui` 執行。這是桌面回合：RecordStuff 執行中時拒絕執行（blocked，2），因為它的視窗與焦點會干擾 |
 | `pnpm acceptance:shortcut` | 建置後執行背景套件中的快捷鍵部分（`tests/ui/shortcut-integration.spec.ts`）：正式 main、`SettingsWindow`、actions、`AppShortcuts` 與 settings.json，加上註冊 adapter；不需桌面 |
