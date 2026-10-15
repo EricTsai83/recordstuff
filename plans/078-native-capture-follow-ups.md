@@ -47,7 +47,11 @@ Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4'
 - [ ] **The frame-rate downgrade and resolution-cap notices removed (decided by the maintainer on 2026-10-16).** Both checked what Chromium granted against what was asked. The engine scales to the size it was given and paces frames at the chosen rate, repeating the last picture when the screen does not change, so the host reports the requested rate and never sets `capUnconfirmed`. Remove `frameRateDowngrade`, `capUnconfirmed`, the tray notifications, Settings' capture warning, their strings and tests.
 - [ ] **The size estimate follows the native engine (decided by the maintainer on 2026-10-16).** `estimatedBytesPerMinute` doubles the 60 fps video estimate because MediaRecorder delivered about twice its target. The engine delivers 101–102% of its target at 30 and 60 fps (8.25–8.28 of 8.10 Mbps, 15.11–15.19 of 14.90, 16.33–16.47 of 16.20; `pnpm matrix -- quick` and `pnpm acceptance` with the test material, 2026-10-15/16), so the estimate becomes the target without the doubling; a still screen records smaller.
 
-### 5. Documentation
+### 5. Windows UI shards that time out closing the app
+
+- [ ] Recorded at the maintainer's request (2026-10-16). A Windows UI shard of `check.yml` intermittently fails a test whose checks passed, because the app does not close within `CLOSE_TIMEOUT_MS` (15 s, `tests/ui/fixtures.ts`) and its process tree needs SIGKILL (`view: did not close normally (normal close failed: Error: close timed out after 15000 ms)`). Seen in runs 38789339217 (main after PR #15, U067-3 in `settings-layout.spec.ts`), 38778364254 (PR #13) and 38456753890; each passed on rerun. Find whether the runner is merely slow or the close path sometimes stalls on Windows (time each phase of the close in the fixture's log), and fix the cause; raise the limit only if the measurement shows a slow but complete close.
+
+### 6. Documentation
 
 - [ ] Record the outcome in [recording](../docs/system-design/recording.md), [tooling](../docs/system-design/tooling.md) and the verification record, with translations.
 

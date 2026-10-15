@@ -47,7 +47,11 @@
 - [ ] **移除幀率降級與解析度上限提示（維護者 2026-10-16 決定）。** 兩者都在比對 Chromium 實際給的與要求的。引擎自己把畫面縮放到指定大小，並以選定的幀率產生影格，螢幕沒變化時重複上一張畫面，所以 host 回報的就是要求的幀率，也從不設定 `capUnconfirmed`。移除 `frameRateDowngrade`、`capUnconfirmed`、選單列通知、設定視窗的擷取警告，以及它們的字串與測試。
 - [ ] **檔案大小估算改依原生引擎（維護者 2026-10-16 決定）。** `estimatedBytesPerMinute` 因為 MediaRecorder 實際約為目標的兩倍，而把 60 fps 的影片估算加倍。原生引擎在 30 與 60 fps 都是目標的 101–102%（8.10 Mbps 實測 8.25–8.28、14.90 實測 15.11–15.19、16.20 實測 16.33–16.47；2026-10-15/16 以測試素材跑 `pnpm matrix -- quick` 與 `pnpm acceptance`），所以估算直接等於目標、不再加倍；靜止的畫面錄出來會更小。
 
-### 5. 文件
+### 5. Windows UI 分片關閉 App 逾時
+
+- [ ] 依維護者要求記錄（2026-10-16）。`check.yml` 的 Windows UI 分片偶爾讓一個檢查都已通過的測試失敗：App 沒在 `CLOSE_TIMEOUT_MS`（15 秒，`tests/ui/fixtures.ts`）內關閉，程序樹需要 SIGKILL（`view: did not close normally (normal close failed: Error: close timed out after 15000 ms)`）。出現在 run 38789339217（PR #15 合併後的 main，`settings-layout.spec.ts` 的 U067-3）、38778364254（PR #13）與 38456753890；每次重跑都通過。查明是 runner 只是比較慢，還是 Windows 上的關閉流程偶爾卡住（在 fixture 的 log 中記錄關閉各階段的時間），並修正原因；只有量測顯示關閉雖慢但會完成時，才調高上限。
+
+### 6. 文件
 
 - [ ] 把結果寫進 [recording](../docs/zh-TW/system-design/recording.md)、[tooling](../docs/zh-TW/system-design/tooling.md) 與驗證紀錄，含翻譯。
 
