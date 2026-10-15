@@ -18,7 +18,11 @@ interface PreparedInfo {
   /** Where the engine's prepare spent its time. */
   timings?: string;
 }
-interface StopReport { drainMs?: number; drainPaddedFrames?: number; frameLeadAvgMs?: number; frameLeadMaxMs?: number; lateAudioFrames?: number[] }
+interface StopReport {
+  drainMs?: number; drainPaddedFrames?: number; frameLeadAvgMs?: number; frameLeadMaxMs?: number; lateAudioFrames?: number[];
+  /** What capture delivered while recording (plan 076 step 7): pictures, deliveries without one, the longest gap between pictures. */
+  capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
+}
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string }
 /** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
@@ -234,7 +238,8 @@ export class NativeHost {
     this.log(`timing: stop ${Math.round(this.now() - began)} ms (sound up to the stop ${Math.round(stopped.drainMs ?? 0)} ms, ` +
       `${stopped.drainPaddedFrames ?? 0} frame(s) filled with silence; ` +
       `frames stamped ${(stopped.frameLeadAvgMs ?? 0).toFixed(1)} ms ahead on average, ${(stopped.frameLeadMaxMs ?? 0).toFixed(1)} ms at most` +
-      `${stopped.lateAudioFrames?.some((frames) => frames > 0) ? `; audio frames too late to mix, by input: ${stopped.lateAudioFrames.join(", ")}` : ""})`);
+      `${stopped.lateAudioFrames?.some((frames) => frames > 0) ? `; audio frames too late to mix, by input: ${stopped.lateAudioFrames.join(", ")}` : ""}` +
+      `${stopped.capturedPictures === undefined ? "" : `; capture delivered ${stopped.capturedPictures} pictures and ${stopped.capturedWithoutPicture ?? 0} frames without one, ${(stopped.capturedLongestGapMs ?? 0).toFixed(1)} ms apart at most`})`);
     // Engine events after this are the file's, which `finish` answers for.
     this.session = undefined;
     this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });

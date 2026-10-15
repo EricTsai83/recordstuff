@@ -191,6 +191,18 @@ pub struct Stopped {
     pub frame_lead_ms: (f64, f64),
     /// Frames each audio input delivered too late to be mixed (see mixer.rs).
     pub late_audio_frames: Vec<u64>,
+    /// What capture delivered while recording: frames with a picture, deliveries without one (a frame capture reported
+    /// idle, blank or the like), and the longest time between two pictures, in ms. A display refreshing at 60 Hz that
+    /// delivers every refresh shows about 60 pictures a second and a longest gap near 17 ms; a recording's frame then
+    /// missing from the file is the pacer's, not capture's.
+    pub captured: Captured,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Captured {
+    pub pictures: u64,
+    pub without_picture: u64,
+    pub longest_gap_ms: f64,
 }
 
 /// The finished file.
@@ -294,6 +306,10 @@ pub struct Shared<P: Platform> {
     lead_sum_us: AtomicI64,
     lead_count: AtomicU64,
     lead_max_us: AtomicI64,
+    /// While recording: frames with a picture, deliveries without one, and the longest gap between pictures in ns.
+    captured_pictures: AtomicU64,
+    captured_without_picture: AtomicU64,
+    captured_gap_max_ns: AtomicU64,
 }
 
 impl<P: Platform> Shared<P> {
@@ -316,7 +332,8 @@ impl<P: Platform> Shared<P> {
     /// A complete frame captured at `pts` host time. Kept as the newest; encoded when the pacer wants it.
     pub fn frame(&self, frame: P::Frame, pts: u64) {
         self.frames_seen.fetch_add(1, Ordering::Relaxed);
-        if self.phase.load(Ordering::Acquire) == RECORDING {
+        let recording = self.phase.load(Ordering::Acquire) == RECORDING;
+        if recording {
             let lead = (pts as i64 - P::now_ns() as i64) / 1000;
             self.lead_sum_us.fetch_add(lead, Ordering::Relaxed);
             self.lead_count.fetch_add(1, Ordering::Relaxed);
@@ -324,6 +341,13 @@ impl<P: Platform> Shared<P> {
         }
         let mut guard = self.video.lock().unwrap();
         let video = &mut *guard;
+        if recording {
+            self.captured_pictures.fetch_add(1, Ordering::Relaxed);
+            // Between pictures both captured while recording: the wait for the first one is the start's, not a gap.
+            if video.last_pts >= self.t0_ns.load(Ordering::Acquire) && pts > video.last_pts {
+                self.captured_gap_max_ns.fetch_max(pts - video.last_pts, Ordering::Relaxed);
+            }
+        }
         let phase = self.phase.load(Ordering::Acquire);
         let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
         let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
@@ -340,6 +364,38 @@ impl<P: Platform> Shared<P> {
         }
         video.last = Some(frame);
         video.last_pts = pts;
+    }
+
+    /// Capture delivered a frame without a picture (blank, suspended and the like); counted while recording.
+    pub fn frame_without_picture(&self) {
+        if self.phase.load(Ordering::Acquire) == RECORDING {
+            self.captured_without_picture.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Capture reported the screen unchanged at `pts` (ScreenCaptureKit's idle frame): the newest picture is still what
+    /// is shown. When that refresh is the one the pacer wants, the picture is encoded again at it, so a refresh the
+    /// screen skipped does not leave a gap of one and a half frames in the recording (plan 076 step 7, 2026-10-16:
+    /// 30 fps from the test material on a 60 Hz display had 1–2% of its frames 50 ms apart, every one at an idle
+    /// refresh, and none where capture missed one).
+    pub fn frame_unchanged(&self, pts: u64) {
+        self.frame_without_picture();
+        let mut guard = self.video.lock().unwrap();
+        let video = &mut *guard;
+        let phase = self.phase.load(Ordering::Acquire);
+        let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
+        if !eligible || video.last.is_none() || !video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts)) {
+            return;
+        }
+        if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
+            if let Err(detail) = encoder.encode(frame, pts, false) {
+                drop(guard);
+                self.fail(detail);
+                return;
+            }
+        }
+        video.last_encoded_ns = pts;
+        video.pending = false;
     }
 
     /// Whether sound is taken now; capture may skip reading a buffer when it is not.
@@ -431,6 +487,9 @@ impl<P: Platform> Core<P> {
             lead_sum_us: AtomicI64::new(0),
             lead_count: AtomicU64::new(0),
             lead_max_us: AtomicI64::new(i64::MIN),
+            captured_pictures: AtomicU64::new(0),
+            captured_without_picture: AtomicU64::new(0),
+            captured_gap_max_ns: AtomicU64::new(0),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -643,7 +702,12 @@ impl<P: Platform> Core<P> {
             self.shared.lead_sum_us.load(Ordering::Relaxed) as f64 / count / 1000.0,
             self.shared.lead_max_us.load(Ordering::Relaxed).max(i64::MIN / 2) as f64 / 1000.0,
         );
-        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames };
+        let captured = Captured {
+            pictures: self.shared.captured_pictures.load(Ordering::Relaxed),
+            without_picture: self.shared.captured_without_picture.load(Ordering::Relaxed),
+            longest_gap_ms: self.shared.captured_gap_max_ns.load(Ordering::Relaxed) as f64 / 1e6,
+        };
+        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames, captured };
         let outcome = self.shared.writer.lock().unwrap().take().map(|sender| (sender.finish(stop_ns, audio_frames), self.writer.take()));
         (stopped, Finishing { outcome, began: Instant::now() })
     }

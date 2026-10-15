@@ -167,6 +167,10 @@ pub struct StopReport {
     pub frame_lead_max_ms: f64,
     /// Frames each audio input delivered too late to be mixed.
     pub late_audio_frames: Vec<f64>,
+    /// While recording: frames capture delivered with a picture and without one, and the longest gap between pictures.
+    pub captured_pictures: f64,
+    pub captured_without_picture: f64,
+    pub captured_longest_gap_ms: f64,
 }
 
 #[napi(object)]
@@ -401,7 +405,8 @@ pub struct StopTask {
 }
 
 fn nothing_stopped() -> StopReport {
-    StopReport { drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0, late_audio_frames: Vec::new() }
+    StopReport { drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0, late_audio_frames: Vec::new(),
+      captured_pictures: 0.0, captured_without_picture: 0.0, captured_longest_gap_ms: 0.0 }
 }
 
 impl Task for StopTask {
@@ -422,6 +427,9 @@ impl Task for StopTask {
                 frame_lead_avg_ms: stopped.frame_lead_ms.0,
                 frame_lead_max_ms: stopped.frame_lead_ms.1,
                 late_audio_frames: stopped.late_audio_frames.iter().map(|&frames| frames as f64).collect(),
+                captured_pictures: stopped.captured.pictures as f64,
+                captured_without_picture: stopped.captured.without_picture as f64,
+                captured_longest_gap_ms: stopped.captured.longest_gap_ms,
             })
         }
         #[cfg(not(any(target_os = "macos", windows)))]
