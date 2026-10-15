@@ -15,7 +15,7 @@
  * - B. Idle after the recording: from 30 seconds after the last save, `--minutes`, with the encoder
  *   back to nothing.
  * - C. Settings open behind another app: 3 minutes, the pointer parked on the menu bar (`--hover-card`: on the
- *   first card, its preview playing).
+ *   first card, whose preview a window without the focus no longer plays).
  * - P. Playback (plan 072): the last 30 fps recording, reached as a person does (the tray's Show last recording
  *   focuses its card's Play button, confirmed by its element id, Return plays it), judged over 50 s after a 5-second settle, per role: the app,
  *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
@@ -432,8 +432,8 @@ async function main(): Promise<number> {
       // What C measures depends on what Settings shows: a card's hover preview plays while the pointer rests on it, which
       // the scenario never arranges. Where the pointer and the window are, and a screenshot with the pointer, at both ends.
       // The pointer is parked on the menu bar, over no window, so the scenario measures Settings at rest wherever the
-      // steps before it left the pointer; `--hover-card` rests it on the first card's picture instead, which plays its
-      // preview (a diagnostic of what a person resting the pointer there costs).
+      // steps before it left the pointer; `--hover-card` rests it on the first card's picture instead, where a preview
+      // played behind Finder until Settings stopped previewing without the focus (2026-10-15): it checks that it stays so.
       const settingsFrame = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff")?.frame;
       const park = hoverCard && settingsFrame
         ? { x: settingsFrame.x + Math.round(settingsFrame.width * 0.32), y: settingsFrame.y + Math.round(settingsFrame.height * 0.3) }
