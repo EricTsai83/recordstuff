@@ -9,6 +9,11 @@
 //! for every refresh by name (no minimum interval) was no better (step 4, 2026-10-15: 0.17% dropped at 30 and at 60
 //! fps against 0.06% and 0.11% with a quarter, for about the same processor time).
 //!
+//! A refresh at which the screen did not change comes as an idle frame without a picture; when it is a slot's, the
+//! newest picture is encoded again at it (core `frame_unchanged`), as Chromium repeats one, instead of the slot taking
+//! the next picture a refresh late (step 7, 2026-10-16: 1–2% of 30 fps frames 50 ms apart on a 60 Hz display, every
+//! one at an idle refresh; capture itself never missed one).
+//!
 //! Frames keep ScreenCaptureKit's display time, about 11 ms ahead of their arrival. Stamping them on arrival moved the
 //! flash-to-beep offset from -7 and -15 ms to +5 and +3 ms but dropped 1.4% and 16% of the frames: arrival jitters with
 //! the callback's scheduling, and the grid keeps the wrong ones (step 4, 2026-10-15).

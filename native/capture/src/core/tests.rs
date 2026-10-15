@@ -421,3 +421,48 @@ fn a_stop_before_record_ends_nothing() {
     assert!(rig.encoded.lock().unwrap().is_empty());
     assert_eq!(std::fs::metadata(&rig.path).unwrap().len(), 0, "the file stays empty");
 }
+
+#[test]
+fn the_stop_reports_what_capture_delivered_while_recording() {
+    let mut rig = Rig::new("captured");
+    // Before recording: neither counted.
+    rig.shared.frame(1, Fake::now_ns());
+    rig.shared.frame_without_picture();
+    rig.core.first_frame(Duration::from_secs(1)).unwrap();
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    // Long after the frame before the start: no gap counts from it.
+    std::thread::sleep(Duration::from_millis(120));
+    let t = Fake::now_ns();
+    rig.shared.frame(2, t + 1_000_000);
+    rig.shared.frame(3, t + 18_000_000);
+    rig.shared.frame_without_picture();
+    rig.shared.frame(4, t + 68_000_000);
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.captured.pictures, 3);
+    assert_eq!(stopped.captured.without_picture, 1);
+    assert!((stopped.captured.longest_gap_ms - 50.0).abs() < 0.01, "{:?}", stopped.captured);
+}
+
+#[test]
+fn a_refresh_the_screen_skipped_keeps_the_newest_picture_on_the_frame_grid() {
+    let mut rig = Rig::new("unchanged");
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.first_frame(Duration::from_secs(1)).unwrap();
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // 30 fps from a 60 Hz display whose refreshes come 5 ms after the slots' grid: every second refresh is a slot's.
+    // The refresh for the third slot was idle.
+    let refresh = |n: u64| t0 + 5_000_000 + n * 16_666_667;
+    for n in 1..=8 {
+        if n == 5 { rig.shared.frame_unchanged(refresh(n)) } else { rig.shared.frame(100 + n as u32, refresh(n)) }
+    }
+    let encoded: Vec<(u32, u64)> = rig.encoded.lock().unwrap().iter().map(|&(frame, pts, _)| (frame, pts)).collect();
+    // After the start's own first frame: one each 33 ms, the idle refresh's slot holding the newest picture, the one
+    // the pacer had left out a refresh before.
+    let gaps: Vec<u64> = encoded[1..].windows(2).map(|w| (w[1].1 - w[0].1 + 500_000) / 1_000_000).collect();
+    assert_eq!(gaps, [33, 33, 33], "encoded {encoded:?}");
+    assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [101, 103, 104, 107]);
+    rig.stop();
+}

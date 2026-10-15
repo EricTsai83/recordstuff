@@ -105,7 +105,14 @@ pub(super) type Shared = core::Shared<Mac>;
 /// A stream's sample: `video` says whether its frames are the recording's, `sound` which input its sound is, if any.
 fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType, video: bool, sound_input: Option<usize>) {
     if kind == SCStreamOutputType::Screen && video {
-        if unsafe { frame_status(sample) } != Some(SCFrameStatus::Complete.0) {
+        let status = unsafe { frame_status(sample) };
+        if status == Some(SCFrameStatus::Idle.0) {
+            // The screen did not change at this refresh: its newest picture stands.
+            shared.frame_unchanged(host_ns(unsafe { sample.presentation_time_stamp() }));
+            return;
+        }
+        if status != Some(SCFrameStatus::Complete.0) {
+            shared.frame_without_picture();
             return;
         }
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
