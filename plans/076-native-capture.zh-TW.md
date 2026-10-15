@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-狀態：已規劃；步驟 1 已於 2026-10-14 決定，尚未開始實作。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：進行中；步驟 1 已於 2026-10-14 決定，步驟 2 與 3 已於 2026-10-14 完成，步驟 4 已於 2026-10-15 實作，等待 Windows CI。建立：2026-10-14。優先順序：下一項，排在 074 與 075 之前，因為它的結果決定 074 在哪裡混入麥克風，以及 075 如何讓 RecordStuff 的視窗不出現在錄影中。硬性相依：無。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -87,24 +87,29 @@
 
 ### 4. 引擎
 
-- [ ] 新增 Rust crate（提議為 `native/capture/`）與 napi-rs 綁定，以 `cargo test` 測試封裝器、時間戳與來源篩選，平台模組藏在同一個 Rust 介面後面。
-- [ ] 寫檔（D3）：Rust 的寫檔與封裝器接手 `file-writer.ts` 與 `mp4-finalize.ts` 的工作（定期同步、寫入錯誤分類、分片索引、存檔轉一般 MP4），並移植它們的測試案例；main 保留 sentinel、剩餘空間檢查、發布與歷史，結案時移除這兩個 TypeScript 模組。
-- [ ] 時鐘與同步：每個 session 使用一個單調時鐘（mach absolute time；QueryPerformanceCounter）；音訊時間戳以累計樣本數計算，空隙以靜音補上，和 Cap 一樣，讓長時間錄影的聲音不會相對畫面漂移。
-- [ ] 影格時序，來自步驟 2 的優化回合（commit `9df50a25`，維護者 2026-10-14 的要求）：
-  - 統一停止規則：影格的時間早於停止點才保留。目前擷取端會保留剛好落在停止點的影格，封裝器再丟掉時間不早於結束點的最後一格；封裝器這一步保留為保險。
-  - 擷取間隔：`pacing.rs` 向 ScreenCaptureKit 要求幀間隔的四分之一，在 60 與 120 Hz 螢幕上等於每次刷新都送。直接要求刷新週期時，30 fps 掉了 1.8% 的影格。改試「不設最小間隔」（明確表達每次刷新都送），保留時間格挑選，並重新量測 30 與 60 fps 的掉幀與 CPU；若沒有至少一樣好，就維持四分之一。
-  - 影格時間：影格目前使用 ScreenCaptureKit 的顯示時間，比送達時間早約 11 ms。閃光與嗶聲的 offset 為 -22 到 +9 ms，同一段錄影內固定；Chromium 為 +6 到 +8 ms。決定維持顯示時間，或改用送達時間。
-- [ ] 開始延遲：步驟 2 的優化回合之後，原生引擎從按下快捷鍵到 `prepared` 需要 457–535 ms，Chromium 需要 347–369 ms。原生的時間由三部分組成：`utilityProcess` 啟動（74–88 ms）、shareable content 查詢（59–83 ms），以及 ScreenCaptureKit 的 `startCapture`（206–227 ms）。
-  - 用同樣的方式替 Chromium 路徑的開始流程分段計時，了解它的時間花在哪裡。
-  - 量測預先啟動擷取用的 `utilityProcess`（在開始任何擷取之前）。
-  - 把延遲與記憶體回報給維護者。這個 process 會改變[在選單列待命](../docs/zh-TW/system-design/design-overview.md#在選單列待命)的閒置清單，所以由維護者決定。
-- [ ] 閒置的 renderer：Electron 44 在第一次使用預設 session 時會預先啟動一個 renderer，而 display-media handler 在啟動時就會使用預設 session。走 Chromium 時，第一個 capture host 會用掉它；走原生時沒有人用，所以它一直留著（約 65 MB），錄影後的 `pnpm measure:cpu` 因此在 `IDLE_ROLES` 判定失敗。
-  - 原生模式下，啟動時不碰預設 session。
-  - 用 `pnpm measure:cpu` 確認錄影後沒有殘留 renderer。
-  - 量測有和沒有預先啟動的 renderer 時，Settings 第一次開啟的時間。隱藏 Settings 會保留它的 renderer；關閉後，下次開啟本來就會啟動新的 renderer。
-  - 若無法避免這個 renderer，由維護者在「`IDLE_ROLES` 允許它」與上面的預先啟動 process 之間選擇。
+- [x] 新增 Rust crate（提議為 `native/capture/`）與 napi-rs 綁定，以 `cargo test` 測試封裝器、時間戳與來源篩選，平台模組藏在同一個 Rust 介面後面。crate 從步驟 2 就存在；步驟 4 在同一個 `Core` 後面加入來源與混音器（2026-10-15）。
+- [x] 寫檔（D3）：Rust 的寫檔與封裝器接手 `file-writer.ts` 與 `mp4-finalize.ts` 的工作（定期同步、寫入錯誤分類、分片索引、存檔轉一般 MP4），並移植它們的測試案例；main 保留 sentinel、剩餘空間檢查、發布與歷史，結案時移除這兩個 TypeScript 模組。步驟 2 的原型在回報 `stopped` 前就把檔案收尾，所以慢速磁碟的存檔會落在 recorder 10 秒的停止期限內，被當成 `stop_timeout` 終止（步驟 2 的 review）：要把擷取停止和檔案收尾分開，就像現在 renderer 停止和 main 收尾是分開的。
+  - 2026-10-15 完成：引擎的 `stop` 在擷取與編碼器停止後就回覆，另一個 `finish` 在檔案轉成一般 MP4、或確定為何沒轉成時回覆。host 先送 `stopped`，再送新的 `finished`（或 `writeError`）。recorder 回到 idle 後，`NativeCaptureHost` 讓正在收尾的 process 繼續執行，把結果交給 `EngineFileWriter`，之後才結束它，上限 150 秒。桌面上，recorder 在 `stopped` 後 0–1 ms 回到 idle，檔案在 19–22 ms 後完成。
+  - 封裝器的測試已涵蓋 TypeScript 中適用於它的案例（64-bit `mdat`、分片索引、索引寫入失敗時保留 fragmented）；`file-writer.test.ts` 的其餘部分是附加 chunk 與發布，留在 main。沒有慢到會超過舊期限的磁碟可測：分開的效果以事件順序與單元測試證明。
+- [x] 時鐘與同步：每個 session 使用一個單調時鐘（mach absolute time；QueryPerformanceCounter）；音訊時間戳以累計樣本數計算，空隙以靜音補上，和 Cap 一樣，讓長時間錄影的聲音不會相對畫面漂移。步驟 2 起就已實作（`timing.rs`）；步驟 4 的混音器對每個輸入各自維持。
+- [x] 影格時序，來自步驟 2 的優化回合（commit `9df50a25`，維護者 2026-10-14 的要求），2026-10-15 在簽章 bundle 上量測：
+  - 統一停止規則：影格的時間早於停止點才保留。已完成；有測試送入時間剛好在停止點的影格。封裝器的丟棄保留為保險。
+  - 擷取間隔：要求每次刷新時，30 與 60 fps 都掉了 0.17%；四分之一幀間隔則是 0.06% 與 0.11%，CPU 差不多（30 fps 10.8% 對 10.4%，60 fps 14.4% 對 15.0%）。維持四分之一。
+  - 影格時間：顯示時間的閃光與嗶聲 offset 為 -7 與 -15 ms，掉幀 0.22–0.27%；送達時間為 +5 與 +3 ms，但掉了 1.4% 與 16%，因為送達時間隨 callback 排程抖動，pacer 的時間格會留下錯的影格。維持顯示時間。兩項結果都寫在 `pacing.rs`，量測用的兩個開關已移除。
+- [x] 開始延遲：步驟 2 的優化回合之後，原生引擎從按下快捷鍵到 `prepared` 需要 457–535 ms，Chromium 需要 347–369 ms。原生的時間由三部分組成：`utilityProcess` 啟動（74–88 ms）、shareable content 查詢（59–83 ms），以及 ScreenCaptureKit 的 `startCapture`（206–227 ms）。
+  - [x] 用同樣的方式替 Chromium 路徑的開始流程分段計時。已完成（`CaptureHost.phase`）：隱藏視窗在 83–84 ms 就緒，螢幕在 98–101 ms 前回覆，Chromium 自己的擷取啟動與 `MediaRecorder` 花掉剩下的 180–215 ms，從 `start` 起 282–313 ms 到 `prepared`。
+  - [x] 量測預先啟動擷取用的 `utilityProcess`。以開發用開關量測（之後已移除）：快捷鍵到 `prepared` 為 437–439 ms，不預先啟動為 484–497 ms，Chromium 為 369–395 ms；代價是多一個約 73 MB 的閒置 process。
+  - [x] 把延遲與記憶體回報給維護者，由維護者決定；這個 process 會改變[在選單列待命](../docs/zh-TW/system-design/design-overview.md#在選單列待命)的閒置清單。維護者於 2026-10-15 決定：不預先啟動。快約 50 ms 不值得閒置時一直多佔約 73 MB 的 process，而且開始仍在倒數時間內，所以閒置清單不變。
+- [x] 閒置的 renderer：Electron 44 在第一次使用預設 session 時會預先啟動一個 renderer，而 display-media handler 在啟動時就會使用預設 session。走 Chromium 時，第一個 capture host 會用掉它；走原生時沒有人用，所以它一直留著（約 65 MB），錄影後的 `pnpm measure:cpu` 因此在 `IDLE_ROLES` 判定失敗。
+  - 原生模式下，main 不再註冊 display-media handler；錄影檔庫的 media protocol 啟動時也會使用預設 session，改為在第一個視窗建立時才註冊。
+  - 原生模式的 `pnpm measure:cpu` 通過 process 角色檢查：啟動時與錄影後都沒有 renderer。
+  - Settings 第一次開啟：原生 253–341 ms，有預先啟動的 renderer 時 241–245 ms（341 ms 那次是建置後第一次啟動）。
 - [ ] 輸入：螢幕（現在就用）、視窗、區域與 App 篩選、單一 App 聲音（只做引擎與測試）、麥克風（供 074），每一項都有清楚的錯誤，對應到既有的 `HostErrorCode` 或新代碼。
-- [ ] 品質：`src/shared/quality.ts` 中的既有設定（尺寸上限、影格率、位元率）改由原生端套用；`CaptureReport` 維持原有欄位，讓 Recorder、log 與警告維持原樣。
+  - 2026-10-15 實作：`prepare` 接受來源（螢幕、視窗、區域、App）與聲音（系統聲音、指定 process 的聲音或無，加上麥克風，預設裝置或指定 id）；`microphones()` 列出輸入裝置。core 把每個輸入混進同一條 AAC 音軌（`core/mixer.rs`）；某個輸入沒送資料時，音軌跟著時鐘、落後 500 ms 前進，所以 WASAPI loopback 的靜音不再讓音訊分片停住。錯誤使用 `capture_start_failed` 並附原因；給使用者看的錯誤碼隨選擇器與 074 加入。
+  - macOS：以這台 Mac 的 live test 驗證（視窗、區域、單一 App 的視窗與聲音，各 3 秒，影音長度相同），也透過簽章 App 驗證（區域與 Finder 視窗，`RECORDSTUFF_CAPTURE_SOURCE`）。錄視窗一開始會讓擷取 process 結束（`CGS_REQUIRE_INIT`，沒有 window server 連線），已修正。macOS 尚未詢問過麥克風權限時，麥克風會拒絕，因為 AVFoundation 此時只送出靜音；它的聲音在這裡未測，因為執行測試的 App 沒有權限。
+  - Windows：Windows.Graphics.Capture 的視窗與裁切、每個 process 的 loopback、WASAPI 麥克風；只錄指定 App 的視窗會被拒絕（Windows.Graphics.Capture 做不到）。等待 `native-windows` CI 執行，它會錄區域、測試自己開的視窗、單一 process 的聲音，以及 runner 若有麥克風則錄麥克風。
+- [x] 品質：`src/shared/quality.ts` 中的既有設定（尺寸上限、影格率、位元率）改由原生端套用；`CaptureReport` 維持原有欄位，讓 Recorder、log 與警告維持原樣。步驟 2 起就已實作（`native-host-process.ts`）。
+- 過程中的發現：`pnpm measure:cpu` 的情境 C（Settings 開在其他 App 後面）在兩次原生執行量到 38.5% 與 39.0%，一次 Chromium 執行量到 10.0%；同一個 build 的另外兩次是 0.15–0.18%。忙碌的是 Settings 的 renderer 與 GPU process；原因尚未確定（卡片的 hover 預覽在游標下播放符合現象）。它不只發生在原生引擎。
 
 ### 5. 整合
 
