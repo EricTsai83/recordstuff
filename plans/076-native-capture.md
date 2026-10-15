@@ -2,7 +2,7 @@
 
 [English](076-native-capture.md) | [繁體中文](076-native-capture.zh-TW.md)
 
-Status: in progress; step 1 decided on 2026-10-14, steps 2 and 3 done on 2026-10-14, step 4 done on 2026-10-15 (PR #6), step 5 done on 2026-10-15 except removing the display-media handler, which waits for D7's flag to go after step 7. Created: 2026-10-14. Priority: next, before 074 and 075, because its result decides where 074 mixes the microphone and how 075 keeps RecordStuff's windows out of the recording. Hard dependencies: none. Execute the steps in order under [the plan index](README.md).
+Status: in progress; step 1 decided on 2026-10-14, steps 2 and 3 done on 2026-10-14, step 4 done on 2026-10-15 (PR #6), step 5 done on 2026-10-15 except removing the display-media handler, which waits for D7's flag to go after step 7, step 6 done on 2026-10-15. Created: 2026-10-14. Priority: next, before 074 and 075, because its result decides where 074 mixes the microphone and how 075 keeps RecordStuff's windows out of the recording. Hard dependencies: none. Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
@@ -125,8 +125,13 @@ All of step 1 was decided by the maintainer on 2026-10-14.
 
 ### 6. Build and release
 
-- [ ] Rust toolchain and cargo cache in `check.yml` and `release.yml` on both runners; the `.node` binary unpacked from asar and signed with the app on macOS; the Windows installer smoke covers loading it.
-- [ ] `pnpm check` runs `cargo test` and a load test of the built module; contributor setup in [CONTRIBUTING.md](../CONTRIBUTING.md) names the Rust requirement.
+- [x] Rust toolchain and cargo cache in `check.yml` and `release.yml` on both runners; the `.node` binary unpacked from asar and signed with the app on macOS; the Windows installer smoke covers loading it.
+  - Done 2026-10-15: every build on macOS and Windows compiles the module, so Windows's check, installer and release builds carry it; a build without Cargo now fails instead of making an app that cannot record, and `RECORDSTUFF_SKIP_NATIVE=1` skips it on purpose (CI's background UI shards, which never record). Windows therefore records natively by default too, `RECORDSTUFF_CAPTURE_ENGINE=chromium` bringing the hidden renderer back as on macOS: D7's switch for both platforms.
+  - `check.yml` keeps Cargo's output with `Swatinem/rust-cache` in the `check`, `windows-installer` and `native-windows` jobs; the release builds check that Rust is there and use no cache, so what is published is built from source alone.
+  - macOS: electron-builder already signed the unpacked module with the app's certificate and hardened runtime. `start-app.mjs --verify-app`, which local bundles and the release's mounted DMG pass through, now requires it and checks its certificate (a real bundle passed; a copy without it was refused).
+  - Windows: the installer smoke (`windows-smoke`, `candidate-windows`, `published-windows`) loads the installed module in Node through `scripts/native-load.mjs`.
+- [x] `pnpm check` runs `cargo test` and a load test of the built module; contributor setup in [CONTRIBUTING.md](../CONTRIBUTING.md) names the Rust requirement.
+  - Done 2026-10-15: `pnpm check` is typecheck, Vitest, `pnpm test:native` (`cargo test --lib`), the build and `node scripts/native-load.mjs`, which loads the module and checks the methods the capture host calls without capturing. The verification recipes follow it. Locally it passed: 1946 Vitest tests, 65 Rust tests (5 live ones ignored as always), the module loaded.
 
 ### 7. Verification tools and acceptance
 
