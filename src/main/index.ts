@@ -44,7 +44,8 @@ import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
 import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
-import { PermissionWatcher, openNotificationSettings, openScreenCaptureSettings } from "./permission/permission";
+import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openScreenCaptureSettings } from "./permission/permission";
+import type { MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
 import { SavedNotification } from "./recording/saved-notification";
@@ -268,6 +269,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const countdownSeconds = (): CountdownSeconds => autoRecord?.ok ? autoRecord.config.countdown : settings.countdown;
   /** Autorecord never ticks, so the matrix and audio-quality recordings cannot hear it (plan 046). */
   const countdownSound = (): boolean => autoRecord?.ok ? autoRecord.config.countdownSound : settings.countdownSound;
+  /** Autorecord mixes the microphone in only when its configuration says so (plan 074). */
+  const microphoneOn = (): boolean => autoRecord?.ok ? autoRecord.config.microphone : settings.microphone;
   /** An autorecord folder, like its quality, lives in memory only. */
   const outputDirOverride = autoRecord?.ok ? autoRecord.config.outputDir : undefined;
 
@@ -307,6 +310,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
     // D6: only ScreenCaptureKit can leave the system's chrome out.
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
+    // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
+    prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
     ...(process.platform === "win32" ? {
       // The engine finds the display by the physical point at its centre: Electron's ids name no monitor there.
       displayPoint: (displayId: string) => {
@@ -347,6 +352,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     quality,
     countdownSeconds,
     countdownSound,
+    microphone: () => {
+      // Autorecord's microphone is the system default; the user's is the one Settings chose.
+      const device = autoRecord?.ok ? undefined : settings.microphoneDevice;
+      const named = device ? microphones?.find((candidate) => candidate.id === device.id)?.name ?? device.label
+        : microphones?.find((candidate) => candidate.default)?.name;
+      return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
+    },
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -425,6 +437,20 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
   let captureDegraded = false;
+  /**
+   * The audio inputs the engine listed last (plan 074), for the Input device menu; refreshed when the window comes
+   * forward and when the microphone is turned on, never while a session runs, and at most one listing at a time.
+   */
+  let microphones: readonly MicrophoneDevice[] | undefined;
+  let listingMicrophones = false;
+  const refreshMicrophones = (): void => {
+    if (listingMicrophones || !preferencesUnlocked(recorder.state)) return;
+    listingMicrophones = true;
+    host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
+      (devices) => { microphones = devices; },
+      (cause: unknown) => log(`microphone: the inputs could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
+    ).finally(() => { listingMicrophones = false; refreshUi(); });
+  };
   const captureWarning = () => translate("Could not confirm the resolution cap. The recording may be larger.", settings.language);
   /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */
   const savingContext = (): Pick<AppContext, "saving" | "quitWithoutWaiting"> => {
@@ -439,6 +465,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
     displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    microphone: (() => {
+      const device = settings.microphoneDevice, access = microphoneAccess();
+      return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
+    })(),
     platform: process.platform,
     outputDir: settings.outputDir,
     homeDir: os.homedir(),
@@ -470,7 +500,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
-    activated: () => { library.watch(); void library.refresh(); },
+    activated: () => { library.watch(); void library.refresh(); refreshMicrophones(); },
     quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
@@ -694,7 +724,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     relaunch: () => quitCoordinator.relaunch(),
     openExternal: url => shell.openExternal(url),
     revealFile: file => shell.showItemInFolder(file),
-    openScreenCaptureSettings, openNotificationSettings,
+    openScreenCaptureSettings, openNotificationSettings, openMicrophoneSettings,
+    askMicrophoneAccess: async () => {
+      const allowed = await askMicrophoneAccess();
+      // The default input's name for the card, now that the microphone is on.
+      refreshMicrophones();
+      return allowed;
+    },
     showInfo: async detail => {
       focusApp();
       await dialog.showMessageBox({ type: "info", title: APP_NAME, message: APP_NAME, detail });
@@ -708,6 +744,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       case "state": {
         // renderUi below draws the cleared line.
         quit.clearDeferred(false);
+        // No input is listed while a session runs (plan 074): a listing still in flight ends now.
+        if (!preferencesUnlocked(event.state)) host.cancelListing();
         if (preferencesUnlocked(event.state)) {
           displayMedia.settle();
           host.destroy();
@@ -743,6 +781,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         }
         savedNotification.schedule(event.path, event.stoppedEarly);
         void library.refreshIfWatched();
+        return;
+      case "microphoneLost":
+        // Told once the recording ends: a banner now could be muted while the display is shared (plan 074).
+        captureNotices.hold("microphone lost", () => tray.notifyMicrophoneLost());
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;

@@ -8,7 +8,7 @@
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
-import { OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type NativeStart } from "../../shared/protocol";
+import { OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -17,14 +17,18 @@ interface PreparedInfo {
   excludedApps: number; hiddenWindows: number; warnings: string[];
   /** Where the engine's prepare spent its time. */
   timings?: string;
+  /** The microphone the engine opened, by name (plan 074); absent (or null from napi) without one. */
+  microphone?: string | null;
 }
 interface StopReport {
   drainMs?: number; drainPaddedFrames?: number; frameLeadAvgMs?: number; frameLeadMaxMs?: number; lateAudioFrames?: number[];
+  /** Plan 074: frames inserted and dropped per audio input to keep it on the clock, and samples the limiter changed. */
+  insertedAudioFrames?: number[]; droppedAudioFrames?: number[]; limitedAudioSamples?: number;
   /** What capture delivered while recording (plan 076 step 7): pictures, deliveries without one, the longest gap between pictures. */
   capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
-interface EngineEvent { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string }
+interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string }
 /** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
 export interface CaptureSource {
   kind: "display" | "window" | "area" | "apps";
@@ -32,7 +36,7 @@ export interface CaptureSource {
   area?: { x: number; y: number; width: number; height: number };
   pids?: number[];
 }
-/** Whose sound the track holds; the microphone is 074's. */
+/** Whose sound the track holds: the system's (or chosen apps'), and the microphone mixed in (plan 074). */
 export interface AudioOptions { system: "all" | "apps" | "off"; pids?: number[]; microphone: boolean; microphoneId?: string }
 interface NativeCapture {
   probe(displayId: number, displayPoint?: { x: number; y: number }, source?: CaptureSource): Promise<ProbeResult>;
@@ -45,6 +49,7 @@ interface NativeCapture {
   stop(): Promise<StopReport>;
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
+  microphones(): Promise<MicrophoneDevice[]>;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -54,7 +59,7 @@ export interface ParentPort {
   postMessage(message: unknown): void;
 }
 
-const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "mp4_unsupported", "capture_start_failed", "capture_failed"];
+const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "mp4_unsupported", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
 
 const NUMBER_LIST = /^\d+(,\d+)*$/;
@@ -63,8 +68,8 @@ const numbers = (text: string): number[] => text.split(",").map(Number);
 /**
  * Step 4's development switches, until a later plan's pickers choose: `RECORDSTUFF_CAPTURE_SOURCE` is `window:<id>`,
  * `area:<x>,<y>,<width>,<height>` (the display's pixels) or `apps:<pid>,…`, and `RECORDSTUFF_CAPTURE_AUDIO` is `off`
- * or `apps:<pid>,…`. Anything else, or nothing, records as today. The microphone has no switch: macOS ends a signed
- * RecordStuff that opens one before 074 declares its use.
+ * or `apps:<pid>,…`. Anything else, or nothing, records as today. The microphone is the user's setting (plan 074), which
+ * `start` carries and these switches keep.
  */
 export function developmentCapture(env: Record<string, string | undefined>): { source?: CaptureSource; audio?: AudioOptions } {
   const result: { source?: CaptureSource; audio?: AudioOptions } = {};
@@ -130,7 +135,34 @@ export class NativeHost {
       case "stop":
         void this.stop(message.sessionId);
         return;
+      case "listMicrophones":
+        void this.listMicrophones();
+        return;
     }
+  }
+
+  /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */
+  private async listMicrophones(): Promise<void> {
+    if (this.session) {
+      this.send({ type: "microphones", error: "a recording is in progress" });
+      return;
+    }
+    try {
+      const devices = await this.capture.microphones();
+      this.send({ type: "microphones", devices: devices.map(({ id, name, default: isDefault }) => ({ id, name, default: isDefault })) });
+    } catch (cause) {
+      this.send({ type: "microphones", error: engineFailure(cause).detail });
+    }
+  }
+
+  /** The track's sound: the development switches' choice, with the user's microphone added; absent is 076's default. */
+  private audio(native: NativeStart): AudioOptions | undefined {
+    const chosen = native.microphone?.enabled
+      ? { microphone: true, ...(native.microphone.deviceId ? { microphoneId: native.microphone.deviceId } : {}) }
+      : undefined;
+    const development = this.development.audio;
+    if (development) return chosen ? { ...development, ...chosen } : development;
+    return chosen ? { system: "all", ...chosen } : undefined;
   }
 
   private async start(sessionId: string, quality: QualitySettings, native: NativeStart): Promise<void> {
@@ -144,8 +176,9 @@ export class NativeHost {
     try {
       const began = this.now();
       // napi-rs reads an absent optional object as None and refuses null, so the point is left out on macOS.
-      const { source: chosen, audio } = this.development;
-      if (chosen || audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
+      const chosen = this.development.source;
+      const audio = this.audio(native);
+      if (chosen || this.development.audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
       const source = chosen
         ? await this.capture.probe(native.displayId, native.displayPoint, chosen)
         : await this.capture.probe(native.displayId, native.displayPoint);
@@ -164,6 +197,7 @@ export class NativeHost {
         width: prepared.width, height: prepared.height, frameRate: quality.frameRate,
         sampleRate: prepared.sampleRate, channelCount: prepared.channelCount,
         videoBitsPerSecond: videoBps, audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+        ...(prepared.microphone ? { microphone: prepared.microphone } : {}),
         warnings: [
           ...prepared.warnings,
           `native engine: source ${source.width}x${source.height}, AAC priming ${prepared.primingFrames} frames, ` +
@@ -239,6 +273,10 @@ export class NativeHost {
       `${stopped.drainPaddedFrames ?? 0} frame(s) filled with silence; ` +
       `frames stamped ${(stopped.frameLeadAvgMs ?? 0).toFixed(1)} ms ahead on average, ${(stopped.frameLeadMaxMs ?? 0).toFixed(1)} ms at most` +
       `${stopped.lateAudioFrames?.some((frames) => frames > 0) ? `; audio frames too late to mix, by input: ${stopped.lateAudioFrames.join(", ")}` : ""}` +
+      `${[...(stopped.insertedAudioFrames ?? []), ...(stopped.droppedAudioFrames ?? [])].some((frames) => frames > 0)
+        ? `; audio kept on the clock, by input: ${(stopped.insertedAudioFrames ?? []).join(", ")} frame(s) of silence inserted, ${(stopped.droppedAudioFrames ?? []).join(", ")} dropped`
+        : ""}` +
+      `${(stopped.limitedAudioSamples ?? 0) > 0 ? `; ${stopped.limitedAudioSamples} sample(s) of two inputs limited below full scale` : ""}` +
       `${stopped.capturedPictures === undefined ? "" : `; capture delivered ${stopped.capturedPictures} pictures and ${stopped.capturedWithoutPicture ?? 0} frames without one, ${(stopped.capturedLongestGapMs ?? 0).toFixed(1)} ms apart at most`})`);
     // Engine events after this are the file's, which `finish` answers for.
     this.session = undefined;
@@ -261,6 +299,10 @@ export class NativeHost {
       this.send({ type: "progress", sessionId: session.id, bytes: event.bytes ?? 0 });
     } else if (event.kind === "writeError" && WRITE_CODES.includes(event.code ?? "")) {
       this.send({ type: "writeError", sessionId: session.id, code: event.code as "disk_full" | "output_write_failed", detail: event.detail ?? "" });
+    } else if (event.kind === "microphoneLost") {
+      this.send({ type: "microphoneLost", sessionId: session.id, detail: event.detail ?? "the microphone stopped" });
+    } else if (event.kind === "microphoneResumed") {
+      this.send({ type: "microphoneResumed", sessionId: session.id, detail: event.detail ?? "the microphone delivered sound again" });
     } else if (event.kind === "captureError") {
       const code = HOST_CODES.includes(event.code ?? "") ? event.code as HostErrorCode : "capture_failed";
       this.fail(session.id, code, event.detail ?? "capture ended");

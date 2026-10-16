@@ -11,7 +11,7 @@ class Port implements ParentPort {
   deliver(data: unknown): void { this.listener?.({ data }); }
 }
 
-type Event = { kind: "progress" | "writeError" | "captureError"; bytes?: number; code?: string; detail?: string };
+type Event = { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string };
 
 function fakeEngine() {
   let emit: (event: Event) => void = () => undefined;
@@ -25,6 +25,7 @@ function fakeEngine() {
     stop: vi.fn(async () => ({ drainMs: 31, drainPaddedFrames: 0, frameLeadAvgMs: 4.2, frameLeadMaxMs: 9 })),
     finish: vi.fn(async (): Promise<{ bytes: number; finalizeMs: number; fragmented?: string | null }> => ({ bytes: 1234, finalizeMs: 4, fragmented: null })),
     cancel: vi.fn(async () => undefined),
+    microphones: vi.fn(async () => [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }]),
   };
   return { engine, factory: (onEvent: (event: Event) => void) => { emit = onEvent; return engine; }, emit: (event: Event) => emit(event) };
 }
@@ -65,6 +66,112 @@ describe("developmentCapture", () => {
 });
 
 describe("NativeHost", () => {
+  describe("the microphone (plan 074)", () => {
+    const start = (port: Port, microphone?: NativeStart["microphone"]) =>
+      port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, ...(microphone ? { microphone } : {}) } });
+
+    it("leaves the engine's sound as it was when the microphone is off or absent", async () => {
+      for (const microphone of [undefined, { enabled: false, deviceId: "mic" }]) {
+        const port = new Port();
+        const fake = fakeEngine();
+        new NativeHost(port, fake.factory, () => undefined);
+        start(port, microphone);
+        await flush();
+        expect(Object.keys(fake.engine.prepare.mock.calls[0]![0])).not.toContain("audio");
+      }
+    });
+
+    it("mixes the default input, or the chosen one, into the system's sound and keeps a development switch's", async () => {
+      const port = new Port();
+      const fake = fakeEngine();
+      new NativeHost(port, fake.factory, () => undefined);
+      start(port, { enabled: true });
+      await flush();
+      expect(fake.engine.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ audio: { system: "all", microphone: true } }));
+
+      const chosen = new Port();
+      const other = fakeEngine();
+      new NativeHost(chosen, other.factory, () => undefined, undefined, { audio: { system: "off", microphone: false } });
+      start(chosen, { enabled: true, deviceId: "usb-mic" });
+      await flush();
+      expect(other.engine.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ audio: { system: "off", microphone: true, microphoneId: "usb-mic" } }));
+    });
+
+    it("reports the microphone the engine opened in the capture report, and none without one", async () => {
+      const port = new Port();
+      const fake = fakeEngine();
+      fake.engine.prepare.mockImplementationOnce(async (options) => ({ width: options.width, height: options.height, sampleRate: 48_000, channelCount: 2,
+        primingFrames: 2112, excludedApps: 0, hiddenWindows: 0, timings: "", microphone: "MacBook Pro Microphone",
+        warnings: ["microphone: usb-mic is not connected; the default input is used"] }) as never);
+      new NativeHost(port, fake.factory, () => undefined);
+      start(port, { enabled: true, deviceId: "usb-mic" });
+      await flush();
+      expect(port.sent.at(-1)).toMatchObject({ type: "prepared", capture: { microphone: "MacBook Pro Microphone",
+        warnings: expect.arrayContaining(["microphone: usb-mic is not connected; the default input is used"]) } });
+      const { port: plain } = await prepared();
+      expect(plain.sent.at(-1)).toMatchObject({ type: "prepared" });
+      expect((plain.sent.at(-1) as { capture: object }).capture).not.toHaveProperty("microphone");
+    });
+
+    it("refuses before prepared when the engine cannot open the microphone", async () => {
+      const port = new Port();
+      const fake = fakeEngine();
+      fake.engine.prepare.mockRejectedValueOnce(new Error("microphone_unavailable|microphone: device usb-mic is not connected"));
+      new NativeHost(port, fake.factory, () => undefined);
+      start(port, { enabled: true, deviceId: "usb-mic" });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s1", code: "microphone_unavailable", detail: "microphone: device usb-mic is not connected" });
+      expect(port.sent.some((message) => message.type === "prepared")).toBe(false);
+    });
+
+    it("answers a cancel while the microphone opens with stopped, and releases what was prepared", async () => {
+      const port = new Port();
+      const fake = fakeEngine();
+      let opened: () => void = () => undefined;
+      fake.engine.prepare.mockImplementationOnce((options) => new Promise((resolve) => {
+        opened = () => resolve({ width: options.width, height: options.height, sampleRate: 48_000, channelCount: 2, primingFrames: 2112, excludedApps: 0, hiddenWindows: 0, warnings: [], timings: "" });
+      }));
+      new NativeHost(port, fake.factory, () => undefined);
+      start(port, { enabled: true });
+      await flush();
+      port.deliver({ type: "stop", sessionId: "s1" });
+      opened();
+      await flush();
+      expect(fake.engine.cancel).toHaveBeenCalledTimes(1);
+      expect(port.sent.at(-1)).toMatchObject({ type: "stopped", sessionId: "s1" });
+      expect(port.sent.some((message) => message.type === "prepared")).toBe(false);
+    });
+
+    it("tells main the microphone was lost and keeps recording", async () => {
+      const { port, engine, emit } = await prepared();
+      port.deliver({ type: "record", sessionId: "s1" });
+      emit({ kind: "microphoneLost", detail: "the microphone delivered no sound for 2 s" });
+      expect(port.sent.at(-1)).toEqual({ type: "microphoneLost", sessionId: "s1", detail: "the microphone delivered no sound for 2 s" });
+      emit({ kind: "microphoneResumed", detail: "the microphone delivered sound again after 2.4 s" });
+      expect(port.sent.at(-1)).toEqual({ type: "microphoneResumed", sessionId: "s1", detail: "the microphone delivered sound again after 2.4 s" });
+      expect(engine.stop).not.toHaveBeenCalled();
+      expect(port.sent.some((message) => message.type === "error")).toBe(false);
+    });
+
+    it("lists the inputs when idle and refuses while a session holds the engine", async () => {
+      const port = new Port();
+      const fake = fakeEngine();
+      new NativeHost(port, fake.factory, () => undefined);
+      port.deliver({ type: "listMicrophones" });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "microphones", devices: [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }] });
+      fake.engine.microphones.mockRejectedValueOnce(new Error("capture_start_failed|AVFoundation has no audio media type"));
+      port.deliver({ type: "listMicrophones" });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "microphones", error: "AVFoundation has no audio media type" });
+      start(port);
+      await flush();
+      port.deliver({ type: "listMicrophones" });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "microphones", error: "a recording is in progress" });
+    });
+  });
+
   it("probes and prepares the development source and sound when they are set, and logs them", async () => {
     const port = new Port();
     const fake = fakeEngine();
@@ -85,6 +192,19 @@ describe("NativeHost", () => {
     port.deliver({ type: "stop", sessionId: "s1" });
     await flush();
     expect(logs.find((line) => line.startsWith("timing: stop"))).toContain("audio frames too late to mix, by input: 0, 480");
+  });
+
+  it("logs the audio kept on the clock and the samples the limiter changed, and nothing when there were none", async () => {
+    const { port, engine, logs } = await prepared();
+    engine.stop.mockResolvedValueOnce({ drainMs: 1, drainPaddedFrames: 0, frameLeadAvgMs: 0, frameLeadMaxMs: 0,
+      insertedAudioFrames: [0, 31], droppedAudioFrames: [0, 2], limitedAudioSamples: 96 } as never);
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    const line = logs.find((entry) => entry.startsWith("timing: stop"));
+    expect(line).toContain("audio kept on the clock, by input: 0, 31 frame(s) of silence inserted, 0, 2 dropped");
+    expect(line).toContain("96 sample(s) of two inputs limited below full scale");
+    expect(logs.filter((entry) => entry.startsWith("timing: stop")).length).toBe(1);
   });
 
   it("prepares within the cap the setting names, at the setting's bit rate, and reports the capture", async () => {

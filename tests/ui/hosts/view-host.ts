@@ -194,6 +194,8 @@ const state = {
   captureView: undefined as SettingsView | undefined,
   resultContext: undefined as AppContext | undefined,
   soundContext: undefined as AppContext | undefined,
+  /** The Microphone rows' context (plan 074); a choice commits as main would and pushes the view. */
+  microphoneContext: undefined as AppContext | undefined,
   updateContext: undefined as AppContext | undefined,
   resultSaveFails: false,
   /** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
@@ -249,6 +251,17 @@ function installPanelHandlers(): void {
       const action = settingsAction({ type: "idle" }, state.soundContext, group, choice);
       if (typeof action === "object" && "setCountdownSound" in action) state.soundContext = { ...state.soundContext, countdownSound: action.setCountdownSound };
       return { view: settingsView({ type: "idle" }, state.soundContext), applied: action !== undefined };
+    }
+    if ((group === "microphone" || group === "microphoneDevice") && state.microphoneContext) {
+      const context = state.microphoneContext;
+      const action = settingsAction({ type: "idle" }, context, group, choice);
+      const microphone = context.microphone ?? { enabled: false };
+      if (typeof action === "object" && "setMicrophone" in action) state.microphoneContext = { ...context, microphone: { ...microphone, enabled: action.setMicrophone } };
+      if (typeof action === "object" && "setMicrophoneDevice" in action) {
+        const { device: _device, ...rest } = microphone;
+        state.microphoneContext = { ...context, microphone: action.setMicrophoneDevice ? { ...rest, device: action.setMicrophoneDevice } : rest };
+      }
+      return { view: settingsView({ type: "idle" }, state.microphoneContext), applied: action !== undefined };
     }
     if (group === "updates" && state.updateContext) {
       const action = settingsAction({ type: "idle" }, state.updateContext, group, choice);

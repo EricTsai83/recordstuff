@@ -29,12 +29,13 @@ export interface ActionDeps {
   refresh(): void;
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
-    | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality">;
+    | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
+    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
-    | "notifyQualityWriteFailed" | "notifyAnswer">;
+    | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied">;
   settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
   shortcuts: Pick<AppShortcuts, "set" | "retry">;
   updates: Pick<UpdateChecker, "check" | "state">;
@@ -63,6 +64,13 @@ export interface ActionDeps {
   revealFile(file: string): void;
   openScreenCaptureSettings(): Promise<void>;
   openNotificationSettings(): Promise<void>;
+  /** System Settings → Privacy & Security → Microphone (plan 074). */
+  openMicrophoneSettings(): Promise<void>;
+  /**
+   * Asks macOS for the microphone when it never has (plan 074): the prompt then follows the user's own click. Answers
+   * whether access is allowed now; Windows, which has no prompt, answers true.
+   */
+  askMicrophoneAccess(): Promise<boolean>;
   /** A windowless informational box, brought forward first. */
   showInfo(detail: string): Promise<void>;
 }
@@ -92,6 +100,25 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         locked: true,
         write: () => settings.setHideSystemUi(action.setHideSystemUi),
         applied: () => log(`settings: hide menu bar and Dock ${settings.hideSystemUi ? "on" : "off"}`),
+      });
+    } else if ("setMicrophone" in action) {
+      const turningOn = action.setMicrophone && !settings.microphone;
+      await deps.savePreference("microphone", {
+        locked: true,
+        write: () => settings.setMicrophone(action.setMicrophone),
+        applied: () => log(`settings: microphone ${settings.microphone ? "on" : "off"}`),
+      });
+      // Saved even when refused: Settings then shows the denial with the pane that changes it (plan 074).
+      if (turningOn && settings.microphone && !(await deps.askMicrophoneAccess())) {
+        log("settings: microphone access is not allowed");
+        tray.notifyMicrophoneDenied();
+      }
+      deps.refresh();
+    } else if ("setMicrophoneDevice" in action) {
+      await deps.savePreference("microphone device", {
+        locked: true,
+        write: () => settings.setMicrophoneDevice(action.setMicrophoneDevice),
+        applied: () => log(`settings: microphone device ${settings.microphoneDevice ? JSON.stringify(settings.microphoneDevice) : "system default"}`),
       });
     } else if ("setUpdateChecks" in action) {
       await deps.savePreference("update checks", { locked: true, write: () => settings.setUpdates({ enabled: action.setUpdateChecks }) });
@@ -264,6 +291,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openNotificationSettings":
         try { await deps.openNotificationSettings(); return true; }
         catch (error) { log(`notifications: open settings failed: ${String(error)}`); return false; }
+      case "openMicrophoneSettings":
+        if (deps.platform !== "darwin") return false;
+        try { await deps.openMicrophoneSettings(); return true; }
+        catch (error) { log(`microphone: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
         deps.relaunch();
         return;

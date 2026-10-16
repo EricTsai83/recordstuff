@@ -485,6 +485,30 @@ export const ZH_TW = {
   "Leave full screen": "結束全螢幕",
   "Double-click": "按兩下",
   Unavailable: "無法使用",
+  // The microphone (plan 074).
+  Audio: "音訊",
+  Microphone: "麥克風",
+  "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.":
+    "與系統音訊混成同一條音軌。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
+  "Microphone access is off": "未允許取用麥克風",
+  "Recording will not start while Microphone is on.": "開啟「麥克風」時無法開始錄影。",
+  "Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.":
+    "請在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff，或關閉「麥克風」。",
+  "Open microphone settings…": "開啟麥克風設定…",
+  "macOS asks for microphone access when you next record.": "下次錄影時，macOS 會詢問是否允許取用麥克風。",
+  "Input device": "輸入裝置",
+  "System default ({name})": "跟隨系統（{name}）",
+  "{label} — Not connected": "{label}（未連接）",
+  "Recordings use the system default input until {label} is connected.": "{label} 連接前，錄影會使用系統預設的輸入裝置。",
+  "The microphone was unavailable, so recording did not start.": "麥克風無法使用，因此沒有開始錄影",
+  "Connect a microphone and allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off in Recording settings.":
+    "請連接麥克風，並在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff；或在錄影設定中關閉「麥克風」。",
+  "Connect a microphone and allow desktop apps in Settings → Privacy & security → Microphone, or turn Microphone off in Recording settings.":
+    "請連接麥克風，並在「設定 → 隱私權與安全性 → 麥克風」中允許桌面應用程式存取；或在錄影設定中關閉「麥克風」。",
+  "Record microphone": "錄製麥克風",
+  "The microphone dropped out during the recording. Only system audio was recorded while it was out.":
+    "錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。",
+  "RecordStuff cannot use the microphone. Click to open System Settings.": "RecordStuff 無法使用麥克風。按一下以開啟系統設定。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */
   or: "或",
 } as const;

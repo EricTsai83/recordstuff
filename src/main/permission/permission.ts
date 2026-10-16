@@ -63,6 +63,36 @@ export function openNotificationSettings(): Promise<void> {
   return shell.openExternal(NOTIFICATION_SETTINGS_URL);
 }
 
+/**
+ * The microphone (plan 074). Unlike notifications, macOS answers for it, so Settings shows a denial; reading the
+ * status never prompts. Windows has no status to read and no prompt: a refused device is the engine's
+ * `microphone_unavailable`.
+ */
+const MICROPHONE_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+
+export function openMicrophoneSettings(): Promise<void> {
+  return shell.openExternal(MICROPHONE_SETTINGS_URL);
+}
+
+export type MicrophoneAccess = "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+
+/** macOS's answer, or undefined where there is none to read. */
+export function microphoneAccess(platform: NodeJS.Platform = process.platform): MicrophoneAccess | undefined {
+  return platform === "darwin" ? systemPreferences.getMediaAccessStatus("microphone") : undefined;
+}
+
+/**
+ * Asks macOS once, while it never has, so the prompt follows the user's own action; answers whether access is
+ * allowed. Anything but macOS answers true: there the device's own refusal is what tells.
+ */
+export async function askMicrophoneAccess(platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  if (platform !== "darwin") return true;
+  const status = systemPreferences.getMediaAccessStatus("microphone");
+  if (status === "granted") return true;
+  if (status !== "not-determined") return false;
+  return systemPreferences.askForMediaAccess("microphone");
+}
+
 /** Number of screens capture can currently see; throws when macOS refuses. */
 async function countCapturableScreens(): Promise<number> {
   const sources = await desktopCapturer.getSources({

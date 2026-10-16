@@ -38,6 +38,16 @@ describe("session log lines", () => {
     expect(JSON.parse(lines[1]!.slice("session-record: ".length))).toMatchObject({ kind: "saved", session: "s3", stoppedEarly: "sleep" });
   });
 
+  it("marks a recording whose microphone stopped partway in the human line and the record (plan 074)", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/d.mp4", microphoneLost: true, session: { id: "s4" } });
+    expect(lines[0]).toBe("saved /m/d.mp4 (the microphone dropped out partway)");
+    expect(JSON.parse(lines[1]!.slice("session-record: ".length))).toMatchObject({ kind: "saved", session: "s4", microphoneLost: true });
+    lines.length = 0;
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/e.mp4", session: { id: "s5" } });
+    expect(JSON.parse(lines[1]!.slice("session-record: ".length))).not.toHaveProperty("microphoneLost");
+  });
+
   it("writes a cancel as one plain line with no session record for analyzers to pair", () => {
     const lines: string[] = [];
     logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "toggle",

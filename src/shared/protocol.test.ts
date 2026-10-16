@@ -22,6 +22,17 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: { x: 0.5, y: 0 } } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: [0, 0] } })).toBe(false);
   });
+  it("carries the microphone choice and the request for the inputs (plan 074)", () => {
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
+    const start = (microphone: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, microphone } });
+    expect(isMainMessage(start({ enabled: false }))).toBe(true);
+    expect(isMainMessage(start({ enabled: true }))).toBe(true);
+    expect(isMainMessage(start({ enabled: true, deviceId: "BuiltInMicrophoneDevice" }))).toBe(true);
+    expect(isMainMessage(start({ enabled: "yes" }))).toBe(false);
+    expect(isMainMessage(start({ enabled: true, deviceId: "" }))).toBe(false);
+    expect(isMainMessage(start(true))).toBe(false);
+    expect(isMainMessage({ type: "listMicrophones" })).toBe(true);
+  });
   it("rejects anything else", () => {
     expect(isMainMessage({ type: "start" })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a" })).toBe(false);
@@ -36,6 +47,20 @@ describe("isMainMessage", () => {
 });
 
 describe("isHostMessage", () => {
+  it("accepts the microphone's refusal, its loss and the listed inputs, and refuses malformed ones (plan 074)", () => {
+    expect(isHostMessage({ type: "error", sessionId: "a", code: "microphone_unavailable", detail: "microphone: there is no audio input" })).toBe(true);
+    expect(isHostMessage({ type: "microphoneLost", sessionId: "a", detail: "the microphone delivered no sound for 2 s" })).toBe(true);
+    expect(isHostMessage({ type: "microphoneLost", sessionId: "", detail: "x" })).toBe(false);
+    expect(isHostMessage({ type: "microphoneLost", sessionId: "a" })).toBe(false);
+    expect(isHostMessage({ type: "microphoneResumed", sessionId: "a", detail: "the microphone delivered sound again after 2.4 s" })).toBe(true);
+    expect(isHostMessage({ type: "microphoneResumed", sessionId: "a" })).toBe(false);
+    expect(isHostMessage({ type: "microphones", devices: [{ id: "mic", name: "MacBook Pro Microphone", default: true }] })).toBe(true);
+    expect(isHostMessage({ type: "microphones", devices: [] })).toBe(true);
+    expect(isHostMessage({ type: "microphones", error: "AVFoundation has no audio media type" })).toBe(true);
+    expect(isHostMessage({ type: "microphones", devices: [{ id: "", name: "x", default: false }] })).toBe(false);
+    expect(isHostMessage({ type: "microphones", devices: [{ id: "mic", name: "x" }] })).toBe(false);
+    expect(isHostMessage({ type: "microphones" })).toBe(false);
+  });
   it("accepts the native engine's progress, write errors and file report, and refuses malformed ones (plan 076)", () => {
     expect(isHostMessage({ type: "progress", sessionId: "a", bytes: 0 })).toBe(true);
     expect(isHostMessage({ type: "progress", sessionId: "a", bytes: -1 })).toBe(false);

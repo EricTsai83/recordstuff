@@ -175,6 +175,50 @@ test("S037–S038 countdown sound: a click on the checked switch asks main for o
   expect.soft(disabled, "S038 countdown sound: disabled while the countdown is Off, keeping its value, and a click sends nothing").toEqual({ checked: true, disabled: true, calls: [], after: true });
 });
 
+test("S117–S120 microphone: the switch asks main, the input device follows it, a session locks both, and a denial offers its pane (plan 074)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await page.locator("#tab-recording").click();
+  const devices = [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }];
+  await host.evaluate((h, list) => {
+    h.state.microphoneContext = { ...h.baseContext(), microphone: { enabled: false, devices: list, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.microphoneContext));
+  }, devices);
+  const toggle = page.locator("#setting-microphone");
+  const device = page.locator("#setting-microphoneDevice");
+  await toggle.scrollIntoViewIfNeeded();
+  await expect(toggle, "S117 off by default").toHaveAttribute("aria-checked", "false");
+  await expect(device, "S117 the input device waits for the switch").toBeDisabled();
+  await clearCalls();
+  await clickAt(page, "#setting-microphone");
+  await expect(toggle, "S117 a click asks main for on and shows the committed value").toHaveAttribute("aria-checked", "true");
+  expect(await calls()).toEqual([["microphone", "on"]]);
+  await expect(device).toBeEnabled();
+  await expect(device, "S118 the system default is named after the device it is now").toContainText("System default (MacBook Pro Microphone)");
+  await clearCalls();
+  await pickMenu(page, "setting-microphoneDevice", "usb-mic");
+  expect(await calls(), "S118 choosing an input asks main for it").toEqual([["microphoneDevice", "usb-mic"]]);
+  await expect(device).toContainText("USB Microphone");
+
+  await host.evaluate((h, list) => h.pushModel({ type: "recording", startedAt: "2026-10-16T00:00:00Z" },
+    { microphone: { enabled: true, devices: list, access: "granted" } }), devices);
+  await expect(toggle, "S119 a session locks the switch").toBeDisabled();
+  await expect(device, "S119 and the input device").toBeDisabled();
+
+  await host.evaluate((h, list) => {
+    h.state.microphoneContext = { ...h.baseContext(), microphone: { enabled: true, devices: list, access: "denied" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.microphoneContext));
+  }, devices);
+  const diagnostics = page.locator("#setting-microphone-diagnostics");
+  await expect(diagnostics, "S120 a denial says why recording will not start").toContainText("Microphone access is off");
+  await clearCalls();
+  await page.getByRole("button", { name: "Open microphone settings…" }).click();
+  await expect.poll(calls, { message: "S120 the pane is main's to open" }).toEqual([["microphone", "openSettings"]]);
+
+  await host.evaluate((h, list) => h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true, devices: list, access: "denied" } }), devices);
+  await expect(page.locator("#setting-microphone-diagnostics"), "S120 zh-TW").toContainText("未允許取用麥克風");
+  await expect(page.getByRole("button", { name: "開啟麥克風設定…" })).toBeVisible();
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);

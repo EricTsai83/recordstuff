@@ -46,7 +46,8 @@ interface RecordBase {
 
 export type SessionRecord =
   | (RecordBase & { kind: "capture"; session: string; requested: QualitySettings; capture: CaptureReport })
-  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop })
+  /** `microphoneLost`: the microphone stopped partway and the rest holds system audio only (plan 074). */
+  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true })
   | (RecordBase & SessionTiming & {
       kind: "failed";
       session: string;

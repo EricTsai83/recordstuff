@@ -66,6 +66,88 @@ describe("NativeCaptureHost", () => {
       native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101], hideSystemUi: true } }]);
   });
 
+  it("posts the session's microphone choice with start, and none when the recorder gave none (plan 074)", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { microphone: { enabled: true, deviceId: "usb-mic" } });
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await start;
+    expect(ctx.children.at(-1)!.sent[0]).toMatchObject({ native: { microphone: { enabled: true, deviceId: "usb-mic" } } });
+    const other = setup();
+    expect((await started(other)).sent[0]).not.toHaveProperty("native.microphone");
+  });
+
+  it("asks for the microphone before start only when it is on, and posts start after the answer (plan 074)", async () => {
+    let answer: () => void = () => undefined;
+    const prepareMicrophone = vi.fn(() => new Promise<void>((resolve) => { answer = resolve; }));
+    const ctx = setup(undefined, { prepareMicrophone });
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { microphone: { enabled: true } });
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(prepareMicrophone).toHaveBeenCalledOnce();
+    expect(ctx.children.at(-1)!.sent).toEqual([]);
+    answer();
+    await start;
+    expect(ctx.children.at(-1)!.sent[0]).toMatchObject({ type: "start" });
+    const off = setup(undefined, { prepareMicrophone });
+    await started(off);
+    expect(prepareMicrophone).toHaveBeenCalledOnce();
+  });
+
+  it("lists the audio inputs from a process of its own and ends it, whatever it answers (plan 074)", async () => {
+    const ctx = setup();
+    const listed = ctx.host.listMicrophones();
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    expect(child.sent).toEqual([{ type: "listMicrophones" }]);
+    child.deliver({ type: "microphones", devices: [{ id: "mic", name: "MacBook Pro Microphone", default: true }] });
+    await expect(listed).resolves.toEqual([{ id: "mic", name: "MacBook Pro Microphone", default: true }]);
+    expect(child.killed).toBe(true);
+
+    const refused = ctx.host.listMicrophones();
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    ctx.children.at(-1)!.deliver({ type: "microphones", error: "no audio media type" });
+    await expect(refused).rejects.toThrow("no audio media type");
+
+    const silent = ctx.host.listMicrophones();
+    const rejected = expect(silent).rejects.toThrow("not listed within");
+    await vi.advanceTimersByTimeAsync(8000);
+    await rejected;
+    expect(ctx.children.at(-1)!.killed).toBe(true);
+
+    const crashed = ctx.host.listMicrophones();
+    ctx.children.at(-1)!.emit("exit", 3);
+    await expect(crashed).rejects.toThrow("exited with 3");
+  });
+
+  it("never lists while a session runs: a start or cancelListing ends the listing, and a ready process asks again first (plan 074)", async () => {
+    const ctx = setup();
+    const pending = ctx.host.listMicrophones();
+    const lister = ctx.children.at(-1)!;
+    const cancelled = expect(pending).rejects.toThrow("a recording started");
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await cancelled;
+    expect(lister.killed).toBe(true);
+    expect(lister.sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await start;
+
+    let idle = true;
+    const late = ctx.host.listMicrophones(() => idle);
+    idle = false;
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await expect(late).rejects.toThrow("a recording started");
+    expect(child.sent).toEqual([]);
+    expect(child.killed).toBe(true);
+
+    const direct = ctx.host.listMicrophones();
+    ctx.host.cancelListing();
+    await expect(direct).rejects.toThrow("a recording started");
+  });
+
   it("on Windows passes a point on the display and keeps its own windows out of capture until torn down", async () => {
     const excluded: boolean[] = [];
     const ctx = setup("2779098405", {

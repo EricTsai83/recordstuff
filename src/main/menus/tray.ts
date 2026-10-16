@@ -19,6 +19,8 @@ import {
   folderRefusedNotification,
   languageWriteFailedNotification,
   frameRateDowngradeNotification,
+  microphoneDeniedNotification,
+  microphoneLostNotification,
   hotkeyRegistrationFailedNotification,
   menuLogText,
   hotkeyWriteFailedNotification,
@@ -271,6 +273,16 @@ export class AppTray {
     this.show({ title: APP_NAME, body: translate("Still saving to {folder}. The drive may not be responding.", this.language, { folder }) });
   }
 
+  /** Turning the microphone on found it refused (plan 074): a reply to the user's own click, so shown even with notifications off. */
+  notifyMicrophoneDenied(): void {
+    this.show(microphoneDeniedNotification(this.language), () => this.options.onAction("openMicrophoneSettings"), true);
+  }
+
+  /** The microphone stopped while recording; the click shows the Recording tab, where it is set (plan 074). */
+  notifyMicrophoneLost(): void {
+    this.show(microphoneLostNotification(this.language), () => this.options.onAction("openRecordingSettings"));
+  }
+
   notifyCaptureWarning(body: string): void {
     this.show({ title: APP_NAME, body }, () => this.options.onAction("openRecordingSettings"));
   }
@@ -429,6 +441,7 @@ export class AppTray {
   private toTemplate(entry: TrayMenuItem): MenuItemConstructorOptions {
     if (entry.kind === "separator") return { type: "separator" };
     const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
+    if (entry.checked !== undefined) { template.type = "checkbox"; template.checked = entry.checked; }
     if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;
     // Shown right-aligned only: the shortcut is already global, so the menu must not register it again.
     if (entry.accelerator !== undefined) { template.accelerator = entry.accelerator; template.registerAccelerator = false; }

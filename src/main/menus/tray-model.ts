@@ -6,7 +6,7 @@
  * and the fix when permission, the output folder or an unavailable display blocks recording),
  * Open RecordStuff with Show last recording (the window on Recordings, the newest take focused),
  * the status lines with unread failures, and Quit. The recordings, reviewed failures, the output
- * folder, the log and every preference live in the app's window ([settings-model.ts](../settings/settings-model.ts)); this model never builds a
+ * folder, the log and every preference but Record microphone (plan 074) live in the app's window ([settings-model.ts](../settings/settings-model.ts)); this model never builds a
  * submenu, so what it returns is exactly what the menu shows.
  */
 import { failureReason } from "../recording/recording-result";
@@ -37,6 +37,8 @@ export type TrayMenuItem =
       kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string;
       /** A registered shortcut shown right-aligned in the native menu (plan 048); the menu never registers it. */
       accelerator?: string;
+      /** A checkbox item, checked or not (plan 074's Record microphone); absent is a plain item. */
+      checked?: boolean;
     };
 export interface TrayModel {
   icon: TrayIcon;
@@ -198,6 +200,10 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       if (state.outputDirUnavailable) actions.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
       // Likewise the way back from a chosen display that is gone, as Settings offers it.
       else if (!resolution.ok && primaryDisplayChoosable(ctx.displays)) actions.push(item(text("Use Primary display"), { setDisplay: { kind: "primary" } }));
+      // The one preference in the menu (plan 074, the maintainer's choice): narrating is decided per recording, where
+      // recordings start. Idle's only, since a session locks it as Settings does.
+      const microphone = ctx.microphone?.enabled ?? false;
+      actions.push({ kind: "item", label: text("Record microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
       return model("idle", "", status, actions, lines);
     }
     case "starting":
@@ -231,7 +237,8 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
  */
 export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem[] {
   const { model, actions: stateActions, line } = trayParts(state, ctx);
-  const actions = stateActions.map(entry => entry.kind === "item" && entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry);
+  // Record microphone stays the tray's: this menu holds what is done now, and the window it stands beside has the switch.
+  const actions = stateActions.filter(entry => entry.kind !== "item" || entry.checked === undefined).map(entry => entry.kind === "item" && entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry);
   const last = model.menu.find(entry => entry.kind === "item" && entry.action === "showLastRecording");
   return [...(actions.length ? actions : line ? [line] : []), ...(last ? [SEPARATOR, last] : [])];
 }
@@ -243,7 +250,8 @@ export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem
  */
 export function menuLogText(menu: readonly TrayMenuItem[]): string {
   return JSON.stringify(menu.map(entry => entry.kind === "separator" ? { separator: true }
-    : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }) }));
+    : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }),
+      ...(entry.checked === undefined ? {} : { checked: entry.checked }) }));
 }
 
 export interface NotificationText {
@@ -332,6 +340,14 @@ export function frameRateDowngradeNotification(
       requested,
     }),
   );
+}
+/** Turning the microphone on found it refused (plan 074); the click opens the pane that allows it. */
+export function microphoneDeniedNotification(language?: Language): NotificationText {
+  return notice(t("RecordStuff cannot use the microphone. Click to open System Settings.", language));
+}
+/** Told once the recording ends, as the other capture notices are (plan 074). */
+export function microphoneLostNotification(language?: Language): NotificationText {
+  return notice(t("The microphone dropped out during the recording. Only system audio was recorded while it was out.", language));
 }
 /** A launch check found a newer version; the click opens the download page (docs/system-design/desktop.md#update-checks). */
 export function updateAvailableNotification(version: string, language?: Language): NotificationText {

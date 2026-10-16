@@ -14,11 +14,14 @@
  * After `stopped` the engine still finishes the file, which on a slow volume can take long after the recorder went
  * idle and tore the attempt down: that process is kept until it reports `finished` or the write error that kept the
  * file from being finished (`fileOutcome` hands either to the writer), exits, or outlives `FINISH_BOUND_MS`.
+ *
+ * `listMicrophones` (plan 074) forks a process of its own, which lists the audio inputs and is ended: the engine stays
+ * out of main, and an attempt's process is never asked.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage } from "../../shared/protocol";
+import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
-import type { RecorderHost } from "./recorder";
+import type { RecorderHost, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
 
 export interface NativeCaptureHostOptions {
@@ -35,6 +38,11 @@ export interface NativeCaptureHostOptions {
   /** RecordStuff's processes, main first, whose windows and sound the recording leaves out. */
   ownPids: () => number[];
   hideSystemUi: () => boolean;
+  /**
+   * Before a recording with the microphone (plan 074): asks macOS for access if it never has, so the prompt comes
+   * while the session starts, the recorder's capture-request deadline covering it, and not as a silent refusal.
+   */
+  prepareMicrophone?: () => Promise<void>;
   pingIntervalMs?: number;
   readyTimeoutMs?: number;
   log?: (message: string) => void;
@@ -49,6 +57,8 @@ type FailureCode = "capture_host_crashed" | "capture_host_unresponsive";
 const RELEASE_BOUND_MS = 5000;
 /** Past the engine's own 120 s bound for finishing a file: a process still silent then is ended, the file kept. */
 const FINISH_BOUND_MS = 150_000;
+/** Listing the audio inputs: the process's start and AVFoundation's or WASAPI's answer. */
+const LIST_BOUND_MS = 8000;
 
 interface FileOutcome {
   promise: Promise<EngineFileReport>;
@@ -104,7 +114,8 @@ export class NativeCaptureHost implements RecorderHost {
     return outcome.promise.finally(() => this.outcomes.delete(recordingPath));
   }
 
-  async start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void> {
+  async start(sessionId: string, quality: QualitySettings, recordingPath?: string, capture?: SessionCapture): Promise<void> {
+    this.cancelListing();
     this.teardown();
     const generation = this.generation;
     if (!recordingPath) throw new Error("the native engine needs the recording file's path");
@@ -117,6 +128,10 @@ export class NativeCaptureHost implements RecorderHost {
       (display) => { chosenAt = now(); return { display }; },
       (cause: unknown) => ({ cause }),
     );
+    // Alongside the process's start; a refusal is the engine's to report, as `microphone_unavailable`.
+    const microphoneAsked = capture?.microphone?.enabled && this.options.prepareMicrophone
+      ? this.options.prepareMicrophone().catch((cause: unknown) => this.log(`capture host: asking for the microphone failed: ${String(cause)}`))
+      : undefined;
     try {
       await this.create();
     } catch (cause) {
@@ -130,6 +145,8 @@ export class NativeCaptureHost implements RecorderHost {
     this.pingTimer ??= setInterval(() => this.ping(), this.pingIntervalMs);
     const chosen = await choice;
     if ("cause" in chosen) throw chosen.cause;
+    await microphoneAsked;
+    if (generation !== this.generation) throw new Error("capture host was invalidated while macOS asked for the microphone");
     const display = chosen.display;
     this.log(`capture host: timing: process ready ${Math.round(readyAt - began)} ms, display chosen ${Math.round(chosenAt - began)} ms`);
     if (generation !== this.generation) throw new Error("capture host was invalidated while the display was chosen");
@@ -147,7 +164,55 @@ export class NativeCaptureHost implements RecorderHost {
     this.post({ type: "start", sessionId, quality, native: {
       displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
       ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
+      ...(capture?.microphone ? { microphone: capture.microphone } : {}),
     } });
+  }
+
+  /** The listing in flight, which a session that starts ends at once (`cancelListing`). */
+  private listing: ((cause: Error) => void) | undefined;
+
+  /**
+   * The audio inputs the engine can open, from a process of their own that is ended once it answers, the bound passes or
+   * `cancelListing` is called. `allowed` is asked again once the process is ready, before it lists anything.
+   */
+  listMicrophones(allowed: () => boolean = () => true): Promise<MicrophoneDevice[]> {
+    const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
+    const child = fork(this.options.entryPath, [this.options.addonPath]);
+    return new Promise<MicrophoneDevice[]>((resolve, reject) => {
+      let settled = false;
+      const done = (result: MicrophoneDevice[] | Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(bound);
+        if (this.listing === cancel) this.listing = undefined;
+        child.kill();
+        if (result instanceof Error) reject(result);
+        else resolve(result);
+      };
+      const bound = setTimeout(() => done(new Error(`the audio inputs were not listed within ${LIST_BOUND_MS} ms`)), LIST_BOUND_MS);
+      const cancel = (cause: Error): void => done(cause);
+      this.listing?.(new Error("a newer listing replaced it"));
+      this.listing = cancel;
+      for (const stream of [child.stdout, child.stderr]) {
+        stream?.on("data", (chunk: Buffer) => {
+          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (inputs): ${line.trim()}`);
+        });
+      }
+      child.on("exit", (code) => done(new Error(`the process listing the audio inputs exited with ${code}`)));
+      child.on("message", (data: unknown) => {
+        if (!isHostMessage(data)) return;
+        if (data.type === "ready") {
+          if (allowed()) child.postMessage({ type: "listMicrophones" } satisfies MainMessage);
+          else done(new Error("a recording started before the inputs were listed"));
+        }
+        else if (data.type === "microphones") done("devices" in data ? data.devices : new Error(data.error));
+      });
+    });
+  }
+
+  /** Ends a listing in flight: a session is starting, and no input is listed while one runs (plan 074). */
+  cancelListing(): void {
+    this.listing?.(new Error("a recording started before the inputs were listed"));
   }
 
   record(sessionId: string): void {

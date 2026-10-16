@@ -165,7 +165,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -247,7 +247,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -267,7 +267,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -321,7 +321,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -421,7 +421,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -711,6 +711,39 @@ describe("hide menu bar and Dock (plan 076, D6)", () => {
     expect(store().hideSystemUi).toBe(true);
     await expect(first.setHideSystemUi("off" as never)).rejects.toThrow("unsupported hide system UI");
     expect(store().hideSystemUi).toBe(true);
+  });
+});
+
+describe("microphone (plan 074)", () => {
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("reads a file written before the fields existed as off with the system default, silently", () => {
+    const parsed = parseSettings(JSON.stringify(current));
+    expect(parsed).toMatchObject({ settings: { microphone: false }, warnings: [] });
+    expect(parsed?.settings).not.toHaveProperty("microphoneDevice");
+  });
+
+  it("reads an invalid switch as off and an invalid device as the system default, with warnings", () => {
+    const parsed = parseSettings(JSON.stringify({ ...current, microphone: "on", microphoneDevice: { id: "", label: "x" } }));
+    expect(parsed).toMatchObject({ settings: { microphone: false }, warnings: [
+      "microphone is not a boolean: using off", "microphoneDevice is invalid: using the system default input"] });
+    expect(parsed?.settings).not.toHaveProperty("microphoneDevice");
+    expect(parseSettings(JSON.stringify({ ...current, microphone: true, microphoneDevice: { id: "usb", label: "USB Mic", extra: 1 } })))
+      .toMatchObject({ settings: { microphone: true, microphoneDevice: { id: "usb", label: "USB Mic" } }, warnings: [] });
+  });
+
+  it("saves the switch and the device, clears the device back to the default, and refuses invalid values", async () => {
+    const first = store();
+    await first.setMicrophone(true);
+    await first.setMicrophoneDevice({ id: "usb", label: "USB Mic" });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ microphone: true, microphoneDevice: { id: "usb", label: "USB Mic" } });
+    expect(store()).toMatchObject({ microphone: true, microphoneDevice: { id: "usb", label: "USB Mic" } });
+    await first.setMicrophoneDevice(null);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).not.toHaveProperty("microphoneDevice");
+    expect(store().microphoneDevice).toBeUndefined();
+    await expect(first.setMicrophone("on" as never)).rejects.toThrow("unsupported microphone");
+    await expect(first.setMicrophoneDevice({ id: "", label: "x" })).rejects.toThrow("unsupported microphone device");
+    expect(store().microphone).toBe(true);
   });
 });
 
