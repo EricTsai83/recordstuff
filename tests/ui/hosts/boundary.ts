@@ -123,7 +123,7 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
   let quitAt: number | undefined;
   const quitStep = (what: string): void => {
     quitAt ??= Date.now();
-    process.stderr.write(`[quit] ${what} +${Date.now() - quitAt} ms\n`);
+    process.stderr.write(`[quit] ${what} at ${Date.now()}\n`);
   };
   for (const event of ["before-quit", "will-quit", "quit"] as const) electron.app.on(event as "quit", () => quitStep(event));
   process.on("exit", () => quitStep("process exit"));

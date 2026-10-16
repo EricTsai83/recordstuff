@@ -187,7 +187,7 @@ export interface Teardown {
    * How long each part of the teardown took, in ms (plan 078 step 5): the boundary audit, the normal close (which a
    * timeout ends at `CLOSE_TIMEOUT_MS`), and the wait for every process to end, including after a timed-out close.
    */
-  phases?: { audit?: number; close?: number; exit?: number; killed?: boolean };
+  phases?: { audit?: number; close?: number; exit?: number; killed?: boolean; quit?: Record<string, number> };
 }
 
 /**
@@ -224,11 +224,14 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     phases.audit = elapsed();
     await scan();
     elapsed();
+    const closeStarted = Date.now();
     try {
       await Promise.race([launched.application.close(), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
       result.closedNormally = true;
     } catch (error) { errors.push(`normal close failed: ${String(error)}`); }
     phases.close = elapsed();
+    // The host's quit steps (hosts/boundary.ts), in ms after the close began, read from its log once it has ended.
+    phases.quit = { started: closeStarted };
   } else {
     // It ended before teardown: normally only when it quit itself with success (a test that quits the app).
     result.closedNormally = launched.closed || launched.child.exitCode === 0;
@@ -256,6 +259,14 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     await until(gone, EXIT_TIMEOUT_MS);
   }
   result.remaining = [...tree].filter(alive);
+  if (phases.quit) {
+    const started = phases.quit.started!;
+    const steps: Record<string, number> = {};
+    try {
+      for (const match of fs.readFileSync(path.join(launched.data, "electron.log"), "utf8").matchAll(/^\[quit\] (.+) at (\d+)$/gm)) steps[match[1]!] ??= Number(match[2]) - started;
+    } catch { /* no log */ }
+    phases.quit = steps;
+  }
   // The boundary appended every violation as it happened, so a launch that quit itself or hung still reports them.
   const file = path.join(launched.data, "violations.jsonl");
   try {

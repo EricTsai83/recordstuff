@@ -8,6 +8,8 @@ export interface CloseTiming {
   close?: number;
   exit?: number;
   killed?: boolean;
+  /** The host's quit steps, in ms after the close began. */
+  quit?: Record<string, number>;
 }
 
 export function parseCloseTimings(text: string): CloseTiming[] {
@@ -29,7 +31,8 @@ export function formatCloseTimings(timings: readonly CloseTiming[], top = 10): s
   ];
   const total = (timing: CloseTiming): number => (timing.audit ?? 0) + (timing.close ?? 0) + (timing.exit ?? 0);
   for (const timing of [...timings].sort((a, b) => total(b) - total(a)).slice(0, top)) {
-    lines.push(`  ${String(total(timing)).padStart(6)} ms  audit ${timing.audit ?? "-"}, close ${timing.close ?? "-"}, exit ${timing.exit ?? "-"}${timing.killed ? ", killed" : ""}${timing.closedNormally ? "" : ", close failed"}  ${timing.kind}: ${timing.test}`);
+    const quit = Object.entries(timing.quit ?? {}).map(([step, ms]) => `${step} ${ms}`).join(", ");
+    lines.push(`  ${String(total(timing)).padStart(6)} ms  audit ${timing.audit ?? "-"}, close ${timing.close ?? "-"}, exit ${timing.exit ?? "-"}${timing.killed ? ", killed" : ""}${timing.closedNormally ? "" : ", close failed"}${quit ? ` (quit: ${quit})` : ""}  ${timing.kind}: ${timing.test}`);
   }
   return lines.join("\n");
 }
