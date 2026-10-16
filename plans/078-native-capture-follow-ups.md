@@ -2,11 +2,11 @@
 
 [English](078-native-capture-follow-ups.md) | [繁體中文](078-native-capture-follow-ups.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("先記下這個問題，之後再處理"). Priority: the maintainer orders it; none of it blocks 074 or 075. Hard dependencies: 076. Execute the steps in order under [the plan index](README.md).
+Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("先記下這個問題，之後再處理"). Priority: the maintainer orders it; none of it blocks 075. Hard dependencies: 076. Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
-Close the questions 076's acceptance and documentation left open about the native capture engine, and a Windows CI case that fails intermittently. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; frame-timing diagnosis covers the engine that records; step 4's decisions are built; and the Windows UI shards close the app reliably.
+Close the questions 076's acceptance and documentation left open about the native capture engine, and a Windows CI case that fails intermittently. Success is: the remaining 50 ms frame gaps are explained and removed or accepted with their cause; the development Electron app leaves its own windows out of a recording as the signed bundle does, or the limit is documented; frame-timing diagnosis covers the engine that records; step 4's decisions are built; the Windows UI shards close the app reliably; and on macOS a microphone that is disconnected and connects again during a recording is taken back.
 
 Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4's hardware encoder included), new capture features, and the hands-on cases in [077](077-native-hands-on-acceptance.md).
 
@@ -14,6 +14,7 @@ Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4'
 
 - **Frame gaps.** On a 60 Hz display at 30 fps, 0.66–2.17% of native frames were 50 ms apart against Chromium's none (2026-10-15). 076 found that ScreenCaptureKit sends idle frames when the screen does not change and fixed the slot that took the next picture a refresh late (PR #12): 0.22–0.44% remain, one or two per 15 s take, with capture never missing a refresh (longest gap between pictures 33.3 ms). Their cause is not known; the stop report's counters (`capture delivered … pictures and … without one, … apart at most`) are the starting evidence. The threshold is 2%; Chromium shows 0%.
 - **Development app.** Recording through the development Electron app (`pnpm matrix`, `pnpm audio:quality`) logs `RecordStuff's own app was not found among the shareable applications; its windows may be recorded`; the signed bundle reports `1 own app(s) excluded`. Its cause (the development app's bundle identity, or its having no window when the shareable content is read) is not established.
+- **Microphone reconnection (added at the maintainer's request on 2026-10-16, from 074's follow-up).** The macOS microphone is an `AVCaptureSession` in the engine's utility process. Disconnected during a recording (an iPhone Continuity microphone twice, a HUAWEI FreeClip 2 Bluetooth headset twice), it was told lost after 2 s without sound and the recording went on; connected again, even as the default input, it was never taken back, neither through AVFoundation's connection notifications (none arrived) nor through a once-a-second `uniqueID` lookup, and that code was removed. A probe outside the app showed why: polled once a second without a run loop, CoreAudio's device list dropped the headset at once while `AVCaptureDevice(uniqueID:)` and a fresh `DiscoverySession` still reported it connected 27 s later; with a run loop on the main thread AVFoundation followed at once. AVFoundation keeps its device state on the main run loop, which the utility process does not run. Today only a stall of the same session is taken back (unit-tested; not seen on hardware). Recording with the microphone on also costs about 3.4 points more CPU (13.3% against 9.9% at 30 fps, 2026-10-16), all in the capture process, of unknown share between AVCaptureSession's threads and its format conversion.
 - **Cadence diagnostics.** `pnpm diagnose:cadence` measured only the hidden renderer's capture host and was removed with it on 2026-10-16; the native engine has no per-frame diagnostic yet beyond the stop report's counters.
 
 ## Steps
@@ -51,7 +52,14 @@ Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4'
 
 - [ ] Recorded at the maintainer's request (2026-10-16). A Windows UI shard of `check.yml` intermittently fails a test whose checks passed, because the app does not close within `CLOSE_TIMEOUT_MS` (15 s, `tests/ui/fixtures.ts`) and its process tree needs SIGKILL (`view: did not close normally (normal close failed: Error: close timed out after 15000 ms)`). Seen in runs 38789339217 (main after PR #15, U067-3 in `settings-layout.spec.ts`), 38778364254 (PR #13) and 38456753890; each passed on rerun. Find whether the runner is merely slow or the close path sometimes stalls on Windows (time each phase of the close in the fixture's log), and fix the cause; raise the limit only if the measurement shows a slow but complete close.
 
-### 6. Documentation
+### 6. Reopening a reconnected microphone on macOS
+
+- [ ] Capture the macOS microphone through CoreAudio's HAL (an AUHAL input unit on the device by UID, 48 kHz mono float, buffer times from `mHostTime`), as Chromium's audio service, which runs outside the browser process as our engine does, and Cap (through cpal) do, instead of AVFoundation, whose device state needs a main run loop. Keep 074's behaviour: the chosen device or the default, the fallback note, `microphone_unavailable` before the countdown, never voice processing.
+- [ ] Take back a microphone that connects again: watch the HAL's device list with `AudioObjectAddPropertyListener` (Chromium's `audio_device_listener_mac.cc`) or poll it, as Cap reconnects after a 2 s stall with backoff to 30 s, and reopen the same UID; the default input follows a new default only if the maintainer decides so.
+- [ ] Measure on the reference Mac: removal and reconnection with a Bluetooth headset and the iPhone microphone; `pnpm measure:cpu` with the microphone on against AVFoundation's 13.3%; and, because the soft limit, the one-frame drift correction and the mono microphone came after 074's measurements, the fidelity runs (output muted), the key-press sync take and CPU again on the changed engine.
+- [ ] Windows is out of scope for hardware, as above; its pump still ends at `AUDCLNT_E_DEVICE_INVALIDATED`. Reopening it there follows the same design and is checked by CI only.
+
+### 7. Documentation
 
 - [ ] Record the outcome in [recording](../docs/system-design/recording.md), [tooling](../docs/system-design/tooling.md) and the verification record, with translations.
 

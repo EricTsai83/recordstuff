@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音訊時脈、混音與影音同步：每一個選擇的取捨</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+pre.language-shell { background: #11110f; }
+pre code .sh-command { color: #ff946e; font-weight: 400; }
+pre code .sh-flag { color: #cfc6a2; font-weight: 400; }
+pre code .sh-string { color: #8fb86a; }
+pre code .sh-var { color: #cfc6a2; }
+pre code .sh-comment { color: #858177; font-style: italic; }
+pre code .sh-prompt { color: #ff946e; font-weight: 400; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+.flow-figure .flow-mobile { display: none; }
+.fig-node rect { fill: var(--white); stroke: var(--oat); stroke-width: 1.5; }
+.fig-label { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 15px; font-weight: 650; }
+.fig-note { fill: var(--gray-700); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 13px; font-weight: 500; }
+.fig-arrow { stroke: var(--clay); stroke-width: 2; fill: none; }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 600px; }
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+.chart-axis { stroke: var(--gray-500); stroke-width: 1.2; }
+.chart-grid { stroke: var(--gray-300); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.chart-raw { stroke: var(--gray-500); stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
+.chart-fixed { stroke: var(--clay); stroke-width: 2.2; fill: none; stroke-linejoin: round; }
+.chart-fixed-label { fill: #B4532F; }
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>音訊時脈、混音與影音同步：每一個選擇的取捨</h1>
+
+<p class="deck">錄螢幕時同時錄系統音訊和麥克風，看起來只是「把兩個聲音加起來，跟畫面一起存檔」。實際上，兩個聲音來自不同的裝置、不同的時脈，送達的時間不一樣，有一個甚至會在沒聲音時完全不送資料；麥克風還會聽到喇叭，而作業系統的通話處理可能順手把其他 App 的音量調低。本文先建立取樣率、時脈領域與漂移的心智模型，再逐一比較幾個架構選擇：時間戳怎麼來、漂移怎麼修、混成一軌還是分軌、增益怎麼處理、要等遲到的輸入多久、要不要開語音處理，以及麥克風中途消失時怎麼辦。每個選擇都會講它依賴的條件、替代方案的代價、其他產品怎麼選，以及什麼情況會讓結論翻轉。貫穿範例是 RecordStuff 的原生錄影引擎與它的麥克風功能。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#problem">問題：兩個聲音、一個畫面，要落在同一條時間軸上</a></li>
+    <li><a href="#model">心智模型：取樣、frame 與時脈領域</a></li>
+    <li><a href="#timestamps">時間戳從哪裡來</a></li>
+    <li><a href="#drift">漂移：有多大、怎麼量</a></li>
+    <li><a href="#mixing">混音：增益、削波、聲道與等待</a></li>
+    <li><a href="#voice">語音處理與 ducking</a></li>
+    <li><a href="#echo">喇叭回音：麥克風聽到了系統音訊</a></li>
+    <li><a href="#choices">七個選擇與它們的取捨</a></li>
+    <li><a href="#example">實例：RecordStuff 錄一段有旁白的影片</a></li>
+    <li><a href="#table">決策總表</a></li>
+    <li><a href="#boundaries">不要這樣做的情況</a></li>
+    <li><a href="#criteria">可以帶走的判斷準則</a></li>
+  </ol>
+</nav>
+
+<h2 id="problem">問題：兩個聲音、一個畫面，要落在同一條時間軸上</h2>
+
+<p>想像使用者要錄一段 30 分鐘的教學影片：畫面是他的螢幕，聲音有兩個來源。一個是<strong>系統音訊</strong>，也就是電腦正在播放的聲音，例如示範用的影片、App 的提示音；另一個是插在 USB 上的<strong>麥克風</strong>，錄他的旁白。他的期待很直觀：</p>
+
+<ul>
+  <li>點擊滑鼠的聲音和畫面上的點擊同時出現，到第 30 分鐘還是一樣。</li>
+  <li>旁白和系統音訊都聽得清楚，音量和他錄影時聽到的一樣，不會忽大忽小。</li>
+  <li>沒有回音，也沒有爆音。</li>
+  <li>錄影期間，他聽到的其他 App 音量不會被調低。</li>
+  <li>耳機或麥克風中途沒電，錄影不會因此全毀。</li>
+</ul>
+
+<p>最直覺的寫法是：每收到一段聲音，就用它自帶的時間戳寫進檔案；兩個來源的樣本直接相加；既然有麥克風，就順便開啟作業系統或瀏覽器提供的「語音處理」，讓旁白更乾淨。這三件事各自都會出問題：</p>
+
+<ul>
+  <li><strong>直接用每段聲音的時間戳</strong>，時間戳本身有幾毫秒的抖動。相鄰兩段之間時而重疊、時而留下縫隙，播放時會聽到細碎的雜音。反過來，完全不看時間戳、只靠累計的樣本數，又會讓聲音隨時間慢慢偏離畫面。</li>
+  <li><strong>直接相加</strong>，兩個都很大聲時，總和會超過數位訊號能表示的最大值，最後被削成爆音。更隱蔽的是「等待」：混音必須等兩個來源都送到同一個時間點才能加，但系統音訊在沒有聲音時可能完全不送資料，混音就跟著卡住。</li>
+  <li><strong>開啟語音處理</strong>，回音消除、降噪、自動增益是為通話設計的。它們會改寫音樂的頻率與動態，而在某些平台上，作業系統還會在語音處理啟動時，把其他 App 的播放音量調低。</li>
+</ul>
+
+<p>這些問題背後是幾股互相拉扯的力量：</p>
+
+<ul>
+  <li><strong>同步：</strong>聲音和畫面的偏差要小，而且不能隨錄影長度累積。</li>
+  <li><strong>保真：</strong>錄到的聲音要和來源一樣：頻率、立體聲、音量、動態都不變。</li>
+  <li><strong>可懂度：</strong>旁白要聽得清楚，不能被回音和雜音蓋過。這股力量和保真常常方向相反。</li>
+  <li><strong>連續：</strong>任何一個來源停頓、遲到或消失，錄影都要繼續，而且時間軸不能因此錯位。</li>
+  <li><strong>不干擾：</strong>錄影工具不應該改變使用者正在聽的東西。</li>
+  <li><strong>成本：</strong>CPU、延遲、程式複雜度，以及要驗證的情境數量。</li>
+</ul>
+
+<p>所以本文要回答的是：<strong>錄影管線要怎麼為每一段聲音決定時間、怎麼把多個來源合在一起、要不要處理它們，才能讓聲音和畫面不偏離、聲音不失真，又不干擾使用者？</strong>答案取決於產品錄的是什麼、給誰聽，所以先把基本名詞建立起來。</p>
+
+<h2 id="model">心智模型：取樣、frame 與時脈領域</h2>
+
+<p>數位音訊是一連串等間隔的數值。<strong>取樣率</strong>決定一秒有幾個時間點：48 kHz 就是每秒 48,000 個。每個時間點，每個聲道各有一個<strong>樣本</strong>；同一時間點、所有聲道的樣本合稱一個 <strong>frame</strong>。立體聲 48 kHz 就是每秒 48,000 個 frame、96,000 個樣本，一個 frame 代表約 20.8 微秒。裝置不會一次交出一個 frame，而是一批一批地交，每批稱為一個 <strong>buffer</strong>，例如 1024 個 frame，約 21.3 毫秒。</p>
+
+<p>關鍵在於：<strong>「48 kHz」是標稱值，不是事實。</strong>決定取樣時刻的是裝置上的振盪器（通常是一顆石英晶體），它實際的頻率可能是 48,000 × (1 + ε)。每一個有自己振盪器的東西，就是一個獨立的<strong>時脈領域（clock domain）</strong>：</p>
+
+<ul>
+  <li><strong>主機時脈：</strong>作業系統的單調時間，macOS 是 <code>mach_absolute_time</code>，Windows 是 <code>QueryPerformanceCounter</code>。畫面的時間戳通常以它表示。</li>
+  <li><strong>每個音訊裝置的時脈：</strong>內建喇叭、USB 麥克風、藍牙耳機，各有各的晶體。系統音訊的混音通常跟著輸出裝置的時脈走。</li>
+  <li><strong>螢幕的更新時脈：</strong>畫面每次更新的時刻，例如 60 Hz。</li>
+  <li><strong>檔案裡的時間：</strong>容器用整數記時間，音訊軌通常就以取樣率為單位，所以檔案裡的音訊時間其實就是「第幾個樣本」。</li>
+</ul>
+
+<p>兩個時脈領域之間的速率差，用 <strong>ppm（百萬分之一）</strong>表示。100 ppm 的意思是，一個時脈每走 1,000,000 單位，另一個多走或少走 100。換成時間：每小時差 0.36 秒，十分鐘差 60 毫秒。這不是錯誤，也不是 bug，而是兩顆晶體之間無法避免的物理差異。同步問題的本質，就是<strong>把來自多個時脈領域的資料，放到同一條時間軸上</strong>。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>名詞</th><th>白話解釋</th></tr></thead>
+  <tbody>
+    <tr><td>frame</td><td>同一時間點、所有聲道的樣本。立體聲的一個 frame 有左右兩個樣本。</td></tr>
+    <tr><td>buffer</td><td>裝置一次交出的一批 frame，大小由裝置和驅動程式決定，不同來源可以不同。</td></tr>
+    <tr><td>時間戳（timestamp）</td><td>作業系統告訴你「這個 buffer 的第一個 frame 是什麼時候取樣的」，以主機時脈表示。它有抖動，也可能有固定的延遲。</td></tr>
+    <tr><td>漂移（drift）</td><td>兩個時脈之間的速率差造成的偏差，隨時間<strong>累積</strong>。和固定的延遲（offset）不同，延遲一開始多少，之後還是多少。</td></tr>
+    <tr><td>重取樣（resampling）</td><td>用運算把一段聲音換到另一個取樣率，例如 44.1 kHz 換到 48 kHz，或為了修正漂移，把 48,000 換成 48,004.8。</td></tr>
+    <tr><td>dBFS</td><td>相對於數位滿刻度的音量。0 dBFS 是能表示的最大值，浮點數格式就是 ±1.0。</td></tr>
+    <tr><td>unity gain</td><td>增益為 1，也就是不放大也不縮小。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="timestamps">時間戳從哪裡來</h2>
+
+<p>容器裡的音訊必須是連續的：AAC 一個封包固定涵蓋 1024 個 frame，播放器預期封包一個接一個，中間沒有縫也沒有重疊。所以真正的問題不是「這個 buffer 的時間是多少」，而是<strong>「這個 buffer 要接在第幾個樣本之後」</strong>。常見的做法有四種：</p>
+
+<ol>
+  <li><p><strong>每個 buffer 用它自己的時間戳。</strong>最直覺，但時間戳有抖動。假設第一個 buffer 在 0 ms、長 21.3 ms，第二個的時間戳卻是 22.1 ms，中間就多了 0.8 ms 的縫；如果是 20.9 ms，就和前一個重疊了 0.4 ms。要嘛插入一點靜音，要嘛丟掉一點樣本，每個 buffer 都可能這樣做一次，結果就是持續的細碎雜音。</p></li>
+  <li><p><strong>只數樣本。</strong>只看第一個 buffer 的時間戳，之後每個 buffer 都接在前一個的尾巴：第 n 個 frame 的時間就是「起點 + n ÷ 48,000」。聲音完美連續，但有兩個問題。第一，它假設裝置的取樣率剛好是 48,000，漂移會毫無限制地累積。第二，裝置停頓時，例如驅動程式卡住半秒、什麼都沒送，之後的聲音會被直接接上，整段聲音從此提早半秒。</p></li>
+  <li><p><strong>數樣本，但用時間戳校正。</strong>平常照樣本數接，同時把每個 buffer 的時間戳換算成「它應該在第幾個樣本」，和累計的位置比較。差距在容許範圍內就忽略，那是抖動；超過容許範圍，才補靜音或丟掉多出的樣本。抖動不會造成雜音，漂移和停頓都有上限。代價是每次校正都會在聲音裡留下一個小小的不連續。</p></li>
+  <li><p><strong>數樣本，並用自適應重取樣追上時脈。</strong>持續估計裝置和主機時脈的速率差，把聲音以些微不同的比例重取樣，讓它平滑地跟住主機時脈。沒有任何不連續，代價是要估計速率、要做重取樣運算，而且每個樣本都被改寫過，不再是裝置原本送來的值。macOS 的「音訊 MIDI 設定」把多個裝置合成一個「聚集裝置」時，提供的「漂移校正」選項就是對其中一個裝置做重取樣。</p></li>
+</ol>
+
+<p>第 3 種做法的容許範圍是一個真正的取捨。範圍太小，正常的抖動也會觸發校正，等於退回第 1 種；範圍太大，聲音可以偏離畫面那麼多才被拉回來。下圖用一個假設的 100 ppm 慢速裝置，比較只數樣本和數樣本加 10 ms 容許校正，十分鐘內的偏差：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-drift-d-title fig-drift-d-desc" viewBox="0 0 680 262" style="max-width: 680px"><title id="fig-drift-d-title">只數樣本與加上容許校正時，音訊偏差隨時間的變化</title><desc id="fig-drift-d-desc">假設音訊裝置比主機時脈慢 100 ppm。只數樣本時，偏差從 0 直線增加，十分鐘後達到 60 毫秒。加上 10 毫秒容許校正時，偏差每到 10 毫秒就補一段靜音歸零，形成鋸齒，十分鐘內校正六次，偏差始終不超過 10 毫秒。</desc>
+    <line class="chart-grid" x1="70" y1="180" x2="640" y2="180"></line>
+    <line class="chart-axis" x1="70" y1="210" x2="648" y2="210"></line>
+    <line class="chart-axis" x1="70" y1="24" x2="70" y2="210"></line>
+    <text class="fig-note" x="62" y="214" text-anchor="end">0</text>
+    <text class="fig-note" x="62" y="184" text-anchor="end">10</text>
+    <text class="fig-note" x="62" y="124" text-anchor="end">30</text>
+    <text class="fig-note" x="62" y="34" text-anchor="end">60</text>
+    <text class="fig-note" x="70" y="230" text-anchor="middle">0</text>
+    <text class="fig-note" x="260" y="230" text-anchor="middle">200</text>
+    <text class="fig-note" x="450" y="230" text-anchor="middle">400</text>
+    <text class="fig-note" x="640" y="230" text-anchor="middle">600</text>
+    <text class="fig-note" x="355" y="254" text-anchor="middle">錄影時間（秒）</text>
+    <text class="fig-note" x="22" y="117" text-anchor="middle" transform="rotate(-90 22 117)">偏差（ms）</text>
+    <path class="chart-raw" d="M 70 210 L 640 30"></path>
+    <path class="chart-fixed" d="M 70 210 L 165 180 L 165 210 L 260 180 L 260 210 L 355 180 L 355 210 L 450 180 L 450 210 L 545 180 L 545 210 L 640 180 L 640 210"></path>
+    <text class="fig-label" x="84" y="52">只數樣本：十分鐘累積 60 ms</text>
+    <text class="fig-label chart-fixed-label" x="636" y="170" text-anchor="end">容許 10 ms：超過就補靜音</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-drift-m-title fig-drift-m-desc" viewBox="0 0 360 282" style="max-width: 360px"><title id="fig-drift-m-title">只數樣本與加上容許校正時，音訊偏差隨時間的變化</title><desc id="fig-drift-m-desc">假設裝置慢 100 ppm。只數樣本時偏差十分鐘累積到 60 毫秒；加上 10 毫秒容許校正時，偏差每到 10 毫秒就歸零，始終不超過 10 毫秒。</desc>
+    <line class="chart-grid" x1="50" y1="190" x2="340" y2="190"></line>
+    <line class="chart-axis" x1="50" y1="220" x2="346" y2="220"></line>
+    <line class="chart-axis" x1="50" y1="34" x2="50" y2="220"></line>
+    <text class="fig-note" x="44" y="224" text-anchor="end">0</text>
+    <text class="fig-note" x="44" y="194" text-anchor="end">10</text>
+    <text class="fig-note" x="44" y="44" text-anchor="end">60</text>
+    <text class="fig-note" x="50" y="240" text-anchor="middle">0</text>
+    <text class="fig-note" x="195" y="240" text-anchor="middle">300</text>
+    <text class="fig-note" x="340" y="240" text-anchor="middle">600</text>
+    <text class="fig-note" x="195" y="266" text-anchor="middle">錄影時間（秒）；偏差（ms）</text>
+    <path class="chart-raw" d="M 50 220 L 340 40"></path>
+    <path class="chart-fixed" d="M 50 220 L 98.3 190 L 98.3 220 L 146.7 190 L 146.7 220 L 195 190 L 195 220 L 243.3 190 L 243.3 220 L 291.7 190 L 291.7 220 L 340 190 L 340 220"></path>
+    <text class="fig-label" x="58" y="24">只數樣本：60 ms</text>
+    <text class="fig-label chart-fixed-label" x="336" y="182" text-anchor="end">容許 10 ms</text>
+  </svg>
+  <figcaption>假設裝置比主機時脈慢 100 ppm。只數樣本，偏差直線累積；容許 10 ms 的校正讓偏差停在 10 ms 以內，代價是每次超過時一次補一段約 10 ms 的靜音，這裡大約每 100 秒一次。下文的逐 frame 修正則讓偏差到了 10 ms 就停在那裡，成為一條平線。</figcaption>
+</figure>
+
+<p>圖中的鋸齒也點出第 3 種做法的弱點：裝置的時脈若和主機差很多，每隔一段時間就會聽到一個約 10 ms 的小缺口（或被丟掉的 10 ms）。一個折衷是把「漂移」和「停頓」分開處理：差距<strong>剛超過</strong>容許範圍一點點，幾乎一定是時脈在慢慢漂，就每個 buffer 只補或丟 1 個 frame（48 kHz 下約 21 微秒），偏差停在容許範圍的邊上，不會出現整段的缺口；差距一下子大很多，才是停頓或重疊，一次補足。100 ppm 的裝置每秒只差約 5 個 frame，而每秒有幾十個 buffer，所以逐 frame 的修正追得上。這仍然不是重取樣：沒被補或丟的樣本都是原值，只是每次修正留下一個 frame 的不連續。這些做法成立的前提都是<strong>真實的漂移不大</strong>；漂移大到每個 buffer 1 個 frame 也追不上的裝置（以 1024 frame 的 buffer 來說，大約 1000 ppm 起），差距會越過那段緩衝，又變回整段補足，這時第 4 種做法聽起來比較好。</p>
+
+<h2 id="drift">漂移：有多大、怎麼量</h2>
+
+<h3>人聽得出多少</h3>
+
+<p>漂移要多大才算問題，得看人對影音不同步有多敏感。廣播界常引用的 ITU-R BT.1359 建議指出，聲音比畫面<strong>早</strong>約 45 ms、或<strong>晚</strong>約 125 ms 時，觀眾開始察覺得到；可接受的範圍大約是早 90 ms 到晚 185 ms。人對「聲音比畫面早」比較敏感，因為在真實世界裡，聲音的傳播比光慢，聲音晚到很常見，早到則不自然。對螢幕錄影來說，這代表 10 ms 等級的偏差在察覺門檻之下，但 100 ppm 的裝置錄一小時（偏差 360 ms），就早已遠遠超過。</p>
+
+<h3>三種量法</h3>
+
+<p>漂移和延遲是兩件事，量法也不同。一次性的量測只能告訴你某一刻的偏差；要知道漂移，必須在錄影的頭和尾各量一次，或持續地量。</p>
+
+<ul>
+  <li><strong>已知頻率的測試音。</strong>播放一個 1 kHz 的正弦波，在錄到的檔案裡量它的實際頻率。如果量到 1000.1 Hz，代表錄到的聲音比原本快了 100 ppm：<code>ppm = (量到的頻率 ÷ 標稱頻率 − 1) × 1,000,000</code>。這量的是「播放路徑與錄音路徑之間」的速率差，精度可以到小於 1 ppm，但它只量這一條路徑。換成另一個麥克風，就是另一個時脈，要另外量。</li>
+  <li><strong>閃光加嗶聲。</strong>讓一個測試頁面每秒同時閃一下白色、發一聲嗶，錄下來之後，逐對比較白色影格出現和嗶聲開始的時間差。比較錄影開頭和結尾的時間差，就是漂移；所有配對的分布，就是延遲和抖動。這是端到端的量法，但解析度受限於影格間隔和偵測的時間格。</li>
+  <li><strong>軌道長度。</strong>每個錄好的檔案裡，音訊軌和影像軌一樣長嗎？這是最便宜的檢查，能抓到嚴重的漂移或遺失，但抓不到兩邊一起錯。</li>
+</ul>
+
+<div class="callout warning">
+  <p><strong>量對時脈。</strong>測試音量到的是「發出測試音的那條路徑」的時脈。用系統音訊播放測試音，量到的是系統音訊的路徑；它對麥克風的時脈什麼也沒說。麥克風要用麥克風聽得到的事件去量，例如對著它拍手或敲鍵盤，同時讓畫面有對應的變化。</p>
+</div>
+
+<p>RecordStuff 的量測是這三種方法的實例。用測試音量系統音訊的路徑，原生引擎是 −0.07 ppm；在加上麥克風功能的那一輪，又重複量了幾次，落在 −0.3 到 +0.41 ppm 之間。用閃光加嗶聲錄十分鐘，600 對全部偵測到，漂移 0 ms，每個檔案的音訊和影像都一樣長。這些數字說明系統音訊的路徑實際上跟著主機時脈走：以 0.4 ppm 推算，要累積到 10 ms 的容許範圍得錄將近七小時，校正幾乎不會發生。但正如上面的提醒，這不代表 USB 或藍牙麥克風的時脈也一樣準。</p>
+
+<h2 id="mixing">混音：增益、削波、聲道與等待</h2>
+
+<h3>相加，以及加過頭</h3>
+
+<p>數位混音就是把同一時間點的樣本相加。兩個來源各自都在 −6 dBFS 以下時，總和不會超過滿刻度；兩個都很大聲，例如音樂的副歌加上大聲的旁白，總和就可能超過 1.0。超過的部分怎麼處理，取決於樣本在哪裡變成整數：</p>
+
+<ul>
+  <li>浮點數管線可以暫時容納超過 1.0 的值，不會立刻出事。</li>
+  <li>一旦轉成 16 位元整數（例如餵給只收整數的編碼器），超出的部分就被截成最大值，這就是<strong>硬削波（hard clipping）</strong>，聽起來是刺耳的爆音。</li>
+</ul>
+
+<p>處理增益的選項大致有四種，各有代價：</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>做法</th><th>結果</th><th>代價</th><th>例子</th></tr></thead>
+  <tbody>
+    <tr><td>Unity gain 直接相加</td><td>每個來源的音量和原本完全一樣；只有一個來源時，輸出就是那個來源本身</td><td>兩個大聲的來源相加可能削波</td><td>RecordStuff 在總和低於 −1 dBFS、或只有一個來源有聲音時</td></tr>
+    <tr><td>依來源數量縮小</td><td>永遠不會因相加而超過滿刻度</td><td>每個來源都變小聲（兩個來源各降約 6 dB）；來源數量一變，音量就跟著變</td><td>FFmpeg 的 <code>amix</code> 濾鏡預設會依輸入數量縮放（<code>normalize</code> 選項）</td></tr>
+    <tr><td>每個來源一個音量推桿</td><td>使用者自己決定比例</td><td>多一個要調、要存、要解釋的設定；預設值仍要選</td><td>OBS 的混音器</td></tr>
+    <tr><td>Limiter／壓縮器</td><td>大聲的瞬間被平滑地壓下來，不會削波</td><td>改變了動態；壓縮的參數本身就是一種「品味」</td><td>OBS 可加在來源上的濾鏡；剪輯軟體的母帶處理；RecordStuff 只在兩個來源相加超過 −1 dBFS 時的軟性限幅</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>哪一個對，取決於錄的東西給誰用。如果錄影檔是「證據」，要和使用者錄影時聽到的一模一樣，unity gain 最忠實；如果是要直接發佈的成品，limiter 或推桿比較安全。兩者也可以合併：平常是 unity，只有總和接近滿刻度時才作用的<strong>軟性限幅（soft limit）</strong>，讓超過門檻的部分平滑地趨近、但永遠不到達滿刻度，門檻以下完全不碰訊號。</p>
+
+<h3>取樣率和聲道要先一致</h3>
+
+<p>只有取樣率和聲道配置都相同的來源才能逐樣本相加。44.1 kHz 的麥克風要先重取樣成 48 kHz；單聲道的麥克風要先 <strong>up-mix</strong> 成立體聲，最常見的做法是把同一個值放進左右兩聲道；5.1 聲道的來源則要 down-mix。這些轉換可以由 App 自己做，也可以要求作業系統直接交出指定的格式。後者省下程式碼，也省掉「自己的重取樣器品質如何」這個問題，但前提是作業系統的 API 願意做，而且你能接受它的做法。OBS 選擇自己做：每個來源都重取樣到使用者在設定裡選的輸出取樣率。</p>
+
+<p>要注意的是，up-mix 不會創造資訊。單聲道麥克風複製成兩聲道後，檔案標示為立體聲，但左右兩邊完全相同。量測時，這會表現為左右聲道之間沒有分離度。</p>
+
+<h3>等待：混音要等最慢的來源</h3>
+
+<p>要算出第 n 個 frame 的混音結果，必須拿到每個來源的第 n 個 frame。不同來源送達的延遲不同，所以混音器必須等最慢的那一個。這帶出一個棘手的情況：有些來源在沒有聲音時<strong>根本不送資料</strong>。Windows 的 WASAPI loopback（錄下系統正在播放的聲音的 API）就是這樣：沒有任何東西在播放時，它不送封包。如果混音器堅持等每個來源都送到，系統一安靜，整條音訊就跟著停住。</p>
+
+<p>解法是設一個等待上限：混音的進度除了跟著「每個來源都送到了」前進，也跟著時鐘前進，最多落後時鐘一段固定時間。超過這個時間還沒送到的部分當作靜音；如果之後才送到，就丟掉並記錄下來。這個上限是一個取捨：</p>
+
+<ul>
+  <li><strong>太短：</strong>延遲稍高的正常裝置，例如藍牙耳機的麥克風，會被當成沒聲音，它的聲音被丟掉。</li>
+  <li><strong>太長：</strong>記憶體裡要暫存更多聲音，按下停止後也要等更久，才知道最後一段的混音結果。</li>
+</ul>
+
+<p>「來源沒送資料」本身也要分清楚意思。Loopback 沒送資料代表「沒有聲音在播」，是正常的；麥克風則不一樣，安靜的房間裡它也持續送出接近零的樣本，所以麥克風<strong>長時間完全沒送資料</strong>，幾乎可以確定是裝置不見了，例如被拔掉或藍牙斷線。同樣是「沒送資料」，對兩種來源要用不同的規則解讀。</p>
+
+<h2 id="voice">語音處理與 ducking</h2>
+
+<h3>三種處理在做什麼</h3>
+
+<p>視訊會議用的麥克風訊號，通常會經過一組統稱為<strong>語音處理</strong>的演算法。WebRTC 的 Audio Processing Module（Chromium 內建、也被許多 App 直接使用的那套）是最常見的實作，它的 API 說明把這組功能定位為改善語音：</p>
+
+<ul>
+  <li><strong>回音消除（AEC）：</strong>麥克風會錄到喇叭播出的對方聲音，如果不處理，對方會聽到自己的回音。AEC 需要一份「參考訊號」，也就是喇叭正在播放什麼（WebRTC 稱為 reverse stream），再從麥克風訊號裡把它估計並減掉。</li>
+  <li><strong>降噪（noise suppression）：</strong>估計背景噪音，例如風扇、冷氣，並把它壓低，讓語音突出。</li>
+  <li><strong>自動增益控制（AGC）：</strong>讓說話音量大致保持一致，說小聲時放大，大聲時縮小。</li>
+</ul>
+
+<p>三者的目標都是「通話時聽得清楚」，而不是「錄下真實的聲音」。降噪會把音樂的細節、殘響當成噪音；AGC 會抹平刻意的大小聲；AEC 若拿系統音訊當成要消除的對象，被犧牲的正是錄影要保留的那部分。</p>
+
+<p>這不是假設。RecordStuff 舊的 Chromium 錄影路徑一度讓系統音訊經過這組處理，結果是 16 kHz 的測試音比同時播放的 1 kHz 參考音低了 44 到 47 dB，左右聲道的分離度約為 0 dB，也就是高頻幾乎消失、立體聲塌成單聲道。明確關掉這三項之後，測試音全部通過。（那次實驗證明的是「三項一起關掉」的效果，沒有分別量每一項。）</p>
+
+<h3>處理放在哪一層</h3>
+
+<ul>
+  <li><strong>瀏覽器：</strong>網頁用 <code>getUserMedia</code> 取得麥克風時，<code>echoCancellation</code>、<code>noiseSuppression</code>、<code>autoGainControl</code> 三個 constraint 在 Chromium 預設都是開啟的，網頁必須明確要求關閉。這些只是「要求」，瀏覽器不一定照做，App 只能事後讀取設定來確認。</li>
+  <li><strong>作業系統：</strong>macOS 提供 voice-processing I/O（Audio Unit 的 <code>kAudioUnitSubType_VoiceProcessingIO</code>，或 <code>AVAudioEngine</code> 輸入節點的 <code>setVoiceProcessingEnabled</code>）；Windows 讓 App 以「通訊」類別開啟音訊串流，交給系統和驅動程式的音效處理。</li>
+  <li><strong>裝置本身：</strong>有些耳機、網路攝影機或會議麥克風在硬體裡就做了降噪或回音消除，App 關不掉，甚至不知道。</li>
+  <li><strong>應用程式：</strong>會議軟體通常自己處理麥克風。Zoom 提供一個「原音」（Original Sound）模式，給音樂人關掉這些處理。</li>
+</ul>
+
+<p>還有一個容易忽略的事實：錄影工具錄到的系統音訊，是會議軟體<strong>處理過之後</strong>播放出來的聲音。對方的語音已經被他那一端降噪過了，錄影工具再處理一次，只會多一層失真，不會更乾淨。</p>
+
+<h3>Ducking：開了語音處理，別的 App 變小聲</h3>
+
+<p><strong>Ducking</strong> 是指作業系統在偵測到通話時，自動調低其他 App 的播放音量，讓通話聽得清楚。它是作業系統層級的行為，不是 App 自己的混音：</p>
+
+<ul>
+  <li><strong>Windows：</strong>App 以通訊用途開啟串流時，系統會套用「聲音」控制台「通訊」分頁的設定：把其他聲音全部靜音、降低 80%、降低 50%，或不做任何事，預設是降低 80%。OBS 的進階設定裡有一個停用 Windows 音訊 ducking 的選項（Disable Windows audio ducking），就是為了這件事。</li>
+  <li><strong>macOS：</strong>啟用 voice-processing I/O 時，系統可能調低其他 App 的輸出。macOS 14 起，<code>AVAudioInputNode</code> 提供設定這個行為程度的 API（<code>voiceProcessingOtherAudioDuckingConfiguration</code>），可以把它調到較低的程度。</li>
+</ul>
+
+<p>對錄影工具來說，ducking 有兩層傷害。第一層一定會發生：使用者在錄影期間聽到的聲音變小了，而錄影工具不應該改變使用者正在聽的東西。第二層取決於擷取的位置：如果系統音訊是在 ducking 之後擷取的，錄下來的系統音訊也會跟著變小，而且只有麥克風在用的那段時間變小。</p>
+
+<h3>其他產品怎麼選</h3>
+
+<ul>
+  <li><strong>OBS：</strong>預設不對來源做任何處理；處理是使用者自己加在來源上的濾鏡，包括雜訊抑制（RNNoise、Speex，或 NVIDIA 的）、雜訊閘、壓縮器、限制器和增益。它的 ducking 也是使用者明確設定的：壓縮器可以指定另一個來源當 sidechain，讓旁白出現時壓低背景音樂。</li>
+  <li><strong>Chromium／WebRTC：</strong>預設開啟三項處理，因為瀏覽器假設麥克風最常用於通話。</li>
+  <li><strong>建立在瀏覽器 API 上的錄影工具</strong>（例如 Loom 的瀏覽器擴充）：取得麥克風時走 <code>getUserMedia</code>，除非程式明確關閉，就會得到瀏覽器預設的處理。它們實際要求了哪些 constraint，本文沒有查證。</li>
+  <li><strong>會議軟體：</strong>預設全開，並提供關閉的模式（例如 Zoom 的原音）。</li>
+</ul>
+
+<h2 id="echo">喇叭回音：麥克風聽到了系統音訊</h2>
+
+<p>同時錄系統音訊和麥克風，而使用者用喇叭聽，就會出現一個錄影工具特有的問題：系統音訊在檔案裡出現兩次。一次是直接從數位路徑錄到的；另一次是喇叭播出來、經過空氣、被麥克風錄到的。第二次比第一次晚，晚的時間包括輸出裝置的緩衝、聲音在空氣中的傳播（每公尺約 2.9 ms）和麥克風的輸入延遲，而且帶著房間的殘響。兩者疊在一起，延遲短時聽起來像音色變了（梳狀濾波），延遲長時就是清楚的回音。</p>
+
+<p>可行的處理方式和它們的代價：</p>
+
+<ul>
+  <li><strong>戴耳機。</strong>從源頭消除問題，零運算成本，也不改寫任何樣本。代價是要使用者配合；而且耳機不是完全隔音，音量開得很大時，麥克風仍聽得到漏出來的聲音。</li>
+  <li><strong>用系統音訊當參考的回音消除。</strong>這是錄影工具的獨特優勢：它手上本來就有喇叭正在播放什麼的精確數位副本，可以當成 AEC 的 reverse stream，例如直接使用 WebRTC 的 Audio Processing Module。代價是要估計兩條路徑之間的延遲；喇叭的非線性失真和房間殘響會留下殘餘；使用者說話時恰好也有系統音訊（double-talk）時，演算法可能連旁白一起削弱；而且它要求錄到的是處理過的麥克風。</li>
+  <li><strong>分軌錄製，交給後製。</strong>系統音訊和麥克風各存一軌，剪輯時再決定。問題沒有消失，只是移到使用者或編輯器身上。</li>
+  <li><strong>只錄其中一個。</strong>做旁白時關掉系統音訊，或反過來。最簡單，但常常不是使用者要的。</li>
+</ul>
+
+<p>RecordStuff 在麥克風功能的驗收中實際遇到了這個現象：系統音訊從音量開到最大的有線耳機輸出時，麥克風錄到了耳機漏出的聲音和房間的聲音，三次保真度測試分別是失敗、失敗、無效。這是麥克風真的錄到了聲音，而不是混音器的缺陷。把輸出靜音後再測（ScreenCaptureKit 擷取的是 App 的聲音，在輸出音量之前，所以系統音訊照樣錄得到，麥克風則只聽到安靜的房間），三次都通過。</p>
+
+<h2 id="choices">七個選擇與它們的取捨</h2>
+
+<p>以下每個選擇都用同一個框架來看：它依賴哪些條件、替代方案要付出什麼代價、其他產品怎麼選、RecordStuff 怎麼選，以及什麼情況會讓結論翻轉。其他產品的做法只寫有公開資料可查、或我們有把握的部分，不確定的地方會明白標出。</p>
+
+<h3>1. 時間戳：buffer 自帶、只數樣本、數樣本加校正，或自適應重取樣</h3>
+
+<p><strong>數樣本加校正適合的條件。</strong>來源的時脈和主機時脈很接近，校正很少發生；容許範圍可以選在抖動之上、察覺門檻之下；並且你重視「一個來源時，輸出就是它的原始樣本」。</p>
+
+<p><strong>替代方案的代價。</strong>buffer 自帶時間戳會造成持續的細碎雜音。只數樣本，漂移和停頓都會無限累積。自適應重取樣最平滑，但要實作速率估計（估計本身會受時間戳抖動影響，要濾波），要有夠好的重取樣器，CPU 成本高一些，而且每個樣本都被改寫過。</p>
+
+<p><strong>其他產品。</strong>RecordStuff 的設計文件記載它和 Cap 一樣用樣本數放置音訊。OBS 把每個來源重取樣到輸出取樣率，並平滑來源時間戳的小幅抖動；使用者還可以為每個來源手動設定固定的「同步偏移」，處理的是固定延遲，而不是漂移。macOS 的聚集裝置用重取樣做漂移校正。</p>
+
+<p><strong>RecordStuff。</strong>數樣本加校正，容許 10 ms（48 kHz 下 480 個 frame）。第一個 buffer 精確放在它的時間戳上，讓音訊和畫面從同一刻開始；之後只有差距超過 10 ms 才補靜音或丟樣本，從不重取樣。</p>
+
+<p><strong>什麼會翻轉結論。</strong>實測到漂移大的裝置，例如某些藍牙或 USB 裝置，讓校正頻繁到聽得見；錄影長度到數小時；或者使用者要求「完全沒有缺口」。這時應該改成自適應重取樣，至少對那類來源。</p>
+
+<h3>2. 混成一軌，或分軌錄製</h3>
+
+<p><strong>一軌適合的條件。</strong>檔案要直接拿去分享、上傳，在任何播放器裡都要聽到全部聲音；產品沒有自己的編輯器。多數播放器和網站預設只播放一條音訊軌，分軌檔在那裡等於丟了旁白。</p>
+
+<p><strong>分軌的好處與代價。</strong>剪輯時可以分別調整音量、只對麥克風降噪、修掉回音，混音的錯誤也能事後補救。代價是一定要有後製步驟，否則分享出去的檔案就有缺；也要決定播放器預設播哪一軌。</p>
+
+<p><strong>其他產品。</strong>OBS 讓使用者把來源分配到最多六條音軌，錄影時可以同時寫多條，這是為後製設計的。Cap 以自己的編輯器為中心：就我們所知，它的 Studio 模式把各個來源分開記錄，在編輯器裡分別調整。</p>
+
+<p><strong>RecordStuff。</strong>一軌。它沒有編輯器，錄完的檔案就是成品。</p>
+
+<p><strong>什麼會翻轉結論。</strong>產品加上剪輯功能；或者使用者需要事後處理旁白，例如加降噪、修回音。這時可以「多寫一份分軌」，同時保留混好的那一軌給一般播放器。</p>
+
+<h3>3. 混音增益：unity、縮放、推桿或 limiter</h3>
+
+<p><strong>Unity 適合的條件。</strong>錄影的目標是「和使用者聽到的一樣」；多數時候只有一個來源有聲音，例如旁白和示範影片輪流出現；而且有方法證明混音器沒有改變音量。</p>
+
+<p><strong>替代方案的代價。</strong>依來源數量縮放，會讓「打開麥克風」這個動作把系統音訊變小聲，使用者會以為是 ducking。推桿要設計介面和預設值。Limiter 改變動態，並且需要調參數。</p>
+
+<p><strong>RecordStuff。</strong>Unity gain 相加，加上只在必要時作用的軟性限幅：兩個以上有聲音的來源相加超過 −1 dBFS 時（例如大聲的影片配上旁白），用 tanh 曲線讓總和趨近、但永遠到不了滿刻度，在門檻處平滑銜接。門檻以下、或只有一個來源有聲音時（另一個是靜音，或麥克風關閉），輸出和直接相加逐位元相同，所以只錄系統音訊時的保真證據不受影響；停止時的紀錄會列出被限幅的樣本數。代價是被限幅的那些瞬間動態被壓扁了一點。單一來源本身超過滿刻度則保持原樣，不是限幅器該改的；Windows 的 AAC 編碼器只收 16 位元整數，那種值在轉換時仍會被截斷。</p>
+
+<p><strong>什麼會翻轉結論。</strong>停止紀錄裡的限幅計數在一般錄影中經常出現，代表「背景音樂加旁白同時大聲」已是常態，這時該給每個來源一個音量設定，而不是一直靠限幅器；或者使用者聽得出限幅造成的失真。</p>
+
+<h3>4. 等遲到的輸入多久</h3>
+
+<p><strong>條件。</strong>上限要大於任何正常來源的送達延遲，又要小到停止時的等待可以接受。</p>
+
+<p><strong>替代方案的代價。</strong>沒有上限，loopback 一安靜，混音就停住；上限太小，延遲高的裝置會被誤判為靜音。另一種做法是對每種來源各自設定，例如 loopback 沒資料就立刻視為靜音，其他來源則等待，但這要求混音器知道每個來源的特性。</p>
+
+<p><strong>RecordStuff。</strong>混音進度最多落後時鐘 500 ms；之後才到的聲音丟掉，並在停止時的紀錄裡依來源列出遲到的 frame 數。按下停止後，擷取會繼續最多 250 ms，等停止那一刻之前的聲音送達，所以音訊軌和影像軌一樣長。</p>
+
+<p><strong>什麼會翻轉結論。</strong>停止報告經常出現遲到的 frame，代表某類裝置的延遲比預期高，上限要放寬；或者產品要做直播，500 ms 的混音延遲就太長了。</p>
+
+<h3>5. 語音處理：開、關，或讓使用者選</h3>
+
+<p><strong>關閉適合的條件。</strong>錄影的主要內容是系統音訊，要求保真；作業系統的語音處理會帶來 ducking；使用者可以用耳機避免回音。</p>
+
+<p><strong>開啟的好處與代價。</strong>開啟系統的語音處理，回音、噪音和音量不一致都能自動處理，旁白在喇叭環境下也能用。代價是 ducking（Windows 預設降低其他聲音 80%；macOS 的 voice-processing I/O 也可能調低其他 App）、旁白的音色改變、處理行為因平台和版本而異，而且很難驗證。另一條路是在 App 裡自己跑 WebRTC 的處理模組、只套用在麥克風上、用系統音訊當參考：不會觸發作業系統的 ducking，也能做到很好的回音消除，但要多帶一套原生程式庫，並自己處理延遲估計和 CPU 成本。</p>
+
+<p><strong>其他產品。</strong>OBS 預設關閉，讓使用者自己加濾鏡。會議軟體和瀏覽器預設開啟，並提供關閉的方法。</p>
+
+<p><strong>RecordStuff。</strong>麥克風錄的是原始訊號，不使用 macOS 的 voice-processing I/O，也不使用 Windows 的通訊管線，主要原因是前者可能調低其他 App 的音量。Windows 上開啟麥克風本身也可能讓系統像通話時一樣壓低其他 App，所以麥克風串流會以 <code>IAudioSessionControl2::SetDuckingPreference(TRUE)</code> 表明不要觸發 ducking（盡力而為）。回音的建議是戴耳機，麥克風開關旁的說明就這樣寫。</p>
+
+<p><strong>什麼會翻轉結論。</strong>使用者多半用筆電喇叭錄旁白，回音成為主要抱怨；或者 macOS 的 ducking 設定能可靠地完全關閉，並經過量測確認不影響錄到的系統音訊。前者會讓「App 內的回音消除，只套用在麥克風、以系統音訊為參考」變得值得；後者會讓使用系統的語音處理成為選項之一。</p>
+
+<h3>6. 麥克風中途消失時</h3>
+
+<p><strong>選項。</strong>停止整個錄影；繼續錄，但沒有麥克風；或者繼續錄，並在裝置重新連上時重新開啟它。</p>
+
+<p><strong>條件與代價。</strong>停止最簡單、最不會讓使用者誤會，但會把一個麥克風的問題變成整段錄影的損失，尤其藍牙耳機沒電是很常見的情況。繼續錄要能可靠地判斷「消失」，並且要清楚告訴使用者。重新開啟要處理裝置換了 ID、格式改變、時間軸要補多少靜音等情況，複雜度最高；而且它有一個前提：程式要能知道裝置走了、又回來了。</p>
+
+<p><strong>誰告訴你裝置來去：AVFoundation 還是 CoreAudio HAL。</strong>macOS 上有兩層 API 可以用。AVFoundation（<code>AVCaptureSession</code>、<code>AVCaptureDevice</code>）比較高階：格式轉換、時間戳和裝置清單都替你處理好，也有斷線、重新連上與執行期錯誤的通知。但它把裝置狀態放在主執行緒的 run loop 上維護；行程的主執行緒沒有在跑 run loop 時，這些通知不會送來，<code>AVCaptureDevice(uniqueID:)</code> 和新建的 <code>DiscoverySession</code> 也會一直回報裝置離開那一刻的狀態。CoreAudio 的 HAL（<code>AudioObjectAddPropertyListener</code>、<code>kAudioHardwarePropertyDevices</code>、AUHAL）比較低階，格式和時間戳要自己處理，但它的 property listener 由 HAL 自己的執行緒呼叫，不需要主 run loop。所以真正決定選哪一層的，是擷取程式碼跑在哪一種行程裡：有 <code>NSApplication</code> 的 App 行程，主 run loop 本來就在跑，AVFoundation 的通知可以用；沒有 run loop 的子行程或 helper，就只有 HAL 看得到裝置來去。</p>
+
+<p><strong>其他產品。</strong>依本專案比對時讀到的原始碼：Chromium 的 audio service 跑在瀏覽器行程之外，以 CoreAudio 的 AUHAL 擷取，並用 <code>AudioObjectAddPropertyListener</code> 監看裝置（<code>media/audio/mac/audio_device_listener_mac.cc</code>），不依賴主 run loop；它對沒有聲音的裝置要等 12 秒才判定。Cap 透過 cpal（底層是 CoreAudio）擷取，停頓 2 秒後重新連接，退避間隔最長到 30 秒（<code>crates/recording/src/sources/microphone.rs</code>），而它的擷取跑在 Tauri 的 App 行程裡，那裡本來就有 <code>NSApplication</code> 的 run loop。OBS 也會接收作業系統的錯誤與斷線通知並重新連接。藍牙或接續互通麥克風停頓幾秒又繼續，是常見的情況。</p>
+
+<p><strong>RecordStuff：踩到這個陷阱的實例。</strong>RecordStuff 的引擎跑在 Electron 的 utility process 裡，以 AVFoundation 擷取麥克風，而這個行程不跑主 run loop。曾經有一版監聽 <code>AVCaptureSessionRuntimeErrorNotification</code>、<code>AVCaptureDeviceWasDisconnectedNotification</code> 與 <code>AVCaptureDeviceWasConnectedNotification</code>，在同一個裝置（依 <code>uniqueID</code>）重新連上時把它放回 session；2026-10-16 的實機驗收顯示它從來沒有作用。iPhone 接續互通麥克風（兩次）與 HUAWEI FreeClip 2 藍牙耳機（兩次）斷線時，一個通知都沒有收到，每次都是核心的「2 秒沒有聲音」判定中斷；裝置重新連上、系統也列出它（甚至成為預設輸入）之後，不論用通知還是每秒依 <code>uniqueID</code> 查詢一次，錄影都沒有把它收回。在 App 之外用一支 Swift 小程式每秒查 <code>AVCaptureDevice(uniqueID:)</code>、新建的 <code>DiscoverySession</code> 與 CoreAudio 的 <code>kAudioHardwarePropertyDevices</code>：沒有 run loop 時，CoreAudio 的清單立刻少了耳機，兩種 AVFoundation 查詢在剩下的 27 秒裡都還說它連著；在主執行緒跑 run loop 時，AVFoundation 也立刻跟上。這些程式碼因此已經移除。</p>
+
+<p>現在的做法是繼續錄，但不重新開啟。錄影中麥克風 2 秒完全沒有送來樣本，或樣本讀不出來，就判定為中斷；錄影繼續，麥克風那一段是靜音。只有同一個 session 再次送出聲音時（暫時停頓），才從那一刻起重新混入，中間留為靜音；這條路徑只有單元測試涵蓋，實機上還沒有看過停頓後恢復的情況。斷線的裝置不會重新開啟，macOS 與 Windows 都一樣（Windows 遇到 <code>AUDCLNT_E_DEVICE_INVALIDATED</code> 後 pump 就結束）。每次中斷都記在 log 裡，但每段錄影只通知一次：「錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。」，存檔紀錄也會註明。開始錄影之前就打不開麥克風（沒有權限、沒有裝置），則直接拒絕開始，而不是默默錄一段沒有旁白的影片。要在 macOS 上重新開啟重新連上的麥克風，需要改用 CoreAudio 的 HAL，這是<a href="../../plans/078-native-capture-follow-ups.zh-TW.md">計畫 078</a> 新增的項目。</p>
+
+<div class="callout warning">
+  <p><strong>先確認通知送得到你的行程。</strong>高階框架的「裝置斷線」通知與裝置查詢，常常依賴主執行緒的 run loop。把擷取搬進沒有 run loop 的子行程時，程式照樣編得過、單元測試照樣通過，只有實際拔掉裝置才會發現通知從來沒來。動手之前，先在同樣的行程型態裡做一個最小的探針：拔掉裝置，看清單和通知多久跟上。</p>
+</div>
+
+<p><strong>什麼會翻轉結論。</strong>藍牙耳機或接續互通麥克風在錄影中斷線又回來是常見情況，使用者希望旁白自動回來，這時值得改用 CoreAudio HAL 擷取並監看裝置（計畫 078）；擷取改到有主 run loop 的行程，AVFoundation 的通知就能用；使用者常在錄影中換裝置，例如從耳機換成內建麥克風，這時值得在裝置消失後改用系統預設的輸入裝置；Windows 上拔插很常見，這時值得在裝置失效後重新開啟它。</p>
+
+<h3>7. 格式轉換由誰做</h3>
+
+<p><strong>選項。</strong>App 自己重取樣和 up-mix；或者要求作業系統直接交出統一的格式（例如 48 kHz、立體聲、32 位元浮點數）。</p>
+
+<p><strong>代價。</strong>自己做，品質和行為可控、跨平台一致，但要寫要測。交給作業系統，程式碼最少，但轉換的品質與 CPU 成本不在你的掌控中，而且要確認每個平台的 API 都提供這個能力。</p>
+
+<p><strong>RecordStuff。</strong>取樣率交給作業系統：macOS 的 ScreenCaptureKit 和 AVFoundation、Windows 的音訊引擎都直接交出 48 kHz 浮點數，系統音訊是立體聲，麥克風是單聲道（macOS 向 AVFoundation 要 1 個聲道；Windows 以單聲道開啟，由音訊引擎把裝置的聲道混成一個）。引擎自己從不重取樣，只把麥克風那一個聲道放進左右兩聲道，和 Cap 一樣。這樣，錄音介面接在第 1 軌的麥克風不會只出現在左耳；代價是立體聲麥克風會錄成單聲道。</p>
+
+<p><strong>什麼會翻轉結論。</strong>某個平台的轉換品質量測不合格；或者需要作業系統不提供的格式。另外，CPU 量測顯示開啟麥克風多了約 3.4 個百分點，推測和 AVFoundation 的擷取執行緒與格式轉換有關，但這還沒有拆開量測過。</p>
+
+<h2 id="example">實例：RecordStuff 錄一段有旁白的影片</h2>
+
+<p>RecordStuff 是一個 macOS 與 Windows 的選單列錄影工具，以 Electron 撰寫，實際的擷取、編碼和寫檔由一個 Rust 原生引擎負責（2026 年 10 月的計畫 076），麥克風則是之後的計畫 074 加上的。它的音訊路徑如下：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-pipe-d-title fig-pipe-d-desc" viewBox="0 0 680 236" style="max-width: 680px"><title id="fig-pipe-d-title">RecordStuff 的音訊路徑</title><desc id="fig-pipe-d-desc">系統音訊由作業系統交出 48 kHz 立體聲浮點數，麥克風轉成 48 kHz 單聲道浮點數、放進左右兩聲道，各經過一個以樣本計數、容許 10 毫秒校正的對齊器，放上同一個工作階段時鐘；混音器以 unity gain 相加，只在兩個來源相加超過 −1 dBFS 時軟性限幅，最多等待 500 毫秒；最後由 AAC 編碼並寫進 MP4，edit list 跳過編碼器的 priming。</desc><defs><marker id="fig-pipe-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <g class="fig-node"><rect x="10" y="30" width="140" height="68" rx="8"></rect><text class="fig-label" x="80" y="56" text-anchor="middle">系統音訊</text><text class="fig-note" x="80" y="75" text-anchor="middle">48 kHz 立體聲</text><text class="fig-note" x="80" y="90" text-anchor="middle">32 位元浮點數</text></g>
+    <g class="fig-node"><rect x="10" y="146" width="140" height="68" rx="8"></rect><text class="fig-label" x="80" y="172" text-anchor="middle">麥克風</text><text class="fig-note" x="80" y="191" text-anchor="middle">由作業系統轉成</text><text class="fig-note" x="80" y="206" text-anchor="middle">48 kHz 單聲道</text></g>
+    <g class="fig-node"><rect x="185" y="30" width="130" height="68" rx="8"></rect><text class="fig-label" x="250" y="56" text-anchor="middle">對齊</text><text class="fig-note" x="250" y="75" text-anchor="middle">樣本計數</text><text class="fig-note" x="250" y="90" text-anchor="middle">容許 10 ms</text></g>
+    <g class="fig-node"><rect x="185" y="146" width="130" height="68" rx="8"></rect><text class="fig-label" x="250" y="172" text-anchor="middle">對齊</text><text class="fig-note" x="250" y="191" text-anchor="middle">樣本計數</text><text class="fig-note" x="250" y="206" text-anchor="middle">容許 10 ms</text></g>
+    <g class="fig-node"><rect x="355" y="84" width="135" height="76" rx="8"></rect><text class="fig-label" x="422" y="110" text-anchor="middle">混音</text><text class="fig-note" x="422" y="129" text-anchor="middle">unity gain 相加</text><text class="fig-note" x="422" y="146" text-anchor="middle">最多等 500 ms</text></g>
+    <g class="fig-node"><rect x="530" y="84" width="140" height="76" rx="8"></rect><text class="fig-label" x="600" y="110" text-anchor="middle">AAC → MP4</text><text class="fig-note" x="600" y="129" text-anchor="middle">edit list</text><text class="fig-note" x="600" y="146" text-anchor="middle">跳過 priming</text></g>
+    <path class="fig-arrow" d="M 150 64 H 181" marker-end="url(#fig-pipe-d-head)"></path>
+    <path class="fig-arrow" d="M 150 180 H 181" marker-end="url(#fig-pipe-d-head)"></path>
+    <path class="fig-arrow" d="M 315 64 H 334 V 108 H 351" marker-end="url(#fig-pipe-d-head)"></path>
+    <path class="fig-arrow" d="M 315 180 H 334 V 136 H 351" marker-end="url(#fig-pipe-d-head)"></path>
+    <path class="fig-arrow" d="M 490 122 H 526" marker-end="url(#fig-pipe-d-head)"></path>
+    <text class="fig-note" x="340" y="18" text-anchor="middle">所有時間都是同一個主機時脈，從開始錄影的那一刻算起</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-pipe-m-title fig-pipe-m-desc" viewBox="0 0 360 410" style="max-width: 360px"><title id="fig-pipe-m-title">RecordStuff 的音訊路徑</title><desc id="fig-pipe-m-desc">系統音訊與麥克風各自經過以樣本計數、容許 10 毫秒校正的對齊器，混音器以 unity gain 相加、超過 −1 dBFS 才軟性限幅、最多等待 500 毫秒，再由 AAC 編碼寫進 MP4。</desc><defs><marker id="fig-pipe-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <text class="fig-note" x="180" y="16" text-anchor="middle">所有時間都是同一個主機時脈</text>
+    <g class="fig-node"><rect x="10" y="28" width="160" height="66" rx="8"></rect><text class="fig-label" x="90" y="54" text-anchor="middle">系統音訊</text><text class="fig-note" x="90" y="74" text-anchor="middle">48 kHz 立體聲</text></g>
+    <g class="fig-node"><rect x="190" y="28" width="160" height="66" rx="8"></rect><text class="fig-label" x="270" y="54" text-anchor="middle">麥克風</text><text class="fig-note" x="270" y="74" text-anchor="middle">作業系統轉換格式</text></g>
+    <g class="fig-node"><rect x="10" y="122" width="160" height="66" rx="8"></rect><text class="fig-label" x="90" y="148" text-anchor="middle">對齊</text><text class="fig-note" x="90" y="168" text-anchor="middle">容許 10 ms</text></g>
+    <g class="fig-node"><rect x="190" y="122" width="160" height="66" rx="8"></rect><text class="fig-label" x="270" y="148" text-anchor="middle">對齊</text><text class="fig-note" x="270" y="168" text-anchor="middle">容許 10 ms</text></g>
+    <g class="fig-node"><rect x="10" y="216" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="244" text-anchor="middle">混音</text><text class="fig-note" x="180" y="266" text-anchor="middle">unity gain 相加，最多等 500 ms</text></g>
+    <g class="fig-node"><rect x="10" y="314" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="342" text-anchor="middle">AAC → MP4</text><text class="fig-note" x="180" y="364" text-anchor="middle">edit list 跳過 priming</text></g>
+    <path class="fig-arrow" d="M 90 94 V 118" marker-end="url(#fig-pipe-m-head)"></path>
+    <path class="fig-arrow" d="M 270 94 V 118" marker-end="url(#fig-pipe-m-head)"></path>
+    <path class="fig-arrow" d="M 90 188 V 212" marker-end="url(#fig-pipe-m-head)"></path>
+    <path class="fig-arrow" d="M 270 188 V 212" marker-end="url(#fig-pipe-m-head)"></path>
+    <path class="fig-arrow" d="M 180 286 V 310" marker-end="url(#fig-pipe-m-head)"></path>
+  </svg>
+  <figcaption>每個來源有自己的對齊器，把它的樣本放到同一條時間軸上；混音器做加法（兩個來源加總接近滿刻度時才軟性限幅），並決定最多等多久。</figcaption>
+</figure>
+
+<h3>一個時鐘</h3>
+
+<p>引擎裡所有的時間都是主機時脈的奈秒數，從開始錄影的那一刻算起：macOS 用 mach absolute time，Windows 用 QueryPerformanceCounter。畫面保留 ScreenCaptureKit 給的顯示時間；聲音則由對齊器（<code>AudioAligner</code>）依樣本數放置。Windows 麥克風的時間戳先過一關，採用 Chromium 的規則（crbug.com/1439283）：有些驅動程式給的 QueryPerformanceCounter 位置差了好幾秒，甚至是 0，所以裝置第一個封包的時間若和它到達的時刻相差超過 500 ms，這個串流之後就一律用到達時間；被標記為時間戳錯誤的封包也改用到達時間。下面節錄對齊器的核心，註解為本文所加：</p>
+
+<pre class="language-typescript"><span class="label">Rust</span><code><span class="c">// 節錄自 native/capture/src/timing.rs 的 AudioAligner::place，註解為本文所加</span>
+pub fn <span class="f">place</span><span class="o">(</span><span class="o">&amp;</span>mut self<span class="o">,</span> pts_ns<span class="o">:</span> u64<span class="o">,</span> frames<span class="o">:</span> u64<span class="o">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="t">Placement</span> <span class="o">{</span>
+    <span class="c">// 依時間戳，這個 buffer「應該」從第幾個 frame 開始（四捨五入到整個 frame）</span>
+    <span class="k">let</span> offset <span class="o">=</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>pts_ns<span class="o">)</span> <span class="o">-</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>self<span class="o">.</span><span class="p">origin_ns</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> nanos <span class="o">=</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span><span class="t">NANOS_PER_SECOND</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> expected <span class="o">=</span> <span class="o">(</span>offset <span class="o">*</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>self<span class="o">.</span><span class="p">rate</span><span class="o">)</span> <span class="o">+</span> nanos / <span class="n">2</span><span class="o">)</span><span class="o">.</span><span class="p">div_euclid</span><span class="o">(</span>nanos<span class="o">)</span><span class="o">;</span>
+    <span class="c">// 和實際已寫到的位置比較；第一個 buffer 的容許值是 0，所以它被精確放置</span>
+    <span class="k">let</span> difference <span class="o">=</span> expected <span class="o">-</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>self<span class="o">.</span><span class="p">next</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> tolerance <span class="o">=</span> <span class="k">if</span> self<span class="o">.</span><span class="p">placed_any</span> <span class="o">{</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>self<span class="o">.</span><span class="p">tolerance</span><span class="o">)</span> <span class="o">}</span> <span class="k">else</span> <span class="o">{</span> <span class="n">0</span> <span class="o">}</span><span class="o">;</span>
+    <span class="c">// 超出容許值 2 ms 以內視為漂移（48 kHz 下 96 個 frame）</span>
+    <span class="k">let</span> slew <span class="o">=</span> <span class="k">if</span> self<span class="o">.</span><span class="p">placed_any</span> <span class="o">{</span> i128<span class="o">:</span><span class="o">:</span><span class="k">from</span><span class="o">(</span>self<span class="o">.</span><span class="p">slew</span><span class="o">(</span><span class="o">)</span><span class="o">)</span> <span class="o">}</span> <span class="k">else</span> <span class="o">{</span> <span class="n">0</span> <span class="o">}</span><span class="o">;</span>
+    <span class="k">let</span> placement <span class="o">=</span> <span class="k">if</span> difference <span class="o">&gt;</span> tolerance <span class="o">&amp;</span><span class="o">&amp;</span> difference <span class="o">&lt;</span><span class="o">=</span> tolerance <span class="o">+</span> slew <span class="o">{</span>
+        <span class="c">// 慢慢落後：只補 1 個 frame 的靜音</span>
+        <span class="t">Placement</span> <span class="o">{</span> silence<span class="o">:</span> <span class="n">1</span><span class="o">,</span> skip<span class="o">:</span> <span class="n">0</span> <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> difference <span class="o">&lt;</span> <span class="o">-</span>tolerance <span class="o">&amp;</span><span class="o">&amp;</span> difference <span class="o">&gt;</span><span class="o">=</span> <span class="o">-</span>tolerance <span class="o">-</span> slew <span class="o">{</span>
+        <span class="c">// 慢慢超前：只丟 1 個 frame</span>
+        <span class="t">Placement</span> <span class="o">{</span> silence<span class="o">:</span> <span class="n">0</span><span class="o">,</span> skip<span class="o">:</span> <span class="n">1.</span><span class="p">min</span><span class="o">(</span>frames<span class="o">)</span> <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> difference <span class="o">&gt;</span> tolerance <span class="o">{</span>
+        <span class="c">// 停頓過：一次補足靜音</span>
+        <span class="t">Placement</span> <span class="o">{</span> silence<span class="o">:</span> difference <span class="k">as</span> u64<span class="o">,</span> skip<span class="o">:</span> <span class="n">0</span> <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> difference <span class="o">&lt;</span> <span class="o">-</span>tolerance <span class="o">{</span>
+        <span class="c">// 重疊：一次丟掉開頭多出來的樣本</span>
+        <span class="t">Placement</span> <span class="o">{</span> silence<span class="o">:</span> <span class="n">0</span><span class="o">,</span> skip<span class="o">:</span> <span class="o">(</span><span class="o">(</span><span class="o">-</span>difference<span class="o">)</span> <span class="k">as</span> u64<span class="o">)</span><span class="o">.</span><span class="p">min</span><span class="o">(</span>frames<span class="o">)</span> <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="c">// 在容許範圍內：視為抖動，直接接在後面</span>
+        <span class="t">Placement</span> <span class="o">{</span> silence<span class="o">:</span> <span class="n">0</span><span class="o">,</span> skip<span class="o">:</span> <span class="n">0</span> <span class="o">}</span>
+    <span class="o">}</span><span class="o">;</span>
+    <span class="c">// （省略：累計補上與丟掉的 frame 數，供停止時的紀錄）</span>
+    <span class="k">let</span> kept <span class="o">=</span> frames <span class="o">-</span> placement<span class="o">.</span><span class="p">skip</span><span class="o">;</span>
+    <span class="k">if</span> kept <span class="o">&gt;</span> <span class="n">0</span> <span class="o">|</span><span class="o">|</span> placement<span class="o">.</span><span class="p">silence</span> <span class="o">&gt;</span> <span class="n">0</span> <span class="o">{</span>
+        self<span class="o">.</span><span class="p">placed_any</span> <span class="o">=</span> <span class="n">true</span><span class="o">;</span>
+    <span class="o">}</span>
+    self<span class="o">.</span><span class="p">next</span> <span class="o">+</span><span class="o">=</span> placement<span class="o">.</span><span class="p">silence</span> <span class="o">+</span> kept<span class="o">;</span>
+    placement
+<span class="o">}</span></code></pre>
+
+<p>重點在三個地方。第一，比較的單位是 frame，不是奈秒，因為檔案裡的音訊時間本來就是樣本數。第二，第一個 buffer 的容許值是 0，所以音訊軌和影像軌從同一刻開始。第三，校正只有補靜音和丟樣本兩種，從不重取樣；剛超出容許值的漂移每個 buffer 只修 1 個 frame，大的停頓或重疊才一次修正。所以只有一個來源時，檔案裡的樣本就是作業系統交出來的樣本，只多了零星的單一 frame 靜音或少了零星的單一 frame。引擎的單元測試模擬了慢 100 ppm 和快 100 ppm 的裝置，各跑約十分鐘，偏差都沒有超過 10 ms 加 1 個 frame，而且每次修正都只有 1 個 frame。停止時的紀錄會依來源列出補上與丟掉的 frame 數。</p>
+
+<h3>混音器與遲到的聲音</h3>
+
+<p>混音器把每個來源已對齊的樣本逐 frame 相加，增益為 1；兩個以上有聲音的來源加總超過 −1 dBFS 時，才以軟性限幅收在滿刻度以下。它推進到「每個來源都送到的位置」，同時也跟著時鐘推進，最多落後 500 ms。系統音訊（Windows 的 loopback）安靜時不送資料，就是靠這個機制當作靜音處理；之後才送到的聲音會被丟掉，並計入停止報告的遲到 frame 數。麥克風則另有一條規則：錄影中 2 秒完全沒送來樣本，就判定為中斷；之後它再送來聲音，就從那時起重新混入。</p>
+
+<h3>Priming 與停止</h3>
+
+<p>AAC 編碼器輸出的開頭有一小段延遲，稱為 priming。引擎用 MP4 的 edit list 跳過它，讓播放時間 0 就是第一個錄到的 frame，聲音不會整段晚一點（細節見<a href="codecs-containers-and-crash-safe-recording.html">編解碼器、容器與不怕當機的錄影</a>）。macOS 的 AudioToolbox 會回報 priming 長度；Windows 的 Media Foundation 不回報，所以引擎在建立編碼器時自己量。按下停止時，音訊軌在停止那一刻的樣本數截斷，擷取繼續最多 250 ms 等聲音送達，未送達的部分補靜音。</p>
+
+<h3>量到了什麼，沒量到什麼</h3>
+
+<p>以下數字來自同一台 MacBook Pro（Apple 晶片，macOS 26）上的驗收，2026 年 10 月。它們都是在比對 OBS、Chromium 與 Cap 之後的引擎修改（軟性限幅、單聲道麥克風、逐 frame 漂移修正、暫時停頓的麥克風回來後重新收音、Windows 的封包時間與不觸發 ducking）<strong>之前</strong>量的，表格最後三列除外：它們來自同一天在修改後的引擎上做的桌面驗收。修改後，保真度、同步與 CPU 都沒有重新量測。</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>問題</th><th>量法</th><th>結果</th><th>限制</th></tr></thead>
+  <tbody>
+    <tr><td>系統音訊的時脈</td><td>測試音的頻率</td><td>−0.07 ppm（076）；麥克風關閉時 0.03 到 0.41 ppm，麥克風開啟且輸出靜音時 −0.3 到 +0.22 ppm（074）</td><td>只量系統音訊的路徑，不是麥克風的時脈</td></tr>
+    <tr><td>長時間漂移</td><td>閃光加嗶聲，十分鐘</td><td>600 對全部偵測到，漂移 0 ms；每個檔案的音訊與影像一樣長</td><td>沒有麥克風；麥克風在實際硬體上的長時間漂移沒有量過，只有單元測試</td></tr>
+    <tr><td>麥克風與畫面的偏差</td><td>按鍵讓黑色頁面變白，比較鍵盤聲出現與白色影格，五次</td><td>−30、−40、−30、−30、−20 ms，中位數 −30 ms（聲音較早）</td><td>解析度 10 ms；畫面要經過瀏覽器繪製、合成和擷取（60 Hz 下約 1 到 2 格），按鍵到畫面亮起的延遲沒有分開量，所以只能說麥克風沒有落後</td></tr>
+    <tr><td>混音器是否改變系統音訊</td><td>開啟麥克風、輸出靜音，測試音三次</td><td>全部通過；音量變化最多 0.035 dB；仍是 48 kHz 立體聲</td><td>沒有無聲的虛擬輸入裝置，「安靜」是用靜音輸出模擬的；殘餘雜訊升到約 −35 dB、分離度降到 36 到 41 dB，符合加進了房間的底噪</td></tr>
+    <tr><td>Ducking</td><td>開啟麥克風、耳機有聲音時的 1 kHz 增益</td><td>變化 +0.16 到 +1.24 dB，沒有任何下降</td><td>因為沒有使用語音處理；系統語音處理的 ducking 是否會進到錄到的系統音訊，沒有量過</td></tr>
+    <tr><td>麥克風消失</td><td>錄影中關掉 iPhone（連續互通麥克風）的藍牙</td><td>判定中斷，錄影繼續；音訊與影像都是 98.984 秒</td><td>當時中斷後不再收回</td></tr>
+    <tr><td>CPU</td><td>30 fps 錄影兩分鐘</td><td>13.3%（麥克風開啟）對 9.9%（關閉），多約 3.4 個百分點，全在擷取程序裡</td><td>原因尚未拆開量測</td></tr>
+    <tr><td>單聲道麥克風（修改後）</td><td>iPhone 接續互通麥克風的錄音，左聲道減右聲道</td><td>35 秒內都是 −inf dB，兩個聲道完全相同</td><td>只有一個裝置</td></tr>
+    <tr><td>端對端（修改後）</td><td>開啟麥克風的 <code>pnpm acceptance</code></td><td>通過：10 次閃光、9 聲嗶聲，完整性檢查與取消檢查都通過</td><td>第一聲嗶聲落在檔案開頭、任何靜音之前，偵測器無法計入</td></tr>
+    <tr><td>斷線與重新連上（修改後）</td><td>錄影中讓 iPhone 接續互通麥克風（兩次）與 HUAWEI FreeClip 2 藍牙耳機（兩次）斷線，再連回</td><td>每次都由 2 秒沒有聲音判定中斷，沒有收到 AVFoundation 通知；錄影繼續，紀錄帶中斷標記，結束時出現通知；重新連上後沒有收回</td><td>停頓後恢復只有單元測試；USB 麥克風的拔除沒有測試</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>沒有驗證的部分同樣重要：沒有用耳朵聽過麥克風錄到的聲音；Windows 的麥克風只在 CI 上測過能開啟、送資料、停止，封包時間的規則和不觸發 ducking 只有單元測試或沒有測試；軟性限幅和逐 frame 漂移修正只有單元測試，沒有在實際錄影中量過。</p>
+
+<h2 id="table">決策總表</h2>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
+  <tbody>
+    <tr><td>時間戳</td><td>數樣本，超過 10 ms 才校正：剛超過時每個 buffer 補或丟 1 個 frame，停頓或重疊才一次補足</td><td>來源時脈接近主機時脈；重視原始樣本</td><td>偏差可停在 10 ms 附近；每次修正有一個 frame 的不連續，停頓時有一段靜音</td><td>漂移大到逐 frame 追不上的裝置；數小時的錄影</td></tr>
+    <tr><td>一軌或分軌</td><td>一軌</td><td>沒有編輯器；檔案直接分享</td><td>錄完就無法分開調整</td><td>加上剪輯功能；需要後製旁白</td></tr>
+    <tr><td>增益</td><td>Unity gain 相加；兩個來源加總超過 −1 dBFS 才軟性限幅</td><td>要和使用者聽到的一樣；來源多半輪流出聲</td><td>限幅的瞬間動態被壓扁一點</td><td>限幅計數經常出現；背景音樂加旁白成為常態</td></tr>
+    <tr><td>等待上限</td><td>落後時鐘最多 500 ms；停止後最多等 250 ms</td><td>正常裝置的延遲遠低於上限</td><td>延遲更高的聲音被丟掉（但會被計數）</td><td>停止報告常有遲到 frame；直播</td></tr>
+    <tr><td>語音處理</td><td>不使用；建議戴耳機</td><td>重視系統音訊保真；系統處理會 ducking</td><td>用喇叭時有回音；旁白不會自動變乾淨</td><td>喇叭回音成為主要抱怨；ducking 可確實關閉</td></tr>
+    <tr><td>麥克風中斷</td><td>繼續錄，同一個 session 的聲音回來就重新混入；不重新開啟斷線的裝置；開始前打不開就拒絕開始</td><td>錄影比旁白重要；通知清楚；引擎所在的 utility process 沒有主 run loop，AVFoundation 看不到裝置來去</td><td>中斷之後的旁白都沒了，裝置重新連上也不會回來</td><td>改用 CoreAudio HAL 擷取（計畫 078）；擷取移到有 run loop 的行程；常在錄影中換裝置；Windows 上拔插很常見</td></tr>
+    <tr><td>格式轉換</td><td>作業系統交出 48 kHz 浮點數（系統音訊立體聲、麥克風單聲道），引擎把麥克風放進兩聲道</td><td>每個平台的 API 都能做</td><td>轉換品質與 CPU 不在掌控中；立體聲麥克風錄成單聲道</td><td>某平台的轉換量測不合格；需要立體聲麥克風</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="boundaries">不要這樣做的情況</h2>
+
+<ul>
+  <li><strong>不要用數樣本加 10 ms 校正，如果你的來源漂移很大。</strong>以 1000 ppm 的裝置為例，每 10 秒就會有一次 10 ms 的缺口，這時自適應重取樣才是對的選擇。</li>
+  <li><strong>不要只數樣本、完全不看時間戳。</strong>短片段可以，但只要錄影超過幾分鐘，或裝置可能停頓，聲音就會無限制地偏離。</li>
+  <li><strong>不要把語音處理套用在系統音訊上。</strong>它是為麥克風的通話設計的，用在音樂和混音上只會造成失真；系統音訊裡的會議語音也早已在對方那端處理過。</li>
+  <li><strong>不要在錄影工具裡啟用會 ducking 的系統語音處理，卻不告訴使用者。</strong>使用者會以為是錄影工具把聲音弄小了，而他是對的。</li>
+  <li><strong>不要用同一條規則判斷所有來源的「沒資料」。</strong>Loopback 沒資料是安靜，麥克風沒資料是消失。</li>
+  <li><strong>不要用系統音訊的測試結果，宣稱麥克風也同步。</strong>每個裝置是一個獨立的時脈領域，要各自量。</li>
+  <li><strong>不要在要給一般播放器播放的檔案裡只放分軌。</strong>多數播放器預設只播一條音訊軌。</li>
+  <li><strong>不要為了不削波而預設依來源數量縮小音量</strong>，如果使用者會比較「開麥克風前後」的系統音量。他們會把這當成 ducking。</li>
+</ul>
+
+<h2 id="criteria">可以帶走的判斷準則</h2>
+
+<ul>
+  <li><strong>你的管線裡有幾個時脈領域？</strong>列出來：主機、每個音訊裝置、螢幕。每多一個，就多一個要放上同一條時間軸的來源，也多一條要量的路徑。</li>
+  <li><strong>漂移實際有多大？</strong>先量再選。漂移小，數樣本加校正就夠，而且最保真；漂移大，就需要自適應重取樣。</li>
+  <li><strong>你量的是延遲還是漂移？</strong>單次量測只能得到延遲；要知道漂移，至少要在頭尾各量一次。</li>
+  <li><strong>錄下的聲音要給誰聽？</strong>要「和當下一樣」，就 unity、不處理；要直接發佈的成品，就考慮 limiter 和降噪；要後製，就分軌。</li>
+  <li><strong>每個來源「沒資料」是什麼意思？</strong>決定混音器最多等多久，以及什麼時候判定來源消失。</li>
+  <li><strong>語音處理會改變什麼、改變誰？</strong>除了麥克風本身，還要問：它會不會碰到系統音訊？會不會調低使用者正在聽的其他 App？</li>
+  <li><strong>你手上有沒有回音消除的參考訊號？</strong>錄影工具有系統音訊這份精確的參考，這讓 App 內的回音消除比在一般 App 裡更可行；但它仍要付出延遲估計、殘餘與 CPU 的代價。</li>
+  <li><strong>什麼證據能翻轉你的選擇？</strong>先寫下來：某類裝置的漂移、爆音的回報、喇叭回音的抱怨、停止報告裡的遲到 frame。出現時，就知道該重新評估哪一個決定。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>WebRTC：<a href="https://webrtc.googlesource.com/src/+/refs/heads/main/api/audio/audio_processing.h"><code>audio_processing.h</code></a>（Audio Processing Module 的功能定位，以及 capture stream 與 reverse stream 的模型）。</li>
+  <li>Chromium：<a href="https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc"><code>media_stream_audio_processing_layout.cc</code></a>（擷取路徑何時套用音訊處理）。</li>
+  <li>W3C：<a href="https://www.w3.org/TR/mediacapture-streams/">Media Capture and Streams</a>（<code>echoCancellation</code>、<code>noiseSuppression</code>、<code>autoGainControl</code> 等 constraint）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/avfaudio/avaudioinputnode"><code>AVAudioInputNode</code></a>（voice processing 與其他音訊的 ducking 設定）。</li>
+  <li>Microsoft：<a href="https://learn.microsoft.com/en-us/windows/win32/coreaudio/stream-attenuation">Stream Attenuation</a>（通訊活動時降低其他串流音量的行為）。</li>
+  <li>FFmpeg：<a href="https://ffmpeg.org/ffmpeg-filters.html#amix"><code>amix</code> 濾鏡</a>（<code>normalize</code> 與 <code>weights</code> 選項）。</li>
+  <li>Chromium：<a href="https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/audio/mac/audio_device_listener_mac.cc"><code>audio_device_listener_mac.cc</code></a>（audio service 以 <code>AudioObjectAddPropertyListener</code> 監看 macOS 裝置的增減與預設裝置變更）。</li>
+  <li>Cap：<a href="https://github.com/CapSoftware/Cap/blob/main/crates/recording/src/sources/microphone.rs"><code>crates/recording/src/sources/microphone.rs</code></a>（cpal 擷取麥克風、停頓 2 秒後以退避重新連接）。</li>
+  <li>OBS Studio：<a href="https://github.com/obsproject/obs-studio/blob/master/libobs/media-io/audio-resampler-ffmpeg.c"><code>audio-resampler-ffmpeg.c</code></a>（libobs 把來源重取樣到輸出格式）。</li>
+  <li>ITU-R：<a href="https://www.itu.int/rec/R-REC-BT.1359/en">BT.1359</a>（廣播中聲音與畫面相對時間的察覺與可接受範圍）。</li>
+  <li>相關文章：<a href="codecs-containers-and-crash-safe-recording.html">編解碼器、容器與不怕當機的錄影</a>（edit list 與 AAC priming）、<a href="measuring-screen-recording-quality.html">錄影到底錄得好不好</a>（同步與音質的量測方法）、<a href="native-apis-and-tech-stack-choices.html">從瀏覽器 API 到作業系統 API</a>（為什麼錄影離開 Chromium）。</li>
+  <li>專案文件：<a href="../system-design/audio-quality.md">音質量測</a>（測試音的設計、Chromium 語音處理的實驗，以及原生音訊路徑）、<a href="../system-design/recording.md#audio">錄影設計：音訊</a>（時鐘、混音器、edit list 與停止）。</li>
+  <li>原始碼：<code>native/capture/src/timing.rs</code>（<code>AudioAligner</code>）、<code>core/mixer.rs</code>（混音器）、<code>core/mod.rs</code>（麥克風中斷與恢復的判定）、<code>mac/microphone.rs</code>（AVFoundation 麥克風，以及為什麼不重新開啟斷線的裝置）、<code>win/audio.rs</code>（Windows 麥克風的格式、封包時間與 ducking）、<code>win/aac.rs</code>（Windows 的 16 位元轉換）。</li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

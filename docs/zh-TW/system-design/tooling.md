@@ -247,6 +247,8 @@ pnpm audio:quality -- verify /absolute/path/recording-of-v2.mp4
 
 `record` 建置並驅動真正的開發版程式錄影 16 秒，擷取開始後以 macOS `afplay` 播放 12.1 秒測試音。先結束此專案的開發版程式；需要螢幕／系統音訊權限，以及 FFmpeg／ffprobe。保持輸出裝置與音量固定，暫停其他聲音；工具不更改設定。它會錄影主螢幕，並播放可聽見的聲音。`--repeat` 接受 1–10 次，預設 1 次；需要桌面環境，不能在無桌面的 CI 執行。
 
+`record` 無法錄到麥克風：開發用 Electron 沒有麥克風使用說明，macOS 不跳提示就拒絕，開著麥克風開始錄影會以 `microphone_unavailable` 失敗。麥克風的保真度量測改用 `pnpm start:app` 的打包 App 錄下素材（以快捷鍵開始，`afplay` 播放素材），再以 `verify` 量測檔案；plan 074 的量測見[音質設計第 18 節](audio-quality.md#18-麥克風結果2026-10-16)，是在比對 OBS、Chromium 與 Cap 之後的引擎修改之前做的；修改後的引擎尚未重新量測保真度。
+
 使用父目錄已存在的新目錄。每次保存 `reference.wav`、`capture.log`、`report.json`；多次量測分別存入 `run-1`、`run-2` 等子目錄。MP4 留在程式設定的輸出目錄，報告內有路徑。根目錄保存 `summary.json` 與前後環境快照，包括版本、原始碼／素材雜湊，以及能讀取的裝置資訊與音量。摘要提供最小值／中位數／最大值與缺少值數量，不隱藏任何失敗；前後裝置／音量快照改變時標為 invalid。整個 batch 與環境檢查完成前，部分摘要維持 `incomplete`；錯誤另寫入 `error.json`。
 
 `fixture` 產生新 WAV，不覆寫既有檔案。`verify` 輸出 JSON；重新導向 stdout 時，直接用 Node 可避免 pnpm 標頭。只接受第 2 版測試素材的錄音，不適用一般音樂／語音或第 1 版錄音。只解碼前 60 秒，格式檢查不做重新取樣或混成立體聲。自有擷取子程序 60 秒逾時，解碼與外部工具呼叫也有時間界限。

@@ -2,11 +2,11 @@
 
 [English](078-native-capture-follow-ups.md) | [繁體中文](078-native-capture-follow-ups.zh-TW.md)
 
-狀態：已規劃；尚未開始。建立：2026-10-16，依維護者在 076 步驟 7 的要求（「先記下這個問題，之後再處理」）。優先順序：由維護者排序；都不阻擋 074 或 075。硬性相依：076。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：已規劃；尚未開始。建立：2026-10-16，依維護者在 076 步驟 7 的要求（「先記下這個問題，之後再處理」）。優先順序：由維護者排序；都不阻擋 075。硬性相依：076。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與範圍
 
-解決 076 驗收與文件在原生錄影引擎上留下的問題，以及一個偶爾失敗的 Windows CI 案例。成功的標準是：剩下的 50 ms 影格間隔找到原因並消除，或連同原因一起被接受；開發版 Electron App 和簽署 bundle 一樣把自己的視窗排除在錄影之外，或把這個限制寫進文件；影格節奏的診斷涵蓋實際錄影的引擎；步驟 4 的決定都已實作；Windows UI 分片能穩定關閉 App。
+解決 076 驗收與文件在原生錄影引擎上留下的問題，以及一個偶爾失敗的 Windows CI 案例。成功的標準是：剩下的 50 ms 影格間隔找到原因並消除，或連同原因一起被接受；開發版 Electron App 和簽署 bundle 一樣把自己的視窗排除在錄影之外，或把這個限制寫進文件；影格節奏的診斷涵蓋實際錄影的引擎；步驟 4 的決定都已實作；Windows UI 分片能穩定關閉 App；在 macOS 上，錄影中斷線又重新連上的麥克風能被接回。
 
 不在範圍內：Windows 實機回合（Windows 只由 CI 驗證，步驟 4 的硬體編碼器也一樣）、新的擷取功能，以及 [077](077-native-hands-on-acceptance.zh-TW.md) 的動手驗收案例。
 
@@ -14,6 +14,7 @@
 
 - **影格間隔。**在 60 Hz 螢幕上錄 30 fps 時，原生有 0.66–2.17% 的影格間隔 50 ms，Chromium 為 0（2026-10-15）。076 發現螢幕沒有變化時 ScreenCaptureKit 會送 idle 影格，並修正了因此晚一次更新才拿到畫面的格位（PR #12）：還剩 0.22–0.44%，每段 15 秒 1–2 格，且擷取從未漏掉任何一次更新（畫面之間最長 33.3 ms）。原因不明；停止報告的計數（`capture delivered … pictures and … without one, … apart at most`）是調查的起點。門檻是 2%，Chromium 為 0%。
 - **開發版 App。**透過開發版 Electron App 錄影（`pnpm matrix`、`pnpm audio:quality`）時，log 會出現 `RecordStuff's own app was not found among the shareable applications; its windows may be recorded`；簽署 bundle 則回報 `1 own app(s) excluded`。原因（開發版 App 的 bundle 身分，或讀取可分享內容時它沒有視窗）尚未確定。
+- **麥克風重新連上（2026-10-16 依維護者要求，從 074 的後續加入）。**macOS 的麥克風是引擎 utility process 裡的 `AVCaptureSession`。錄影中斷線時（iPhone 接續互通麥克風兩次、HUAWEI FreeClip 2 藍牙耳機兩次），2 秒沒有聲音後判定中斷，錄影繼續；重新連上後，即使成了預設輸入，也從未被接回：AVFoundation 的連線通知一則都沒送到，每秒依 `uniqueID` 查詢也沒用，這段程式碼已移除。App 外的實驗說明了原因：沒有 run loop、每秒查一次時，CoreAudio 的裝置清單立刻少了耳機，`AVCaptureDevice(uniqueID:)` 與新建的 `DiscoverySession` 在 27 秒後仍回報它在線；主執行緒有 run loop 時，AVFoundation 也立刻跟上。AVFoundation 的裝置狀態靠主 run loop 更新，而 utility process 沒有執行它。目前只有同一個 session 的停擺會被接回（有單元測試，實機上尚未遇到）。開啟麥克風錄影的 CPU 也多約 3.4 個百分點（30 fps 下 13.3% 對 9.9%，2026-10-16），全在擷取程序，AVCaptureSession 的執行緒與格式轉換各佔多少不明。
 - **節奏診斷。**`pnpm diagnose:cadence` 只量隱藏 renderer 的擷取 host，已於 2026-10-16 隨它一併移除；除了停止報告的計數之外，原生引擎還沒有逐格的診斷。
 
 ## 步驟
@@ -51,7 +52,14 @@
 
 - [ ] 依維護者要求記錄（2026-10-16）。`check.yml` 的 Windows UI 分片偶爾讓一個檢查都已通過的測試失敗：App 沒在 `CLOSE_TIMEOUT_MS`（15 秒，`tests/ui/fixtures.ts`）內關閉，程序樹需要 SIGKILL（`view: did not close normally (normal close failed: Error: close timed out after 15000 ms)`）。出現在 run 38789339217（PR #15 合併後的 main，`settings-layout.spec.ts` 的 U067-3）、38778364254（PR #13）與 38456753890；每次重跑都通過。查明是 runner 只是比較慢，還是 Windows 上的關閉流程偶爾卡住（在 fixture 的 log 中記錄關閉各階段的時間），並修正原因；只有量測顯示關閉雖慢但會完成時，才調高上限。
 
-### 6. 文件
+### 6. 在 macOS 重開重新連上的麥克風
+
+- [ ] macOS 麥克風改用 CoreAudio HAL 擷取（以 UID 在裝置上開 AUHAL 輸入單元，48 kHz 單聲道 float，buffer 時間取自 `mHostTime`），和 Chromium 的 audio service（與我們的引擎一樣跑在瀏覽器主程序之外）及 Cap（透過 cpal）相同，不再用裝置狀態需要主 run loop 的 AVFoundation。保留 074 的行為：選定裝置或預設、改用預設時的說明、倒數前的 `microphone_unavailable`、不使用語音處理。
+- [ ] 接回重新連上的麥克風：以 `AudioObjectAddPropertyListener` 監聽 HAL 的裝置清單（Chromium 的 `audio_device_listener_mac.cc`），或像 Cap 一樣在停擺 2 秒後輪詢並以 backoff 重試（最長 30 秒），重開同一個 UID；預設輸入是否跟隨新的預設裝置，由維護者決定。
+- [ ] 在參考 Mac 上量測：藍牙耳機與 iPhone 麥克風的拔除與重新連上；麥克風開啟時的 `pnpm measure:cpu`，對照 AVFoundation 的 13.3%；並且因為軟限幅、逐格漂移修正與單聲道麥克風是在 074 的量測之後才加入，在修改後的引擎上重跑音質（輸出靜音）、按鍵同步與 CPU。
+- [ ] Windows 不在實機範圍內，同上；它的 pump 仍在 `AUDCLNT_E_DEVICE_INVALIDATED` 時結束。在 Windows 重開裝置依同一個設計，只由 CI 驗證。
+
+### 7. 文件
 
 - [ ] 把結果寫進 [recording](../docs/zh-TW/system-design/recording.md)、[tooling](../docs/zh-TW/system-design/tooling.md) 與驗證紀錄，含翻譯。
 

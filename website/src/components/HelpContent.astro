@@ -51,7 +51,7 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
       <li><strong>Cancel or stop:</strong> the same menu or shortcut. Cancelling during the countdown saves nothing.</li>
       <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Show last recording</em> or <em>Open RecordStuff</em> from the menu. RecordStuff lists your recordings, where you can play, rename, reveal or delete them.</li>
     </ul>
-    <p>RecordStuff records one whole screen with system audio to an H.264/AAC MP4, without a microphone. To change how, open RecordStuff (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>,</kbd>):</p>
+    <p>RecordStuff records one whole screen with system audio, and your microphone if you turn it on, to an H.264/AAC MP4. To change how, open RecordStuff (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>,</kbd>):</p>
     {settingsTabs.map((tab) => (
       <div class="table-scroll" role="region" aria-label={`${tab} settings`} tabindex="0">
         <table class="settings-table">
