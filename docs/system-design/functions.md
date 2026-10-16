@@ -229,7 +229,6 @@ Rust tests live beside the code (`core/tests.rs`, `#[cfg(test)]` modules, `pipel
 | videoBitsPerSecond | Pixels×requested fps×quality coefficient, round to 100 kbps, clamp |
 | isOptionalFiniteNumber | Undefined or finite number only |
 | isCaptureReport | Validate optional numbers and required target bitrates/warnings; not comprehensive value-range validation |
-| frameRateDowngrade | Requested 60 and reported ≤30 → rounded actual fps, otherwise undefined |
 | unknown / describeCapture | Format unknown values / English requested, track, target, and warning diagnostics |
 
 [shared/hotkey.ts](../../src/shared/hotkey.ts): `DEFAULT_HOTKEY` enables ⇧⌘1; the accelerators earlier versions shipped stay valid, checked by `hotkey.test.ts`. `validateAccelerator` validates supported custom combinations, requires Command or Control and rejects reserved keys; `canonicalizeAccelerator` normalizes modifier order and shifted glyphs. `canonicalHotkeySettings` validates a persisted shortcut with the same rules, without restricting it to the offered choices, and returns it in canonical order; `describeAccelerator(accelerator, platform)` renders `⌥⇧⌘R` on darwin and `Ctrl+Alt+Shift+R` elsewhere for menus, notifications and logs.
@@ -345,7 +344,6 @@ Rust tests live beside the code (`core/tests.rs`, `#[cfg(test)]` modules, `pipel
 | settingsWriteFailedNotification | Explain unchanged output folder after failed save |
 | qualityWriteFailedNotification / languageWriteFailedNotification / hotkeyWriteFailedNotification | Explain retained quality/language/shortcut |
 | hotkeyRegistrationFailedNotification(accelerator, platform) | Localized conflict notice with the platform rendering of the accelerator, pointing at Settings |
-| frameRateDowngradeNotification | Include actual and requested fps |
 | trayHintNotification | First-launch text pointing at the menu bar on macOS or the system tray elsewhere; on macOS it also raises the one notification authorization prompt |
 
 [main/recording/recording-result.ts](../../src/main/recording/recording-result.ts):
