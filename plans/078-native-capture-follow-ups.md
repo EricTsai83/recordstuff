@@ -2,7 +2,7 @@
 
 [English](078-native-capture-follow-ups.md) | [繁體中文](078-native-capture-follow-ups.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("先記下這個問題，之後再處理"). Priority: the maintainer orders it; none of it blocks 075. Hard dependencies: 076. Execute the steps in order under [the plan index](README.md).
+Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("先記下這個問題，之後再處理"). Priority: next, before 075 (2026-10-17): its steps 4 and 6 are the base of 075's compositor and camera. Hard dependencies: 076. Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
@@ -57,6 +57,7 @@ Out of scope: rounds on Windows hardware (Windows is checked by CI only, step 4'
 - [ ] Capture the macOS microphone through CoreAudio's HAL (an AUHAL input unit on the device by UID, 48 kHz mono float, buffer times from `mHostTime`), as Chromium's audio service, which runs outside the browser process as our engine does, and Cap (through cpal) do, instead of AVFoundation, whose device state needs a main run loop. Keep 074's behaviour: the chosen device or the default, the fallback note, `microphone_unavailable` before the countdown, never voice processing.
 - [ ] Take back a microphone that connects again: watch the HAL's device list with `AudioObjectAddPropertyListener` (Chromium's `audio_device_listener_mac.cc`) or poll it, as Cap reconnects after a 2 s stall with backoff to 30 s, and reopen the same UID; the default input follows a new default only if the maintainer decides so.
 - [ ] Measure on the reference Mac: removal and reconnection with a Bluetooth headset and the iPhone microphone; `pnpm measure:cpu` with the microphone on against AVFoundation's 13.3%; and, because the soft limit, the one-frame drift correction and the mono microphone came after 074's measurements, the fidelity runs (output muted), the key-press sync take and CPU again on the changed engine.
+- [ ] Cameras have the same limit (075 captures the camera in the engine with AVFoundation, D16 and D12 there): record how a camera that leaves and returns is to be detected and reopened in the utility process (CoreMediaIO's device list, or a probe like 074's), so 075 builds on it.
 - [ ] Windows is out of scope for hardware, as above; its pump still ends at `AUDCLNT_E_DEVICE_INVALIDATED`. Reopening it there follows the same design and is checked by CI only.
 
 ### 7. Documentation

@@ -2,7 +2,7 @@
 
 [English](078-native-capture-follow-ups.md) | [繁體中文](078-native-capture-follow-ups.zh-TW.md)
 
-狀態：已規劃；尚未開始。建立：2026-10-16，依維護者在 076 步驟 7 的要求（「先記下這個問題，之後再處理」）。優先順序：由維護者排序；都不阻擋 075。硬性相依：076。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：已規劃；尚未開始。建立：2026-10-16，依維護者在 076 步驟 7 的要求（「先記下這個問題，之後再處理」）。優先順序：下一個，排在 075 之前（2026-10-17）：它的步驟 4 與 6 是 075 合成器與鏡頭的基礎。硬性相依：076。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與範圍
 
@@ -57,6 +57,7 @@
 - [ ] macOS 麥克風改用 CoreAudio HAL 擷取（以 UID 在裝置上開 AUHAL 輸入單元，48 kHz 單聲道 float，buffer 時間取自 `mHostTime`），和 Chromium 的 audio service（與我們的引擎一樣跑在瀏覽器主程序之外）及 Cap（透過 cpal）相同，不再用裝置狀態需要主 run loop 的 AVFoundation。保留 074 的行為：選定裝置或預設、改用預設時的說明、倒數前的 `microphone_unavailable`、不使用語音處理。
 - [ ] 接回重新連上的麥克風：以 `AudioObjectAddPropertyListener` 監聽 HAL 的裝置清單（Chromium 的 `audio_device_listener_mac.cc`），或像 Cap 一樣在停擺 2 秒後輪詢並以 backoff 重試（最長 30 秒），重開同一個 UID；預設輸入是否跟隨新的預設裝置，由維護者決定。
 - [ ] 在參考 Mac 上量測：藍牙耳機與 iPhone 麥克風的拔除與重新連上；麥克風開啟時的 `pnpm measure:cpu`，對照 AVFoundation 的 13.3%；並且因為軟限幅、逐格漂移修正與單聲道麥克風是在 074 的量測之後才加入，在修改後的引擎上重跑音質（輸出靜音）、按鍵同步與 CPU。
+- [ ] 鏡頭有同樣的限制（075 在引擎中以 AVFoundation 擷取鏡頭，見該計畫的 D16 與 D12）：記錄在 utility process 中如何偵測並重開離開又回來的鏡頭（CoreMediaIO 的裝置清單，或像 074 那樣的實驗），讓 075 建立在其上。
 - [ ] Windows 不在實機範圍內，同上；它的 pump 仍在 `AUDCLNT_E_DEVICE_INVALIDATED` 時結束。在 Windows 重開裝置依同一個設計，只由 CI 驗證。
 
 ### 7. 文件
