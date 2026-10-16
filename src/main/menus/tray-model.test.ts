@@ -5,7 +5,6 @@ import { DEFAULT_HOTKEY } from "../../shared/hotkey";
 import {
   trayHintNotification,
   updateAvailableNotification,
-  frameRateDowngradeNotification,
   hotkeyRegistrationFailedNotification,
   microphoneDeniedNotification,
   microphoneLostNotification,
@@ -243,6 +242,16 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(trayModel({ type: "idle", outputDirUnavailable: true }, win).menu.find((i) => i.kind === "item" && i.action === "changeOutputDir")).toMatchObject({ toolTip: win.outputDir });
   });
 
+  it("Windows without Media Foundation names why recording is unavailable and offers Optional features instead of a start (plan 078)", () => {
+    const m = trayModel({ type: "idle" }, { ...win, mediaComponentsMissing: true });
+    // Windows shows the status in the tooltip, not as a line of the menu.
+    expect(m.tooltip).toContain("Windows 缺少媒體元件，無法開始錄影");
+    expect(labels(m.menu).slice(0, 2)).toEqual(["開始錄影", "開啟選用功能…"]);
+    expect(m.menu.find((i) => i.kind === "item" && i.label === "開始錄影")).toMatchObject({ enabled: false });
+    expect(m.menu.some((i) => i.kind === "item" && i.action === "start")).toBe(false);
+    expect(m.menu.find((i) => i.kind === "item" && i.label === "開啟選用功能…")).toMatchObject({ action: "openOptionalFeatures" });
+  });
+
   it("is a flat command list in every state: no preference renders in the tray but idle's Record microphone (plan 074)", () => {
     for (const state of STATES) {
       const menu = trayModel(state, { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "available", version: "9.0.0" }, enabled: true } }).menu;
@@ -306,10 +315,6 @@ describe("notification text", () => {
     expect(microphoneDeniedNotification("zh-TW").body).toBe("RecordStuff 無法使用麥克風。按一下以開啟系統設定。");
     expect(microphoneLostNotification("en").body).toBe("The microphone dropped out during the recording. Only system audio was recorded while it was out.");
     expect(microphoneLostNotification("zh-TW").body).toBe("錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。");
-  });
-
-  it("frame-rate downgrade names both numbers", () => {
-    expect(frameRateDowngradeNotification(60, 30, "zh-TW").body).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");
   });
 
   it("saved notification uses the file name", () => {

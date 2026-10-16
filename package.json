@@ -35,6 +35,7 @@
     "acceptance:cleanup-audit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-cleanup-audit.mts",
     "matrix": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/run-matrix.mts",
     "measure:finalization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-finalization.mts",
+    "diagnose:frames": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/diagnose-frames.mts",
     "measure:cpu": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-cpu.mts",
     "measure:thumbnails": "playwright test --project=measure",
     "bench:publication": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-publication.mts",

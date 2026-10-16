@@ -35,6 +35,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     console.error(`BLOCKED: ${missing.join(", ")} missing; run \`pnpm build\` first for out/.`);
     process.exit(2);
   }
+  // This run's close timings only (plan 078 step 5; fixtures.ts appends one line per launch).
+  fs.rmSync(path.join(root, "test-results", "ui-close-timings.jsonl"), { force: true });
   const hosts = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-hosts-"));
   await build({
     configFile: false, logLevel: "error", root,

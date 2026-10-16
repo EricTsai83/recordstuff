@@ -30,7 +30,14 @@ export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
 const CLOSE_TIMEOUT_MS = 15_000;
 const EXIT_TIMEOUT_MS = 5_000;
+/**
+ * After a normal close timed out, how long the end is still awaited before the tree is killed (plan 078 step 5): long
+ * enough to tell a slow close that completes from one that stalls, which the close timings then show.
+ */
+const LATE_EXIT_TIMEOUT_MS = 30_000;
 const SCAN_INTERVAL_MS = 1_000;
+/** One line per launch's teardown (plan 078 step 5), read by `scripts/ui-close-timings.mts`. */
+export const CLOSE_TIMINGS_FILE = path.join(process.cwd(), "test-results", "ui-close-timings.jsonl");
 
 /**
  * A worker that dies between tests is reported by Playwright as "worker process exited unexpectedly" with nothing
@@ -176,6 +183,11 @@ export interface Teardown {
   remaining: number[];
   pageErrors: string[];
   error?: string;
+  /**
+   * How long each part of the teardown took, in ms (plan 078 step 5): the boundary audit, the normal close (which a
+   * timeout ends at `CLOSE_TIMEOUT_MS`), and the wait for every process to end, including after a timed-out close.
+   */
+  phases?: { audit?: number; close?: number; exit?: number; killed?: boolean };
 }
 
 /**
@@ -202,14 +214,21 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   };
   await scan();
   result.desktop = await launched.probe.stop();
+  const phases: NonNullable<Teardown["phases"]> = {};
+  result.phases = phases;
+  let lap = Date.now();
+  const elapsed = (): number => { const now = Date.now(), ms = now - lap; lap = now; return ms; };
   if (launched.child.exitCode === null && launched.child.signalCode === null && !launched.closed) {
     try { await Promise.race([launched.evaluate(host => { host.prepareClose?.(); host.boundary.audit(); }), timeoutAfter(5000, "audit")]); }
     catch (error) { errors.push(`boundary audit failed: ${String(error)}`); }
+    phases.audit = elapsed();
     await scan();
+    elapsed();
     try {
       await Promise.race([launched.application.close(), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
       result.closedNormally = true;
     } catch (error) { errors.push(`normal close failed: ${String(error)}`); }
+    phases.close = elapsed();
   } else {
     // It ended before teardown: normally only when it quit itself with success (a test that quits the app).
     result.closedNormally = launched.closed || launched.child.exitCode === 0;
@@ -226,9 +245,12 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     if (scanned === before) await scan();
     return ended();
   };
-  if (!await until(gone, EXIT_TIMEOUT_MS)) {
+  const exited = await until(gone, result.closedNormally ? EXIT_TIMEOUT_MS : LATE_EXIT_TIMEOUT_MS);
+  phases.exit = elapsed();
+  if (!exited) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
     result.forced = true;
+    phases.killed = true;
     // A failed read must never authorize signalling identities from an older snapshot.
     if (await scan()) for (const pid of [...tree].reverse()) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
     await until(gone, EXIT_TIMEOUT_MS);
@@ -362,6 +384,12 @@ export const test = launchers.extend<{ containment: void }>({
     const reports: Array<Teardown & { kind: string; data: string }> = [];
     for (const launched of launches) reports.push({ kind: launched.kind, data: launched.data, ...launched.teardown ?? await tearDown(launched) });
     await testInfo.attach("teardown.json", { body: JSON.stringify(reports, null, 2), contentType: "application/json" });
+    // Every launch's close, passing or not, for the job's summary of the slowest (scripts/ui-close-timings.mts).
+    try {
+      const timings = reports.map(report => JSON.stringify({ test: testInfo.titlePath.slice(1).join(" › "), kind: report.kind, closedNormally: report.closedNormally, ...report.phases }));
+      fs.mkdirSync(path.dirname(CLOSE_TIMINGS_FILE), { recursive: true });
+      fs.appendFileSync(CLOSE_TIMINGS_FILE, timings.map(line => `${line}\n`).join(""));
+    } catch { /* a diagnostic only */ }
     if (process.env.RECORDSTUFF_UI_VERBOSE) console.log(JSON.stringify(reports.map(({ data: _data, ...report }) => report)));
     const problems = reports.flatMap(report => [
       ...report.violations.map(violation => `${report.kind}: containment violation ${violation.kind}: ${violation.detail}`),

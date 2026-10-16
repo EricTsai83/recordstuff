@@ -88,7 +88,8 @@ describe("isHostMessage", () => {
     ).toBe(true);
     expect(isHostMessage({ type: "stopped", sessionId: "a" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "no_audio_track", detail: "" })).toBe(true);
-    expect(isHostMessage({ type: "error", sessionId: "a", code: "mp4_unsupported", detail: "x" })).toBe(true);
+    expect(isHostMessage({ type: "error", sessionId: "a", code: "media_components_missing", detail: "x" })).toBe(true);
+    expect(isHostMessage({ type: "error", sessionId: "a", code: "mp4_unsupported", detail: "x" })).toBe(false);
   });
   it("accepts optional stop diagnostics but rejects invalid timestamps", () => {
     expect(isHostMessage({ type: "stopped", sessionId: "a", tracksStoppedAt: 123 })).toBe(true);

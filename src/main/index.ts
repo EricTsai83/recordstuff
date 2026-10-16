@@ -16,6 +16,7 @@ import { DisplayMedia } from "./display/display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import {
   app,
+  BaseWindow,
   BrowserWindow,
   desktopCapturer,
   dialog,
@@ -44,7 +45,8 @@ import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
 import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
-import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openScreenCaptureSettings } from "./permission/permission";
+import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
+import { missingMediaComponents } from "./recording/media-components";
 import type { MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
@@ -66,7 +68,7 @@ import { videoThumbnail } from "./library/video-thumbnail";
 import type { AppAction, AppContext } from "./app/ui-model";
 import { APP_NAME } from "./lib/app-name";
 import { preferencesUnlocked } from "./recording/recording-lock";
-import { effectiveQuality, frameRateDowngrade, type QualitySettings } from "../shared/quality";
+import { effectiveQuality, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts/shortcuts";
 import { physicalHotkeyFeatures } from "./shortcuts/hotkey";
 import type { RecordingState } from "../shared/state";
@@ -301,6 +303,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return () => app.removeListener("browser-window-created", created);
     },
   });
+  // Windows without Media Foundation cannot encode (plan 078): checked once, as the libraries come only with an update.
+  const missingMedia = missingMediaComponents(process.platform, process.env["SystemRoot"]);
+  const mediaComponentsMissing = missingMedia.length > 0;
+  if (mediaComponentsMissing) log(`media components: missing ${missingMedia.join(", ")}; recording is unavailable until the Media Feature Pack is installed`);
+  // What the engine keeps between recordings, each of which runs in a process of its own (plan 078 step 4: which of the
+  // Windows adapters' hardware encoders passed their self-test or failed); the capture process inherits it.
+  process.env["RECORDSTUFF_ENGINE_DATA"] = path.join(app.getPath("userData"), "engine");
+  let captureAnchor: BaseWindow | undefined;
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     // Native code cannot load from inside the asar archive; packaging unpacks out/native.
@@ -308,6 +318,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     resolveDisplay: () => new Promise((resolve) => displayMedia.answer(() => true, (source) => resolve(source?.display_id || undefined))),
     // Main first: the engine takes its bundle identifier as the prefix of RecordStuff's helpers.
     ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
+    // macOS lists RecordStuff among the apps a recording can leave out only while it owns a window (plan 078 step 2):
+    // with no countdown and nothing open it owned none, and its windows opened later were recorded. A hidden 1-pixel
+    // BaseWindow, made once and never shown, is that window; it has no page and so no renderer process.
+    ...(process.platform === "darwin" ? { beforeCapture: () => {
+      if (!captureAnchor || captureAnchor.isDestroyed()) {
+        captureAnchor = new BaseWindow({ show: false, width: 1, height: 1, frame: false, focusable: false, hasShadow: false, skipTaskbar: true });
+      }
+    } } : {}),
     // D6: only ScreenCaptureKit can leave the system's chrome out.
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
@@ -348,6 +366,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
   const recorder = new Recorder({
     host,
+    ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: () => outputDirOverride ?? settings.outputDir,
     quality,
     countdownSeconds,
@@ -436,7 +455,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
-  let captureDegraded = false;
   /**
    * The audio inputs the engine listed last (plan 074), for the Input device menu; refreshed when the window comes
    * forward and when the microphone is turned on, never while a session runs, and at most one listing at a time.
@@ -451,7 +469,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       (cause: unknown) => log(`microphone: the inputs could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
     ).finally(() => { listingMicrophones = false; refreshUi(); });
   };
-  const captureWarning = () => translate("Could not confirm the resolution cap. The recording may be larger.", settings.language);
   /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */
   const savingContext = (): Pick<AppContext, "saving" | "quitWithoutWaiting"> => {
     const saving = recorder.saving.map(({ recordingPath, slow }) => ({ file: path.basename(recordingPath).replace(/\.recording(\.[^.]+)$/i, "$1"), slow }));
@@ -460,7 +477,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     return { ...(saving.length ? { saving } : {}), ...(heldBySaves ? { quitWithoutWaiting: true } : {}) };
   };
   const appContext = (): AppContext => ({
-    ...(captureDegraded ? { captureWarning: captureWarning() } : {}),
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
@@ -470,6 +486,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
     })(),
     platform: process.platform,
+    ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: settings.outputDir,
     homeDir: os.homedir(),
     version: app.getVersion(),
@@ -702,8 +719,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
     showLastRecording: () => showRecording(), hideSettings,
-    displayPreferenceChanged: () => { displayMedia.failure = undefined; captureDegraded = false; },
-    resolutionCapChanged: () => { captureDegraded = false; },
+    displayPreferenceChanged: () => { displayMedia.failure = undefined; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },
     quit: () => quitCoordinator.quit(),
     quitWithoutWaiting: () => {
@@ -724,7 +740,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     relaunch: () => quitCoordinator.relaunch(),
     openExternal: url => shell.openExternal(url),
     revealFile: file => shell.showItemInFolder(file),
-    openScreenCaptureSettings, openNotificationSettings, openMicrophoneSettings,
+    openScreenCaptureSettings, openNotificationSettings, openMicrophoneSettings, openOptionalFeatures,
+    confirm: options => { focusApp(); return dialog.showMessageBox(options); },
     askMicrophoneAccess: async () => {
       const allowed = await askMicrophoneAccess();
       // The default input's name for the card, now that the microphone is on.
@@ -790,20 +807,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         displayMedia.failure = event.detail;
         refreshUi();
         return;
-      case "captureStarted": {
-        // Settings shows the cap warning at once; the notifications wait for the display to stop being shared.
-        captureDegraded = event.capture.capUnconfirmed === true;
-        if (captureDegraded) captureNotices.hold("resolution cap unconfirmed", () => tray.notifyCaptureWarning(captureWarning()));
+      case "captureStarted":
         displayMedia.failure = undefined;
         refreshUi();
-        const actual = frameRateDowngrade(event.requested, event.capture);
-        if (actual !== undefined) {
-          log(`frame rate downgraded: requested ${event.requested.frameRate}, track reports ${actual}`);
-          const requested = event.requested.frameRate;
-          captureNotices.hold("frame rate downgrade", () => tray.notifyFrameRateDowngrade(requested, actual));
-        }
         return;
-      }
       case "failureStatus":
         // The Recorder's awaited publication callback owns verification/persistence.
         return;

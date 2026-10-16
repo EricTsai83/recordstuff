@@ -100,9 +100,11 @@ it("tells a Mac too old to record to update, not to change settings or that cont
     .toEqual(["Update macOS, then record again.", "請更新 macOS 後再錄影。"]);
 });
 
-it("tells a computer without MP4 recording to update, not to change settings or that content was lost", () => {
-  expect([failureGuidance("mp4_unsupported", "en", "darwin"), failureGuidance("mp4_unsupported", "zh-TW", "win32")])
-    .toEqual(["Update the system and RecordStuff, then record again.", "請更新系統與 RecordStuff 後再錄影。"]);
+it("names the Media Feature Pack and a restart for a Windows without media components, not a quality setting", () => {
+  expect([failureGuidance("media_components_missing", "en", "win32"), failureGuidance("media_components_missing", "zh-TW", "win32")]).toEqual([
+    "Install the Media Feature Pack from Optional features in Windows Settings, then restart Windows and record again.",
+    "請在 Windows 設定的「選用功能」安裝 Media Feature Pack，重新啟動 Windows 後再錄影。",
+  ]);
 });
 
 it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {

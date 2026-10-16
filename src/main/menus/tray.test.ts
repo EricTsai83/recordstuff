@@ -267,14 +267,12 @@ describe("AppTray notifications (docs/system-design/desktop.md)", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
   });
 
-  it("reports every click before the notification's own action, and titles the capture warning with the app name", () => {
+  it("reports every click before the notification's own action", () => {
     const order: string[] = [];
     const { tray, onAction } = setup(true, undefined, undefined, () => order.push("clicked"));
     onAction.mockImplementation((action: unknown) => { order.push(String(action)); });
-    tray.notifyCaptureWarning("The resolution cap could not be confirmed.");
-    const notification = Fake.instances.at(-1)!;
-    expect(notification.options.title).toBe("RecordStuff");
-    notification.listeners.get("click")?.();
+    tray.notifyMicrophoneLost();
+    Fake.instances.at(-1)!.listeners.get("click")?.();
     expect(order).toEqual(["clicked", "openRecordingSettings"]);
     tray.notifyTrayHint();
     Fake.instances.at(-1)!.listeners.get("click")?.();

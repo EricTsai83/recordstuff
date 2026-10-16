@@ -112,7 +112,7 @@ fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType, v
             return;
         }
         if status != Some(SCFrameStatus::Complete.0) {
-            shared.frame_without_picture();
+            shared.frame_without_picture(host_ns(unsafe { sample.presentation_time_stamp() }));
             return;
         }
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
@@ -326,6 +326,7 @@ impl Session {
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
         let core = Core::<Mac>::new(events, request.frame_rate, request.audio_bitrate, inputs, file);
+        let frame_log = core.log_frames(&request.path);
         if let Some(input) = microphone_input {
             core.watch_microphone(input);
         }
@@ -400,7 +401,12 @@ impl Session {
             priming_frames: session.core.priming(),
             excluded_apps: filter.excluded_apps,
             hidden_windows: filter.hidden_windows,
-            warnings: filter.warnings.into_iter().chain(session.microphone.as_ref().and_then(|microphone| microphone.note.clone())).collect(),
+            warnings: filter
+                .warnings
+                .into_iter()
+                .chain(session.microphone.as_ref().and_then(|microphone| microphone.note.clone()))
+                .chain(frame_log.map(|path| format!("per-frame log: {}", path.display())))
+                .collect(),
             timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
             microphone: session.microphone.as_ref().map(|microphone| microphone.name.clone()),
         };

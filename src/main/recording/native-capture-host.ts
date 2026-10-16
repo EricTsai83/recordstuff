@@ -19,7 +19,7 @@
  * out of main, and an attempt's process is never asked.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice } from "../../shared/protocol";
+import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
 import type { RecorderHost, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
@@ -35,6 +35,12 @@ export interface NativeCaptureHostOptions {
   displayPoint?: (displayId: string) => { x: number; y: number } | undefined;
   /** Keeps RecordStuff's windows out of capture, or lets them back in (Windows, where the engine cannot). */
   excludeOwnWindows?: (excluded: boolean) => void;
+  /**
+   * Before the engine reads what it may capture (macOS, plan 078 step 2): ScreenCaptureKit lists an app, and so can
+   * leave it out, only while it owns a window, and a menu bar app with nothing open owns none (its status item is
+   * Control Center's). Main makes sure it owns one.
+   */
+  beforeCapture?: () => void;
   /** RecordStuff's processes, main first, whose windows and sound the recording leaves out. */
   ownPids: () => number[];
   hideSystemUi: () => boolean;
@@ -156,6 +162,7 @@ export class NativeCaptureHost implements RecorderHost {
       return;
     }
     const displayPoint = this.options.displayPoint?.(display);
+    this.options.beforeCapture?.();
     if (this.options.excludeOwnWindows) {
       this.options.excludeOwnWindows(true);
       this.excluding = true;
@@ -261,7 +268,9 @@ export class NativeCaptureHost implements RecorderHost {
     let rejectReady!: (cause: Error) => void;
     const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
     child.on("exit", (code) => {
-      rejectReady(new Error(`capture host exited with ${code} before it reported ready`));
+      rejectReady(code === MEDIA_COMPONENTS_MISSING_EXIT
+        ? new HostStartError("media_components_missing", "the capture engine could not be loaded: Windows's media components (Media Foundation) are missing")
+        : new Error(`capture host exited with ${code} before it reported ready`));
       const finishing = this.finishing.get(child);
       if (finishing) this.fileEnded(child, finishing, new Error(`capture process exited with ${code} before the file was finished`));
       if (this.child !== child) return;

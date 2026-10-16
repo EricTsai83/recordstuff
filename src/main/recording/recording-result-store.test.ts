@@ -312,6 +312,36 @@ it("refuses to overwrite an unreadable or future history format and never retrie
   expect(fs.readFileSync(file, "utf8")).toBe(raw);
 });
 
+it("resets an unreadable history at the user's request: the file kept as a backup, this session's failures saved (plan 078)", async () => {
+  fs.writeFileSync(file, "{ not json");
+  const store = new RecordingResultStore(file);
+  const results = new RecordingResults(store); await results.ready;
+  results.update({ ...failure, outcome: "empty" });
+  await results.persist();
+  expect([results.historyFailed, results.current?.persistenceFailed]).toEqual([true, "blocked"]);
+
+  expect(await results.resetHistory()).toBe(true);
+  expect(results.historyFailed).toBe(false);
+  expect(results.current?.persistenceFailed).toBeUndefined();
+  expect(fs.readFileSync(`${file}.reset-backup`, "utf8")).toBe("{ not json");
+  expect(JSON.parse(fs.readFileSync(file, "utf8"))).toMatchObject({ version: 2, results: [{ id: failure.id, outcome: "empty" }] });
+  // A later failure is saved too, and a second reset has nothing to do.
+  results.update({ ...failure, id: "failure-b" });
+  expect(await results.persist()).toBe(true);
+  expect(await load()).toHaveLength(2);
+  expect(await results.resetHistory()).toBe(false);
+});
+
+it("leaves an unreadable history as it was when its reset fails", async () => {
+  fs.writeFileSync(file, "{ not json");
+  const store = new RecordingResultStore(file);
+  const results = new RecordingResults(store); await results.ready;
+  vi.spyOn(store, "save").mockRejectedValueOnce(new Error("EACCES"));
+  expect(await results.resetHistory()).toBe(false);
+  expect([results.historyFailed, store.loadIssue]).toEqual([true, true]);
+  vi.restoreAllMocks();
+});
+
 it("issues only one filesystem request when the first startup check never returns", async () => {
   const store = new RecordingResultStore(file);
   await store.save(Array.from({ length: 8 }, (_, i) => ({ ...failure, id: String(i), outcome: "partial", partialPath: `/offline/${i}.mp4` })));

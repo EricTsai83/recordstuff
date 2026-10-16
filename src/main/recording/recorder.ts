@@ -10,7 +10,7 @@ import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { HostErrorCode, HostMessage, MicrophoneChoice } from "../../shared/protocol";
+import { HostStartError, type HostErrorCode, type HostMessage, type MicrophoneChoice } from "../../shared/protocol";
 import { COUNTDOWN_TIMING, type CountdownSeconds } from "../../shared/countdown";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../../shared/state";
@@ -87,6 +87,8 @@ export interface CountdownPresenter {
 
 export interface RecorderDeps {
   host: RecorderHost;
+  /** Windows lacks Media Foundation (plan 078), found at launch: a start is refused, as the tray and Settings explain. */
+  mediaComponentsMissing?: boolean;
   outputDir: () => string;
   /** Read once per session when it starts; later changes affect the next recording only. */
   quality: () => QualitySettings;
@@ -410,6 +412,11 @@ export class Recorder {
   toggle(): void {
     switch (this._state.type) {
       case "idle":
+        // Nothing can encode (plan 078): the tray and Settings say why, and a start would only fail.
+        if (this.deps.mediaComponentsMissing) {
+          this.deps.log("recorder: start refused: Windows's media components are missing");
+          return;
+        }
         void this.start();
         return;
       case "recording":
@@ -707,7 +714,7 @@ export class Recorder {
       await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, microphone.enabled ? { microphone } : undefined);
     } catch (cause) {
       if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
-      await this.fail(session.id, "capture_start_failed", messageOf(cause));
+      await this.fail(session.id, cause instanceof HostStartError ? cause.code : "capture_start_failed", messageOf(cause));
     }
   }
 

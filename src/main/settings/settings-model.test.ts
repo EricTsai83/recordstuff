@@ -48,10 +48,8 @@ describe("settingsView", () => {
     expect(zh.choices[0]?.label).toBe("清除並結束…");
     expect(zh.note ?? zh.info).toContain("錄影檔會保留");
   });
-  it("titles the capture warning by what it is about and puts the macOS notification permission behind the ⓘ", () => {
-    const zh = { ...context, language: "zh-TW" as const, captureWarning: "無法確認解析度上限。" };
-    expect(group(idle, zh, "screen")?.diagnostics?.at(-1)).toMatchObject({ kind: "history", heading: "錄影解析度" });
-    expect(group(idle, { ...context, captureWarning: "x" }, "screen")?.diagnostics?.at(-1)?.heading).toBe("Recording resolution");
+  it("puts the macOS notification permission behind the ⓘ", () => {
+    const zh = { ...context, language: "zh-TW" as const };
     expect(group(idle, zh, "notifications")).toMatchObject({ info: t("macOS must also allow RecordStuff in System Settings → Notifications.", "zh-TW") });
     expect(group(idle, zh, "notifications")?.note).toBeUndefined();
     expect(group(idle, context, "notifications")?.info).toBe("macOS must also allow RecordStuff in System Settings → Notifications.");
@@ -944,6 +942,26 @@ describe("the status card", () => {
     expect(settingsAction(idle, withPrimary, "status", "primary")).toEqual({ setDisplay: { kind: "primary" } });
     expect(settingsAction(idle, withPrimary, "status", "folder")).toBeUndefined();
   });
+  it("offers Reset beside an unreadable failure history, which resolves only while the history is unreadable (plan 078)", () => {
+    const failed = { ...context, historyFailed: true };
+    expect(settingsView(idle, failed)).toMatchObject({
+      recordingHistoryStatus: "Could not read the failure history, so new failures cannot be saved. Resetting keeps the file as a backup.",
+      recordingHistoryReset: { label: "Reset failure history…", enabled: true },
+    });
+    expect(settingsView(idle, context)).not.toHaveProperty("recordingHistoryReset");
+    expect(settingsAction(idle, failed, "recordingHistory", "reset")).toBe("resetFailureHistory");
+    expect(settingsAction(idle, context, "recordingHistory", "reset")).toBeUndefined();
+    expect(settingsAction(idle, { ...failed, quitting: true }, "recordingHistory", "reset")).toBeUndefined();
+  });
+
+  it("puts a Windows without Media Foundation before any other fix, with Optional features as its action (plan 078)", () => {
+    const missing = { ...context, mediaComponentsMissing: true };
+    expect(settingsView({ type: "idle", outputDirUnavailable: true }, missing).status).toMatchObject({
+      tone: "attention", title: "Windows's media components are missing, so recording cannot start.", action: { id: "mediaComponents", label: "Open Optional features" },
+    });
+    expect(settingsAction({ type: "idle" }, missing, "status", "mediaComponents")).toBe("openOptionalFeatures");
+    expect(settingsAction({ type: "idle" }, context, "status", "mediaComponents")).toBeUndefined();
+  });
   it("resolves only the offered fix to the tray's own action: never a start, a stop or anything while quitting", () => {
     expect(settingsAction({ type: "idle", outputDirUnavailable: true }, context, "status", "folder")).toBe("changeOutputDir");
     expect(settingsAction({ type: "needsPermission", needsRelaunch: false }, context, "status", "permission")).toBe("openPermissionSettings");
@@ -969,7 +987,7 @@ describe("the Video section's size estimate", () => {
     expect(group(idle, { ...retina, quality: { ...DEFAULT_QUALITY, resolutionCap: "1080p" } }, "frameRate")?.footnote)
       .toBe("About 54 MB per minute at 1662 × 1080, 30 fps.");
     expect(group(idle, { ...retina, quality: { ...DEFAULT_QUALITY, frameRate: 60 }, language: "zh-TW" }, "frameRate")?.footnote)
-      .toBe("每分鐘約 700 MB（3024 × 1964、60 fps）。");
+      .toBe("每分鐘約 350 MB（3024 × 1964、60 fps）。");
     // Windows records 30 fps whatever is stored, and the estimate says what it will record.
     expect(group(idle, { ...retina, platform: "win32", quality: { ...DEFAULT_QUALITY, frameRate: 60 } }, "frameRate")?.footnote).toContain("30 fps");
   });

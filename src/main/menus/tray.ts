@@ -10,7 +10,6 @@
 import { Menu, Notification, Tray, nativeImage, type MenuItemConstructorOptions } from "electron";
 import path from "node:path";
 import type { ErrorCode, RecordingState } from "../../shared/state";
-import type { FrameRate } from "../../shared/quality";
 import type { HotkeyAccelerator } from "../../shared/hotkey";
 import { translate, type Language } from "../../shared/i18n";
 import type { TrayClick } from "../../shared/appearance";
@@ -18,7 +17,6 @@ import {
   displayWriteFailedNotification,
   folderRefusedNotification,
   languageWriteFailedNotification,
-  frameRateDowngradeNotification,
   microphoneDeniedNotification,
   microphoneLostNotification,
   hotkeyRegistrationFailedNotification,
@@ -262,10 +260,6 @@ export class AppTray {
     this.show(hotkeyWriteFailedNotification(this.language));
   }
 
-  notifyFrameRateDowngrade(requested: FrameRate, actual: number): void {
-    this.show(frameRateDowngradeNotification(requested, actual, this.language));
-  }
-
   /** The click selects the Recording tab even in an open window, where the warning is shown. */
   /** A save outlived the watchdog: its drive may have stopped answering (2026-10-09). */
   notifySavingSlow(dir: string): void {
@@ -281,10 +275,6 @@ export class AppTray {
   /** The microphone stopped while recording; the click shows the Recording tab, where it is set (plan 074). */
   notifyMicrophoneLost(): void {
     this.show(microphoneLostNotification(this.language), () => this.options.onAction("openRecordingSettings"));
-  }
-
-  notifyCaptureWarning(body: string): void {
-    this.show({ title: APP_NAME, body }, () => this.options.onAction("openRecordingSettings"));
   }
 
   notifyTrayHint(): void {

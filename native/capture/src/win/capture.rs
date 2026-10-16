@@ -163,6 +163,13 @@ impl Drop for Captured {
     }
 }
 
+impl Captured {
+    /// A texture of its own, returned to no pool: the hardware encoder's self-test frame.
+    pub fn detached(texture: ID3D11Texture2D, image: Image) -> Self {
+        Self { texture, image, view: None, pool: Arc::new(Mutex::new(Vec::new())) }
+    }
+}
+
 pub type Frame = Arc<Mta<Captured>>;
 
 /// The Direct3D 11 video processor, for BGRA at the source's size to NV12 at the recording's.

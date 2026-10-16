@@ -1,5 +1,5 @@
 /** Troubleshooting's failure history: rows grouped by day, with guidance, recovery actions and technical details. */
-import { CircleAlert, ChevronDown, FolderX, HardDrive, MonitorOff, ShieldAlert, TimerOff, VideoOff, VolumeX, MicOff, Settings2, FileVideo, type LucideIcon } from "lucide-react";
+import { CircleAlert, ChevronDown, FolderX, HardDrive, MonitorOff, ShieldAlert, TimerOff, VideoOff, VolumeX, MicOff, Settings2, PackageX, type LucideIcon } from "lucide-react";
 import type { RecordingResultView } from "../../../shared/settings-panel";
 import { translate, type PlainMessageKey } from "../../../shared/i18n";
 import type { ErrorCode } from "../../../shared/state";
@@ -19,7 +19,7 @@ const failureIcons: Record<ErrorCode, LucideIcon> = {
   display_unavailable: MonitorOff,
   no_audio_track: VolumeX,
   microphone_unavailable: MicOff,
-  mp4_unsupported: FileVideo,
+  media_components_missing: PackageX,
   capture_start_failed: VideoOff,
   capture_failed: VideoOff,
   capture_host_crashed: CircleAlert,
@@ -175,7 +175,8 @@ export function FailureRow({ result }: { result: RecordingResultView }) {
 }
 export function Failures({ headingHidden = false }: { headingHidden?: boolean } = {}) {
   const results = model.view?.recordingResults ?? [],
-    status = model.view?.recordingHistoryStatus;
+    status = model.view?.recordingHistoryStatus,
+    reset = model.view?.recordingHistoryReset;
   const days = [...new Set(results.map((result) => result.day))];
   return (
     <section id="recording-results" className="section" aria-labelledby="recording-results-heading">
@@ -183,6 +184,17 @@ export function Failures({ headingHidden = false }: { headingHidden?: boolean } 
       <p className="result-history-status" hidden={!status}>
         {status}
       </p>
+      {reset && (
+        <Button
+          id="history-reset"
+          className="history-reset"
+          variant="outline"
+          disabled={!reset.enabled}
+          onClick={() => void model.choose("recordingHistory", "reset", "history-reset")}
+        >
+          {reset.label}
+        </Button>
+      )}
       <Empty className="result-empty py-10 text-muted-foreground" hidden={Boolean(results.length || status)}>
         <EmptyHeader>
           <EmptyMedia><CircleAlert className="size-[38px]" /></EmptyMedia>

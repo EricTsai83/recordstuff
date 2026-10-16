@@ -14,7 +14,9 @@ pub mod timing;
 pub mod writer;
 
 pub mod aac;
+pub mod async_encoder;
 pub mod avc;
+pub mod encoder_choice;
 pub mod nv12;
 
 #[cfg(target_os = "macos")]

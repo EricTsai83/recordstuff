@@ -26,24 +26,48 @@ pub struct Pacer {
     interval_ns: u64,
     /// The next slot's time; the frame at `start_ns` is the first, encoded by `record`.
     next_ns: u64,
+    /// When the last kept frame was captured, and whether capture has delivered one since that was left out.
+    last_ns: u64,
+    left_out: bool,
 }
 
 impl Pacer {
     pub fn new(start_ns: u64, frame_rate: u32) -> Self {
         let interval_ns = NANOS_PER_SECOND / u64::from(frame_rate.max(1));
-        Self { start_ns, interval_ns, next_ns: start_ns + interval_ns }
+        Self { start_ns, interval_ns, next_ns: start_ns + interval_ns, last_ns: start_ns, left_out: false }
     }
 
     /// Whether the frame captured at `pts_ns` is encoded. A frame more than half an interval before the next slot is
     /// left out; one at or after that is kept for the slot nearest it, and the slot after that becomes the next.
     pub fn admit(&mut self, pts_ns: u64) -> bool {
         if pts_ns + self.interval_ns / 2 < self.next_ns {
+            self.left_out = true;
             return false;
         }
         let since = pts_ns.saturating_sub(self.start_ns);
         let nearest = (since + self.interval_ns / 2) / self.interval_ns;
         self.next_ns = self.start_ns + (nearest + 1) * self.interval_ns;
+        self.last_ns = pts_ns;
+        self.left_out = false;
         true
+    }
+
+    /// The time of a refresh capture skipped, when the frame captured at `pts_ns` shows one: capture delivered a frame
+    /// since the last kept one that was too soon to keep, and this one comes more than an interval and an eighth after
+    /// it, so the refresh in between, the one to keep, never came. The newest picture is then encoded at that time, an
+    /// interval after the last kept frame, as Chromium repeats one, before `admit` judges this frame. Takes the slot.
+    ///
+    /// Plan 078 step 1 (2026-10-17): ScreenCaptureKit skipped about one refresh in 180 (five in a 15 s take at 60 Hz,
+    /// 33.3 ms between two deliveries); each one that was a slot's left a frame 50 ms after the last in the file, and
+    /// the slot after it a frame 17 ms after that. Only after a frame left out: a source that delivers only when the
+    /// screen changes (Windows) and changes more slowly than the frame rate is kept as it comes.
+    pub fn skipped(&mut self, pts_ns: u64) -> Option<u64> {
+        if !self.left_out || pts_ns < self.last_ns + self.interval_ns + self.interval_ns / 8 {
+            return None;
+        }
+        let at = self.last_ns + self.interval_ns;
+        self.admit(at);
+        Some(at)
     }
 
     /// The slot a frame left out by `admit` is encoded at, once `now_ns` has reached it: a still screen sends no later

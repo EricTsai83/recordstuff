@@ -6,6 +6,7 @@
 pub mod aac;
 pub mod audio;
 pub mod capture;
+pub mod hardware;
 mod mft;
 pub mod session;
 pub mod video;
@@ -47,7 +48,7 @@ pub fn com() {
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
 }
 
-/// Starts Media Foundation once for the process.
+/// Starts Media Foundation once for the process. Failing to is a Windows without its media components (plan 078).
 pub fn media_foundation() -> Result<(), CaptureError> {
     static STARTED: OnceLock<Result<(), String>> = OnceLock::new();
     STARTED
@@ -56,7 +57,23 @@ pub fn media_foundation() -> Result<(), CaptureError> {
             unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.map_err(|e| format!("Media Foundation could not start: {e}"))
         })
         .clone()
-        .map_err(|detail| CaptureError::new("capture_start_failed", detail))
+        .map_err(|detail| CaptureError::new("media_components_missing", detail))
+}
+
+/// REGDB_E_CLASSNOTREG and ERROR_MOD_NOT_FOUND as HRESULTs: a Media Foundation encoder that is not installed.
+const CLASS_NOT_REGISTERED: i32 = 0x8004_0154_u32 as i32;
+const MODULE_NOT_FOUND: i32 = 0x8007_007E_u32 as i32;
+
+/// `start_failed` for creating one of Media Foundation's encoders, except that an encoder Windows does not have is
+/// `media_components_missing` (plan 078): a Windows N edition without the Media Feature Pack.
+pub fn encoder_missing(what: &'static str) -> impl Fn(windows::core::Error) -> CaptureError {
+    move |error| {
+        if [CLASS_NOT_REGISTERED, MODULE_NOT_FOUND].contains(&error.code().0) {
+            CaptureError::new("media_components_missing", format!("{what}: {error}"))
+        } else {
+            start_failed(what, error)
+        }
+    }
 }
 
 /// A COM object handed to another thread. Every object here is created in the multithreaded apartment, where COM

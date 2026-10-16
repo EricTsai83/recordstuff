@@ -5,7 +5,7 @@ import { FileWriteError, NO_MEDIA_DETAIL, nodeFs } from "./file-writer";
 import { EngineFileWriter } from "./engine-file-writer";
 import { SavedNotification, SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EngineFileReport, HostMessage } from "../../shared/protocol";
+import { HostStartError, type EngineFileReport, type HostMessage } from "../../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import type { RecordingState } from "../../shared/state";
 import type { RecordingFailure } from "../../shared/recording-result";
@@ -751,6 +751,22 @@ describe("Recorder failures", () => {
     expect(ctx.recorder.state).toEqual({ type: "idle" });
     expect(ctx.events.at(-1)).toEqual({ type: "failed", code: "capture_start_failed", detail: "no renderer", outcome: "empty",
       session: { id: "s1", recordingPath: path.join("/out", "2026-09-11 14-30-00.recording.mp4") } });
+  });
+
+  it("host.start rejection with a code of its own → failed with that code (plan 078)", async () => {
+    const ctx = setup();
+    ctx.host.startError = new HostStartError("media_components_missing", "mfplat.dll is missing");
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.events.at(-1)).toMatchObject({ type: "failed", code: "media_components_missing", detail: "mfplat.dll is missing" });
+  });
+
+  it("refuses a start while Windows lacks its media components, starting no capture (plan 078)", async () => {
+    const ctx = setup({ deps: { mediaComponentsMissing: true } });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.host.started).toEqual([]);
   });
 
   it("host error message → failed with that code", async () => {

@@ -17,7 +17,6 @@ import type { TrayClick } from "../../shared/appearance";
 import type { QuitDeferral } from "../app/quit-feedback";
 import path from "node:path";
 import { DEFAULT_LANGUAGE, sentences, translate as t, type Language, type PlainMessageKey } from "../../shared/i18n";
-import type { FrameRate } from "../../shared/quality";
 import type { ErrorCode, RecordingState } from "../../shared/state";
 import { describeAccelerator, settingsShortcut as openShortcut, type HotkeyAccelerator } from "../../shared/hotkey";
 
@@ -194,6 +193,14 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       const plain = !state.outputDirUnavailable && resolution.ok && ctx.display.kind !== "display";
       const lines = plain ? [] : [status];
       if (ctx.displayFailure) lines.push(t("Last display failure: {reason}", language, { reason: displayFailureText(ctx.displayFailure, language) }));
+      // Windows without Media Foundation (plan 078): nothing can encode, so the menu names why and the fix instead.
+      if (ctx.mediaComponentsMissing) {
+        const missing = text("Windows's media components are missing, so recording cannot start.");
+        return model("idle", "", missing, [
+          disabled(text("Start recording")),
+          item(text("Open Optional features…"), "openOptionalFeatures"),
+        ], [missing]);
+      }
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
       const actions = [item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut)];
       // The one folder item left: the fix, while the folder is what stops the next recording.
@@ -328,18 +335,6 @@ export function hotkeyRegistrationFailedNotification(
 }
 export function hotkeyWriteFailedNotification(language?: Language): NotificationText {
   return notice(t("Could not save the shortcut. Your previous shortcut is still in use.", language));
-}
-export function frameRateDowngradeNotification(
-  requested: FrameRate,
-  actual: number,
-  language?: Language,
-): NotificationText {
-  return notice(
-    t("The system cannot provide {requested} fps, so this recording uses {actual} fps.", language, {
-      actual,
-      requested,
-    }),
-  );
 }
 /** Turning the microphone on found it refused (plan 074); the click opens the pane that allows it. */
 export function microphoneDeniedNotification(language?: Language): NotificationText {

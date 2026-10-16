@@ -110,14 +110,19 @@ impl Session {
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
         let core = Core::<Win>::new(events, request.frame_rate, supported_bitrate(request.audio_bitrate), sound_inputs.len(), file);
+        let frame_log = core.log_frames(&request.path);
         if let Some(input) = sound_inputs.iter().position(|sound| matches!(sound, Sound::Microphone(_))) {
             core.watch_microphone(input);
         }
         let (frame_rate, video_bitrate, audio_bitrate) = (request.frame_rate, request.video_bitrate, request.audio_bitrate);
         let encoder_gpu = gpu.clone();
+        // Which H.264 encoder records and why (plan 078 step 4), for the log.
+        let encoder_note = Arc::new(std::sync::Mutex::new(None::<String>));
+        let note = encoder_note.clone();
         let encoders = core.make_encoders(move |sink| {
             com();
             let video = H264Encoder::new(encoder_gpu, width, height, frame_rate, video_bitrate, sink)?;
+            *note.lock().unwrap() = Some(video.description.clone());
             let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
             Ok((video, audio))
         })?;
@@ -169,6 +174,8 @@ impl Session {
             warnings.push(format!("recorded at {width}x{height}: H.264 in NV12 needs even dimensions"));
         }
         warnings.extend(session.sounds.iter().filter_map(|sound| sound.note.clone()));
+        warnings.extend(encoder_note.lock().unwrap().take());
+        warnings.extend(frame_log.map(|path| format!("per-frame log: {}", path.display())));
         let prepared = Prepared {
             width,
             height,

@@ -33,12 +33,8 @@ describe("language catalog", () => {
 
   it("substitutes repeated values and preserves filenames verbatim", () => {
     expect(
-      translate(
-        "The system cannot provide {requested} fps, so this recording uses {actual} fps.",
-        "zh-TW",
-        { actual: 30, requested: 60 },
-      ),
-    ).toBe("系統無法提供 60 fps，本次以 30 fps 錄影。");
+      translate("Moved {name} to {folder}", "zh-TW", { folder: "Talks", name: "demo.mp4" }),
+    ).toBe("已將 demo.mp4 移到 Talks");
     expect(translate("Saved {file}", "zh-TW", { file: "demo {file} $&.mp4" })).toBe("已儲存 demo {file} $&.mp4");
   });
 });

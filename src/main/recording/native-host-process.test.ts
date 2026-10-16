@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { NativeHost, developmentCapture, engineFailure, type ParentPort } from "./native-host-process";
+import { NativeHost, developmentCapture, engineFailure, engineLoadExit, type ParentPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
@@ -42,6 +42,14 @@ async function prepared() {
   await flush();
   return { port, logs, ...fake };
 }
+
+describe("engineLoadExit", () => {
+  it("tells a Windows missing a library the engine links (its media components) from any other failure to load", () => {
+    expect(engineLoadExit("win32", "\\?\\C:\\x\\recordstuff-capture.node: The specified module could not be found.")).toBe(4);
+    expect(engineLoadExit("win32", "Cannot find module 'C:\\x\\recordstuff-capture.node'")).toBe(3);
+    expect(engineLoadExit("darwin", "The specified module could not be found.")).toBe(3);
+  });
+});
 
 describe("engineFailure", () => {
   it("splits the engine's code from its detail, and treats anything else as a start failure", () => {

@@ -104,3 +104,44 @@ fn synthetic_frames_and_tone_become_a_plain_mp4() {
         std::fs::remove_file(&path).unwrap();
     }
 }
+
+/// Plan 078 step 4 on CI's runner, which has no GPU: its WARP device lists no hardware encoder, and an encoder made on
+/// it is the software one, saying why.
+#[test]
+fn without_a_gpu_no_hardware_encoder_is_found_and_the_software_encoder_records() {
+    super::com();
+    let gpu = Gpu::new().unwrap();
+    let (adapter, luid) = super::hardware::adapter(&gpu.0).expect("the adapter is read");
+    if !adapter.software {
+        eprintln!("this machine has a GPU ({}); the no-GPU case is not exercised", adapter.name);
+        return;
+    }
+    assert!(super::hardware::find(luid).unwrap().is_none(), "WARP lists no hardware H.264 encoder");
+    let sink = Arc::new(Collect(Mutex::new(Vec::new())));
+    let encoder = H264Encoder::new(gpu, 640, 360, 30, 2_000_000, sink).unwrap();
+    assert!(encoder.description.contains("software encoder") && encoder.description.contains("WARP"), "{}", encoder.description);
+}
+
+/// The self-test's check (plan 078 step 4), against the software encoder CI has: grey frames come back grey through
+/// Microsoft's decoder, and black ones, as a broken driver can emit, do not.
+#[test]
+fn the_self_test_tells_a_grey_picture_from_a_black_one() {
+    super::com();
+    let (width, height) = (640u32, 360u32);
+    let encode = |luma: u8| {
+        let sink = Arc::new(Collect(Mutex::new(Vec::new())));
+        let encoder = H264Encoder::new(Gpu::new().unwrap(), width, height, 30, 2_000_000, sink.clone()).unwrap();
+        let mut data = vec![128u8; (width * height * 3 / 2) as usize];
+        data[..(width * height) as usize].fill(luma);
+        for n in 0..6u64 {
+            encoder.queue(data.clone(), n * NANOS_PER_SECOND / 30, n == 0).unwrap();
+        }
+        encoder.flush();
+        drop(encoder);
+        std::mem::take(&mut *sink.0.lock().unwrap())
+    };
+    let grey = super::hardware::grey_share(&encode(128), width, height).unwrap();
+    assert!(grey > 0.95, "grey: {grey}");
+    let black = super::hardware::grey_share(&encode(16), width, height).unwrap();
+    assert!(black < 0.5, "black: {black}");
+}

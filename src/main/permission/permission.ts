@@ -74,6 +74,13 @@ export function openMicrophoneSettings(): Promise<void> {
   return shell.openExternal(MICROPHONE_SETTINGS_URL);
 }
 
+/** Windows Settings → Optional features, where the Media Feature Pack is installed (plan 078). */
+const OPTIONAL_FEATURES_URL = "ms-settings:optionalfeatures";
+
+export function openOptionalFeatures(): Promise<void> {
+  return shell.openExternal(OPTIONAL_FEATURES_URL);
+}
+
 export type MicrophoneAccess = "granted" | "denied" | "restricted" | "not-determined" | "unknown";
 
 /** macOS's answer, or undefined where there is none to read. */

@@ -6,7 +6,6 @@ import {
   describeCapture,
   effectiveQuality,
   fitWithinCap,
-  frameRateDowngrade,
   isCaptureReport,
   isFrameRateAvailable,
   isQualitySettings,
@@ -107,33 +106,8 @@ describe("isCaptureReport", () => {
     expect(isCaptureReport({ ...report, microphone: "MacBook Pro Microphone" })).toBe(true);
     expect(isCaptureReport({ ...report, microphone: true })).toBe(false);
     expect(isCaptureReport({ ...report, audioBitsPerSecond: Infinity })).toBe(false);
-    expect(isCaptureReport({ ...report, capUnconfirmed: true })).toBe(true);
-    expect(isCaptureReport({ ...report, capUnconfirmed: false })).toBe(false);
     expect(isCaptureReport({ videoBitsPerSecond: 1, audioBitsPerSecond: 1 })).toBe(false);
     expect(isCaptureReport(undefined)).toBe(false);
-  });
-});
-
-describe("frameRateDowngrade", () => {
-  const sixty = { ...DEFAULT_QUALITY, frameRate: 60 as const };
-  it("flags 60 requested with a track at or below 30", () => {
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 30 })).toBe(30);
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 29.97 })).toBe(30);
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 24 })).toBe(24);
-  });
-  it("does not flag 30 requested, an unknown rate, or a rate above 30", () => {
-    expect(frameRateDowngrade(DEFAULT_QUALITY, { ...report, frameRate: 15 })).toBeUndefined();
-    expect(frameRateDowngrade(sixty, report)).toBeUndefined();
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 60 })).toBeUndefined();
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 45 })).toBeUndefined();
-  });
-  it("judges the track against the setting, not the higher capture request", () => {
-    // A 60 fps recording whose track settles on the request, or on the display's 60, is not a downgrade.
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 62.5 })).toBeUndefined();
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 59.8 })).toBeUndefined();
-    // One that falls back to 30 still is, and 30 fps settings never are, even at their own request.
-    expect(frameRateDowngrade(sixty, { ...report, frameRate: 30 })).toBe(30);
-    expect(frameRateDowngrade(DEFAULT_QUALITY, { ...report, frameRate: 30.3 })).toBeUndefined();
   });
 });
 
@@ -157,12 +131,12 @@ describe("describeCapture", () => {
 });
 
 describe("size estimate", () => {
-  it("adds audio to the video target, doubles it at 60 fps as measured, and prints Finder-style units", async () => {
+  it("adds audio to the video target at 30 and at 60 fps, as the native engine delivers it, and prints Finder-style units", async () => {
     const { estimatedBytesPerMinute, formatBytes } = await import("./quality");
     // Standard 1080p30 is the 8 Mbps baseline: about 60 MB a minute with audio.
     expect(formatBytes(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 30 }))).toBe("63 MB");
     expect(estimatedBytesPerMinute({ width: 1920, height: 1080 }, { videoQuality: "standard", resolutionCap: "source", frameRate: 60 }))
-      .toBe((16_200_000 * 2 + 256_000) * 60 / 8);
+      .toBe((16_200_000 + 256_000) * 60 / 8);
     // Under a megabyte the size reads in kilobytes, as Finder shows it.
     expect([formatBytes(0), formatBytes(1234), formatBytes(4e5), formatBytes(999.6e3)]).toEqual(["0 KB", "1 KB", "400 KB", "1 MB"]);
     expect([formatBytes(1.4e6), formatBytes(54.4e6), formatBytes(176e6), formatBytes(1.24e9), formatBytes(12.6e9)]).toEqual(["1 MB", "54 MB", "180 MB", "1.2 GB", "13 GB"]);

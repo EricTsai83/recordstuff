@@ -162,7 +162,6 @@ function screenGroup(ctx: AppContext, enabled: boolean): Group {
     heading: t(["target_removed", "track_ended"].includes(ctx.displayFailure) ? "Last recording interrupted" : "Last recording failure", ctx.language),
     // The reason already says what to do next.
     reason: displayFailureText(ctx.displayFailure, ctx.language), guidance: "" });
-  if (ctx.captureWarning) result.diagnostics.push({ kind: "history", heading: t("Recording resolution", ctx.language), reason: ctx.captureWarning, guidance: "" });
   return result;
 }
 
@@ -705,14 +704,17 @@ export function settingsStatus(state: RecordingState, ctx: AppContext): Settings
  */
 const STATUS_ACTION_LABELS: Record<StatusActionId, PlainMessageKey> = {
   permission: "Open Settings", relaunch: "Relaunch", folder: "Change output folder…", primary: "Use Primary display",
+  mediaComponents: "Open Optional features",
 };
 const STATUS_ACTIONS: Record<StatusActionId, AppAction> = {
   permission: "openPermissionSettings", relaunch: "relaunch", folder: "changeOutputDir", primary: { setDisplay: { kind: "primary" } },
+  mediaComponents: "openOptionalFeatures",
 };
 function statusActionId(state: RecordingState, ctx: AppContext): StatusActionId | undefined {
   switch (state.type) {
     case "needsPermission": return state.needsRelaunch ? "relaunch" : "permission";
     case "idle":
+      if (ctx.mediaComponentsMissing) return "mediaComponents";
       if (state.outputDirUnavailable) return "folder";
       // The Screen row's own way back (its `recovery`), when there is one.
       return chosenDisplayUnavailable(ctx) && primaryDisplayChoosable(ctx.displays) ? "primary" : undefined;
@@ -735,6 +737,9 @@ function statusText(state: RecordingState, ctx: AppContext): SettingsStatus {
     case "stopping": return { tone: "busy", title: t("Saving…", language), detail: "" };
     case "idle": break;
   }
+  // Before anything else: no other fix lets a recording start (plan 078).
+  if (ctx.mediaComponentsMissing) return { tone: "attention", title: t("Windows's media components are missing, so recording cannot start.", language),
+    detail: t("Install the Media Feature Pack from Optional features in Windows Settings, then restart Windows and record again.", language) };
   if (state.outputDirUnavailable) return { tone: "attention", title: t("Output folder unavailable", language),
     detail: t("Check the output folder, its permissions and the connected drive before recording again.", language) };
   const resolution = displayResolution(ctx.displays, ctx.display);
@@ -818,7 +823,9 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
   const results = (ctx.recordingResults ?? []).slice(0, ctx.historyLimit).map(result => projectResult(result, state, ctx, now, format));
   return {
     language,
-    ...(ctx.historyFailed ? { recordingHistoryStatus: t("Could not read the failure history. The file was kept; see the log.", language) } : {}),
+    // The way out (plan 078): the message no longer sends anyone to the log, and Reset is offered beside it.
+    ...(ctx.historyFailed ? { recordingHistoryStatus: t("Could not read the failure history, so new failures cannot be saved. Resetting keeps the file as a backup.", language),
+      recordingHistoryReset: { label: t("Reset failure history…", language), enabled: !quitting } } : {}),
     ...(ctx.historyLoading ? { recordingHistoryStatus: t("Loading failure history…", language) } : {}),
     recordingResults: quitting ? results.map(result => ({ ...result, actions: result.actions.map(action => ({ ...action, enabled: false })) })) : results,
     recordingResultsRemaining: Math.max(0, (ctx.recordingResults?.length ?? 0) - (ctx.historyLimit ?? Infinity)),
@@ -892,6 +899,7 @@ export function settingsAction(
     return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
+  if (groupId === "recordingHistory") return choiceId === "reset" && ctx.historyFailed ? "resetFailureHistory" : undefined;
   // The Recordings tab's own choices: its layout, its previews' sound, and Undo while a recording waits to go to the Trash.
   if (groupId === "library") {
     if (choiceId === "undoTrash") return ctx.library?.trashed ? "undoTrash" : undefined;
