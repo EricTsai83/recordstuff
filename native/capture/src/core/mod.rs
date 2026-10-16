@@ -14,7 +14,7 @@
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -42,6 +42,11 @@ const MIX_LATENCY_FRAMES: u64 = 24_000;
 const REFRESH_NS: u64 = NANOS_PER_SECOND;
 /// How long `stop` waits for the sound up to the stop; what has not come by then is silence.
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+/// A microphone delivers sound all the time, silence included; one that has delivered nothing for this long while
+/// recording is told lost (unplugged, stalled, or its access withdrawn), and the recording goes on without it (074),
+/// taking its sound again if it comes back: a Bluetooth or Continuity microphone can stall for a few seconds and go on,
+/// which Cap and OBS reconnect for and Chromium waits 12 s for.
+const MICROPHONE_SILENT_NS: u64 = 2 * NANOS_PER_SECOND;
 const FINISH_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// A failure with one of the capture host's error codes (`HostErrorCode` in src/shared/protocol.ts).
@@ -63,6 +68,11 @@ pub trait Events: Send + Sync {
     fn write_failed(&self, failure: WriteFailure);
     /// Capture ended without a stop: `capture_failed` while recording, `capture_start_failed` while prepared.
     fn capture_failed(&self, code: &'static str, detail: String);
+    /// The microphone stopped delivering while recording (074): the track goes on with the other inputs and silence
+    /// where the microphone was. Told each time it stops.
+    fn microphone_lost(&self, detail: String);
+    /// The microphone told lost delivers sound again, which the track takes from then on.
+    fn microphone_resumed(&self, detail: String);
 }
 
 /// Where encoded video goes, and who hears that encoding failed. Called on the encoder's thread.
@@ -180,6 +190,8 @@ pub struct Prepared {
     pub warnings: Vec<String>,
     /// Where preparing spent its time, for the log.
     pub timings: String,
+    /// The microphone actually opened (074): its name, which is the default input's when a chosen one was not connected.
+    pub microphone: Option<String>,
 }
 
 /// What `end` reports once capture has stopped: the file is still being finished (see `Finishing`).
@@ -191,6 +203,10 @@ pub struct Stopped {
     pub frame_lead_ms: (f64, f64),
     /// Frames each audio input delivered too late to be mixed (see mixer.rs).
     pub late_audio_frames: Vec<u64>,
+    /// Frames of silence inserted and frames dropped to keep each audio input on the clock: drift and gaps.
+    pub audio_corrections: Vec<(u64, u64)>,
+    /// Samples where two inputs summed past -1 dBFS and the limiter changed them.
+    pub limited_audio_samples: u64,
     /// What capture delivered while recording: frames with a picture, deliveries without one (a frame capture reported
     /// idle, blank or the like), and the longest time between two pictures, in ms. A display refreshing at 60 Hz that
     /// delivers every refresh shows about 60 pictures a second and a longest gap near 17 ms; a recording's frame then
@@ -286,6 +302,14 @@ impl<A: AudioEncode> AudioState<A> {
 }
 
 /// The state capture callbacks, the refresh thread and the session share.
+/// The microphone's delivery, as `Shared::microphone` keeps it.
+#[derive(Default)]
+struct MicrophoneState {
+    /// Host time it last delivered sound.
+    heard_ns: u64,
+    lost: bool,
+}
+
 pub struct Shared<P: Platform> {
     events: Arc<dyn Events>,
     phase: AtomicU8,
@@ -310,6 +334,11 @@ pub struct Shared<P: Platform> {
     captured_pictures: AtomicU64,
     captured_without_picture: AtomicU64,
     captured_gap_max_ns: AtomicU64,
+    /// The microphone's input number (`usize::MAX` without one).
+    microphone_input: AtomicUsize,
+    /// When the microphone last delivered and whether it is told lost: one lock, so a loss and a return are judged
+    /// and told in the order they happened.
+    microphone: Mutex<MicrophoneState>,
 }
 
 impl<P: Platform> Shared<P> {
@@ -398,6 +427,39 @@ impl<P: Platform> Shared<P> {
         video.pending = false;
     }
 
+    /// The microphone stopped (or its sound can no longer be read): the recording goes on without it. Told once per
+    /// dropout, and only while recording; a microphone that fails to open is `prepare`'s `microphone_unavailable`
+    /// instead.
+    pub fn lose_microphone(&self, detail: String) {
+        let mut microphone = self.microphone.lock().unwrap();
+        if !matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING) || microphone.lost {
+            return;
+        }
+        microphone.lost = true;
+        // Told under the lock: a return the microphone's thread notices next is told after this.
+        self.events.microphone_lost(detail);
+    }
+
+    /// Whether `input` is the microphone.
+    pub fn is_microphone(&self, input: usize) -> bool {
+        self.microphone_input.load(Ordering::Acquire) == input
+    }
+
+    /// Tells the microphone's loss once it has delivered nothing for `MICROPHONE_SILENT_NS` while recording.
+    fn microphone_clock(&self, now_ns: u64) {
+        if self.microphone_input.load(Ordering::Acquire) == usize::MAX {
+            return;
+        }
+        let mut microphone = self.microphone.lock().unwrap();
+        // Judged under the lock: sound arriving meanwhile has moved `heard_ns` on, so it cannot be taken for silence.
+        let heard = microphone.heard_ns.max(self.t0_ns.load(Ordering::Acquire));
+        if microphone.lost || !matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING) || now_ns.saturating_sub(heard) <= MICROPHONE_SILENT_NS {
+            return;
+        }
+        microphone.lost = true;
+        self.events.microphone_lost(format!("the microphone delivered no sound for {} s", MICROPHONE_SILENT_NS / NANOS_PER_SECOND));
+    }
+
     /// Whether sound is taken now; capture may skip reading a buffer when it is not.
     pub fn wants_sound(&self) -> bool {
         matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
@@ -410,6 +472,17 @@ impl<P: Platform> Shared<P> {
         if !self.wants_sound() || frames == 0 {
             return Ok(());
         }
+        if self.is_microphone(input) {
+            let mut microphone = self.microphone.lock().unwrap();
+            let now = P::now_ns();
+            let heard = std::mem::replace(&mut microphone.heard_ns, now).max(self.t0_ns.load(Ordering::Acquire));
+            // Its sound comes back (074): taken again, the gap left as silence by the aligner.
+            if microphone.lost {
+                microphone.lost = false;
+                let gap = now.saturating_sub(heard) as f64 / NANOS_PER_SECOND as f64;
+                self.events.microphone_resumed(format!("the microphone delivered sound again after {gap:.1} s"));
+            }
+        }
         let mut guard = self.audio.lock().unwrap();
         let audio = &mut *guard;
         // After `stop`, sound only up to it: the track ends where the video does. `audio_target` is only changed under
@@ -420,7 +493,17 @@ impl<P: Platform> Shared<P> {
         // presentation time t is what played at t0 + t.
         mixer.add(input, pts, frames, sample, target);
         let until = mixer.ready().min(target);
-        let packets = audio.advance(until)?;
+        let packets = match audio.advance(until) {
+            Ok(packets) => packets,
+            // The encoder's failure is the recording's, whichever input's sound reached it first: a microphone's
+            // caller would take an error for the microphone's own and tell it lost.
+            Err(detail) if self.is_microphone(input) => {
+                drop(guard);
+                self.fail(detail);
+                return Ok(());
+            }
+            Err(detail) => return Err(detail),
+        };
         // Sent under the audio lock: packets carry no time, so the writer's order is the track's, and another input
         // or the clock must not send theirs in between.
         for data in packets {
@@ -490,8 +573,15 @@ impl<P: Platform> Core<P> {
             captured_pictures: AtomicU64::new(0),
             captured_without_picture: AtomicU64::new(0),
             captured_gap_max_ns: AtomicU64::new(0),
+            microphone_input: AtomicUsize::new(usize::MAX),
+            microphone: Mutex::new(MicrophoneState::default()),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
+    }
+
+    /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
+    pub fn watch_microphone(&self, input: usize) {
+        self.shared.microphone_input.store(input, Ordering::Release);
     }
 
     /// What capture callbacks hold.
@@ -682,7 +772,7 @@ impl<P: Platform> Core<P> {
         }
         let mut packets = Vec::new();
         let mut audio_frames = None;
-        let late_audio_frames;
+        let (late_audio_frames, audio_corrections, limited_audio_samples);
         {
             let mut audio = self.shared.audio.lock().unwrap();
             let mixed = audio.mixed();
@@ -693,6 +783,8 @@ impl<P: Platform> Core<P> {
                 }
             }
             late_audio_frames = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::late);
+            audio_corrections = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::corrections);
+            limited_audio_samples = audio.mixer.as_ref().map_or(0, Mixer::limited);
         }
         for data in packets {
             self.shared.send(Media::Audio { data });
@@ -707,7 +799,7 @@ impl<P: Platform> Core<P> {
             without_picture: self.shared.captured_without_picture.load(Ordering::Relaxed),
             longest_gap_ms: self.shared.captured_gap_max_ns.load(Ordering::Relaxed) as f64 / 1e6,
         };
-        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames, captured };
+        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames, audio_corrections, limited_audio_samples, captured };
         let outcome = self.shared.writer.lock().unwrap().take().map(|sender| (sender.finish(stop_ns, audio_frames), self.writer.take()));
         (stopped, Finishing { outcome, began: Instant::now() })
     }
@@ -752,6 +844,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         wake = Duration::from_millis(100);
         let now = P::now_ns();
         shared.sound_clock(now);
+        shared.microphone_clock(now);
         let mut guard = shared.video.lock().unwrap();
         let video = &mut *guard;
         if shared.phase.load(Ordering::Acquire) != RECORDING {

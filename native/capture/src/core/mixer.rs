@@ -1,6 +1,8 @@
 //! The recording's one audio track from several inputs (plan 076, step 4): system audio, chosen apps' audio and the
 //! microphone (074). Each input is placed on the session clock by counting its samples (`AudioAligner`), and the
-//! track holds their sum, stereo, at unity gain: nothing is resampled, collapsed or levelled.
+//! track holds their sum, stereo, at unity gain: nothing is resampled, collapsed or levelled. Where two inputs sum
+//! past -1 dBFS (loud media under a voice), the sum is softly limited instead of clipping (074); with one input, or
+//! below that level, the track is the sum exactly.
 //!
 //! The track advances to where every input has delivered, so inputs that arrive at different delays still line up.
 //! An input can also deliver nothing for a while: WASAPI's loopback sends no packets while nothing plays, and a
@@ -44,6 +46,24 @@ pub struct Mixer {
     inputs: Vec<Input>,
     /// Frames of the track mixed so far.
     mixed: u64,
+    /// Samples the limiter changed.
+    limited: u64,
+}
+
+/// -1 dBFS: where the limiter begins.
+const LIMIT_THRESHOLD: f32 = 0.891_250_9;
+
+/// A sum of two or more inputs, softly limited above `LIMIT_THRESHOLD`: unchanged below it, approaching full scale
+/// above it without reaching it, with the slope continuous at the threshold.
+fn limit(sum: f32) -> f32 {
+    let level = sum.abs();
+    if level <= LIMIT_THRESHOLD {
+        return sum;
+    }
+    let room = 1.0 - LIMIT_THRESHOLD;
+    // In f32 the tanh of a loud sum rounds to 1: held at the largest value below full scale.
+    let below_full_scale = 1.0 - f32::EPSILON / 2.0;
+    (LIMIT_THRESHOLD + room * ((level - LIMIT_THRESHOLD) / room).tanh()).min(below_full_scale).copysign(sum)
 }
 
 impl Mixer {
@@ -55,7 +75,7 @@ impl Mixer {
             start: 0,
             late: 0,
         };
-        Self { rate, t0_ns, latency_frames, inputs: (0..inputs).map(|_| input()).collect(), mixed: 0 }
+        Self { rate, t0_ns, latency_frames, inputs: (0..inputs).map(|_| input()).collect(), mixed: 0, limited: 0 }
     }
 
     /// Places `frames` frames of `input`, captured at `pts_ns`; `sample(frame, channel)` reads one, channel 0 or 1.
@@ -104,6 +124,16 @@ impl Mixer {
         self.inputs.iter().map(|input| input.late).collect()
     }
 
+    /// Frames of silence inserted and dropped to keep each input on the clock (see `AudioAligner::corrections`).
+    pub fn corrections(&self) -> Vec<(u64, u64)> {
+        self.inputs.iter().map(|input| input.aligner.corrections()).collect()
+    }
+
+    /// Samples the limiter changed.
+    pub fn limited(&self) -> u64 {
+        self.limited
+    }
+
     /// Mixes the track up to `until` into `out` (interleaved stereo, replaced); what an input has not delivered is
     /// silence. Returns the frames mixed.
     pub fn mix(&mut self, until: u64, out: &mut Vec<f32>) -> u64 {
@@ -116,14 +146,25 @@ impl Mixer {
         for position in self.mixed..until {
             for channel in 0..2 {
                 // The first input that has this frame gives it as it is; the others are added.
-                let mut value: Option<f32> = None;
+                let (mut value, mut summed) = (0.0f32, 0);
                 for input in &self.inputs {
                     if position >= input.start && position < input.end() {
                         let sample = input.pending[((position - input.start) * 2) as usize + channel];
-                        value = Some(value.map_or(sample, |sum| sum + sample));
+                        value = if summed == 0 { sample } else { value + sample };
+                        // Silence, filled in or delivered, is no second voice in the sum.
+                        if sample != 0.0 {
+                            summed += 1;
+                        }
                     }
                 }
-                out.push(value.unwrap_or(0.0));
+                if summed > 1 {
+                    let limited = limit(value);
+                    if limited.to_bits() != value.to_bits() {
+                        self.limited += 1;
+                    }
+                    value = limited;
+                }
+                out.push(value);
             }
         }
         // Every input's `start` is the track's mixed position: what it delivered from there on stays pending, and
@@ -168,6 +209,39 @@ mod tests {
     }
 
     #[test]
+    fn two_loud_inputs_are_limited_below_full_scale_and_quiet_ones_summed_exactly() {
+        let mut two = mixer(2);
+        // Music at -1 dBFS and a voice at -6 dBFS sum to +2.9 dBFS; 0.25 and 0.5 stay below the threshold.
+        let values = [(0.89f32, 0.5f32), (0.25, 0.5), (-0.89, -0.5)];
+        two.add(0, ns(0), 3, |frame, _| values[frame].0, u64::MAX);
+        two.add(1, ns(0), 3, |frame, _| values[frame].1, u64::MAX);
+        let mut out = Vec::new();
+        assert_eq!(two.mix(3, &mut out), 3);
+        assert!(out[0] > LIMIT_THRESHOLD && out[0] < 1.0, "{}", out[0]);
+        assert_eq!(out[2].to_bits(), 0.75f32.to_bits());
+        assert_eq!(out[4], -out[0]);
+        assert_eq!(two.limited(), 4);
+        // Continuous at the threshold, and never past full scale however loud.
+        assert!((limit(LIMIT_THRESHOLD + 1e-4) - (LIMIT_THRESHOLD + 1e-4)).abs() < 1e-5);
+        for loud in [1.0 + 1.0, 1.5, 40.0, f32::MAX] {
+            assert!(limit(loud) < 1.0 && limit(-loud) > -1.0, "{loud}: {}", limit(loud));
+        }
+        // A loud input beside another's silence is that input's samples exactly.
+        let mut quiet = mixer(2);
+        quiet.add(0, ns(0), 1, |_, _| 0.95, u64::MAX);
+        quiet.add(1, ns(0), 1, |_, _| 0.0, u64::MAX);
+        quiet.mix(1, &mut out);
+        assert_eq!(out, [0.95, 0.95]);
+        assert_eq!(quiet.limited(), 0);
+        // One input past full scale is that input's samples: not the limiter's to change.
+        let mut single = mixer(1);
+        single.add(0, ns(0), 1, |_, _| 1.5, u64::MAX);
+        single.mix(1, &mut out);
+        assert_eq!(out, [1.5, 1.5]);
+        assert_eq!(single.limited(), 0);
+    }
+
+    #[test]
     fn two_inputs_are_summed_where_both_delivered() {
         let mut mixer = mixer(2);
         mixer.add(0, ns(0), 4, |_, channel| if channel == 0 { 0.5 } else { 0.25 }, u64::MAX);
@@ -186,13 +260,13 @@ mod tests {
     #[test]
     fn an_input_placed_later_on_the_clock_lines_up_with_the_others() {
         let mut mixer = mixer(2);
-        mixer.add(0, ns(0), 8, |_, _| 1.0, u64::MAX);
+        mixer.add(0, ns(0), 8, |_, _| 0.25, u64::MAX);
         // Its first buffer starts at frame 5: silence before it.
-        mixer.add(1, ns(5), 3, |_, _| 2.0, u64::MAX);
+        mixer.add(1, ns(5), 3, |_, _| 0.5, u64::MAX);
         let mut out = Vec::new();
         mixer.mix(mixer.ready(), &mut out);
         let left: Vec<f32> = out.iter().step_by(2).copied().collect();
-        assert_eq!(left, [1.0, 1.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0]);
+        assert_eq!(left, [0.25, 0.25, 0.25, 0.25, 0.25, 0.75, 0.75, 0.75]);
     }
 
     #[test]
@@ -249,6 +323,36 @@ mod tests {
         assert_eq!(mixer.ready(), 6);
         mixer.add(0, ns(10), 10, |_, _| 1.0, 6);
         assert_eq!(mixer.ready(), 6);
+    }
+
+    #[test]
+    fn a_microphone_in_other_buffer_sizes_with_jittered_times_stays_aligned_for_ten_minutes() {
+        // System sound in 480-frame buffers, the microphone (074) in 512-frame ones whose times wander by up to 3 ms,
+        // within the aligner's tolerance: every frame of the track is still exactly the two summed at unity gain.
+        let mut mixer = mixer(2);
+        let total = 10 * 60 * u64::from(RATE);
+        let (mut system, mut microphone, mut buffer) = (0u64, 0u64, 0u64);
+        let mut out = Vec::new();
+        let mut mixed = 0u64;
+        while mixed < total {
+            if system <= microphone {
+                mixer.add(0, ns(system), 480, |_, channel| if channel == 0 { 0.25 } else { -0.25 }, u64::MAX);
+                system += 480;
+            } else {
+                let jitter = [0i64, 3_000_000, -2_000_000, 1_000_000][(buffer % 4) as usize];
+                let at = ns(microphone).checked_add_signed(jitter).unwrap().max(T0);
+                // A mono microphone arrives up-mixed: the same sample in both channels.
+                mixer.add(1, at, 512, |_, _| 0.5, u64::MAX);
+                microphone += 512;
+                buffer += 1;
+            }
+            out.clear();
+            mixed += mixer.mix(mixer.ready(), &mut out);
+            assert!(out.chunks(2).all(|frame| frame == [0.75, 0.25]), "a frame was not the sum near {mixed}");
+        }
+        assert_eq!(mixer.late(), [0, 0]);
+        assert_eq!(mixer.mixed(), mixed);
+        assert!(mixed >= total && mixed - total < 512);
     }
 
     #[test]

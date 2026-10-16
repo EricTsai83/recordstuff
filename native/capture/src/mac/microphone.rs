@@ -1,10 +1,18 @@
 //! The microphone, mixed into the recording's track (074's input; plan 076 step 4 builds it into the engine and its
 //! tests only): an `AVCaptureSession` with the chosen device or the system's default input, its sound converted by
-//! AVFoundation to what the track takes (48 kHz, stereo, 32-bit float; a mono microphone is heard in both channels) and
-//! stamped on the host clock the screen's samples use.
+//! AVFoundation to one channel of 48 kHz 32-bit float, heard in both of the track's (074, as Cap does: an audio
+//! interface's microphone on its first input would otherwise be in the left ear only), and stamped on the host clock
+//! the screen's samples use.
 //!
-//! The usage description and the hardened runtime's audio-input entitlement, which a signed RecordStuff needs before
-//! macOS lets it open a microphone, are 074's.
+//! A microphone that cannot be opened refuses the recording with `microphone_unavailable` (074); one that stops while
+//! recording is told (`Shared::lose_microphone`) and the recording goes on without it, taking its sound again if it
+//! comes back to the same session (a stall). A device that is disconnected is not opened again: AVFoundation keeps
+//! its device list on the main run loop, which this utility process does not run, so the device stays as it was
+//! when it left, connected or not (a probe on 2026-10-16: CoreAudio's list followed a Bluetooth headset at once,
+//! AVFoundation's only with a run loop). Reopening needs CoreAudio's HAL, as Chromium's audio service and Cap (cpal)
+//! use (plan 078). The 2 s without sound in the core is what tells the loss. The usage description and the
+//! hardened runtime's audio-input entitlement, which a signed RecordStuff needs before macOS lets it open a microphone,
+//! are in electron-builder.yml and resources/entitlements.mac.plist.
 
 use std::sync::{Arc, Mutex};
 
@@ -21,7 +29,7 @@ use objc2_foundation::{NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSStr
 
 use super::session::{Shared, sound};
 use super::{CaptureError, Unsent, host_ns};
-use crate::core::{CHANNELS, Microphone, SAMPLE_RATE};
+use crate::core::{Microphone, SAMPLE_RATE};
 
 // AVFAudio's settings keys, re-exported by AVFoundation.
 unsafe extern "C" {
@@ -38,7 +46,7 @@ unsafe extern "C" {
 const LINEAR_PCM: u32 = u32::from_be_bytes(*b"lpcm");
 
 fn unavailable(detail: impl Into<String>) -> CaptureError {
-    CaptureError::new("capture_start_failed", format!("microphone: {}", detail.into()))
+    CaptureError::new("microphone_unavailable", format!("microphone: {}", detail.into()))
 }
 
 fn audio_type() -> Result<&'static objc2_av_foundation::AVMediaType, CaptureError> {
@@ -91,8 +99,9 @@ define_class!(
                 Some(clock) => unsafe { CMSyncConvertTime(time, clock, &CMClock::host_time_clock()) },
                 None => time,
             };
+            // Sound that cannot be read loses the microphone, not the recording.
             if let Err(detail) = sound(&ivars.shared, ivars.input, sample, host_ns(time)) {
-                ivars.shared.fail(format!("microphone: {detail}"));
+                ivars.shared.lose_microphone(format!("microphone: {detail}"));
             }
         }
     }
@@ -106,6 +115,10 @@ impl Delegate {
 }
 
 pub struct MicrophoneCapture {
+    /// A chosen device that is not connected is replaced by the default input; this says so (074).
+    pub note: Option<String>,
+    /// The device opened.
+    pub name: String,
     session: Unsent<AVCaptureSession>,
     _delegate: Unsent<Delegate>,
     _queue: DispatchRetained<DispatchQueue>,
@@ -126,9 +139,14 @@ impl MicrophoneCapture {
         if status == AVAuthorizationStatus::NotDetermined {
             return Err(unavailable("access is not allowed yet: macOS has not asked for it"));
         }
-        let device = match device {
-            Some(id) => unsafe { AVCaptureDevice::deviceWithUniqueID(&NSString::from_str(id)) }
-                .ok_or_else(|| unavailable(format!("device {id} is not connected")))?,
+        // A chosen device that is not connected falls back to the default input, and the note says so.
+        let chosen = device.and_then(|id| unsafe { AVCaptureDevice::deviceWithUniqueID(&NSString::from_str(id)) });
+        let note = match (device, &chosen) {
+            (Some(id), None) => Some(format!("microphone: {id} is not connected; the default input is used")),
+            _ => None,
+        };
+        let device = match chosen {
+            Some(device) => device,
             None => unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.ok_or_else(|| unavailable("there is no audio input"))?,
         };
         let name = unsafe { device.localizedName() }.to_string();
@@ -146,7 +164,7 @@ impl MicrophoneCapture {
                 &[
                     number(f64::from(LINEAR_PCM)),
                     number(f64::from(SAMPLE_RATE)),
-                    number(f64::from(CHANNELS)),
+                    number(1.0),
                     number(32.0),
                     object(NSNumber::new_bool(true)),
                     object(NSNumber::new_bool(false)),
@@ -176,7 +194,7 @@ impl MicrophoneCapture {
         }
         let clock = unsafe { session.synchronizationClock() };
         *delegate.ivars().clock.lock().unwrap() = clock;
-        Ok(Self { session: Unsent(session), _delegate: Unsent(delegate), _queue: queue })
+        Ok(Self { note, name, session: Unsent(session), _delegate: Unsent(delegate), _queue: queue })
     }
 
     pub fn stop(&self) {
