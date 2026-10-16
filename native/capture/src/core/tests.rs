@@ -57,6 +57,8 @@ struct FakeAudio {
     frames_in: u64,
     /// Frames out of the encoder so far, priming included.
     frames_out: u64,
+    /// Set, every drain fails.
+    fail: Arc<AtomicBool>,
 }
 
 impl FakeAudio {
@@ -85,6 +87,9 @@ impl AudioEncode for FakeAudio {
         self.frames_in += frames as u64;
     }
     fn drain(&mut self, out: &mut dyn FnMut(Vec<u8>)) -> Result<(), String> {
+        if self.fail.load(Ordering::Acquire) {
+            return Err("audio encoder broke".into());
+        }
         let until = self.frames_in + u64::from(PRIMING);
         self.packets(out, until);
         Ok(())
@@ -100,6 +105,8 @@ impl AudioEncode for FakeAudio {
 struct Heard {
     failures: Mutex<Vec<(&'static str, String)>>,
     progress: AtomicUsize,
+    microphone_lost: Mutex<Vec<String>>,
+    microphone_resumed: Mutex<Vec<String>>,
 }
 
 impl Events for Heard {
@@ -112,6 +119,12 @@ impl Events for Heard {
     fn capture_failed(&self, code: &'static str, detail: String) {
         self.failures.lock().unwrap().push((code, detail));
     }
+    fn microphone_lost(&self, detail: String) {
+        self.microphone_lost.lock().unwrap().push(detail);
+    }
+    fn microphone_resumed(&self, detail: String) {
+        self.microphone_resumed.lock().unwrap().push(detail);
+    }
 }
 
 struct Rig {
@@ -120,6 +133,7 @@ struct Rig {
     encoded: Arc<Mutex<Vec<(u32, u64, bool)>>>,
     heard: Arc<Heard>,
     fail: Arc<AtomicBool>,
+    audio_fail: Arc<AtomicBool>,
     path: std::path::PathBuf,
 }
 
@@ -135,13 +149,16 @@ impl Rig {
         let core = Core::<Fake>::new(heard.clone(), 30, 192_000, inputs, file);
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
-        let (e, f) = (encoded.clone(), fail.clone());
+        let audio_fail = Arc::new(AtomicBool::new(false));
+        let (e, f, a) = (encoded.clone(), fail.clone(), audio_fail.clone());
         let made = core
-            .make_encoders(move |sink| Ok((FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f }, FakeAudio::default())))
+            .make_encoders(move |sink| {
+                Ok((FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f }, FakeAudio { fail: a, ..FakeAudio::default() }))
+            })
             .unwrap();
         Core::<Fake>::encoders_made(made).unwrap();
         let shared = core.shared();
-        Self { core, shared, encoded, heard, fail, path }
+        Self { core, shared, encoded, heard, fail, audio_fail, path }
     }
 
     /// Frames every `interval` and 10 ms of sound every 10 ms, stamped with the clock, for `duration`.
@@ -351,6 +368,79 @@ fn a_second_input_that_stops_delivering_holds_the_track_back_only_for_the_mixing
 }
 
 #[test]
+fn a_microphone_that_stops_delivering_is_told_and_taken_again_when_its_sound_comes_back() {
+    let mut rig = Rig::with_inputs("microphone-lost", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // System sound throughout; the microphone for 300 ms, then nothing, as when it is unplugged.
+    let mut next = 0u64;
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_millis(2_800) {
+        while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+            let at = t0 + next * NANOS_PER_SECOND / 48_000;
+            rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+            if began.elapsed() < Duration::from_millis(300) {
+                rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+            }
+            next += 480;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let lost = rig.heard.microphone_lost.lock().unwrap().clone();
+    assert_eq!(lost.len(), 1, "{lost:?}");
+    assert!(lost[0].contains("no sound for 2 s"), "{lost:?}");
+    // Losing it again (the platform noticing too) is not told twice, and nothing failed.
+    rig.shared.lose_microphone("unplugged".into());
+    assert_eq!(rig.heard.microphone_lost.lock().unwrap().len(), 1);
+    // Its sound comes back: told once, and taken from where it is, the gap silence.
+    let delivered = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap();
+    let at = t0 + next * NANOS_PER_SECOND / 48_000;
+    rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+    rig.shared.sound(1, at + 10_000_000, 480, |_, _| 0.5).unwrap();
+    let resumed = rig.heard.microphone_resumed.lock().unwrap().clone();
+    assert_eq!(resumed.len(), 1, "{resumed:?}");
+    assert!(resumed[0].starts_with("the microphone delivered sound again after 2."), "{resumed:?}");
+    assert!(rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap() > delivered);
+    // Stopping again is told again.
+    rig.shared.lose_microphone("unplugged".into());
+    assert_eq!(rig.heard.microphone_lost.lock().unwrap().len(), 2);
+    let (_, _, _) = rig.stop();
+    assert!(rig.heard.failures.lock().unwrap().is_empty(), "{:?}", rig.heard.failures.lock().unwrap());
+    let (video_ms, audio_ms) = lengths(&rig.file());
+    assert!(video_ms > 2_500.0 && (video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
+}
+
+#[test]
+fn a_microphone_is_lost_only_while_recording_and_one_that_delivers_never_is() {
+    let mut rig = Rig::with_inputs("microphone-kept", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    // Prepared: a microphone that fails to open is `prepare`'s refusal, not a loss.
+    rig.shared.lose_microphone("before recording".into());
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let mut next = 0u64;
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_millis(2_400) {
+        while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+            rig.shared.sound(1, t0 + next * NANOS_PER_SECOND / 48_000, 480, |_, _| 0.5).unwrap();
+            next += 480;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty());
+    let (_, _, _) = rig.stop();
+    // After the stop nothing is told either.
+    rig.shared.lose_microphone("after the stop".into());
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty());
+}
+
+#[test]
 fn a_still_screen_is_encoded_again_every_second() {
     let mut rig = Rig::new("still");
     rig.shared.frame(7, Fake::now_ns());
@@ -377,6 +467,26 @@ fn a_change_left_out_by_the_pacer_is_encoded_at_its_slot() {
     let (frame, at, _) = rig.encoded.lock().unwrap()[1];
     assert_eq!(frame, 2);
     assert_eq!(at, t0 + 33_333_333, "at its slot");
+    rig.stop();
+}
+
+#[test]
+fn an_audio_encoder_failing_on_the_microphone_s_sound_fails_the_recording_and_loses_no_microphone() {
+    let mut rig = Rig::with_inputs("microphone-encoder", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // The system's sound is in; the microphone's is what reaches the broken encoder.
+    rig.shared.sound(0, t0, 4_800, |_, _| 0.25).unwrap();
+    rig.audio_fail.store(true, Ordering::Release);
+    rig.shared.sound(1, t0, 4_800, |_, _| 0.5).unwrap();
+    let failures = rig.heard.failures.lock().unwrap().clone();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(failures[0], ("capture_failed", "audio encoder broke".to_string()));
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "{:?}", rig.heard.microphone_lost.lock().unwrap());
+    rig.audio_fail.store(false, Ordering::Release);
     rig.stop();
 }
 

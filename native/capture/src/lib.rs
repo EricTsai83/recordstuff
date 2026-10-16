@@ -155,6 +155,8 @@ pub struct PreparedInfo {
     pub warnings: Vec<String>,
     /// Where preparing spent its time, for the log.
     pub timings: String,
+    /// The microphone actually opened (074), by name; absent without one.
+    pub microphone: Option<String>,
 }
 
 #[napi(object)]
@@ -167,6 +169,11 @@ pub struct StopReport {
     pub frame_lead_max_ms: f64,
     /// Frames each audio input delivered too late to be mixed.
     pub late_audio_frames: Vec<f64>,
+    /// Frames of silence inserted, and frames dropped, to keep each audio input on the clock (drift and gaps).
+    pub inserted_audio_frames: Vec<f64>,
+    pub dropped_audio_frames: Vec<f64>,
+    /// Samples where two inputs summed past -1 dBFS and were limited.
+    pub limited_audio_samples: f64,
     /// While recording: frames capture delivered with a picture and without one, and the longest gap between pictures.
     pub captured_pictures: f64,
     pub captured_without_picture: f64,
@@ -185,7 +192,7 @@ pub struct FinishReport {
 #[napi(object)]
 #[derive(Clone)]
 pub struct EngineEvent {
-    /// `progress`, `writeError` or `captureError`.
+    /// `progress`, `writeError`, `captureError` or `microphoneLost` (074: the recording goes on without it).
     pub kind: String,
     pub bytes: Option<f64>,
     pub code: Option<String>,
@@ -218,6 +225,13 @@ impl core::Events for Emitter {
 
     fn capture_failed(&self, code: &'static str, detail: String) {
         self.emit(EngineEvent { kind: "captureError".into(), bytes: None, code: Some(code.into()), detail: Some(detail) });
+    }
+
+    fn microphone_lost(&self, detail: String) {
+        self.emit(EngineEvent { kind: "microphoneLost".into(), bytes: None, code: None, detail: Some(detail) });
+    }
+    fn microphone_resumed(&self, detail: String) {
+        self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail) });
     }
 }
 
@@ -385,6 +399,7 @@ impl Task for PrepareTask {
                 hidden_windows: prepared.hidden_windows as u32,
                 warnings: prepared.warnings,
                 timings: prepared.timings,
+                microphone: prepared.microphone,
             })
         }
         #[cfg(not(any(target_os = "macos", windows)))]
@@ -406,6 +421,7 @@ pub struct StopTask {
 
 fn nothing_stopped() -> StopReport {
     StopReport { drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0, late_audio_frames: Vec::new(),
+      inserted_audio_frames: Vec::new(), dropped_audio_frames: Vec::new(), limited_audio_samples: 0.0,
       captured_pictures: 0.0, captured_without_picture: 0.0, captured_longest_gap_ms: 0.0 }
 }
 
@@ -427,6 +443,9 @@ impl Task for StopTask {
                 frame_lead_avg_ms: stopped.frame_lead_ms.0,
                 frame_lead_max_ms: stopped.frame_lead_ms.1,
                 late_audio_frames: stopped.late_audio_frames.iter().map(|&frames| frames as f64).collect(),
+                inserted_audio_frames: stopped.audio_corrections.iter().map(|&(inserted, _)| inserted as f64).collect(),
+                dropped_audio_frames: stopped.audio_corrections.iter().map(|&(_, dropped)| dropped as f64).collect(),
+                limited_audio_samples: stopped.limited_audio_samples as f64,
                 captured_pictures: stopped.captured.pictures as f64,
                 captured_without_picture: stopped.captured.without_picture as f64,
                 captured_longest_gap_ms: stopped.captured.longest_gap_ms,

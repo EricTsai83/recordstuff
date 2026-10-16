@@ -326,6 +326,9 @@ impl Session {
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
         let core = Core::<Mac>::new(events, request.frame_rate, request.audio_bitrate, inputs, file);
+        if let Some(input) = microphone_input {
+            core.watch_microphone(input);
+        }
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
@@ -397,8 +400,9 @@ impl Session {
             priming_frames: session.core.priming(),
             excluded_apps: filter.excluded_apps,
             hidden_windows: filter.hidden_windows,
-            warnings: filter.warnings,
+            warnings: filter.warnings.into_iter().chain(session.microphone.as_ref().and_then(|microphone| microphone.note.clone())).collect(),
             timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
+            microphone: session.microphone.as_ref().map(|microphone| microphone.name.clone()),
         };
         Ok((session, prepared))
     }

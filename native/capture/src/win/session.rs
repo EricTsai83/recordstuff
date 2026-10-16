@@ -110,6 +110,9 @@ impl Session {
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
         let core = Core::<Win>::new(events, request.frame_rate, supported_bitrate(request.audio_bitrate), sound_inputs.len(), file);
+        if let Some(input) = sound_inputs.iter().position(|sound| matches!(sound, Sound::Microphone(_))) {
+            core.watch_microphone(input);
+        }
         let (frame_rate, video_bitrate, audio_bitrate) = (request.frame_rate, request.video_bitrate, request.audio_bitrate);
         let encoder_gpu = gpu.clone();
         let encoders = core.make_encoders(move |sink| {
@@ -165,6 +168,7 @@ impl Session {
         if (width, height) != (request.width, request.height) {
             warnings.push(format!("recorded at {width}x{height}: H.264 in NV12 needs even dimensions"));
         }
+        warnings.extend(session.sounds.iter().filter_map(|sound| sound.note.clone()));
         let prepared = Prepared {
             width,
             height,
@@ -175,6 +179,7 @@ impl Session {
             hidden_windows: 0,
             warnings,
             timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
+            microphone: session.sounds.iter().find_map(|sound| sound.name.clone()),
         };
         Ok((session, prepared))
     }

@@ -26,6 +26,12 @@ impl Events for Heard {
     fn capture_failed(&self, code: &'static str, detail: String) {
         self.0.lock().unwrap().push(format!("capture {code}: {detail}"));
     }
+    fn microphone_lost(&self, detail: String) {
+        self.0.lock().unwrap().push(format!("microphone lost: {detail}"));
+    }
+    fn microphone_resumed(&self, detail: String) {
+        self.0.lock().unwrap().push(format!("microphone resumed: {detail}"));
+    }
 }
 
 fn main_display() -> u32 {
