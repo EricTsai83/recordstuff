@@ -85,7 +85,6 @@ unsafe extern "C" {
     fn AudioComponentInstanceNew(component: AudioComponent, instance: *mut AudioUnit) -> OsStatus;
     fn AudioComponentInstanceDispose(instance: AudioUnit) -> OsStatus;
     fn AudioUnitSetProperty(unit: AudioUnit, property: u32, scope: u32, element: u32, data: *const c_void, size: u32) -> OsStatus;
-    fn AudioUnitGetProperty(unit: AudioUnit, property: u32, scope: u32, element: u32, data: *mut c_void, size: *mut u32) -> OsStatus;
     fn AudioUnitInitialize(unit: AudioUnit) -> OsStatus;
     fn AudioUnitUninitialize(unit: AudioUnit) -> OsStatus;
     fn AudioOutputUnitStart(unit: AudioUnit) -> OsStatus;
@@ -225,18 +224,29 @@ pub struct Chunk {
     pub samples: Vec<f32>,
 }
 
+/// The most frames one HAL buffer may hold; every pooled buffer has room for it, so filling one never allocates.
+const MAX_FRAMES: usize = 8192;
+/// Buffers in the pool: about 0.7 s of 512-frame buffers in flight to the reading thread.
+pub const POOL: usize = 64;
+
 struct Callback {
     unit: AudioUnit,
     buffer: Vec<f32>,
     chunks: std::sync::mpsc::SyncSender<Chunk>,
+    /// Empty buffers the reading thread hands back, and one the queue refused, kept for the next call.
+    free: std::sync::mpsc::Receiver<Vec<f32>>,
+    spare: Option<Vec<f32>>,
 }
 
 /// An AUHAL input unit running on one device. The HAL calls it on its real-time thread, which only renders the sound
-/// and hands it on; resampling and the recording's mixing and encoding happen on the thread that reads `chunks`.
+/// and hands it on in a buffer from a pool made beforehand, so it neither allocates nor frees (review of plan 078);
+/// resampling and the recording's mixing and encoding happen on the thread that reads `chunks`, which gives each
+/// buffer back through `recycle`.
 pub struct InputUnit {
     unit: AudioUnit,
     callback: *mut Callback,
     pub rate: f64,
+    pub recycle: std::sync::mpsc::SyncSender<Vec<f32>>,
 }
 
 unsafe impl Send for InputUnit {}
@@ -253,7 +263,11 @@ impl InputUnit {
         if status != 0 || unit.is_null() {
             return Err(format!("the HAL input unit could not be made: {status}"));
         }
-        let mut opened = Self { unit, callback: null_mut(), rate: 0.0 };
+        let (recycle, free) = std::sync::mpsc::sync_channel(POOL);
+        for _ in 0..POOL {
+            let _ = recycle.try_send(Vec::with_capacity(MAX_FRAMES));
+        }
+        let mut opened = Self { unit, callback: null_mut(), rate: 0.0, recycle };
         let set = |property: u32, scope: u32, element: u32, data: *const c_void, size: usize, what: &str| -> Result<(), String> {
             let status = unsafe { AudioUnitSetProperty(unit, property, scope, element, data, size as u32) };
             if status == 0 { Ok(()) } else { Err(format!("{what}: {status}")) }
@@ -267,10 +281,10 @@ impl InputUnit {
         let rate = value::<f64>(device, NOMINAL_RATE, SCOPE_GLOBAL, None).filter(|rate| *rate > 0.0).ok_or("the device has no sample rate")?;
         let format = mono(rate);
         set(STREAM_FORMAT, SCOPE_UNIT_OUTPUT, INPUT_ELEMENT, (&raw const format).cast(), size_of::<AudioStreamBasicDescription>(), "the sound format")?;
-        let mut frames = 0u32;
-        let mut size = 4u32;
-        unsafe { AudioUnitGetProperty(unit, MAXIMUM_FRAMES_PER_SLICE, SCOPE_UNIT_GLOBAL, 0, (&raw mut frames).cast(), &mut size) };
-        let callback = Box::into_raw(Box::new(Callback { unit, buffer: vec![0.0; frames.clamp(4096, 16384) as usize], chunks }));
+        // The unit never hands over more than this per call; the pool's buffers hold it.
+        let frames = MAX_FRAMES as u32;
+        set(MAXIMUM_FRAMES_PER_SLICE, SCOPE_UNIT_GLOBAL, 0, (&raw const frames).cast(), 4, "the largest buffer")?;
+        let callback = Box::into_raw(Box::new(Callback { unit, buffer: vec![0.0; MAX_FRAMES], chunks, free, spare: None }));
         opened.callback = callback;
         let render = RenderCallbackStruct { proc: render, refcon: callback.cast() };
         set(SET_INPUT_CALLBACK, SCOPE_UNIT_GLOBAL, OUTPUT_ELEMENT, (&raw const render).cast(), size_of::<RenderCallbackStruct>(), "the input callback")?;
@@ -316,8 +330,15 @@ unsafe extern "C" fn render(refcon: *mut c_void, flags: *mut u32, time: *const A
     }
     let host = unsafe { time.as_ref() }.map_or(0, |time| time.mHostTime);
     let pts_ns = if host == 0 { super::now_ns() } else { host_time_ns(host) };
-    // A full queue drops this buffer: the reading thread is behind, and the core treats the gap as silence.
-    let _ = callback.chunks.try_send(Chunk { pts_ns, samples: callback.buffer[..frames as usize].to_vec() });
+    // No free buffer, or a full queue: the reading thread is behind, this sound is dropped and the core treats the gap
+    // as silence. A buffer the queue refused is kept for the next call rather than freed here.
+    let Some(mut samples) = callback.spare.take().or_else(|| callback.free.try_recv().ok()) else { return 0 };
+    samples.clear();
+    samples.extend_from_slice(&callback.buffer[..frames as usize]);
+    if let Err(refused) = callback.chunks.try_send(Chunk { pts_ns, samples }) {
+        let (std::sync::mpsc::TrySendError::Full(chunk) | std::sync::mpsc::TrySendError::Disconnected(chunk)) = refused;
+        callback.spare = Some(chunk.samples);
+    }
     0
 }
 

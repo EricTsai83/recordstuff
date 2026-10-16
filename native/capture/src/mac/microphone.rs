@@ -33,8 +33,8 @@ use crate::core::{Microphone, SAMPLE_RATE};
 const SILENT: Duration = Duration::from_secs(2);
 /// The waits between attempts to open it again, the last repeated.
 const BACKOFF: [Duration; 5] = [Duration::from_secs(2), Duration::from_secs(4), Duration::from_secs(8), Duration::from_secs(16), Duration::from_secs(30)];
-/// Buffers the HAL's thread may queue ahead of the reading thread (about 2 s at 512 frames).
-const QUEUE: usize = 192;
+/// Buffers the HAL's thread may queue ahead of the reading thread: as many as its pool holds.
+const QUEUE: usize = hal::POOL;
 
 fn unavailable(detail: impl Into<String>) -> CaptureError {
     CaptureError::new("microphone_unavailable", format!("microphone: {}", detail.into()))
@@ -142,6 +142,9 @@ impl Reader {
                     heard = Instant::now();
                     attempts = 0;
                     if !self.shared.wants_sound() {
+                        if let Some((unit, _)) = open.as_ref() {
+                            let _ = unit.recycle.try_send(chunk.samples);
+                        }
                         continue;
                     }
                     converted.clear();
@@ -158,6 +161,10 @@ impl Reader {
                     // Sound that cannot be read loses the microphone, not the recording.
                     if let Err(detail) = self.shared.sound(self.input, chunk.pts_ns, samples.len(), |frame, _| samples[frame]) {
                         self.shared.lose_microphone(format!("microphone: {detail}"));
+                    }
+                    // Back to the pool of the unit now open; one from a unit since closed is simply let go.
+                    if let Some((unit, _)) = open.as_ref() {
+                        let _ = unit.recycle.try_send(chunk.samples);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {}

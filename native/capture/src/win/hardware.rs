@@ -145,6 +145,16 @@ impl HardwareTransform {
         com();
         let fail = |what: &'static str| move |e: windows::core::Error| format!("{what}: {e}");
         let transform: IMFTransform = unsafe { activate.ActivateObject() }.map_err(fail("opening the hardware encoder"))?;
+        // Until `Self` owns it, a failure shuts the activated encoder down here.
+        struct Activated<'a>(Option<&'a IMFActivate>);
+        impl Drop for Activated<'_> {
+            fn drop(&mut self) {
+                if let Some(activate) = self.0 {
+                    let _ = unsafe { activate.ShutdownObject() };
+                }
+            }
+        }
+        let mut activated = Activated(Some(activate));
         let attributes = unsafe { transform.GetAttributes() }.map_err(fail("its attributes"))?;
         if unsafe { attributes.GetUINT32(&MF_TRANSFORM_ASYNC) }.unwrap_or(0) == 0 {
             return Err("the hardware encoder is not asynchronous".into());
@@ -201,16 +211,19 @@ impl HardwareTransform {
         })()
         .map_err(fail("the NV12 input format was refused"))?;
 
-        let stopped = Arc::new(AtomicBool::new(false));
-        let generator: IMFMediaEventGenerator = transform.cast().map_err(fail("its events"))?;
+        // Owned before its events are listened to: from here every failure drops it, which stops the listening and
+        // shuts the encoder down, so the callback and the generator holding each other are released (review of 078).
+        let opened = Self { activate: activate.clone(), transform, codec, _manager: manager, stopped: Arc::new(AtomicBool::new(false)) };
+        activated.0 = None;
+        let generator: IMFMediaEventGenerator = opened.transform.cast().map_err(fail("its events"))?;
         let events: IMFAsyncCallback =
-            Events { generator: Mta(generator.clone()), messages: Mutex::new(messages), stopped: stopped.clone() }.into();
+            Events { generator: Mta(generator.clone()), messages: Mutex::new(messages), stopped: opened.stopped.clone() }.into();
         unsafe { generator.BeginGetEvent(&events, None) }.map_err(fail("listening to its events"))?;
         unsafe {
-            transform.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0).map_err(fail("starting it"))?;
-            transform.ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0).map_err(fail("starting it"))?;
+            opened.transform.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0).map_err(fail("starting it"))?;
+            opened.transform.ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0).map_err(fail("starting it"))?;
         }
-        Ok(Self { activate: activate.clone(), transform, codec, _manager: manager, stopped })
+        Ok(opened)
     }
 }
 

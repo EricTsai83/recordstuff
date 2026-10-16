@@ -155,7 +155,9 @@ pub fn drive<T: AsyncTransform>(
                 }
                 Err(detail) => {
                     refused += 1;
-                    if refused >= watchdog.input_failures {
+                    // Before a sample reached the muxer nothing is lost by giving up at once: the software encoder
+                    // takes every frame, this one included (review of plan 078).
+                    if !format_sent || refused >= watchdog.input_failures {
                         waiting.push_front(next);
                         return failed(format!("the encoder refused {refused} frames in a row: {detail}"), format_sent, taken, waiting, flush);
                     }
@@ -163,6 +165,11 @@ pub fn drive<T: AsyncTransform>(
                     asked -= 1;
                 }
             }
+        }
+        // Frames waiting for the encoder to ask are outstanding work too: an encoder that never asks, or stops asking,
+        // is given up by the watchdog instead of holding them, and a flush behind them, forever.
+        if !waiting.is_empty() && silent_since.is_none() {
+            silent_since = Some(Instant::now());
         }
         // Every queued frame is in: a flush can drain.
         if flush.is_some() && !draining && waiting.is_empty() {
@@ -188,8 +195,18 @@ pub fn drive<T: AsyncTransform>(
                 None => flush = Some(done),
             },
             Some(Message::Event(EncoderEvent::NeedInput)) => asked += 1,
-            Some(Message::Event(EncoderEvent::HaveOutput)) => match transform.output() {
+            // A format change leaves the announced output where it was: it is asked for again at once (a few times).
+            Some(Message::Event(EncoderEvent::HaveOutput)) => match (0..4).map(|_| transform.output()).find(|output| !matches!(output, Ok(Output::StreamChanged))).unwrap_or(Ok(Output::Nothing)) {
                 Ok(Output::Sample { data, time }) => {
+                    // Checked before any frame is let go, so a fallback still has them all.
+                    let format = if format_sent {
+                        None
+                    } else {
+                        let Some((sps, pps)) = avc::parameter_sets(&data) else {
+                            return failed("the first H.264 sample has no parameter sets".into(), format_sent, taken, waiting, flush);
+                        };
+                        Some(avc::decoder_config(sps, pps))
+                    };
                     while taken.front().is_some_and(|(queued, _)| *queued < time) {
                         taken.pop_front();
                     }
@@ -197,17 +214,14 @@ pub fn drive<T: AsyncTransform>(
                         Some((queued, _)) if *queued == time => taken.pop_front().map(|(_, q)| q.pts_ns).unwrap_or_default(),
                         _ => origin.unwrap_or(0) + time.max(0) as u64 * 100,
                     };
-                    if !format_sent {
-                        let Some((sps, pps)) = avc::parameter_sets(&data) else {
-                            return failed("the first H.264 sample has no parameter sets".into(), format_sent, taken, waiting, flush);
-                        };
-                        sink.media(Media::VideoFormat { avcc: avc::decoder_config(sps, pps), width: width as u16, height: height as u16 });
+                    if let Some(avcc) = format {
+                        sink.media(Media::VideoFormat { avcc, width: width as u16, height: height as u16 });
                         format_sent = true;
                     }
                     let (data, sync) = avc::sample(&data);
                     sink.media(Media::Video { data, pts_ns, sync });
                     since_output = 0;
-                    silent_since = (!taken.is_empty() || draining).then(Instant::now);
+                    silent_since = (!taken.is_empty() || !waiting.is_empty() || draining).then(Instant::now);
                 }
                 Ok(Output::StreamChanged | Output::Nothing) => {}
                 Err(detail) => return failed(format!("reading the encoder's output failed: {detail}"), format_sent, taken, waiting, flush),
@@ -309,9 +323,9 @@ mod tests {
             Ok(())
         }
         fn output(&mut self) -> Result<Output, String> {
+            // As Media Foundation does: the announced output stays pending, with no new event for it.
             if self.behaviour == Behaviour::ChangesFormat && !self.changed {
                 self.changed = true;
-                self.event(EncoderEvent::HaveOutput);
                 return Ok(Output::StreamChanged);
             }
             self.changed = false;
@@ -393,12 +407,32 @@ mod tests {
     }
 
     #[test]
-    fn an_encoder_that_refuses_frames_is_given_up_after_three() {
+    fn an_encoder_that_refuses_its_first_frame_hands_every_frame_to_the_software_encoder() {
         let (_, ended, _, _) = run(Behaviour::Refuses, 5);
         let Ended::Failed { detail, fallback: Some(fallback) } = ended else { panic!("expected a failure with a fallback") };
-        assert!(detail.contains("refused 3 frames"), "{detail}");
-        // The two left out before the third refusal are lost; the rest go to the fallback.
-        assert_eq!(fallback.frames.iter().map(|f| f.0).collect::<Vec<_>>(), [2, 3, 4]);
+        assert!(detail.contains("refused 1 frames"), "{detail}");
+        // The refused frame itself; the frames after it are still on the channel, which the fallback reads next.
+        assert_eq!(fallback.frames.iter().map(|f| f.0).collect::<Vec<_>>(), [0], "nothing lost");
+    }
+
+    #[test]
+    fn an_encoder_that_never_asks_for_input_is_given_up_with_its_frames_and_the_flush() {
+        let (sender, messages) = channel();
+        let mut fake = Fake::new(sender.clone(), Behaviour::Silent);
+        for n in 0..3 {
+            sender.send(Message::Frame { frame: n, pts_ns: u64::from(n) * 33_333_333, key_frame: n == 0 }).unwrap();
+        }
+        let (done, _flushed) = channel();
+        sender.send(Message::Flush(done)).unwrap();
+        let sink: Arc<dyn VideoSink> = Arc::new(Collect::default());
+        let began = Instant::now();
+        let ended = drive(&mut fake, &messages, &sink, (640, 360, 30), Watchdog { silence: Duration::from_millis(300), ..FAST });
+        assert!(began.elapsed() < Duration::from_secs(2), "the watchdog, not a hang");
+        let Ended::Failed { detail, fallback: Some(fallback) } = ended else { panic!("expected a failure with a fallback") };
+        assert!(detail.contains("within"), "{detail}");
+        assert_eq!(fallback.frames.len(), 3);
+        assert!(fallback.flush.is_some());
+        drop(sender);
     }
 
     #[test]
