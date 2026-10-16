@@ -1,5 +1,5 @@
 /** Troubleshooting's failure history: rows grouped by day, with guidance, recovery actions and technical details. */
-import { CircleAlert, ChevronDown, FolderX, HardDrive, MonitorOff, ShieldAlert, TimerOff, VideoOff, VolumeX, Settings2, FileVideo, type LucideIcon } from "lucide-react";
+import { CircleAlert, ChevronDown, FolderX, HardDrive, MonitorOff, ShieldAlert, TimerOff, VideoOff, VolumeX, MicOff, Settings2, FileVideo, type LucideIcon } from "lucide-react";
 import type { RecordingResultView } from "../../../shared/settings-panel";
 import { translate, type PlainMessageKey } from "../../../shared/i18n";
 import type { ErrorCode } from "../../../shared/state";
@@ -18,6 +18,7 @@ const failureIcons: Record<ErrorCode, LucideIcon> = {
   no_display: MonitorOff,
   display_unavailable: MonitorOff,
   no_audio_track: VolumeX,
+  microphone_unavailable: MicOff,
   mp4_unsupported: FileVideo,
   capture_start_failed: VideoOff,
   capture_failed: VideoOff,

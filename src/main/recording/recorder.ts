@@ -10,7 +10,7 @@ import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { HostErrorCode, HostMessage } from "../../shared/protocol";
+import type { HostErrorCode, HostMessage, MicrophoneChoice } from "../../shared/protocol";
 import { COUNTDOWN_TIMING, type CountdownSeconds } from "../../shared/countdown";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../../shared/state";
@@ -35,6 +35,17 @@ export interface RecorderWriter {
   abandon(): Promise<string | undefined>;
 }
 
+/** What one session captures besides the quality (plan 074); a snapshot taken when the session begins. */
+export interface SessionCapture {
+  /** Present only when the microphone is on. */
+  microphone?: MicrophoneChoice;
+}
+
+/** The microphone setting as a session reads it: the choice, and the device's name for the log. */
+export interface SessionMicrophone extends MicrophoneChoice {
+  label?: string;
+}
+
 export interface RecorderHost {
   /**
    * Ensures the capture host is up and posts `start` with the quality
@@ -42,7 +53,7 @@ export interface RecorderHost {
    * `recordingPath` is the temporary file the writer opened, which the native
    * engine writes itself (plan 076, D3).
    */
-  start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void>;
+  start(sessionId: string, quality: QualitySettings, recordingPath?: string, capture?: SessionCapture): Promise<void>;
   /** Begins encoding the prepared session (plan 040); throws when it cannot be sent. */
   record(sessionId: string): void;
   stop(sessionId: string): void;
@@ -83,6 +94,8 @@ export interface RecorderDeps {
   countdownSeconds?: () => CountdownSeconds;
   /** Read once per session with the countdown; absent means silent. */
   countdownSound?: () => boolean;
+  /** Read once per session like quality (plan 074); absent means off. */
+  microphone?: () => SessionMicrophone;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -137,7 +150,10 @@ export interface SessionTrace extends SessionTiming {
 export type RecorderEvent =
   | { type: "failureStatus"; result: RecordingFailure }
   | { type: "state"; state: RecordingState }
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; session: SessionTrace }
+  /** `microphoneLost`: the microphone dropped out partway, and that part has system audio only (plan 074). */
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; session: SessionTrace }
+  /** The microphone stopped while recording; the recording goes on without it. Told once per session (plan 074). */
+  | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -200,6 +216,10 @@ interface Session {
   countdownSeconds: CountdownSeconds;
   /** Whether the countdown ticks; taken with `countdownSeconds`, and false without a countdown. */
   countdownSound: boolean;
+  /** Microphone snapshot taken when the session was created (plan 074). */
+  microphone: SessionMicrophone;
+  /** The engine told that the microphone stopped while recording. */
+  microphoneLost?: boolean;
   /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -610,6 +630,7 @@ export class Recorder {
       quality: this.deps.quality(),
       countdownSeconds,
       countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
+      microphone: this.deps.microphone?.() ?? { enabled: false },
       overlay: false,
       requestedAt: this.monotonic(),
       finalizing: false,
@@ -682,7 +703,8 @@ export class Recorder {
       this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
     }
     try {
-      await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath);
+      const { label: _label, ...microphone } = session.microphone;
+      await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, microphone.enabled ? { microphone } : undefined);
     } catch (cause) {
       if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
       await this.fail(session.id, "capture_start_failed", messageOf(cause));
@@ -734,7 +756,8 @@ export class Recorder {
   }
 
   private handleHostMessage(message: HostMessage): void {
-    if (message.type === "ready" || message.type === "pong") return;
+    // `microphones` answers a listing process, never an attempt's.
+    if (message.type === "ready" || message.type === "pong" || message.type === "microphones") return;
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && message.sessionId === session.id) {
@@ -766,7 +789,7 @@ export class Recorder {
         if (session.phase !== "preparing") return;
         this.clearTimer(session);
         session.capture = message.capture;
-        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}; mime ${message.mimeType}`);
+        this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}; mime ${message.mimeType}; ${describeMicrophone(session.microphone, message.capture.microphone)}`);
         if (session.cancelOnPrepared) {
           this.cancel(session, session.cancelOnPrepared);
           return;
@@ -801,6 +824,18 @@ export class Recorder {
         return;
       case "writeError":
         if (!session.finalizing) void this.fail(session.id, message.code, message.detail);
+        return;
+      case "microphoneLost":
+        // The recording goes on with system audio, and takes the microphone again if it comes back; each dropout is
+        // logged, and the saved recording and one notice say there was one (plan 074).
+        if (!this.acceptsMedia(session)) return;
+        this.deps.log(`recorder: session ${session.id} microphone lost; recording continues without it: ${message.detail}`);
+        if (session.microphoneLost) return;
+        session.microphoneLost = true;
+        this.emit({ type: "microphoneLost", sessionId: session.id, detail: message.detail });
+        return;
+      case "microphoneResumed":
+        if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} microphone resumed: ${message.detail}`);
         return;
       case "stopped":
         if (session.finalizing) return;
@@ -1078,7 +1113,8 @@ export class Recorder {
     this.deps.log(`recorder: session ${session.id} file finalized ${finalPath}${early}`);
     this.logFinalizeTiming(session, drainedAt, checkpointMs);
     this.endSaving(session);
-    this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}), session: this.trace(session) });
+    this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}),
+      ...(session.microphoneLost ? { microphoneLost: true as const } : {}), session: this.trace(session) });
     await session.sentinel.clear();
   }
 
@@ -1305,4 +1341,13 @@ export class Recorder {
     }
   }
 
+}
+
+/**
+ * The prepared line's microphone (plan 074): `mic off`, or `mic on` with the device the engine opened, which is the
+ * default input's when a chosen one was not connected; the requested one only when the engine named none.
+ */
+function describeMicrophone(microphone: SessionMicrophone, opened: string | undefined): string {
+  if (!microphone.enabled) return "mic off";
+  return `mic on (${opened ?? microphone.label ?? microphone.deviceId ?? "system default"})`;
 }

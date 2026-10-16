@@ -3,11 +3,45 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("electron", () => ({
   app: { on: vi.fn() },
   shell: { openExternal: vi.fn() },
-  systemPreferences: { getMediaAccessStatus: vi.fn() },
+  systemPreferences: { getMediaAccessStatus: vi.fn(), askForMediaAccess: vi.fn() },
   desktopCapturer: { getSources: vi.fn() },
 }));
 
-import { PermissionWatcher, type PermissionStatus } from "./permission";
+import { shell, systemPreferences } from "electron";
+import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, type PermissionStatus } from "./permission";
+
+describe("the microphone (plan 074)", () => {
+  const status = vi.mocked(systemPreferences.getMediaAccessStatus);
+  const ask = vi.mocked(systemPreferences.askForMediaAccess);
+  afterEach(() => { status.mockReset(); ask.mockReset(); });
+
+  it("reads macOS's answer without asking, and has none to read on Windows", () => {
+    status.mockReturnValue("denied");
+    expect(microphoneAccess("darwin")).toBe("denied");
+    expect(status).toHaveBeenCalledWith("microphone");
+    expect(microphoneAccess("win32")).toBeUndefined();
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("asks only while macOS never has, and answers whether access is allowed", async () => {
+    status.mockReturnValue("not-determined");
+    ask.mockResolvedValue(true);
+    await expect(askMicrophoneAccess("darwin")).resolves.toBe(true);
+    expect(ask).toHaveBeenCalledWith("microphone");
+    ask.mockClear();
+    for (const [answer, allowed] of [["granted", true], ["denied", false], ["restricted", false]] as const) {
+      status.mockReturnValue(answer);
+      await expect(askMicrophoneAccess("darwin")).resolves.toBe(allowed);
+    }
+    expect(ask).not.toHaveBeenCalled();
+    await expect(askMicrophoneAccess("win32")).resolves.toBe(true);
+  });
+
+  it("opens the Microphone pane of Privacy & Security", async () => {
+    await openMicrophoneSettings();
+    expect(shell.openExternal).toHaveBeenCalledWith("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+  });
+});
 
 function setup(initial: { granted: boolean; screens: number | Error | "hang" }, options: { retryMaxMs?: number } = {}) {
   const state = { ...initial };

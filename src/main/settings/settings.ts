@@ -62,6 +62,10 @@ export interface Settings {
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
   countdownSound: boolean;
+  /** Mix the microphone into the recording's track (plan 074); off by default, so no update starts recording a room. */
+  microphone: boolean;
+  /** The chosen input, by the id the engine listed and the name it had then; absent is the system default input. */
+  microphoneDevice?: MicrophoneDevicePreference;
   /** The icon's left click. */
   trayClick: TrayClick;
   /** How new recordings are named (file-name.ts); the default gives the names every recording had before the choice. */
@@ -74,6 +78,18 @@ export interface Settings {
   libraryFavorites: string[];
   /** The category the tab last showed (2026-10-09): absent for every recording, `null` for Uncategorized. */
   libraryShown?: string | null;
+}
+
+export interface MicrophoneDevicePreference {
+  id: string;
+  label: string;
+}
+
+/** A stored input: a non-empty id within a bound, and the name shown while it is not connected. */
+export function isMicrophoneDevicePreference(value: unknown): value is MicrophoneDevicePreference {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const { id, label } = value as Record<string, unknown>;
+  return typeof id === "string" && id.length > 0 && id.length <= 512 && typeof label === "string" && label.length <= 512;
 }
 
 export interface SettingsStoreOptions {
@@ -106,6 +122,7 @@ export function defaultSettings(outputDir: string): Settings {
     hideSystemUi: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
+    microphone: false,
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
     trayClick: "menu",
     fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
@@ -192,6 +209,9 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const hideSystemUi = field("hideSystemUi", isBoolean, defaults.hideSystemUi, `hideSystemUi is not a boolean: using ${defaults.hideSystemUi ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
+  const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
+  const microphoneDevice = field<MicrophoneDevicePreference | undefined>("microphoneDevice", isMicrophoneDevicePreference, undefined,
+    "microphoneDevice is invalid: using the system default input");
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
   // Only a pattern stored as it would be saved: trimmed and usable.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
@@ -201,7 +221,8 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
   return { settings: { appearance, display, hideSystemUi, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
-    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound, trayClick,
+    updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
+    microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }), trayClick,
     fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
 
@@ -268,6 +289,25 @@ export class SettingsStore {
   setCountdownSound(enabled: boolean): Promise<void> {
     if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported countdown sound: ${JSON.stringify(enabled)}`));
     return this.save((current) => ({ ...current, countdownSound: enabled }));
+  }
+
+  get microphone(): boolean { return this.settings.microphone; }
+
+  setMicrophone(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported microphone: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, microphone: enabled }));
+  }
+
+  get microphoneDevice(): MicrophoneDevicePreference | undefined {
+    const device = this.settings.microphoneDevice;
+    return device ? { ...device } : undefined;
+  }
+
+  /** `null` is the system default input. */
+  setMicrophoneDevice(device: MicrophoneDevicePreference | null): Promise<void> {
+    if (device !== null && !isMicrophoneDevicePreference(device)) return Promise.reject(new Error(`unsupported microphone device: ${JSON.stringify(device)}`));
+    const snapshot = device === null ? undefined : { id: device.id, label: device.label };
+    return this.save(({ microphoneDevice: _previous, ...current }) => (snapshot ? { ...current, microphoneDevice: snapshot } : current));
   }
 
   get trayClick(): TrayClick { return this.settings.trayClick; }

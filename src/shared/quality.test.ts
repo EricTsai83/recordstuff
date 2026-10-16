@@ -103,6 +103,9 @@ describe("isCaptureReport", () => {
     expect(isCaptureReport(report)).toBe(true);
     expect(isCaptureReport({ ...report, width: 1920, height: 1080, frameRate: 59.94, sampleRate: 48_000, channelCount: 2 })).toBe(true);
     expect(isCaptureReport({ ...report, frameRate: null })).toBe(false);
+    // The microphone the engine opened (plan 074).
+    expect(isCaptureReport({ ...report, microphone: "MacBook Pro Microphone" })).toBe(true);
+    expect(isCaptureReport({ ...report, microphone: true })).toBe(false);
     expect(isCaptureReport({ ...report, audioBitsPerSecond: Infinity })).toBe(false);
     expect(isCaptureReport({ ...report, capUnconfirmed: true })).toBe(true);
     expect(isCaptureReport({ ...report, capUnconfirmed: false })).toBe(false);

@@ -78,6 +78,8 @@ describe("settingsView", () => {
       "fileName",
       "countdown",
       "countdownSound",
+      "microphone",
+      "microphoneDevice",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -101,7 +103,8 @@ describe("settingsView", () => {
     ]);
     for (const entry of view.groups) {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" || entry.kind === "shortcutList" ? 0 : 1);
-      expect(entry.enabled, entry.id).toBe(true);
+      // The input device waits for the microphone's switch, which is off by default (plan 074).
+      expect(entry.enabled, entry.id).toBe(entry.id !== "microphoneDevice");
     }
     expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "countdownSound")).toBe("on");
@@ -193,7 +196,83 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "source", "countdown", "countdown", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
+  });
+});
+
+describe("microphone (plan 074)", () => {
+  const devices = [
+    { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },
+    { id: "usb-mic", name: "USB Microphone", default: false },
+  ];
+  const on = (microphone: Partial<NonNullable<AppContext["microphone"]>> = {}): AppContext =>
+    ({ ...context, microphone: { enabled: true, devices, access: "granted", ...microphone } });
+
+  it("is a switch, off by default, in the Recording tab's Audio section after the countdown, and says to use headphones", () => {
+    const row = group(idle, context, "microphone")!;
+    expect(row).toMatchObject({ label: "Microphone", control: "switch", tab: "recording", section: "audio" });
+    expect(row.info).toContain("headphones");
+    expect(checked(idle, context, "microphone")).toBe("off");
+    expect(checked(idle, on(), "microphone")).toBe("on");
+    expect(settingsAction(idle, context, "microphone", "on")).toEqual({ setMicrophone: true });
+    expect(settingsAction(idle, on(), "microphone", "off")).toEqual({ setMicrophone: false });
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphone")).toMatchObject({ label: "麥克風", sectionHeading: "音訊" });
+  });
+
+  it("is locked with the input device while a session runs", () => {
+    for (const state of busy) {
+      expect(group(state, on(), "microphone")?.enabled, state.type).toBe(false);
+      expect(group(state, on(), "microphoneDevice")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, on(), "microphone", "off"), state.type).toBeUndefined();
+      expect(settingsAction(state, on(), "microphoneDevice", "usb-mic"), state.type).toBeUndefined();
+    }
+  });
+
+  it("shows a macOS denial with the pane that changes it, only while the switch is on", () => {
+    const denied = group(idle, on({ access: "denied" }), "microphone")!;
+    expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Microphone access is off" })]);
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open microphone settings…" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "microphone", "openSettings")).toBe("openMicrophoneSettings");
+    expect(group(idle, on({ access: "restricted" }), "microphone")?.diagnostics).toHaveLength(1);
+    expect(group(idle, { ...context, microphone: { enabled: false, access: "denied" } }, "microphone")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on(), "microphone")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on({ access: "not-determined" }), "microphone")).toMatchObject({ noteKind: "status",
+      note: "macOS asks for microphone access when you next record." });
+    expect(group(idle, { ...on({ access: "denied" }), language: "zh-TW" }, "microphone")?.diagnostics?.[0]?.heading).toBe("未允許取用麥克風");
+    // Windows has no status to read and no pane to link.
+    const windows = group(idle, { ...on(), platform: "win32", microphone: { enabled: true, devices } }, "microphone")!;
+    expect(windows).not.toHaveProperty("diagnostics");
+    expect(windows).not.toHaveProperty("actions");
+    expect(settingsAction(idle, { ...on(), platform: "win32" }, "microphone", "openSettings")).toBeUndefined();
+  });
+
+  it("offers the system default, named after the device it is now, then each listed input", () => {
+    const row = group(idle, on(), "microphoneDevice")!;
+    expect(row).toMatchObject({ label: "Input device", control: "menu", section: "audio", enabled: true });
+    expect(row.choices.map(c => [c.id, c.label, c.checked])).toEqual([
+      ["systemDefault", "System default (MacBook Pro Microphone)", true],
+      ["BuiltInMicrophoneDevice", "MacBook Pro Microphone", false],
+      ["usb-mic", "USB Microphone", false],
+    ]);
+    expect(settingsAction(idle, on(), "microphoneDevice", "usb-mic")).toEqual({ setMicrophoneDevice: { id: "usb-mic", label: "USB Microphone" } });
+    expect(settingsAction(idle, on({ device: { id: "usb-mic", label: "USB Microphone" } }), "microphoneDevice", "systemDefault")).toEqual({ setMicrophoneDevice: null });
+    expect(checked(idle, on({ device: { id: "usb-mic", label: "USB Microphone" } }), "microphoneDevice")).toBe("usb-mic");
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneDevice")?.choices[0]?.label).toBe("跟隨系統（MacBook Pro Microphone）");
+    // Off: the stored input is kept but cannot be chosen until the microphone is on.
+    expect(group(idle, { ...on(), microphone: { enabled: false, devices } }, "microphoneDevice")?.enabled).toBe(false);
+    expect(settingsAction(idle, { ...on(), microphone: { enabled: false, devices } }, "microphoneDevice", "usb-mic")).toBeUndefined();
+  });
+
+  it("keeps a chosen input that is not connected selected and says the default is used until it is back", () => {
+    const missing = on({ device: { id: "headset", label: "AirPods" } });
+    const row = group(idle, missing, "microphoneDevice")!;
+    expect(row.choices.at(-1)).toMatchObject({ id: "headset", label: "AirPods — Not connected", enabled: false, checked: true });
+    expect(row).toMatchObject({ noteKind: "status", note: "Recordings use the system default input until AirPods is connected." });
+    expect(settingsAction(idle, missing, "microphoneDevice", "headset")).toBeUndefined();
+    // Before the inputs are listed nothing is known to be missing: the stored one is simply shown.
+    const unlisted = group(idle, { ...context, microphone: { enabled: true, device: { id: "headset", label: "AirPods" } } }, "microphoneDevice")!;
+    expect(unlisted.choices.map(c => [c.id, c.label, c.checked])).toEqual([["systemDefault", "System default", false], ["headset", "AirPods", true]]);
+    expect(unlisted).not.toHaveProperty("note");
   });
 });
 
@@ -318,7 +397,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "countdown", "countdownSound", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "countdown", "countdownSound", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -509,6 +588,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
@@ -764,13 +844,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
-      ["screen", "Source and output"], ["countdown", "Before recording"], ["videoQuality", "Video"],
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "影像", "操作與通知", "語言與外觀", "更新",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "影像", "操作與通知", "語言與外觀", "更新",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });

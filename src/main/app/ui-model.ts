@@ -19,6 +19,7 @@ import type { SettingsHotkeyStatus } from "../shortcuts/settings-hotkey";
 import type { UpdateState } from "./updates";
 import type { QuitDeferral } from "./quit-feedback";
 import type { LibraryState, RecordingFileAction } from "../library/recordings-library";
+import type { MicrophoneDevice } from "../../shared/protocol";
 
 export type AppAction =
   | "openSettings"
@@ -40,6 +41,8 @@ export type AppAction =
   | "undoTrash"
   | "openPermissionSettings"
   | "openNotificationSettings"
+  /** System Settings → Privacy & Security → Microphone (plan 074), macOS only. */
+  | "openMicrophoneSettings"
   | "relaunch"
   | "start"
   | "stop"
@@ -63,6 +66,9 @@ export type AppAction =
   | { setCountdown: CountdownSeconds }
   | { setCountdownSound: boolean }
   | { setHideSystemUi: boolean }
+  | { setMicrophone: boolean }
+  /** `null` is the system default input. */
+  | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }
   | { setTrayClick: TrayClick }
   | { setFileNameTemplate: string }
@@ -70,6 +76,17 @@ export type AppAction =
   | { setLibraryPreviewSound: boolean }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
+
+/** What the Microphone rows and the tray's checkbox show (plan 074). */
+export interface MicrophoneContext {
+  enabled: boolean;
+  /** The stored input; absent is the system default. */
+  device?: { id: string; label: string };
+  /** The inputs the engine listed last; absent until they are listed, or when listing failed. */
+  devices?: readonly MicrophoneDevice[];
+  /** macOS's answer for the microphone (`getMediaAccessStatus`); absent on Windows, which has no status to read. */
+  access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+}
 
 /** The persisted choice plus whether the OS actually accepted the registration. */
 export interface AppHotkey extends HotkeySettings {
@@ -88,6 +105,8 @@ export interface AppContext {
   displayFailure?: DisplayFailure;
   /** The stored D6 switch (plan 076): macOS recordings leave out the menu bar and Dock; absent is off. */
   hideSystemUi?: boolean;
+  /** The microphone (plan 074); absent is off with nothing known about the inputs. */
+  microphone?: MicrophoneContext;
   platform: NodeJS.Platform;
   outputDir: string;
   homeDir: string;

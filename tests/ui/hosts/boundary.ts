@@ -2,7 +2,7 @@
  * The background hosts' OS boundary (plan 066). Every BrowserWindow is created hidden, offscreen, muted and unthrottled;
  * the calls that would show, focus, minimize, restore or cover the screen with it are recorded and answered from a
  * virtual window state instead of reaching the desktop. The tray, notifications, global shortcuts, dialogs, external
- * opens, the Dock and display capture are adapters that record what was requested. Nothing else is replaced: IPC,
+ * opens, the Dock, display capture and the capture engine's process are adapters that record what was requested. Nothing else is replaced: IPC,
  * storage, the media protocol and every page and preload are the production ones.
  *
  * What this proves is containment of the fixture, not that macOS would have shown, focused or delivered anything:
@@ -297,6 +297,23 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
     Tray: class extends TestTray { constructor(image: unknown) { super(image, created => { tray = created; record("tray:create"); }); } },
     Notification: ObservedNotification,
     globalShortcut: shortcuts,
+    // The capture engine's process (plan 074): it only lists one test microphone, so no real device is opened or named.
+    utilityProcess: {
+      fork: (modulePath: string) => {
+        record("utilityProcess:fork", path.basename(modulePath));
+        const child = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(), stderr: new EventEmitter(),
+          postMessage: (message: { type?: string }) => {
+            record("utilityProcess:postMessage", message.type);
+            if (message.type === "listMicrophones") setImmediate(() => child.emit("message", { type: "microphones",
+              devices: [{ id: "test-microphone", name: "Test Microphone", default: true }] }));
+          },
+          kill: () => { record("utilityProcess:kill"); setImmediate(() => child.emit("exit", 0)); return true; },
+        });
+        setImmediate(() => child.emit("message", { type: "ready" }));
+        return child;
+      },
+    },
     // One screen, so the permission check (permission.ts) finds capture allowed; nothing is captured from it.
     desktopCapturer: { getSources: async () => { record("desktopCapturer:getSources"); return [{ id: "screen:0:0", name: "Test display", display_id: "0" }]; } },
     systemPreferences: {

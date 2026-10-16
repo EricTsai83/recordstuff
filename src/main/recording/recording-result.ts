@@ -489,6 +489,7 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
   display_unavailable: "Selected display is unavailable",
   no_display: "No display is available for recording.",
   no_audio_track: "System audio was unavailable at start, so nothing was recorded.",
+  microphone_unavailable: "The microphone was unavailable, so recording did not start.",
   mp4_unsupported: "MP4 recording is not supported on this computer.",
   capture_start_failed: "Could not start recording.",
   capture_failed: "Recording was interrupted.",
@@ -502,6 +503,12 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
 };
 export const failureReason = (code: ErrorCode, language: Language): string => t(reasons[code], language);
 export function failureGuidance(code: ErrorCode, language: Language, platform: NodeJS.Platform = process.platform): string {
+  // Refused before the countdown (plan 074): a missing device and a denied access look alike to the engine, so both are
+  // named, and turning the microphone off is the way to record without it. Not a screen-permission failure: its
+  // Open System Settings would open the wrong pane.
+  if (code === "microphone_unavailable") return t(platform === "darwin"
+    ? "Connect a microphone and allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off in Recording settings."
+    : "Connect a microphone and allow desktop apps in Settings → Privacy & security → Microphone, or turn Microphone off in Recording settings.", language);
   // Windows loopback records the default playback device, so a missing one ends system audio (plan 064).
   if (platform === "win32" && code === "no_audio_track")
     return t("System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.", language);

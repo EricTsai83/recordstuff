@@ -75,17 +75,18 @@ function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
-const RECORDING_SECTIONS = new Set(["source", "countdown", "video"]);
+const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
+  microphone: "audio", microphoneDevice: "audio",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -95,6 +96,7 @@ const SECTIONS: Record<string, string> = {
 const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   source: "Source and output",
   countdown: "Before recording",
+  audio: "Audio",
   video: "Video",
   controls: "Controls and notifications",
   display: "Language and appearance",
@@ -244,6 +246,64 @@ function countdownSoundGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   return { ...group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0,
     switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value }))), info: t("The tick is not recorded.", language) };
+}
+
+/**
+ * The microphone (plan 074): off by default and locked while recording. Turning it on asks macOS for access then and
+ * there (actions.ts), so the prompt follows the user's own click; a denial keeps the setting and is shown here with
+ * the pane that changes it, since a recording would be refused before its countdown.
+ */
+function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  const microphone = ctx.microphone ?? { enabled: false };
+  const result: Group = { ...group("microphone", t("Microphone", language), enabled,
+    switchChoices(language, microphone.enabled, (value) => ({ setMicrophone: value }))),
+  info: t("Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.", language) };
+  if (ctx.platform !== "darwin" || !microphone.enabled) return result;
+  if (microphone.access === "denied" || microphone.access === "restricted") {
+    result.diagnostics = [{ kind: "current", heading: t("Microphone access is off", language),
+      reason: t("Recording will not start while Microphone is on.", language),
+      guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.", language) }];
+    result.actions = [{ id: "openSettings", label: t("Open microphone settings…", language), enabled: true, checked: false,
+      action: "openMicrophoneSettings" satisfies AppAction }];
+  } else if (microphone.access === "not-determined") {
+    result.note = t("macOS asks for microphone access when you next record.", language);
+    result.noteKind = "status";
+  }
+  return result;
+}
+
+/** The choice id of the system default input; device ids come from the engine. */
+const DEFAULT_MICROPHONE = "systemDefault";
+
+/**
+ * Which input (plan 074): the system default, named after the device it is now, or one the engine listed. A chosen
+ * input that is not connected stays selected and says so: the engine records the default input until it is back.
+ */
+function microphoneDeviceGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  const microphone = ctx.microphone ?? { enabled: false };
+  const devices = (microphone.devices ?? []).filter((device) => device.id !== DEFAULT_MICROPHONE);
+  const current = devices.find((device) => device.default);
+  const stored = microphone.device;
+  const choices: Group["choices"] = [{
+    id: DEFAULT_MICROPHONE, label: current ? t("System default ({name})", language, { name: current.name }) : t("System default", language),
+    enabled: true, checked: stored === undefined, action: { setMicrophoneDevice: null },
+  }, ...devices.map((device) => ({
+    id: device.id, label: device.name, enabled: true, checked: stored?.id === device.id,
+    action: { setMicrophoneDevice: { id: device.id, label: device.name } } satisfies AppAction,
+  }))];
+  // Not listed: missing when the inputs are known, or not yet known at all.
+  const missing = stored !== undefined && !devices.some((device) => device.id === stored.id);
+  if (missing) choices.push({ id: stored.id,
+    label: microphone.devices ? t("{label} — Not connected", language, { label: stored.label }) : stored.label,
+    enabled: !microphone.devices, checked: true, action: { setMicrophoneDevice: stored } });
+  const result = group("microphoneDevice", t("Input device", language), enabled && microphone.enabled, choices);
+  if (missing && microphone.devices) {
+    result.note = t("Recordings use the system default input until {label} is connected.", language, { label: stored.label });
+    result.noteKind = "status";
+  }
+  return result;
 }
 
 function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
@@ -498,6 +558,8 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     fileNameGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
+    microphoneGroup(ctx, unlocked),
+    microphoneDeviceGroup(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     // General contains everyday preferences and its About footer; maintenance lives in Troubleshooting.
     trayClickGroup(ctx),

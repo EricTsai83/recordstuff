@@ -167,6 +167,8 @@ export interface CaptureReport {
    * Frames smaller than the target stay within the cap and only log a warning.
    */
   capUnconfirmed?: true;
+  /** The microphone mixed into the track, by the name of the device the engine opened (plan 074); absent without one. */
+  microphone?: string;
 }
 
 function isOptionalFiniteNumber(value: unknown): value is number | undefined {
@@ -188,7 +190,8 @@ export function isCaptureReport(value: unknown): value is CaptureReport {
     Number.isFinite(record["audioBitsPerSecond"]) &&
     Array.isArray(record["warnings"]) &&
     record["warnings"].every((w) => typeof w === "string") &&
-    (record["capUnconfirmed"] === undefined || record["capUnconfirmed"] === true)
+    (record["capUnconfirmed"] === undefined || record["capUnconfirmed"] === true) &&
+    (record["microphone"] === undefined || typeof record["microphone"] === "string")
   );
 }
 

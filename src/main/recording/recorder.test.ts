@@ -9,7 +9,7 @@ import type { EngineFileReport, HostMessage } from "../../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import type { RecordingState } from "../../shared/state";
 import type { RecordingFailure } from "../../shared/recording-result";
-import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter } from "./recorder";
+import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCapture } from "./recorder";
 import { COUNTDOWN_TIMING } from "../../shared/countdown";
 import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
@@ -31,11 +31,14 @@ class FakeHost implements RecorderHost {
 
   /** The temporary file each `start` named, for the native engine (plan 076). */
   recordingPaths: (string | undefined)[] = [];
-  async start(sessionId: string, quality: QualitySettings, recordingPath?: string): Promise<void> {
+  /** What else each `start` was asked to capture (plan 074). */
+  capturedWith: (SessionCapture | undefined)[] = [];
+  async start(sessionId: string, quality: QualitySettings, recordingPath?: string, capture?: SessionCapture): Promise<void> {
     if (this.startError) throw this.startError;
     this.started.push(sessionId);
     this.startedWith.push(quality);
     this.recordingPaths.push(recordingPath);
+    this.capturedWith.push(capture);
   }
   record(sessionId: string): void {
     if (this.recordError) throw this.recordError;
@@ -179,6 +182,88 @@ describe("formatTimestamp", () => {
     expect(fileName).toHaveBeenCalledWith(new Date(2026, 8, 11, 14, 30, 0));
     expect([ctx.writers[0]!.recordingPath, ctx.writers[0]!.finalPath])
       .toEqual([path.join("/out", "Demo 2026-09-11 14-30-00.recording.mp4"), path.join("/out", "Demo 2026-09-11 14-30-00.mp4")]);
+  });
+});
+
+describe("the microphone (plan 074)", () => {
+  it("passes nothing to the host and logs mic off without the dependency or with the switch off", async () => {
+    for (const microphone of [undefined, () => ({ enabled: false, deviceId: "usb" })]) {
+      const logs: string[] = [];
+      const ctx = setup({ log: (line) => logs.push(line), deps: microphone ? { microphone } : {} });
+      await startRecording(ctx);
+      expect(ctx.host.capturedWith).toEqual([undefined]);
+      expect(logs).toContainEqual(expect.stringMatching(/prepared after \d+ ms; countdown 0 s; sound off; mime video\/mp4; mic off$/));
+    }
+  });
+
+  it("snapshots the choice when the session begins, passes it without its label and names the device in the log", async () => {
+    const logs: string[] = [];
+    let choice = { enabled: true, deviceId: "usb", label: "USB Microphone" };
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => choice } });
+    ctx.recorder.toggle();
+    choice = { enabled: false, deviceId: "other", label: "Other" };
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.capturedWith).toEqual([{ microphone: { enabled: true, deviceId: "usb" } }]);
+    expect(logs).toContainEqual(expect.stringContaining("; mic on (USB Microphone)"));
+  });
+
+  it("names the device the engine opened, which is the default input when the chosen one was not connected", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => ({ enabled: true, deviceId: "usb", label: "USB Microphone" }) } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1", { ...CAPTURE, microphone: "MacBook Pro Microphone" }));
+    await flush();
+    expect(logs).toContainEqual(expect.stringContaining("; mic on (MacBook Pro Microphone)"));
+  });
+
+  it("refuses with microphone_unavailable before any countdown", async () => {
+    const ctx = setup({ deps: { microphone: () => ({ enabled: true }) } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "microphone_unavailable", detail: "microphone: there is no audio input" });
+    await flush();
+    expect(ctx.events).toContainEqual(expect.objectContaining({ type: "failed", code: "microphone_unavailable", outcome: "empty" }));
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("keeps recording when the microphone is lost, logs each dropout and its return, tells it once and marks the saved recording", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => ({ enabled: true }) } });
+    await startRecording(ctx);
+    ctx.host.emit({ type: "microphoneLost", sessionId: "s1", detail: "the microphone delivered no sound for 2 s" });
+    ctx.host.emit({ type: "microphoneResumed", sessionId: "s1", detail: "the microphone delivered sound again after 2.4 s" });
+    ctx.host.emit({ type: "microphoneLost", sessionId: "s1", detail: "again" });
+    ctx.host.emit({ type: "microphoneLost", sessionId: "other", detail: "another session's" });
+    ctx.host.emit({ type: "microphoneResumed", sessionId: "other", detail: "another session's" });
+    expect(ctx.events.filter((event) => event.type === "microphoneLost")).toEqual([
+      { type: "microphoneLost", sessionId: "s1", detail: "the microphone delivered no sound for 2 s" }]);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logs.filter((line) => line.includes("microphone lost; recording continues without it"))).toHaveLength(2);
+    expect(logs.filter((line) => line.includes("microphone resumed"))).toEqual([
+      expect.stringContaining("microphone resumed: the microphone delivered sound again after 2.4 s")]);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.find((event) => event.type === "saved")).toMatchObject({ microphoneLost: true });
+  });
+
+  it("saves a recording whose microphone stayed without the mark, and ignores a loss before recording", async () => {
+    const ctx = setup({ deps: { microphone: () => ({ enabled: true }) } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit({ type: "microphoneLost", sessionId: "s1", detail: "while preparing" });
+    ctx.host.emit(prepared("s1"));
+    ctx.host.emit(chunk("s1", 0));
+    await flush();
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.some((event) => event.type === "microphoneLost")).toBe(false);
+    expect(ctx.events.find((event) => event.type === "saved")).not.toHaveProperty("microphoneLost");
   });
 });
 

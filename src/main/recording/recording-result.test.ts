@@ -122,6 +122,17 @@ it("names both causes of missing system audio on macOS, a very busy Mac first, a
   expect(isPermissionFailure("no_audio_track")).toBe(true);
 });
 
+it("explains an unavailable microphone on each platform, with turning it off as the way to record without it (plan 074)", () => {
+  expect(failureReason("microphone_unavailable", "en")).toBe("The microphone was unavailable, so recording did not start.");
+  expect(failureReason("microphone_unavailable", "zh-TW")).toBe("麥克風無法使用，因此沒有開始錄影");
+  expect(failureGuidance("microphone_unavailable", "en", "darwin")).toContain("System Settings → Privacy & Security → Microphone");
+  expect(failureGuidance("microphone_unavailable", "en", "win32")).toContain("Settings → Privacy & security → Microphone");
+  for (const platform of ["darwin", "win32"] as const) expect(failureGuidance("microphone_unavailable", "en", platform)).toContain("turn Microphone off");
+  expect(failureGuidance("microphone_unavailable", "zh-TW", "darwin")).toContain("關閉「麥克風」");
+  // Not a screen-permission failure: its Open System Settings would open the wrong pane.
+  expect(isPermissionFailure("microphone_unavailable")).toBe(false);
+});
+
 it("does not relaunch again for a restored permission error unless current permission needs it", async () => {
   const io = effects();
   const store = new RecordingResults({ load: async () => [{ ...a, code: "permission_denied", outcome: "empty", acknowledged: false }], save: async () => {} });
