@@ -4,6 +4,45 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 074 結案 — 2026-10-16
+
+錄影原本只有系統音訊，錄有旁白的螢幕錄影得另開一個 App。Plan 074 透過 076 的引擎加入麥克風，預設關閉，與系統音訊混進同一條 AAC 音軌。設計見[錄影](../system-design/recording.md)、[音質](../system-design/audio-quality.md)、[錄影為何離開 Chromium 的 WebRTC 擷取](../system-design/webrtc.md)與[桌面](../system-design/desktop.md)。
+
+- **決定（2026-10-16，維護者）。** 「錄影設定」分頁新增「音訊」區塊與「麥克風」開關，托盤 idle 選單另有「錄製麥克風」勾選項；「輸入裝置」選擇器（跟隨系統或列出的輸入裝置）；開關開啟時，權限被拒或輸入裝置無法開啟，會在倒數之前拒絕開始（`microphone_unavailable`）；錄影中失去麥克風時繼續錄影，只留系統音訊；原始麥克風以單位增益與未處理的系統音訊混音，不使用平台的語音處理，喇叭回音的建議是戴耳機。
+- **與計畫文字不同之處。** `microphone_unavailable` 不歸入螢幕權限失敗，因為那裡的「開啟系統設定」會開到螢幕錄製的設定頁；macOS 的拒絕改由「麥克風」卡片與拒絕通知提供自己的動作。選定的裝置未連接時，依選擇器的替代方案改用系統預設並在 prepared 警告中註明，而不是拒絕。托盤項目在 idle 以外不顯示，而不是停用。`pnpm autorecord` 新增 `microphone`（預設關閉）。實際開啟的裝置名稱寫在 capture 紀錄（`CaptureReport.microphone`），沒有寫進 capture log 那一行，因為 `pnpm verify` 會讀那一行的格式。
+- **引擎。** 錄影中麥克風 2 s 沒有送來聲音時，回報一次遺失；之後送來的聲音會丟棄，不再混回去；麥克風的轉換錯誤（macOS）或 pump 錯誤（Windows）只會失去麥克風，不會讓整個 session 失敗。Windows 在選定的端點不存在或未啟用時改用預設端點，`Initialize` 之後的失敗對應到 `microphone_unavailable`。裝置清單在自己的短命 utility process 中列出，只在沒有錄影時執行，開始錄影會取消它。
+- **打包。** `NSMicrophoneUsageDescription` 與 `com.apple.security.device.audio-input` entitlement，都以 `codesign -d --entitlements` 與 bundle 的 Info.plist 確認。開發版 Electron 沒有使用說明，macOS 不跳提示就直接拒絕：`pnpm audio:quality -- record` 無法錄麥克風，以下的音質測試改用打包版 App 搭配 `audio:quality -- verify`。
+- **學習文章。** [音訊時脈、混音與影音同步](../../learning/audio-clocks-mixing-and-av-sync.html)，來源（076 與 074）至此都已結案；「媒體權限與隱私」等 075。
+
+### 驗證
+
+2026-10-16 在參考用 MacBook Pro（macOS 26，Darwin 25.6）上進行桌面回合，使用新的 `pnpm start:app` bundle，預設輸入是 BenQ Monitor 的 USB 麥克風，輸出到有線耳機。Claude 執行 runner 並判讀截圖；維護者回應系統提示並完成需要動手的步驟。
+
+- **錄影 smoke。** 麥克風關閉與開啟各跑一次 `pnpm acceptance`：每次都是 10 個閃光、10 個嗶聲、完整性通過、取消案例通過；log 的 prepared 行結尾是 `mic off` 或 `mic on (BenQ Monitor)`。對麥克風開啟的檔案執行 `pnpm acceptance:playback` 通過（時長、即時播放、seek、seek 後畫面、播到結尾）。第一次以麥克風開始時，macOS 跳出帶使用說明的提示，App 停在 `starting`、沒有倒數，直到維護者允許；那次 session 之後錄了 11 分 51 秒，視訊與音訊都是 711.20 s，沒有遺失。
+- **指示燈。** 倒數時出現橘色麥克風指示燈，取消後 3 s 內消失（截圖）。
+- **托盤。** 兩種語言的 `pnpm acceptance:tray`：idle 選單在「開始錄影」之後列出「錄製麥克風」，方向鍵移得到它。zh-TW 的 keyboard 案例因 Open RecordStuff 之後焦點被 Cursor 搶走而失敗一次；只用 zh-TW 重跑後全部通過。
+- **音質與 ducking**（fixture v2，各三次，`audio:quality -- verify`）。麥克風關閉：通過，增益差在 0.001 dB 內，residual −49.8 至 −54.0 dB，separation ≥116.6 dB。麥克風開啟且輸出有聲：麥克風收到耳機漏音與房間的聲音（其中一次 marker gap −3.6 dB），所以分析失敗是因為真實的麥克風聲音，不是混音器。麥克風開啟且輸出靜音（ScreenCaptureKit 在輸出音量之前取得 App 的音訊，所以麥克風只收到房間）：通過，維持 48 kHz 立體聲，時鐘在 ±0.3 ppm 內，增益差在 0.035 dB 內，residual −34.9 至 −35.9 dB、separation 36.1 至 41.0 dB，是加上房間底噪（單獨量為 −59.9 dBFS RMS）的結果。混音器沒有重新取樣、沒有把立體聲合成單聲道、也沒有改變音量，系統聲音部分沒有 ducking。限制：這台 Mac 沒有靜音的虛擬輸入，所以「靜音」是以靜音輸出模擬。
+- **同步。** 按鍵時會變白的頁面，在麥克風開啟下錄影：用力敲五下空白鍵，聲音比白畫面早 20 至 40 ms，中位數 −30 ms（解析度 10 ms）。畫面還要經過 Chrome 繪製、合成與擷取（60 Hz 下一到兩個影格），所以麥克風沒有延遲；按鍵到畫面亮起的時間沒有另外量。
+- **CPU。** `pnpm measure:cpu -- --minutes 2 --skip-settings --skip-playback`：30 fps 錄影時，麥克風開啟佔一個核心的 13.3%（95th 14.2%），同日關閉時為 9.9%（10.6%），差異全在擷取程序；低於 30% 的預算，對照記錄的 baseline +25%（13.0%）為 warn。閒置 0.048%，錄影後 0.041%，沒有留下擷取程序。
+- **失去裝置。** 選定 iPhone 的接續互通麥克風後，維護者在錄影中關閉 iPhone 的藍牙：2 s 後 log 記下 `microphone lost; recording continues without it`，錄影繼續；停止時先後出現麥克風中斷與已儲存的通知；視訊與音訊都是 98.98 s，存檔紀錄帶有 `microphoneLost`。
+- **拒絕。** 執行 `tccutil reset Microphone com.ericts.record` 後開始錄影，跳出提示；選「不允許」後以 `microphone_unavailable` 拒絕開始，沒有產生檔案並送出失敗通知；「錄影設定」分頁的「麥克風」卡片顯示拒絕、說明與「開啟麥克風設定…」。之後再次 reset 回「尚未詢問」，即驗收前的狀態。開發版 Electron 不跳提示就被拒，走的也是同一條拒絕路徑。
+- **自動化。** `pnpm check`（152 個檔案、1847 個測試）、`cargo test --lib`（70 個），包括新的 core 與 mixer 案例（遺失只回報一次，之後的聲音丟棄；十分鐘有抖動的麥克風緩衝區保持對齊）、Windows target 的 `cargo check`，以及背景 UI 套件 159 個案例，其中 S117–S120 涵蓋「音訊」區塊。文件步驟沒有改動 App 程式碼：`pnpm site:check`、學習文章的 validator、對變更文件的連結與錨點檢查，以及 `git diff --check` 都通過。
+- **審查。** Codex GPT-6.1 Sol，唯讀，兩輪。第 1 輪：遺失的麥克風之後的聲音仍被混入；Windows 在 `Initialize` 之後的失敗被歸為 `capture_start_failed`；capture 紀錄缺少實際開啟的裝置。第 2 輪確認這些修正，並發現裝置列舉可能延續到錄影期間，現在可以取消且只在 idle 時執行。四項都已修正；最後一項修正沒有再審。
+- **證據。** 原始檔在 `docs/verification/measurements/`（僅本機）：`2026-10-16-074-microphone-fidelity/`（音質報告、同步頁面與分析、指示燈與拒絕的截圖）、`2026-10-16-074-audio-off/`，以及當天 tray、hotkey、playback 與 CPU 的報告目錄。這些回合在維護者的歷史紀錄中新增了失敗紀錄（未讀 8 → 10）。
+
+### 結案後：與 OBS、Chromium、Cap 比對（2026-10-16）
+
+依維護者要求，把桌面回合無法涵蓋的部分（Windows、靜音的麥克風、拔除裝置、時鐘）以只讀程式碼的方式，與 obs-studio `1ad6110`、Chromium `e545d1e` 和 Cap `d7d36a3` 比對；Cap 的 AGPL 程式碼只供參考設計。每一項發現在修改前都先對照我們的程式碼確認。
+
+- **修正的缺陷。**麥克風的聲音先遇到音訊編碼器錯誤時，兩個平台都會把它當成麥克風中斷；現在改為讓錄影失敗（`capture_failed`），並加上測試。Windows 原本直接相信麥克風的 QPC 時間：驅動程式給出偏差數秒的位置時，整個麥克風會被無聲地丟掉，或在音軌遠處填滿靜音；現在依 Chromium 的做法（crbug.com/1439283），第一個 packet 與抵達時間相差超過 500 ms 的裝置，以及帶有 `AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR` 的 packet，都改用抵達時間（`PacketTimes`，有測試）。
+- **維護者的決定，已實作。**麥克風中斷後聲音回來就重新收音（`microphoneResumed`；通知改為「錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。」）。兩個以上的輸入相加超過 −1 dBFS 時改為軟限幅，不再削波（之前兩個平台的行為不同）；只有一個輸入或相加沒有超過時不變。只超過 10 ms 容差一點（最多 2 ms）的偏差，每個 buffer 修正 1 個 frame，取代一次跳 10 ms；在 100 ppm 下原本約每 100 秒就有一次空洞或切斷。麥克風以單聲道擷取、放到兩個聲道，錄音介面 input 1 的麥克風不再只在左耳。stop log 會記錄每個輸入的修正量與限幅樣本數。
+- **補強。**Windows 的麥克風 stream 退出系統 ducking（`SetDuckingPreference`），`E_ACCESSDENIED` 回報為隱私權設定。
+- **修改後引擎的桌面回合**（Claude 執行，維護者操作）。Settings 的開關觸發了 macOS 的提示，選擇允許。麥克風開啟時的 `pnpm acceptance` 通過：10 個閃光、9 個嗶聲（第一個落在檔案開頭、前面沒有靜音，偵測方式無法計入）、完整性與取消案例。iPhone 麥克風的錄影中，35 秒內左聲道減右聲道為 −inf dB：麥克風以單聲道放在兩個聲道。iPhone 麥克風斷線一次、HUAWEI FreeClip 2 藍牙耳機斷線兩次：每次 2 秒後判定中斷，錄影繼續，存檔紀錄帶有 `microphoneLost`，新通知在結束時出現，視訊與音訊等長（362.84 s、135.45 s、154.72 s）。
+- **重新連上後沒有接回。**兩種裝置重新連上（耳機甚至成了預設輸入）後都沒有被接回：AVFoundation 的連線通知一則都沒送到，回合中嘗試的每秒依 `uniqueID` 查詢版本也沒用，這段程式碼已移除。App 外的實驗（每秒查一次）說明了原因：沒有 run loop 時，CoreAudio 的裝置清單立刻少了耳機，`AVCaptureDevice(uniqueID:)` 與新建的 `DiscoverySession` 在 27 秒後仍回報它在線；主執行緒有 run loop 時，AVFoundation 也立刻跟上。AVFoundation 的裝置狀態靠主 run loop 更新，而引擎所在的 utility process 沒有執行它。Cap 透過 cpal（CoreAudio）擷取，且跑在有 run loop 的 Tauri 程序裡，所以不會遇到；Chromium 的 audio service 和我們的引擎一樣在瀏覽器主程序之外，用 CoreAudio AUHAL 擷取並以 `AudioObjectAddPropertyListener` 監聽。改用 CoreAudio 重開是 [078](../../../plans/078-native-capture-follow-ups.zh-TW.md) 新的步驟 6；在那之前只有同一個 session 的停擺會被接回（有單元測試，實機上尚未遇到）。
+- **檢查。**`pnpm check`（152 個檔案、1848 個測試；`cargo test --lib` 74 個，新增編碼器錯誤、packet 時間、逐格修正、限幅與重新收音的案例）、Windows target 的 `cargo check --tests` 與 clippy、文件連結與學習文章的 validator。這一輪使用的 bundle 仍含後來移除的重連程式碼；最終原始碼與它的差別只有這段移除，並已重新建置與測試。審查：Codex GPT-6.1 Sol，唯讀，兩輪。第 1 輪：麥克風的中斷與恢復可能以錯誤順序送出，watchdog 也可能把過時的送音時間當成靜音而標記錄影，因此送音時間、中斷狀態與兩種事件改用同一把鎖；響亮的相加在 `f32` 下限幅結果可能剛好等於滿刻度，因此改為停在略低於滿刻度，並加上嚴格的測試。第 2 輪確認兩項修正，沒有新的 findings。
+
+未完成：人耳聆聽；Windows 麥克風（只有 CI）；重開重新連上的麥克風（078）；在限幅、漂移與單聲道修改後重跑音質、同步與 CPU（078 步驟 6）；CPU 多 3.4 個百分點的原因。
+
 ## Plan 076 結案 — 2026-10-16
 
 錄影原本透過隱藏 renderer 裡 Chromium 的 `getDisplayMedia` 與 `MediaRecorder` 進行，只能錄一個螢幕或一個視窗，也只能排除本 App 受保護的視窗；它無法隱藏選單列或 Dock，無法錄指定區域或選定的 App，也無法只錄一個 App 的聲音。Plan 076 在 macOS 與 Windows 上以原生 Rust 引擎（napi-rs）取代這條路徑：引擎在 Electron 的 `utilityProcess` 中擷取、編碼、封裝並寫檔，Chromium 路徑則已移除。設計見[錄影](../system-design/recording.md)、[架構](../system-design/architecture.md)與[設計決策](../system-design/decisions.md)中十列原生引擎的決策；[錄影為何離開 Chromium 的 WebRTC 擷取](../system-design/webrtc.md)是舊路徑的設計紀錄。

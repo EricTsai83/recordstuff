@@ -129,7 +129,7 @@
 | `start(id, quality, native)` | 拒絕重疊；探測來源，以 `fitWithinCap` 決定輸出尺寸、`videoBitsPerSecond` 決定位元率，以 `AUDIO_BITS_PER_SECOND` 對指定路徑 `prepare`，記錄 probe／prepare 耗時，送出 `prepared`，其 CaptureReport 的 warnings 記載來源尺寸、AAC priming、排除的 App 數與隱藏的系統視窗數；prepare 期間收到 stop 則取消並回 `stopped`；失敗時把引擎代碼對應到 host 代碼 |
 | `record(id)` | 重複的 record 忽略；不是已準備好的這個 session 就拒絕；呼叫引擎的 `record` 並送 `started` |
 | `stop(id)` | 準備中的 session 標為取消；已準備的取消並回 `stopped`；錄影中則等 `stop`、記錄其報告（drain、補靜音、畫格提前量、過晚的聲音、擷取的畫面數與最大間隔），送 `stopped`，再等 `finish` 並送 `finished` 或 `writeError` |
-| `event(event)` | 有 session 時：`progress` → `progress`；代碼已知的 `writeError` → `writeError`；`captureError` → `error`（未知代碼為 capture_failed） |
+| `event(event)` | 有 session 時：`progress` → `progress`；代碼已知的 `writeError` → `writeError`；`microphoneLost`／`microphoneResumed` → 同名的 host 訊息（plan 074）；`captureError` → `error`（未知代碼為 capture_failed） |
 | `fail` / `send` | 送 `error`／發 HostMessage |
 | `engineFailure(cause)` | 拆開引擎 `code\|detail` 形式的 reject；其他形式為帶原訊息的 capture_start_failed |
 | `developmentCapture(env)` | 讀 `RECORDSTUFF_CAPTURE_SOURCE`（`window:<id>`、`area:x,y,w,h`、`apps:<pid>,…`）與 `RECORDSTUFF_CAPTURE_AUDIO`（`off`、`apps:<pid>,…`）；其他值都錄整個螢幕與全部系統聲音 |
@@ -140,21 +140,21 @@
 
 | 項目 | 契約與副作用 |
 | --- | --- |
-| [lib.rs](../../../native/capture/src/lib.rs) `NativeCapture` | JavaScript 類別。`new(onEvent)` 建立 thread-safe 事件 callback（`progress`、`writeError`、`captureError`）。`probe(displayId, displayPoint?, source?)` → 來源尺寸；`prepare(options)` → `PreparedInfo`；`record()` 同步；`stop()` 在擷取結束後 → `StopReport`；`finish()` 在檔案成為一般 MP4 或確定原因後 → `FinishReport`，以 `disk_full` 或 `output_write_failed` reject；`cancel()` 釋放已準備的 session；`microphones()` 列出輸入裝置。除 `record` 外都以 `AsyncTask` 在 Node 的 worker pool 執行。其他平台以 capture_start_failed reject |
+| [lib.rs](../../../native/capture/src/lib.rs) `NativeCapture` | JavaScript 類別。`new(onEvent)` 建立 thread-safe 事件 callback（`progress`、`writeError`、`captureError`、`microphoneLost`、`microphoneResumed`）。`probe(displayId, displayPoint?, source?)` → 來源尺寸；`prepare(options)` → `PreparedInfo`；`record()` 同步；`stop()` 在擷取結束後 → `StopReport`；`finish()` 在檔案成為一般 MP4 或確定原因後 → `FinishReport`，以 `disk_full` 或 `output_write_failed` reject；`cancel()` 釋放已準備的 session；`microphones()` 列出輸入裝置。除 `record` 外都以 `AsyncTask` 在 Node 的 worker pool 執行。其他平台以 capture_start_failed reject |
 | [core/mod.rs](../../../native/capture/src/core/mod.rs) `Core` | session 中與平台無關的一半：`new` 接收 events、影格率、音訊位元率、輸入數與已開啟的檔案；`make_encoders` 在 `recordstuff-encoders` 執行緒建立編碼器；`first_frame` 等待擷取的第一張畫面；`record` 取得 `t0`、建立混音器、啟動 writer 與 `recordstuff-refresh` 執行緒；`drain` 在停止點結束兩條軌道，最多等 250 ms 取得到該時刻為止的聲音，其餘補靜音；`halt`／`halted` 包住平台停止擷取的動作；`end` flush 編碼器並要求 writer 完成檔案（`Finishing`，最多等 120 秒）；`release` 釋放從未錄影的 session 的編碼器 |
 | `Shared::frame` / `frame_unchanged` / `frame_without_picture` | 某個主機時間的完整畫格，保留為最新一格，由 `Pacer` 接納時編碼／畫面未變的刷新：在 pacer 的格位重新編碼最新畫面／沒有畫面的送達，只計數 |
-| `Shared::sound` / `wants_sound` / `fail` | 把某個輸入在某個主機時間的樣本放入混音器，在音訊鎖內混音、編碼並送出 AAC 封包，於停止點截斷／目前是否收聲音／只回報第一次擷取或編碼失敗（錄影中或收尾到停止點時為 capture_failed，之前為 capture_start_failed），收尾結束後不再回報 |
+| `Shared::sound` / `wants_sound` / `fail` | 把某個輸入在某個主機時間的樣本放入混音器，在音訊鎖內混音、編碼並送出 AAC 封包，於停止點截斷／目前是否收聲音／只回報第一次擷取或編碼失敗（錄影中或收尾到停止點時為 capture_failed，之前為 capture_start_failed；麥克風的聲音先碰到的編碼失敗也一樣），收尾結束後不再回報 |
 | `refresh` | refresh 執行緒：在 `t0` 以關鍵影格編碼第一格、在格位編碼 pacer 暫留的畫格、靜止畫面每秒重複最後一格，並推進混音器的時鐘 |
 | `Events`、`VideoSink`、`VideoEncode`、`AudioEncode`、`Platform` | 平台實作的 trait：session 的回報、編碼後影像的去處、H.264 與 AAC 編碼器（含 priming 與 AudioSpecificConfig），以及畫格型別、編碼器與主機時鐘 |
-| [core/mixer.rs](../../../native/capture/src/core/mixer.rs) `Mixer` | 把多個輸入以單位增益混成一條立體聲音軌：每個輸入由 `AudioAligner` 對齊；音軌推進到所有輸入都已送達之處，或隨時鐘落後 24 000 frames（0.5 秒）推進，輸入沒送到的部分視為靜音，之後才到的計為過晚 |
-| [timing.rs](../../../native/capture/src/timing.rs) `AudioAligner` / `ticks` | 以計算樣本數放置 buffer：時間戳在容差（480 frames）內就接續上一段，有空隙補靜音，落後的樣本丟棄／奈秒換算為 timescale |
+| [core/mixer.rs](../../../native/capture/src/core/mixer.rs) `Mixer` | 把多個輸入以單位增益混成一條立體聲音軌，只在兩個以上有非零樣本的輸入相加超過 −1 dBFS 時做軟性限幅（`limit`，tanh）：每個輸入由 `AudioAligner` 對齊；音軌推進到所有輸入都已送達之處，或隨時鐘落後 24 000 frames（0.5 秒）推進，輸入沒送到的部分視為靜音，之後才到的計為過晚 |
+| [timing.rs](../../../native/capture/src/timing.rs) `AudioAligner` / `PacketTimes` / `ticks` | 以計算樣本數放置 buffer：時間戳在容差（480 frames）內就接續上一段，超出容差 2 ms 以內時每個 buffer 修正 1 個 frame，更大的空隙補靜音、更大的重疊丟棄，並計算補上與丟棄的 frame 數／Windows 麥克風封包的時間：裝置第一個位置與到達時間相差超過 500 ms，或封包帶時間戳錯誤旗標時，改用到達時間／奈秒換算為 timescale |
 | [pacing.rs](../../../native/capture/src/pacing.rs) `Pacer` | 以錄影開始為起點的影格率格線：`admit` 保留最接近每個格位的畫格，`due` 指出畫格仍待編碼的格位，`capture_interval_ns` 以四倍影格率向擷取請求 |
 | [writer.rs](../../../native/capture/src/writer.rs) `spawn` / `MediaSender` | 持有檔案與 muxer 的 `recordstuff-writer` 執行緒：每 5 秒 sync，媒體到達期間每秒回報位元組數，分類第一個寫入錯誤（`classify`：兩個平台的磁碟已滿 → disk_full，其他 → output_write_failed）；`send` 在超過 `BACKLOG_LIMIT_BYTES`（64 MiB）時以 output_write_failed 拒絕媒體；`finish` 經 channel 回覆 |
 | [mux/session.rs](../../../native/capture/src/mux/session.rs) `SessionMuxer` | 輸入編碼後樣本、輸出片段：每個影像樣本保留到下一個樣本給出其長度，影像片段在一秒後的第一個關鍵影格關閉、音訊片段每秒關閉，每個片段一條軌道；`finish` 讓影像止於停止點（在其之後的樣本不收），音訊在 priming 之後呈現 `audio_frames` |
 | [mux/mp4.rs](../../../native/capture/src/mux/mp4.rs) `HybridMp4` | `create` 寫入 `ftyp` 與含 `mvex` 的 `moov`；`write_fragment` 附加一組 `moof`＋`mdat`；`finish` 附加就地索引所有樣本的一般 `moov`，sync 後把舊 `moov` 開頭改寫為 64 位元 `mdat` 標頭，或保留分段檔案並說明原因 |
 | [mux/boxes.rs](../../../native/capture/src/mux/boxes.rs)、[avc.rs](../../../native/capture/src/avc.rs)、[aac.rs](../../../native/capture/src/aac.rs)、[nv12.rs](../../../native/capture/src/nv12.rs) | ISO BMFF box 建構與 `mdat_header_64`；Annex B H.264 轉為長度前綴樣本與 `avcC`；AAC-LC 的 AudioSpecificConfig；沒有視訊處理器的 Windows 裝置在 CPU 上做 BGRA → NV12。`mux/parse.rs` 是只給測試用的讀取器 |
 | [mac/session.rs](../../../native/capture/src/mac/session.rs) `Session` | `probe`、`prepare`（shareable content、content filter、一個同時擷取畫面與聲音的 `SCStream`，或另加一個只收聲音的 stream、VideoToolbox 與 AudioToolbox 編碼器、可選的麥克風）、`record`、`stop`（drain、停止 stream 與麥克風、end）、`cancel`；[content.rs](../../../native/capture/src/mac/content.rs) 建立排除 RecordStuff 視窗與聲音的 filter，開啟系統介面開關時也排除選單列、Dock、桌面圖示與小工具 |
-| [mac/microphone.rs](../../../native/capture/src/mac/microphone.rs) `MicrophoneCapture` / `list` | 以選定或預設輸入建立的 `AVCaptureSession`，轉為 48 kHz 立體聲 float 並以主機時鐘標記／輸入裝置清單 |
+| [mac/microphone.rs](../../../native/capture/src/mac/microphone.rs) `MicrophoneCapture` / `list` | 以選定或預設輸入建立的 `AVCaptureSession`，轉為 48 kHz 單聲道 float（在音軌的兩個聲道都聽得到）並以主機時鐘標記；斷線的裝置不會重新開啟（由核心的 2 秒沒有聲音判定中斷）／輸入裝置清單 |
 | [win/session.rs](../../../native/capture/src/win/session.rs) `Session` | 依螢幕的實體像素點 `probe` 與 `prepare`（`capture.rs`：Windows.Graphics.Capture，GPU 或 CPU 轉 NV12）、WASAPI `SoundCapture` stream（排除 RecordStuff 程序樹的 process loopback、指定的程序樹或麥克風）、Media Foundation H.264（`video.rs`）與 AAC（`aac.rs`，96–192 kbps）；只顯示指定 App 視窗的來源會被拒絕 |
 
 Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipeline_test.rs`）；`live_test.rs` 會實際擷取，標為 `#[ignore]`，在 CI 的 Windows runner 與本機 macOS 上明確指定執行。

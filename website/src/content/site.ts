@@ -160,6 +160,8 @@ export const settings = [
   { tab: "Recording", setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
   { tab: "Recording", setting: "File name format", options: "A pattern of {date}, {time} and other placeholders", fallback: "{date} {time}" },
   { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
+  { tab: "Recording", setting: "Microphone", options: "On / Off, also in the menu bar menu; mixed with system audio (use headphones to avoid speaker echo)", fallback: "Off" },
+  { tab: "Recording", setting: "Input device", options: "System default or a connected microphone", fallback: "System default" },
   { tab: "Recording", setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { tab: "Recording", setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { tab: "Recording", setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
@@ -172,7 +174,7 @@ export const settings = [
 ] as const;
 
 export const permissionsTroubleshooting =
-  "Opening the app and recording the screen are separate permissions; both are needed. If prompts keep coming back, open RecordStuff from Applications and relaunch it.";
+  "Opening the app and recording the screen are separate permissions; both are needed. If prompts keep coming back, open RecordStuff from Applications and relaunch it. Microphone asks for its own access; while it is refused, a recording with Microphone on does not start: allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.";
 
 export const platformBoundary = {
   verified: "Verified on an Apple M1 Pro with macOS 26. The macOS build is Apple silicon only.",

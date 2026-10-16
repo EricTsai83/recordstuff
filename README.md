@@ -45,6 +45,8 @@ Open settings with **⌥⌘,**:
 | Hide menu bar and Dock | On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings (macOS only) | Off |
 | Output folder | Any folder | Movies → RecordStuff |
 | Countdown | Off / 3 / 5 / 10 s, optional tick | 3 s, tick on |
+| Microphone | On / Off, also in the menu bar menu; recorded with system audio in one track (headphones avoid speaker echo) | Off |
+| Input device | System default / a connected microphone | System default |
 | Video quality | Economy / Standard / High | Standard |
 | Resolution cap | 1080p / 1440p / 4K / Source | Source |
 | Frame rate | 30 / 60 fps (60 on macOS only) | 30 |
@@ -54,7 +56,7 @@ Open settings with **⌥⌘,**:
 
 The **Keyboard Shortcuts** tab, also opened from the Help menu on macOS, lists every shortcut and whether it works now.
 
-Output is H.264/AAC MP4. One whole screen is captured, without microphone, window or region selection. Recordings and settings stay local; update checks send no identifiers or telemetry.
+Output is H.264/AAC MP4. One whole screen is captured, without window or region selection. Recordings and settings stay local; update checks send no identifiers or telemetry.
 
 ## Development
 
