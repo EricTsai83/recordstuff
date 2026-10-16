@@ -129,6 +129,25 @@ struct Reader {
 }
 
 impl Reader {
+    /// One buffer into the recording, converted to 48 kHz first when the device runs at another rate. Sound that
+    /// cannot be converted or read loses the microphone, not the recording.
+    fn take(&self, chunk: &Chunk, resampler: Option<&mut Resampler>, converted: &mut Vec<f32>) {
+        let samples = match resampler {
+            Some(resampler) => {
+                converted.clear();
+                if let Err(why) = resampler.process(&chunk.samples, converted) {
+                    self.shared.lose_microphone(format!("microphone: {why}"));
+                    return;
+                }
+                &converted[..]
+            }
+            None => &chunk.samples[..],
+        };
+        if let Err(detail) = self.shared.sound(self.input, chunk.pts_ns, samples.len(), |frame, _| samples[frame]) {
+            self.shared.lose_microphone(format!("microphone: {detail}"));
+        }
+    }
+
     fn run(self, unit: InputUnit, resampler: Option<Resampler>) {
         let mut open = Some((unit, resampler));
         let mut heard = Instant::now();
@@ -141,28 +160,11 @@ impl Reader {
                 Ok(chunk) => {
                     heard = Instant::now();
                     attempts = 0;
-                    if !self.shared.wants_sound() {
-                        if let Some((unit, _)) = open.as_ref() {
-                            let _ = unit.recycle.try_send(chunk.samples);
-                        }
-                        continue;
+                    if self.shared.wants_sound() {
+                        self.take(&chunk, open.as_mut().and_then(|(_, resampler)| resampler.as_mut()), &mut converted);
                     }
-                    converted.clear();
-                    let samples = match open.as_mut().and_then(|(_, resampler)| resampler.as_mut()) {
-                        Some(resampler) => match resampler.process(&chunk.samples, &mut converted) {
-                            Ok(()) => &converted,
-                            Err(why) => {
-                                self.shared.lose_microphone(format!("microphone: {why}"));
-                                continue;
-                            }
-                        },
-                        None => &chunk.samples,
-                    };
-                    // Sound that cannot be read loses the microphone, not the recording.
-                    if let Err(detail) = self.shared.sound(self.input, chunk.pts_ns, samples.len(), |frame, _| samples[frame]) {
-                        self.shared.lose_microphone(format!("microphone: {detail}"));
-                    }
-                    // Back to the pool of the unit now open; one from a unit since closed is simply let go.
+                    // Back to the pool of the unit now open, on every path (review of plan 078); one from a unit since
+                    // closed is simply let go.
                     if let Some((unit, _)) = open.as_ref() {
                         let _ = unit.recycle.try_send(chunk.samples);
                     }

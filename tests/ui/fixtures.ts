@@ -29,12 +29,13 @@ import { ProcessOwnership } from "./process-ownership";
 export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
 const CLOSE_TIMEOUT_MS = 15_000;
-const EXIT_TIMEOUT_MS = 5_000;
 /**
- * After a normal close timed out, how long the end is still awaited before the tree is killed (plan 078 step 5): long
- * enough to tell a slow close that completes from one that stalls, which the close timings then show.
+ * How long the rest of a launch's processes may take to end after its main process exited. Chromium's helpers end on
+ * their own once main is gone, and on CI's Windows runners some took seconds to (plan 078 step 5: main exited 70–100 ms
+ * into every close, the slowest helpers 1.8–7.7 s later), so Windows waits longer; a helper still running then is killed
+ * and fails the test.
  */
-const LATE_EXIT_TIMEOUT_MS = 30_000;
+const EXIT_TIMEOUT_MS = process.platform === "win32" ? 15_000 : 5_000;
 const SCAN_INTERVAL_MS = 1_000;
 /** One line per launch's teardown (plan 078 step 5), read by `scripts/ui-close-timings.mts`. */
 export const CLOSE_TIMINGS_FILE = path.join(process.cwd(), "test-results", "ui-close-timings.jsonl");
@@ -225,8 +226,18 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     await scan();
     elapsed();
     const closeStarted = Date.now();
+    // A normal close is production's quit ending the main process. Playwright's own close resolves only once every
+    // process holding the launch's output has ended, which on Windows included helpers that lingered after main had
+    // exited (plan 078 step 5); their end is the exit wait's to confirm below, not the close's.
+    const child = launched.child;
+    const mainExited = new Promise<void>(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) resolve();
+      else child.once("exit", () => resolve());
+    });
+    const closing = launched.application.close();
+    closing.catch(() => undefined);
     try {
-      await Promise.race([launched.application.close(), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
+      await Promise.race([Promise.race([mainExited, closing]), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
       result.closedNormally = true;
     } catch (error) { errors.push(`normal close failed: ${String(error)}`); }
     phases.close = elapsed();
@@ -248,7 +259,7 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     if (scanned === before) await scan();
     return ended();
   };
-  const exited = await until(gone, result.closedNormally ? EXIT_TIMEOUT_MS : LATE_EXIT_TIMEOUT_MS);
+  const exited = await until(gone, EXIT_TIMEOUT_MS);
   phases.exit = elapsed();
   if (!exited) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
