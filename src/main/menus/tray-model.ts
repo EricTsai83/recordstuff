@@ -83,6 +83,8 @@ function windowsGroup(ctx: AppContext): TrayMenuItem[] {
     : settingsShortcut?.kind === "failed" ? t("The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.", language) : undefined;
   return [
     item(t("Open RecordStuff", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? openShortcut(ctx.platform) : undefined),
+    // The window at its Recording Studio (plan 075, D19): the preview, the camera's place and the controls.
+    item(t("Open Recording Studio…", language), "openStudio"),
     // The window itself, on Recordings with the newest take focused: never the folder.
     item(t("Show last recording", language), "showLastRecording"),
     ...(explanation ? [disabled(explanation)] : []),

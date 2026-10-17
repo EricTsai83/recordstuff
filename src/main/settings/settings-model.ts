@@ -68,7 +68,7 @@ function group(
   note?: string,
 ): Group {
   const section = SECTIONS[id] ?? id;
-  return { id, label, enabled, choices, tab: RECORDING_SECTIONS.has(section) ? "recording"
+  return { id, label, enabled, choices, tab: STUDIO_SECTIONS.has(section) ? "studio" : RECORDING_SECTIONS.has(section) ? "recording"
     : TROUBLESHOOTING_SECTIONS.has(section) ? "failures" : "general",
     control: SWITCHES.has(id) ? "switch" : SEGMENTED.has(id) ? "segmented" : "menu",
     ...(ICON_SEGMENTS.has(id) ? { iconChoices: true } : {}),
@@ -76,20 +76,24 @@ function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera", "cameraMirror"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera", "studioCamera", "cameraShown", "cameraMirror"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance", "cameraRatio"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
 const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "camera", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
+/** The Recording Studio's (plan 075, D19): what is watched and changed around a recording. */
+const STUDIO_SECTIONS = new Set(["studioPreview", "studioCamera", "studioControls"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio",
-  camera: "camera", cameraDevice: "camera", cameraWidth: "camera", cameraHeight: "camera", cameraRatio: "camera",
-  cameraRounding: "camera", cameraMirror: "camera", cameraPreview: "camera",
+  camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
+  studioControls: "studioControls", cameraPreview: "studioPreview",
+  studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
+  cameraRatio: "studioCamera", cameraRounding: "studioCamera", cameraMirror: "studioCamera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -101,6 +105,8 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   countdown: "Before recording",
   audio: "Audio",
   camera: "Camera",
+  studioCamera: "Camera",
+  studioControls: "Recording controls",
   video: "Video",
   controls: "Controls and notifications",
   display: "Language and appearance",
@@ -326,14 +332,13 @@ function cameraShapeEnabled(ctx: AppContext, unlocked: boolean): boolean {
 }
 
 /**
- * The camera's rows under its switch (plan 075, step 7): the device (D9), locked while recording as the microphone's,
- * then the bubble's width, height, ratio buttons, rounding and mirror, which stay usable while recording (D7).
+ * The camera's row under its switch in Recording settings (plan 075, step 7): the device (D9), locked while recording
+ * as the microphone's, with the way to the Recording Studio, where the bubble is placed and shaped (D19).
  */
 function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
   const camera = ctx.camera;
   if (!camera?.available) return [];
   const language = ctx.language;
-  const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
   const devices = (camera.devices ?? []).filter((device) => device.id !== DEFAULT_CAMERA);
   const current = devices.find((device) => device.default);
   const stored = camera.device;
@@ -353,6 +358,61 @@ function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
     device.note = t("Recordings use the system default camera until {label} is connected.", language, { label: stored.label });
     device.noteKind = "status";
   }
+  // Its place and shape are the Recording Studio's (D19), one step away, whether the device may change now or not.
+  const studio: Group = { ...group("cameraStudio", t("Bubble position and shape", language), true,
+    [{ id: "openStudio", label: t("Arrange in Recording Studio…", language), enabled: true, checked: false, action: "openStudio" }]), kind: "actions" };
+  return [device, studio];
+}
+
+/**
+ * The Recording Studio (plan 075, D19): the preview, the camera's switch, its showing in the recording in progress
+ * (D13), its shape, and Start, Cancel or Stop with the elapsed time, each a row of its own sections.
+ */
+function studioGroups(state: RecordingState, ctx: AppContext, unlocked: boolean): Group[] {
+  const camera = ctx.camera;
+  const language = ctx.language;
+  const camerasRows: Group[] = [];
+  if (camera?.available) {
+    const preview = cameraPreviewGroup(ctx, unlocked);
+    if (preview) camerasRows.push(preview);
+    camerasRows.push({ ...group("studioCamera", t("Camera", language), unlocked,
+      switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
+    ...(unlocked ? {} : { note: t("Turned on or off between recordings.", language) }) });
+    if (camera.session) {
+      camerasRows.push(group("cameraShown", t("Show camera in recording", language), true,
+        switchChoices(language, !camera.session.hidden, (value) => ({ setCameraHidden: !value }))));
+    }
+    camerasRows.push(...cameraShapeGroups(ctx, unlocked));
+  }
+  return [...camerasRows, studioControlsGroup(state, ctx)];
+}
+
+/** Start, Cancel or Stop, as the tray offers it now, with the recording's elapsed time (D19). */
+function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
+  const language = ctx.language;
+  const choice = (id: string, label: PlainMessageKey, action: AppAction, enabled = true): Group["choices"][number] =>
+    ({ id, label: t(label, language), enabled, checked: false, action });
+  // Start as the tray offers it: without screen recording's permission it waits, the status card above every tab
+  // offering the fix (opening the pane, or relaunching once it is allowed), which is not repeated here.
+  const choices = state.type === "idle" || state.type === "needsPermission"
+    ? [choice("start", "Start recording", "start", state.type === "idle" && !ctx.mediaComponentsMissing)]
+    : state.type === "starting" || state.type === "countdown" ? [choice("cancel", "Cancel recording", "cancelCountdown")]
+    : state.type === "recording" ? [choice("stop", "Stop recording", "stop")]
+    : [choice("saving", "Saving…", "stop", false)];
+  // The row says where the recording is; its section heading names the controls.
+  const label = state.type === "recording" ? t("Recording", language)
+    : state.type === "countdown" ? t("Recording starts in {seconds} s", language, { seconds: state.remaining })
+    : state.type === "starting" ? t("Starting…", language) : state.type === "stopping" ? t("Saving…", language)
+    : state.type === "needsPermission" ? t("Screen recording permission required", language) : t("Ready", language);
+  return { ...group("studioControls", label, true, choices), kind: "actions",
+    ...(state.type === "recording" ? { elapsedSince: state.startedAt } : {}) };
+}
+
+/** The bubble's size, shape, rounding and mirror (D1–D3, D8), changed in the Recording Studio, also while recording (D7). */
+function cameraShapeGroups(ctx: AppContext, unlocked: boolean): Group[] {
+  const camera = ctx.camera!;
+  const language = ctx.language;
+  const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
   const shapeEnabled = cameraShapeEnabled(ctx, unlocked);
   const slider = (id: CameraSlider, label: string): Group => {
     const { key, min, max, step } = CAMERA_SLIDERS[id];
@@ -362,10 +422,7 @@ function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
       control: "slider", slider: { min, max, step, value, unit: "percent" } };
   };
   const ratio = layout.width / layout.height;
-  const preview = cameraPreviewGroup(ctx, unlocked);
   return [
-    ...(preview ? [preview] : []),
-    device,
     { ...slider("cameraWidth", t("Width", language)), info: t("A share of the recording's shorter side.", language) },
     slider("cameraHeight", t("Height", language)),
     group("cameraRatio", t("Shape", language), shapeEnabled, CAMERA_RATIOS.map((value) => {
@@ -716,6 +773,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownSoundGroup(ctx, unlocked),
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
+    ...studioGroups(state, ctx, unlocked),
     ...(() => { const camera = cameraGroup(ctx, unlocked); return camera ? [camera] : []; })(),
     ...cameraGroups(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
@@ -996,7 +1054,8 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     // needs none: the status card's own title already says it, and the hint sits right under that title.
     hint: quitting || unlocked ? "" : t("Recording in progress; only language, appearance and icon click can change.", language),
     failure: t("Could not apply this setting. Your current settings are shown.", language),
-    tabs: [{ id: "library", label: t("Recordings", language) }, { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) },
+    tabs: [{ id: "library", label: t("Recordings", language) }, { id: "studio", label: t("Recording Studio", language) },
+      { id: "recording", label: t("Recording settings", language) }, { id: "general", label: t("General", language) },
       { id: "shortcuts", label: t("Keyboard Shortcuts", language) }, failuresTab(ctx)],
     groups: settingsGroups(state, ctx).map(({ choices, actions, ...rest }) => ({
       ...rest,

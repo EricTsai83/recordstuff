@@ -62,6 +62,8 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", microphone: "locked", microphoneDevice: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
+  // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
+  studioControls: { lockedChoices: ["saving"] },
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
   "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
@@ -104,8 +106,10 @@ export function assertLockContract(s: LockSnapshot): void {
     const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !(group.id === "microphoneDevice" && microphoneOff) && !unavailable;
     assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group; a partly locked one locks exactly its listed choices.
+    // The Recording Studio's Start (plan 075, D19) is usable exactly when the tray's is.
+    const trayStarts = s.model.menu.some(item => item.kind === "item" && item.action === "start" && item.enabled);
     if (available) for (const choice of [...group.choices, ...group.actions ?? []]) {
-      const locked = busy && lockedChoices.includes(choice.id);
+      const locked = group.id === "studioControls" && choice.id === "start" ? !trayStarts : busy && lockedChoices.includes(choice.id);
       assert.equal(choice.enabled, !locked, `settings choice ${group.id}/${choice.id} while ${state}`);
     }
   }

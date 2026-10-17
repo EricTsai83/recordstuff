@@ -78,6 +78,7 @@ describe("settingsView", () => {
       "countdownSound",
       "microphone",
       "microphoneDevice",
+      "studioControls",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -252,10 +253,18 @@ describe("the camera's rows (plan 075, step 7)", () => {
   const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}): AppContext =>
     ({ ...context, camera: { enabled: true, available: true, access: "granted", layout, devices, ...camera } });
   const ids = (ctx: AppContext, state = idle) => settingsView(state, ctx).groups.filter((g) => g.section === "camera").map((g) => g.id);
+  const studio = (ctx: AppContext, state = idle) => settingsView(state, ctx).groups.filter((g) => g.tab === "studio").map((g) => g.id);
 
-  it("follow the switch in its section: device, width, height, shape, rounding and mirror", () => {
-    expect(ids(on())).toEqual(["camera", "cameraDevice", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror"]);
+  it("follow the switch: the device in Recording settings with the way to the Studio, the shape in the Studio (D19)", () => {
+    expect(ids(on())).toEqual(["camera", "cameraDevice", "cameraStudio"]);
+    expect(group(idle, on(), "cameraStudio")).toMatchObject({ kind: "actions", choices: [{ id: "openStudio", label: "Arrange in Recording Studio…", enabled: true }] });
+    // The way there stays open whether or not the device may change: the camera off, or a recording.
+    expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "studioControls"]);
     expect(ids(context)).toEqual([]);
+    expect(studio(context), "no camera: the Studio keeps its controls").toEqual(["studioControls"]);
     expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
     expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
     expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
@@ -296,6 +305,27 @@ describe("the camera's rows (plan 075, step 7)", () => {
   });
 });
 
+describe("the Recording Studio's controls (plan 075, D19)", () => {
+  const controls = (state: RecordingState, ctx: AppContext = context) => group(state, ctx, "studioControls")!;
+  it("name the state and offer what the tray offers now, with the elapsed time while recording", () => {
+    expect(controls(idle)).toMatchObject({ tab: "studio", kind: "actions", label: "Ready", choices: [{ id: "start", enabled: true }] });
+    expect(settingsAction(idle, context, "studioControls", "start")).toBe("start");
+    expect(controls({ type: "countdown", remaining: 2 })).toMatchObject({ label: "Recording starts in 2 s", choices: [{ id: "cancel", enabled: true }] });
+    expect(settingsAction({ type: "starting" }, context, "studioControls", "cancel")).toBe("cancelCountdown");
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    expect(controls(recording)).toMatchObject({ label: "Recording", elapsedSince: "2026-10-17T00:00:00Z", choices: [{ id: "stop", enabled: true }] });
+    expect(controls({ type: "stopping" })).toMatchObject({ label: "Saving…", choices: [{ id: "saving", enabled: false }] });
+    expect(controls(idle).elapsedSince).toBeUndefined();
+  });
+  it("wait for screen recording's permission, whose fix the status card offers, in either of its steps", () => {
+    for (const needsRelaunch of [false, true]) {
+      const state = { type: "needsPermission" as const, needsRelaunch };
+      expect(controls(state)).toMatchObject({ label: "Screen recording permission required", choices: [{ id: "start", enabled: false }] });
+      expect(settingsAction(state, context, "studioControls", "start")).toBeUndefined();
+    }
+  });
+});
+
 describe("the camera's preview (plan 075, step 7)", () => {
   const layout = { width: 0.2, height: 0.3, rounding: 0.5, mirror: true, positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "9", x: 0.4, y: 0.6 }] };
   const displays = [
@@ -309,7 +339,7 @@ describe("the camera's preview (plan 075, step 7)", () => {
   const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
 
   it("shows the display the recording captures, its menu bar, and the bubble where the recording puts it", () => {
-    expect(settingsView(idle, on()).groups.filter((g) => g.section === "camera").map((g) => g.id).slice(0, 3)).toEqual(["camera", "cameraPreview", "cameraDevice"]);
+    expect(settingsView(idle, on()).groups.filter((g) => g.tab === "studio").map((g) => g.id).slice(0, 2), "the Studio's first row").toEqual(["cameraPreview", "studioCamera"]);
     expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
       mode: "live", display: { width: 1512, height: 982, menuBar: 33 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
       x: 0.1, y: 0.2, camera: "iPhone Camera" } });
@@ -419,7 +449,8 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id) || entry.kind === "shortcutList");
+    // The Recording Studio's controls stop or cancel what runs (D19).
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about", "studioControls"].includes(entry.id) || entry.kind === "shortcutList");
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
@@ -727,7 +758,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
-    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"],
+    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioControls"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
@@ -888,21 +919,21 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
 
 describe("Recording failures tab (plan 047)", () => {
   const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
-  it("always offers Troubleshooting last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
+  it("always offers Troubleshooting last, after Recordings, the Recording Studio, Recording and General, counting unread failures in its label and accessible name", () => {
     expect(settingsView(idle, context).tabs).toEqual([
-      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
+      { id: "library", label: "Recordings" }, { id: "studio", label: "Recording Studio" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
       { id: "shortcuts", label: "Keyboard Shortcuts" }, { id: "failures", label: "Troubleshooting" },
     ]);
     const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
-    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[4]).toEqual({
+    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[5]).toEqual({
       id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影檔", "錄影設定", "一般", "鍵盤快捷鍵", "疑難排解（2）"]);
-    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[4]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
-    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[4]).toEqual({ id: "failures", label: "Troubleshooting" });
+      .toEqual(["錄影檔", "錄影工作室", "錄影設定", "一般", "鍵盤快捷鍵", "疑難排解（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[5]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[5]).toEqual({ id: "failures", label: "Troubleshooting" });
     // One unread failure is said in the singular.
-    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[4]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
+    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[5]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
@@ -983,13 +1014,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
-      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["videoQuality", "Video"],
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "影像", "操作與通知", "語言與外觀", "更新",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });

@@ -34,7 +34,7 @@ export interface DisplayFrame {
   pixels: string;
 }
 /** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
-export type SettingsTab = "library" | "recording" | "general" | "shortcuts" | "failures";
+export type SettingsTab = "library" | "studio" | "recording" | "general" | "shortcuts" | "failures";
 /** One row of the Keyboard Shortcuts tab (plan 073): read-only, from `shortcut-catalog.ts`. */
 export interface ShortcutRowView {
   id: string;
@@ -70,6 +70,8 @@ export interface SettingsGroup {
    * validates (plan 075's camera size and rounding).
    */
   slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
+  /** The Recording Studio's controls (plan 075, D19): when the recording in progress began, for the elapsed time. */
+  elapsedSince?: string;
   /** A `cameraPreview`'s stage and bubble (plan 075 step 7); the page sends a new position as the choice `x,y`. */
   cameraPreview?: CameraPreviewView;
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */

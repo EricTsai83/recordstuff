@@ -916,6 +916,12 @@
     text-shadow: var(--media-text-shadow);
     pointer-events: none;
   }
+  /* The Recording Studio's elapsed time, before its Stop (plan 075, D19). */
+  .studio-elapsed {
+    margin-right: 4px;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
   .slider-setting {
     display: flex;
     align-items: center;

@@ -51,6 +51,8 @@ export type AppAction =
   | "relaunch"
   | "start"
   | "stop"
+  /** The main window at its Recording Studio tab (plan 075, D19). */
+  | "openStudio"
   | "cancelCountdown"
   | "openOutputDir"
   | "changeOutputDir"

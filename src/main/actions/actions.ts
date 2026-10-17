@@ -39,7 +39,7 @@ export interface ActionDeps {
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
     | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied" | "notifyCameraDenied">;
-  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
+  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording" | "showStudio">;
   shortcuts: Pick<AppShortcuts, "set" | "retry">;
   updates: Pick<UpdateChecker, "check" | "state">;
   captureNotices: Pick<CaptureNotices, "hold">;
@@ -271,6 +271,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openRecordingSettings":
         deps.settingsWindow.showRecording();
         return;
+      case "openStudio":
+        deps.settingsWindow.showStudio();
+        return true;
       case "openSettings":
         deps.settingsWindow.show();
         return;
@@ -304,13 +307,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "start":
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
         if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
-        return;
+        // Done either way: the Recording Studio's button (D19) shows the state that follows, not a failure.
+        return true;
       case "stop":
         recorder.stop();
-        return;
+        return true;
       case "cancelCountdown":
         recorder.cancelCountdown("menu");
-        return;
+        return true;
       case "quitWithoutWaiting":
         deps.quitWithoutWaiting();
         return true;

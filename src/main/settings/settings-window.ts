@@ -265,6 +265,11 @@ export class SettingsWindow {
     this.showEntry("library");
   }
 
+  /** The Recording Studio (plan 075, D19), from the tray and the Camera section's link. */
+  showStudio(): void {
+    this.showEntry("studio");
+  }
+
   /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
   showRecording(): void {
     this.showEntry("recording");

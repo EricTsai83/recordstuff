@@ -256,13 +256,13 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
 
 test("S124–S126 camera rows: a slider names its percent and commits once, a recording with the camera keeps the shape editable (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
-  await page.locator("#tab-recording").click();
   const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
   await host.evaluate((h, list) => {
     h.state.cameraState = undefined;
     h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted", devices: list } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   }, devices);
+  await page.locator("#tab-studio").click();
   const width = page.getByRole("slider", { name: "Width" });
   await width.scrollIntoViewIfNeeded();
   await expect(width, "S124 a slider is named by its row and reads as a percent").toHaveAttribute("aria-valuetext", "20%");
@@ -296,7 +296,7 @@ test("S124–S126 camera rows: a slider names its percent and commits once, a re
     h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false } } };
     h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
   });
-  await expect(page.locator("#setting-camera"), "S126 the switch is locked while recording").toBeDisabled();
+  await expect(page.locator("#setting-studioCamera"), "S126 the switch is locked while recording").toBeDisabled();
   await expect(width, "S126 the shape is not (D7)").toBeEnabled();
   await clearCalls();
   await width.focus();
@@ -309,7 +309,6 @@ test("S124–S126 camera rows: a slider names its percent and commits once, a re
 
 test("S127–S130 camera preview: the camera in the bubble while in sight, dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
-  await page.locator("#tab-recording").click();
   // No real camera in a background run: the page's own camera calls are answered by a drawn picture.
   await page.evaluate(() => {
     const record = { opened: [] as string[], stopped: 0 };
@@ -341,6 +340,7 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
       camera: { enabled: true, available: true, access: "granted", devices: list, device: { id: "iphone", label: "iPhone Camera" } } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   }, devices);
+  await page.locator("#tab-studio").click();
   const bubble = page.getByRole("application", { name: "Preview" });
   await bubble.scrollIntoViewIfNeeded();
   await expect(bubble, "S127 the bubble says where it is").toHaveAccessibleDescription(/97% from the left, 95% from the top/);
@@ -394,14 +394,14 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
     navigator.mediaDevices.enumerateDevices = () => new Promise(resolve => { win.finishListing = () => { void listed().then(resolve); }; });
   });
   const opened = (await cameraCalls()).opened.length;
-  await page.locator("#tab-recording").click();
+  await page.locator("#tab-studio").click();
   await page.getByRole("application", { name: "Preview" }).scrollIntoViewIfNeeded();
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { finishListing?: () => void }).finishListing)).toBe("function");
   await page.locator("#tab-general").click();
   await page.evaluate(() => (window as unknown as { finishListing: () => void }).finishListing());
   await page.waitForTimeout(200);
   expect((await cameraCalls()).opened.length, "S129 no camera opened once the preview was left").toBe(opened);
-  await page.locator("#tab-recording").click();
+  await page.locator("#tab-studio").click();
 
   // However small the bubble is drawn, what is dragged is at least 24px across.
   await host.evaluate(h => {
@@ -448,6 +448,42 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S130 and let go of once the recording is over" }).toEqual([true, false]);
   await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 95%/);
   await expect(page.locator(".camera-preview-status")).toHaveText("開啟「相機」後即可在此預覽。");
+});
+
+test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside the elapsed time; Recording settings keeps the camera's switch and device with the way there (plan 075, D19)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  await expect(page.locator("#tab-studio"), "S131 a tab of its own").toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#setting-cameraWidth"), "S131 the bubble's shape is the Studio's").toHaveCount(1);
+  await clearCalls();
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await expect.poll(calls, { message: "S131 Start asks main" }).toEqual([["studioControls", "start"]]);
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date(Date.now() - 65_000).toISOString() };
+    h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(page.getByRole("timer"), "S131 the elapsed time while recording").toHaveText(/^1:0[5-9]$/);
+  await expect(page.getByRole("switch", { name: "Show camera in recording" }), "S131 the camera's hiding while recording (D13)").toBeChecked();
+  await clearCalls();
+  await page.getByRole("button", { name: "Stop recording" }).click();
+  await expect.poll(calls, { message: "S131 Stop asks main" }).toEqual([["studioControls", "stop"]]);
+
+  await host.evaluate(h => { h.state.cameraState = undefined; h.push(h.settingsView({ type: "idle" }, h.state.cameraContext!)); });
+  await page.locator("#tab-recording").click();
+  await expect(page.locator("#setting-cameraWidth"), "S132 Recording settings keeps no shape row").toHaveCount(0);
+  await page.locator("#setting-cameraDevice").scrollIntoViewIfNeeded();
+  await clearCalls();
+  await page.getByRole("button", { name: "Arrange in Recording Studio…" }).click();
+  await expect.poll(calls, { message: "S132 the way to the Studio is main's to open" }).toEqual([["cameraStudio", "openStudio"]]);
+
+  await host.evaluate(h => h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "granted" } }));
+  await expect(page.locator("#tab-studio"), "S131 zh-TW").toHaveAccessibleName("錄影工作室");
 });
 
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {

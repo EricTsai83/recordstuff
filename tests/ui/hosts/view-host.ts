@@ -270,7 +270,12 @@ function installPanelHandlers(): void {
       }
       return { view: settingsView({ type: "idle" }, state.microphoneContext), applied: action !== undefined };
     }
-    if (group.startsWith("camera") && state.cameraContext) {
+    // The Recording Studio's Start, Cancel and Stop (plan 075, D19): main's to act on; the view follows the state pushed.
+    if (group === "studioControls" && state.cameraContext) {
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
+    }
+    if ((group.startsWith("camera") || group === "studioCamera") && state.cameraContext) {
       const context = state.cameraContext;
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       const action = settingsAction(sessionState, context, group, choice);

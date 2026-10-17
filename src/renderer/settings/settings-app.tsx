@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Film, Wrench, Video, Settings, Lock, Keyboard } from "lucide-react";
+import { Film, Wrench, Video, Settings, Lock, Keyboard, MonitorPlay } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -21,6 +21,7 @@ import { useDarkClass } from "../lib/color-scheme";
 
 const tabIcons = {
   library: Film,
+  studio: MonitorPlay,
   recording: Video,
   general: Settings,
   shortcuts: Keyboard,
@@ -172,6 +173,7 @@ export function SettingsApp() {
             onValueChange={(value) => {
               if (
                 value === "library" ||
+                value === "studio" ||
                 value === "general" ||
                 value === "recording" ||
                 value === "shortcuts" ||
@@ -223,8 +225,9 @@ export function SettingsApp() {
                       aria-label={tab.accessibleLabel ?? tab.label}
                       // A narrow window shows only the selected tab's name; the others name themselves on hover.
                       // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
-                      // width and the selected tab's name gives way, with its full name on hover (plan 067).
-                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-9 wide:gap-2.5 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
+                      // width and the selected tab's name gives way, with its full name on hover (plan 067), the tab itself never
+                      // narrower than its icon's target, as six tabs came to fill the line (plan 075, D19).
+                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-9 wide:gap-2.5 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-9 narrow:aria-selected:flex-auto"
                     >
                       <Icon className="tab-icon size-4" strokeWidth={2} />
                       {count ? (

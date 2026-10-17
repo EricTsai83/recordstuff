@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
-import { useLayoutEffect, useRef, useState } from "react";
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -39,6 +39,9 @@ const icons = {
   cameraRounding: SquareRoundCorner,
   cameraMirror: FlipHorizontal2,
   cameraPreview: Move,
+  studioCamera: Camera,
+  cameraShown: Eye,
+  studioControls: Circle,
   videoQuality: Gauge,
   resolutionCap: Monitor,
   frameRate: Gauge,
@@ -59,6 +62,8 @@ const sectionIcons = {
   countdown: Timer,
   audio: Mic,
   camera: Camera,
+  studioCamera: Camera,
+  studioControls: Circle,
   video: Clapperboard,
   controls: MousePointerClick,
   display: Palette,
@@ -107,6 +112,19 @@ function SliderSetting({ id, group, slider, disabled, describedBy }: {
       <span className="slider-setting-value" aria-hidden="true">{text}</span>
     </div>
   );
+}
+
+/** The recording's elapsed time beside the Recording Studio's Stop (plan 075, D19), counted here from its start. */
+function Elapsed({ since }: { since: string }) {
+  const start = Date.parse(since);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : 0;
+  const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return <span className="studio-elapsed" role="timer" aria-label={translate("Elapsed {time}", model.view?.language, { time: text })}>{text}</span>;
 }
 
 export function GroupIcon({ id }: { id: string }) {
@@ -375,6 +393,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           role={group.kind === "actions" ? "group" : undefined}
           aria-labelledby={group.kind === "actions" ? `${id}-label` : undefined}
         >
+          {group.elapsedSince && <Elapsed since={group.elapsedSince} />}
           {group.kind === "actions" ? (
             actions.filter(choice => group.id !== "about" || choice.id !== "hide").map((choice) => group.id === "about" && choice.id === "quit" ? (
               <div key={choice.id} className="wide:hidden">
