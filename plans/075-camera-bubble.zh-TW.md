@@ -118,7 +118,7 @@
 ### 4. 權限與打包
 
 - [x] 加入 `NSCameraUsageDescription` 與 `com.apple.security.device.camera`；用 `codesign -d --entitlements` 確認。兩者自步驟 2 起就在 electron-builder.yml 與 resources/entitlements.mac.plist 中；`codesign -d --entitlements` 顯示 bundle 與每個 helper 都有相機 entitlement（2026-10-17）。
-- [x] 開啟鏡頭時呼叫 `systemPreferences.askForMediaAccess("camera")`；被拒絕時在卡片上顯示，附開啟「系統設定 → 隱私權與安全性 → 相機」的動作；Windows 則說明其隱私權設定。和 074 相同。2026-10-17 建置，因為詢問與卡片需要開關，所以比步驟 7 的其他控制項先做：`camera` 設定（預設關閉）與它的 `setCamera` action，開關從關轉開時詢問，被拒時以通知告知，按下通知會開啟設定頁；錄影分頁自己的「相機」區塊中有一列 Camera（通用的偏好設定列），macOS 被拒時顯示說明卡片與「開啟相機設定…」，尚未詢問時顯示提示，Windows 則以提示說明「設定 → 隱私權與安全性 → 相機」並附同樣的動作（`ms-settings:privacy-webcam`）；`camera_unavailable` 成為 host 錯誤碼，附原因與各平台的指引。在步驟 6 讓引擎依此設定錄下鏡頭之前，這一列只在 `RECORDSTUFF_CAMERA_PROTOTYPE` 開啟時顯示（`CameraContext.available`），避免有人打開一個什麼都不錄的開關。2026-10-17 以 signed bundle 做原生驗收，先執行 `tccutil reset Camera com.ericts.record`：啟動時沒有詢問（第一次嘗試時原型仍在啟動時詢問，已移除）；打開「相機」時出現 macOS 的詢問，維護者選擇不允許；log 記下 `settings: camera on` 與 `camera access is not allowed`，通知已送出，該列顯示卡片（未允許取用相機、原因、處理方式、開啟相機設定…，由截圖判讀）；「開啟相機設定…」開啟了「系統設定 → 隱私權與安全性 → 相機」，RecordStuff 列在其中且為關閉。之後維護者重新允許並關閉「相機」，設定檔已還原。Windows：只由單元測試驗證。
+- [x] 開啟鏡頭時呼叫 `systemPreferences.askForMediaAccess("camera")`；被拒絕時在卡片上顯示，附開啟「系統設定 → 隱私權與安全性 → 相機」的動作；Windows 則說明其隱私權設定。和 074 相同。2026-10-17 建置，因為詢問與卡片需要開關，所以比步驟 7 的其他控制項先做：`camera` 設定（預設關閉）與它的 `setCamera` action，開關從關轉開時詢問，被拒時以通知告知，按下通知會開啟設定頁；錄影分頁自己的「相機」區塊中有一列 Camera（通用的偏好設定列），macOS 被拒時顯示說明卡片與「開啟相機設定…」，尚未詢問時顯示提示，Windows 則以提示說明「設定 → 隱私權與安全性 → 相機」並附同樣的動作（`ms-settings:privacy-webcam`）；`camera_unavailable` 成為 host 錯誤碼，附原因與各平台的指引。在步驟 7 的「相機」群組能擺放泡泡之前，這一列只在 `RECORDSTUFF_CAMERA_PROTOTYPE` 開啟時顯示（`CameraContext.available`；原本到步驟 6 為止，2026-10-17 改到步驟 7，避免有人錄下一個無法擺放的泡泡）。2026-10-17 以 signed bundle 做原生驗收，先執行 `tccutil reset Camera com.ericts.record`：啟動時沒有詢問（第一次嘗試時原型仍在啟動時詢問，已移除）；打開「相機」時出現 macOS 的詢問，維護者選擇不允許；log 記下 `settings: camera on` 與 `camera access is not allowed`，通知已送出，該列顯示卡片（未允許取用相機、原因、處理方式、開啟相機設定…，由截圖判讀）；「開啟相機設定…」開啟了「系統設定 → 隱私權與安全性 → 相機」，RecordStuff 列在其中且為關閉。之後維護者重新允許並關閉「相機」，設定檔已還原。Windows：只由單元測試驗證。
 
 ### 5. 引擎中的鏡頭擷取
 
@@ -127,11 +127,11 @@
 
 ### 6. 引擎中的合成
 
-- [ ] macOS：依 D15，在 VideoToolbox 之前，依 main 送來的版面參數合成到每一格；參數變更從下一格生效；隱藏時（D13）不合成任何東西。
+- [x] macOS：依 D15，在 VideoToolbox 之前，依 main 送來的版面參數合成到每一格；參數變更從下一格生效；隱藏時（D13）不合成任何東西。2026-10-17 建置：`Compositor::set_layout` 與 `set_hidden`，在每一個編碼影格時讀取；隱藏時編碼螢幕本身的影格，和鏡頭關閉時一樣；由 `NativeCapture.setCameraLayout(options, hidden)` 與 `Session::set_camera` 套用兩者。托盤的錄影中選單有「隱藏相機」／「顯示相機」（D13，`{ setCameraHidden }`），只作用於該次錄影，由 `Recorder.updateCamera` 送出；等步驟 7 的控制項出現後，錄影中 Settings 的版面變更也走同一條路。變更只在引擎的 session 準備好之後才接受（倒數、開始與錄影中）；重新顯示鏡頭時會把 pacer 推進到目前的 slot 並喚醒 refresh thread，所以隱藏期間空下的 slot 不會事後補上。2026-10-17 以 signed bundle 與 iPhone 鏡頭做原生驗收：維護者在錄影第 13.1 秒選「隱藏相機」、第 23.7 秒選「顯示相機」；host 與引擎都在 20 ms 內記錄；第 8、18、30 秒讀回的影格依序是泡泡、只有螢幕、泡泡；鏡頭送出 1,271 格，沒有丟格或中斷；設定已還原，錄影已移到垃圾桶。
 - [ ] Windows：在 078 步驟 4 路徑的 Direct3D 11 畫面上做同樣的事；沒有 video processor（WARP）時走 CPU 路徑，由 CI 檢查。
-- [ ] 鏡頭顯示時，pacer 以所選幀率編碼；隱藏或關閉時維持目前螢幕靜止時的行為。
-- [ ] 協定：從 main 到 host 的版面訊息，和其他訊息一樣加上防護；隨 session 寫入 log。
-- [ ] 測試：每個解析度上限下合成的矩形與半徑（在合成畫面上做像素檢查）、鏡像、隱藏與顯示、錄影中的變更落在下一格、鏡頭關閉時影格與目前逐位元相同。
+- [x] 鏡頭顯示時，pacer 以所選幀率編碼；隱藏或關閉時維持目前螢幕靜止時的行為。`Core::encode_every_slot` 隨隱藏切換。
+- [x] 協定：從 main 到 host 的版面訊息，和其他訊息一樣加上防護；隨 session 寫入 log。`{ type: "cameraLayout", sessionId, camera, hidden }`（泡泡在錄影螢幕上的位置，裝置不予理會），由 `isMainMessage` 檢查，host 記為 `camera layout: …`，recorder 也會記錄。
+- [ ] 測試：每個解析度上限下合成的矩形與半徑（在合成畫面上做像素檢查）、鏡像、隱藏與顯示、錄影中的變更落在下一格、鏡頭關閉時影格與目前逐位元相同。macOS 已完成：1080p、1440p 與 4K 下泡泡的邊緣，鏡像與圓角（步驟 2 的像素測試），沒有鏡頭畫面或隱藏時合成的影格與螢幕逐位元相同，新的版面落在下一格，隱藏時 pacer 回到螢幕靜止時的節奏；TypeScript 中有 protocol、host、recorder、托盤與 action 的測試。Windows 的隨其合成器。
 
 ### 7. Settings 中的預覽
 
