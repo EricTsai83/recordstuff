@@ -111,9 +111,9 @@ Changed or new, decided by the maintainer on 2026-10-17:
 
 ### 3. Layout model and settings (shared, pure)
 
-- [ ] `src/shared/camera-layout.ts` (proposed): the stored settings (width, height, rounding, mirror, device, per-display position as a fraction), defaults, validation, and the pure functions both the preview and the engine's parameters come from: the bubble's rectangle in display and in output pixels, the radius, snapping, clamping after a display or resolution change.
-- [ ] Unit tests: shapes at rounding 0, 50 and 100; ratio buttons; bounds on small and large displays and scale factors; the preview's and the engine's rectangles agree for every resolution cap; invalid stored values fall back.
-- [ ] `src/main/settings/settings.ts`: the camera fields, with the existing `field` pattern.
+- [x] `src/shared/camera-layout.ts`: the stored settings (width, height, rounding, mirror, device, per-display position as a fraction), defaults, validation, and the pure functions both the preview and the engine's parameters come from: the bubble's rectangle in display and in output pixels, the radius, snapping, clamping after a display or resolution change. Built on 2026-10-17: the device is a separate setting (`cameraDevice`, as the microphone's); the position is a fraction of the free space, kept per display (by display id, `primary` for the primary display, at most 16), so a display or resolution change needs no clamping; `positionFromRect` turns a drag back into a position, `snapPosition` snaps near the edges and the centre, `applyRatio` keeps the width and matches the height unless the range forbids it.
+- [x] Unit tests: shapes at rounding 0, 50 and 100; ratio buttons; bounds on small and large displays and scale factors; the preview's and the engine's rectangles agree for every resolution cap; invalid stored values fall back. The engine's formula is checked by the same 180 cases (`src/shared/camera-layout.cases.json`, read by `camera-layout.test.ts` and `camera_layout.rs`), a position on half a pixel included.
+- [x] `src/main/settings/settings.ts`: the camera fields, with the existing `field` pattern: `cameraLayout` (`setCameraLayout` for the shape, `setCameraPosition` per display) and `cameraDevice`; a file without them reads as the defaults, silently.
 
 ### 4. Permission and packaging
 
