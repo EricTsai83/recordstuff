@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostStartError, type EngineFileReport, type HostMessage } from "../../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import type { RecordingState } from "../../shared/state";
+import { DEFAULT_CAMERA_LAYOUT } from "../../shared/camera-layout";
 import type { RecordingFailure } from "../../shared/recording-result";
 import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCamera, type SessionCapture } from "./recorder";
 import { COUNTDOWN_TIMING } from "../../shared/countdown";
@@ -86,8 +87,11 @@ class FakeWriter implements RecorderWriter {
   finishError: Error | undefined;
   constructor(
     readonly recordingPath: string,
-    readonly finalPath: string,
+    public finalPath: string,
   ) {}
+  retarget(finalPath: string): void {
+    this.finalPath = finalPath;
+  }
   async finish(): Promise<string> {
     if (this.finishError) throw this.finishError;
     this.finished = true;
@@ -179,6 +183,161 @@ async function startRecording(ctx: ReturnType<typeof setup>): Promise<void> {
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
+
+describe("Live preview (plan 075, D20)", () => {
+  it("prepares the recording's session and holds it, the state idle, nothing recorded", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout: DEFAULT_CAMERA_LAYOUT }) } });
+    expect(ctx.recorder.startPreview()).toBe(true);
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.recorder.preview).toEqual({ sessionId: "s1", live: false });
+    expect(ctx.host.started).toEqual(["s1"]);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.preview).toEqual({ sessionId: "s1", live: true });
+    expect(ctx.recorder.previewSessionId, "the Studio shows its picture").toBe("s1");
+    expect(ctx.recorder.camera, "its camera changes as a recording's").toEqual({ hidden: false });
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.states).toEqual([]);
+    expect(ctx.events.filter((e) => e.type === "preview")).toHaveLength(2);
+    expect(ctx.recorder.startPreview(), "one at a time").toBe(false);
+  });
+
+  it("is taken by Start into the countdown and the recording, named when Start came, with no new session", async () => {
+    let now = new Date(2026, 8, 11, 14, 30, 0);
+    const ctx = setup({ deps: { now: () => now, countdownSeconds: () => 3 } });
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    now = new Date(2026, 8, 11, 14, 35, 12);
+    expect(ctx.recorder.startIfIdle()).toBe(true);
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    expect(ctx.host.started, "the same session").toEqual(["s1"]);
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 14-35-12.mp4"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.recorder.state.type).toBe("recording");
+  });
+
+  it("taken while it still prepares, records once prepared; let go of, is cancelled and leaves nothing", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    const other = setup();
+    other.recorder.startPreview();
+    await flush();
+    other.host.emit(prepared("s1"));
+    await flush();
+    other.recorder.stopPreview();
+    await flush();
+    expect(other.recorder.preview).toBeUndefined();
+    expect(other.host.stopped).toEqual(["s1"]);
+    expect(other.writers[0]!.abandoned).toBe(true);
+    expect(other.events).toContainEqual(expect.objectContaining({ type: "cancelled", reason: "preview" }));
+    expect(other.events.some((e) => e.type === "failed" || e.type === "failureStatus")).toBe(false);
+  });
+
+  it("that fails is no recording's failure: the Studio is told why, nothing is reported", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "camera_unavailable", detail: "no camera is connected" });
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.events).toContainEqual({ type: "preview", failure: { code: "camera_unavailable", detail: "no camera is connected" } });
+    expect(ctx.events.some((e) => e.type === "failed" || e.type === "failureStatus")).toBe(false);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("taken while it prepares, is a recording: preview teardown leaves it, and its name and time are Start's alone", async () => {
+    let now = new Date(2026, 8, 11, 9, 0, 0);
+    const ctx = setup({ deps: { now: () => now } });
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.preview, "no longer a preview").toBeUndefined();
+    ctx.recorder.stopPreview();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    now = new Date(2026, 8, 11, 9, 0, 10);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 09-00-00.mp4"));
+    expect(ctx.host.recorded).toEqual(["s1"]);
+  });
+
+  it("leaves no interruption evidence until Start takes it, and takes the bubble as it is once prepared", async () => {
+    const written: string[] = [];
+    let width = 0.2;
+    const ctx = setup({ deps: { sentinels: { write: async (entry) => { written.push(entry.sessionId); }, remove: async () => undefined },
+      camera: () => ({ layout: { ...DEFAULT_CAMERA_LAYOUT, width } }) } });
+    ctx.recorder.startPreview();
+    await flush();
+    expect(written, "a preview is no recording").toEqual([]);
+    width = 0.3;
+    expect(ctx.recorder.updateCamera({ layout: { ...DEFAULT_CAMERA_LAYOUT, width } }), "no live session yet to change").toBe(false);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.cameraChanges.map((change) => change.camera.layout.width), "changed while preparing: sent once prepared").toEqual([0.3]);
+    ctx.recorder.startIfIdle();
+    await flush();
+    expect(written).toEqual(["s1"]);
+  });
+
+  it("taken while its file still opens, takes Start's name and the recording's evidence once it is open", async () => {
+    let now = new Date(2026, 8, 11, 9, 0, 0);
+    const written: string[] = [];
+    let open!: () => void;
+    const ctx = setup({ deps: { now: () => now, sentinels: { write: async (entry) => { written.push(entry.recordingPath ?? ""); }, remove: async () => undefined } },
+      openWriter: async (recordingPath, finalPath) => { await new Promise<void>((resolve) => { open = resolve; }); const writer = new FakeWriter(recordingPath, finalPath); ctx.writers.push(writer); return writer; } });
+    ctx.recorder.startPreview();
+    await flush();
+    now = new Date(2026, 8, 11, 9, 5, 0);
+    ctx.recorder.startIfIdle();
+    open();
+    await flush();
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 09-05-00.mp4"));
+    expect(written).toEqual([path.join("/out", "2026-09-11 09-00-00.recording.mp4")]);
+  });
+
+  it("is let go of when screen recording's permission goes", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  it("is let go of by sleep and by quit", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    ctx.recorder.systemWillSleep();
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    const quitting = setup();
+    quitting.recorder.startPreview();
+    await flush();
+    quitting.host.emit(prepared("s1"));
+    await flush();
+    await expect(quitting.recorder.shutdown()).resolves.toBe(true);
+    expect(quitting.recorder.preview).toBeUndefined();
+  });
+});
 
 describe("formatTimestamp", () => {
   it("uses the local time with dashes only", () => {

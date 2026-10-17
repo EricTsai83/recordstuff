@@ -23,6 +23,8 @@ import { errnoCode, messageOf } from "../lib/errors";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
+  /** The name the finished file is published under, chosen again when a Live preview becomes a recording (D20). */
+  retarget?(finalPath: string): void;
   readonly preservationUncertain?: boolean;
   /** Confirmed bytes and the steps of a successful finish; diagnostics only. */
   readonly bytesWritten?: number;
@@ -152,7 +154,8 @@ export interface RecorderDeps {
 type RecorderHealth = RecordingHealth;
 
 /** What cancelled an attempt before capture began (plan 040). A cancel is not a failure. */
-export type CancelReason = "toggle" | "menu" | "quit" | "sleep";
+/** `preview`: a Live preview let go of (plan 075, D20), never recorded. */
+export type CancelReason = "toggle" | "menu" | "quit" | "sleep" | "preview";
 
 /**
  * The session a terminal event belongs to (plan 029). A failure's cleanup can
@@ -185,6 +188,11 @@ export type RecorderEvent =
   | { type: "permissionRequested"; needsRelaunch: boolean }
   /** No media existed: the temporary file is removed and idle returns without a failure. */
   | { type: "cancelled"; reason: CancelReason; session: SessionTrace }
+  /**
+   * A Live preview (plan 075, D20) began, became live, ended or could not start (`failure`, which is no recording's:
+   * nothing is reported or kept). The state stays idle throughout; this says what the Recording Studio shows.
+   */
+  | { type: "preview"; failure?: { code: ErrorCode; detail: string } }
   /** Recordings being saved after capture stopped changed: one began or ended, or became slow (`Recorder.saving`). */
   | { type: "saving"; saving: readonly SavingRecording[] }
   /** A save outlived `saveSlowMs`: its drive may have stopped answering. Told once per save. */
@@ -211,11 +219,13 @@ type IdleState = Extract<RecordingState, { type: "idle" }>;
  * for the host's `prepared`; `countdown` shows the digits; `arming` sent
  * `record` and waits for `started` (docs/system-design/recording.md).
  */
-type Phase = "opening" | "preparing" | "countdown" | "arming" | "recording" | "stopping";
+/** `previewing`: a Live preview's prepared session, held without writing until Start takes it (plan 075, D20). */
+type Phase = "opening" | "preparing" | "previewing" | "countdown" | "arming" | "recording" | "stopping";
 
 /** Names the phase in a start failure's detail. */
 const BEFORE_CAPTURE: Partial<Record<Phase, string>> = {
   preparing: "preparing capture",
+  previewing: "previewing",
   countdown: "counting down",
   arming: "starting capture",
 };
@@ -248,6 +258,13 @@ interface Session {
   cameraLost?: boolean;
   /** Hidden from the tray (D13); the camera stays open. */
   cameraHidden?: boolean;
+  /**
+   * A Live preview's session (plan 075, D20), until Start takes it: the state stays idle, nothing is reported as a
+   * recording's, and its file is named again when Start takes it. `promote`: Start came before it was prepared.
+   */
+  preview?: { promote?: boolean };
+  /** The name Start gave a taken preview's file (D20), applied once its writer opens if it was still opening. */
+  claimedTarget?: string;
   /** Muted from the Recording Studio (plan 075, D19), for this recording only. */
   systemMuted?: boolean;
   microphoneMuted?: boolean;
@@ -557,6 +574,8 @@ export class Recorder {
   /** The session once the engine's is prepared and the state says so (the countdown or the recording). */
   private liveSession(): Session | undefined {
     const session = this.session;
+    // A Live preview's held session is live too (D20): its camera and mutes change as a recording's would.
+    if (session?.phase === "previewing") return session;
     const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";
     const shown = this._state.type === "countdown" || this._state.type === "recording";
     return session && prepared && shown ? session : undefined;
@@ -621,6 +640,7 @@ export class Recorder {
         this.deps.log(`recorder: session ${session.id} the Mac is going to sleep; stopped to save the recording`);
         return;
       case "countdown":
+      case "previewing":
         this.cancel(session, "sleep");
         return;
       case "arming":
@@ -663,7 +683,7 @@ export class Recorder {
         checking = true;
         if (this._state.type === "recording") this.stop();
         const phase = this.session?.phase;
-        if (phase === "opening" || phase === "preparing" || phase === "countdown") this.cancel(this.session!, "quit");
+        if (phase === "opening" || phase === "preparing" || phase === "countdown" || phase === "previewing") this.cancel(this.session!, "quit");
         checking = false;
         if (!this.mediaPending) finish(true);
       };
@@ -700,6 +720,8 @@ export class Recorder {
    */
   setPermission(status: PermissionStatus): void {
     this.permission = status;
+    // A Live preview cannot outlive screen recording's permission: let go of before the state says so (D20).
+    if (!status.granted) this.stopPreview();
     const current = this._state;
     if (current.type !== "idle" && current.type !== "needsPermission") return;
     const unchanged = status.granted
@@ -717,12 +739,88 @@ export class Recorder {
   }
 
   private start(): Promise<void> {
-    return this.track(() => this.startOwned());
+    return this.track(() => this.startOwned(false));
   }
 
-  private async startOwned(): Promise<void> {
+  /**
+   * A Live preview (plan 075, D20): the recording's own session, prepared and held without writing, so the Recording
+   * Studio shows what a recording will hold and Start takes it into the countdown with no gap. Only from idle; the
+   * state stays idle. False when none can begin now.
+   */
+  startPreview(): boolean {
+    if (this.quitAdmission || this._state.type !== "idle" || this.session || this.deps.mediaComponentsMissing) return false;
+    void this.track(() => this.startOwned(true));
+    return true;
+  }
+
+  /**
+   * Lets a Live preview go (D20): the Studio left, the window hidden or closed, or its settings changed. Never one
+   * Start has taken, even while it still prepares: that is a recording now.
+   */
+  stopPreview(): void {
+    const session = this.session;
+    if (session?.preview && !session.preview.promote) this.cancel(session, "preview");
+  }
+
+  /** The Live preview, while there is one and Start has not taken it: whether it is live yet (prepared). */
+  get preview(): { sessionId: string; live: boolean } | undefined {
+    const session = this.session;
+    return session?.preview && !session.preview.promote ? { sessionId: session.id, live: session.phase === "previewing" } : undefined;
+  }
+
+  /** The session whose picture the Recording Studio may show: a live preview or a recording, prepared (D20). */
+  get previewSessionId(): string | undefined {
+    return this.liveSession()?.id;
+  }
+
+  /**
+   * Start takes the Live preview's session (D20): named now, as a recording started now would be, then the countdown
+   * or the recording as for any start. One still preparing is taken once prepared.
+   */
+  private promote(session: Session): void {
+    // Taken once: the name, the countdown and the start's time are this Start's, however long preparing still takes.
+    const requested = this.deps.now();
+    const stamp = (this.deps.fileName ?? formatTimestamp)(requested);
+    session.claimedTarget = path.join(session.dir, `${stamp}.mp4`);
+    session.writer?.retarget?.(session.claimedTarget);
+    session.startedAt = requested.toISOString();
+    session.requestedAt = this.monotonic();
+    session.countdownSeconds = this.deps.countdownSeconds?.() ?? 0;
+    session.countdownSound = session.countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false);
+    // A recording now, which a crash leaves evidence of; the preview left none (it is no recording's).
+    session.sentinel = new SessionSentinelTracker(this.deps.sentinels, { id: session.id, startedAt: session.startedAt }, this.deps.log);
+    const recordingPath = session.writer?.recordingPath;
+    if (recordingPath) void this.track(() => session.sentinel.mark(recordingPath));
+    session.preview = { promote: true };
+    this.deps.log(`recorder: session ${session.id} Live preview taken by Start while ${session.phase}`);
+    this.emit({ type: "preview" });
+    this.setState({ type: "starting" });
+    if (session.phase === "previewing") this.completePromotion(session);
+  }
+
+  /** The taken preview's session, prepared, goes on as any prepared start: the countdown or the recording. */
+  private completePromotion(session: Session): void {
+    delete session.preview;
+    if (session.countdownSeconds > 0 && this.deps.countdown) {
+      session.overlay = true;
+      this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
+    }
+    if (session.countdownSeconds > 0) this.beginCountdown(session);
+    else this.record(session);
+  }
+
+  private async startOwned(preview: boolean): Promise<void> {
+    if (!preview && this.session?.preview && !this.session.preview.promote && this._state.type === "idle" && !this.quitAdmission) {
+      this.promote(this.session);
+      return;
+    }
     if (this.quitAdmission || this._state.type !== "idle" || this.session) return;
     const blocker = this.deps.preflight?.();
+    if (blocker && preview) {
+      // No recording was asked for: the Studio says why the preview could not start, nothing is reported.
+      this.emit({ type: "preview", failure: { code: blocker, detail: "" } });
+      return;
+    }
     if (blocker) {
       const result: RecordingFailure = { id: randomUUID(), occurredAt: this.deps.now().toISOString(),
         code: blocker, detail: "", outcome: "pending" };
@@ -753,7 +851,9 @@ export class Recorder {
       startedAt,
       diskWarned: false,
       diskPollFailed: false,
-      sentinel: new SessionSentinelTracker(this.deps.sentinels, { id, startedAt }, this.deps.log),
+      // A preview leaves no interruption evidence until Start takes it (D20): a crash while previewing lost no recording.
+      sentinel: new SessionSentinelTracker(preview ? undefined : this.deps.sentinels, { id, startedAt }, this.deps.log),
+      ...(preview ? { preview: {} } : {}),
     };
     this.session = session;
     let check: Promise<void> | undefined;
@@ -775,12 +875,20 @@ export class Recorder {
       }
       if (this.session !== session) return;
       session.writer = await this.openUniqueWriter(session, (this.deps.fileName ?? formatTimestamp)(requested));
+      // Start took the preview while its file was opening (D20): Start's name, and the recording's evidence.
+      if (session.claimedTarget) {
+        session.writer.retarget?.(session.claimedTarget);
+        const recordingPath = session.writer.recordingPath;
+        if (recordingPath) await session.sentinel.mark(recordingPath);
+      }
     });
     // Isolated like the overlay and the subscribers: a throw here would leave the session set with no state to end it,
     // refusing every later start. Without its preparation the attempt fails through the normal capture path.
     try { this.deps.onSessionStart?.(session.id); }
     catch (cause) { this.deps.log(`recorder: session ${session.id} start hook failed: ${messageOf(cause)}`); }
-    this.setState({ type: "starting" });
+    // A Live preview keeps the state idle: the tray and the shortcut still start a recording, which takes it.
+    if (preview) this.emit({ type: "preview" });
+    else this.setState({ type: "starting" });
     session.timer = setTimeout(() => {
       if (check && !checked) this.rememberHungCheck(dir, check);
       if (this.cancelMarked(session, "opening the folder timed out")) return;
@@ -812,7 +920,7 @@ export class Recorder {
       if (this.cancelMarked(session, "capture request timed out")) return;
       void this.fail(session.id, "capture_start_failed", "screen/audio capture request timed out; complete system permission prompts and retry");
     }, this.deps.captureRequestTimeoutMs);
-    if (session.countdownSeconds > 0 && this.deps.countdown) {
+    if (!session.preview && session.countdownSeconds > 0 && this.deps.countdown) {
       session.overlay = true;
       this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
     }
@@ -908,6 +1016,20 @@ export class Recorder {
         this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}; mime ${message.mimeType}; ${describeMicrophone(session.microphone, message.capture.microphone)}`);
         if (session.cancelOnPrepared) {
           this.cancel(session, session.cancelOnPrepared);
+          return;
+        }
+        if (session.preview) {
+          // Held without writing until Start takes it (D20), or taken now if Start came while it was preparing.
+          session.phase = "previewing";
+          // The bubble as it is now: changed while preparing, it reached no session yet.
+          const camera = this.deps.camera?.();
+          if (session.camera && camera && JSON.stringify(camera.layout) !== JSON.stringify(session.camera.layout)) {
+            session.camera = { ...session.camera, layout: camera.layout };
+            try { this.deps.host.setCamera?.(session.id, session.camera, session.cameraHidden === true); }
+            catch (cause) { this.deps.log(`recorder: session ${session.id} camera layout not sent: ${messageOf(cause)}`); }
+          }
+          if (session.preview.promote) this.completePromotion(session);
+          else this.emit({ type: "preview" });
           return;
         }
         if (session.countdownSeconds > 0) this.beginCountdown(session);
@@ -1147,6 +1269,8 @@ export class Recorder {
       this.emit({ type: "cancelled", reason, session: this.trace(session) });
       await session.sentinel.clear();
     });
+    // The Studio's preview is gone with it.
+    if (session.preview) this.emit({ type: "preview" });
     // Only an opened writer proves the folder usable again; a cancel while it is still being checked keeps the flag.
     if (session.writer) {
       const { outputDirUnavailable: _usable, ...idle } = this.idleState;
@@ -1369,6 +1493,14 @@ export class Recorder {
   ): Promise<void> {
     const session = this.session;
     if (!session || session.id !== sessionId) return;
+    if (session.preview && !session.preview.promote) {
+      // A Live preview that could not start or went on failing (D20) is no recording's failure: nothing is reported
+      // or kept, the Studio says why, and a recording can still start.
+      this.cancel(session, "preview");
+      this.deps.log(`recorder: session ${session.id} Live preview ended: ${code} ${detail}`);
+      this.emit({ type: "preview", failure: { code, detail } });
+      return;
+    }
     this.detach(session);
     this.deps.log(`recorder: session ${session.id} failed: ${code} ${detail}`);
     const occurredAt = this.deps.now().toISOString();
