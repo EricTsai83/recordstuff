@@ -85,6 +85,7 @@ unsafe extern "C" {
     fn AudioComponentInstanceNew(component: AudioComponent, instance: *mut AudioUnit) -> OsStatus;
     fn AudioComponentInstanceDispose(instance: AudioUnit) -> OsStatus;
     fn AudioUnitSetProperty(unit: AudioUnit, property: u32, scope: u32, element: u32, data: *const c_void, size: u32) -> OsStatus;
+    fn AudioUnitGetProperty(unit: AudioUnit, property: u32, scope: u32, element: u32, data: *mut c_void, size: *mut u32) -> OsStatus;
     fn AudioUnitInitialize(unit: AudioUnit) -> OsStatus;
     fn AudioUnitUninitialize(unit: AudioUnit) -> OsStatus;
     fn AudioOutputUnitStart(unit: AudioUnit) -> OsStatus;
@@ -245,6 +246,7 @@ struct Callback {
 pub struct InputUnit {
     unit: AudioUnit,
     callback: *mut Callback,
+    device: ObjectId,
     pub rate: f64,
     pub recycle: std::sync::mpsc::SyncSender<Vec<f32>>,
 }
@@ -267,7 +269,7 @@ impl InputUnit {
         for _ in 0..POOL {
             let _ = recycle.try_send(Vec::with_capacity(MAX_FRAMES));
         }
-        let mut opened = Self { unit, callback: null_mut(), rate: 0.0, recycle };
+        let mut opened = Self { unit, callback: null_mut(), device, rate: 0.0, recycle };
         let set = |property: u32, scope: u32, element: u32, data: *const c_void, size: usize, what: &str| -> Result<(), String> {
             let status = unsafe { AudioUnitSetProperty(unit, property, scope, element, data, size as u32) };
             if status == 0 { Ok(()) } else { Err(format!("{what}: {status}")) }
@@ -299,6 +301,26 @@ impl InputUnit {
         }
         opened.rate = rate;
         Ok(opened)
+    }
+
+    /// Why the unit no longer records the device it was opened on, if it does not. A device that leaves does not stop
+    /// the unit: the HAL moves it to another input, which goes on delivering sound, at that input's rate (the 2026-10-17
+    /// desktop round: a Bluetooth headset put in its case and an iPhone disconnected were each followed by another
+    /// microphone's room). A rate the device changed to is caught here too, since the converter was made for the old.
+    pub fn moved(&self) -> Option<String> {
+        if !alive(self.device) {
+            return Some("the device is gone".into());
+        }
+        let mut current: ObjectId = 0;
+        let mut size = size_of::<ObjectId>() as u32;
+        let status = unsafe { AudioUnitGetProperty(self.unit, CURRENT_DEVICE, SCOPE_UNIT_GLOBAL, OUTPUT_ELEMENT, (&raw mut current).cast(), &mut size) };
+        if status == 0 && current != self.device {
+            return Some(format!("the HAL moved it to device {current}"));
+        }
+        match value::<f64>(self.device, NOMINAL_RATE, SCOPE_GLOBAL, None) {
+            Some(rate) if (rate - self.rate).abs() > 0.5 => Some(format!("its rate changed from {} to {rate} Hz", self.rate)),
+            _ => None,
+        }
     }
 }
 

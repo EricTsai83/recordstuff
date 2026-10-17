@@ -6,9 +6,11 @@
 //!
 //! A microphone that cannot be opened refuses the recording with `microphone_unavailable` (074); one that stops while
 //! recording is told after 2 s without sound (`Shared::microphone_clock`) and the recording goes on without it. This
-//! module then takes it back: once a second it checks the device, and a device that is gone, or still there but
-//! silent, is closed and opened again by its UID as soon as the HAL lists it, retrying after 2 s and backing off to
-//! 30 s, as Cap reconnects (cpal). The HAL follows devices in a process without a main run loop, which AVFoundation did
+//! module then takes it back. Every 250 ms it checks that the unit still records its device: when the device leaves,
+//! the HAL moves the unit to another input rather than stopping it, and that input's sound would go on unnoticed
+//! (`InputUnit::moved`), so the unit is closed at once, and the silence that follows tells the loss. A device that is
+//! gone, or still there but silent for 2 s, is opened again by its UID as soon as the HAL lists it, retrying after 2 s
+//! and backing off to 30 s, as Cap reconnects (cpal). The HAL follows devices in a process without a main run loop, which AVFoundation did
 //! not (074's probe, hal.rs). The device taken back is always the one opened at the start, the default input's
 //! included: a new default does not replace it (the maintainer's decision, 2026-10-17).
 //!
@@ -31,6 +33,8 @@ use crate::core::{Microphone, SAMPLE_RATE};
 
 /// How long without sound before the device is checked and opened again.
 const SILENT: Duration = Duration::from_secs(2);
+/// How often the open unit is checked to still record its own device.
+const CHECK: Duration = Duration::from_millis(250);
 /// The waits between attempts to open it again, the last repeated.
 const BACKOFF: [Duration; 5] = [Duration::from_secs(2), Duration::from_secs(4), Duration::from_secs(8), Duration::from_secs(16), Duration::from_secs(30)];
 /// Buffers the HAL's thread may queue ahead of the reading thread: as many as its pool holds.
@@ -155,6 +159,7 @@ impl Reader {
         let mut retry_at = Instant::now();
         let mut attempts = 0usize;
         let mut converted = Vec::new();
+        let mut checked = Instant::now();
         while !self.stopped.load(Ordering::Acquire) {
             match self.received.recv_timeout(Duration::from_millis(250)) {
                 Ok(chunk) => {
@@ -171,6 +176,17 @@ impl Reader {
                 }
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
+            }
+            if checked.elapsed() >= CHECK {
+                checked = Instant::now();
+                if let Some(why) = open.as_ref().and_then(|(unit, _)| unit.moved()) {
+                    eprintln!("microphone: {} stopped being recorded ({why}); reopening it when it is there", self.name);
+                    open = None;
+                    // What it queued may be the other input's sound: let it go.
+                    while self.received.try_recv().is_ok() {}
+                    // Opened again as soon as the HAL lists it, without first waiting out the silence.
+                    heard = Instant::now().checked_sub(SILENT).unwrap_or(heard);
+                }
             }
             if heard.elapsed() < SILENT || Instant::now() < retry_at {
                 continue;
