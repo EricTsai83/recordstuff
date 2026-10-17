@@ -59,7 +59,7 @@ fn main() {
         .iter()
         .map(|entry| {
             format!(
-                "pub const MSL_{0}: &str = {1:?};\n#[allow(dead_code)]\npub const HLSL_{0}: &str = {2:?};\n",
+                "#[allow(dead_code)]\npub const MSL_{0}: &str = {1:?};\n#[allow(dead_code)]\npub const HLSL_{0}: &str = {2:?};\n",
                 entry.to_uppercase(),
                 name_of(&names, entry),
                 name_of(&hlsl_names, entry)

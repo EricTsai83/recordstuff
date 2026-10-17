@@ -145,7 +145,7 @@ pub enum Image {
 }
 
 type Slot = (ID3D11Texture2D, Option<ID3D11VideoProcessorOutputView>);
-type Pool = Arc<Mutex<Vec<Slot>>>;
+pub(crate) type Pool = Arc<Mutex<Vec<Slot>>>;
 
 /// One converted or copied frame, back to its pool when dropped.
 pub struct Captured {
@@ -167,6 +167,16 @@ impl Captured {
     /// A texture of its own, returned to no pool: the hardware encoder's self-test frame.
     pub fn detached(texture: ID3D11Texture2D, image: Image) -> Self {
         Self { texture, image, view: None, pool: Arc::new(Mutex::new(Vec::new())) }
+    }
+
+    /// An NV12 texture of another pool than capture's, back to it when dropped: the camera compositor's output.
+    pub(crate) fn pooled(texture: ID3D11Texture2D, pool: Pool) -> Self {
+        Self { texture, image: Image::Nv12, view: None, pool }
+    }
+
+    /// The texture back from `pool`, if one is there.
+    pub(crate) fn reuse(pool: &Pool) -> Option<ID3D11Texture2D> {
+        pool.lock().unwrap().pop().map(|(texture, _)| texture)
     }
 }
 

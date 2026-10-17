@@ -112,6 +112,56 @@ pub fn preview_size(width: u32, height: u32) -> (u32, u32) {
     ((target & !1).max(2), (scaled & !1).max(2))
 }
 
+/// The compositor's kernels' parameters, laid out as `Params` in shaders/compose.wgsl, which every platform's compositor
+/// passes as they are (64 bytes: Direct3D 11's constant buffers come in 16-byte rows).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ComposeParams {
+    pub out_size: [f32; 2],
+    pub bubble_origin: [f32; 2],
+    pub bubble_size: [f32; 2],
+    pub crop_origin: [f32; 2],
+    pub crop_size: [f32; 2],
+    pub radius: f32,
+    pub mirror: f32,
+    pub camera_on: f32,
+    pub camera_601: f32,
+    _padding: [f32; 2],
+}
+
+/// A camera frame as the compositor reads it: its size, and whether its YCbCr is BT.601's.
+#[derive(Clone, Copy, Debug)]
+pub struct CameraImage {
+    pub width: u32,
+    pub height: u32,
+    pub bt601: bool,
+}
+
+/// The parameters for an output of `out` pixels from a `size` frame, the bubble placed as on the full-size frame; no
+/// camera frame composes the screen alone.
+pub fn compose_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera: Option<CameraImage>) -> ComposeParams {
+    let full = layout.bubble(size.0, size.1);
+    let (sx, sy) = (f64::from(out.0) / f64::from(size.0), f64::from(out.1) / f64::from(size.1));
+    let bubble = Rect { x: full.x * sx, y: full.y * sy, width: full.width * sx, height: full.height * sy };
+    let mut params = ComposeParams {
+        out_size: [out.0 as f32, out.1 as f32],
+        bubble_origin: [bubble.x as f32, bubble.y as f32],
+        bubble_size: [bubble.width as f32, bubble.height as f32],
+        radius: (layout.radius(&full) * sx.min(sy)) as f32,
+        mirror: if layout.mirror { 1.0 } else { 0.0 },
+        ..ComposeParams::default()
+    };
+    if let Some(camera) = camera {
+        let (cw, ch) = (camera.width, camera.height);
+        let crop = camera_crop(cw, ch, full.width, full.height);
+        params.crop_origin = [(crop.x / f64::from(cw)) as f32, (crop.y / f64::from(ch)) as f32];
+        params.crop_size = [(crop.width / f64::from(cw)) as f32, (crop.height / f64::from(ch)) as f32];
+        params.camera_on = 1.0;
+        params.camera_601 = if camera.bt601 { 1.0 } else { 0.0 };
+    }
+    params
+}
+
 pub const PREVIEW_WIDTH: u32 = 640;
 /// 10 a second since 2026-10-18 (D21): the Recording Studio's page decoding and drawing it cost more than the recording
 /// it shows at 15; the recording keeps its own rate.

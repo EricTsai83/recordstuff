@@ -29,7 +29,7 @@ use objc2_metal::{
 };
 
 use super::camera;
-use crate::camera_layout::{self, Layout, Rect};
+use crate::camera_layout::{self, CameraImage, ComposeParams, Layout};
 
 mod names {
     include!(concat!(env!("OUT_DIR"), "/compose_names.rs"));
@@ -65,20 +65,7 @@ impl Pool {
     }
 }
 
-/// The kernels' parameters, laid out as `Params` in shaders/compose.wgsl.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-struct Params {
-    out_size: [f32; 2],
-    bubble_origin: [f32; 2],
-    bubble_size: [f32; 2],
-    crop_origin: [f32; 2],
-    crop_size: [f32; 2],
-    radius: f32,
-    mirror: f32,
-    camera_on: f32,
-    camera_601: f32,
-}
+type Params = ComposeParams;
 
 /// A plane of a pixel buffer as a Metal texture; the texture lasts while the CVMetalTexture does.
 struct Plane {
@@ -226,27 +213,12 @@ impl Compositor {
 
     /// The kernels' parameters for an output of `out` pixels, the bubble placed as on the full-size frame.
     fn params(&self, out: (u32, u32), camera: Option<&CVImageBuffer>) -> Params {
-        let layout = self.layout();
-        let full = layout.bubble(self.size.0, self.size.1);
-        let (sx, sy) = (f64::from(out.0) / f64::from(self.size.0), f64::from(out.1) / f64::from(self.size.1));
-        let bubble = Rect { x: full.x * sx, y: full.y * sy, width: full.width * sx, height: full.height * sy };
-        let mut params = Params {
-            out_size: [out.0 as f32, out.1 as f32],
-            bubble_origin: [bubble.x as f32, bubble.y as f32],
-            bubble_size: [bubble.width as f32, bubble.height as f32],
-            radius: (layout.radius(&full) * sx.min(sy)) as f32,
-            mirror: if layout.mirror { 1.0 } else { 0.0 },
-            ..Params::default()
-        };
-        if let Some(camera) = camera {
-            let (cw, ch) = (CVPixelBufferGetWidth(camera) as u32, CVPixelBufferGetHeight(camera) as u32);
-            let crop = camera_layout::camera_crop(cw, ch, full.width, full.height);
-            params.crop_origin = [(crop.x / f64::from(cw)) as f32, (crop.y / f64::from(ch)) as f32];
-            params.crop_size = [(crop.width / f64::from(cw)) as f32, (crop.height / f64::from(ch)) as f32];
-            params.camera_on = 1.0;
-            params.camera_601 = if is_601(camera) { 1.0 } else { 0.0 };
-        }
-        params
+        let camera = camera.map(|camera| CameraImage {
+            width: CVPixelBufferGetWidth(camera) as u32,
+            height: CVPixelBufferGetHeight(camera) as u32,
+            bt601: is_601(camera),
+        });
+        camera_layout::compose_params(&self.layout(), self.size, out, camera)
     }
 
     fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32)) -> Result<CFRetained<CVPixelBuffer>, String> {
