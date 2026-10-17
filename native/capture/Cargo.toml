@@ -94,6 +94,10 @@ windows = { version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[dev-dependencies]
+# The camera layout's cases shared with the TypeScript tests (src/shared/camera-layout.cases.json).
+serde_json = "1"
+
 [build-dependencies]
 napi-build = "2"
 # The camera compositor's one shader source, translated at build time (plan 075, D15; build.rs). Nothing of it ships.

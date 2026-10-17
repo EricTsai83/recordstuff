@@ -1,6 +1,7 @@
 //! The camera bubble's geometry (plan 075): where the camera goes in an output frame, how its corners are rounded and
-//! how the camera's own picture fills it. Pure, so the compositor and its tests (and later the Settings preview's
-//! parameters) come from one formula (D2).
+//! how the camera's own picture fills it. Pure, so the compositor and its tests come from one formula (D2), the one the
+//! Settings preview draws with too (src/shared/camera-layout.ts): both are checked against the same cases
+//! (src/shared/camera-layout.cases.json).
 //!
 //! Step 2's prototype takes its layout from the development switch `RECORDSTUFF_CAMERA_PROTOTYPE` (`CameraPrototype`):
 //! `1` (or `on`) for the defaults, or comma-separated `key=value` pairs: `width`, `height` (fractions of the output's
@@ -228,6 +229,49 @@ mod tests {
         assert_eq!(preview_size(3024, 1964), (640, 414));
         assert_eq!(preview_size(320, 241), (320, 240));
         assert_eq!(preview_size(0, 0), (2, 2));
+    }
+
+    /// The cases the TypeScript layout (src/shared/camera-layout.ts) is checked against too: the Settings preview and
+    /// the recording place the bubble alike.
+    #[test]
+    fn the_cases_shared_with_the_settings_preview_agree() {
+        let cases: serde_json::Value = serde_json::from_str(include_str!("../../../src/shared/camera-layout.cases.json")).unwrap();
+        let number = |value: &serde_json::Value| value.as_f64().unwrap();
+        let mut checked = 0;
+        for case in cases["cases"].as_array().unwrap() {
+            let l = &case["layout"];
+            let p = &case["position"];
+            let layout = Layout {
+                width: number(&l["width"]),
+                height: number(&l["height"]),
+                rounding: number(&l["rounding"]),
+                x: number(&p["x"]),
+                y: number(&p["y"]),
+                mirror: l["mirror"].as_bool().unwrap(),
+            };
+            let (w, h) = (case["frame"][0].as_u64().unwrap() as u32, case["frame"][1].as_u64().unwrap() as u32);
+            let bubble = layout.bubble(w, h);
+            let r = &case["rect"];
+            let expected = Rect { x: number(&r["x"]), y: number(&r["y"]), width: number(&r["width"]), height: number(&r["height"]) };
+            assert_eq!(bubble, expected, "{} at {p} in {w}x{h}", case["name"]);
+            assert!((layout.radius(&bubble) - number(&case["radius"])).abs() < 1e-9, "{} radius", case["name"]);
+            checked += 1;
+        }
+        assert!(checked > 100);
+        for preview in cases["previews"].as_array().unwrap() {
+            let (w, h) = (preview["frame"][0].as_u64().unwrap() as u32, preview["frame"][1].as_u64().unwrap() as u32);
+            let expected = (preview["preview"]["width"].as_u64().unwrap() as u32, preview["preview"]["height"].as_u64().unwrap() as u32);
+            assert_eq!(preview_size(w, h), expected, "preview of {w}x{h}");
+        }
+        for crop in cases["crops"].as_array().unwrap() {
+            let c = &crop["camera"];
+            let b = &crop["bubble"];
+            let got = camera_crop(c[0].as_u64().unwrap() as u32, c[1].as_u64().unwrap() as u32, number(&b[0]), number(&b[1]));
+            let e = &crop["crop"];
+            for (got, want) in [(got.x, &e["x"]), (got.y, &e["y"]), (got.width, &e["width"]), (got.height, &e["height"])] {
+                assert!((got - number(want)).abs() < 1e-9, "crop {crop}");
+            }
+        }
     }
 
     #[test]
