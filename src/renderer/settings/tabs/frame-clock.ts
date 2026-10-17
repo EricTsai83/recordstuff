@@ -1,10 +1,10 @@
 /**
- * One clock for what the Recording Studio redraws (plan 075 step 8): the preview's frames when it draws, about 15 a
- * second, else a timer at that rate. The meters paint on it, so the window composes about 15 frames a second rather
+ * One clock for what the Recording Studio redraws (plan 075 step 8): the preview's frames when it draws, 10 a second
+ * (D21), else a timer at that rate. The meters paint on it, so the window composes about 10 frames a second rather
  * than one for each preview frame, each level and each fall step apart, which cost Settings' processes more than the
  * preview itself (2026-10-18).
  */
-export const FRAME_MS = 1000 / 15;
+export const FRAME_MS = 1000 / 10;
 
 const listeners = new Set<() => void>();
 let drivenAt = 0;

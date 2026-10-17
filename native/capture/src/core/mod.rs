@@ -84,12 +84,12 @@ pub trait Events: Send + Sync {
     fn camera_lost(&self, _detail: String) {}
     /// The camera told lost delivers again, and is composed again.
     fn camera_resumed(&self, _detail: String) {}
-    /// The loudest sample of each kind of input since the last levels (plan 075, D19), about 15 times a second while
+    /// The loudest sample of each kind of input since the last levels (plan 075, D19), 10 times a second while
     /// they are watched and sound is taken; called on an input's thread.
     fn levels(&self, _levels: Levels) {}
 }
 
-/// Peak levels, linear (1 is full scale), of the inputs as they arrive, before any muting.
+/// Peak levels, linear (1 is full scale), of the inputs after their volumes (D21), before any muting.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Levels {
     /// System audio and any apps' audio together.
@@ -98,11 +98,15 @@ pub struct Levels {
     pub microphone: Option<f32>,
 }
 
-/// How often levels are told while watched: about 15 times a second, the preview's rate.
-const LEVELS_INTERVAL_NS: u64 = NANOS_PER_SECOND / 15;
+/// An input's volume at or below this is silence (D21), the bottom of its fader.
+pub const SILENT_GAIN_DB: f64 = -60.0;
+/// The loudest an input's volume raises it: +12 dB, about four times.
+pub const MAX_GAIN_DB: f64 = 12.0;
 
-/// The level meters and the mutes of the recording in progress (plan 075, D19).
-#[derive(Default)]
+/// How often levels are told while watched: 10 times a second, the preview's rate (D21).
+const LEVELS_INTERVAL_NS: u64 = NANOS_PER_SECOND / 10;
+
+/// The level meters, the volumes and the mutes of the recording in progress (plan 075, D19, D21).
 struct Meters {
     watched: AtomicBool,
     /// Each kind's loudest sample since the last levels told, as f32 bits: a non-negative f32 orders as its bits do.
@@ -111,6 +115,24 @@ struct Meters {
     told_ns: AtomicU64,
     system_muted: AtomicBool,
     microphone_muted: AtomicBool,
+    /// Each kind's volume, a linear factor as f32 bits: 1 leaves its samples as they are.
+    system_gain: AtomicU32,
+    microphone_gain: AtomicU32,
+}
+
+impl Default for Meters {
+    fn default() -> Self {
+        Self {
+            watched: AtomicBool::new(false),
+            system_peak: AtomicU32::new(0),
+            microphone_peak: AtomicU32::new(0),
+            told_ns: AtomicU64::new(0),
+            system_muted: AtomicBool::new(false),
+            microphone_muted: AtomicBool::new(false),
+            system_gain: AtomicU32::new(1.0f32.to_bits()),
+            microphone_gain: AtomicU32::new(1.0f32.to_bits()),
+        }
+    }
 }
 
 /// One encoded frame of the preview: H.264 in AVCC form (length-prefixed NAL units), for WebCodecs' `VideoDecoder`.
@@ -607,7 +629,14 @@ impl<P: Platform> Shared<P> {
             return Ok(());
         }
         let microphone_input = self.is_microphone(input);
-        // Levels from the moment sound arrives, before recording too (D20: a Live preview is a prepared session).
+        // Its volume (D21): raised past -1 dBFS, softly limited as a loud sum is, rather than clipped by the encoder.
+        let gain = f32::from_bits(if microphone_input { &self.meters.microphone_gain } else { &self.meters.system_gain }.load(Ordering::Acquire));
+        let sample = |frame: usize, channel: usize| {
+            let value = sample(frame, channel) * gain;
+            if gain > 1.0 { mixer::limit(value) } else { value }
+        };
+        // Levels from the moment sound arrives, before recording too (D20: a Live preview is a prepared session): after
+        // the volume, so the meter shows what is recorded, and before the mute, so a muted input still shows it hears.
         if self.meters.watched.load(Ordering::Acquire) {
             let peak = (0..frames).fold(0.0f32, |peak, frame| peak.max(sample(frame, 0).abs()).max(sample(frame, 1).abs()));
             let kind = if microphone_input { &self.meters.microphone_peak } else { &self.meters.system_peak };
@@ -795,6 +824,14 @@ impl<P: Platform> Core<P> {
     pub fn set_muted(&self, system: bool, microphone: bool) {
         self.shared.meters.system_muted.store(system, Ordering::Release);
         self.shared.meters.microphone_muted.store(microphone, Ordering::Release);
+    }
+
+    /// Sets system audio's and the microphone's volumes, in dB, from their next sound on (D21); at or below
+    /// `SILENT_GAIN_DB` an input is silent. The meters show the levels after them.
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) {
+        let factor = |db: f64| if !db.is_finite() || db <= SILENT_GAIN_DB { 0.0 } else { 10f64.powf(db.min(MAX_GAIN_DB) / 20.0) as f32 };
+        self.shared.meters.system_gain.store(factor(system_db).to_bits(), Ordering::Release);
+        self.shared.meters.microphone_gain.store(factor(microphone_db).to_bits(), Ordering::Release);
     }
 
     /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is

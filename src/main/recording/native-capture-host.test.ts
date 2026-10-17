@@ -102,8 +102,11 @@ describe("cameraChoice (plan 075)", () => {
     expect(ctx.host.watchLevels("s1", true)).toBe(true);
     ctx.host.setMuted("s1", true, false);
     ctx.host.setMuted("other", true, true);
-    expect(child.sent.filter((m) => m.type === "levels" || m.type === "mute")).toEqual([
-      { type: "levels", sessionId: "s1", watching: true }, { type: "mute", sessionId: "s1", system: true, microphone: false }]);
+    ctx.host.setGains("s1", { system: -6, microphone: 0 });
+    ctx.host.setGains("other", { system: 0, microphone: 0 });
+    expect(child.sent.filter((m) => m.type === "levels" || m.type === "mute" || m.type === "gain")).toEqual([
+      { type: "levels", sessionId: "s1", watching: true }, { type: "mute", sessionId: "s1", system: true, microphone: false },
+      { type: "gain", sessionId: "s1", system: -6, microphone: 0 }]);
   });
 
   it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {

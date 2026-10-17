@@ -476,7 +476,7 @@ impl NativeCapture {
         }
     }
 
-    /// Whether the inputs' levels are told (plan 075, D19): `levels` events about 15 times a second while recording.
+    /// Whether the inputs' levels are told (plan 075, D19): `levels` events 10 times a second while sound is read.
     #[napi]
     pub fn watch_levels(&self, watching: bool) -> Result<bool> {
         #[cfg(any(target_os = "macos", windows))]
@@ -500,6 +500,20 @@ impl NativeCapture {
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = (system, microphone);
+            Ok(false)
+        }
+    }
+
+    /// System audio's and the microphone's volumes in dB from their next sound on (D21); false without a session.
+    #[napi]
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_gains(system_db, microphone_db)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = (system_db, microphone_db);
             Ok(false)
         }
     }

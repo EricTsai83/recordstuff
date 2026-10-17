@@ -218,6 +218,12 @@ impl Session {
         true
     }
 
+    /// The inputs' volumes in dB from their next sound on (plan 075, D21).
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) -> bool {
+        self.core.set_gains(system_db, microphone_db);
+        true
+    }
+
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
     pub fn record(&mut self) -> Result<(), CaptureError> {
         self.core.record()

@@ -29,6 +29,7 @@ import {
 } from "../../shared/quality";
 import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../../shared/countdown";
+import { AUDIO_GAIN_MAX_DB, AUDIO_GAIN_MIN_DB, DEFAULT_AUDIO_GAIN, gainText, isGainDb } from "../../shared/audio-gain";
 import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../../shared/file-name";
 import { isLibraryLayout } from "../../shared/appearance";
 import { formatDuration } from "../../shared/video-player";
@@ -92,6 +93,7 @@ const SECTIONS: Record<string, string> = {
   microphone: "audio", microphoneDevice: "audio",
   camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
   studioControls: "studioControls", cameraPreview: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
+  systemGain: "studioAudio", microphoneGain: "studioAudio",
   studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
   cameraRatio: "studioCamera", cameraRounding: "studioCamera", cameraMirror: "studioCamera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
@@ -403,10 +405,26 @@ function studioAudioGroups(ctx: AppContext): Group[] {
     control: "meter", meter: { source },
     ...(session ? {} : { note: t("Its level shows, and it can be muted, while recording.", language) }),
   });
-  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false)];
-  if (session ? session.microphone : ctx.microphone?.enabled) rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false));
+  // Each input's fader (D21): a setting, so offered before, during and between recordings alike.
+  const fader = (id: AudioGainGroup, label: PlainMessageKey): Group => {
+    const source = AUDIO_GAIN_GROUPS[id];
+    const value = (ctx.audioGain ?? DEFAULT_AUDIO_GAIN)[source];
+    return { ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: gainText(value),
+      enabled: true, checked: true, action: { setAudioGain: { source, db: value } } }]),
+      control: "slider", slider: { min: AUDIO_GAIN_MIN_DB, max: AUDIO_GAIN_MAX_DB, step: 1, value, unit: "decibels" } };
+  };
+  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), fader("systemGain", "System audio")];
+  if (session ? session.microphone : ctx.microphone?.enabled) {
+    rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false), fader("microphoneGain", "Microphone"));
+  }
   return rows;
 }
+
+/** The faders' groups and the input each sets (D21). */
+const AUDIO_GAIN_GROUPS = { systemGain: "system", microphoneGain: "microphone" } as const;
+type AudioGainGroup = keyof typeof AUDIO_GAIN_GROUPS;
+const isAudioGainGroup = (id: unknown): id is AudioGainGroup => typeof id === "string" && id in AUDIO_GAIN_GROUPS;
+
 
 /** Start, Cancel or Stop, as the tray offers it now, with the recording's elapsed time (D19). */
 function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
@@ -1168,6 +1186,12 @@ export function settingsAction(
     const value = typeof choiceId === "string" && /^\d{1,3}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
     return value >= min && value <= max && cameraShapeEnabled(ctx, preferencesUnlocked(state)) && ctx.camera?.available
       ? { setCameraShape: { [key]: value / 100 } } : undefined;
+  }
+  // A fader sends the whole dB let go of (D21); the microphone's only while its fader is offered.
+  if (isAudioGainGroup(groupId)) {
+    const db = typeof choiceId === "string" && /^-?\d{1,2}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
+    const offered = groupId === "systemGain" || (ctx.audioSession ? ctx.audioSession.microphone : ctx.microphone?.enabled);
+    return isGainDb(db) && offered ? { setAudioGain: { source: AUDIO_GAIN_GROUPS[groupId], db } } : undefined;
   }
   // The preview sends where the bubble was let go of, on the display it shows (D7: also while recording).
   if (groupId === "cameraPreview") {

@@ -105,16 +105,21 @@ function AudioPanel() {
     <section className="studio-panel" aria-labelledby="studio-audio-heading">
       <div className="studio-panel-head"><h2 id="studio-audio-heading">{rows[0]!.sectionHeading ?? model.text("Audio")}</h2></div>
       <div className="studio-mixer">
-        {rows.map((group) => (
-          <div key={group.id} className="studio-channel">
-            <span id={`setting-${group.id}-label`}>{group.label}</span>
-            <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
-              disabled={!group.enabled || held(group)} describedBy={note ? "studio-audio-note" : undefined} />
-          </div>
-        ))}
+        {rows.map((group) => {
+          // Its fader under its meter, as a mixer's channel has it (D21): the meter shows the level after it.
+          const fader = groupOf(`${group.meter!.source}Gain`);
+          return (
+            <div key={group.id} className="studio-channel">
+              <span id={`setting-${group.id}-label`}>{group.label}</span>
+              <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
+                disabled={!group.enabled || held(group)} describedBy={note ? "studio-audio-note" : undefined} />
+              {fader?.slider && <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled || held(fader)} />}
+            </div>
+          );
+        })}
       </div>
       {note && <p id="studio-audio-note" className="studio-note">{note}</p>}
-      <Failures groups={rows} />
+      <Failures groups={[...rows, groupOf("systemGain"), groupOf("microphoneGain")]} />
     </section>
   );
 }

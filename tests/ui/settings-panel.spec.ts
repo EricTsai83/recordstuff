@@ -534,7 +534,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
     { message: "S133 it falls back without new levels", timeout: 3000 }).toBeLessThan(-20);
   // Past full scale (a sum before the limiter) it reads full scale, within its range.
   await host.evaluate(h => h.pushLevels({ system: 2 }));
-  // Seen once it arrives, before it falls back far (a step every fifteenth of a second): full scale, never past it.
+  // Seen once it arrives, before it falls back far (a step every tenth of a second): full scale, never past it.
   const valueNow = async (): Promise<number> => Number(await page.getByRole("meter", { name: "System audio" }).getAttribute("aria-valuenow"));
   await expect.poll(valueNow, { message: "S133 a level past full scale arrives" }).toBeGreaterThanOrEqual(-5);
   expect(await valueNow(), "S133 and reads full scale at most").toBeLessThanOrEqual(0);
@@ -553,6 +553,41 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   await expect(page.getByRole("meter", { name: "System audio" }), "S133 a next recording's meter starts from silence").toHaveAttribute("aria-valuenow", "-60");
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true } }); });
   await expect(page.getByRole("button", { name: "將系統聲音靜音" }), "S133 zh-TW").toBeVisible();
+});
+
+test("S138 each input's fader under its meter: saved between and during recordings, said in dB, silent at its bottom (plan 075, D21)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true }, audioGain: { system: 0, microphone: -6 } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  const system = page.getByRole("slider", { name: "System audio volume" });
+  const microphone = page.getByRole("slider", { name: "Microphone volume" });
+  await system.scrollIntoViewIfNeeded();
+  await expect(system, "S138 between recordings a fader may move").toBeEnabled();
+  await expect(system).toHaveAttribute("aria-valuetext", "0 dB");
+  await expect(microphone, "S138 each input its own").toHaveAttribute("aria-valuetext", "−6 dB");
+  await clearCalls();
+  await system.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(calls, { message: "S138 a step asks main to save it" }).toEqual([["systemGain", "1"]]);
+  await expect(system, "S138 and shows it, signed").toHaveAttribute("aria-valuetext", "+1 dB");
+
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.state.cameraContext = { ...h.state.cameraContext!, audioSession: { systemMuted: false, microphone: { muted: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(microphone, "S138 while recording too").toBeEnabled();
+  await clearCalls();
+  await microphone.focus();
+  await page.keyboard.press("Home");
+  await expect.poll(calls, { message: "S138 the bottom is a choice main takes" }).toEqual([["microphoneGain", "-60"]]);
+  await expect(microphone, "S138 and is silence").toHaveAttribute("aria-valuetext", "−∞ dB");
+  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true } }); });
+  await expect(page.getByRole("slider", { name: "麥克風音量" }), "S138 zh-TW").toBeVisible();
 });
 
 test("S135 the sidebar collapses to a rail of icons named by their tooltips, its status a light that opens it, and is remembered (2026-10-17)", { tag: "@layout" }, async () => {

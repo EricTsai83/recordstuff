@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
+import { gainText } from "../../../shared/audio-gain";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
@@ -91,7 +92,7 @@ export function SliderSetting({ id, group, slider, disabled, describedBy }: {
 }) {
   const [moving, setMoving] = useState<number | undefined>(undefined);
   const shown = moving ?? slider.value;
-  const text = `${shown}%`;
+  const text = slider.unit === "decibels" ? gainText(shown) : `${shown}%`;
   return (
     <div className="slider-setting">
       <Slider

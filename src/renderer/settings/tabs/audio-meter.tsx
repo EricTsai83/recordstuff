@@ -13,8 +13,8 @@ import { onFrame } from "./frame-clock";
 
 /** The meter's floor: quieter is shown as nothing. */
 const FLOOR_DB = -60;
-/** How fast a shown level falls back: about 20 dB a second, a step each frame of the Studio's clock. */
-const FALL_DB = 1.3;
+/** How fast a shown level falls back: 20 dB a second, a step each frame of the Studio's clock (10 a second). */
+const FALL_DB = 2;
 
 const listeners = new Set<(levels: StudioLevels) => void>();
 let unsubscribe: (() => void) | undefined;

@@ -23,6 +23,7 @@ import { recordedPosition } from "../../shared/camera-layout";
 import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
+import type { AudioGain } from "../../shared/audio-gain";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
 
@@ -280,6 +281,12 @@ export class NativeCaptureHost implements RecorderHost {
   setMuted(sessionId: string, system: boolean, microphone: boolean): void {
     if (!this.child || this.watching !== sessionId) return;
     this.post({ type: "mute", sessionId, system, microphone });
+  }
+
+  /** The session's inputs' volumes in dB (plan 075, D21). */
+  setGains(sessionId: string, gain: AudioGain): void {
+    if (!this.child || this.watching !== sessionId) return;
+    this.post({ type: "gain", sessionId, system: gain.system, microphone: gain.microphone });
   }
 
   /** Whether the session's levels are watched (D19); false when this host's process does not run the session. */

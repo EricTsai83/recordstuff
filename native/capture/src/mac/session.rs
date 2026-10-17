@@ -41,7 +41,7 @@ use crate::pacing::Pacer;
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
-/// The preview stream's average bit rate: enough for 640 pixels at 15 fps.
+/// The preview stream's average bit rate: enough for 640 pixels at 10 fps.
 const PREVIEW_BITRATE: u32 = 1_000_000;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -610,6 +610,12 @@ impl Session {
     pub fn set_muted(&self, system: bool, microphone: bool) -> bool {
         self.core.set_muted(system, microphone);
         eprintln!("audio: system {}, microphone {}", if system { "muted" } else { "on" }, if microphone { "muted" } else { "on" });
+        true
+    }
+
+    /// The inputs' volumes in dB from their next sound on (plan 075, D21).
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) -> bool {
+        self.core.set_gains(system_db, microphone_db);
         true
     }
 

@@ -547,7 +547,7 @@ fn feed_both(rig: &Rig, t0: u64, from: u64, ms: u64) -> u64 {
 }
 
 #[test]
-fn levels_are_told_about_15_times_a_second_only_while_watched_each_kind_its_loudest() {
+fn levels_are_told_10_times_a_second_only_while_watched_each_kind_its_loudest() {
     let mut rig = Rig::with_inputs("levels", 2);
     rig.core.watch_microphone(1);
     rig.shared.frame(1, Fake::now_ns());
@@ -584,6 +584,32 @@ fn a_prepared_session_tells_watched_levels_and_records_nothing_until_it_records(
     let levels = rig.heard.levels.lock().unwrap().clone();
     assert!(levels.len() >= 2 && levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
     assert_eq!(f32::from_bits(rig.loudest.load(Ordering::Acquire)), 0.0, "no sound reached the encoder");
+}
+
+#[test]
+fn an_input_is_recorded_and_metered_at_its_volume() {
+    let mut rig = Rig::with_inputs("gains", 2);
+    rig.core.watch_microphone(1);
+    rig.core.watch_levels(true);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let loudest = |rig: &Rig| f32::from_bits(rig.loudest.swap(0, Ordering::AcqRel));
+    // -6 dB on the system's 0.25, the microphone silent at the fader's bottom: about 0.125 recorded and metered.
+    rig.core.set_gains(-6.0, SILENT_GAIN_DB);
+    rig.heard.levels.lock().unwrap().clear();
+    let next = feed_both(&rig, t0, 0, 300);
+    let recorded = loudest(&rig);
+    assert!((recorded - 0.125).abs() < 0.002, "{recorded}");
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    assert!(levels.iter().skip(1).all(|l| (l.system - 0.125).abs() < 0.002 && l.microphone == Some(0.0)), "{levels:?}");
+    // +12 dB on the microphone's 0.5 would reach about 2: softly limited below full scale, not clipped.
+    rig.core.set_gains(0.0, 12.0);
+    feed_both(&rig, t0, next, 100);
+    let recorded = loudest(&rig);
+    assert!(recorded > 0.95 && recorded < 1.0, "{recorded}");
+    rig.stop();
 }
 
 #[test]

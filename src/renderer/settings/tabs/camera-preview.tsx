@@ -107,7 +107,7 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
   useEffect(() => {
     setDrawing(false);
     if (!on || !canvas) return;
-    // Once: a state set for every frame drawn renders the page 15 times a second for nothing.
+    // Once: a state set for every frame drawn renders the page 10 times a second for nothing.
     let seen = false;
     const decoder = previewDecoder(canvas, { drawn: () => { frameDrawn(); if (!seen) { seen = true; setDrawing(true); } } });
     if (!decoder) return;

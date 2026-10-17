@@ -67,9 +67,9 @@ export interface SettingsGroup {
   control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter";
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
-   * validates (plan 075's camera size and rounding).
+   * validates (plan 075's camera size and rounding, and D21's volumes in dB).
    */
-  slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
+  slider?: { min: number; max: number; step: number; value: number; unit: "percent" | "decibels" };
   /**
    * A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
    * `mute` and `unmute`, one checked.

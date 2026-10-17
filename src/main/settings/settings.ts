@@ -25,6 +25,7 @@ import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../../shared/quality";
 import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../../shared/countdown";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../../shared/i18n";
+import { DEFAULT_AUDIO_GAIN, isAudioGain, isGainDb, type AudioGain } from "../../shared/audio-gain";
 import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../../shared/hotkey";
 import { stableVersion } from "../../shared/version";
 import { keepFile } from "../lib/file-backup";
@@ -67,6 +68,8 @@ export interface Settings {
   microphone: boolean;
   /** The chosen input, by the id the engine listed and the name it had then; absent is the system default input. */
   microphoneDevice?: MicrophoneDevicePreference;
+  /** System audio's and the microphone's volumes in dB (plan 075, D21; audio-gain.ts); 0 leaves them as they are. */
+  audioGain: AudioGain;
   /** Compose the camera into recordings (plan 075, D10); off by default, as the microphone. */
   camera: boolean;
   /** The camera bubble's size, rounding, mirror and position on each display (plan 075, D1–D3, D8; camera-layout.ts). */
@@ -134,6 +137,7 @@ export function defaultSettings(outputDir: string): Settings {
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     microphone: false,
+    audioGain: { ...DEFAULT_AUDIO_GAIN },
     camera: false,
     cameraLayout: copyCameraLayout(DEFAULT_CAMERA_LAYOUT),
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
@@ -225,6 +229,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
   const microphoneDevice = field<MicrophoneDevicePreference | undefined>("microphoneDevice", isMicrophoneDevicePreference, undefined,
     "microphoneDevice is invalid: using the system default input");
+  const audioGain = field("audioGain", isAudioGain, defaults.audioGain, "audioGain is invalid: using 0 dB for both inputs");
   const camera = field("camera", isBoolean, defaults.camera, `camera is not a boolean: using ${defaults.camera ? "on" : "off"}`);
   const cameraLayout = field("cameraLayout", isCameraLayout, defaults.cameraLayout, "cameraLayout is invalid: using the default bubble");
   const cameraDevice = field<CameraDevicePreference | undefined>("cameraDevice", isCameraDevicePreference, undefined, "cameraDevice is invalid: using the system default camera");
@@ -239,6 +244,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   return { settings: { appearance, display, hideSystemUi, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
+    audioGain: { system: audioGain.system, microphone: audioGain.microphone },
     camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }), trayClick,
     fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
@@ -325,6 +331,14 @@ export class SettingsStore {
     if (device !== null && !isMicrophoneDevicePreference(device)) return Promise.reject(new Error(`unsupported microphone device: ${JSON.stringify(device)}`));
     const snapshot = device === null ? undefined : { id: device.id, label: device.label };
     return this.save(({ microphoneDevice: _previous, ...current }) => (snapshot ? { ...current, microphoneDevice: snapshot } : current));
+  }
+
+  get audioGain(): AudioGain { return { ...this.settings.audioGain }; }
+
+  /** One input's volume (D21), in whole dB within the fader's range. */
+  setAudioGain(source: keyof AudioGain, db: number): Promise<void> {
+    if ((source !== "system" && source !== "microphone") || !isGainDb(db)) return Promise.reject(new Error(`unsupported audio gain: ${JSON.stringify({ source, db })}`));
+    return this.save((current) => ({ ...current, audioGain: { ...current.audioGain, [source]: db } }));
   }
 
   get camera(): boolean { return this.settings.camera; }

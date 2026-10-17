@@ -74,6 +74,8 @@ interface NativeCapture {
   /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
   watchLevels?(watching: boolean): boolean;
   setMuted?(system: boolean, microphone: boolean): boolean;
+  /** Plan 075, D21: the inputs' volumes in dB. */
+  setGains?(system: number, microphone: number): boolean;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -215,6 +217,10 @@ export class NativeHost {
       case "mute":
         if (this.session?.id !== message.sessionId) return;
         this.log(`audio: system ${message.system ? "muted" : "on"}, microphone ${message.microphone ? "muted" : "on"}${this.capture.setMuted?.(message.system, message.microphone) ? "" : " (no session)"}`);
+        return;
+      case "gain":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`audio: system ${message.system} dB, microphone ${message.microphone} dB${this.capture.setGains?.(message.system, message.microphone) ? "" : " (no session)"}`);
         return;
       case "cameraPreview":
         if (this.session?.id !== message.sessionId) return;

@@ -9,6 +9,7 @@
  * handler in index.ts, which re-checks the recording state before acting.
  */
 import type { CameraLayout, CameraRatio } from "../../shared/camera-layout";
+import type { AudioGain } from "../../shared/audio-gain";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
@@ -92,6 +93,8 @@ export type AppAction =
   | { setCameraRatio: CameraRatio }
   /** Mutes or unmutes an input of the recording in progress (plan 075, D19), for that recording only. */
   | { setAudioMuted: { source: "system" | "microphone"; muted: boolean } }
+  /** An input's volume in whole dB (D21): saved, and taken by a preview or recording from its next sound on. */
+  | { setAudioGain: { source: "system" | "microphone"; db: number } }
   /** Where the bubble sits on a display (plan 075 step 7): dragged or moved with the keys in Settings' preview. */
   | { setCameraPosition: { display: string; x: number; y: number } }
   /** `null` is the system default input. */
@@ -157,6 +160,8 @@ export interface AppContext {
   camera?: CameraContext;
   /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
   audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
+  /** The inputs' saved volumes in dB (plan 075, D21); absent is 0 dB. */
+  audioGain?: AudioGain;
   /**
    * The Recording Studio's picture (plan 075, D20): a Live preview, whether it is live yet, the session the Studio
    * may show (a live preview or a recording), and why the last preview could not start.

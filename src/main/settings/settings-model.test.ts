@@ -79,6 +79,7 @@ describe("settingsView", () => {
       "microphone",
       "microphoneDevice",
       "systemAudio",
+      "systemGain",
       "studioControls",
       "videoQuality",
       "resolutionCap",
@@ -264,9 +265,9 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
-    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "systemAudio", "studioControls"]);
+    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "systemAudio", "systemGain", "studioControls"]);
     expect(ids(context)).toEqual([]);
-    expect(studio(context), "no camera: the Studio keeps its audio and controls").toEqual(["systemAudio", "studioControls"]);
+    expect(studio(context), "no camera: the Studio keeps its audio and controls").toEqual(["systemAudio", "systemGain", "studioControls"]);
     expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
     expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
     expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
@@ -358,6 +359,18 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
     // A recording without the microphone: no row for it, though its switch is on for the next.
     expect(group(recording, { ...live, microphone: { enabled: true }, audioSession: { systemMuted: false } }, "microphoneAudio")).toBeUndefined();
     expect(settingsAction(idle, context, "systemAudio", "mute"), "nothing to mute between recordings").toBeUndefined();
+    // Each input's fader (D21): saved, offered between and during recordings, the microphone's only with its meter.
+    expect(group(idle, { ...context, audioGain: { system: -6, microphone: 3 } }, "systemGain")).toMatchObject({ tab: "studio", control: "slider", enabled: true,
+      label: "System audio volume", slider: { min: -60, max: 12, step: 1, value: -6, unit: "decibels" }, choices: [{ id: "-6", label: "−6 dB", checked: true }] });
+    expect(group(idle, context, "systemGain")?.slider?.value, "absent is 0 dB").toBe(0);
+    expect(group(idle, { ...context, audioGain: { system: -60, microphone: 0 } }, "systemGain")?.choices[0]?.label).toBe("−∞ dB");
+    expect(group(idle, { ...context, microphone: { enabled: true }, language: "zh-TW" }, "microphoneGain")).toMatchObject({ label: "麥克風音量", enabled: true });
+    expect(group(idle, context, "microphoneGain")).toBeUndefined();
+    expect(settingsAction(recording, live, "systemGain", "12")).toEqual({ setAudioGain: { source: "system", db: 12 } });
+    expect(settingsAction(recording, live, "microphoneGain", "-60")).toEqual({ setAudioGain: { source: "microphone", db: -60 } });
+    expect(settingsAction(idle, context, "systemGain", "-7")).toEqual({ setAudioGain: { source: "system", db: -7 } });
+    for (const choice of ["13", "-61", "1.5", "loud"]) expect(settingsAction(idle, context, "systemGain", choice), choice).toBeUndefined();
+    expect(settingsAction(idle, context, "microphoneGain", "0"), "no microphone: no fader").toBeUndefined();
     expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "音訊" });
   });
 });
@@ -492,7 +505,8 @@ describe("recording locks every preference except the language", () => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
     // The Recording Studio's controls stop or cancel what runs (D19).
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about", "studioControls"].includes(entry.id) || entry.kind === "shortcutList");
+    // The Recording Studio's controls stop or cancel what runs (D19); its faders change the sound from the next on (D21).
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about", "studioControls", "systemGain"].includes(entry.id) || entry.kind === "shortcutList");
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
@@ -800,7 +814,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
-    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["systemAudio", "meter", "studioAudio"], ["studioControls", "menu", "studioControls"],
+    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["systemAudio", "meter", "studioAudio"], ["systemGain", "slider", "studioAudio"], ["studioControls", "menu", "studioControls"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],

@@ -206,6 +206,21 @@ describe("createActionHandler", () => {
       expect(ctx.deps.log).toHaveBeenCalledWith("audio: no recording to mute or unmute system audio in");
     });
 
+    it("saves an input's volume and gives it to the session in progress, also while recording (D21)", async () => {
+      const updateGains = vi.fn(() => true);
+      const settings = { audioGain: { system: 0, microphone: 0 },
+        setAudioGain: vi.fn(async (source: "system" | "microphone", db: number) => { settings.audioGain = { ...settings.audioGain, [source]: db }; }) };
+      const ctx = harness({ recorder: { updateGains, state: { type: "recording", startedAt: "2026-10-18T00:00:00Z" } }, settings,
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => {
+          expect(save.locked, "not locked while recording").toBeFalsy();
+          await save.write(); save.applied?.();
+        }) } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setAudioGain: { source: "microphone", db: 6 } });
+      expect(settings.setAudioGain).toHaveBeenCalledWith("microphone", 6);
+      expect(updateGains).toHaveBeenCalledTimes(1);
+      expect(ctx.deps.log).toHaveBeenCalledWith("settings: volume system 0 dB, microphone 6 dB");
+    });
+
     it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {
       const updateCamera = vi.fn((_change: { hidden?: boolean }) => true);
       const ctx = harness({ recorder: { updateCamera } } as unknown as Partial<ActionDeps>);

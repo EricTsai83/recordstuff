@@ -1013,8 +1013,13 @@
     gap: 2px;
     font-size: 12px;
   }
-  .studio-channel .audio-meter {
+  .studio-channel .audio-meter,
+  .studio-channel .slider-setting {
     width: 100%;
+  }
+  /* Room for "−60 dB" so the track holds still as the value changes. */
+  .studio-channel .slider-setting-value {
+    min-width: 6ch;
   }
   .studio-state {
     margin: 0;

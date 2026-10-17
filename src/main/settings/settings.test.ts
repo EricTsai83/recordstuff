@@ -166,7 +166,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioGain: { system: 0, microphone: 0 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -187,6 +187,19 @@ describe("SettingsStore", () => {
     expect(store().notifications).toBe(false);
     await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, notifications: "off" }));
     expect(store().notifications).toBe(true);
+  });
+
+  it("round-trips each input's volume and falls back to 0 dB on a value outside the faders' range (plan 075, D21)", async () => {
+    const first = store();
+    await first.setAudioGain("microphone", 6);
+    await first.setAudioGain("system", -60);
+    expect(first.audioGain).toEqual({ system: -60, microphone: 6 });
+    expect(store().audioGain).toEqual({ system: -60, microphone: 6 });
+    await expect(first.setAudioGain("system", 13)).rejects.toThrow();
+    await expect(first.setAudioGain("microphone", 1.5)).rejects.toThrow();
+    expect(first.audioGain).toEqual({ system: -60, microphone: 6 });
+    await fs.writeFile(filePath, JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, audioGain: { system: 20, microphone: 0 } }));
+    expect(store().audioGain).toEqual({ system: 0, microphone: 0 });
   });
 
   it("creates the parent directory on first write", async () => {
@@ -248,7 +261,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioGain: { system: 0, microphone: 0 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -268,7 +281,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioGain: { system: 0, microphone: 0 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -322,7 +335,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioGain: { system: 0, microphone: 0 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -422,7 +435,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioGain: { system: 0, microphone: 0 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.

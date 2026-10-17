@@ -281,6 +281,17 @@ function installPanelHandlers(): void {
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
     }
+    // The faders (D21): main saves the volume, and the view shows it.
+    if ((group === "systemGain" || group === "microphoneGain") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      if (typeof action === "object" && "setAudioGain" in action) {
+        const { source, db } = action.setAudioGain;
+        state.cameraContext = { ...context, audioGain: { ...(context.audioGain ?? { system: 0, microphone: 0 }), [source]: db } };
+      }
+      return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+    }
     if ((group === "systemAudio" || group === "microphoneAudio") && state.cameraContext) {
       const context = state.cameraContext;
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };

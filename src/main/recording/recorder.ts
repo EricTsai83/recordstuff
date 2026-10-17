@@ -7,6 +7,7 @@
  * event and, when bytes were written, a kept `.recording.mp4`.
  */
 import type { CameraLayout } from "../../shared/camera-layout";
+import type { AudioGain } from "../../shared/audio-gain";
 import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
@@ -72,6 +73,8 @@ export interface RecorderHost {
   setCamera?(sessionId: string, camera: SessionCamera, hidden: boolean): void;
   /** Mutes the session's system audio and microphone, or not, from their next sound on (plan 075, D19). */
   setMuted?(sessionId: string, system: boolean, microphone: boolean): void;
+  /** The session's inputs' volumes in dB from their next sound on (plan 075, D21). */
+  setGains?(sessionId: string, gain: AudioGain): void;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
     listener: (code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void,
@@ -115,6 +118,8 @@ export interface RecorderDeps {
   microphone?: () => SessionMicrophone;
   /** The same for the camera (plan 075); absent, or undefined from it, means off. */
   camera?: () => SessionCamera | undefined;
+  /** The inputs' volumes (plan 075, D21), read when a session is prepared and sent again by `updateGains`; absent is 0 dB. */
+  audioGain?: () => AudioGain;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -556,6 +561,28 @@ export class Recorder {
       this.deps.host.setMuted?.(session.id, session.systemMuted === true, session.microphoneMuted === true);
     } catch (cause) {
       this.deps.log(`recorder: session ${session.id} mute not sent: ${messageOf(cause)}`);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Sends the saved volumes (D21) to the session whose sound is or will be read: a Live preview's or a recording's,
+   * once prepared, until it stops. One still preparing takes them when prepared; false without one.
+   */
+  updateGains(): boolean {
+    const session = this.session;
+    const prepared = session && ["previewing", "countdown", "arming", "recording"].includes(session.phase);
+    return prepared ? this.sendGains(session) : false;
+  }
+
+  private sendGains(session: Session): boolean {
+    const gain = this.deps.audioGain?.();
+    if (!gain || !this.deps.host.setGains) return false;
+    try {
+      this.deps.host.setGains(session.id, gain);
+    } catch (cause) {
+      this.deps.log(`recorder: session ${session.id} volumes not sent: ${messageOf(cause)}`);
       return false;
     }
     return true;
@@ -1018,6 +1045,8 @@ export class Recorder {
           this.cancel(session, session.cancelOnPrepared);
           return;
         }
+        // Before its levels are watched or its sound taken, the volumes as they are now (D21).
+        this.sendGains(session);
         if (session.preview) {
           // Held without writing until Start takes it (D20), or taken now if Start came while it was preparing.
           session.phase = "previewing";

@@ -559,6 +559,8 @@ export const ZH_TW = {
   "Its level shows, and it can be muted, while recording.": "錄影中會顯示音量，也可以靜音。",
   "Mute {label}": "將{label}靜音",
   "Unmute {label}": "取消{label}靜音",
+  // Each input's fader (plan 075, D21).
+  "{label} volume": "{label}音量",
   "Elapsed {time}": "已錄 {time}",
   "Starting…": "啟動中…",
   "Drag the bubble, or move it with the arrow keys (Shift for larger steps); it snaps to the edges and the centre.":

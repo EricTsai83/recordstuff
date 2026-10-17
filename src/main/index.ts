@@ -4,6 +4,7 @@
  * capture runs in the native engine's `utilityProcess` (plan 076).
  */
 import { createPreferenceActions } from "./settings/preferences";
+import { DEFAULT_AUDIO_GAIN } from "../shared/audio-gain";
 import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
 import { QuitStatus } from "./app/quit-status";
 import { installQuitCoordinator } from "./app/quit-coordinator";
@@ -406,6 +407,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const device = settings.cameraDevice;
       return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
     },
+    // The volumes (D21): autorecord's are 0 dB, its sound as the inputs give it.
+    audioGain: () => autoRecord?.ok ? { ...DEFAULT_AUDIO_GAIN } : settings.audioGain,
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -567,6 +570,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const audio = recorder.audio;
       return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
     })(),
+    audioGain: settings.audioGain,
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: settings.outputDir,

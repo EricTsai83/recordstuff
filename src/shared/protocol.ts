@@ -5,6 +5,7 @@
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import type { ErrorCode } from "./state";
+import { isGainDb } from "./audio-gain";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
@@ -118,6 +119,8 @@ export type MainMessage =
   /** Whether the session's levels are watched, and which inputs are muted from their next sound on (plan 075, D19). */
   | { type: "levels"; sessionId: string; watching: boolean }
   | { type: "mute"; sessionId: string; system: boolean; microphone: boolean }
+  /** The inputs' volumes in dB from their next sound on (plan 075, D21), within the faders' range. */
+  | { type: "gain"; sessionId: string; system: number; microphone: number }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -224,6 +227,8 @@ export function isMainMessage(value: unknown): value is MainMessage {
       return isNonEmptyString(value["sessionId"]) && typeof value["watching"] === "boolean";
     case "mute":
       return isNonEmptyString(value["sessionId"]) && typeof value["system"] === "boolean" && typeof value["microphone"] === "boolean";
+    case "gain":
+      return isNonEmptyString(value["sessionId"]) && isGainDb(value["system"]) && isGainDb(value["microphone"]);
     case "listMicrophones":
     case "listCameras":
     case "ping":

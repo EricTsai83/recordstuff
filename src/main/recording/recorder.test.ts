@@ -1,3 +1,4 @@
+import type { AudioGain } from "../../shared/audio-gain";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -57,6 +58,10 @@ class FakeHost implements RecorderHost {
   mutes: [string, boolean, boolean][] = [];
   setMuted(sessionId: string, system: boolean, microphone: boolean): void {
     this.mutes.push([sessionId, system, microphone]);
+  }
+  gains: [string, AudioGain][] = [];
+  setGains(sessionId: string, gain: AudioGain): void {
+    this.gains.push([sessionId, gain]);
   }
   onMessage(listener: (m: HostMessage) => void): void {
     this.messageListener = listener;
@@ -430,6 +435,27 @@ describe("the camera (plan 075)", () => {
     expect(ctx.recorder.state.type).toBe("recording");
     expect(ctx.recorder.camera).toEqual({ hidden: false });
     expect(ctx.recorder.cameraSessionId, "the session Settings' preview joins").toBe("s1");
+  });
+
+  it("sends the saved volumes once the session is prepared, and again on each change until it stops (D21)", async () => {
+    let gain: AudioGain = { system: 0, microphone: -6 };
+    const ctx = setup({ deps: { audioGain: () => gain } });
+    expect(ctx.recorder.updateGains(), "no session").toBe(false);
+    ctx.recorder.toggle();
+    await flush();
+    gain = { system: 3, microphone: -6 };
+    expect(ctx.recorder.updateGains(), "preparing: taken once prepared").toBe(false);
+    expect(ctx.host.gains).toEqual([]);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.gains, "before any sound is taken").toEqual([["s1", { system: 3, microphone: -6 }]]);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    await flush();
+    gain = { system: -60, microphone: 12 };
+    expect(ctx.recorder.updateGains()).toBe(true);
+    expect(ctx.host.gains.at(-1)).toEqual(["s1", { system: -60, microphone: 12 }]);
+    ctx.recorder.stop();
+    expect(ctx.recorder.updateGains(), "not while stopping").toBe(false);
   });
 
   it("mutes the recording's inputs for that recording, from the countdown or start until it stops (D19)", async () => {

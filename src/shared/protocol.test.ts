@@ -38,6 +38,8 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "levels", sessionId: "s1", watching: false })).toBe(true);
     expect(isMainMessage({ type: "mute", sessionId: "s1", system: true, microphone: false })).toBe(true);
     expect(isMainMessage({ type: "mute", sessionId: "s1", system: true })).toBe(false);
+    expect(isMainMessage({ type: "gain", sessionId: "s1", system: -60, microphone: 12 })).toBe(true);
+    for (const system of [13, -61, 0.5, "0"]) expect(isMainMessage({ type: "gain", sessionId: "s1", system, microphone: 0 }), String(system)).toBe(false);
     expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5, microphone: 0 })).toBe(true);
     expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5 })).toBe(true);
     for (const bad of [-0.1, Number.NaN, 17, "0.5"]) expect(isHostMessage({ type: "levels", sessionId: "s1", system: bad }), String(bad)).toBe(false);

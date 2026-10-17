@@ -53,9 +53,9 @@ pub struct Mixer {
 /// -1 dBFS: where the limiter begins.
 const LIMIT_THRESHOLD: f32 = 0.891_250_9;
 
-/// A sum of two or more inputs, softly limited above `LIMIT_THRESHOLD`: unchanged below it, approaching full scale
-/// above it without reaching it, with the slope continuous at the threshold.
-fn limit(sum: f32) -> f32 {
+/// A sum of two or more inputs, or an input raised by its volume (D21), softly limited above `LIMIT_THRESHOLD`:
+/// unchanged below it, approaching full scale above it without reaching it, with the slope continuous at the threshold.
+pub(crate) fn limit(sum: f32) -> f32 {
     let level = sum.abs();
     if level <= LIMIT_THRESHOLD {
         return sum;

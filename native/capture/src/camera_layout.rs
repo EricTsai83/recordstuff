@@ -113,7 +113,9 @@ pub fn preview_size(width: u32, height: u32) -> (u32, u32) {
 }
 
 pub const PREVIEW_WIDTH: u32 = 640;
-pub const PREVIEW_FPS: u32 = 15;
+/// 10 a second since 2026-10-18 (D21): the Recording Studio's page decoding and drawing it cost more than the recording
+/// it shows at 15; the recording keeps its own rate.
+pub const PREVIEW_FPS: u32 = 10;
 
 /// Step 2's development switch: whether the camera is composed, and how.
 #[derive(Clone, Debug, PartialEq)]

@@ -66,11 +66,13 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
   studioControls: { lockedChoices: ["saving"] },
   systemAudio: "session", microphoneAudio: "session",
+  // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
+  systemGain: "available", microphoneGain: "available",
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
   "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
 /** Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19). */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio"]);
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain"]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 
 /**

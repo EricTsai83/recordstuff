@@ -35,8 +35,9 @@ export interface ActionDeps {
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
-    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "startPreview" | "stopPreview">;
+    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
+    | "audioGain" | "setAudioGain">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "startPreview" | "stopPreview">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
@@ -172,6 +173,17 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       // Judged as the switch is, by the muting now in force.
       if (!recorder.updateAudio({ [source]: muted })) log(`audio: no recording to mute or unmute ${source === "system" ? "system audio" : "the microphone"} in`);
       deps.refresh();
+    } else if ("setAudioGain" in action) {
+      // A setting, not locked while recording (D21), as the bubble's shape: taken from the input's next sound on.
+      const { source, db } = action.setAudioGain;
+      await deps.savePreference(source === "system" ? "system audio volume" : "microphone volume", {
+        write: () => settings.setAudioGain(source, db),
+        applied: () => {
+          const saved = settings.audioGain;
+          log(`settings: volume system ${saved.system} dB, microphone ${saved.microphone} dB`);
+          recorder.updateGains();
+        },
+      });
     } else if ("setCameraHidden" in action) {
       // The recording's own choice (D13), not a setting: the next recording shows the camera again.
       if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");
