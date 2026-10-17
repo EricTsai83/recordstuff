@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, EyeOff, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Mic, AudioLines, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw, AppWindow, Film, Play, Maximize } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Palette, Play, Power, RefreshCw, ScreenShare, Settings2, Sun, Timer, Volume2 } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -29,6 +29,7 @@ const icons = {
   countdownSound: Volume2,
   microphone: Mic,
   microphoneDevice: AudioLines,
+  camera: Camera,
   videoQuality: Gauge,
   resolutionCap: Monitor,
   frameRate: Gauge,
@@ -48,6 +49,7 @@ const sectionIcons = {
   source: ScreenShare,
   countdown: Timer,
   audio: Mic,
+  camera: Camera,
   video: Clapperboard,
   controls: MousePointerClick,
   display: Palette,

@@ -119,6 +119,53 @@ describe("createActionHandler", () => {
     });
   });
 
+  describe("the camera (plan 075)", () => {
+    function cameraHarness(allowed: boolean, platform: NodeJS.Platform = "darwin") {
+      const settings = { language: "en", camera: false, setCamera: vi.fn(async (on: boolean) => { settings.camera = on; }) };
+      const tray = { notifyCameraDenied: vi.fn() };
+      const askCameraAccess = vi.fn(async () => allowed);
+      const ctx = harness({ platform, settings, tray, askCameraAccess,
+        openCameraSettings: vi.fn(async () => {}),
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+      return { ...ctx, settings, tray, askCameraAccess };
+    }
+
+    it("asks for access when turned on, after saving, and keeps it on when refused, saying so", async () => {
+      const allowed = cameraHarness(true);
+      await allowed.act({ setCamera: true });
+      expect(allowed.settings.camera).toBe(true);
+      expect(allowed.askCameraAccess).toHaveBeenCalledOnce();
+      expect(allowed.tray.notifyCameraDenied).not.toHaveBeenCalled();
+      expect(allowed.deps.refresh).toHaveBeenCalled();
+      const refused = cameraHarness(false);
+      await refused.act({ setCamera: true });
+      expect(refused.settings.camera).toBe(true);
+      expect(refused.tray.notifyCameraDenied).toHaveBeenCalledOnce();
+    });
+
+    it("does not ask when turned off or when already on", async () => {
+      const ctx = cameraHarness(false);
+      await ctx.act({ setCamera: false });
+      ctx.settings.camera = true;
+      await ctx.act({ setCamera: true });
+      expect(ctx.askCameraAccess).not.toHaveBeenCalled();
+      expect(ctx.tray.notifyCameraDenied).not.toHaveBeenCalled();
+    });
+
+    it("opens the camera's privacy page on macOS and Windows and reports whether it opened", async () => {
+      for (const platform of ["darwin", "win32"] as const) {
+        const ctx = cameraHarness(true, platform);
+        expect(await ctx.act("openCameraSettings")).toBe(true);
+        expect(ctx.deps.openCameraSettings).toHaveBeenCalledOnce();
+        vi.mocked(ctx.deps.openCameraSettings).mockRejectedValueOnce(new Error("refused"));
+        expect(await ctx.act("openCameraSettings")).toBe(false);
+      }
+      const linux = cameraHarness(true, "linux");
+      expect(await linux.act("openCameraSettings")).toBe(false);
+      expect(linux.deps.openCameraSettings).not.toHaveBeenCalled();
+    });
+  });
+
   describe("the microphone (plan 074)", () => {
     function microphoneHarness(allowed: boolean, platform: NodeJS.Platform = "darwin") {
       const settings = { language: "en", microphone: false, microphoneDevice: undefined as { id: string; label: string } | undefined,

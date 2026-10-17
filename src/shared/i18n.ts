@@ -511,6 +511,23 @@ export const ZH_TW = {
   "The microphone dropped out during the recording. Only system audio was recorded while it was out.":
     "錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。",
   "RecordStuff cannot use the microphone. Click to open System Settings.": "RecordStuff 無法使用麥克風。按一下以開啟系統設定。",
+  // The camera (plan 075).
+  Camera: "相機",
+  "Shows your camera in the recording as a bubble.": "以泡泡的形式在錄影中顯示你的相機畫面。",
+  "Camera access is off": "未允許取用相機",
+  "Recording will not start while Camera is on.": "開啟「相機」時無法開始錄影。",
+  "Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off.":
+    "請在「系統設定 → 隱私權與安全性 → 相機」中允許 RecordStuff，或關閉「相機」。",
+  "Open camera settings…": "開啟相機設定…",
+  "macOS asks for camera access when you next record.": "下次錄影時，macOS 會詢問是否允許取用相機。",
+  "Windows records the camera only while desktop apps may use it in Settings → Privacy & security → Camera.":
+    "只有在「設定 → 隱私權與安全性 → 相機」允許桌面應用程式使用相機時，Windows 才會錄到相機畫面。",
+  "The camera was unavailable, so recording did not start.": "相機無法使用，因此沒有開始錄影",
+  "Connect a camera and allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off in Recording settings.":
+    "請連接相機，並在「系統設定 → 隱私權與安全性 → 相機」中允許 RecordStuff；或在錄影設定中關閉「相機」。",
+  "Connect a camera and allow desktop apps in Settings → Privacy & security → Camera, or turn Camera off in Recording settings.":
+    "請連接相機，並在「設定 → 隱私權與安全性 → 相機」中允許桌面應用程式存取；或在錄影設定中關閉「相機」。",
+  "RecordStuff cannot use the camera. Click to open System Settings.": "RecordStuff 無法使用相機。按一下以開啟系統設定。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */
   or: "或",
 } as const;

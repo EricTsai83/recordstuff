@@ -77,7 +77,7 @@ export interface ParentPort {
 export const PREVIEW_PORT_MESSAGE = "cameraPreviewPort";
 export { cameraPreviewOn, cameraPrototypeOn } from "../../shared/camera-preview";
 
-const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
+const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "camera_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
 
 const NUMBER_LIST = /^\d+(,\d+)*$/;

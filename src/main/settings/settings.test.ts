@@ -166,7 +166,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -248,7 +248,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -268,7 +268,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -322,7 +322,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -422,7 +422,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -751,9 +751,9 @@ describe("microphone (plan 074)", () => {
 describe("camera (plan 075)", () => {
   const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
 
-  it("reads a file written before the fields existed as the default bubble and the system camera, silently", () => {
+  it("reads a file written before the fields existed as off with the default bubble and the system camera, silently", () => {
     const parsed = parseSettings(JSON.stringify(current));
-    expect(parsed).toMatchObject({ settings: { cameraLayout: DEFAULT_CAMERA_LAYOUT }, warnings: [] });
+    expect(parsed).toMatchObject({ settings: { camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT }, warnings: [] });
     expect(parsed?.settings).not.toHaveProperty("cameraDevice");
   });
 
@@ -764,6 +764,17 @@ describe("camera (plan 075)", () => {
     const kept = { width: 0.3, height: 0.2, rounding: 0.5, mirror: true, positions: [{ display: "primary", x: 0.1, y: 0.9 }] };
     expect(parseSettings(JSON.stringify({ ...current, cameraLayout: kept, cameraDevice: { id: "cam", label: "Cam", extra: 1 } })))
       .toMatchObject({ settings: { cameraLayout: kept, cameraDevice: { id: "cam", label: "Cam" } }, warnings: [] });
+  });
+
+  it("saves the switch, reads an invalid one as off and refuses an invalid one", async () => {
+    expect(parseSettings(JSON.stringify({ ...current, camera: "on" }))).toMatchObject({ settings: { camera: false },
+      warnings: ["camera is not a boolean: using off"] });
+    const first = store();
+    await first.setCamera(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ camera: true });
+    expect(store().camera).toBe(true);
+    await expect(first.setCamera("on" as never)).rejects.toThrow("unsupported camera");
+    expect(store().camera).toBe(true);
   });
 
   it("saves the shape apart from the positions, a position per display and the camera, and refuses invalid values", async () => {

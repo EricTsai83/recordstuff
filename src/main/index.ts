@@ -47,7 +47,7 @@ import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
 import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
-import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
+import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, openCameraSettings, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
 import type { MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
@@ -320,9 +320,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     htmlPath: path.join(__dirname, "../renderer/camera-preview.html"),
     log,
   }) : undefined;
+  // Access is asked when the Camera switch is turned on (plan 075 step 4), not at launch.
   if (process.platform === "darwin" && cameraPrototypeOn(process.env)) {
-    log(`camera prototype: on (${process.env["RECORDSTUFF_CAMERA_PROTOTYPE"] ?? ""}), preview page ${cameraPreview ? "on" : "off"}`);
-    void askCameraAccess().then((granted) => log(`camera prototype: camera access ${granted ? "granted" : "not allowed"}`));
+    log(`camera prototype: on (${process.env["RECORDSTUFF_CAMERA_PROTOTYPE"] ?? ""}), preview page ${cameraPreview ? "on" : "off"}, camera access ${cameraAccess() ?? "unknown"}`);
   }
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
@@ -500,6 +500,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
+    })(),
+    camera: (() => {
+      const access = cameraAccess();
+      // Shown only behind the development switch until the engine records the camera from this setting (step 6).
+      return { enabled: settings.camera, available: cameraPrototypeOn(process.env), ...(access ? { access } : {}) };
     })(),
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
@@ -757,6 +762,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     openExternal: url => shell.openExternal(url),
     revealFile: file => shell.showItemInFolder(file),
     openScreenCaptureSettings, openNotificationSettings, openMicrophoneSettings, openOptionalFeatures,
+    openCameraSettings: () => openCameraSettings(),
+    askCameraAccess: () => askCameraAccess(),
     confirm: options => { focusApp(); return dialog.showMessageBox(options); },
     askMicrophoneAccess: async () => {
       const allowed = await askMicrophoneAccess();

@@ -67,6 +67,8 @@ export interface Settings {
   microphone: boolean;
   /** The chosen input, by the id the engine listed and the name it had then; absent is the system default input. */
   microphoneDevice?: MicrophoneDevicePreference;
+  /** Compose the camera into recordings (plan 075, D10); off by default, as the microphone. */
+  camera: boolean;
   /** The camera bubble's size, rounding, mirror and position on each display (plan 075, D1–D3, D8; camera-layout.ts). */
   cameraLayout: CameraLayout;
   /** The chosen camera, as the microphone's (D9); absent is the system default camera. */
@@ -132,6 +134,7 @@ export function defaultSettings(outputDir: string): Settings {
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     microphone: false,
+    camera: false,
     cameraLayout: copyCameraLayout(DEFAULT_CAMERA_LAYOUT),
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
     trayClick: "menu",
@@ -222,6 +225,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
   const microphoneDevice = field<MicrophoneDevicePreference | undefined>("microphoneDevice", isMicrophoneDevicePreference, undefined,
     "microphoneDevice is invalid: using the system default input");
+  const camera = field("camera", isBoolean, defaults.camera, `camera is not a boolean: using ${defaults.camera ? "on" : "off"}`);
   const cameraLayout = field("cameraLayout", isCameraLayout, defaults.cameraLayout, "cameraLayout is invalid: using the default bubble");
   const cameraDevice = field<CameraDevicePreference | undefined>("cameraDevice", isCameraDevicePreference, undefined, "cameraDevice is invalid: using the system default camera");
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
@@ -235,7 +239,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   return { settings: { appearance, display, hideSystemUi, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
-    cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }), trayClick,
+    camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }), trayClick,
     fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
 
@@ -321,6 +325,13 @@ export class SettingsStore {
     if (device !== null && !isMicrophoneDevicePreference(device)) return Promise.reject(new Error(`unsupported microphone device: ${JSON.stringify(device)}`));
     const snapshot = device === null ? undefined : { id: device.id, label: device.label };
     return this.save(({ microphoneDevice: _previous, ...current }) => (snapshot ? { ...current, microphoneDevice: snapshot } : current));
+  }
+
+  get camera(): boolean { return this.settings.camera; }
+
+  setCamera(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported camera: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, camera: enabled }));
   }
 
   get cameraLayout(): CameraLayout { return copyCameraLayout(this.settings.cameraLayout); }

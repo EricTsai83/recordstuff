@@ -7,6 +7,7 @@ import {
   updateAvailableNotification,
   hotkeyRegistrationFailedNotification,
   microphoneDeniedNotification,
+  cameraDeniedNotification,
   microphoneLostNotification,
   recordingFailureNotification,
   savedNotification,
@@ -313,6 +314,8 @@ describe("notification text", () => {
   it("tells a refused microphone and one lost partway in both languages (plan 074)", () => {
     expect(microphoneDeniedNotification("en").body).toBe("RecordStuff cannot use the microphone. Click to open System Settings.");
     expect(microphoneDeniedNotification("zh-TW").body).toBe("RecordStuff 無法使用麥克風。按一下以開啟系統設定。");
+    expect(cameraDeniedNotification("en").body).toBe("RecordStuff cannot use the camera. Click to open System Settings.");
+    expect(cameraDeniedNotification("zh-TW").body).toBe("RecordStuff 無法使用相機。按一下以開啟系統設定。");
     expect(microphoneLostNotification("en").body).toBe("The microphone dropped out during the recording. Only system audio was recorded while it was out.");
     expect(microphoneLostNotification("zh-TW").body).toBe("錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。");
   });

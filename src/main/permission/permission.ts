@@ -74,6 +74,17 @@ export function openMicrophoneSettings(): Promise<void> {
   return shell.openExternal(MICROPHONE_SETTINGS_URL);
 }
 
+/**
+ * The camera (plan 075), as the microphone: macOS answers for it and Settings shows a denial; Windows has no status to
+ * read, only its privacy page, which Settings names.
+ */
+const CAMERA_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera";
+const WINDOWS_CAMERA_SETTINGS_URL = "ms-settings:privacy-webcam";
+
+export function openCameraSettings(platform: NodeJS.Platform = process.platform): Promise<void> {
+  return shell.openExternal(platform === "win32" ? WINDOWS_CAMERA_SETTINGS_URL : CAMERA_SETTINGS_URL);
+}
+
 /** Windows Settings → Optional features, where the Media Feature Pack is installed (plan 078). */
 const OPTIONAL_FEATURES_URL = "ms-settings:optionalfeatures";
 
@@ -82,6 +93,13 @@ export function openOptionalFeatures(): Promise<void> {
 }
 
 export type MicrophoneAccess = "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+
+export type CameraAccess = MicrophoneAccess;
+
+/** macOS's answer for the camera, or undefined where there is none to read. */
+export function cameraAccess(platform: NodeJS.Platform = process.platform): CameraAccess | undefined {
+  return platform === "darwin" ? systemPreferences.getMediaAccessStatus("camera") : undefined;
+}
 
 /** macOS's answer, or undefined where there is none to read. */
 export function microphoneAccess(platform: NodeJS.Platform = process.platform): MicrophoneAccess | undefined {
@@ -100,7 +118,7 @@ export async function askMicrophoneAccess(platform: NodeJS.Platform = process.pl
   return systemPreferences.askForMediaAccess("microphone");
 }
 
-/** The same for the camera (plan 075, step 2's prototype until step 4's card). */
+/** The same for the camera (plan 075): asked when the Camera switch is turned on. */
 export async function askCameraAccess(platform: NodeJS.Platform = process.platform): Promise<boolean> {
   if (platform !== "darwin") return true;
   const status = systemPreferences.getMediaAccessStatus("camera");

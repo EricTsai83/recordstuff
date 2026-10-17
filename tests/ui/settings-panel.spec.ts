@@ -219,6 +219,41 @@ test("S117–S120 microphone: the switch asks main, the input device follows it,
   await expect(page.getByRole("button", { name: "開啟麥克風設定…" })).toBeVisible();
 });
 
+test("S121–S123 camera: the switch asks main, a session locks it, and a denial offers its pane (plan 075)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await page.locator("#tab-recording").click();
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: false, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  const toggle = page.locator("#setting-camera");
+  await toggle.scrollIntoViewIfNeeded();
+  await expect(toggle, "S121 off by default").toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("heading", { name: "Camera" }), "S121 in a section of its own").toBeVisible();
+  await expect(page.getByRole("heading", { name: "Camera" }).locator(".section-icon"), "S121 named by its icon, as the other sections are").toBeVisible();
+  await clearCalls();
+  await clickAt(page, "#setting-camera");
+  await expect(toggle, "S121 a click asks main for on and shows the committed value").toHaveAttribute("aria-checked", "true");
+  expect(await calls()).toEqual([["camera", "on"]]);
+
+  await host.evaluate(h => h.pushModel({ type: "recording", startedAt: "2026-10-17T00:00:00Z" },
+    { camera: { enabled: true, available: true, access: "granted" } }));
+  await expect(toggle, "S122 a session locks the switch").toBeDisabled();
+
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "denied" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect(page.locator("#setting-camera-diagnostics"), "S123 a denial says why recording will not start").toContainText("Camera access is off");
+  await clearCalls();
+  await page.getByRole("button", { name: "Open camera settings…" }).click();
+  await expect.poll(calls, { message: "S123 the pane is main's to open" }).toEqual([["camera", "openSettings"]]);
+
+  await host.evaluate(h => h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "denied" } }));
+  await expect(page.locator("#setting-camera-diagnostics"), "S123 zh-TW").toContainText("未允許取用相機");
+  await expect(page.getByRole("button", { name: "開啟相機設定…" })).toBeVisible();
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);

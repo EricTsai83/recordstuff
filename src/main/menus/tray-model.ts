@@ -340,6 +340,10 @@ export function hotkeyWriteFailedNotification(language?: Language): Notification
 export function microphoneDeniedNotification(language?: Language): NotificationText {
   return notice(t("RecordStuff cannot use the microphone. Click to open System Settings.", language));
 }
+/** Turning the camera on found access refused (plan 075); the click opens its privacy pane. */
+export function cameraDeniedNotification(language?: Language): NotificationText {
+  return notice(t("RecordStuff cannot use the camera. Click to open System Settings.", language));
+}
 /** Told once the recording ends, as the other capture notices are (plan 074). */
 export function microphoneLostNotification(language?: Language): NotificationText {
   return notice(t("The microphone dropped out during the recording. Only system audio was recorded while it was out.", language));

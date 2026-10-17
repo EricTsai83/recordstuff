@@ -18,6 +18,7 @@ import {
   folderRefusedNotification,
   languageWriteFailedNotification,
   microphoneDeniedNotification,
+  cameraDeniedNotification,
   microphoneLostNotification,
   hotkeyRegistrationFailedNotification,
   menuLogText,
@@ -270,6 +271,10 @@ export class AppTray {
   /** Turning the microphone on found it refused (plan 074): a reply to the user's own click, so shown even with notifications off. */
   notifyMicrophoneDenied(): void {
     this.show(microphoneDeniedNotification(this.language), () => this.options.onAction("openMicrophoneSettings"), true);
+  }
+
+  notifyCameraDenied(): void {
+    this.show(cameraDeniedNotification(this.language), () => this.options.onAction("openCameraSettings"), true);
   }
 
   /** The microphone stopped while recording; the click shows the Recording tab, where it is set (plan 074). */

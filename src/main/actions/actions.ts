@@ -31,12 +31,12 @@ export interface ActionDeps {
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
-    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice">;
+    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
-    | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied">;
+    | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied" | "notifyCameraDenied">;
   settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
   shortcuts: Pick<AppShortcuts, "set" | "retry">;
   updates: Pick<UpdateChecker, "check" | "state">;
@@ -65,12 +65,16 @@ export interface ActionDeps {
   openNotificationSettings(): Promise<void>;
   /** System Settings → Privacy & Security → Microphone (plan 074). */
   openMicrophoneSettings(): Promise<void>;
+  /** The camera's privacy page, on macOS and Windows (plan 075). */
+  openCameraSettings(): Promise<void>;
   openOptionalFeatures(): Promise<void>;
   /**
    * Asks macOS for the microphone when it never has (plan 074): the prompt then follows the user's own click. Answers
    * whether access is allowed now; Windows, which has no prompt, answers true.
    */
   askMicrophoneAccess(): Promise<boolean>;
+  /** The same for the camera (plan 075). */
+  askCameraAccess(): Promise<boolean>;
   /** A windowless informational box, brought forward first. */
   showInfo(detail: string): Promise<void>;
   /** A warning with Cancel first and the named action second, brought forward first; answers the button pressed. */
@@ -114,6 +118,19 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       if (turningOn && settings.microphone && !(await deps.askMicrophoneAccess())) {
         log("settings: microphone access is not allowed");
         tray.notifyMicrophoneDenied();
+      }
+      deps.refresh();
+    } else if ("setCamera" in action) {
+      const turningOn = action.setCamera && !settings.camera;
+      await deps.savePreference("camera", {
+        locked: true,
+        write: () => settings.setCamera(action.setCamera),
+        applied: () => log(`settings: camera ${settings.camera ? "on" : "off"}`),
+      });
+      // Saved even when refused, as the microphone: Settings shows the denial with the pane that changes it.
+      if (turningOn && settings.camera && !(await deps.askCameraAccess())) {
+        log("settings: camera access is not allowed");
+        tray.notifyCameraDenied();
       }
       deps.refresh();
     } else if ("setMicrophoneDevice" in action) {
@@ -312,6 +329,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         if (deps.platform !== "darwin") return false;
         try { await deps.openMicrophoneSettings(); return true; }
         catch (error) { log(`microphone: open settings failed: ${String(error)}`); return false; }
+      case "openCameraSettings":
+        if (deps.platform !== "darwin" && deps.platform !== "win32") return false;
+        try { await deps.openCameraSettings(); return true; }
+        catch (error) { log(`camera: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
         deps.relaunch();
         return;

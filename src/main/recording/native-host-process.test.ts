@@ -181,6 +181,10 @@ describe("NativeHost", () => {
       start(port, { enabled: true, deviceId: "usb-mic" });
       await flush();
       expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s1", code: "microphone_unavailable", detail: "microphone: device usb-mic is not connected" });
+      fake.engine.prepare.mockRejectedValueOnce(new Error("camera_unavailable|camera: access is not allowed (status 2)"));
+      port.deliver({ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY, native });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s2", code: "camera_unavailable", detail: "camera: access is not allowed (status 2)" });
       expect(port.sent.some((message) => message.type === "prepared")).toBe(false);
     });
 

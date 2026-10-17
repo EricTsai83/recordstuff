@@ -19,6 +19,7 @@ export const HOST_ERROR_CODES = [
   "no_display",
   "no_audio_track",
   "microphone_unavailable",
+  "camera_unavailable",
   "media_components_missing",
   "capture_start_failed",
   "capture_failed",

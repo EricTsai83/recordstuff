@@ -514,6 +514,7 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
   no_display: "No display is available for recording.",
   no_audio_track: "System audio was unavailable at start, so nothing was recorded.",
   microphone_unavailable: "The microphone was unavailable, so recording did not start.",
+  camera_unavailable: "The camera was unavailable, so recording did not start.",
   media_components_missing: "Windows's media components are missing, so recording cannot start.",
   capture_start_failed: "Could not start recording.",
   capture_failed: "Recording was interrupted.",
@@ -533,6 +534,10 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
   if (code === "microphone_unavailable") return t(platform === "darwin"
     ? "Connect a microphone and allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off in Recording settings."
     : "Connect a microphone and allow desktop apps in Settings → Privacy & security → Microphone, or turn Microphone off in Recording settings.", language);
+  // The same for the camera (plan 075).
+  if (code === "camera_unavailable") return t(platform === "darwin"
+    ? "Connect a camera and allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off in Recording settings."
+    : "Connect a camera and allow desktop apps in Settings → Privacy & security → Camera, or turn Camera off in Recording settings.", language);
   // Windows loopback records the default playback device, so a missing one ends system audio (plan 064).
   if (platform === "win32" && code === "no_audio_track")
     return t("System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.", language);

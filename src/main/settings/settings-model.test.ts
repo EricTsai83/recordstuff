@@ -198,6 +198,54 @@ describe("tabs follow sections", () => {
   });
 });
 
+describe("camera (plan 075)", () => {
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}): AppContext =>
+    ({ ...context, camera: { enabled: true, available: true, access: "granted", ...camera } });
+
+  it("is not shown until it is available, and then is a switch, off by default, in the Recording tab's Camera section", () => {
+    expect(group(idle, context, "camera")).toBeUndefined();
+    expect(group(idle, { ...context, camera: { enabled: true, available: false } }, "camera")).toBeUndefined();
+    const row = group(idle, on({ enabled: false }), "camera")!;
+    expect(row).toMatchObject({ label: "Camera", control: "switch", tab: "recording", section: "camera", sectionHeading: "Camera" });
+    expect(checked(idle, on({ enabled: false }), "camera")).toBe("off");
+    expect(checked(idle, on(), "camera")).toBe("on");
+    expect(settingsAction(idle, on({ enabled: false }), "camera", "on")).toEqual({ setCamera: true });
+    expect(settingsAction(idle, on(), "camera", "off")).toEqual({ setCamera: false });
+    expect(group(idle, { ...on(), language: "zh-TW" }, "camera")).toMatchObject({ label: "相機", sectionHeading: "相機" });
+  });
+
+  it("is locked while a session runs", () => {
+    for (const state of busy) {
+      expect(group(state, on(), "camera")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, on(), "camera", "off"), state.type).toBeUndefined();
+    }
+  });
+
+  it("shows a macOS denial with the pane that changes it, only while the switch is on", () => {
+    const denied = group(idle, on({ access: "denied" }), "camera")!;
+    expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Camera access is off",
+      guidance: "Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off." })]);
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open camera settings…" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "camera", "openSettings")).toBe("openCameraSettings");
+    expect(group(idle, on({ access: "restricted" }), "camera")?.diagnostics).toHaveLength(1);
+    expect(group(idle, on({ enabled: false, access: "denied" }), "camera")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on(), "camera")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on(), "camera")).not.toHaveProperty("actions");
+    expect(group(idle, on({ access: "not-determined" }), "camera")).toMatchObject({ noteKind: "status",
+      note: "macOS asks for camera access when you next record." });
+    expect(group(idle, { ...on({ access: "denied" }), language: "zh-TW" }, "camera")?.diagnostics?.[0]?.guidance).toContain("隱私權與安全性 → 相機");
+  });
+
+  it("names Windows's camera privacy page while it is on there, which has no status to read", () => {
+    const windows = { ...context, platform: "win32" as const, camera: { enabled: true, available: true } };
+    const row = group(idle, windows, "camera")!;
+    expect(row.note).toContain("Settings → Privacy & security → Camera");
+    expect(row).not.toHaveProperty("diagnostics");
+    expect(settingsAction(idle, windows, "camera", "openSettings")).toBe("openCameraSettings");
+    expect(group(idle, { ...windows, camera: { enabled: false, available: true } }, "camera")).not.toHaveProperty("note");
+  });
+});
+
 describe("microphone (plan 074)", () => {
   const devices = [
     { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },

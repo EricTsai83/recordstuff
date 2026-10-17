@@ -75,18 +75,19 @@ function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
-const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "video"]);
+const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "camera", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio",
+  camera: "camera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -97,6 +98,7 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   source: "Source and output",
   countdown: "Before recording",
   audio: "Audio",
+  camera: "Camera",
   video: "Video",
   controls: "Controls and notifications",
   display: "Language and appearance",
@@ -267,6 +269,36 @@ function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
       action: "openMicrophoneSettings" satisfies AppAction }];
   } else if (microphone.access === "not-determined") {
     result.note = t("macOS asks for microphone access when you next record.", language);
+    result.noteKind = "status";
+  }
+  return result;
+}
+
+/**
+ * The camera (plan 075): off by default and locked while recording, as the microphone. Turning it on asks for access
+ * then and there (actions.ts); a denial is shown here with the pane that changes it. Windows has no status to read, so
+ * it names its privacy page while the camera is on. Shown only while `available` (ui-model.ts CameraContext).
+ */
+function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefined {
+  const camera = ctx.camera;
+  if (!camera?.available) return undefined;
+  const language = ctx.language;
+  const result: Group = { ...group("camera", t("Camera", language), enabled,
+    switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
+  info: t("Shows your camera in the recording as a bubble.", language) };
+  if (!camera.enabled) return result;
+  if (ctx.platform === "win32") {
+    result.note = t("Windows records the camera only while desktop apps may use it in Settings → Privacy & security → Camera.", language);
+    result.actions = [{ id: "openSettings", label: t("Open camera settings…", language), enabled: true, checked: false,
+      action: "openCameraSettings" satisfies AppAction }];
+  } else if (ctx.platform === "darwin" && (camera.access === "denied" || camera.access === "restricted")) {
+    result.diagnostics = [{ kind: "current", heading: t("Camera access is off", language),
+      reason: t("Recording will not start while Camera is on.", language),
+      guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off.", language) }];
+    result.actions = [{ id: "openSettings", label: t("Open camera settings…", language), enabled: true, checked: false,
+      action: "openCameraSettings" satisfies AppAction }];
+  } else if (ctx.platform === "darwin" && camera.access === "not-determined") {
+    result.note = t("macOS asks for camera access when you next record.", language);
     result.noteKind = "status";
   }
   return result;
@@ -559,6 +591,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownSoundGroup(ctx, unlocked),
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
+    ...(() => { const camera = cameraGroup(ctx, unlocked); return camera ? [camera] : []; })(),
     ...qualityGroups(ctx, unlocked),
     // General contains everyday preferences and its About footer; maintenance lives in Troubleshooting.
     trayClickGroup(ctx),

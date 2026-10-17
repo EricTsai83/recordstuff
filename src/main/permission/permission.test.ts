@@ -8,7 +8,7 @@ vi.mock("electron", () => ({
 }));
 
 import { shell, systemPreferences } from "electron";
-import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, type PermissionStatus } from "./permission";
+import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, microphoneAccess, openCameraSettings, openMicrophoneSettings, type PermissionStatus } from "./permission";
 
 describe("the microphone (plan 074)", () => {
   const status = vi.mocked(systemPreferences.getMediaAccessStatus);
@@ -40,6 +40,41 @@ describe("the microphone (plan 074)", () => {
   it("opens the Microphone pane of Privacy & Security", async () => {
     await openMicrophoneSettings();
     expect(shell.openExternal).toHaveBeenCalledWith("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+  });
+});
+
+describe("the camera (plan 075)", () => {
+  const status = vi.mocked(systemPreferences.getMediaAccessStatus);
+  const ask = vi.mocked(systemPreferences.askForMediaAccess);
+  afterEach(() => { status.mockReset(); ask.mockReset(); vi.mocked(shell.openExternal).mockClear(); });
+
+  it("reads macOS's answer without asking, and has none to read on Windows", () => {
+    status.mockReturnValue("restricted");
+    expect(cameraAccess("darwin")).toBe("restricted");
+    expect(status).toHaveBeenCalledWith("camera");
+    expect(cameraAccess("win32")).toBeUndefined();
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("asks only while macOS never has, and answers whether access is allowed", async () => {
+    status.mockReturnValue("not-determined");
+    ask.mockResolvedValue(false);
+    await expect(askCameraAccess("darwin")).resolves.toBe(false);
+    expect(ask).toHaveBeenCalledWith("camera");
+    ask.mockClear();
+    for (const [answer, allowed] of [["granted", true], ["denied", false], ["restricted", false]] as const) {
+      status.mockReturnValue(answer);
+      await expect(askCameraAccess("darwin")).resolves.toBe(allowed);
+    }
+    expect(ask).not.toHaveBeenCalled();
+    await expect(askCameraAccess("win32")).resolves.toBe(true);
+  });
+
+  it("opens the Camera pane of Privacy & Security on macOS and the camera privacy page on Windows", async () => {
+    await openCameraSettings("darwin");
+    expect(shell.openExternal).toHaveBeenLastCalledWith("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera");
+    await openCameraSettings("win32");
+    expect(shell.openExternal).toHaveBeenLastCalledWith("ms-settings:privacy-webcam");
   });
 });
 

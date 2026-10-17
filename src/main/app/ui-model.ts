@@ -43,6 +43,8 @@ export type AppAction =
   | "openNotificationSettings"
   /** System Settings → Privacy & Security → Microphone (plan 074), macOS only. */
   | "openMicrophoneSettings"
+  /** System Settings → Privacy & Security → Camera on macOS, Settings → Privacy & security → Camera on Windows (plan 075). */
+  | "openCameraSettings"
   /** Windows Settings → Optional features (plan 078), where the Media Feature Pack is installed; Windows only. */
   | "openOptionalFeatures"
   | "relaunch"
@@ -71,6 +73,8 @@ export type AppAction =
   | { setCountdownSound: boolean }
   | { setHideSystemUi: boolean }
   | { setMicrophone: boolean }
+  /** The Camera switch (plan 075, D10). */
+  | { setCamera: boolean }
   /** `null` is the system default input. */
   | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }
@@ -92,6 +96,18 @@ export interface MicrophoneContext {
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
 }
 
+/** What the Camera row shows (plan 075). */
+export interface CameraContext {
+  enabled: boolean;
+  /**
+   * Whether the row is shown: until the engine records the camera from this setting (plan 075 step 6), only while the
+   * development switch RECORDSTUFF_CAMERA_PROTOTYPE is on, so no one turns on a switch that records nothing.
+   */
+  available: boolean;
+  /** macOS's answer for the camera; absent on Windows, which has no status to read. */
+  access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+}
+
 /** The persisted choice plus whether the OS actually accepted the registration. */
 export interface AppHotkey extends HotkeySettings {
   registered: boolean;
@@ -110,6 +126,8 @@ export interface AppContext {
   hideSystemUi?: boolean;
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
+  /** The camera (plan 075); absent is off and not shown. */
+  camera?: CameraContext;
   platform: NodeJS.Platform;
   /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
   mediaComponentsMissing?: boolean;
