@@ -176,6 +176,16 @@ impl Default for AudioRequest {
     }
 }
 
+/// A camera, for choosing one (plan 075, D9).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Camera {
+    /// Stable across launches: AVCaptureDevice's unique ID.
+    pub id: String,
+    pub name: String,
+    /// Whether it is the system's default camera now.
+    pub default: bool,
+}
+
 /// An audio input device, for choosing the microphone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Microphone {

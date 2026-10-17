@@ -58,6 +58,8 @@ interface NativeCapture {
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
   microphones(): Promise<MicrophoneDevice[]>;
+  /** Plan 075: the cameras. */
+  cameras?(): Promise<MicrophoneDevice[]>;
   /** Plan 075: the camera's bubble and whether it is shown, from the next frame on; false without a camera. */
   setCameraLayout?(options: CameraOptions, hidden: boolean): boolean;
   /** Plan 075's prototype: preview chunks while a session composes the camera. */
@@ -190,6 +192,9 @@ export class NativeHost {
       case "listMicrophones":
         void this.listMicrophones();
         return;
+      case "listCameras":
+        void this.listCameras();
+        return;
       case "cameraLayout":
         this.cameraLayout(message.sessionId, message.camera, message.hidden);
         return;
@@ -205,6 +210,20 @@ export class NativeHost {
   }
 
   /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */
+  /** The cameras, for the Settings device menu (plan 075). Never while a session holds the engine. */
+  private async listCameras(): Promise<void> {
+    if (this.session) {
+      this.send({ type: "cameras", error: "a recording is in progress" });
+      return;
+    }
+    try {
+      const devices = (await this.capture.cameras?.()) ?? [];
+      this.send({ type: "cameras", devices: devices.map(({ id, name, default: isDefault }) => ({ id, name, default: isDefault })) });
+    } catch (cause) {
+      this.send({ type: "cameras", error: engineFailure(cause).detail });
+    }
+  }
+
   private async listMicrophones(): Promise<void> {
     if (this.session) {
       this.send({ type: "microphones", error: "a recording is in progress" });

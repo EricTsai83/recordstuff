@@ -32,6 +32,12 @@ describe("isMainMessage", () => {
       expect(isMainMessage(start(bad)), JSON.stringify(bad)).toBe(false);
     }
   });
+  it("asks for the cameras and carries their list (plan 075)", () => {
+    expect(isMainMessage({ type: "listCameras" })).toBe(true);
+    expect(isHostMessage({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] })).toBe(true);
+    expect(isHostMessage({ type: "cameras", error: "a recording is in progress" })).toBe(true);
+    expect(isHostMessage({ type: "cameras", devices: [{ id: "", name: "x", default: false }] })).toBe(false);
+  });
   it("carries the camera's changes for a session (plan 075)", () => {
     const camera = { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false };
     expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera, hidden: false })).toBe(true);

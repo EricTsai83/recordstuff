@@ -161,6 +161,24 @@ describe("NativeCaptureHost", () => {
     await expect(crashed).rejects.toThrow("exited with 3");
   });
 
+  it("lists the cameras the same way, one listing at a time (plan 075)", async () => {
+    const ctx = setup();
+    const listed = ctx.host.listCameras();
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    expect(child.sent).toEqual([{ type: "listCameras" }]);
+    // A microphones answer is not the cameras'.
+    child.deliver({ type: "microphones", devices: [{ id: "mic", name: "Mic", default: true }] });
+    child.deliver({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] });
+    await expect(listed).resolves.toEqual([{ id: "iphone", name: "iPhone Camera", default: false }]);
+    expect(child.killed).toBe(true);
+
+    const refused = ctx.host.listCameras();
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    ctx.children.at(-1)!.deliver({ type: "cameras", error: "no video media type" });
+    await expect(refused).rejects.toThrow("no video media type");
+  });
+
   it("never lists while a session runs: a start or cancelListing ends the listing, and a ready process asks again first (plan 074)", async () => {
     const ctx = setup();
     const pending = ctx.host.listMicrophones();

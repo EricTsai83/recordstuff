@@ -20,7 +20,7 @@
  */
 import { utilityProcess, type UtilityProcess } from "electron";
 import { DEFAULT_CAMERA_POSITION, PRIMARY_DISPLAY_KEY } from "../../shared/camera-layout";
-import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice } from "../../shared/protocol";
+import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
@@ -201,6 +201,15 @@ export class NativeCaptureHost implements RecorderHost {
    * `cancelListing` is called. `allowed` is asked again once the process is ready, before it lists anything.
    */
   listMicrophones(allowed: () => boolean = () => true): Promise<MicrophoneDevice[]> {
+    return this.list("microphones", "the audio inputs", allowed);
+  }
+
+  /** The cameras, the same way (plan 075, D9); a listing in flight of either kind is replaced. */
+  listCameras(allowed: () => boolean = () => true): Promise<CameraDevice[]> {
+    return this.list("cameras", "the cameras", allowed);
+  }
+
+  private list(kind: "microphones" | "cameras", what: string, allowed: () => boolean): Promise<MicrophoneDevice[]> {
     const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
     const child = fork(this.options.entryPath, [this.options.addonPath]);
     return new Promise<MicrophoneDevice[]>((resolve, reject) => {
@@ -214,23 +223,23 @@ export class NativeCaptureHost implements RecorderHost {
         if (result instanceof Error) reject(result);
         else resolve(result);
       };
-      const bound = setTimeout(() => done(new Error(`the audio inputs were not listed within ${LIST_BOUND_MS} ms`)), LIST_BOUND_MS);
+      const bound = setTimeout(() => done(new Error(`${what} were not listed within ${LIST_BOUND_MS} ms`)), LIST_BOUND_MS);
       const cancel = (cause: Error): void => done(cause);
       this.listing?.(new Error("a newer listing replaced it"));
       this.listing = cancel;
       for (const stream of [child.stdout, child.stderr]) {
         stream?.on("data", (chunk: Buffer) => {
-          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (inputs): ${line.trim()}`);
+          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (${kind}): ${line.trim()}`);
         });
       }
-      child.on("exit", (code) => done(new Error(`the process listing the audio inputs exited with ${code}`)));
+      child.on("exit", (code) => done(new Error(`the process listing ${what} exited with ${code}`)));
       child.on("message", (data: unknown) => {
         if (!isHostMessage(data)) return;
         if (data.type === "ready") {
-          if (allowed()) child.postMessage({ type: "listMicrophones" } satisfies MainMessage);
-          else done(new Error("a recording started before the inputs were listed"));
+          if (allowed()) child.postMessage({ type: kind === "microphones" ? "listMicrophones" : "listCameras" } satisfies MainMessage);
+          else done(new Error(`a recording started before ${what} were listed`));
         }
-        else if (data.type === "microphones") done("devices" in data ? data.devices : new Error(data.error));
+        else if (data.type === kind) done("devices" in data ? data.devices : new Error(data.error));
       });
     });
   }

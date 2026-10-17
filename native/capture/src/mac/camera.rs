@@ -89,6 +89,23 @@ impl Delegate {
     }
 }
 
+/// The cameras connected now, the system's default marked (D9). Read without access: listing them asks nothing.
+pub fn list() -> Vec<crate::core::Camera> {
+    let Some(media) = (unsafe { AVMediaTypeVideo }) else { return Vec::new() };
+    let default = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.map(|device| unsafe { device.uniqueID() }.to_string());
+    // The discovery session's replacement needs a device type per kind of camera; this one lists them all.
+    #[allow(deprecated)]
+    let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
+    devices
+        .iter()
+        .filter(|device| unsafe { device.isConnected() })
+        .map(|device| {
+            let id = unsafe { device.uniqueID() }.to_string();
+            crate::core::Camera { default: default.as_deref() == Some(id.as_str()), name: unsafe { device.localizedName() }.to_string(), id }
+        })
+        .collect()
+}
+
 /// AVFoundation's camera authorization for this process: 0 not determined, 1 restricted, 2 denied, 3 authorized.
 pub fn authorization() -> Result<isize, CaptureError> {
     let media = unsafe { AVMediaTypeVideo }.ok_or_else(|| unavailable("AVFoundation has no video media type"))?;

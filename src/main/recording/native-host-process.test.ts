@@ -108,6 +108,21 @@ describe("the camera (plan 075)", () => {
     expect(logs).toContainEqual(expect.stringMatching(/^camera layout: .*"x":0.*, hidden$/));
   });
 
+  it("lists the cameras, never while a session holds the engine", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const cameras = vi.fn(async () => [{ id: "iphone", name: "iPhone Camera", default: false, extra: 1 }]);
+    new NativeHost(port, (onEvent) => ({ ...fake.factory(onEvent), cameras }));
+    port.deliver({ type: "listCameras" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    port.deliver({ type: "listCameras" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "cameras", error: "a recording is in progress" });
+  });
+
   it("forwards the engine's camera loss and return for the session", async () => {
     const { port, emit } = await prepared();
     emit({ kind: "cameraLost", detail: "the camera delivered no frame for 2 s" } as never);

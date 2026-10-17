@@ -59,6 +59,9 @@ export interface MicrophoneDevice {
   default: boolean;
 }
 
+/** A camera the engine listed (plan 075, D9): AVCaptureDevice's unique ID, its name, and whether it is the default. */
+export type CameraDevice = MicrophoneDevice;
+
 /** What the native engine's host needs beyond the quality: the display main resolved, the file it opened and what to leave out. */
 export interface NativeStart {
   /** The display to record: its CGDirectDisplayID on macOS, Electron's display id elsewhere. */
@@ -103,6 +106,8 @@ export type MainMessage =
   | { type: "stop"; sessionId: string }
   /** List the audio inputs (plan 074); answered with `microphones`. Only to a host with no session. */
   | { type: "listMicrophones" }
+  /** List the cameras (plan 075); answered with `cameras`. Only to a host with no session. */
+  | { type: "listCameras" }
   /**
    * The camera's bubble and whether it is shown, for the session's next frames (plan 075, D7 and D13); answered with
    * nothing. `camera.deviceId` is ignored: the camera is not switched while recording.
@@ -149,6 +154,8 @@ export type HostMessage =
   /** The answer to `listMicrophones`: the inputs, or why they could not be listed. */
   | { type: "microphones"; devices: MicrophoneDevice[] }
   | { type: "microphones"; error: string }
+  | { type: "cameras"; devices: CameraDevice[] }
+  | { type: "cameras"; error: string }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -206,6 +213,7 @@ export function isMainMessage(value: unknown): value is MainMessage {
     case "cameraLayout":
       return isNonEmptyString(value["sessionId"]) && isCameraChoice(value["camera"]) && typeof value["hidden"] === "boolean";
     case "listMicrophones":
+    case "listCameras":
     case "ping":
       return true;
     default:
@@ -245,6 +253,7 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
     case "microphones":
+    case "cameras":
       return Array.isArray(value["devices"]) ? value["devices"].every(isMicrophoneDevice) && value["error"] === undefined
         : typeof value["error"] === "string";
     case "error":

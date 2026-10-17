@@ -86,6 +86,14 @@ pub struct AudioOptions {
     pub microphone_id: Option<String>,
 }
 
+/// A camera the engine can open (plan 075, D9).
+#[napi(object)]
+pub struct CameraInfo {
+    pub id: String,
+    pub name: String,
+    pub default: bool,
+}
+
 #[napi(object)]
 pub struct MicrophoneInfo {
     pub id: String,
@@ -402,6 +410,12 @@ impl NativeCapture {
         AsyncTask::new(ProbeTask { display_id, display_point: display_point.map(|p| (p.x, p.y)), source: Some(source) })
     }
 
+    /// The cameras, for choosing one (plan 075); none on Windows yet.
+    #[napi(ts_return_type = "Promise<CameraInfo[]>")]
+    pub fn cameras(&self) -> AsyncTask<CamerasTask> {
+        AsyncTask::new(CamerasTask)
+    }
+
     /// The audio input devices, for choosing the microphone.
     #[napi(ts_return_type = "Promise<MicrophoneInfo[]>")]
     pub fn microphones(&self) -> AsyncTask<MicrophonesTask> {
@@ -490,6 +504,26 @@ impl Task for ProbeTask {
 
     fn resolve(&mut self, _env: Env, (width, height): Self::Output) -> Result<Self::JsValue> {
         Ok(ProbeResult { width, height })
+    }
+}
+
+pub struct CamerasTask;
+
+impl Task for CamerasTask {
+    type Output = Vec<CameraInfo>;
+    type JsValue = Vec<CameraInfo>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(mac::camera::list().into_iter().map(|c| CameraInfo { id: c.id, name: c.name, default: c.default }).collect())
+        }
+        #[cfg(not(target_os = "macos"))]
+        Ok(Vec::new())
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
     }
 }
 

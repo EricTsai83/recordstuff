@@ -817,8 +817,8 @@ export class Recorder {
   }
 
   private handleHostMessage(message: HostMessage): void {
-    // `microphones` answers a listing process, never an attempt's.
-    if (message.type === "ready" || message.type === "pong" || message.type === "microphones") return;
+    // `microphones` and `cameras` answer a listing process, never an attempt's.
+    if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras") return;
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && message.sessionId === session.id) {
