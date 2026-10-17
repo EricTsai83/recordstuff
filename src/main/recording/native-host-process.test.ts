@@ -74,7 +74,7 @@ describe("cameraPrototypeOn", () => {
 });
 
 describe("the camera prototype's preview (plan 075)", () => {
-  const frame: PreviewFrame = { width: 4, height: 2, data: new Uint8Array(12) };
+  const frame: PreviewFrame = { width: 640, height: 360, data: new Uint8Array(12), key: true, timestamp: 1_000_000, description: new Uint8Array([1, 100, 0, 30]) };
   const withPreview = () => {
     let send: (frame: PreviewFrame) => void = () => undefined;
     const fake = fakeEngine();
@@ -94,9 +94,11 @@ describe("the camera prototype's preview (plan 075)", () => {
     send(frame);
     port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
     send(frame);
-    expect(first.posted).toEqual([expect.objectContaining({ width: 4, height: 2, data: frame.data, n: 1 })]);
+    expect(first.posted).toEqual([expect.objectContaining({ width: 640, height: 360, data: frame.data, key: true, timestamp: 1_000_000, description: frame.description, n: 1 })]);
     expect(first.closed).toBe(true);
     expect(second.posted).toEqual([expect.objectContaining({ n: 2 })]);
+    send({ ...frame, key: false, description: null });
+    expect(second.posted[1]).not.toHaveProperty("description");
     // The port's message is not the capture protocol's: nothing answers it.
     expect(port.sent.filter((m) => m.type !== "ready")).toEqual([]);
   });

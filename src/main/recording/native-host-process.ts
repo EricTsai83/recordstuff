@@ -30,8 +30,11 @@ interface StopReport {
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string }
-/** A preview frame of the composed picture (plan 075's prototype): NV12, the luma plane then the chroma one. */
-export interface PreviewFrame { width: number; height: number; data: Uint8Array }
+/**
+ * A preview chunk of the composed picture (plan 075's prototype, D17's second option): H.264 in AVCC form for WebCodecs,
+ * the `avcC` record (`description`) with every key frame; `timestamp` is host time in microseconds.
+ */
+export interface PreviewFrame { width: number; height: number; data: Uint8Array; key: boolean; timestamp: number; description?: Uint8Array | null }
 /** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
 export interface CaptureSource {
   kind: "display" | "window" | "area" | "apps";
@@ -53,7 +56,7 @@ interface NativeCapture {
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
   microphones(): Promise<MicrophoneDevice[]>;
-  /** Plan 075's prototype: preview frames while a session composes the camera. */
+  /** Plan 075's prototype: preview chunks while a session composes the camera. */
   onPreview?(onFrame: (frame: PreviewFrame) => void): void;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
@@ -146,11 +149,14 @@ export class NativeHost {
     this.send({ type: "ready" });
   }
 
-  /** Forwards a preview frame to the preview page, when main gave one; dropped otherwise. */
+  /** Forwards a preview chunk to the preview page, when main gave one; dropped otherwise. */
   private preview(frame: PreviewFrame): void {
     if (!this.previewPort) return;
     this.previewFrames += 1;
-    this.previewPort.postMessage({ width: frame.width, height: frame.height, data: frame.data, sent: Date.now(), n: this.previewFrames });
+    this.previewPort.postMessage({
+      width: frame.width, height: frame.height, data: frame.data, key: frame.key, timestamp: frame.timestamp,
+      ...(frame.description ? { description: frame.description } : {}), sent: Date.now(), n: this.previewFrames,
+    });
   }
 
   private get capture(): NativeCapture {
