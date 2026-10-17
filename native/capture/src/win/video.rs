@@ -174,6 +174,11 @@ impl H264Encoder {
         })
     }
 
+    /// The preview's encoder (plan 075, D17): Microsoft's software encoder, leaving the GPU's to the recording.
+    pub fn for_preview(gpu: Arc<Mta<Gpu>>, width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
+        Self::software(gpu, width, height, frame_rate, bitrate, sink, "the preview".into())
+    }
+
     /// Microsoft's software encoder, and why it records.
     fn software(
         gpu: Arc<Mta<Gpu>>,

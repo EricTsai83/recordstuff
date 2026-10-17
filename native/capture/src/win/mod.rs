@@ -4,6 +4,7 @@
 //! audio packets their QPC position, both QPC in 100 ns units.
 
 pub mod aac;
+pub mod camera;
 pub mod audio;
 pub mod capture;
 pub mod compositor;

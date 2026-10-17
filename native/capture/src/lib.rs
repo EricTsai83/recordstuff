@@ -137,7 +137,7 @@ fn audio(audio: Option<AudioOptions>) -> Result<core::AudioRequest> {
 /// The camera composed into the recording (plan 075): which one, and its bubble on the recorded display.
 #[napi(object)]
 pub struct CameraOptions {
-    /// AVCaptureDevice's unique ID; absent is the system's default camera.
+    /// AVCaptureDevice's unique ID on macOS, Media Foundation's symbolic link on Windows; absent is the system's default camera.
     pub device_id: Option<String>,
     /// Fractions of the frame's shorter side, 0.05 to 0.6 (src/shared/camera-layout.ts).
     pub width: f64,
@@ -421,7 +421,7 @@ impl NativeCapture {
         AsyncTask::new(ProbeTask { display_id, display_point: display_point.map(|p| (p.x, p.y)), source: Some(source) })
     }
 
-    /// The cameras, for choosing one (plan 075); none on Windows yet.
+    /// The cameras, for choosing one (plan 075).
     #[napi(ts_return_type = "Promise<CameraInfo[]>")]
     pub fn cameras(&self) -> AsyncTask<CamerasTask> {
         AsyncTask::new(CamerasTask)
@@ -586,7 +586,11 @@ impl Task for CamerasTask {
         {
             Ok(mac::camera::list().into_iter().map(|c| CameraInfo { id: c.id, name: c.name, default: c.default }).collect())
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        {
+            Ok(win::camera::list().into_iter().map(|c| CameraInfo { id: c.id, name: c.name, default: c.default }).collect())
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
         Ok(Vec::new())
     }
 

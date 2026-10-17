@@ -529,7 +529,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     if (studioOpen) setTimeout(() => { if (studioOpen && !recorder.preview) recorder.startPreview(); }, 0);
   };
   let listingCameras = false;
-  const cameraAvailable = (): boolean => process.platform === "darwin";
+  // The engine composes the camera on macOS and, since plan 075 step 6, on Windows.
+  const cameraAvailable = (): boolean => process.platform === "darwin" || process.platform === "win32";
   const refreshCameras = (): Promise<void> => {
     if (listingCameras || !cameraAvailable() || !preferencesUnlocked(recorder.state)) return Promise.resolve();
     listingCameras = true;
@@ -556,7 +557,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
     })(),
     camera: (() => {
-      // macOS records the camera (plan 075); Windows composes it once its compositor exists.
+      // The engine records the camera on macOS and Windows (plan 075).
       const access = cameraAccess(), session = recorder.camera, device = settings.cameraDevice;
       return { enabled: settings.camera, available: cameraAvailable(), layout: settings.cameraLayout, ...(access ? { access } : {}),
         ...(session ? { session } : {}), ...(device ? { device } : {}), ...(cameras ? { devices: cameras } : {}) };

@@ -149,6 +149,35 @@ pub struct PreviewChunk {
     pub description: Option<Vec<u8>>,
 }
 
+/// Takes a preview encoder's output and tells it as preview chunks, the `avcC` record with every key frame (plan 075,
+/// D17), on every platform.
+pub struct PreviewSink {
+    events: Arc<dyn Events>,
+    format: Mutex<Option<(Vec<u8>, u32, u32)>>,
+}
+
+impl PreviewSink {
+    pub fn new(events: Arc<dyn Events>) -> Self {
+        Self { events, format: Mutex::new(None) }
+    }
+}
+
+impl VideoSink for PreviewSink {
+    fn media(&self, media: Media) {
+        match media {
+            Media::VideoFormat { avcc, width, height } => *self.format.lock().unwrap() = Some((avcc, u32::from(width), u32::from(height))),
+            Media::Video { data, pts_ns, sync } => {
+                let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
+                self.events.preview(PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
+            }
+            Media::Audio { .. } => {}
+        }
+    }
+
+    // A preview is a convenience: one whose encoder fails stops showing, the recording does not.
+    fn failed(&self, _detail: String) {}
+}
+
 /// Where encoded video goes, and who hears that encoding failed. Called on the encoder's thread.
 pub trait VideoSink: Send + Sync {
     fn media(&self, media: Media);

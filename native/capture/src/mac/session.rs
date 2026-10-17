@@ -35,7 +35,6 @@ use super::{CaptureError, Unsent, host_ns, now_ns};
 use super::microphone::MicrophoneCapture;
 use crate::camera_layout::PREVIEW_FPS;
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
-use crate::writer::Media;
 use crate::pacing::Pacer;
 
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
@@ -99,28 +98,6 @@ impl VideoEncode<Frame> for Video {
     }
 }
 
-/// Takes the preview encoder's output and tells it as preview chunks, the `avcC` record with every key frame.
-struct PreviewSink {
-    events: Arc<dyn Events>,
-    format: std::sync::Mutex<Option<(Vec<u8>, u32, u32)>>,
-}
-
-impl core::VideoSink for PreviewSink {
-    fn media(&self, media: Media) {
-        match media {
-            Media::VideoFormat { avcc, width, height } => *self.format.lock().unwrap() = Some((avcc, u32::from(width), u32::from(height))),
-            Media::Video { data, pts_ns, sync } => {
-                let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
-                self.events.preview(core::PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
-            }
-            Media::Audio { .. } => {}
-        }
-    }
-
-    // A preview is a convenience: one whose encoder fails stops showing, the recording does not.
-    fn failed(&self, _detail: String) {}
-}
-
 /// The preview (D17's second option): the composed picture at preview size, `PREVIEW_FPS` times a second, encoded as
 /// a small H.264 stream and told to the session's events, from `prepare` until capture ends, while someone watches
 /// (Settings shows it, plan 075 step 7); unwatched it composes and encodes nothing, and it starts again at a key frame.
@@ -141,7 +118,7 @@ impl Preview {
         let watches = Arc::new(AtomicU64::new(0));
         let started = watches.clone();
         let (width, height) = compositor.preview_size();
-        let sink = Arc::new(PreviewSink { events: shared.events(), format: std::sync::Mutex::new(None) });
+        let sink = Arc::new(core::PreviewSink::new(shared.events()));
         let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
         let thread = std::thread::Builder::new()
             .name("recordstuff-preview".into())
@@ -697,7 +674,7 @@ mod preview_test {
         let camera = Arc::new(super::super::camera::Feed::default());
         let compositor = Compositor::new(1280, 720, crate::camera_layout::Layout::default(), camera).unwrap();
         let chunks = Arc::new(Chunks::default());
-        let sink = Arc::new(PreviewSink { events: chunks.clone(), format: std::sync::Mutex::new(None) });
+        let sink = Arc::new(core::PreviewSink::new(chunks.clone()));
         let (width, height) = compositor.preview_size();
         let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink).unwrap();
         let screen = super::super::compositor::test_frame(1280, 720);
