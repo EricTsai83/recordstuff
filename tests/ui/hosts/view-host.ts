@@ -215,6 +215,8 @@ const chooseCalls: Array<[string, unknown]> = [];
 const previewWatches: boolean[] = [];
 /** What the page said about the Recording Studio's meters being in sight (plan 075, D19), in order. */
 const levelWatches: boolean[] = [];
+/** What the page said about the Recording Studio being open in sight (plan 075, D20), in order. */
+const studioWatches: boolean[] = [];
 let panel: ElectronModule.BrowserWindow | undefined;
 let library: RecordingsLibrary | undefined;
 
@@ -240,6 +242,7 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:zoom", () => {});
   ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
   ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); });
+  ipcMain.handle("settings:watch-studio", (_event, open: boolean) => { studioWatches.push(open); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
     if (!state.captureView) return fixtureView(state.language, state.notifications);
     state.captureView = structuredClone(state.captureView);
@@ -415,6 +418,7 @@ const hostControls: Record<string, unknown> = {
   chooseCalls,
   previewWatches,
   levelWatches,
+  studioWatches,
   /** Levels as main passes them to a watching page. */
   pushLevels: (levels: { system: number; microphone?: number }): void => { panel!.webContents.send("settings:levels", levels); },
   results: recordingResults,

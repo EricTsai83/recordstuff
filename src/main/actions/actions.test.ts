@@ -180,6 +180,21 @@ describe("createActionHandler", () => {
       expect(saves.find(([what]) => what === "camera device")?.[1].locked).toBe(true);
     });
 
+    it("starts and lets go of a Live preview, reporting done to the Studio (D20)", async () => {
+      const startPreview = vi.fn(() => false), stopPreview = vi.fn();
+      const ctx = harness({ recorder: { startPreview, stopPreview, state: { type: "recording" } } } as unknown as Partial<ActionDeps>);
+      await expect(ctx.act("startPreview")).resolves.toBe(true);
+      expect(ctx.deps.log).toHaveBeenCalledWith("studio: Live preview not started in state recording");
+      await expect(ctx.act("stopPreview")).resolves.toBe(true);
+      expect(stopPreview).toHaveBeenCalledOnce();
+      // A choice queued behind a save, from a Studio since closed: no preview.
+      const closed = harness({ studioOpen: () => false, recorder: { startPreview, stopPreview, state: { type: "idle" } } } as unknown as Partial<ActionDeps>);
+      startPreview.mockClear();
+      await closed.act("startPreview");
+      expect(startPreview).not.toHaveBeenCalled();
+      expect(closed.deps.log).toHaveBeenCalledWith("studio: Live preview not started: the Studio is no longer open");
+    });
+
     it("mutes an input of the recording in progress, and says so when there is none (D19)", async () => {
       const updateAudio = vi.fn(() => true);
       const ctx = harness({ recorder: { updateAudio } } as unknown as Partial<ActionDeps>);

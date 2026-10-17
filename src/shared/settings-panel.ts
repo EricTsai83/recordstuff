@@ -119,6 +119,8 @@ export interface CameraPreviewView {
   display: { width: number; height: number; menuBar: number };
   /** The bubble's shape (fractions of the display's shorter side), as the recording composes it. */
   bubble: { width: number; height: number; rounding: number; mirror: boolean };
+  /** Whether the bubble is part of the picture: not in a session that composes no camera, which has nothing to place. */
+  composed: boolean;
   /** Its position, a fraction of the free space on each axis. */
   x: number;
   y: number;
@@ -262,6 +264,8 @@ export const SETTINGS_CHANNELS = {
   /** Whether the Recording Studio's meters are in sight, and the levels main passes them (plan 075, D19). */
   watchLevels: "settings:watch-levels",
   levels: "settings:levels",
+  /** Whether the Recording Studio is open and in sight (plan 075, D20): a Live preview lasts only while it is. */
+  watchStudio: "settings:watch-studio",
 } as const;
 /** A recording's new name, as typed in its card (group `recordingFile:<id>`); main checks it before renaming. */
 export interface RenameChoice { action: "rename"; name: string }
@@ -334,6 +338,8 @@ export interface SettingsBridge {
   /** The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come to `onLevels`. */
   watchLevels?(watching: boolean): Promise<void>;
   onLevels?(callback: (levels: StudioLevels) => void): () => void;
+  /** The Recording Studio is open and in sight, or no longer is (D20): main lets a Live preview go once it is not. */
+  watchStudio?(open: boolean): Promise<void>;
 }
 /** A recording's inputs' loudest samples since the last levels, linear (1 is full scale). */
 export interface StudioLevels { system: number; microphone?: number }

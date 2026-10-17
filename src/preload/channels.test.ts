@@ -27,6 +27,7 @@ it("settings preload uses exactly the settings channels main handles and sends",
   bridge.onZoomChanged(() => {})();
   await bridge.watchCameraPreview(true);
   await bridge.watchLevels(true);
+  await bridge.watchStudio(true);
   bridge.onLevels(() => {})();
   expect([...electron.used].sort()).toEqual(Object.values(SETTINGS_CHANNELS).sort());
 });

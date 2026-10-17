@@ -94,7 +94,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { levels?: SettingsWindowOptions["levels"]; cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
+function setup(overrides: { studio?: SettingsWindowOptions["studio"]; levels?: SettingsWindowOptions["levels"]; cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -114,6 +114,7 @@ function setup(overrides: { levels?: SettingsWindowOptions["levels"]; cameraPrev
     ...(overrides.folders ? { folders: overrides.folders } : {}),
     ...(overrides.cameraPreview ? { cameraPreview: overrides.cameraPreview } : {}),
     ...(overrides.levels ? { levels: overrides.levels } : {}),
+    ...(overrides.studio ? { studio: overrides.studio } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -224,6 +225,26 @@ describe("settings window lifecycle", () => {
     expect(closed).toHaveBeenCalledTimes(2);
     s.panel.destroy();
     expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells main whether the Recording Studio is open in sight, and that it is not once hidden or closed (plan 075, D20)", async () => {
+    const studio = vi.fn();
+    const s = setup({ studio });
+    s.panel.show();
+    const window = s.window();
+    const watch = (value: unknown) => mock.handlers.get("settings:watch-studio")!(s.event(), value);
+    await watch(true);
+    expect(studio).toHaveBeenLastCalledWith(true);
+    window.visible = false;
+    await watch(true);
+    expect(studio).toHaveBeenLastCalledWith(false);
+    window.visible = true;
+    window.events.get("show")?.();
+    expect(studio).toHaveBeenLastCalledWith(true);
+    window.hide = vi.fn();
+    s.panel.hide();
+    expect(studio).toHaveBeenLastCalledWith(false);
+    expect(() => watch("open")).toThrow();
   });
 
   it("tells main whether its page watches the Studio's meters, and that none does once closed (plan 075, D19)", async () => {

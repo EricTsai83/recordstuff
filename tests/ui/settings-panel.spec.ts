@@ -592,6 +592,40 @@ test("S135 the sidebar collapses to a rail of icons named by their tooltips, its
   await expect(toggle).toBeHidden();
 });
 
+test("S136–S137 Live preview: the Studio's button asks main, the engine's picture shows with no bubble to place when the camera is off, and leaving the Studio lets it go (plan 075, D20)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await host.evaluate(h => {
+    h.studioWatches.length = 0;
+    h.previewWatches.length = 0;
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: false, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  await expect.poll(() => host.evaluate(h => [...h.studioWatches]), { message: "S136 the Studio says it is open" }).toEqual([true]);
+  await clearCalls();
+  await page.getByRole("button", { name: "Live preview" }).click();
+  await expect.poll(calls, { message: "S136 Live preview asks main" }).toEqual([["studioControls", "preview"]]);
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { preview: { live: true }, showing: true } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect(page.locator("#setting-studioControls-label"), "S136 the state").toHaveText("Previewing");
+  await expect(page.getByRole("button", { name: "Stop preview" })).toBeVisible();
+  await expect(page.locator(".camera-preview-picture"), "S136 the engine's picture").toBeVisible();
+  await expect(page.locator(".camera-preview-handle"), "S136 no bubble to place without the camera").toHaveCount(0);
+  await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S136 its picture is asked for" }).toEqual([true]);
+  // A preview that could not start says why, until the next.
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: false, previewFailure: "camera_unavailable" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect(page.locator(".studio-controls [role=status]"), "S136 why").toContainText("Live preview could not start:");
+  await page.locator("#tab-general").click();
+  await expect.poll(() => host.evaluate(h => [...h.studioWatches]), { message: "S137 leaving the Studio lets the preview go" }).toEqual([true, false]);
+  await host.evaluate(h => h.setSize(560, 680));
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);

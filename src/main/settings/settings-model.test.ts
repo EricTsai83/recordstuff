@@ -319,6 +319,20 @@ describe("the Recording Studio's controls (plan 075, D19)", () => {
     expect(controls({ type: "stopping" })).toMatchObject({ label: "Saving…", choices: [{ id: "saving", enabled: false }] });
     expect(controls(idle).elapsedSince).toBeUndefined();
   });
+  it("offer Live preview between recordings where the engine makes one, Stop preview while there is one, and say why one could not start (D20)", () => {
+    const mac = { ...context, camera: { enabled: false, available: true } };
+    expect(controls(idle, mac).choices.map((c) => [c.id, c.enabled])).toEqual([["preview", true], ["start", true]]);
+    expect(settingsAction(idle, mac, "studioControls", "preview")).toBe("startPreview");
+    expect(controls(idle, context).choices.map((c) => c.id), "none without the engine's preview (Windows)").toEqual(["start"]);
+    const starting = { ...mac, studio: { preview: { live: false }, showing: false } };
+    expect(controls(idle, starting)).toMatchObject({ label: "Starting preview…", choices: [{ id: "stopPreview" }, { id: "start", enabled: true }] });
+    const live = { ...mac, studio: { preview: { live: true }, showing: true } };
+    expect(controls(idle, live).label).toBe("Previewing");
+    expect(settingsAction(idle, live, "studioControls", "stopPreview")).toBe("stopPreview");
+    expect(settingsAction(idle, live, "studioControls", "start"), "Start takes it").toBe("start");
+    expect(controls(idle, { ...mac, studio: { showing: false, previewFailure: "camera_unavailable" } }).note).toMatch(/^Live preview could not start: /);
+    expect(controls({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, live).choices.map((c) => c.id), "a recording has no preview to start").toEqual(["stop"]);
+  });
   it("wait for screen recording's permission, whose fix the status card offers, in either of its steps", () => {
     for (const needsRelaunch of [false, true]) {
       const state = { type: "needsPermission" as const, needsRelaunch };
@@ -380,6 +394,12 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.status).toBeUndefined();
     expect(preview(idle, { ...on(), language: "zh-TW" })).toMatchObject({ label: "預覽" });
+    // A Live preview's picture, with the camera off: the engine's, with no bubble to place (D20).
+    expect(preview(idle, on({ enabled: false }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview)
+      .toMatchObject({ mode: "recording", composed: false });
+    expect(preview(idle, on({ enabled: false }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(idle, on({ session: { hidden: false } }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview)
+      .toMatchObject({ mode: "recording", composed: true });
   });
 
   it("sends where the bubble was let go of on the display shown, also while recording, and nothing out of range", () => {

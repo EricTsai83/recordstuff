@@ -33,6 +33,7 @@ const bridge: SettingsBridge = {
   },
   watchCameraPreview: (watching) => ipcRenderer.invoke("settings:camera-preview", watching),
   watchLevels: (watching) => ipcRenderer.invoke("settings:watch-levels", watching),
+  watchStudio: (open) => ipcRenderer.invoke("settings:watch-studio", open),
   onLevels: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, levels: StudioLevels): void => callback(levels);
     ipcRenderer.on("settings:levels", listener);

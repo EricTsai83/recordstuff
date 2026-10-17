@@ -3,6 +3,7 @@
  * it panels side by side, the camera's, the audio mixer and the controls, instead of a list of rows. Every control is
  * still a group main offers and answers (settings-model.ts), chosen the same way as anywhere in Settings.
  */
+import { useEffect } from "react";
 import { Camera, Eye, EyeOff, FlipHorizontal2 } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
@@ -125,6 +126,7 @@ function ControlsPanel() {
     <section className="studio-panel studio-controls" aria-labelledby="studio-controls-heading">
       <div className="studio-panel-head"><h2 id="studio-controls-heading">{controls.sectionHeading ?? controls.label}</h2></div>
       <p className="studio-state" id="setting-studioControls-label">{controls.label}</p>
+      {controls.note && <p className="studio-note" role="status">{controls.note}</p>}
       <div className="studio-buttons">
         {controls.elapsedSince && <Elapsed since={controls.elapsedSince} />}
         {controls.choices.map((choice) => <Action key={choice.id} group={controls} choice={choice} className={choice.id === "start" ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground dark:border-primary dark:bg-primary dark:hover:bg-primary/90" : undefined} />)}
@@ -134,7 +136,21 @@ function ControlsPanel() {
   );
 }
 
+/** Tells main the Studio is open while it is shown in a window in sight (D20: a Live preview lasts only so long). */
+function useStudioOpen(): void {
+  useEffect(() => {
+    const tell = (): void => { void window.settings.watchStudio?.(document.visibilityState === "visible").catch(() => undefined); };
+    tell();
+    document.addEventListener("visibilitychange", tell);
+    return () => {
+      document.removeEventListener("visibilitychange", tell);
+      void window.settings.watchStudio?.(false).catch(() => undefined);
+    };
+  }, []);
+}
+
 export function Studio() {
+  useStudioOpen();
   const preview = groupOf("cameraPreview");
   return (
     <div className="studio">

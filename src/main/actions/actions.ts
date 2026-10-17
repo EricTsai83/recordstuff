@@ -23,6 +23,8 @@ import { translate } from "../../shared/i18n";
 export interface ActionDeps {
   /** A quit is running: every action but quit is refused until it exits or is declined. */
   quitRequested(): boolean;
+  /** Whether the Recording Studio is open in a window in sight (plan 075, D20), which a Live preview lasts as long as. */
+  studioOpen?(): boolean;
   /** Nothing is recording or quitting (`preferencesUnlocked`), so a session-touching change may apply. */
   settled(): boolean;
   platform: NodeJS.Platform;
@@ -34,7 +36,7 @@ export interface ActionDeps {
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "startPreview" | "stopPreview">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
@@ -310,6 +312,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
           await deps.openExternal(deps.updates.state.kind === "available" ? downloadPageUrl(deps.platform) : RELEASES_URL);
           return true;
         } catch (error) { log(`settings: update link failed: ${String(error)}`); return false; }
+      case "startPreview":
+        // Asked from a Studio that has since closed (a choice queued behind a save): nothing to show it in.
+        if (deps.studioOpen && !deps.studioOpen()) log("studio: Live preview not started: the Studio is no longer open");
+        else if (!recorder.startPreview()) log(`studio: Live preview not started in state ${recorder.state.type}`);
+        return true;
+      case "stopPreview":
+        recorder.stopPreview();
+        return true;
       case "start":
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
         if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);

@@ -221,7 +221,7 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
         {preview.display.menuBar > 0 && preview.mode !== "recording" && (
           <div className="camera-preview-menubar" style={{ height: `${(preview.display.menuBar / preview.display.height) * 100}%` }} aria-hidden="true" />
         )}
-        <div
+        {preview.composed && <div
           className="camera-preview-bubble"
           data-live={live || undefined}
           data-outline={preview.mode === "recording" || undefined}
@@ -237,9 +237,9 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
             aria-hidden="true"
             style={preview.bubble.mirror ? { transform: "scaleX(-1)" } : undefined}
           />
-        </div>
+        </div>}
         {/* What is dragged: the bubble, or a target of at least HANDLE_MIN pixels centred on it when it is drawn smaller. */}
-        <div
+        {preview.composed && <div
           id={id}
           className="camera-preview-handle"
           role="application"
@@ -254,7 +254,7 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
           onPointerUp={onPointerUp}
           onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}
           onKeyDown={onKeyDown}
-        />
+        />}
         {status && <p className="camera-preview-status">{status}</p>}
       </div>
       <span id={`${id}-position`} className="sr-only">

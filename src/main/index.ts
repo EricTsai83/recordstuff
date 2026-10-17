@@ -76,7 +76,7 @@ import { preferencesUnlocked } from "./recording/recording-lock";
 import { effectiveQuality, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts/shortcuts";
 import { physicalHotkeyFeatures } from "./shortcuts/hotkey";
-import type { RecordingState } from "../shared/state";
+import type { ErrorCode, RecordingState } from "../shared/state";
 import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -505,6 +505,26 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
    * with them.
    */
   let cameras: readonly CameraDevice[] | undefined;
+  /** Why the last Live preview could not start (plan 075, D20), until the next one begins. */
+  let previewFailure: ErrorCode | undefined;
+  /** Whether the Recording Studio is open in a window in sight, which a Live preview lasts as long as. */
+  let studioOpen = false;
+  /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
+  const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.hideSystemUi, settings.outputDir,
+    settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null]);
+  let previewPrepared: string | undefined;
+  /** Follows the Live preview: one prepared with settings since changed is prepared again, while the Studio is open. */
+  const followPreview = (): void => {
+    const preview = recorder.preview;
+    if (!preview) { previewPrepared = undefined; return; }
+    const inputs = previewInputs();
+    if (previewPrepared === undefined) { previewPrepared = inputs; return; }
+    if (inputs === previewPrepared) return;
+    log("studio: settings changed under the Live preview; preparing it again");
+    previewPrepared = undefined;
+    recorder.stopPreview();
+    if (studioOpen) setTimeout(() => { if (studioOpen && !recorder.preview) recorder.startPreview(); }, 0);
+  };
   let listingCameras = false;
   const cameraAvailable = (): boolean => process.platform === "darwin";
   const refreshCameras = (): Promise<void> => {
@@ -538,6 +558,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return { enabled: settings.camera, available: cameraAvailable(), layout: settings.cameraLayout, ...(access ? { access } : {}),
         ...(session ? { session } : {}), ...(device ? { device } : {}), ...(cameras ? { devices: cameras } : {}) };
     })(),
+    studio: {
+      ...(recorder.preview ? { preview: { live: recorder.preview.live } } : {}),
+      showing: recorder.previewSessionId !== undefined,
+      ...(previewFailure ? { previewFailure } : {}),
+    },
     ...(() => {
       const audio = recorder.audio;
       return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
@@ -569,7 +594,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   // Settings' preview of a recording's camera (plan 075 step 7): joined while the page shows it.
   const cameraPreviewLink = new CameraPreviewLink<Electron.MessagePortMain>({
-    session: () => recorder.cameraSessionId,
+    session: () => recorder.previewSessionId,
     watch: (sessionId, watching, port) => host.watchPreview(sessionId, watching, port),
     channel: () => new MessageChannelMain(),
     log,
@@ -584,6 +609,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
     cameraPreview: (page) => cameraPreviewLink.watch(page),
     levels: (page) => levelsLink.watch(page),
+    // A Live preview lasts while the Studio is open in sight (D20); a recording it became goes on.
+    studio: (open) => { studioOpen = open; if (!open) recorder.stopPreview(); },
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
@@ -683,6 +710,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {
+    followPreview();
     tray.refresh();
     settingsWindow.refresh();
     appMenu.refresh();
@@ -789,6 +817,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
   });
   const actionHandler = createActionHandler({
+    studioOpen: () => studioOpen,
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
@@ -844,7 +873,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         quit.clearDeferred(false);
         // No input is listed while a session runs (plan 074): a listing still in flight ends now.
         if (!preferencesUnlocked(event.state)) host.cancelListing();
-        if (preferencesUnlocked(event.state)) {
+        // A Live preview's session is held in an idle state (D20): its process stays until the preview is let go of.
+        if (preferencesUnlocked(event.state) && !recorder.preview) {
           displayMedia.settle();
           host.destroy();
           // The recorder closes the overlay on every path; this is the safety net.
@@ -890,6 +920,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;
+        refreshUi();
+        return;
+      case "preview":
+        // The Studio says why a Live preview could not start until the next one begins (plan 075, D20).
+        if (event.failure) previewFailure = event.failure.code;
+        else if (recorder.preview) previewFailure = undefined;
         refreshUi();
         return;
       case "captureStarted":

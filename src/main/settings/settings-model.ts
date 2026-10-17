@@ -414,9 +414,13 @@ function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
   const choice = (id: string, label: PlainMessageKey, action: AppAction, enabled = true): Group["choices"][number] =>
     ({ id, label: t(label, language), enabled, checked: false, action });
   // Start as the tray offers it: without screen recording's permission it waits, the status card above every tab
-  // offering the fix (opening the pane, or relaunching once it is allowed), which is not repeated here.
+  // offering the fix (opening the pane, or relaunching once it is allowed), which is not repeated here. Between
+  // recordings, Live preview (D20) beside it where the engine makes a preview (macOS).
+  const preview = ctx.studio?.preview;
+  const previewChoice = !ctx.camera?.available ? [] : preview ? [choice("stopPreview", "Stop preview", "stopPreview")]
+    : [choice("preview", "Live preview", "startPreview", state.type === "idle" && !ctx.mediaComponentsMissing)];
   const choices = state.type === "idle" || state.type === "needsPermission"
-    ? [choice("start", "Start recording", "start", state.type === "idle" && !ctx.mediaComponentsMissing)]
+    ? [...previewChoice, choice("start", "Start recording", "start", state.type === "idle" && !ctx.mediaComponentsMissing)]
     : state.type === "starting" || state.type === "countdown" ? [choice("cancel", "Cancel recording", "cancelCountdown")]
     : state.type === "recording" ? [choice("stop", "Stop recording", "stop")]
     : [choice("saving", "Saving…", "stop", false)];
@@ -424,8 +428,12 @@ function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
   const label = state.type === "recording" ? t("Recording", language)
     : state.type === "countdown" ? t("Recording starts in {seconds} s", language, { seconds: state.remaining })
     : state.type === "starting" ? t("Starting…", language) : state.type === "stopping" ? t("Saving…", language)
-    : state.type === "needsPermission" ? t("Screen recording permission required", language) : t("Ready", language);
+    : state.type === "needsPermission" ? t("Screen recording permission required", language)
+    : preview ? t(preview.live ? "Previewing" : "Starting preview…", language) : t("Ready", language);
+  const failure = ctx.studio?.previewFailure;
   return { ...group("studioControls", label, true, choices), kind: "actions",
+    ...(failure && state.type === "idle" && !preview
+      ? { note: t("Live preview could not start: {reason}", language, { reason: failureReason(failure, language) }), noteKind: "status" as const } : {}),
     ...(state.type === "recording" ? { elapsedSince: state.startedAt } : {}) };
 }
 
@@ -470,8 +478,10 @@ function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefin
   const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
   const { x, y } = recordedPosition(layout, display.id);
   const granted = camera.access === undefined || camera.access === "granted";
-  const mode = !camera.enabled ? "off" : camera.session ? "recording" : unlocked && granted ? "live" : "off";
-  const status = !camera.enabled ? t("Turn on Camera to see it here.", language)
+  // The engine's picture whenever a session makes one: a Live preview or a recording, with the camera or not (D20).
+  const showing = camera.session !== undefined || ctx.studio?.showing === true;
+  const mode = showing ? "recording" : !camera.enabled ? "off" : unlocked && granted ? "live" : "off";
+  const status = showing ? undefined : !camera.enabled ? t("Turn on Camera to see it here.", language)
     : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
     : undefined;
   const id = `${x},${y}`;
@@ -487,6 +497,8 @@ function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefin
       mode,
       display: { width: display.logicalWidth, height: display.logicalHeight, menuBar: ctx.hideSystemUi ? 0 : display.menuBar ?? 0 },
       bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
+      // The picture holds a camera to place only while its session composes one.
+      composed: !showing || camera.session !== undefined,
       x, y,
       ...(named ? { camera: named } : {}),
       ...(status ? { status } : {}),

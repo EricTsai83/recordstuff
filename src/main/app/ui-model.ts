@@ -14,6 +14,7 @@ import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearan
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
 import type { Language, PlainMessageKey } from "../../shared/i18n";
 import type { QualitySettings } from "../../shared/quality";
+import type { ErrorCode } from "../../shared/state";
 import type { CountdownSeconds } from "../../shared/countdown";
 import type { HotkeySettings } from "../../shared/hotkey";
 import type { SettingsHotkeyStatus } from "../shortcuts/settings-hotkey";
@@ -51,6 +52,9 @@ export type AppAction =
   | "relaunch"
   | "start"
   | "stop"
+  /** A Live preview in the Recording Studio (plan 075, D20), and letting it go. */
+  | "startPreview"
+  | "stopPreview"
   /** The main window at its Recording Studio tab (plan 075, D19). */
   | "openStudio"
   | "cancelCountdown"
@@ -153,6 +157,11 @@ export interface AppContext {
   camera?: CameraContext;
   /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
   audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
+  /**
+   * The Recording Studio's picture (plan 075, D20): a Live preview, whether it is live yet, the session the Studio
+   * may show (a live preview or a recording), and why the last preview could not start.
+   */
+  studio?: { preview?: { live: boolean }; showing: boolean; previewFailure?: ErrorCode };
   platform: NodeJS.Platform;
   /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
   mediaComponentsMissing?: boolean;
