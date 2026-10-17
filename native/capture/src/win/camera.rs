@@ -235,9 +235,14 @@ impl Inner {
     /// Reads `opened` until it fails or the camera is closed; `first` hears the first frame's arrival or the failure.
     /// Answers whether it delivered a frame.
     fn read(&self, opened: Opened, first: &mut Option<std::sync::mpsc::Sender<Result<(), String>>>) -> bool {
-        *self.source.lock().unwrap() = Some(Mta(opened.source.0.clone()));
-        self.heard_ns.store(now_ns(), Ordering::Release);
-        self.silenced.store(false, Ordering::Release);
+        {
+            // Published with its own watch state, under the lock `silence` judges under, so a check about the source
+            // before never shuts this one down.
+            let mut source = self.source.lock().unwrap();
+            self.heard_ns.store(now_ns(), Ordering::Release);
+            self.silenced.store(false, Ordering::Release);
+            *source = Some(Mta(opened.source.0.clone()));
+        }
         if self.closed.load(Ordering::Acquire) {
             let _ = unsafe { opened.source.0.Shutdown() };
             return false;
@@ -300,11 +305,12 @@ impl Inner {
     /// (`judge`): the source is shut down, which ends a read that waits, so the read thread opens it again. A source
     /// just opened again has its own time to deliver; each is shut down once.
     fn silence(&self, now_ns: u64) {
+        let source = self.source.lock().unwrap();
         let quiet = now_ns.saturating_sub(self.heard_ns.load(Ordering::Acquire)) > CAMERA_SILENT_NS;
         if !self.feed.is_lost() || !quiet || self.silenced.swap(true, Ordering::AcqRel) {
             return;
         }
-        if let Some(source) = self.source.lock().unwrap().as_ref() {
+        if let Some(source) = source.as_ref() {
             eprintln!("camera: silent, opened again");
             let _ = unsafe { source.0.Shutdown() };
         }
