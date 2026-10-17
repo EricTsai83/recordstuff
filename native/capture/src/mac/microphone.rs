@@ -165,7 +165,7 @@ impl Reader {
                 Ok(chunk) => {
                     heard = Instant::now();
                     attempts = 0;
-                    if self.shared.wants_sound() {
+                    if self.shared.reads_sound() {
                         self.take(&chunk, open.as_mut().and_then(|(_, resampler)| resampler.as_mut()), &mut converted);
                     }
                     // Back to the pool of the unit now open, on every path (review of plan 078); one from a unit since

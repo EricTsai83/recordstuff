@@ -588,6 +588,12 @@ impl<P: Platform> Shared<P> {
         self.events.microphone_lost(format!("the microphone delivered no sound for {} s", MICROPHONE_SILENT_NS / NANOS_PER_SECOND));
     }
 
+    /// Whether capture should read its sound now: while it is taken, or while its levels are watched before (plan 075,
+    /// D20: a Live preview is a prepared session, whose meters show what each input hears).
+    pub fn reads_sound(&self) -> bool {
+        self.wants_sound() || self.meters.watched.load(Ordering::Acquire)
+    }
+
     /// Whether sound is taken now; capture may skip reading a buffer when it is not.
     pub fn wants_sound(&self) -> bool {
         matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
@@ -597,10 +603,11 @@ impl<P: Platform> Shared<P> {
     /// or 1 (a mono input gives the same sample for both). Inputs are numbered from 0 in the order the platform told
     /// `Core::new` it has them.
     pub fn sound(&self, input: usize, pts: u64, frames: usize, sample: impl Fn(usize, usize) -> f32) -> Result<(), String> {
-        if !self.wants_sound() || frames == 0 {
+        if frames == 0 {
             return Ok(());
         }
         let microphone_input = self.is_microphone(input);
+        // Levels from the moment sound arrives, before recording too (D20: a Live preview is a prepared session).
         if self.meters.watched.load(Ordering::Acquire) {
             let peak = (0..frames).fold(0.0f32, |peak, frame| peak.max(sample(frame, 0).abs()).max(sample(frame, 1).abs()));
             let kind = if microphone_input { &self.meters.microphone_peak } else { &self.meters.system_peak };
@@ -608,6 +615,9 @@ impl<P: Platform> Shared<P> {
                 kind.fetch_max(peak.to_bits(), Ordering::AcqRel);
             }
             self.tell_levels(P::now_ns());
+        }
+        if !self.wants_sound() {
+            return Ok(());
         }
         // Muted (D19): silence in its place, so the input stays on the clock and unmuting needs no realigning.
         let muted = if microphone_input { &self.meters.microphone_muted } else { &self.meters.system_muted }.load(Ordering::Acquire);

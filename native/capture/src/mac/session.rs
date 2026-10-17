@@ -229,7 +229,7 @@ fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType, v
         }
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
         shared.frame(Frame { image }, host_ns(unsafe { sample.presentation_time_stamp() }));
-    } else if kind == SCStreamOutputType::Audio && shared.wants_sound() {
+    } else if kind == SCStreamOutputType::Audio && shared.reads_sound() {
         let Some(input) = sound_input else { return };
         if let Err(detail) = sound(shared, input, sample, host_ns(unsafe { sample.presentation_time_stamp() })) {
             shared.fail(detail);
@@ -532,10 +532,25 @@ impl Session {
         if let Some(camera) = session.camera.as_ref() {
             eprintln!("camera: after preparing {}", camera.state());
         }
-        // Made with the camera, watched only when asked: the stream starts in the time Settings takes to show it.
-        if let (Some(compositor), Some(wanted)) = (compositor, camera_request.as_ref()) {
+        // Every session has its preview (plan 075, D19/D20: the Recording Studio shows the screen with or without the
+        // camera), watched only when asked: the stream starts in the time Settings takes to show it. Without a camera
+        // it renders the screen alone through a compositor of its own, hidden, which the recording's frames never use.
+        let preview_compositor = compositor.or_else(|| {
+            let made = Compositor::new(request.width, request.height, crate::camera_layout::Layout::default(), Arc::new(super::camera::Feed::default()));
+            match made {
+                Ok(made) => {
+                    made.set_hidden(true);
+                    Some(Arc::new(made))
+                }
+                Err(detail) => {
+                    eprintln!("preview: no compositor ({detail})");
+                    None
+                }
+            }
+        });
+        if let Some(compositor) = preview_compositor {
             // A preview is a convenience: without one Settings shows no picture, and the recording goes on.
-            match Preview::start(session.core.shared(), compositor, wanted.preview) {
+            match Preview::start(session.core.shared(), compositor, camera_request.as_ref().is_some_and(|wanted| wanted.preview)) {
                 Ok(preview) => session.preview = Some(preview),
                 Err(error) => eprintln!("camera: no preview ({}: {})", error.code, error.detail),
             }

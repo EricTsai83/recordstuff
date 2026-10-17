@@ -372,7 +372,7 @@ fn pump(
                 let error = flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 != 0;
                 pts = times.time(pts, now_ns(), u64::from(frames), SAMPLE_RATE, error);
             }
-            if shared.wants_sound() && frames > 0 {
+            if shared.reads_sound() && frames > 0 {
                 let silent = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null();
                 let samples = if silent {
                     &[][..]

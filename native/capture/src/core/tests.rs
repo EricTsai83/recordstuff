@@ -574,6 +574,19 @@ fn levels_are_told_about_15_times_a_second_only_while_watched_each_kind_its_loud
 }
 
 #[test]
+fn a_prepared_session_tells_watched_levels_and_records_nothing_until_it_records() {
+    let rig = Rig::with_inputs("prepared-levels", 2);
+    rig.core.watch_microphone(1);
+    assert!(!rig.shared.reads_sound(), "nothing is read before recording, unwatched");
+    rig.core.watch_levels(true);
+    assert!(rig.shared.reads_sound() && !rig.shared.wants_sound());
+    feed_both(&rig, Fake::now_ns(), 0, 300);
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    assert!(levels.len() >= 2 && levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
+    assert_eq!(f32::from_bits(rig.loudest.load(Ordering::Acquire)), 0.0, "no sound reached the encoder");
+}
+
+#[test]
 fn a_muted_input_is_recorded_as_silence_and_heard_again_once_unmuted() {
     let mut rig = Rig::with_inputs("muted", 2);
     rig.core.watch_microphone(1);
