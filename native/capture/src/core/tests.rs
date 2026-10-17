@@ -1,7 +1,7 @@
 //! The session core with fake encoders on a real clock: what is encoded when, how the recording ends, and the file
 //! it leaves. Platform capture and encoding are tested in their own modules; these run on every platform.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -63,6 +63,8 @@ struct FakeAudio {
     frames_out: u64,
     /// Set, every drain fails.
     fail: Arc<AtomicBool>,
+    /// The loudest sample pushed, as f32 bits.
+    loudest: Arc<AtomicU32>,
 }
 
 impl FakeAudio {
@@ -86,6 +88,8 @@ impl AudioEncode for FakeAudio {
     }
     fn push(&mut self, interleaved: &[f32]) {
         self.frames_in += (interleaved.len() / 2) as u64;
+        let loudest = interleaved.iter().fold(0.0f32, |peak, sample| peak.max(sample.abs()));
+        self.loudest.fetch_max(loudest.to_bits(), Ordering::AcqRel);
     }
     fn push_silence(&mut self, frames: usize) {
         self.frames_in += frames as u64;
@@ -113,6 +117,7 @@ struct Heard {
     microphone_resumed: Mutex<Vec<String>>,
     camera_lost: Mutex<Vec<String>>,
     camera_resumed: Mutex<Vec<String>>,
+    levels: Mutex<Vec<Levels>>,
 }
 
 impl Events for Heard {
@@ -137,6 +142,9 @@ impl Events for Heard {
     fn camera_resumed(&self, detail: String) {
         self.camera_resumed.lock().unwrap().push(detail);
     }
+    fn levels(&self, levels: Levels) {
+        self.levels.lock().unwrap().push(levels);
+    }
 }
 
 struct Rig {
@@ -149,6 +157,8 @@ struct Rig {
     path: std::path::PathBuf,
     camera: Arc<CameraFeed<u32>>,
     composed: Arc<Mutex<Vec<Option<u32>>>>,
+    /// The loudest sample the audio encoder got.
+    loudest: Arc<AtomicU32>,
 }
 
 impl Rig {
@@ -166,16 +176,17 @@ impl Rig {
         let audio_fail = Arc::new(AtomicBool::new(false));
         let camera = Arc::new(CameraFeed::default());
         let composed = Arc::new(Mutex::new(Vec::new()));
-        let (e, f, a, c, d) = (encoded.clone(), fail.clone(), audio_fail.clone(), camera.clone(), composed.clone());
+        let loudest = Arc::new(AtomicU32::new(0));
+        let (e, f, a, c, d, l) = (encoded.clone(), fail.clone(), audio_fail.clone(), camera.clone(), composed.clone(), loudest.clone());
         let made = core
             .make_encoders(move |sink| {
                 let video = FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f, camera: c, composed: d };
-                Ok((video, FakeAudio { fail: a, ..FakeAudio::default() }))
+                Ok((video, FakeAudio { fail: a, loudest: l, ..FakeAudio::default() }))
             })
             .unwrap();
         Core::<Fake>::encoders_made(made).unwrap();
         let shared = core.shared();
-        Self { core, shared, encoded, heard, fail, audio_fail, path, camera, composed }
+        Self { core, shared, encoded, heard, fail, audio_fail, path, camera, composed, loudest }
     }
 
     /// Frames every `interval` and 10 ms of sound every 10 ms, stamped with the clock, for `duration`.
@@ -520,6 +531,72 @@ fn a_change_left_out_by_the_pacer_is_encoded_at_its_slot() {
     assert_eq!(frame, 2);
     assert_eq!(at, t0 + 33_333_333, "at its slot");
     rig.stop();
+}
+
+/// System sound at 0.25 and the microphone's at 0.5, 10 ms each, for `ms` from `from` frames after t0.
+fn feed_both(rig: &Rig, t0: u64, from: u64, ms: u64) -> u64 {
+    let mut next = from;
+    while next < from + ms * 48 {
+        let at = t0 + next * NANOS_PER_SECOND / 48_000;
+        rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+        rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+        next += 480;
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    next
+}
+
+#[test]
+fn levels_are_told_about_15_times_a_second_only_while_watched_each_kind_its_loudest() {
+    let mut rig = Rig::with_inputs("levels", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let next = feed_both(&rig, t0, 0, 200);
+    assert!(rig.heard.levels.lock().unwrap().is_empty(), "unwatched: none");
+    rig.core.watch_levels(true);
+    let next = feed_both(&rig, t0, next, 500);
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    assert!((4..=9).contains(&levels.len()), "{} in 500 ms: {levels:?}", levels.len());
+    assert!(levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
+    // Muted, an input still shows its level: what it hears, not what is recorded.
+    rig.core.set_muted(true, true);
+    rig.heard.levels.lock().unwrap().clear();
+    let next = feed_both(&rig, t0, next, 200);
+    assert!(rig.heard.levels.lock().unwrap().iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)));
+    rig.core.watch_levels(false);
+    rig.heard.levels.lock().unwrap().clear();
+    feed_both(&rig, t0, next, 200);
+    assert!(rig.heard.levels.lock().unwrap().is_empty());
+    rig.stop();
+}
+
+#[test]
+fn a_muted_input_is_recorded_as_silence_and_heard_again_once_unmuted() {
+    let mut rig = Rig::with_inputs("muted", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let loudest = |rig: &Rig| f32::from_bits(rig.loudest.swap(0, Ordering::AcqRel));
+    // The microphone muted: only the system's 0.25 reaches the encoder.
+    rig.core.set_muted(false, true);
+    let next = feed_both(&rig, t0, 0, 100);
+    assert_eq!(loudest(&rig), 0.25);
+    // Both muted: silence, the track still advancing.
+    rig.core.set_muted(true, true);
+    let next = feed_both(&rig, t0, next, 100);
+    assert_eq!(loudest(&rig), 0.0);
+    // Unmuted: the sum again.
+    rig.core.set_muted(false, false);
+    feed_both(&rig, t0, next, 100);
+    assert_eq!(loudest(&rig), 0.75);
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.late_audio_frames, [0, 0]);
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "muting is no loss");
 }
 
 #[test]

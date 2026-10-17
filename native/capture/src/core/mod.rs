@@ -14,7 +14,7 @@
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -84,6 +84,33 @@ pub trait Events: Send + Sync {
     fn camera_lost(&self, _detail: String) {}
     /// The camera told lost delivers again, and is composed again.
     fn camera_resumed(&self, _detail: String) {}
+    /// The loudest sample of each kind of input since the last levels (plan 075, D19), about 15 times a second while
+    /// they are watched and sound is taken; called on an input's thread.
+    fn levels(&self, _levels: Levels) {}
+}
+
+/// Peak levels, linear (1 is full scale), of the inputs as they arrive, before any muting.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Levels {
+    /// System audio and any apps' audio together.
+    pub system: f32,
+    /// The microphone, when the session records one.
+    pub microphone: Option<f32>,
+}
+
+/// How often levels are told while watched: about 15 times a second, the preview's rate.
+const LEVELS_INTERVAL_NS: u64 = NANOS_PER_SECOND / 15;
+
+/// The level meters and the mutes of the recording in progress (plan 075, D19).
+#[derive(Default)]
+struct Meters {
+    watched: AtomicBool,
+    /// Each kind's loudest sample since the last levels told, as f32 bits: a non-negative f32 orders as its bits do.
+    system_peak: AtomicU32,
+    microphone_peak: AtomicU32,
+    told_ns: AtomicU64,
+    system_muted: AtomicBool,
+    microphone_muted: AtomicBool,
 }
 
 /// One encoded frame of the preview: H.264 in AVCC form (length-prefixed NAL units), for WebCodecs' `VideoDecoder`.
@@ -393,6 +420,7 @@ pub struct Shared<P: Platform> {
     every_slot: AtomicBool,
     /// The camera composed into the frames (plan 075): judged on the refresh thread, closed when capture ends.
     camera: Mutex<Option<Arc<dyn CameraControl>>>,
+    meters: Meters,
 }
 
 impl<P: Platform> Shared<P> {
@@ -572,7 +600,19 @@ impl<P: Platform> Shared<P> {
         if !self.wants_sound() || frames == 0 {
             return Ok(());
         }
-        if self.is_microphone(input) {
+        let microphone_input = self.is_microphone(input);
+        if self.meters.watched.load(Ordering::Acquire) {
+            let peak = (0..frames).fold(0.0f32, |peak, frame| peak.max(sample(frame, 0).abs()).max(sample(frame, 1).abs()));
+            let kind = if microphone_input { &self.meters.microphone_peak } else { &self.meters.system_peak };
+            if peak.is_finite() {
+                kind.fetch_max(peak.to_bits(), Ordering::AcqRel);
+            }
+            self.tell_levels(P::now_ns());
+        }
+        // Muted (D19): silence in its place, so the input stays on the clock and unmuting needs no realigning.
+        let muted = if microphone_input { &self.meters.microphone_muted } else { &self.meters.system_muted }.load(Ordering::Acquire);
+        let sample = |frame: usize, channel: usize| if muted { 0.0 } else { sample(frame, channel) };
+        if microphone_input {
             let mut microphone = self.microphone.lock().unwrap();
             let now = P::now_ns();
             let heard = std::mem::replace(&mut microphone.heard_ns, now).max(self.t0_ns.load(Ordering::Acquire));
@@ -610,6 +650,19 @@ impl<P: Platform> Shared<P> {
             self.send(Media::Audio { data });
         }
         Ok(())
+    }
+
+    /// Tells the levels gathered since the last ones, once `LEVELS_INTERVAL_NS` has passed; one input's thread does.
+    fn tell_levels(&self, now_ns: u64) {
+        let told = self.meters.told_ns.load(Ordering::Acquire);
+        if now_ns.saturating_sub(told) < LEVELS_INTERVAL_NS
+            || self.meters.told_ns.compare_exchange(told, now_ns, Ordering::AcqRel, Ordering::Acquire).is_err()
+        {
+            return;
+        }
+        let take = |peak: &AtomicU32| f32::from_bits(peak.swap(0, Ordering::AcqRel));
+        let microphone = (self.microphone_input.load(Ordering::Acquire) != usize::MAX).then(|| take(&self.meters.microphone_peak));
+        self.events.levels(Levels { system: take(&self.meters.system_peak), microphone });
     }
 
     /// Advances the track with the clock past an input that delivers nothing (see mixer.rs).
@@ -708,6 +761,7 @@ impl<P: Platform> Core<P> {
             frame_log: Mutex::new(None),
             every_slot: AtomicBool::new(false),
             camera: Mutex::new(None),
+            meters: Meters::default(),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -720,6 +774,17 @@ impl<P: Platform> Core<P> {
     /// The camera composed into this session's frames (plan 075): judged while recording and closed with the session.
     pub fn watch_camera(&self, camera: Arc<dyn CameraControl>) {
         *self.shared.camera.lock().unwrap() = Some(camera);
+    }
+
+    /// Whether the level meters are watched (plan 075, D19): levels are gathered and told only then.
+    pub fn watch_levels(&self, watching: bool) {
+        self.shared.meters.watched.store(watching, Ordering::Release);
+    }
+
+    /// Mutes system audio, the microphone or both from their next sound on (D19): silence in their place.
+    pub fn set_muted(&self, system: bool, microphone: bool) {
+        self.shared.meters.system_muted.store(system, Ordering::Release);
+        self.shared.meters.microphone_muted.store(microphone, Ordering::Release);
     }
 
     /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is

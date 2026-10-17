@@ -123,6 +123,21 @@ describe("the camera (plan 075)", () => {
     expect(port.sent.at(-1)).toEqual({ type: "cameras", error: "a recording is in progress" });
   });
 
+  it("passes the session's level watching and mutes to the engine, and its levels to main (D19)", async () => {
+    const { port, emit, engine, logs } = await prepared();
+    const watchLevels = vi.fn(() => true), setMuted = vi.fn(() => true);
+    Object.assign(engine, { watchLevels, setMuted });
+    port.deliver({ type: "levels", sessionId: "s1", watching: true });
+    port.deliver({ type: "levels", sessionId: "other", watching: false });
+    port.deliver({ type: "mute", sessionId: "s1", system: false, microphone: true });
+    expect(watchLevels.mock.calls).toEqual([[true]]);
+    expect(setMuted.mock.calls).toEqual([[false, true]]);
+    expect(logs).toContainEqual("audio: system on, microphone muted");
+    emit({ kind: "levels", system: 0.5, microphone: null } as never);
+    emit({ kind: "levels", system: 0.25, microphone: 0.75 } as never);
+    expect(port.sent.slice(-2)).toEqual([{ type: "levels", sessionId: "s1", system: 0.5 }, { type: "levels", sessionId: "s1", system: 0.25, microphone: 0.75 }]);
+  });
+
   it("forwards the engine's camera loss and return for the session", async () => {
     const { port, emit } = await prepared();
     emit({ kind: "cameraLost", detail: "the camera delivered no frame for 2 s" } as never);

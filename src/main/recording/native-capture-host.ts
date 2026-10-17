@@ -276,6 +276,19 @@ export class NativeCaptureHost implements RecorderHost {
     return true;
   }
 
+  /** Mutes the session's system audio and microphone, or not (plan 075, D19). */
+  setMuted(sessionId: string, system: boolean, microphone: boolean): void {
+    if (!this.child || this.watching !== sessionId) return;
+    this.post({ type: "mute", sessionId, system, microphone });
+  }
+
+  /** Whether the session's levels are watched (D19); false when this host's process does not run the session. */
+  watchLevels(sessionId: string, watching: boolean): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
+    this.post({ type: "levels", sessionId, watching });
+    return true;
+  }
+
   destroy(): void {
     this.teardown();
   }

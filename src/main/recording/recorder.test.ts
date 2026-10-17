@@ -53,6 +53,10 @@ class FakeHost implements RecorderHost {
   setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
     this.cameraChanges.push({ sessionId, camera, hidden });
   }
+  mutes: [string, boolean, boolean][] = [];
+  setMuted(sessionId: string, system: boolean, microphone: boolean): void {
+    this.mutes.push([sessionId, system, microphone]);
+  }
   onMessage(listener: (m: HostMessage) => void): void {
     this.messageListener = listener;
   }
@@ -267,6 +271,22 @@ describe("the camera (plan 075)", () => {
     expect(ctx.recorder.state.type).toBe("recording");
     expect(ctx.recorder.camera).toEqual({ hidden: false });
     expect(ctx.recorder.cameraSessionId, "the session Settings' preview joins").toBe("s1");
+  });
+
+  it("mutes the recording's inputs for that recording, from the countdown or start until it stops (D19)", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => ({ enabled: true }) } });
+    expect(ctx.recorder.audio).toBeUndefined();
+    expect(ctx.recorder.updateAudio({ system: true })).toBe(false);
+    await startRecording(ctx);
+    expect(ctx.recorder.audio).toEqual({ sessionId: "s1", systemMuted: false, microphone: { muted: false } });
+    expect(ctx.recorder.updateAudio({ microphone: true })).toBe(true);
+    expect(ctx.recorder.updateAudio({ system: true })).toBe(true);
+    expect(ctx.recorder.audio).toEqual({ sessionId: "s1", systemMuted: true, microphone: { muted: true } });
+    expect(ctx.host.mutes).toEqual([["s1", false, true], ["s1", true, true]]);
+    expect(logs).toContainEqual(expect.stringContaining("session s1 system audio muted, microphone muted"));
+    ctx.recorder.stop();
+    expect(ctx.recorder.audio, "not while stopping").toBeUndefined();
   });
 
   it("has no camera to change without one, or between recordings", async () => {

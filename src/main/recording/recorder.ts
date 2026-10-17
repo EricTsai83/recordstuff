@@ -68,6 +68,8 @@ export interface RecorderHost {
   stop(sessionId: string): void;
   /** The session's camera from its next frame on (plan 075, D7 and D13); absent where no camera is composed. */
   setCamera?(sessionId: string, camera: SessionCamera, hidden: boolean): void;
+  /** Mutes the session's system audio and microphone, or not, from their next sound on (plan 075, D19). */
+  setMuted?(sessionId: string, system: boolean, microphone: boolean): void;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
     listener: (code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void,
@@ -246,6 +248,9 @@ interface Session {
   cameraLost?: boolean;
   /** Hidden from the tray (D13); the camera stays open. */
   cameraHidden?: boolean;
+  /** Muted from the Recording Studio (plan 075, D19), for this recording only. */
+  systemMuted?: boolean;
+  microphoneMuted?: boolean;
   /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -512,16 +517,49 @@ export class Recorder {
     return session ? { hidden: session.cameraHidden === true } : undefined;
   }
 
+  /**
+   * The recording in progress's audio while it can be changed (plan 075, D19): from its countdown, or without one its
+   * start, until it stops, as `camera`; whether it records the microphone, and what is muted.
+   */
+  get audio(): { sessionId: string; systemMuted: boolean; microphone?: { muted: boolean } } | undefined {
+    const session = this.liveSession();
+    if (!session) return undefined;
+    return { sessionId: session.id, systemMuted: session.systemMuted === true,
+      ...(session.microphone.enabled ? { microphone: { muted: session.microphoneMuted === true } } : {}) };
+  }
+
+  /** Mutes the recording's system audio or microphone, or not, from their next sound on (D19); false without one. */
+  updateAudio(change: { system?: boolean; microphone?: boolean }): boolean {
+    const session = this.liveSession();
+    if (!session) return false;
+    if (change.system !== undefined) session.systemMuted = change.system;
+    if (change.microphone !== undefined) session.microphoneMuted = change.microphone;
+    this.deps.log(`recorder: session ${session.id} system audio ${session.systemMuted ? "muted" : "on"}, microphone ${session.microphoneMuted ? "muted" : "on"}`);
+    try {
+      this.deps.host.setMuted?.(session.id, session.systemMuted === true, session.microphoneMuted === true);
+    } catch (cause) {
+      this.deps.log(`recorder: session ${session.id} mute not sent: ${messageOf(cause)}`);
+      return false;
+    }
+    return true;
+  }
+
   /** The id of the session `camera` describes, which Settings' preview joins (plan 075 step 7). */
   get cameraSessionId(): string | undefined {
     return this.cameraSession()?.id;
   }
 
   private cameraSession(): Session | undefined {
+    const session = this.liveSession();
+    return session?.camera ? session : undefined;
+  }
+
+  /** The session once the engine's is prepared and the state says so (the countdown or the recording). */
+  private liveSession(): Session | undefined {
     const session = this.session;
     const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";
     const shown = this._state.type === "countdown" || this._state.type === "recording";
-    return session?.camera && prepared && shown ? session : undefined;
+    return session && prepared && shown ? session : undefined;
   }
 
   /**
@@ -834,7 +872,8 @@ export class Recorder {
 
   private handleHostMessage(message: HostMessage): void {
     // `microphones` and `cameras` answer a listing process, never an attempt's.
-    if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras") return;
+    // `levels` go to the Recording Studio, which main joins to them, not to the session's state.
+    if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras" || message.type === "levels") return;
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && message.sessionId === session.id) {

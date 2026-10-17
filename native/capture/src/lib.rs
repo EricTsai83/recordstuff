@@ -220,14 +220,17 @@ pub struct FinishReport {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct EngineEvent {
     /// `progress`, `writeError`, `captureError`, `microphoneLost` (074: the recording goes on without it), `cameraLost`
-    /// and `cameraResumed` (plan 075, the same for the camera).
+    /// and `cameraResumed` (plan 075, the same for the camera), and `levels` (plan 075, D19: the inputs' peaks).
     pub kind: String,
     pub bytes: Option<f64>,
     pub code: Option<String>,
     pub detail: Option<String>,
+    /// With `levels`: system audio's and the microphone's loudest sample since the last, linear, 1 full scale.
+    pub system: Option<f64>,
+    pub microphone: Option<f64>,
 }
 
 type EventCallback = ThreadsafeFunction<EngineEvent, (), EngineEvent, Status, false>;
@@ -307,29 +310,37 @@ impl Emitter {
 #[cfg(any(target_os = "macos", windows))]
 impl core::Events for Emitter {
     fn progress(&self, bytes: u64) {
-        self.emit(EngineEvent { kind: "progress".into(), bytes: Some(bytes as f64), code: None, detail: None });
+        self.emit(EngineEvent { kind: "progress".into(), bytes: Some(bytes as f64), code: None, detail: None, ..Default::default() });
     }
 
     fn write_failed(&self, failure: writer::WriteFailure) {
-        self.emit(EngineEvent { kind: "writeError".into(), bytes: None, code: Some(failure.code.into()), detail: Some(failure.detail) });
+        self.emit(EngineEvent { kind: "writeError".into(), bytes: None, code: Some(failure.code.into()), detail: Some(failure.detail), ..Default::default() });
     }
 
     fn capture_failed(&self, code: &'static str, detail: String) {
-        self.emit(EngineEvent { kind: "captureError".into(), bytes: None, code: Some(code.into()), detail: Some(detail) });
+        self.emit(EngineEvent { kind: "captureError".into(), bytes: None, code: Some(code.into()), detail: Some(detail), ..Default::default() });
     }
 
     fn microphone_lost(&self, detail: String) {
-        self.emit(EngineEvent { kind: "microphoneLost".into(), bytes: None, code: None, detail: Some(detail) });
+        self.emit(EngineEvent { kind: "microphoneLost".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
     }
     fn microphone_resumed(&self, detail: String) {
-        self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail) });
+        self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
     }
 
     fn camera_lost(&self, detail: String) {
-        self.emit(EngineEvent { kind: "cameraLost".into(), bytes: None, code: None, detail: Some(detail) });
+        self.emit(EngineEvent { kind: "cameraLost".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
     }
     fn camera_resumed(&self, detail: String) {
-        self.emit(EngineEvent { kind: "cameraResumed".into(), bytes: None, code: None, detail: Some(detail) });
+        self.emit(EngineEvent { kind: "cameraResumed".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
+    }
+    fn levels(&self, levels: core::Levels) {
+        self.emit(EngineEvent {
+            kind: "levels".into(),
+            system: Some(f64::from(levels.system)),
+            microphone: levels.microphone.map(f64::from),
+            ..Default::default()
+        });
     }
 
     fn preview(&self, chunk: core::PreviewChunk) {
@@ -461,6 +472,34 @@ impl NativeCapture {
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = watching;
+            Ok(false)
+        }
+    }
+
+    /// Whether the inputs' levels are told (plan 075, D19): `levels` events about 15 times a second while recording.
+    #[napi]
+    pub fn watch_levels(&self, watching: bool) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.watch_levels(watching)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = watching;
+            Ok(false)
+        }
+    }
+
+    /// Mutes system audio and the microphone, or not, from their next sound on (D19); false without a session.
+    #[napi]
+    pub fn set_muted(&self, system: bool, microphone: bool) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_muted(system, microphone)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = (system, microphone);
             Ok(false)
         }
     }

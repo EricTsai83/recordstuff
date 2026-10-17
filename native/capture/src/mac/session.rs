@@ -585,6 +585,19 @@ impl Session {
         true
     }
 
+    /// Whether the inputs' levels are told (plan 075, D19).
+    pub fn watch_levels(&self, watching: bool) -> bool {
+        self.core.watch_levels(watching);
+        true
+    }
+
+    /// Mutes system audio and the microphone, or not, from their next sound on (D19).
+    pub fn set_muted(&self, system: bool, microphone: bool) -> bool {
+        self.core.set_muted(system, microphone);
+        eprintln!("audio: system {}, microphone {}", if system { "muted" } else { "on" }, if microphone { "muted" } else { "on" });
+        true
+    }
+
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
     pub fn record(&mut self) -> Result<(), CaptureError> {
         self.core.record()

@@ -90,6 +90,22 @@ describe("cameraChoice (plan 075)", () => {
       camera: { width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: false }, hidden: true }]);
   });
 
+  it("sends the session's level watching and mutes, and none for another session (D19)", async () => {
+    const ctx = setup();
+    expect(ctx.host.watchLevels("s1", true), "no process yet").toBe(false);
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    expect(ctx.host.watchLevels("other", true)).toBe(false);
+    expect(ctx.host.watchLevels("s1", true)).toBe(true);
+    ctx.host.setMuted("s1", true, false);
+    ctx.host.setMuted("other", true, true);
+    expect(child.sent.filter((m) => m.type === "levels" || m.type === "mute")).toEqual([
+      { type: "levels", sessionId: "s1", watching: true }, { type: "mute", sessionId: "s1", system: true, microphone: false }]);
+  });
+
   it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {
     const ctx = setup();
     const port = { close: () => undefined } as unknown as Electron.MessagePortMain;

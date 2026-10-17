@@ -115,6 +115,9 @@ export type MainMessage =
   | { type: "cameraLayout"; sessionId: string; camera: CameraChoice; hidden: boolean }
   /** Whether the session's preview is watched (plan 075 step 7): Settings shows it, so its frames are made. */
   | { type: "cameraPreview"; sessionId: string; watching: boolean }
+  /** Whether the session's levels are watched, and which inputs are muted from their next sound on (plan 075, D19). */
+  | { type: "levels"; sessionId: string; watching: boolean }
+  | { type: "mute"; sessionId: string; system: boolean; microphone: boolean }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -153,6 +156,8 @@ export type HostMessage =
   | { type: "cameraLost"; sessionId: string; detail: string }
   /** The camera told lost delivers again and is composed again. */
   | { type: "cameraResumed"; sessionId: string; detail: string }
+  /** The inputs' loudest samples since the last (plan 075, D19), linear, about 15 times a second while watched. */
+  | { type: "levels"; sessionId: string; system: number; microphone?: number }
   /** The answer to `listMicrophones`: the inputs, or why they could not be listed. */
   | { type: "microphones"; devices: MicrophoneDevice[] }
   | { type: "microphones"; error: string }
@@ -215,7 +220,10 @@ export function isMainMessage(value: unknown): value is MainMessage {
     case "cameraLayout":
       return isNonEmptyString(value["sessionId"]) && isCameraChoice(value["camera"]) && typeof value["hidden"] === "boolean";
     case "cameraPreview":
+    case "levels":
       return isNonEmptyString(value["sessionId"]) && typeof value["watching"] === "boolean";
+    case "mute":
+      return isNonEmptyString(value["sessionId"]) && typeof value["system"] === "boolean" && typeof value["microphone"] === "boolean";
     case "listMicrophones":
     case "listCameras":
     case "ping":
@@ -224,6 +232,9 @@ export function isMainMessage(value: unknown): value is MainMessage {
       return false;
   }
 }
+
+/** A peak level: finite, from silence to well past full scale (a sum before the limiter). */
+const isLevel = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 16;
 
 export function isHostMessage(value: unknown): value is HostMessage {
   if (!isRecord(value)) return false;
@@ -256,6 +267,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "cameraLost":
     case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
+    case "levels":
+      return isNonEmptyString(value["sessionId"]) && isLevel(value["system"]) && (value["microphone"] === undefined || isLevel(value["microphone"]));
     case "microphones":
     case "cameras":
       return Array.isArray(value["devices"]) ? value["devices"].every(isMicrophoneDevice) && value["error"] === undefined

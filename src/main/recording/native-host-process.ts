@@ -29,7 +29,12 @@ interface StopReport {
   capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
-interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed"; bytes?: number; code?: string; detail?: string }
+interface EngineEvent {
+  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed" | "levels";
+  bytes?: number; code?: string; detail?: string;
+  /** With `levels` (plan 075, D19). */
+  system?: number | null; microphone?: number | null;
+}
 /**
  * A preview chunk of the composed picture (plan 075's prototype, D17's second option): H.264 in AVCC form for WebCodecs,
  * the `avcC` record (`description`) with every key frame; `timestamp` is host time in microseconds.
@@ -66,6 +71,9 @@ interface NativeCapture {
   onPreview?(onFrame: (frame: PreviewFrame) => void): void;
   /** Plan 075 step 7: whether the session's preview is watched; false without a camera. */
   setCameraPreview?(watching: boolean): boolean;
+  /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
+  watchLevels?(watching: boolean): boolean;
+  setMuted?(system: boolean, microphone: boolean): boolean;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -199,6 +207,14 @@ export class NativeHost {
         return;
       case "cameraLayout":
         this.cameraLayout(message.sessionId, message.camera, message.hidden);
+        return;
+      case "levels":
+        if (this.session?.id !== message.sessionId) return;
+        this.capture.watchLevels?.(message.watching);
+        return;
+      case "mute":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`audio: system ${message.system ? "muted" : "on"}, microphone ${message.microphone ? "muted" : "on"}${this.capture.setMuted?.(message.system, message.microphone) ? "" : " (no session)"}`);
         return;
       case "cameraPreview":
         if (this.session?.id !== message.sessionId) return;
@@ -396,6 +412,9 @@ export class NativeHost {
       this.send({ type: "cameraLost", sessionId: session.id, detail: event.detail ?? "the camera stopped" });
     } else if (event.kind === "cameraResumed") {
       this.send({ type: "cameraResumed", sessionId: session.id, detail: event.detail ?? "the camera delivered frames again" });
+    } else if (event.kind === "levels" && typeof event.system === "number") {
+      this.send({ type: "levels", sessionId: session.id, system: event.system,
+        ...(typeof event.microphone === "number" ? { microphone: event.microphone } : {}) });
     } else if (event.kind === "captureError") {
       const code = HOST_CODES.includes(event.code ?? "") ? event.code as HostErrorCode : "capture_failed";
       this.fail(session.id, code, event.detail ?? "capture ended");

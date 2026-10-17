@@ -35,6 +35,12 @@ describe("isMainMessage", () => {
   it("asks for the cameras and carries their list (plan 075)", () => {
     expect(isMainMessage({ type: "listCameras" })).toBe(true);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: true })).toBe(true);
+    expect(isMainMessage({ type: "levels", sessionId: "s1", watching: false })).toBe(true);
+    expect(isMainMessage({ type: "mute", sessionId: "s1", system: true, microphone: false })).toBe(true);
+    expect(isMainMessage({ type: "mute", sessionId: "s1", system: true })).toBe(false);
+    expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5, microphone: 0 })).toBe(true);
+    expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5 })).toBe(true);
+    for (const bad of [-0.1, Number.NaN, 17, "0.5"]) expect(isHostMessage({ type: "levels", sessionId: "s1", system: bad }), String(bad)).toBe(false);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: "yes" })).toBe(false);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "", watching: false })).toBe(false);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] })).toBe(true);
