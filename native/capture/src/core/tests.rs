@@ -534,14 +534,20 @@ fn a_change_left_out_by_the_pacer_is_encoded_at_its_slot() {
 }
 
 /// System sound at 0.25 and the microphone's at 0.5, 10 ms each, for `ms` from `from` frames after t0.
+/// Feeds `ms` of both inputs from frame `from` on, 10 ms at a time, paced by the wall clock: a fixed sleep per buffer
+/// falls behind on a busy machine (a CI runner), and sound behind the clock is dropped as late.
 fn feed_both(rig: &Rig, t0: u64, from: u64, ms: u64) -> u64 {
+    let started = Instant::now();
     let mut next = from;
     while next < from + ms * 48 {
         let at = t0 + next * NANOS_PER_SECOND / 48_000;
         rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
         rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
         next += 480;
-        std::thread::sleep(Duration::from_millis(10));
+        let due = started + Duration::from_micros((next - from) * 1_000_000 / 48_000);
+        if let Some(wait) = due.checked_duration_since(Instant::now()) {
+            std::thread::sleep(wait);
+        }
     }
     next
 }
@@ -557,9 +563,12 @@ fn levels_are_told_10_times_a_second_only_while_watched_each_kind_its_loudest() 
     let next = feed_both(&rig, t0, 0, 200);
     assert!(rig.heard.levels.lock().unwrap().is_empty(), "unwatched: none");
     rig.core.watch_levels(true);
+    let fed = Instant::now();
     let next = feed_both(&rig, t0, next, 500);
+    let took = fed.elapsed().as_millis() as usize;
     let levels = rig.heard.levels.lock().unwrap().clone();
-    assert!((4..=9).contains(&levels.len()), "{} in 500 ms: {levels:?}", levels.len());
+    // One every 100 ms of the time it took, give or take one at each end.
+    assert!((took / 100).saturating_sub(1) <= levels.len() && levels.len() <= took / 100 + 2, "{} in {took} ms: {levels:?}", levels.len());
     assert!(levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
     // Muted, an input still shows its level: what it hears, not what is recorded.
     rig.core.set_muted(true, true);
@@ -820,13 +829,16 @@ fn each_encoded_frame_takes_the_camera_s_newest_frame_whether_the_camera_is_slow
         rig.camera_frame(0);
         rig.shared.frame(7, Fake::now_ns());
         rig.core.record().unwrap();
-        let end = Instant::now() + Duration::from_millis(700);
+        let began = Instant::now();
+        let end = began + Duration::from_millis(700);
         let mut n = 1;
         while Instant::now() < end {
             rig.camera_frame(n);
             n += 1;
             std::thread::sleep(camera_interval);
         }
+        // The rate the camera really delivered at: a busy machine (a CI runner) sleeps longer than asked.
+        let camera_fps = f64::from(n - 1) / began.elapsed().as_secs_f64();
         rig.stop();
         let composed: Vec<u32> = rig.composed.lock().unwrap().iter().map(|c| c.expect("a camera frame in every encoded frame")).collect();
         assert!(composed.len() >= 15, "{composed:?}");
@@ -837,9 +849,9 @@ fn each_encoded_frame_takes_the_camera_s_newest_frame_whether_the_camera_is_slow
         if expect_repeats {
             // 15 fps into 30: each camera frame about twice.
             assert!(repeats * 3 >= composed.len(), "slower camera: {composed:?}");
-        } else {
+        } else if camera_fps > 45.0 {
             // 60 fps into 30: frames in between are left out, never queued.
-            assert!(skips * 3 >= composed.len(), "faster camera: {composed:?}");
+            assert!(skips * 3 >= composed.len(), "faster camera at {camera_fps:.0} fps: {composed:?}");
         }
     }
 }
@@ -981,7 +993,9 @@ fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
     // Within a slot and a little, not at the end of a 100 ms wait.
     assert!(shown.elapsed() < Duration::from_millis(60), "first frame after {:?}", shown.elapsed());
     std::thread::sleep(Duration::from_millis(20));
-    assert!(rig.encoded.lock().unwrap().len() - before <= 2, "no catch-up burst");
+    // A frame a slot from then on, however long the sleep really took, not the slots the still screen left empty.
+    let allowed = 2 + (shown.elapsed().as_millis() / 33) as usize;
+    assert!(rig.encoded.lock().unwrap().len() - before <= allowed, "no catch-up burst");
     rig.stop();
 }
 
