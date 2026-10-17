@@ -16,6 +16,7 @@ import { isPreviewMessage } from "../../lib/preview-stream";
 import { previewDecoder } from "../../lib/preview-decoder";
 import { translate } from "../../../shared/i18n";
 import * as model from "../settings-controller";
+import { frameDrawn } from "./frame-clock";
 
 /** A key's step, as a fraction of the free space: 1%, or 10% with Shift. */
 const STEP = 0.01, BIG_STEP = 0.1;
@@ -106,7 +107,9 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
   useEffect(() => {
     setDrawing(false);
     if (!on || !canvas) return;
-    const decoder = previewDecoder(canvas, { drawn: () => setDrawing(true) });
+    // Once: a state set for every frame drawn renders the page 15 times a second for nothing.
+    let seen = false;
+    const decoder = previewDecoder(canvas, { drawn: () => { frameDrawn(); if (!seen) { seen = true; setDrawing(true); } } });
     if (!decoder) return;
     let port: MessagePort | undefined;
     const joined = (event: MessageEvent): void => {

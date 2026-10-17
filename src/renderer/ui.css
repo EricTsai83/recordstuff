@@ -1058,10 +1058,13 @@
     height: 100%;
     background: var(--meter-level);
   }
+  /* Covers what the level has not reached, scaled from the right: a transform, which only the compositor draws. */
   .audio-meter-cover {
     position: absolute;
-    inset: 0 0 0 auto;
+    inset: 0;
     background: var(--muted);
+    transform-origin: right;
+    will-change: transform;
   }
   .audio-meter[data-muted] .audio-meter-fill {
     background: var(--muted-foreground);
