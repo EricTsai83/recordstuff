@@ -4,6 +4,31 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 078 結案 — 2026-10-17
+
+076 與 074 留下了原生擷取引擎的幾個問題：相隔 50 ms 的影格、開發版 App 錄到自己的視窗、沒有逐影格的診斷、Chromium 路徑留下的決定、Windows UI shard 關閉 App 時逾時，以及 macOS 麥克風重新連上後從未被收回。Plan 078 把它們結案。設計見[錄影](../system-design/recording.md)、[音質第 19 節](../system-design/audio-quality.md#19-coreaudio-hal-上的麥克風結果2026-10-17)、[工具](../system-design/tooling.md)與[桌面](../system-design/desktop.md)。
+
+- **步驟 1，影格間隔。**逐影格 log 顯示 ScreenCaptureKit 在 60 Hz 下每 15 秒約跳過五次更新，既不送畫面也不送 idle 影格；被跳過的若是某個格位的更新，檔案中就會先有一個 50 ms 的間隔，再有一個 17 ms 的間隔。最初猜測是格位邊界上的抖動，試過之後依 log 的證據還原。引擎現在在被跳過的格位編碼最新畫面（`Pacer::skipped`、`fill_skipped`，並有一個少了它就會失敗的測試）。在簽署 bundle 上執行 `pnpm matrix -- quick`：同一個 build 不補時，接連量到 30 fps 影格有 0.44–0.66% 相隔 50 ms；補上後三個案例都是 0.00%，最長間隔 33 ms，30.05–30.12 fps，閃光到嗶聲 −6、−6 與 −22 ms，錄影 CPU 約 10%。
+- **步驟 2，自身視窗。**ScreenCaptureKit 只在 App 擁有視窗時才列出它，而什麼都沒開的選單列 App 沒有任何視窗；先前每一段簽署 bundle 的錄影都有倒數 overlay。main 現在在準備擷取之前建立一個隱藏的 1 像素 `BaseWindow`。之後兩種 build 在 matrix 的三次錄影中都記下 `1 own app(s) excluded`，沒有倒數；找不到時的警告若再出現，會附上原因的證據。
+- **步驟 3，診斷（維護者的決定，2026-10-17：開發用開關）。**`RECORDSTUFF_FRAME_LOG=<資料夾>` 會為每段錄影在該資料夾寫入 `<file>.frames.jsonl`，記錄每次送達與每個編碼的影格以及 pacer 的決定，`pnpm diagnose:frames` 加以彙整；沒有設定或 UI。
+- **步驟 4，Chromium 路徑留下的部分。**Windows 能用時以 GPU 的硬體 H.264 transform 編碼（依 LUID 選 adapter，絕不用 WARP 或 AMD，每個 adapter、驅動程式與尺寸快取一次灰色自我測試，watchdog，第一個樣本之前默默退回軟體編碼，`RECORDSTUFF_SOFTWARE_ENCODER=1` 強制軟體編碼）。沒有 Media Foundation 的 Windows 是 `media_components_missing`，在啟動時檢查（「開始錄影」不可用，托盤與設定提供「開啟選用功能」；模組無法載入時結束代碼為 4）。`mp4_unsupported` 已移除。歷史無法讀取時，設定提供「重設失敗紀錄」，並把原檔保留為備份。幀率降級與解析度上限無法確認的提醒已移除，大小估計在 60 fps 時也不再加倍。
+- **步驟 5，Windows 的關閉。**fixture 關閉的每個階段都計時寫入 `test-results/ui-close-timings.jsonl`，並由 CI 的「Slowest closes」步驟彙整。在 Windows 上，main 在關閉開始後 70–100 ms 就已結束，而 Playwright 自己的關閉要等 helper 程序，最長等了 7.7 s。正常關閉現在以 main 的結束為準，與 Playwright 的關閉競速，Windows 上 helper 的等待為 15 s。Run 38953840602：兩個平台都沒有任何關閉被砍掉，Windows 最慢 3.5 s（每個 shard 的中位數 215–394 ms）。
+- **步驟 6，麥克風（維護者的決定，2026-10-17：只收回同一個裝置）。**macOS 改以 AUHAL 單元（CoreAudio 的 HAL）擷取，取代 `AVCaptureSession`；即時執行緒上的緩衝區來自預先配置的 pool，以 AudioConverter 轉成 48 kHz。桌面回合發現，離開的裝置不會讓它的單元停止：HAL 會把單元移到另一個輸入，繼續送出聲音（iPhone 麥克風與 FreeClip 2 耳機之後接著錄到的都是另一支麥克風收到的房間聲音，因取樣率錯誤丟了 290 萬個 frame），所以從未回報中斷。讀取執行緒現在每 250 ms 檢查單元是否仍在錄它的裝置，不是就立即關閉，等 HAL 列出同一個 UID 時重新開啟，退避從 2 秒到 30 秒。Windows 在 `AUDCLNT_E_DEVICE_INVALIDATED` 之後重新開啟同一個 endpoint ID（只經過 CI 編譯）。維護者也在 2026-10-17 決定，錄影中中斷的麥克風絕不會被另一支取代。
+- **攝影機，供 075 參考。**`probe_cameras_coming_and_going`（不用 run loop，每秒讀一次 CoreMediaIO 與 AVFoundation 的清單）在兩份清單中都看到 iPhone 的接續互通相機，但在它從 iPhone 端斷線並再次選取的 180 秒內都沒有看到任何變化，因此清單能否在沒有 run loop 的情況下追蹤攝影機仍未確定；075 的步驟 2 會用 USB 攝影機再做一次。
+- **新計畫。**這個回合帶出維護者想之後再做的麥克風控制：設定中的輸入音量表、「搜尋裝置」按鈕、跟著連接變化的裝置清單，以及使用者能否在錄影中切換麥克風（[079](../../../plans/079-microphone-controls.zh-TW.md)）。
+
+### 驗證
+
+2026-10-16 與 2026-10-17 在參考用 MacBook Pro（macOS 26，Darwin 25.6）上進行桌面回合，使用 `pnpm start:app` 的簽署 bundle 與 60 Hz 1920×1080 螢幕。Claude 執行 runner 與分析；維護者按快捷鍵、操作裝置並回應麥克風提示。
+
+- **錄影。**`pnpm matrix -- quick` 與 `pnpm acceptance` 在步驟 1 與 2 的最終引擎上通過（見上文）。`pnpm measure:cpu -- --minutes 1 --skip-settings --skip-playback`：麥克風關閉時佔一個核心的 10.1%，開啟時 10.0%（074 在 AVFoundation 上為 9.9% 與 13.3%）。第一次開啟麥克風的量測停在 `starting`，等待 macOS 對重新建置的 bundle 跳出的提示，直到 runner 在 60 秒後取消（回報為清理未完成）；維護者允許之後重跑通過。
+- **麥克風保真度、同步與重新連接。**在 HAL 上三次靜音量測：通過、一段安靜間隔差 1.4 dB、通過；增益在 0.007 dB 內，時鐘在 0.83 ppm 內，殘餘與聲道分離比 074 好 5–7 dB；輸出可聽見或有說話聲的四次錄音不列入，另有一次較早的靜音錄音只在右聲道未通過（[第 19 節](../system-design/audio-quality.md#19-coreaudio-hal-上的麥克風結果2026-10-17)）。按鍵同步：聲音比畫面早 10–74 ms，中位數 −44 ms。在最終引擎上把 FreeClip 2 放回充電盒再取出：立即關閉、2 秒後判定中斷、以 16 kHz 重新開啟、20.8 秒後恢復收音，中間是靜音，影像與音訊都是 44.785 秒。收回 iPhone 麥克風未能驗證（從 iPhone 端斷線後，macOS 就一直無法使用它）。
+- **自動化。**`pnpm check`（155 個檔案、1861 個測試，`cargo test --lib` 89 個）、`pnpm acceptance:regression`（check 與 159 個背景 UI 案例）、`pnpm test:ui:drills`（13 個）與 failures scope；最後幾次引擎修改之後執行 `cargo test --lib`（89 個）、沒有新警告的 clippy，以及 Windows target 的 `cargo check`。工作分支上的 `check.yml` 在 run 38949603111、38950688234、38953840602 與 39009719723 通過，最後一個建置了 Windows 麥克風的修改。`runner-interrupt.test.ts` 在負載下的完整本機執行中失敗兩次，單獨執行與之後的完整執行都通過。
+- **審查。**Codex GPT-6.1 Sol，唯讀，兩輪。第 1 輪：LUID 以 UINT64 傳遞（不採納：Chromium 設定的是 8 bytes 的 blob，文件記載的型別是 LUID）、watchdog 沒有涵蓋等待輸入的影格、串流改變後沒有重試、第一個輸出之前被拒的影格遺失、關閉時的循環，以及 HAL 即時執行緒上的記憶體配置；後五項已修正。第 2 輪確認這些修正，並發現 resampler 錯誤時會漏掉一個 pool 緩衝區，已修正。步驟 6 的裝置檢查與 Windows 的重新開啟在審查之後才加入，沒有經過審查。
+- **證據。**原始檔在 `docs/verification/measurements/`（僅本機）：`2026-10-17-078-microphone/`（保真度報告、同步頁面與分析、攝影機探測 log、CPU log）、當天的 matrix 與 CPU 報告目錄，以及步驟 1 的逐影格 log。
+
+未完成：真實的 Windows GPU 與硬體編碼器產生的畫面；拔除並收回 Windows 麥克風；收回 iPhone 麥克風；攝影機離開時能否在沒有 run loop 的情況下察覺（075 的步驟 2）；人耳聆聽。
+
 ## Plan 074 結案 — 2026-10-16
 
 錄影原本只有系統音訊，錄有旁白的螢幕錄影得另開一個 App。Plan 074 透過 076 的引擎加入麥克風，預設關閉，與系統音訊混進同一條 AAC 音軌。設計見[錄影](../system-design/recording.md)、[音質](../system-design/audio-quality.md)、[錄影為何離開 Chromium 的 WebRTC 擷取](../system-design/webrtc.md)與[桌面](../system-design/desktop.md)。
@@ -38,7 +63,7 @@
 - **維護者的決定，已實作。**麥克風中斷後聲音回來就重新收音（`microphoneResumed`；通知改為「錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。」）。兩個以上的輸入相加超過 −1 dBFS 時改為軟限幅，不再削波（之前兩個平台的行為不同）；只有一個輸入或相加沒有超過時不變。只超過 10 ms 容差一點（最多 2 ms）的偏差，每個 buffer 修正 1 個 frame，取代一次跳 10 ms；在 100 ppm 下原本約每 100 秒就有一次空洞或切斷。麥克風以單聲道擷取、放到兩個聲道，錄音介面 input 1 的麥克風不再只在左耳。stop log 會記錄每個輸入的修正量與限幅樣本數。
 - **補強。**Windows 的麥克風 stream 退出系統 ducking（`SetDuckingPreference`），`E_ACCESSDENIED` 回報為隱私權設定。
 - **修改後引擎的桌面回合**（Claude 執行，維護者操作）。Settings 的開關觸發了 macOS 的提示，選擇允許。麥克風開啟時的 `pnpm acceptance` 通過：10 個閃光、9 個嗶聲（第一個落在檔案開頭、前面沒有靜音，偵測方式無法計入）、完整性與取消案例。iPhone 麥克風的錄影中，35 秒內左聲道減右聲道為 −inf dB：麥克風以單聲道放在兩個聲道。iPhone 麥克風斷線一次、HUAWEI FreeClip 2 藍牙耳機斷線兩次：每次 2 秒後判定中斷，錄影繼續，存檔紀錄帶有 `microphoneLost`，新通知在結束時出現，視訊與音訊等長（362.84 s、135.45 s、154.72 s）。
-- **重新連上後沒有接回。**兩種裝置重新連上（耳機甚至成了預設輸入）後都沒有被接回：AVFoundation 的連線通知一則都沒送到，回合中嘗試的每秒依 `uniqueID` 查詢版本也沒用，這段程式碼已移除。App 外的實驗（每秒查一次）說明了原因：沒有 run loop 時，CoreAudio 的裝置清單立刻少了耳機，`AVCaptureDevice(uniqueID:)` 與新建的 `DiscoverySession` 在 27 秒後仍回報它在線；主執行緒有 run loop 時，AVFoundation 也立刻跟上。AVFoundation 的裝置狀態靠主 run loop 更新，而引擎所在的 utility process 沒有執行它。Cap 透過 cpal（CoreAudio）擷取，且跑在有 run loop 的 Tauri 程序裡，所以不會遇到；Chromium 的 audio service 和我們的引擎一樣在瀏覽器主程序之外，用 CoreAudio AUHAL 擷取並以 `AudioObjectAddPropertyListener` 監聽。改用 CoreAudio 重開是 [078](../../../plans/078-native-capture-follow-ups.zh-TW.md) 新的步驟 6；在那之前只有同一個 session 的停擺會被接回（有單元測試，實機上尚未遇到）。
+- **重新連上後沒有接回。**兩種裝置重新連上（耳機甚至成了預設輸入）後都沒有被接回：AVFoundation 的連線通知一則都沒送到，回合中嘗試的每秒依 `uniqueID` 查詢版本也沒用，這段程式碼已移除。App 外的實驗（每秒查一次）說明了原因：沒有 run loop 時，CoreAudio 的裝置清單立刻少了耳機，`AVCaptureDevice(uniqueID:)` 與新建的 `DiscoverySession` 在 27 秒後仍回報它在線；主執行緒有 run loop 時，AVFoundation 也立刻跟上。AVFoundation 的裝置狀態靠主 run loop 更新，而引擎所在的 utility process 沒有執行它。Cap 透過 cpal（CoreAudio）擷取，且跑在有 run loop 的 Tauri 程序裡，所以不會遇到；Chromium 的 audio service 和我們的引擎一樣在瀏覽器主程序之外，用 CoreAudio AUHAL 擷取並以 `AudioObjectAddPropertyListener` 監聽。改用 CoreAudio 重開成為 078 的步驟 6（[結案紀錄](#plan-078-結案--2026-10-17)）；在那之前只有同一個 session 的停擺會被接回（有單元測試，實機上尚未遇到）。
 - **檢查。**`pnpm check`（152 個檔案、1848 個測試；`cargo test --lib` 74 個，新增編碼器錯誤、packet 時間、逐格修正、限幅與重新收音的案例）、Windows target 的 `cargo check --tests` 與 clippy、文件連結與學習文章的 validator。這一輪使用的 bundle 仍含後來移除的重連程式碼；最終原始碼與它的差別只有這段移除，並已重新建置與測試。審查：Codex GPT-6.1 Sol，唯讀，兩輪。第 1 輪：麥克風的中斷與恢復可能以錯誤順序送出，watchdog 也可能把過時的送音時間當成靜音而標記錄影，因此送音時間、中斷狀態與兩種事件改用同一把鎖；響亮的相加在 `f32` 下限幅結果可能剛好等於滿刻度，因此改為停在略低於滿刻度，並加上嚴格的測試。第 2 輪確認兩項修正，沒有新的 findings。
 
 未完成：人耳聆聽；Windows 麥克風（只有 CI）；重開重新連上的麥克風（078）；在限幅、漂移與單聲道修改後重跑音質、同步與 CPU（078 步驟 6）；CPU 多 3.4 個百分點的原因。
@@ -50,10 +75,10 @@
 - **決定（2026-10-14，維護者）。** D1 兩個平台都用 Rust；D2 每次嘗試一個 `utilityProcess`；D3 由引擎寫檔，main 保留檔名、資料夾、剩餘空間檢查、sentinel、歷史紀錄與通知；D4 使用平台的編碼器（VideoToolbox 與 AudioToolbox；Media Foundation），搭配為本專案撰寫的 hybrid MP4 muxer，錄影路徑不使用 FFmpeg；D5 可改寫 Cap 的 MIT crate，其 AGPL 程式碼只供閱讀；D6「隱藏選單列與 Dock」開關，僅 macOS，預設關閉；D7 Chromium 路徑在 macOS 驗收前留在開發旗標之後，之後移除；D8 Windows 只由 CI 驗證。2026-10-15 維護者決定不預先啟動擷取程序（約省 50 ms，代價是約 73 MB 的閒置程序）。
 - **原型關卡（2026-10-14，M1 Pro，括號內為 Chromium）。** 快捷鍵到 `prepared` 457–535 ms（347–369 ms）；每個檔案的音訊與畫面長度相同，包括 10 分鐘的錄影（+13 至 +15 ms）；10 分鐘漂移 0 ms，600 組閃光與嗶聲全部對上；錄影中結束擷取程序，留下 8.0 s 可播放的部分檔案。較慢的啟動落在倒數之內，已被接受。
 - **引擎（步驟 3–4）。** 兩個平台共用一個 session 核心，負責 pacer、停止規則與停止前的聲音；音訊時間由樣本數計算，在同一個時鐘上補入靜音；所有輸入混成一條 AAC 音軌，某個輸入沒有聲音時，mixer 落後它 500 ms 繼續前進。引擎把 `stopped` 與 `finished` 分開，慢速磁碟的收尾不再受 10 s 停止期限限制：在桌面上，`stopped` 後 0–1 ms recorder 即回到閒置，19–22 ms 後檔案完成。視窗、區域與 App 來源、單一 App 的聲音和麥克風目前只在引擎與其測試中；面向使用者的部分由 074 與 075 加入。
-- **Windows（D8）。** `native-windows` job 在 `windows-2025` 上錄下螢幕、區域、視窗與單一程序的聲音；安裝程式 smoke 會載入安裝後的模組。未在 Windows 實機上測試：擷取品質與影格時序、錄影中不出現自己的視窗、系統聲音內容、CPU、麥克風，以及 077 的所有案例。編碼器是 Microsoft 的軟體 H.264；硬體編碼器與剩下的 Chromium 時期提示移到 [078](../../../plans/078-native-capture-follow-ups.zh-TW.md)。
+- **Windows（D8）。** `native-windows` job 在 `windows-2025` 上錄下螢幕、區域、視窗與單一程序的聲音；安裝程式 smoke 會載入安裝後的模組。未在 Windows 實機上測試：擷取品質與影格時序、錄影中不出現自己的視窗、系統聲音內容、CPU、麥克風，以及 077 的所有案例。編碼器是 Microsoft 的軟體 H.264；硬體編碼器與剩下的 Chromium 時期提示移到 078（[結案紀錄](#plan-078-結案--2026-10-17)）。
 - **macOS 驗收（2026-10-15/16，60 Hz 1920×1080 螢幕，簽署 bundle）。** `pnpm acceptance` 在 60 fps 通過。`pnpm matrix -- quick`：閃光到嗶聲 −25 ms，Chromium 為 +68 至 +74 ms；間隔 50 ms 的影格在 idle 影格修正（PR #12）前為 0.66–2.17%，修正後 0.22–0.44%，Chromium 為 0，剩下部分的原因尚未找到。`pnpm audio:quality` 兩個引擎都通過所有檢查。`pnpm measure:cpu -- --fps 60 --repeat 3`：錄影在 30／60 fps 佔一個核心的 10.4%／14.0%，Chromium 為 15.3%／23.3%；錄影後閒置 0.036%，Chromium 為 0.054%，且不留下 renderer 或音訊服務；這些中位數是參考 Mac 的 baseline。`pnpm acceptance:tray` 通過 14 個案例（兩個因輸入競態而未執行）；錄影中開啟的設定視窗出現在螢幕截圖上，卻不在同一時刻的錄影影格中；錄影中結束 App 會把錄影存檔。維護者在移除 Chromium 路徑前接受了這些結果與剩下的影格間隔（2026-10-16）。
 - **過程中發現。** `pnpm measure:cpu` 的設定視窗情境最高量到一個核心的 39%：一張卡片的 hover 預覽在其他 App 後方不斷循環。runner 會先移開游標（PR #7），設定視窗失去焦點時也會停止預覽（PR #8）。
-- **移到其他計畫。** 錄影中睡眠、移除螢幕、權限被拒以及 D6 的 Dock 需要維護者動手：[077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)。剩下的影格間隔、開發版 App 自己的視窗、原生節奏診斷，以及 Chromium 路徑留下的部分：[078](../../../plans/078-native-capture-follow-ups.zh-TW.md)。
+- **移到其他計畫。** 錄影中睡眠、移除螢幕、權限被拒以及 D6 的 Dock 需要維護者動手：[077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)。剩下的影格間隔、開發版 App 自己的視窗、原生節奏診斷，以及 Chromium 路徑留下的部分：078（[結案紀錄](#plan-078-結案--2026-10-17)）。
 - **學習文章。** 來源都隨 076 結案的三篇：[原生 API 與技術選擇](../../learning/native-apis-and-tech-stack-choices.html)、[編解碼器、容器與不怕當機的錄影](../../learning/codecs-containers-and-crash-safe-recording.html)與[開源授權實務](../../learning/open-source-licenses-in-practice.html)，依維護者要求，每篇都以選擇的取捨為中心。
 - **Pull request。** #5 Windows 引擎、#6 引擎、#7 與 #8 hover 預覽、#9 macOS 整合與 D6 開關、#10 兩個平台的建置、#11 驗證工具、#12 idle 影格修正、#13 `pnpm acceptance` 的結束與自身視窗案例、#14 移除 Chromium 路徑；文件另以一個 pull request 完成。
 

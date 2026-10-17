@@ -125,7 +125,7 @@ Review：Codex GPT-6 Astra（medium reasoning、read-only）。Pass 1（約 83 �
 
 ## Plan 053 結案 — 2026-09-29
 
-Plan 053 處理 2026-09-29 第三次稽核修正時留下的六個項目，由 Claude 實作、Codex GPT-6 Astra review；在 052 於主 checkout 執行期間，改在獨立的 worktree 進行（[desktop](../system-design/desktop.md#設定視窗)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)、[通知](../system-design/desktop.md#tray-與通知)、[tooling](../system-design/tooling.md#影格節奏診斷)）。
+Plan 053 處理 2026-09-29 第三次稽核修正時留下的六個項目，由 Claude 實作、Codex GPT-6 Astra review；在 052 於主 checkout 執行期間，改在獨立的 worktree 進行（[desktop](../system-design/desktop.md#設定視窗)、[第二次啟動](../system-design/desktop.md#設定快捷鍵)、[通知](../system-design/desktop.md#tray-與通知)、[tooling](../system-design/tooling.md#逐影格-log)）。
 
 - **忙碌中的操作保留焦點。** 操作按鈕、診斷的 Retry/Recovery 與失敗紀錄列採用同一規則：忙碌的按鈕保有 `aria-disabled="true"` 與保存中的外觀，維持可聚焦並忽略觸發；只有 main 未提供的選項才原生停用。main 把進行中的更新檢查標為 `busy`，並仍拒絕重複請求。
 - **Cadence 百分位。** 維護者選擇 nearest-rank：`cadenceStats` 改用共用的 `stats.mts`，因此 2026-09-29 之前寫出的 cadence p05/p95 是內插值、無法直接比較；中位數不變。
@@ -628,7 +628,7 @@ Codex GPT-6 Astra（medium reasoning）第 1 輪費時 49 秒，無 findings；�
 
 ## Plan 041 結案 — 2026-09-26
 
-以設定的幀率擷取，由 Claude 實作、Codex GPT-6 Astra review（[幀率要求](../system-design/recording.md#幀率要求)、[影格節奏診斷](../system-design/tooling.md#影格節奏診斷)）。在此之前，每段錄影的影格都比設定少約 2%（30 fps）或 4%（60 fps），而且沒有掉格。
+以設定的幀率擷取，由 Claude 實作、Codex GPT-6 Astra review（[幀率要求](../system-design/recording.md#幀率要求)、[影格節奏診斷](../system-design/tooling.md#逐影格-log)）。在此之前，每段錄影的影格都比設定少約 2%（30 fps）或 4%（60 fps），而且沒有掉格。
 
 各輪環境：M1 Pro（10 核、32 GB）、macOS 26.6.2、Node 24.21.0、Electron 44.3.0／Chromium 152.0.7977.78、ffmpeg 9.0.1；主螢幕為 BenQ 1920×1080、60.00 Hz（Electron `displayFrequency` 60）；系統音訊輸出到外接耳機，音量 94；測試素材 SHA-256 `e631b973…c41459`；版本為 HEAD `86ecbc5` 加上未提交的變更。每次診斷與 matrix 都自行建置 `out/`。
 

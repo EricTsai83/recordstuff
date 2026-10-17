@@ -244,7 +244,6 @@ Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipel
 | `videoBitsPerSecond(size, fps, quality)` | pixels×fps×係數，100 kbps 取整，套最小／最大值 |
 | `isOptionalFiniteNumber(value)` | 只接受 undefined 或有限 number |
 | `isCaptureReport(value)` | optional 數值與 required bitrate／warnings 形狀檢查；不是完整合理值範圍檢查 |
-| `frameRateDowngrade(requested, report)` | 60 requested 且 actual≤30 → rounded fps；其他 undefined |
 | `unknown(value, unit)` / `describeCapture(requested, report)` | 格式化未知欄位／本次要求、track、目標與 warnings 日誌 |
 
 [shared/protocol.ts](../../../src/shared/protocol.ts)：main 與擷取 host 之間的 parent port 契約。`OUTPUT_MIME_TYPE` 是 H.264＋AAC MP4；`HOST_ERROR_CODES` 與 `ENGINE_WRITE_ERROR_CODES` 是 host 在 `error` 與 `writeError` 中唯一可送的代碼。`isMainMessage()` 接受 `start`（非空 session id、`isQualitySettings`、可選的 `native`，由 `isNativeStart` 檢查：整數螢幕 id、可選的整數座標點、非空錄影路徑、整數 PID、布林系統介面開關）、`record`、`stop` 與 `ping`。`isHostMessage()` 接受 `ready`／`pong`；帶 mime type 與 CaptureReport 的 `prepared`；`started`；可選有限 `tracksStoppedAt` 的 `stopped`；帶 `EngineFileReport`（有限的 bytes 與 finalizeMs、可選的分段原因）的 `finished`；有限非負位元組數的 `progress`；只帶列出代碼與字串 detail 的 `writeError` 與 `error`，`error` 可另帶 `displayFailure: "track_ended"`。`isRecord()`、`isNonEmptyString()`、`isPoint()` 與 `isEngineFileReport()` 是它的 helper；額外欄位會被容許。
@@ -344,7 +343,6 @@ Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipel
 | `settingsWriteFailedNotification(dir, home)` | 說明位置設定未保存、仍使用原值 |
 | `qualityWriteFailedNotification()` / `languageWriteFailedNotification()` / `hotkeyWriteFailedNotification()` | 說明品質／語言／快捷鍵設定未保存 |
 | `hotkeyRegistrationFailedNotification(accelerator, platform)` | 本地化的佔用提示，含平台顯示形式的組合鍵，並指向設定視窗 |
-| `frameRateDowngradeNotification(requested, actual)` | 說明系統實際提供的 fps |
 | `trayHintNotification(platform)` | 首次啟動時指向 macOS 選單列或其他平台系統匣的提示；在 macOS 上也藉此觸發唯一一次通知授權詢問 |
 
 [recording-result.ts](../../../src/main/recording/recording-result.ts)：

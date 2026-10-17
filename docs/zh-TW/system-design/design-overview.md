@@ -100,7 +100,7 @@ RecordStuff 大部分時間都在待命，所以待命有預算（plan 049）：
 | 只有一份權威錄影狀態；失敗是事件而非狀態 | `main/recording/recorder.ts` | [recording.md](recording.md#狀態與操作) |
 | 每個使用者意圖只有一個決策點（`Recorder.toggle()`） | `main/menus/tray.ts`、`main/shortcuts/hotkey.ts` | [desktop.md](desktop.md#錄影快捷鍵) |
 | 每次錄影一個檔案，由引擎寫入；main 保留暫存檔名並發布完成的檔案 | `native/capture/src/writer.rs`、`main/recording/engine-file-writer.ts` | [recording.md](recording.md#寫檔與失敗) |
-| session ID 把關每一則 host 訊息 | `main/recording/recorder.ts` | [recording.md](recording.md#分片與停止順序) |
+| session ID 把關每一則 host 訊息 | `main/recording/recorder.ts` | [recording.md](recording.md#訊息與停止順序) |
 | 品質在每次工作階段快照，錄影中不重讀 | `main/recording/recorder.ts`、`shared/quality.ts` | [recording.md](recording.md#品質與編碼) |
 | 每個偏好設定只宣告一次，且具備穩定 id | `main/settings/settings-model.ts` | [desktop.md](desktop.md#設定視窗) |
 | starting、recording、stopping 鎖定語言以外的所有偏好設定 | `main/recording/recording-lock.ts`，並在 action handler 再檢查一次 | [desktop.md](desktop.md#設定視窗) |
