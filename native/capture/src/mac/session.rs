@@ -35,11 +35,14 @@ use super::{CaptureError, Unsent, host_ns, now_ns};
 use super::microphone::MicrophoneCapture;
 use crate::camera_layout::{CameraPrototype, PREVIEW_FPS};
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
+use crate::writer::Media;
 use crate::pacing::Pacer;
 
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
+/// The preview stream's average bit rate: enough for 640 pixels at 15 fps.
+const PREVIEW_BITRATE: u32 = 1_000_000;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, what VideoToolbox encodes without converting.
@@ -95,8 +98,30 @@ impl VideoEncode<Frame> for Video {
     }
 }
 
-/// Step 2's preview: the composed picture at preview size, `PREVIEW_FPS` times a second, to the session's events,
-/// from `prepare` until capture ends.
+/// Takes the preview encoder's output and tells it as preview chunks, the `avcC` record with every key frame.
+struct PreviewSink {
+    events: Arc<dyn Events>,
+    format: std::sync::Mutex<Option<(Vec<u8>, u32, u32)>>,
+}
+
+impl core::VideoSink for PreviewSink {
+    fn media(&self, media: Media) {
+        match media {
+            Media::VideoFormat { avcc, width, height } => *self.format.lock().unwrap() = Some((avcc, u32::from(width), u32::from(height))),
+            Media::Video { data, pts_ns, sync } => {
+                let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
+                self.events.preview(core::PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
+            }
+            Media::Audio { .. } => {}
+        }
+    }
+
+    // A preview is a convenience: one whose encoder fails stops showing, the recording does not.
+    fn failed(&self, _detail: String) {}
+}
+
+/// Step 2's preview: the composed picture at preview size, `PREVIEW_FPS` times a second, encoded as a small H.264
+/// stream (D17's second option) and told to the session's events, from `prepare` until capture ends.
 struct Preview {
     stopped: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -106,19 +131,23 @@ impl Preview {
     fn start(shared: Arc<Shared>, compositor: Arc<Compositor>) -> Result<Self, CaptureError> {
         let stopped = Arc::new(AtomicBool::new(false));
         let stop = stopped.clone();
+        let (width, height) = compositor.preview_size();
+        let sink = Arc::new(PreviewSink { events: shared.events(), format: std::sync::Mutex::new(None) });
+        let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
         let thread = std::thread::Builder::new()
             .name("recordstuff-preview".into())
             .spawn(move || {
                 let interval = Duration::from_nanos(1_000_000_000 / u64::from(PREVIEW_FPS));
-                let events = shared.events();
                 let mut next = Instant::now();
+                let mut first = true;
                 while !stop.load(Ordering::Acquire) && !shared.halted() {
                     if let Some(frame) = shared.newest() {
-                        match compositor.preview(&frame.image) {
-                            Ok(preview) => events.preview(preview.width, preview.height, preview.data),
-                            // A preview is a convenience: one that fails ends, the recording does not.
-                            Err(_) => return,
+                        // A preview is a convenience: one that fails ends, the recording does not.
+                        let Ok(picture) = compositor.preview(&frame.image) else { return };
+                        if encoder.encode(&picture, now_ns(), first).is_err() {
+                            return;
                         }
+                        first = false;
                     }
                     next += interval;
                     let now = Instant::now();
@@ -128,6 +157,7 @@ impl Preview {
                         next = now;
                     }
                 }
+                encoder.flush();
             })
             .map_err(|e| CaptureError::new("capture_start_failed", format!("preview thread: {e}")))?;
         Ok(Self { stopped, thread: Some(thread) })
@@ -561,5 +591,56 @@ impl Drop for Session {
         if !self.core.stopping() {
             self.halt();
         }
+    }
+}
+
+#[cfg(test)]
+mod preview_test {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::writer::WriteFailure;
+
+    #[derive(Default)]
+    struct Chunks(Mutex<Vec<core::PreviewChunk>>);
+
+    impl Events for Chunks {
+        fn progress(&self, _bytes: u64) {}
+        fn write_failed(&self, _failure: WriteFailure) {}
+        fn capture_failed(&self, _code: &'static str, _detail: String) {}
+        fn microphone_lost(&self, _detail: String) {}
+        fn microphone_resumed(&self, _detail: String) {}
+        fn preview(&self, chunk: core::PreviewChunk) {
+            self.0.lock().unwrap().push(chunk);
+        }
+    }
+
+    #[test]
+    fn the_preview_is_an_h264_stream_whose_key_frames_carry_the_avcc_record() {
+        let camera = Arc::new(super::super::camera::Shared::default());
+        let compositor = Compositor::new(1280, 720, crate::camera_layout::Layout::default(), camera).unwrap();
+        let chunks = Arc::new(Chunks::default());
+        let sink = Arc::new(PreviewSink { events: chunks.clone(), format: std::sync::Mutex::new(None) });
+        let (width, height) = compositor.preview_size();
+        let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink).unwrap();
+        let screen = super::super::compositor::test_frame(1280, 720);
+        for n in 0..5u64 {
+            let picture = compositor.preview(&screen).unwrap();
+            encoder.encode(&picture, 1_000_000_000 + n * 66_666_667, n == 0).unwrap();
+        }
+        encoder.flush();
+        let chunks = chunks.0.lock().unwrap();
+        assert_eq!(chunks.len(), 5, "{chunks:?}");
+        let first = &chunks[0];
+        assert!(first.key && (first.width, first.height) == (640, 360));
+        // An avcC record starts with version 1, then the profile the codec string is made of.
+        assert_eq!(first.description.as_ref().map(|d| d[0]), Some(1));
+        // Constrained Baseline (profile 66, constraint flag 1), which decoders show without holding frames back.
+        assert_eq!(first.description.as_ref().map(|d| (d[1], d[2] & 0x40)), Some((66, 0x40)));
+        assert!(chunks[1..].iter().all(|chunk| !chunk.key && chunk.description.is_none()));
+        assert_eq!(chunks[1].timestamp_us - first.timestamp_us, 66_666);
+        // AVCC: the first NAL unit's 4-byte length fits in the chunk.
+        let length = u32::from_be_bytes(first.data[..4].try_into().unwrap()) as usize;
+        assert!(length + 4 <= first.data.len());
     }
 }

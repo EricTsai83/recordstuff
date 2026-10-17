@@ -75,8 +75,22 @@ pub trait Events: Send + Sync {
     fn microphone_lost(&self, detail: String);
     /// The microphone told lost delivers sound again, which the track takes from then on.
     fn microphone_resumed(&self, detail: String);
-    /// A preview frame of the composed picture (plan 075, step 2's prototype): NV12, `width` × `height`.
-    fn preview(&self, _width: u32, _height: u32, _data: Vec<u8>) {}
+    /// A preview chunk of the composed picture (plan 075, step 2's prototype; D17's second option).
+    fn preview(&self, _chunk: PreviewChunk) {}
+}
+
+/// One encoded frame of the preview: H.264 in AVCC form (length-prefixed NAL units), for WebCodecs' `VideoDecoder`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewChunk {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+    /// Whether it is a key frame, which a decoder can start from.
+    pub key: bool,
+    /// Host time it was captured, in microseconds.
+    pub timestamp_us: u64,
+    /// The `avcC` record a decoder is configured with; with every key frame, so a page that joins late can start.
+    pub description: Option<Vec<u8>>,
 }
 
 /// Where encoded video goes, and who hears that encoding failed. Called on the encoder's thread.

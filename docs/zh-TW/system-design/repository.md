@@ -65,7 +65,7 @@
 
 ## 原生擷取引擎
 
-`native/capture/` 是一個 Rust crate（`Cargo.toml`、`Cargo.lock`，以及供 napi-rs 使用的 `build.rs`），建置成 `cdylib`，由建置流程複製為 `out/native/recordstuff-capture.node`，也建置成 `rlib` 供其測試使用。只有 `src/main/recording/native-host-process.ts` 會在擷取 `utilityProcess` 中載入它（見[系統架構](architecture.md#程序與責任)）。
+`native/capture/` 是一個 Rust crate（`Cargo.toml`、`Cargo.lock`，以及 `build.rs`：設定 napi-rs，並以 naga 把計畫 075 鏡頭合成器的 `shaders/compose.wgsl` 翻譯成 MSL 與 HLSL），建置成 `cdylib`，由建置流程複製為 `out/native/recordstuff-capture.node`，也建置成 `rlib` 供其測試使用。只有 `src/main/recording/native-host-process.ts` 會在擷取 `utilityProcess` 中載入它（見[系統架構](architecture.md#程序與責任)）。
 
 | `src/` 下的位置 | 內容 |
 | --- | --- |

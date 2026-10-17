@@ -65,7 +65,7 @@ This document describes where things live and why. [Architecture](architecture.m
 
 ## Native capture engine
 
-`native/capture/` is a Rust crate (`Cargo.toml`, `Cargo.lock`, `build.rs` for napi-rs) built as a `cdylib`, which the build copies to `out/native/recordstuff-capture.node`, and as an `rlib` for its tests. Only `src/main/recording/native-host-process.ts` loads it, in the capture `utilityProcess` ([architecture](architecture.md#processes-and-responsibilities)).
+`native/capture/` is a Rust crate (`Cargo.toml`, `Cargo.lock`, and `build.rs`, which sets up napi-rs and translates `shaders/compose.wgsl`, plan 075's camera compositor, with naga to MSL and HLSL) built as a `cdylib`, which the build copies to `out/native/recordstuff-capture.node`, and as an `rlib` for its tests. Only `src/main/recording/native-host-process.ts` loads it, in the capture `utilityProcess` ([architecture](architecture.md#processes-and-responsibilities)).
 
 | Path under `src/` | What it holds |
 | --- | --- |

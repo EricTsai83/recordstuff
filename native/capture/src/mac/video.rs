@@ -22,7 +22,7 @@ use objc2_video_toolbox::{
     kVTCompressionPropertyKey_AverageBitRate, kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ExpectedFrameRate,
     kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime,
     kVTCompressionPropertyKey_TransferFunction, kVTCompressionPropertyKey_YCbCrMatrix, kVTEncodeFrameOptionKey_ForceKeyFrame,
-    kVTProfileLevel_H264_High_AutoLevel,
+    kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel, kVTProfileLevel_H264_High_AutoLevel,
 };
 
 use super::{CaptureError, host_ns};
@@ -52,6 +52,17 @@ fn set(session: &VTCompressionSession, key: &CFString, value: &CFType) -> Result
 
 impl VideoEncoder {
     pub fn new(width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
+        Self::with_profile(width, height, frame_rate, bitrate, false, sink)
+    }
+
+    /// The camera preview's stream (plan 075, D17): Constrained Baseline, whose decoders output each frame as it comes.
+    /// With High a decoder cannot know that frames are never reordered and holds several back first: WebCodecs' showed
+    /// the preview 397 ms late at 15 fps (2026-10-17).
+    pub fn for_preview(width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
+        Self::with_profile(width, height, frame_rate, bitrate, true, sink)
+    }
+
+    fn with_profile(width: u32, height: u32, frame_rate: u32, bitrate: u32, baseline: bool, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
         let callback = Arc::into_raw(Arc::new(Callback { sink, format_sent: AtomicBool::new(false) }));
         let mut session: *mut VTCompressionSession = null_mut();
         let status = unsafe {
@@ -76,7 +87,8 @@ impl VideoEncoder {
         let s = &encoder.session;
         set(s, unsafe { kVTCompressionPropertyKey_RealTime }, CFBoolean::new(true))?;
         set(s, unsafe { kVTCompressionPropertyKey_AllowFrameReordering }, CFBoolean::new(false))?;
-        set(s, unsafe { kVTCompressionPropertyKey_ProfileLevel }, unsafe { kVTProfileLevel_H264_High_AutoLevel })?;
+        let profile = if baseline { unsafe { kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel } } else { unsafe { kVTProfileLevel_H264_High_AutoLevel } };
+        set(s, unsafe { kVTCompressionPropertyKey_ProfileLevel }, profile)?;
         set(s, unsafe { kVTCompressionPropertyKey_AverageBitRate }, &CFNumber::new_i64(i64::from(bitrate)))?;
         set(s, unsafe { kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration }, &CFNumber::new_f64(1.0))?;
         set(s, unsafe { kVTCompressionPropertyKey_ExpectedFrameRate }, &CFNumber::new_i32(frame_rate as i32))?;

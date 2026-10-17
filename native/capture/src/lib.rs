@@ -204,24 +204,64 @@ pub struct EngineEvent {
 
 type EventCallback = ThreadsafeFunction<EngineEvent, (), EngineEvent, Status, false>;
 
-/// A preview frame of the composed picture (plan 075, step 2's prototype): NV12, the luma plane then the interleaved
-/// chroma one, rows without padding.
+/// A preview chunk of the composed picture (plan 075, step 2's prototype; D17's second option): H.264 in AVCC form for
+/// WebCodecs' `VideoDecoder`, the `avcC` record (`description`) with every key frame.
 #[napi(object)]
 pub struct PreviewFrame {
     pub width: u32,
     pub height: u32,
     pub data: Buffer,
+    pub key: bool,
+    /// Host time it was captured, in microseconds.
+    pub timestamp: f64,
+    pub description: Option<Buffer>,
 }
 
 type PreviewCallback = ThreadsafeFunction<PreviewFrame, (), PreviewFrame, Status, false, true>;
 
-/// At most this many preview frames wait for the JavaScript thread; newer ones are dropped before they are queued.
-/// The queue itself is unbounded: a call napi refuses as full leaks its frame (napi 3.14's `call` does not take it back).
+/// At most this many preview chunks wait for the JavaScript thread; newer ones are dropped before they are queued.
+/// The queue itself is unbounded: a call napi refuses as full leaks its chunk (napi 3.14's `call` does not take it back).
 const PREVIEW_IN_FLIGHT: usize = 2;
+
+/// Which preview chunks go to the JavaScript thread. A chunk that does not fit is dropped, and so is every chunk after
+/// it until the next key frame: H.264's delta frames refer to the frames before them, so a decoder given one after a
+/// gap shows corruption or fails until a key frame comes (the encoder makes one every second).
+#[derive(Default)]
+pub struct PreviewGate {
+    in_flight: std::sync::atomic::AtomicUsize,
+    awaiting_key: std::sync::atomic::AtomicBool,
+}
+
+impl PreviewGate {
+    /// Whether a chunk, a key frame or not, is sent; a sent chunk is `done` once the JavaScript thread has taken it.
+    pub fn admit(&self, key: bool) -> bool {
+        use std::sync::atomic::Ordering;
+        if !key && self.awaiting_key.load(Ordering::Acquire) {
+            return false;
+        }
+        if self.in_flight.fetch_add(1, Ordering::AcqRel) >= PREVIEW_IN_FLIGHT {
+            self.in_flight.fetch_sub(1, Ordering::AcqRel);
+            self.awaiting_key.store(true, Ordering::Release);
+            return false;
+        }
+        self.awaiting_key.store(false, Ordering::Release);
+        true
+    }
+
+    pub fn done(&self) {
+        self.in_flight.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+
+    /// A sent chunk napi did not queue: never taken, and the stream has a gap.
+    pub fn lost(&self) {
+        self.done();
+        self.awaiting_key.store(true, std::sync::atomic::Ordering::Release);
+    }
+}
 
 struct PreviewSink {
     callback: PreviewCallback,
-    in_flight: Arc<std::sync::atomic::AtomicUsize>,
+    gate: Arc<PreviewGate>,
 }
 
 fn failure(code: &str, detail: impl std::fmt::Display) -> Error {
@@ -257,27 +297,32 @@ impl core::Events for Emitter {
         self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail) });
     }
 
-    fn preview(&self, width: u32, height: u32, data: Vec<u8>) {
-        use std::sync::atomic::Ordering;
+    fn preview(&self, chunk: core::PreviewChunk) {
         let guard = self.1.lock().unwrap();
         let Some(sink) = guard.as_ref() else { return };
-        if sink.in_flight.fetch_add(1, Ordering::AcqRel) >= PREVIEW_IN_FLIGHT {
-            sink.in_flight.fetch_sub(1, Ordering::AcqRel);
+        if !sink.gate.admit(chunk.key) {
             return;
         }
-        let in_flight = sink.in_flight.clone();
-        let done = in_flight.clone();
+        let gate = sink.gate.clone();
+        let done = gate.clone();
         let status = sink.callback.call_with_return_value(
-            PreviewFrame { width, height, data: data.into() },
+            PreviewFrame {
+                width: chunk.width,
+                height: chunk.height,
+                data: chunk.data.into(),
+                key: chunk.key,
+                timestamp: chunk.timestamp_us as f64,
+                description: chunk.description.map(Buffer::from),
+            },
             ThreadsafeFunctionCallMode::NonBlocking,
             move |_, _| {
-                done.fetch_sub(1, Ordering::AcqRel);
+                done.done();
                 Ok(())
             },
         );
         // Not queued (the callback is closing): it will never answer.
         if status != Status::Ok {
-            in_flight.fetch_sub(1, Ordering::AcqRel);
+            gate.lost();
         }
     }
 }
@@ -320,7 +365,7 @@ impl NativeCapture {
     #[napi]
     pub fn on_preview(&self, on_frame: Function<PreviewFrame, ()>) -> Result<()> {
         let callback = on_frame.build_threadsafe_function().callee_handled::<false>().weak::<true>().build()?;
-        *self.preview.lock().unwrap() = Some(PreviewSink { callback, in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)) });
+        *self.preview.lock().unwrap() = Some(PreviewSink { callback, gate: Arc::new(PreviewGate::default()) });
         Ok(())
     }
 
@@ -577,5 +622,36 @@ impl Task for CancelTask {
 
     fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PreviewGate;
+
+    #[test]
+    fn the_preview_gate_drops_the_rest_of_a_group_once_a_chunk_did_not_fit() {
+        let gate = PreviewGate::default();
+        assert!(gate.admit(true));
+        assert!(gate.admit(false));
+        // Two wait for the JavaScript thread: the third does not fit.
+        assert!(!gate.admit(false));
+        gate.done();
+        gate.done();
+        // Room again, but these refer to the frame that was dropped.
+        assert!(!gate.admit(false));
+        assert!(!gate.admit(false));
+        // A key frame starts the stream again.
+        assert!(gate.admit(true));
+        assert!(gate.admit(false));
+    }
+
+    #[test]
+    fn a_chunk_napi_did_not_queue_is_a_gap_too() {
+        let gate = PreviewGate::default();
+        assert!(gate.admit(true));
+        gate.lost();
+        assert!(!gate.admit(false));
+        assert!(gate.admit(true));
     }
 }
