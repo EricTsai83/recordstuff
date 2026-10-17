@@ -5,8 +5,7 @@
  * frames go from the capture process to the renderer without passing through main. Never part of a normal launch.
  */
 import { BrowserWindow, MessageChannelMain, type UtilityProcess } from "electron";
-import { CAMERA_PREVIEW_PORT_CHANNEL } from "../../shared/camera-preview";
-import { PREVIEW_PORT_MESSAGE } from "./native-host-process";
+import { CAMERA_PREVIEW_PORT_CHANNEL, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 
 export interface CameraPreviewOptions {
   preloadPath: string;

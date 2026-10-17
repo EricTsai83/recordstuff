@@ -1,6 +1,9 @@
 /** Plan 075 step 2's preview page: the channel main hands it the capture process's preview port on. */
 export const CAMERA_PREVIEW_PORT_CHANNEL = "camera-preview:port";
 
+/** Main's message that hands a capture process a preview port, Settings' or the prototype page's; not part of the capture protocol. */
+export const PREVIEW_PORT_MESSAGE = "cameraPreviewPort";
+
 /** Plan 075 step 2's development switch, read by the engine too (native/capture/src/camera_layout.rs). */
 export const CAMERA_PROTOTYPE_SWITCH = "RECORDSTUFF_CAMERA_PROTOTYPE";
 

@@ -7,7 +7,7 @@
 
 use std::fs::OpenOptions;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -121,17 +121,25 @@ impl core::VideoSink for PreviewSink {
     fn failed(&self, _detail: String) {}
 }
 
-/// Step 2's preview: the composed picture at preview size, `PREVIEW_FPS` times a second, encoded as a small H.264
-/// stream (D17's second option) and told to the session's events, from `prepare` until capture ends.
+/// The preview (D17's second option): the composed picture at preview size, `PREVIEW_FPS` times a second, encoded as
+/// a small H.264 stream and told to the session's events, from `prepare` until capture ends, while someone watches
+/// (Settings shows it, plan 075 step 7); unwatched it composes and encodes nothing, and it starts again at a key frame.
 struct Preview {
     stopped: Arc<AtomicBool>,
+    watching: Arc<AtomicBool>,
+    /// Counts each start of watching, so one that comes between two of the thread's ticks still starts at a key frame.
+    watches: Arc<AtomicU64>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Preview {
-    fn start(shared: Arc<Shared>, compositor: Arc<Compositor>) -> Result<Self, CaptureError> {
+    fn start(shared: Arc<Shared>, compositor: Arc<Compositor>, watching: bool) -> Result<Self, CaptureError> {
         let stopped = Arc::new(AtomicBool::new(false));
         let stop = stopped.clone();
+        let watching = Arc::new(AtomicBool::new(watching));
+        let watched = watching.clone();
+        let watches = Arc::new(AtomicU64::new(0));
+        let started = watches.clone();
         let (width, height) = compositor.preview_size();
         let sink = Arc::new(PreviewSink { events: shared.events(), format: std::sync::Mutex::new(None) });
         let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
@@ -141,8 +149,16 @@ impl Preview {
                 let interval = Duration::from_nanos(1_000_000_000 / u64::from(PREVIEW_FPS));
                 let mut next = Instant::now();
                 let mut first = true;
+                let mut seen = 0;
                 while !stop.load(Ordering::Acquire) && !shared.halted() {
-                    if let Some(frame) = shared.newest() {
+                    let now_started = started.load(Ordering::Acquire);
+                    if now_started != seen {
+                        seen = now_started;
+                        first = true;
+                    }
+                    if !watched.load(Ordering::Acquire) {
+                        first = true;
+                    } else if let Some(frame) = shared.newest() {
                         // A preview is a convenience: one that fails ends, the recording does not.
                         let Ok(picture) = compositor.preview(&frame.image) else { return };
                         if encoder.encode(&picture, now_ns(), first).is_err() {
@@ -161,7 +177,7 @@ impl Preview {
                 encoder.flush();
             })
             .map_err(|e| CaptureError::new("capture_start_failed", format!("preview thread: {e}")))?;
-        Ok(Self { stopped, thread: Some(thread) })
+        Ok(Self { stopped, watching, watches, thread: Some(thread) })
     }
 
     fn stop(mut self) {
@@ -516,13 +532,12 @@ impl Session {
         if let Some(camera) = session.camera.as_ref() {
             eprintln!("camera: after preparing {}", camera.state());
         }
-        if let (Some(compositor), true) = (compositor, camera_request.as_ref().is_some_and(|wanted| wanted.preview)) {
-            match Preview::start(session.core.shared(), compositor) {
+        // Made with the camera, watched only when asked: the stream starts in the time Settings takes to show it.
+        if let (Some(compositor), Some(wanted)) = (compositor, camera_request.as_ref()) {
+            // A preview is a convenience: without one Settings shows no picture, and the recording goes on.
+            match Preview::start(session.core.shared(), compositor, wanted.preview) {
                 Ok(preview) => session.preview = Some(preview),
-                Err(error) => {
-                    session.halt();
-                    return Err(error);
-                }
+                Err(error) => eprintln!("camera: no preview ({}: {})", error.code, error.detail),
             }
         }
         let prepared = Prepared {
@@ -554,6 +569,19 @@ impl Session {
         compositor.set_hidden(hidden);
         self.core.encode_every_slot(!hidden);
         eprintln!("camera: layout {:?}, {}", compositor.layout(), if hidden { "hidden" } else { "shown" });
+        true
+    }
+
+    /// Whether the preview is watched (plan 075 step 7): Settings shows it, or no longer does. Answers false without a
+    /// camera, whose session makes no preview.
+    pub fn set_preview(&self, watching: bool) -> bool {
+        let Some(preview) = self.preview.as_ref() else { return false };
+        if watching {
+            // A new watcher has a new decoder, which can start only at a key frame.
+            preview.watches.fetch_add(1, Ordering::AcqRel);
+        }
+        preview.watching.store(watching, Ordering::Release);
+        eprintln!("camera: preview {}", if watching { "watched" } else { "not watched" });
         true
     }
 

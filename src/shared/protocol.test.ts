@@ -34,6 +34,9 @@ describe("isMainMessage", () => {
   });
   it("asks for the cameras and carries their list (plan 075)", () => {
     expect(isMainMessage({ type: "listCameras" })).toBe(true);
+    expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: true })).toBe(true);
+    expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: "yes" })).toBe(false);
+    expect(isMainMessage({ type: "cameraPreview", sessionId: "", watching: false })).toBe(false);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] })).toBe(true);
     expect(isHostMessage({ type: "cameras", error: "a recording is in progress" })).toBe(true);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "", name: "x", default: false }] })).toBe(false);

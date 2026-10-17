@@ -222,7 +222,7 @@ pub struct CameraRequest {
     /// AVCaptureDevice's unique ID; absent is the system's default camera, as is one not connected (D9).
     pub device: Option<String>,
     pub layout: crate::camera_layout::Layout,
-    /// Whether preview frames are made (step 2's preview page).
+    /// Whether the preview is watched from the start (step 7: Settings shows it); `Session::set_preview` changes it.
     pub preview: bool,
 }
 

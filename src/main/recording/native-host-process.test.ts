@@ -133,7 +133,7 @@ describe("the camera (plan 075)", () => {
   });
 });
 
-describe("the camera prototype's preview (plan 075)", () => {
+describe("the camera's preview (plan 075)", () => {
   const frame: PreviewFrame = { width: 640, height: 360, data: new Uint8Array(12), key: true, timestamp: 1_000_000, description: new Uint8Array([1, 100, 0, 30]) };
   const withPreview = () => {
     let send: (frame: PreviewFrame) => void = () => undefined;
@@ -163,10 +163,21 @@ describe("the camera prototype's preview (plan 075)", () => {
     expect(port.sent.filter((m) => m.type !== "ready")).toEqual([]);
   });
 
-  it("asks the engine for no preview without the switch", () => {
+  it("takes the engine's preview frames in any case, which the engine makes only while main says they are watched (step 7)", async () => {
     const { engine } = withPreview();
-    new NativeHost(new Port(), engine, () => undefined);
-    expect(engine.onPreview).not.toHaveBeenCalled();
+    const setCameraPreview = vi.fn(() => true);
+    const port = new Port();
+    const logs: string[] = [];
+    new NativeHost(port, { ...engine, setCameraPreview }, (line) => logs.push(line));
+    expect(engine.onPreview).toHaveBeenCalledTimes(1);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera: { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false } } });
+    await flush();
+    expect(engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ camera: expect.objectContaining({ preview: false }) }));
+    port.deliver({ type: "cameraPreview", sessionId: "s1", watching: true });
+    port.deliver({ type: "cameraPreview", sessionId: "other", watching: false });
+    port.deliver({ type: "cameraPreview", sessionId: "s1", watching: false });
+    expect(setCameraPreview.mock.calls).toEqual([[true], [false]]);
+    expect(logs).toContainEqual("camera preview: watched");
   });
 });
 

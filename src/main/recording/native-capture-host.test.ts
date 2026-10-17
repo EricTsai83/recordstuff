@@ -14,7 +14,8 @@ class Child extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
   args: string[] = [];
-  postMessage(message: MainMessage): void { this.sent.push(message); }
+  transferred: unknown[][] = [];
+  postMessage(message: MainMessage, ports?: unknown[]): void { this.sent.push(message); if (ports) this.transferred.push(ports); }
   kill(): boolean { this.killed = true; return true; }
   /** Deliver a message as if the utility process had sent it. */
   deliver(message: unknown): void { this.emit("message", message); }
@@ -87,6 +88,23 @@ describe("cameraChoice (plan 075)", () => {
     ctx.host.setCamera("other", { layout }, false);
     expect(child.sent.filter((m) => m.type === "cameraLayout")).toEqual([{ type: "cameraLayout", sessionId: "s1",
       camera: { width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: false }, hidden: true }]);
+  });
+
+  it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {
+    const ctx = setup();
+    const port = { close: () => undefined } as unknown as Electron.MessagePortMain;
+    expect(ctx.host.watchPreview("s1", true, port), "no process yet").toBe(false);
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    expect(ctx.host.watchPreview("other", true, port)).toBe(false);
+    expect(ctx.host.watchPreview("s1", true, port)).toBe(true);
+    expect(ctx.host.watchPreview("s1", false)).toBe(true);
+    expect(child.transferred).toEqual([[port]]);
+    expect(child.sent.filter((m) => m.type === "cameraPreview" || (m as { type: string }).type === "cameraPreviewPort")).toEqual([
+      { type: "cameraPreviewPort" }, { type: "cameraPreview", sessionId: "s1", watching: true }, { type: "cameraPreview", sessionId: "s1", watching: false }]);
   });
 });
 

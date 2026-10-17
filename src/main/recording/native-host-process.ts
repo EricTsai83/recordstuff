@@ -9,7 +9,7 @@
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
-import { cameraPreviewOn } from "../../shared/camera-preview";
+import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -62,12 +62,14 @@ interface NativeCapture {
   cameras?(): Promise<MicrophoneDevice[]>;
   /** Plan 075: the camera's bubble and whether it is shown, from the next frame on; false without a camera. */
   setCameraLayout?(options: CameraOptions, hidden: boolean): boolean;
-  /** Plan 075's prototype: preview chunks while a session composes the camera. */
+  /** Plan 075: preview chunks while a session composes the camera and its preview is watched. */
   onPreview?(onFrame: (frame: PreviewFrame) => void): void;
+  /** Plan 075 step 7: whether the session's preview is watched; false without a camera. */
+  setCameraPreview?(watching: boolean): boolean;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
-/** Where preview frames go: a `MessagePortMain` main hands over to a preview page (plan 075's prototype). */
+/** Where preview frames go: a `MessagePortMain` main hands over to Settings or the prototype's page (plan 075). */
 export interface PreviewPort {
   postMessage(message: unknown): void;
   close(): void;
@@ -79,9 +81,7 @@ export interface ParentPort {
   postMessage(message: unknown): void;
 }
 
-/** Main's message that hands this process the preview page's port; not part of the capture protocol. */
-export const PREVIEW_PORT_MESSAGE = "cameraPreviewPort";
-export { cameraPreviewOn, cameraPrototypeOn } from "../../shared/camera-preview";
+export { cameraPreviewOn, cameraPrototypeOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 
 const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "camera_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
@@ -140,10 +140,12 @@ export class NativeHost {
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
     private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
+    /** The prototype's switch: the preview is watched from the start, for its page. */
     private readonly cameraPreview = false,
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
-    if (cameraPreview) this.capture.onPreview?.((frame) => this.preview(frame));
+    // Frames come only while main says the preview is watched, or from the start under the prototype's switch.
+    this.capture.onPreview?.((frame) => this.preview(frame));
     port.on("message", ({ data, ports }) => {
       if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === PREVIEW_PORT_MESSAGE) {
         this.previewPort?.close();
@@ -198,6 +200,10 @@ export class NativeHost {
       case "cameraLayout":
         this.cameraLayout(message.sessionId, message.camera, message.hidden);
         return;
+      case "cameraPreview":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`camera preview: ${message.watching ? "watched" : "not watched"}${this.capture.setCameraPreview?.(message.watching) ? "" : " (no camera in this session)"}`);
+        return;
     }
   }
 
@@ -209,7 +215,6 @@ export class NativeHost {
     this.log(`camera layout: ${JSON.stringify(layout)}, ${hidden ? "hidden" : "shown"}${applied ? "" : " (no camera in this session)"}`);
   }
 
-  /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */
   /** The cameras, for the Settings device menu (plan 075). Never while a session holds the engine. */
   private async listCameras(): Promise<void> {
     if (this.session) {
@@ -224,6 +229,7 @@ export class NativeHost {
     }
   }
 
+  /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */
   private async listMicrophones(): Promise<void> {
     if (this.session) {
       this.send({ type: "microphones", error: "a recording is in progress" });

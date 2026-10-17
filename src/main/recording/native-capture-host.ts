@@ -19,7 +19,8 @@
  * out of main, and an attempt's process is never asked.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { DEFAULT_CAMERA_POSITION, PRIMARY_DISPLAY_KEY } from "../../shared/camera-layout";
+import { recordedPosition } from "../../shared/camera-layout";
+import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
@@ -84,9 +85,8 @@ interface Finishing { sessionId: string; recordingPath: string; bound: ReturnTyp
  * where it was placed for the primary display, else the default position.
  */
 export function cameraChoice(camera: SessionCamera, display: string): CameraChoice {
-  const { width, height, rounding, mirror, positions } = camera.layout;
-  const kept = positions.find((entry) => entry.display === display) ?? positions.find((entry) => entry.display === PRIMARY_DISPLAY_KEY);
-  const { x, y } = kept ?? DEFAULT_CAMERA_POSITION;
+  const { width, height, rounding, mirror } = camera.layout;
+  const { x, y } = recordedPosition(camera.layout, display);
   return { ...(camera.deviceId ? { deviceId: camera.deviceId } : {}), width, height, rounding, x, y, mirror };
 }
 
@@ -263,6 +263,17 @@ export class NativeCaptureHost implements RecorderHost {
   setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
     if (!this.child || this.watching !== sessionId || !this.display) return;
     this.post({ type: "cameraLayout", sessionId, camera: cameraChoice(camera, this.display), hidden });
+  }
+
+  /**
+   * Whether the session's preview is watched (plan 075 step 7), with the port its frames go to when Settings joins:
+   * false, the port unused, when this host's process does not run the session.
+   */
+  watchPreview(sessionId: string, watching: boolean, port?: Electron.MessagePortMain): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
+    if (port) this.child.postMessage({ type: PREVIEW_PORT_MESSAGE }, [port]);
+    this.post({ type: "cameraPreview", sessionId, watching });
+    return true;
   }
 
   destroy(): void {

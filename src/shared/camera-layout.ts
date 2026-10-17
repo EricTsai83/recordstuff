@@ -99,6 +99,17 @@ export function cameraPosition(layout: CameraLayout, displayKey: string): Camera
 }
 
 /**
+ * Where a recording of the display `displayId` puts the bubble: that display's position, else the primary display's
+ * (kept from before positions were per display), else the default. Settings places the bubble by the same rule
+ * (plan 075 step 7), so what it shows is what the recording composes.
+ */
+export function recordedPosition(layout: CameraLayout, displayId: string): CameraPosition {
+  const kept = layout.positions.find((entry) => entry.display === displayId)
+    ?? layout.positions.find((entry) => entry.display === PRIMARY_DISPLAY_KEY);
+  return kept ? { x: kept.x, y: kept.y } : { ...DEFAULT_CAMERA_POSITION };
+}
+
+/**
  * The layout with the bubble at `position` on `displayKey`'s display, which becomes the most recent; at most
  * MAX_POSITIONS displays are kept, the least recently set dropped first.
  */

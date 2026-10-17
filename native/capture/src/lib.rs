@@ -148,7 +148,7 @@ pub struct CameraOptions {
     pub x: f64,
     pub y: f64,
     pub mirror: bool,
-    /// Whether preview frames are made; absent is none.
+    /// Whether the preview is watched from the start (`setCameraPreview` changes it); absent is not.
     pub preview: Option<bool>,
 }
 
@@ -446,6 +446,21 @@ impl NativeCapture {
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = (options, hidden);
+            Ok(false)
+        }
+    }
+
+    /// Whether the session's preview is watched (plan 075 step 7): its frames are composed and encoded only then, and
+    /// start at a key frame. Answers false when no session composes a camera.
+    #[napi]
+    pub fn set_camera_preview(&self, watching: bool) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_preview(watching)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = watching;
             Ok(false)
         }
     }

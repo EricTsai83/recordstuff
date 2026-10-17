@@ -113,6 +113,8 @@ export type MainMessage =
    * nothing. `camera.deviceId` is ignored: the camera is not switched while recording.
    */
   | { type: "cameraLayout"; sessionId: string; camera: CameraChoice; hidden: boolean }
+  /** Whether the session's preview is watched (plan 075 step 7): Settings shows it, so its frames are made. */
+  | { type: "cameraPreview"; sessionId: string; watching: boolean }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -212,6 +214,8 @@ export function isMainMessage(value: unknown): value is MainMessage {
       return isNonEmptyString(value["sessionId"]);
     case "cameraLayout":
       return isNonEmptyString(value["sessionId"]) && isCameraChoice(value["camera"]) && typeof value["hidden"] === "boolean";
+    case "cameraPreview":
+      return isNonEmptyString(value["sessionId"]) && typeof value["watching"] === "boolean";
     case "listMicrophones":
     case "listCameras":
     case "ping":
