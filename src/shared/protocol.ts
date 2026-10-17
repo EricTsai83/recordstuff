@@ -73,6 +73,23 @@ export interface NativeStart {
   hideSystemUi: boolean;
   /** Mix the microphone in (plan 074); absent is off. */
   microphone?: MicrophoneChoice;
+  /** Compose the camera into the frames (plan 075); absent is off. */
+  camera?: CameraChoice;
+}
+
+/**
+ * The camera composed into a recording (plan 075): which one, and its bubble on the recorded display, in the
+ * fractions of src/shared/camera-layout.ts (the position the one kept for that display).
+ */
+export interface CameraChoice {
+  /** AVCaptureDevice's unique ID; absent is the system's default camera. */
+  deviceId?: string;
+  width: number;
+  height: number;
+  rounding: number;
+  x: number;
+  y: number;
+  mirror: boolean;
 }
 
 export type MainMessage =
@@ -120,6 +137,10 @@ export type HostMessage =
   | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The microphone told lost delivers sound again, which the track takes from then on (plan 074). */
   | { type: "microphoneResumed"; sessionId: string; detail: string }
+  /** The camera stopped delivering while recording, and the recording goes on without it (plan 075, D12). */
+  | { type: "cameraLost"; sessionId: string; detail: string }
+  /** The camera told lost delivers again and is composed again. */
+  | { type: "cameraResumed"; sessionId: string; detail: string }
   /** The answer to `listMicrophones`: the inputs, or why they could not be listed. */
   | { type: "microphones"; devices: MicrophoneDevice[] }
   | { type: "microphones"; error: string }
@@ -137,6 +158,13 @@ function isPoint(value: unknown): value is { x: number; y: number } {
   return isRecord(value) && Number.isInteger(value["x"]) && Number.isInteger(value["y"]);
 }
 
+function isCameraChoice(value: unknown): value is CameraChoice {
+  if (!isRecord(value) || typeof value["mirror"] !== "boolean" || (value["deviceId"] !== undefined && !isNonEmptyString(value["deviceId"]))) return false;
+  const inRange = (key: string, min: number, max: number): boolean =>
+    typeof value[key] === "number" && Number.isFinite(value[key]) && (value[key] as number) >= min && (value[key] as number) <= max;
+  return inRange("width", 0, 1) && inRange("height", 0, 1) && inRange("rounding", 0, 1) && inRange("x", 0, 1) && inRange("y", 0, 1);
+}
+
 function isMicrophoneChoice(value: unknown): value is MicrophoneChoice {
   return isRecord(value) && typeof value["enabled"] === "boolean" && (value["deviceId"] === undefined || isNonEmptyString(value["deviceId"]));
 }
@@ -151,7 +179,8 @@ function isNativeStart(value: unknown): value is NativeStart {
     isNonEmptyString(value["recordingPath"]) &&
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
     typeof value["hideSystemUi"] === "boolean" &&
-    (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"]));
+    (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"])) &&
+    (value["camera"] === undefined || isCameraChoice(value["camera"]));
 }
 
 function isEngineFileReport(value: unknown): value is EngineFileReport {
@@ -205,6 +234,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
         typeof value["detail"] === "string";
     case "microphoneLost":
     case "microphoneResumed":
+    case "cameraLost":
+    case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
     case "microphones":
       return Array.isArray(value["devices"]) ? value["devices"].every(isMicrophoneDevice) && value["error"] === undefined

@@ -6,6 +6,7 @@
  * Failure never fakes success: any error goes back to `idle` with a `failed`
  * event and, when bytes were written, a kept `.recording.mp4`.
  */
+import type { CameraLayout } from "../../shared/camera-layout";
 import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
@@ -39,6 +40,14 @@ export interface RecorderWriter {
 export interface SessionCapture {
   /** Present only when the microphone is on. */
   microphone?: MicrophoneChoice;
+  /** Present only when the camera is on (plan 075). */
+  camera?: SessionCamera;
+}
+
+/** The camera setting as a session reads it (plan 075): the device and the layout, whose position the host picks for the display. */
+export interface SessionCamera {
+  deviceId?: string;
+  layout: CameraLayout;
 }
 
 /** The microphone setting as a session reads it: the choice, and the device's name for the log. */
@@ -98,6 +107,8 @@ export interface RecorderDeps {
   countdownSound?: () => boolean;
   /** Read once per session like quality (plan 074); absent means off. */
   microphone?: () => SessionMicrophone;
+  /** The same for the camera (plan 075); absent, or undefined from it, means off. */
+  camera?: () => SessionCamera | undefined;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -152,10 +163,15 @@ export interface SessionTrace extends SessionTiming {
 export type RecorderEvent =
   | { type: "failureStatus"; result: RecordingFailure }
   | { type: "state"; state: RecordingState }
-  /** `microphoneLost`: the microphone dropped out partway, and that part has system audio only (plan 074). */
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; session: SessionTrace }
+  /**
+   * `microphoneLost`: the microphone dropped out partway, and that part has system audio only (plan 074);
+   * `cameraLost`: the camera did, and that part shows the screen alone (plan 075).
+   */
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; session: SessionTrace }
   /** The microphone stopped while recording; the recording goes on without it. Told once per session (plan 074). */
   | { type: "microphoneLost"; sessionId: string; detail: string }
+  /** The camera stopped while recording; the recording goes on without it. Told once per session (plan 075). */
+  | { type: "cameraLost"; sessionId: string; detail: string }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -222,6 +238,10 @@ interface Session {
   microphone: SessionMicrophone;
   /** The engine told that the microphone stopped while recording. */
   microphoneLost?: boolean;
+  /** Camera snapshot taken when the session was created (plan 075); absent is off. */
+  camera?: SessionCamera;
+  /** The engine told that the camera stopped while recording. */
+  cameraLost?: boolean;
   /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -638,6 +658,7 @@ export class Recorder {
       countdownSeconds,
       countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
       microphone: this.deps.microphone?.() ?? { enabled: false },
+      ...(() => { const camera = this.deps.camera?.(); return camera ? { camera } : {}; })(),
       overlay: false,
       requestedAt: this.monotonic(),
       finalizing: false,
@@ -711,7 +732,8 @@ export class Recorder {
     }
     try {
       const { label: _label, ...microphone } = session.microphone;
-      await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, microphone.enabled ? { microphone } : undefined);
+      const capture: SessionCapture = { ...(microphone.enabled ? { microphone } : {}), ...(session.camera ? { camera: session.camera } : {}) };
+      await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, Object.keys(capture).length ? capture : undefined);
     } catch (cause) {
       if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
       await this.fail(session.id, cause instanceof HostStartError ? cause.code : "capture_start_failed", messageOf(cause));
@@ -843,6 +865,17 @@ export class Recorder {
         return;
       case "microphoneResumed":
         if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} microphone resumed: ${message.detail}`);
+        return;
+      case "cameraLost":
+        // The recording goes on with the screen alone, and composes the camera again if it comes back (plan 075, D12).
+        if (!this.acceptsMedia(session)) return;
+        this.deps.log(`recorder: session ${session.id} camera lost; recording continues without it: ${message.detail}`);
+        if (session.cameraLost) return;
+        session.cameraLost = true;
+        this.emit({ type: "cameraLost", sessionId: session.id, detail: message.detail });
+        return;
+      case "cameraResumed":
+        if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} camera resumed: ${message.detail}`);
         return;
       case "stopped":
         if (session.finalizing) return;
@@ -1121,7 +1154,8 @@ export class Recorder {
     this.logFinalizeTiming(session, drainedAt, checkpointMs);
     this.endSaving(session);
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}),
-      ...(session.microphoneLost ? { microphoneLost: true as const } : {}), session: this.trace(session) });
+      ...(session.microphoneLost ? { microphoneLost: true as const } : {}), ...(session.cameraLost ? { cameraLost: true as const } : {}),
+      session: this.trace(session) });
     await session.sentinel.clear();
   }
 

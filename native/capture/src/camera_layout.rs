@@ -3,7 +3,9 @@
 //! Settings preview draws with too (src/shared/camera-layout.ts): both are checked against the same cases
 //! (src/shared/camera-layout.cases.json).
 //!
-//! Step 2's prototype takes its layout from the development switch `RECORDSTUFF_CAMERA_PROTOTYPE` (`CameraPrototype`):
+//! Step 2's prototype took its layout from the development switch `RECORDSTUFF_CAMERA_PROTOTYPE` (`CameraPrototype`),
+//! whose grammar is kept for tests; since step 5 the engine composes the camera only at main's request (the Camera
+//! setting), and main reads the switch for whether the Camera row is available and preview frames are made. The switch:
 //! `1` (or `on`) for the defaults, or comma-separated `key=value` pairs: `width`, `height` (fractions of the output's
 //! shorter side, 0.05–0.6), `rounding` (0–1, 1 being half the bubble's shorter side), `x`, `y` (0–1 of the free space:
 //! 0 the left or top edge, 1 the right or bottom one), `mirror` (0 or 1), `device` (an AVCaptureDevice unique ID) and

@@ -126,6 +126,24 @@ fn audio(audio: Option<AudioOptions>) -> Result<core::AudioRequest> {
     Ok(core::AudioRequest { system, microphone: audio.microphone.then_some(audio.microphone_id) })
 }
 
+/// The camera composed into the recording (plan 075): which one, and its bubble on the recorded display.
+#[napi(object)]
+pub struct CameraOptions {
+    /// AVCaptureDevice's unique ID; absent is the system's default camera.
+    pub device_id: Option<String>,
+    /// Fractions of the frame's shorter side, 0.05 to 0.6 (src/shared/camera-layout.ts).
+    pub width: f64,
+    pub height: f64,
+    /// 0 to 1, 1 being half the bubble's shorter side.
+    pub rounding: f64,
+    /// The position as a fraction of the free space on each axis.
+    pub x: f64,
+    pub y: f64,
+    pub mirror: bool,
+    /// Whether preview frames are made; absent is none.
+    pub preview: Option<bool>,
+}
+
 #[napi(object)]
 pub struct PrepareOptions {
     /// The display's CGDirectDisplayID on macOS; unused on Windows.
@@ -144,6 +162,7 @@ pub struct PrepareOptions {
     pub path: String,
     pub source: Option<CaptureSource>,
     pub audio: Option<AudioOptions>,
+    pub camera: Option<CameraOptions>,
 }
 
 #[napi(object)]
@@ -195,7 +214,8 @@ pub struct FinishReport {
 #[napi(object)]
 #[derive(Clone)]
 pub struct EngineEvent {
-    /// `progress`, `writeError`, `captureError` or `microphoneLost` (074: the recording goes on without it).
+    /// `progress`, `writeError`, `captureError`, `microphoneLost` (074: the recording goes on without it), `cameraLost`
+    /// and `cameraResumed` (plan 075, the same for the camera).
     pub kind: String,
     pub bytes: Option<f64>,
     pub code: Option<String>,
@@ -295,6 +315,13 @@ impl core::Events for Emitter {
     }
     fn microphone_resumed(&self, detail: String) {
         self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail) });
+    }
+
+    fn camera_lost(&self, detail: String) {
+        self.emit(EngineEvent { kind: "cameraLost".into(), bytes: None, code: None, detail: Some(detail) });
+    }
+    fn camera_resumed(&self, detail: String) {
+        self.emit(EngineEvent { kind: "cameraResumed".into(), bytes: None, code: None, detail: Some(detail) });
     }
 
     fn preview(&self, chunk: core::PreviewChunk) {
@@ -495,6 +522,19 @@ impl Task for PrepareTask {
                 path: options.path.into(),
                 source: source(options.source)?,
                 audio: audio(options.audio)?,
+                camera: options.camera.map(|camera| core::CameraRequest {
+                    device: camera.device_id.filter(|id| !id.is_empty()),
+                    layout: camera_layout::Layout {
+                        width: camera.width,
+                        height: camera.height,
+                        rounding: camera.rounding,
+                        x: camera.x,
+                        y: camera.y,
+                        mirror: camera.mirror,
+                    }
+                    .clamped(),
+                    preview: camera.preview.unwrap_or(false),
+                }),
             };
             let (session, prepared) =
                 Session::prepare(request, Arc::new(Emitter(self.events.clone(), self.preview.clone()))).map_err(|e| failure(e.code, e.detail))?;

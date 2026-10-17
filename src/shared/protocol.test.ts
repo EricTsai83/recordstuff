@@ -22,6 +22,16 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: { x: 0.5, y: 0 } } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: [0, 0] } })).toBe(false);
   });
+  it("carries the camera choice and refuses one out of range (plan 075)", () => {
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
+    const camera = { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false };
+    const start = (value: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, camera: value } });
+    expect(isMainMessage(start(camera))).toBe(true);
+    expect(isMainMessage(start({ ...camera, deviceId: "47B4B64B" }))).toBe(true);
+    for (const bad of [{ ...camera, deviceId: "" }, { ...camera, x: 1.5 }, { ...camera, width: Number.NaN }, { ...camera, mirror: "no" }, null, []]) {
+      expect(isMainMessage(start(bad)), JSON.stringify(bad)).toBe(false);
+    }
+  });
   it("carries the microphone choice and the request for the inputs (plan 074)", () => {
     const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
     const start = (microphone: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, microphone } });
@@ -50,6 +60,10 @@ describe("isHostMessage", () => {
   it("accepts the microphone's refusal, its loss and the listed inputs, and refuses malformed ones (plan 074)", () => {
     expect(isHostMessage({ type: "error", sessionId: "a", code: "microphone_unavailable", detail: "microphone: there is no audio input" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "camera_unavailable", detail: "camera: no camera is connected" })).toBe(true);
+    for (const type of ["cameraLost", "cameraResumed"]) {
+      expect(isHostMessage({ type, sessionId: "a", detail: "the camera delivered no frame for 2 s" })).toBe(true);
+      expect(isHostMessage({ type, sessionId: "", detail: "x" })).toBe(false);
+    }
     expect(isHostMessage({ type: "microphoneLost", sessionId: "a", detail: "the microphone delivered no sound for 2 s" })).toBe(true);
     expect(isHostMessage({ type: "microphoneLost", sessionId: "", detail: "x" })).toBe(false);
     expect(isHostMessage({ type: "microphoneLost", sessionId: "a" })).toBe(false);

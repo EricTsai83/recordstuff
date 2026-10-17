@@ -6,7 +6,7 @@ import type { HostMessage, MainMessage } from "../../shared/protocol";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("tests pass their own fork"); } } }));
 
-const { NativeCaptureHost } = await import("./native-capture-host");
+const { NativeCaptureHost, cameraChoice } = await import("./native-capture-host");
 
 class Child extends EventEmitter {
   sent: MainMessage[] = [];
@@ -56,6 +56,26 @@ async function started(ctx: ReturnType<typeof setup>): Promise<Child> {
   await start;
   return child;
 }
+
+describe("cameraChoice (plan 075)", () => {
+  const layout = { width: 0.3, height: 0.2, rounding: 0.5, mirror: true,
+    positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "69733632", x: 0.9, y: 0.8 }] };
+
+  it("takes the bubble's position on the recorded display, else the primary display's, else the default", () => {
+    expect(cameraChoice({ deviceId: "cam", layout }, "69733632")).toEqual({ deviceId: "cam", width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: true });
+    expect(cameraChoice({ layout }, "1")).toEqual({ width: 0.3, height: 0.2, rounding: 0.5, x: 0.1, y: 0.2, mirror: true });
+    expect(cameraChoice({ layout: { ...layout, positions: [] } }, "1")).toMatchObject({ x: 0.97, y: 0.95 });
+  });
+
+  it("posts start with the camera for the display granted", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await start;
+    expect(ctx.children.at(-1)!.sent.at(-1)).toMatchObject({ type: "start", native: { displayId: 69733632, camera: { x: 0.9, y: 0.8, mirror: true } } });
+  });
+});
 
 describe("NativeCaptureHost", () => {
   it("hands each recording attempt's process to onLaunch, and never the microphone list's (plan 075's prototype)", async () => {

@@ -185,6 +185,61 @@ describe("formatTimestamp", () => {
   });
 });
 
+describe("the camera (plan 075)", () => {
+  const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+
+  it("snapshots the camera when the session begins and passes it to the host with the microphone", async () => {
+    let camera: { deviceId?: string; layout: typeof layout } | undefined = { deviceId: "cam", layout };
+    const ctx = setup({ deps: { microphone: () => ({ enabled: true }), camera: () => camera } });
+    ctx.recorder.toggle();
+    camera = undefined;
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.capturedWith).toEqual([{ microphone: { enabled: true }, camera: { deviceId: "cam", layout } }]);
+  });
+
+  it("passes no camera without the dependency or when it answers none", async () => {
+    for (const camera of [undefined, () => undefined]) {
+      const ctx = setup({ deps: camera ? { camera } : {} });
+      await startRecording(ctx);
+      expect(ctx.host.capturedWith).toEqual([undefined]);
+    }
+  });
+
+  it("refuses with camera_unavailable before any countdown", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "camera_unavailable", detail: "camera: no camera is connected" });
+    await flush();
+    expect(ctx.events).toContainEqual(expect.objectContaining({ type: "failed", code: "camera_unavailable", outcome: "empty" }));
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("keeps recording when the camera is lost, logs each dropout and its return, tells it once and marks the saved recording", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    ctx.host.emit({ type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" });
+    ctx.host.emit({ type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.1 s" });
+    ctx.host.emit({ type: "cameraLost", sessionId: "s1", detail: "again" });
+    ctx.host.emit({ type: "cameraLost", sessionId: "other", detail: "another session's" });
+    expect(ctx.events.filter((event) => event.type === "cameraLost")).toEqual([
+      { type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" }]);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logs.filter((line) => line.includes("camera lost; recording continues without it"))).toHaveLength(2);
+    expect(logs).toContainEqual(expect.stringContaining("camera resumed: the camera delivered frames again after 3.1 s"));
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const saved = ctx.events.find((event) => event.type === "saved");
+    expect(saved).toMatchObject({ cameraLost: true });
+    expect(saved).not.toHaveProperty("microphoneLost");
+  });
+});
+
 describe("the microphone (plan 074)", () => {
   it("passes nothing to the host and logs mic off without the dependency or with the switch off", async () => {
     for (const microphone of [undefined, () => ({ enabled: false, deviceId: "usb" })]) {

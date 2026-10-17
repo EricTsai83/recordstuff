@@ -33,7 +33,7 @@ use super::content::{self, describe};
 use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
 use super::microphone::MicrophoneCapture;
-use crate::camera_layout::{CameraPrototype, PREVIEW_FPS};
+use crate::camera_layout::PREVIEW_FPS;
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
 use crate::writer::Media;
 use crate::pacing::Pacer;
@@ -370,8 +370,8 @@ pub struct Session {
     /// The picture's stream first, then the sound's when it has its own.
     streams: Vec<Stream>,
     microphone: Option<MicrophoneCapture>,
-    /// The camera composed into the frames (plan 075's prototype), and its preview.
-    camera: Option<CameraCapture>,
+    /// The camera composed into the frames (plan 075), which the core closes, and its preview.
+    camera: Option<Arc<CameraCapture>>,
     preview: Option<Preview>,
     core: Core<Mac>,
 }
@@ -428,18 +428,21 @@ impl Session {
         if let Some(input) = microphone_input {
             core.watch_microphone(input);
         }
-        // Step 2's camera prototype, behind its development switch: opened before the screen, so a camera that cannot
-        // open refuses the start before anything else runs.
-        let prototype = CameraPrototype::from_env();
+        // The camera (plan 075): only main's request, which comes only while the Camera switch is on, so a recording
+        // without it never opens the camera. Opened before the screen, so a camera that cannot open refuses the start
+        // (camera_unavailable, D11) before anything else runs.
+        let camera_request = request.camera.clone();
         let mut camera = None;
         let mut compositor = None;
         let mut camera_note = None;
-        if let Some(prototype) = prototype.as_ref() {
-            let opened = CameraCapture::start(prototype.device.as_deref())?;
-            let made = Compositor::new(request.width, request.height, prototype.layout, opened.shared.clone())
+        if let Some(wanted) = camera_request.as_ref() {
+            let shared = core.shared();
+            let opened = CameraCapture::start(wanted.device.as_deref(), shared.events(), move || shared.recording())?;
+            let made = Compositor::new(request.width, request.height, wanted.layout, opened.feed.clone())
                 .map_err(|detail| CaptureError::new("capture_start_failed", format!("camera compositor: {detail}")))?;
-            camera_note = Some(format!("camera prototype: {:?}, preview {}", prototype.layout, prototype.preview));
+            camera_note = Some(format!("camera: {}, {:?}, preview {}", opened.name, wanted.layout, wanted.preview));
             compositor = Some(Arc::new(made));
+            core.watch_camera(opened.clone());
             camera = Some(opened);
             core.encode_every_slot(true);
             mark("camera start");
@@ -509,9 +512,9 @@ impl Session {
         }
         mark("first frame");
         if let Some(camera) = session.camera.as_ref() {
-            eprintln!("camera prototype: after preparing {}", camera.state());
+            eprintln!("camera: after preparing {}", camera.state());
         }
-        if let (Some(compositor), true) = (compositor, prototype.as_ref().is_some_and(|prototype| prototype.preview)) {
+        if let (Some(compositor), true) = (compositor, camera_request.as_ref().is_some_and(|wanted| wanted.preview)) {
             match Preview::start(session.core.shared(), compositor) {
                 Ok(preview) => session.preview = Some(preview),
                 Err(error) => {
@@ -567,9 +570,8 @@ impl Session {
             preview.stop();
         }
         if let Some(camera) = self.camera.take() {
-            // The capture host's stderr reaches main's log (step 2's prototype).
-            eprintln!("camera prototype: at the stop {}", camera.state());
-            camera.stop();
+            // The capture host's stderr reaches main's log; the core closes the camera in `halted`, below.
+            eprintln!("camera: at the stop {}", camera.state());
         }
         self.core.halted();
     }
@@ -617,7 +619,7 @@ mod preview_test {
 
     #[test]
     fn the_preview_is_an_h264_stream_whose_key_frames_carry_the_avcc_record() {
-        let camera = Arc::new(super::super::camera::Shared::default());
+        let camera = Arc::new(super::super::camera::Feed::default());
         let compositor = Compositor::new(1280, 720, crate::camera_layout::Layout::default(), camera).unwrap();
         let chunks = Arc::new(Chunks::default());
         let sink = Arc::new(PreviewSink { events: chunks.clone(), format: std::sync::Mutex::new(None) });

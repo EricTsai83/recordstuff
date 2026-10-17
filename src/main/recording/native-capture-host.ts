@@ -19,9 +19,10 @@
  * out of main, and an attempt's process is never asked.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice } from "../../shared/protocol";
+import { DEFAULT_CAMERA_POSITION, PRIMARY_DISPLAY_KEY } from "../../shared/camera-layout";
+import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
-import type { RecorderHost, SessionCapture } from "./recorder";
+import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
 
 export interface NativeCaptureHostOptions {
@@ -77,6 +78,17 @@ interface FileOutcome {
 
 /** A process that stopped capturing and is finishing `recordingPath`. */
 interface Finishing { sessionId: string; recordingPath: string; bound: ReturnType<typeof setTimeout> }
+
+/**
+ * The camera's choice for a recording of `display` (plan 075): the bubble where it was placed on that display, else
+ * where it was placed for the primary display, else the default position.
+ */
+export function cameraChoice(camera: SessionCamera, display: string): CameraChoice {
+  const { width, height, rounding, mirror, positions } = camera.layout;
+  const kept = positions.find((entry) => entry.display === display) ?? positions.find((entry) => entry.display === PRIMARY_DISPLAY_KEY);
+  const { x, y } = kept ?? DEFAULT_CAMERA_POSITION;
+  return { ...(camera.deviceId ? { deviceId: camera.deviceId } : {}), width, height, rounding, x, y, mirror };
+}
 
 export class NativeCaptureHost implements RecorderHost {
   private child: UtilityProcess | undefined;
@@ -174,6 +186,7 @@ export class NativeCaptureHost implements RecorderHost {
       displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
       ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
+      ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
     } });
   }
 

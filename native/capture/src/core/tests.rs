@@ -32,6 +32,9 @@ struct FakeVideo {
     encoded: Arc<Mutex<Vec<(u32, u64, bool)>>>,
     format_sent: AtomicBool,
     fail: Arc<AtomicBool>,
+    /// The camera composed into each encoded frame, as a compositor takes it at encoding time (plan 075).
+    camera: Arc<CameraFeed<u32>>,
+    composed: Arc<Mutex<Vec<Option<u32>>>>,
 }
 
 impl VideoEncode<u32> for FakeVideo {
@@ -43,6 +46,7 @@ impl VideoEncode<u32> for FakeVideo {
             self.sink.media(Media::VideoFormat { avcc: vec![1, 100, 0, 40, 0xff, 0xe0, 0], width: 64, height: 36 });
         }
         self.encoded.lock().unwrap().push((*frame, pts_ns, key_frame));
+        self.composed.lock().unwrap().push(self.camera.latest().map(|(camera, _)| camera));
         self.sink.media(Media::Video { data: vec![0, 0, 0, 1, 0x65], pts_ns, sync: key_frame });
         Ok(())
     }
@@ -107,6 +111,8 @@ struct Heard {
     progress: AtomicUsize,
     microphone_lost: Mutex<Vec<String>>,
     microphone_resumed: Mutex<Vec<String>>,
+    camera_lost: Mutex<Vec<String>>,
+    camera_resumed: Mutex<Vec<String>>,
 }
 
 impl Events for Heard {
@@ -125,6 +131,12 @@ impl Events for Heard {
     fn microphone_resumed(&self, detail: String) {
         self.microphone_resumed.lock().unwrap().push(detail);
     }
+    fn camera_lost(&self, detail: String) {
+        self.camera_lost.lock().unwrap().push(detail);
+    }
+    fn camera_resumed(&self, detail: String) {
+        self.camera_resumed.lock().unwrap().push(detail);
+    }
 }
 
 struct Rig {
@@ -135,6 +147,8 @@ struct Rig {
     fail: Arc<AtomicBool>,
     audio_fail: Arc<AtomicBool>,
     path: std::path::PathBuf,
+    camera: Arc<CameraFeed<u32>>,
+    composed: Arc<Mutex<Vec<Option<u32>>>>,
 }
 
 impl Rig {
@@ -150,15 +164,18 @@ impl Rig {
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
         let audio_fail = Arc::new(AtomicBool::new(false));
-        let (e, f, a) = (encoded.clone(), fail.clone(), audio_fail.clone());
+        let camera = Arc::new(CameraFeed::default());
+        let composed = Arc::new(Mutex::new(Vec::new()));
+        let (e, f, a, c, d) = (encoded.clone(), fail.clone(), audio_fail.clone(), camera.clone(), composed.clone());
         let made = core
             .make_encoders(move |sink| {
-                Ok((FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f }, FakeAudio { fail: a, ..FakeAudio::default() }))
+                let video = FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f, camera: c, composed: d };
+                Ok((video, FakeAudio { fail: a, ..FakeAudio::default() }))
             })
             .unwrap();
         Core::<Fake>::encoders_made(made).unwrap();
         let shared = core.shared();
-        Self { core, shared, encoded, heard, fail, audio_fail, path }
+        Self { core, shared, encoded, heard, fail, audio_fail, path, camera, composed }
     }
 
     /// Frames every `interval` and 10 ms of sound every 10 ms, stamped with the clock, for `duration`.
@@ -635,4 +652,161 @@ fn a_refresh_capture_skipped_is_filled_with_the_newest_picture() {
     assert_eq!(gaps, [33, 33, 33, 33], "encoded {encoded:?}");
     assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [102, 104, 105, 108, 110]);
     rig.stop();
+}
+
+/// The platform's camera as the core sees it (plan 075, step 5): judged on the refresh thread, its closes counted.
+struct FakeCamera {
+    feed: Arc<CameraFeed<u32>>,
+    closes: AtomicUsize,
+}
+
+impl CameraControl for FakeCamera {
+    fn judge(&self, now_ns: u64, since_ns: u64, events: &dyn Events) {
+        self.feed.judge(now_ns, since_ns, true, events);
+    }
+    fn close(&self) {
+        self.closes.fetch_add(1, Ordering::AcqRel);
+        self.feed.clear();
+    }
+}
+
+impl Rig {
+    fn watch_camera(&self) -> Arc<FakeCamera> {
+        let camera = Arc::new(FakeCamera { feed: self.camera.clone(), closes: AtomicUsize::new(0) });
+        self.core.watch_camera(camera.clone());
+        camera
+    }
+
+    /// A camera frame captured now.
+    fn camera_frame(&self, n: u32) {
+        self.camera.deliver(n, Fake::now_ns(), Fake::now_ns(), &*self.heard);
+    }
+}
+
+#[test]
+fn the_camera_keeps_only_its_newest_frame() {
+    let feed = CameraFeed::<u32>::default();
+    let heard = Heard::default();
+    assert_eq!(feed.latest(), None);
+    for n in 1..=3 {
+        feed.deliver(n, 10 * u64::from(n), 10 * u64::from(n), &heard);
+    }
+    assert_eq!(feed.latest(), Some((3, 30)));
+    assert_eq!(feed.counts(), (3, 0));
+}
+
+#[test]
+fn each_encoded_frame_takes_the_camera_s_newest_frame_whether_the_camera_is_slower_or_faster() {
+    for (camera_interval, expect_repeats) in [(Duration::from_millis(66), true), (Duration::from_millis(16), false)] {
+        let mut rig = Rig::new(if expect_repeats { "camera-slower" } else { "camera-faster" });
+        rig.core.encode_every_slot(true);
+        rig.watch_camera();
+        rig.camera_frame(0);
+        rig.shared.frame(7, Fake::now_ns());
+        rig.core.record().unwrap();
+        let end = Instant::now() + Duration::from_millis(700);
+        let mut n = 1;
+        while Instant::now() < end {
+            rig.camera_frame(n);
+            n += 1;
+            std::thread::sleep(camera_interval);
+        }
+        rig.stop();
+        let composed: Vec<u32> = rig.composed.lock().unwrap().iter().map(|c| c.expect("a camera frame in every encoded frame")).collect();
+        assert!(composed.len() >= 15, "{composed:?}");
+        // Never an older frame after a newer one.
+        assert!(composed.windows(2).all(|w| w[1] >= w[0]), "{composed:?}");
+        let repeats = composed.windows(2).filter(|w| w[0] == w[1]).count();
+        let skips = composed.windows(2).filter(|w| w[1] > w[0] + 1).count();
+        if expect_repeats {
+            // 15 fps into 30: each camera frame about twice.
+            assert!(repeats * 3 >= composed.len(), "slower camera: {composed:?}");
+        } else {
+            // 60 fps into 30: frames in between are left out, never queued.
+            assert!(skips * 3 >= composed.len(), "faster camera: {composed:?}");
+        }
+    }
+}
+
+#[test]
+fn a_camera_silent_for_two_seconds_is_told_lost_composes_nothing_and_comes_back_with_its_next_frame() {
+    let mut rig = Rig::new("camera-lost");
+    rig.core.encode_every_slot(true);
+    rig.watch_camera();
+    rig.camera_frame(1);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    // No frame for a while: not yet lost before 2 s.
+    std::thread::sleep(Duration::from_millis(1_500));
+    assert!(rig.heard.camera_lost.lock().unwrap().is_empty());
+    wait_for("the loss", || !rig.heard.camera_lost.lock().unwrap().is_empty());
+    assert!(rig.camera.is_lost());
+    assert_eq!(rig.camera.latest(), None, "a lost camera gives the compositor nothing");
+    let lost_at = rig.composed.lock().unwrap().len();
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(rig.composed.lock().unwrap()[lost_at..].iter().all(Option::is_none), "the screen alone while it is lost");
+    // Told once, however long it stays silent.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(rig.heard.camera_lost.lock().unwrap().len(), 1);
+    rig.camera_frame(2);
+    assert_eq!(rig.heard.camera_resumed.lock().unwrap().len(), 1);
+    assert_eq!(rig.camera.latest().map(|(n, _)| n), Some(2));
+    wait_for("the camera composed again", || rig.composed.lock().unwrap().last() == Some(&Some(2)));
+    rig.stop();
+    assert_eq!(rig.camera.counts(), (2, 1));
+}
+
+#[test]
+fn a_camera_is_never_told_lost_before_the_recording_or_when_it_delivers() {
+    let feed = CameraFeed::<u32>::default();
+    let heard = Heard::default();
+    // Prepared, silent for long: not a loss.
+    feed.judge(10 * NANOS_PER_SECOND, 0, false, &heard);
+    assert!(heard.camera_lost.lock().unwrap().is_empty());
+    // Recording since 1 s, a frame at 2 s: judged at 3.9 s it is still delivering.
+    feed.deliver(1, 2 * NANOS_PER_SECOND, 2 * NANOS_PER_SECOND, &heard);
+    feed.judge(3_900_000_000, NANOS_PER_SECOND, true, &heard);
+    assert!(heard.camera_lost.lock().unwrap().is_empty());
+    feed.judge(4_100_000_000, NANOS_PER_SECOND, true, &heard);
+    assert_eq!(heard.camera_lost.lock().unwrap().len(), 1);
+    // A device the platform sees go is told at once while recording, and only once.
+    let gone = CameraFeed::<u32>::default();
+    gone.deliver(1, 1, 1, &heard);
+    gone.lose("disconnected".into(), true, &heard);
+    gone.lose("disconnected".into(), true, &heard);
+    assert_eq!(heard.camera_lost.lock().unwrap().len(), 2);
+    assert_eq!(gone.latest(), None);
+}
+
+#[test]
+fn the_camera_is_closed_however_the_session_ends() {
+    // A stop: closed once capture has ended, before the file is finished.
+    let mut stopped = Rig::new("camera-stop");
+    let camera = stopped.watch_camera();
+    stopped.shared.frame(1, Fake::now_ns());
+    stopped.core.record().unwrap();
+    wait_for("the first frame", || !stopped.encoded.lock().unwrap().is_empty());
+    let stop_ns = Fake::now_ns();
+    let drained = stopped.core.drain(stop_ns);
+    stopped.core.halt();
+    stopped.core.halted();
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1, "closed at the halt");
+    let (_, finishing) = stopped.core.end(stop_ns, drained);
+    finishing.wait().unwrap();
+    drop(stopped);
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1, "and only once");
+
+    // A cancel: a prepared session released.
+    let cancelled = Rig::new("camera-cancel");
+    let camera = cancelled.watch_camera();
+    cancelled.core.halt();
+    cancelled.core.release();
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1);
+
+    // Its owner gone without either (a failed prepare, a session dropped).
+    let dropped = Rig::new("camera-drop");
+    let camera = dropped.watch_camera();
+    drop(dropped);
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1);
+    assert_eq!(camera.feed.latest(), None);
 }

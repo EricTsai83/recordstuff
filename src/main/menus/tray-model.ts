@@ -344,6 +344,10 @@ export function microphoneDeniedNotification(language?: Language): NotificationT
 export function cameraDeniedNotification(language?: Language): NotificationText {
   return notice(t("RecordStuff cannot use the camera. Click to open System Settings.", language));
 }
+/** The camera stopped while recording (plan 075), told once the recording ends as the microphone's. */
+export function cameraLostNotification(language?: Language): NotificationText {
+  return notice(t("The camera dropped out during the recording. The screen was recorded without it while it was out.", language));
+}
 /** Told once the recording ends, as the other capture notices are (plan 074). */
 export function microphoneLostNotification(language?: Language): NotificationText {
   return notice(t("The microphone dropped out during the recording. Only system audio was recorded while it was out.", language));

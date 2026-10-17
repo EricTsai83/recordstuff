@@ -85,6 +85,7 @@ fn record(name: &str, source: Source, audio: AudioRequest) -> Option<(Prepared, 
         path: path.clone(),
         source,
         audio,
+        camera: None,
     };
     let (mut session, prepared) = match Session::prepare(request, heard.clone()) {
         Ok(prepared) => prepared,
@@ -271,7 +272,7 @@ fn camera_delivers_without_a_run_loop() {
         let _: () = unsafe { objc2::msg_send![<objc2_av_foundation::AVCaptureDevice as objc2::ClassType>::class(), requestAccessForMediaType: media, completionHandler: &*block] };
         println!("camera access asked: {:?}", receiver.recv_timeout(Duration::from_secs(60)));
     }
-    let camera = match CameraCapture::start(std::env::var("RECORDSTUFF_CAMERA_DEVICE").ok().as_deref()) {
+    let camera = match CameraCapture::start(std::env::var("RECORDSTUFF_CAMERA_DEVICE").ok().as_deref(), Arc::new(Heard::default()), || true) {
         Ok(camera) => camera,
         Err(error) => {
             println!("macOS live camera UNTESTED: {}: {}", error.code, error.detail);
@@ -279,11 +280,11 @@ fn camera_delivers_without_a_run_loop() {
         }
     };
     std::thread::sleep(Duration::from_secs(seconds));
-    let delivered = camera.shared.delivered();
-    let size = camera.shared.latest().map(|(image, _)| {
-        (objc2_core_video::CVPixelBufferGetWidth(&image), objc2_core_video::CVPixelBufferGetHeight(&image))
+    let delivered = camera.feed.counts().0;
+    let size = camera.feed.latest().map(|(image, _)| {
+        (objc2_core_video::CVPixelBufferGetWidth(&image.0), objc2_core_video::CVPixelBufferGetHeight(&image.0))
     });
     println!("camera {}: {delivered} frames in {seconds} s ({:.1} fps), size {size:?}; {}", camera.name, delivered as f64 / seconds as f64, camera.state());
-    camera.stop();
+    crate::core::CameraControl::close(&*camera);
     assert!(delivered as f64 >= seconds as f64 * 10.0, "the camera delivered {delivered} frames in {seconds} s");
 }

@@ -24,10 +24,11 @@ export function logSessionEvent(log: Log, run: string, event: RecorderEvent): vo
       return;
     case "saved": {
       log(`saved ${event.path}${event.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[event.stoppedEarly]})` : ""}` +
-        `${event.microphoneLost ? " (the microphone dropped out partway)" : ""}`);
+        `${event.microphoneLost ? " (the microphone dropped out partway)" : ""}${event.cameraLost ? " (the camera dropped out partway)" : ""}`);
       const { id, recordingPath: _temporary, ...timing } = event.session;
       log(formatSessionRecord(run, { kind: "saved", session: id, path: event.path,
-        ...(event.stoppedEarly ? { stoppedEarly: event.stoppedEarly } : {}), ...(event.microphoneLost ? { microphoneLost: true } : {}), ...timing }));
+        ...(event.stoppedEarly ? { stoppedEarly: event.stoppedEarly } : {}), ...(event.microphoneLost ? { microphoneLost: true } : {}),
+        ...(event.cameraLost ? { cameraLost: true } : {}), ...timing }));
       return;
     }
     case "failed": {

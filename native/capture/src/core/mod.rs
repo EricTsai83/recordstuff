@@ -19,11 +19,13 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod camera;
 mod frame_log;
 mod mixer;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
+pub use camera::{CAMERA_SILENT_NS, CameraControl, CameraFeed};
 pub use frame_log::FrameLog;
 use mixer::Mixer;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
@@ -77,6 +79,11 @@ pub trait Events: Send + Sync {
     fn microphone_resumed(&self, detail: String);
     /// A preview chunk of the composed picture (plan 075, step 2's prototype; D17's second option).
     fn preview(&self, _chunk: PreviewChunk) {}
+    /// The camera stopped delivering while recording (plan 075, D12): the recording goes on without it. Told once per
+    /// dropout.
+    fn camera_lost(&self, _detail: String) {}
+    /// The camera told lost delivers again, and is composed again.
+    fn camera_resumed(&self, _detail: String) {}
 }
 
 /// One encoded frame of the preview: H.264 in AVCC form (length-prefixed NAL units), for WebCodecs' `VideoDecoder`.
@@ -195,6 +202,18 @@ pub struct PrepareRequest {
     pub path: PathBuf,
     pub source: Source,
     pub audio: AudioRequest,
+    /// The camera composed into the frames (plan 075); absent is none.
+    pub camera: Option<CameraRequest>,
+}
+
+/// Which camera and where its bubble is (plan 075): main's setting and its layout on the recorded display.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraRequest {
+    /// AVCaptureDevice's unique ID; absent is the system's default camera, as is one not connected (D9).
+    pub device: Option<String>,
+    pub layout: crate::camera_layout::Layout,
+    /// Whether preview frames are made (step 2's preview page).
+    pub preview: bool,
 }
 
 pub struct Prepared {
@@ -362,6 +381,8 @@ pub struct Shared<P: Platform> {
     /// Every slot of the frame rate is encoded, still screen or not: the picture changes every frame while a camera
     /// is composed into it (plan 075), which the encoder sees at encoding time.
     every_slot: AtomicBool,
+    /// The camera composed into the frames (plan 075): judged on the refresh thread, closed when capture ends.
+    camera: Mutex<Option<Arc<dyn CameraControl>>>,
 }
 
 impl<P: Platform> Shared<P> {
@@ -608,6 +629,19 @@ impl<P: Platform> Shared<P> {
         self.video.lock().unwrap().last.clone()
     }
 
+    /// Whether the recording is on (its first frame encoded) and not yet stopped: when a camera's loss is told.
+    pub fn recording(&self) -> bool {
+        matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
+    }
+
+    /// Closes the camera, if one is watched; idempotent.
+    fn close_camera(&self) {
+        let camera = self.camera.lock().unwrap().take();
+        if let Some(camera) = camera {
+            camera.close();
+        }
+    }
+
     /// Whether capture has ended (`Core::halt`).
     pub fn halted(&self) -> bool {
         self.phase.load(Ordering::Acquire) == STOPPING
@@ -663,6 +697,7 @@ impl<P: Platform> Core<P> {
             microphone: Mutex::new(MicrophoneState::default()),
             frame_log: Mutex::new(None),
             every_slot: AtomicBool::new(false),
+            camera: Mutex::new(None),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -670,6 +705,11 @@ impl<P: Platform> Core<P> {
     /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
     pub fn watch_microphone(&self, input: usize) {
         self.shared.microphone_input.store(input, Ordering::Release);
+    }
+
+    /// The camera composed into this session's frames (plan 075): judged while recording and closed with the session.
+    pub fn watch_camera(&self, camera: Arc<dyn CameraControl>) {
+        *self.shared.camera.lock().unwrap() = Some(camera);
     }
 
     /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is
@@ -856,6 +896,8 @@ impl<P: Platform> Core<P> {
         if let Some(thread) = self.refresher.take() {
             let _ = thread.join();
         }
+        // Capture has ended: the camera's light goes off now, not when the file is finished.
+        self.shared.close_camera();
     }
 
     pub fn stopping(&self) -> bool {
@@ -907,14 +949,22 @@ impl<P: Platform> Core<P> {
         (stopped, Finishing { outcome, began: Instant::now() })
     }
 
-    /// Releases the encoders of a session that never recorded.
+    /// Releases the encoders and the camera of a session that never recorded.
     pub fn release(&self) {
+        self.shared.close_camera();
         self.shared.video.lock().unwrap().encoder.take();
         self.shared.audio.lock().unwrap().encoder.take();
     }
 
     pub fn frames_seen(&self) -> u64 {
         self.shared.frames_seen.load(Ordering::Relaxed)
+    }
+}
+
+impl<P: Platform> Drop for Core<P> {
+    /// A core dropped without a stop or a release (its owner went away, or preparing failed) still closes the camera.
+    fn drop(&mut self) {
+        self.shared.close_camera();
     }
 }
 
@@ -956,6 +1006,10 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         let now = P::now_ns();
         shared.sound_clock(now);
         shared.microphone_clock(now);
+        let camera = shared.camera.lock().unwrap().clone();
+        if let Some(camera) = camera {
+            camera.judge(now, t0, &*shared.events);
+        }
         let mut guard = shared.video.lock().unwrap();
         let video = &mut *guard;
         if shared.phase.load(Ordering::Acquire) != RECORDING {

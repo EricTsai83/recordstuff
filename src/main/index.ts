@@ -394,6 +394,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         : microphones?.find((candidate) => candidate.default)?.name;
       return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
     },
+    // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 6
+    // removes the development switch); autorecord never records it.
+    camera: () => {
+      if (autoRecord?.ok || !settings.camera || process.platform !== "darwin" || !cameraPrototypeOn(process.env)) return undefined;
+      const device = settings.cameraDevice;
+      return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
+    },
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -825,6 +832,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       case "microphoneLost":
         // Told once the recording ends: a banner now could be muted while the display is shared (plan 074).
         captureNotices.hold("microphone lost", () => tray.notifyMicrophoneLost());
+        return;
+      case "cameraLost":
+        // The same for the camera (plan 075, D12).
+        captureNotices.hold("camera lost", () => tray.notifyCameraLost());
         return;
       case "displayFailed":
         displayMedia.failure = event.detail;

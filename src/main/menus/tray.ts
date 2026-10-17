@@ -19,6 +19,7 @@ import {
   languageWriteFailedNotification,
   microphoneDeniedNotification,
   cameraDeniedNotification,
+  cameraLostNotification,
   microphoneLostNotification,
   hotkeyRegistrationFailedNotification,
   menuLogText,
@@ -280,6 +281,11 @@ export class AppTray {
   /** The microphone stopped while recording; the click shows the Recording tab, where it is set (plan 074). */
   notifyMicrophoneLost(): void {
     this.show(microphoneLostNotification(this.language), () => this.options.onAction("openRecordingSettings"));
+  }
+
+  /** The camera stopped while recording; the click shows the Recording tab, where it is set (plan 075). */
+  notifyCameraLost(): void {
+    this.show(cameraLostNotification(this.language), () => this.options.onAction("openRecordingSettings"));
   }
 
   notifyTrayHint(): void {

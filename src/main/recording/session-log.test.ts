@@ -48,6 +48,15 @@ describe("session log lines", () => {
     expect(JSON.parse(lines[1]!.slice("session-record: ".length))).not.toHaveProperty("microphoneLost");
   });
 
+  it("marks a recording whose camera stopped partway in the human line and the record (plan 075)", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/f.mp4", cameraLost: true, session: { id: "s6" } });
+    expect(lines[0]).toBe("saved /m/f.mp4 (the camera dropped out partway)");
+    const record = JSON.parse(lines[1]!.slice("session-record: ".length));
+    expect(record).toMatchObject({ kind: "saved", session: "s6", cameraLost: true });
+    expect(record).not.toHaveProperty("microphoneLost");
+  });
+
   it("writes a cancel as one plain line with no session record for analyzers to pair", () => {
     const lines: string[] = [];
     logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "toggle",

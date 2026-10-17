@@ -29,7 +29,7 @@ interface StopReport {
   capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
-interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string }
+interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed"; bytes?: number; code?: string; detail?: string }
 /**
  * A preview chunk of the composed picture (plan 075's prototype, D17's second option): H.264 in AVCC form for WebCodecs,
  * the `avcC` record (`description`) with every key frame; `timestamp` is host time in microseconds.
@@ -42,6 +42,8 @@ export interface CaptureSource {
   area?: { x: number; y: number; width: number; height: number };
   pids?: number[];
 }
+/** The camera composed into the frames (plan 075): the engine's `CameraOptions`. */
+export interface CameraOptions { deviceId?: string; width: number; height: number; rounding: number; x: number; y: number; mirror: boolean; preview?: boolean }
 /** Whose sound the track holds: the system's (or chosen apps'), and the microphone mixed in (plan 074). */
 export interface AudioOptions { system: "all" | "apps" | "off"; pids?: number[]; microphone: boolean; microphoneId?: string }
 interface NativeCapture {
@@ -49,7 +51,7 @@ interface NativeCapture {
   prepare(options: {
     displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
-    source?: CaptureSource; audio?: AudioOptions;
+    source?: CaptureSource; audio?: AudioOptions; camera?: CameraOptions;
   }): Promise<PreparedInfo>;
   record(): void;
   stop(): Promise<StopReport>;
@@ -134,10 +136,10 @@ export class NativeHost {
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
     private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
-    cameraPrototype = false,
+    private readonly cameraPreview = false,
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
-    if (cameraPrototype) this.capture.onPreview?.((frame) => this.preview(frame));
+    if (cameraPreview) this.capture.onPreview?.((frame) => this.preview(frame));
     port.on("message", ({ data, ports }) => {
       if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === PREVIEW_PORT_MESSAGE) {
         this.previewPort?.close();
@@ -238,6 +240,7 @@ export class NativeHost {
         videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
         ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
+        ...(native.camera ? { camera: { ...native.camera, preview: this.cameraPreview } } : {}),
       });
       this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
         `${prepared.timings ? ` (${prepared.timings})` : ""}`);
@@ -351,6 +354,10 @@ export class NativeHost {
       this.send({ type: "microphoneLost", sessionId: session.id, detail: event.detail ?? "the microphone stopped" });
     } else if (event.kind === "microphoneResumed") {
       this.send({ type: "microphoneResumed", sessionId: session.id, detail: event.detail ?? "the microphone delivered sound again" });
+    } else if (event.kind === "cameraLost") {
+      this.send({ type: "cameraLost", sessionId: session.id, detail: event.detail ?? "the camera stopped" });
+    } else if (event.kind === "cameraResumed") {
+      this.send({ type: "cameraResumed", sessionId: session.id, detail: event.detail ?? "the camera delivered frames again" });
     } else if (event.kind === "captureError") {
       const code = HOST_CODES.includes(event.code ?? "") ? event.code as HostErrorCode : "capture_failed";
       this.fail(session.id, code, event.detail ?? "capture ended");

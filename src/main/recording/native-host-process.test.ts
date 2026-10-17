@@ -73,6 +73,36 @@ describe("cameraPrototypeOn", () => {
   });
 });
 
+describe("the camera (plan 075)", () => {
+  const camera = { deviceId: "cam", width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: true };
+
+  it("passes the camera to the engine, with whether this process makes preview frames", async () => {
+    for (const preview of [false, true]) {
+      const port = new Port();
+      const fake = fakeEngine();
+      new NativeHost(port, fake.factory, () => undefined, undefined, {}, preview);
+      port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera } });
+      await flush();
+      expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ camera: { ...camera, preview } }));
+    }
+    const port = new Port();
+    const fake = fakeEngine();
+    new NativeHost(port, fake.factory, () => undefined);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    expect(fake.engine.prepare.mock.calls[0]![0]).not.toHaveProperty("camera");
+  });
+
+  it("forwards the engine's camera loss and return for the session", async () => {
+    const { port, emit } = await prepared();
+    emit({ kind: "cameraLost", detail: "the camera delivered no frame for 2 s" } as never);
+    emit({ kind: "cameraResumed", detail: "the camera delivered frames again after 3.0 s" } as never);
+    expect(port.sent.slice(-2)).toEqual([
+      { type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" },
+      { type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.0 s" }]);
+  });
+});
+
 describe("the camera prototype's preview (plan 075)", () => {
   const frame: PreviewFrame = { width: 640, height: 360, data: new Uint8Array(12), key: true, timestamp: 1_000_000, description: new Uint8Array([1, 100, 0, 30]) };
   const withPreview = () => {

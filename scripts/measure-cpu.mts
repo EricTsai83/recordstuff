@@ -21,9 +21,10 @@
  *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
  *   a plain MP4: a fragmented one costs the renderer more the longer it is, which a 60-second file cannot show.
  *
- * `--camera <value>` (plan 075 step 2's gate) launches the bundle with `RECORDSTUFF_CAMERA_PROTOTYPE=<value>` (see
- * native/capture/src/camera_layout.rs): the camera composed into every recording, and its preview page open unless the
- * value has `preview=0`. It measures A and R only: B, C and P need `--skip-settings --skip-playback`, and B is left
+ * `--camera <value>` (plan 075 step 2's gate) launches the bundle with `RECORDSTUFF_CAMERA_PROTOTYPE=<value>`, which
+ * makes the Camera switch available, and seeds the switch on (with `cameraDevice` when the value has `device=<id>`):
+ * the camera composed into every recording at the stored layout, and its preview page open unless the value has
+ * `preview=0`. It measures A and R only: B, C and P need `--skip-settings --skip-playback`, and B is left
  * out, since the preview page is a renderer the idle contract does not allow after a recording.
  *
  * Each idle scenario also checks the app's processes by Chromium role against the idle contract (`IDLE_ROLES`): no
@@ -182,7 +183,7 @@ async function sendKeys(accelerator: string): Promise<void> {
  * values once no process can write them again; anything else the app saved meanwhile is kept. The
  * display is the primary one because the material opens there.
  */
-const SEEDED_KEYS = ["countdown", "display", "quality"] as const;
+const SEEDED_KEYS = ["countdown", "display", "quality", "camera", "cameraDevice"] as const;
 let originalSettings: Buffer | undefined;
 let seeded = false;
 const readSettings = (): Record<string, unknown> => readAppSettings(SETTINGS_PATH) ?? {};
@@ -193,7 +194,11 @@ function seed(frameRate: 30 | 60): void {
   const current = readSettings();
   if (!Object.keys(current).length) fail(`no ${SETTINGS_PATH}: launch RecordStuff once and choose an output folder first`);
   const quality = { ...(current["quality"] as Record<string, unknown> | undefined), videoQuality: "standard", resolutionCap: "source", frameRate };
-  writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality });
+  // `--camera`: the Camera switch on (plan 075), the device the value names if it names one; the value itself, in the
+  // launch's environment, makes the switch available and says whether preview frames are made.
+  const device = camera === undefined ? undefined : /(?:^|,)\s*device\s*=\s*([^,]+)/.exec(camera)?.[1]?.trim();
+  const cameraSettings = camera === undefined ? {} : { camera: true, ...(device ? { cameraDevice: { id: device, label: device } } : {}) };
+  writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality, ...cameraSettings });
   seeded = true;
 }
 function restoreSettings(): string | undefined {

@@ -90,6 +90,10 @@ pub struct Session {
 
 impl Session {
     pub fn prepare(request: PrepareRequest, events: Arc<dyn Events>) -> Result<(Session, Prepared), CaptureError> {
+        // The camera on Windows (Media Foundation's source reader into the Direct3D 11 compositor) is plan 075 step 6's.
+        if request.camera.is_some() {
+            return Err(CaptureError::new("camera_unavailable", "camera: Windows does not compose the camera yet"));
+        }
         com();
         let began = Instant::now();
         let mut lap = began;

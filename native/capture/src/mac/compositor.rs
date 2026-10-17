@@ -177,7 +177,7 @@ pub struct Compositor {
     size: (u32, u32),
     preview_size: (u32, u32),
     layout: Mutex<Layout>,
-    camera: Arc<camera::Shared>,
+    camera: Arc<camera::Feed>,
 }
 
 // Metal's device, queue and pipeline states are thread-safe; command buffers are made per call.
@@ -186,7 +186,7 @@ unsafe impl Sync for Compositor {}
 
 impl Compositor {
     /// A compositor for `width` × `height` frames, taking the camera's newest frame from `camera`.
-    pub fn new(width: u32, height: u32, layout: Layout, camera: Arc<camera::Shared>) -> Result<Self, String> {
+    pub fn new(width: u32, height: u32, layout: Layout, camera: Arc<camera::Feed>) -> Result<Self, String> {
         let preview_size = camera_layout::preview_size(width, height);
         Ok(Self {
             gpu: Gpu::new()?,
@@ -234,7 +234,8 @@ impl Compositor {
 
     fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32)) -> Result<CFRetained<CVPixelBuffer>, String> {
         autoreleasepool(|_| {
-            let camera = self.camera.latest().map(|(image, _)| image);
+            // Nothing while the camera is lost (D12): the screen alone.
+            let camera = self.camera.latest().map(|(image, _)| image.0);
             let output = pool.buffer()?;
             screen.propagate_attachments(&output);
             self.gpu.compose(screen, camera.as_deref(), &output, &self.params(out, camera.as_deref()))?;
@@ -329,9 +330,22 @@ mod tests {
     const W: u32 = 320;
     const H: u32 = 180;
 
-    fn compositor(layout: Layout) -> (Compositor, Arc<camera::Shared>) {
-        let camera = Arc::new(camera::Shared::default());
+    fn compositor(layout: Layout) -> (Compositor, Arc<camera::Feed>) {
+        let camera = Arc::new(camera::Feed::default());
         (Compositor::new(W, H, layout, camera.clone()).unwrap(), camera)
+    }
+
+    /// Stands in for the camera's delegate.
+    fn deliver(camera: &camera::Feed, image: CFRetained<CVPixelBuffer>) {
+        struct Quiet;
+        impl crate::core::Events for Quiet {
+            fn progress(&self, _bytes: u64) {}
+            fn write_failed(&self, _failure: crate::writer::WriteFailure) {}
+            fn capture_failed(&self, _code: &'static str, _detail: String) {}
+            fn microphone_lost(&self, _detail: String) {}
+            fn microphone_resumed(&self, _detail: String) {}
+        }
+        camera.deliver(camera::Image(image), 1, 1, &Quiet);
     }
 
     fn near(value: u8, expected: u8) -> bool {
@@ -350,7 +364,7 @@ mod tests {
     fn the_camera_fills_its_rounded_bubble_and_nothing_else() {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 1.0, x: 0.5, y: 0.5, mirror: false };
         let (compositor, camera) = compositor(layout);
-        camera.deliver(buffer(128, 72, |_, _| BRIGHT), 1);
+        deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let screen = buffer(W, H, |_, _| DARK);
         let out = compositor.compose(&screen).unwrap();
         let bubble = layout.bubble(W, H);
@@ -368,7 +382,7 @@ mod tests {
     fn a_square_bubble_at_the_top_left_is_at_the_top_left() {
         let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 0.0, y: 0.0, mirror: false };
         let (compositor, camera) = compositor(layout);
-        camera.deliver(buffer(128, 72, |_, _| BRIGHT), 1);
+        deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
         assert!(near(luma(&out, 1, 1), BRIGHT), "{}", luma(&out, 1, 1));
         assert!(near(luma(&out, 1, 178), DARK));
@@ -383,7 +397,7 @@ mod tests {
         let (left, right, y) = (bubble.x as usize + 10, (bubble.x + bubble.width) as usize - 10, (bubble.y + bubble.height / 2.0) as usize);
         for mirror in [false, true] {
             let (compositor, camera) = compositor(Layout { mirror, ..layout });
-            camera.deliver(camera_picture(), 1);
+            deliver(&camera, camera_picture());
             let out = compositor.compose(&buffer(W, H, |_, _| 128)).unwrap();
             let (l, r) = (luma(&out, left, y), luma(&out, right, y));
             if mirror {
@@ -397,9 +411,9 @@ mod tests {
     #[test]
     fn the_preview_is_the_composed_picture_scaled_down() {
         let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
-        let camera = Arc::new(camera::Shared::default());
+        let camera = Arc::new(camera::Feed::default());
         let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
-        camera.deliver(buffer(128, 72, |_, _| BRIGHT), 1);
+        deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let preview = compositor.preview(&buffer(1280, 720, |_, _| DARK)).unwrap();
         assert_eq!((CVPixelBufferGetWidth(&preview), CVPixelBufferGetHeight(&preview)), (640, 360));
         let data = nv12_bytes(&preview, 640, 360).unwrap();
@@ -413,7 +427,7 @@ mod tests {
     fn the_camera_s_colour_fills_its_bubble_and_the_screen_s_stays_outside() {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 0.0, x: 0.5, y: 0.5, mirror: false };
         let (compositor, camera) = compositor(layout);
-        camera.deliver(coloured(128, 72, |_, _| BRIGHT, (200, 60)), 1);
+        deliver(&camera, coloured(128, 72, |_, _| BRIGHT, (200, 60)));
         let out = compositor.compose(&coloured(W, H, |_, _| DARK, (90, 170))).unwrap();
         let bubble = layout.bubble(W, H);
         let (cx, cy) = ((bubble.x + bubble.width / 2.0) as usize / 2, (bubble.y + bubble.height / 2.0) as usize / 2);
@@ -430,7 +444,7 @@ mod tests {
         let frame = coloured(128, 72, |_, _| BRIGHT, (200, 60));
         let key: &CFString = unsafe { kCVImageBufferYCbCrMatrixKey };
         unsafe { frame.set_attachment(key, kCVImageBufferYCbCrMatrix_ITU_R_601_4, objc2_core_video::CVAttachmentMode::ShouldPropagate) };
-        camera.deliver(frame, 1);
+        deliver(&camera, frame);
         let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
         let bubble = layout.bubble(W, H);
         let (x, y) = ((bubble.x + bubble.width / 2.0) as usize, (bubble.y + bubble.height / 2.0) as usize);
@@ -446,12 +460,39 @@ mod tests {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 0.0, x: 31.0 / 230.0, y: 31.0 / 90.0, mirror: false };
         assert_eq!((layout.bubble(W, H).x, layout.bubble(W, H).y), (31.0, 31.0));
         let (compositor, camera) = compositor(layout);
-        camera.deliver(coloured(128, 72, |_, _| BRIGHT, (200, 128)), 1);
+        deliver(&camera, coloured(128, 72, |_, _| BRIGHT, (200, 128)));
         let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
         // A quarter of the way from the screen's 128 to the camera's 200.
         let (cb, _) = chroma(&out, 15, 15);
         assert!(cb.abs_diff(146) <= 3, "edge chroma {cb}");
         let (inside, _) = chroma(&out, 20, 20);
         assert!(near(inside, 200));
+    }
+}
+
+#[cfg(test)]
+mod lost_test {
+    use super::*;
+
+    #[test]
+    fn a_lost_camera_is_not_composed() {
+        struct Quiet;
+        impl crate::core::Events for Quiet {
+            fn progress(&self, _bytes: u64) {}
+            fn write_failed(&self, _failure: crate::writer::WriteFailure) {}
+            fn capture_failed(&self, _code: &'static str, _detail: String) {}
+            fn microphone_lost(&self, _detail: String) {}
+            fn microphone_resumed(&self, _detail: String) {}
+        }
+        let feed = Arc::new(camera::Feed::default());
+        let layout = Layout { width: 0.5, height: 0.5, rounding: 0.0, x: 0.5, y: 0.5, mirror: false };
+        let compositor = Compositor::new(320, 180, layout, feed.clone()).unwrap();
+        let screen = test_frame(320, 180);
+        feed.deliver(camera::Image(test_frame(128, 72)), 1, 1, &Quiet);
+        assert_eq!(compositor.params((320, 180), feed.latest().map(|(image, _)| image.0).as_deref()).camera_on, 1.0);
+        feed.lose("gone".into(), true, &Quiet);
+        assert!(feed.latest().is_none());
+        // Composing goes on with the screen alone.
+        compositor.compose(&screen).unwrap();
     }
 }
