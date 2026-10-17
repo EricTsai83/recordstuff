@@ -93,6 +93,21 @@ describe("the camera (plan 075)", () => {
     expect(fake.engine.prepare.mock.calls[0]![0]).not.toHaveProperty("camera");
   });
 
+  it("hands the session's camera changes to the engine without the device, logs them and ignores another session's", async () => {
+    const logs: string[] = [];
+    const port = new Port();
+    const fake = fakeEngine();
+    const setCameraLayout = vi.fn(() => true);
+    new NativeHost(port, (onEvent) => ({ ...fake.factory(onEvent), setCameraLayout }), (line) => logs.push(line));
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera } });
+    await flush();
+    port.deliver({ type: "cameraLayout", sessionId: "s1", camera: { ...camera, x: 0 }, hidden: true });
+    port.deliver({ type: "cameraLayout", sessionId: "other", camera, hidden: false });
+    const { deviceId: _device, ...layout } = camera;
+    expect(setCameraLayout.mock.calls).toEqual([[{ ...layout, x: 0 }, true]]);
+    expect(logs).toContainEqual(expect.stringMatching(/^camera layout: .*"x":0.*, hidden$/));
+  });
+
   it("forwards the engine's camera loss and return for the session", async () => {
     const { port, emit } = await prepared();
     emit({ kind: "cameraLost", detail: "the camera delivered no frame for 2 s" } as never);

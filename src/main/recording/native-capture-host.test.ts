@@ -75,6 +75,19 @@ describe("cameraChoice (plan 075)", () => {
     await start;
     expect(ctx.children.at(-1)!.sent.at(-1)).toMatchObject({ type: "start", native: { displayId: 69733632, camera: { x: 0.9, y: 0.8, mirror: true } } });
   });
+
+  it("sends the session's camera changes with the position on its display, and none for another session", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    ctx.host.setCamera("s1", { layout: { ...layout, mirror: false } }, true);
+    ctx.host.setCamera("other", { layout }, false);
+    expect(child.sent.filter((m) => m.type === "cameraLayout")).toEqual([{ type: "cameraLayout", sessionId: "s1",
+      camera: { width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: false }, hidden: true }]);
+  });
 });
 
 describe("NativeCaptureHost", () => {

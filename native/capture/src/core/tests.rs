@@ -810,3 +810,77 @@ fn the_camera_is_closed_however_the_session_ends() {
     assert_eq!(camera.closes.load(Ordering::Acquire), 1);
     assert_eq!(camera.feed.latest(), None);
 }
+
+#[test]
+fn hiding_the_camera_goes_back_to_a_still_screen_s_pace_and_showing_it_to_every_slot() {
+    let mut rig = Rig::new("every-slot-toggle");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let shown = rig.encoded.lock().unwrap().len();
+    assert!(shown >= 7, "every slot while shown: {shown}");
+    rig.core.encode_every_slot(false);
+    std::thread::sleep(Duration::from_millis(600));
+    let hidden = rig.encoded.lock().unwrap().len() - shown;
+    assert!(hidden <= 1, "a still screen once a second while hidden: {hidden}");
+    rig.core.encode_every_slot(true);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(rig.encoded.lock().unwrap().len() - shown - hidden >= 6, "every slot again");
+    rig.stop();
+}
+
+#[test]
+fn showing_the_camera_again_after_a_still_screen_starts_at_the_current_slot_without_a_burst() {
+    let mut rig = Rig::new("every-slot-resume");
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    // Hidden over a still screen for a while: a refresh a second.
+    std::thread::sleep(Duration::from_millis(1_300));
+    let before = rig.encoded.lock().unwrap().len();
+    let shown_at = Fake::now_ns();
+    rig.core.encode_every_slot(true);
+    std::thread::sleep(Duration::from_millis(400));
+    rig.stop();
+    let encoded = rig.encoded.lock().unwrap().clone();
+    let after: Vec<u64> = encoded[before..].iter().map(|&(_, at, _)| at).collect();
+    assert!(after.len() >= 8, "{after:?}");
+    // Nothing before the camera was shown again, and frames a slot apart, not a burst of the slots it left empty.
+    assert!(after.iter().all(|&at| at + 33_333_333 >= shown_at), "{after:?} from {shown_at}");
+    assert!(after.windows(2).all(|w| w[1] - w[0] >= 30_000_000), "{after:?}");
+}
+
+#[test]
+fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
+    let mut rig = Rig::new("every-slot-wake");
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    std::thread::sleep(Duration::from_millis(1_150));
+    let before = rig.encoded.lock().unwrap().len();
+    let shown = Instant::now();
+    rig.core.encode_every_slot(true);
+    wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before);
+    // Within a slot and a little, not at the end of a 100 ms wait.
+    assert!(shown.elapsed() < Duration::from_millis(60), "first frame after {:?}", shown.elapsed());
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(rig.encoded.lock().unwrap().len() - before <= 2, "no catch-up burst");
+    rig.stop();
+}
+
+#[test]
+fn the_pacer_skips_to_the_current_slot_on_its_grid() {
+    let start = 1_000_000_000_000u64;
+    let interval = 33_333_333u64;
+    let mut pacer = crate::pacing::Pacer::new(start, 30);
+    // Behind by a second: the first slot at or after it, on the grid from the start.
+    pacer.skip_to(start + 1_000_000_000);
+    assert_eq!(pacer.next_slot(), start + 31 * interval);
+    // On a slot exactly: that slot.
+    pacer.skip_to(start + 40 * interval);
+    assert_eq!(pacer.next_slot(), start + 40 * interval);
+    // Already ahead: unchanged, never backwards.
+    pacer.skip_to(start + 35 * interval);
+    assert_eq!(pacer.next_slot(), start + 40 * interval);
+}

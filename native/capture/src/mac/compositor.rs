@@ -177,6 +177,8 @@ pub struct Compositor {
     size: (u32, u32),
     preview_size: (u32, u32),
     layout: Mutex<Layout>,
+    /// Hidden from the tray (D13): the camera stays open and nothing of it is composed.
+    hidden: std::sync::atomic::AtomicBool,
     camera: Arc<camera::Feed>,
 }
 
@@ -195,12 +197,27 @@ impl Compositor {
             size: (width, height),
             preview_size,
             layout: Mutex::new(layout.clamped()),
+            hidden: std::sync::atomic::AtomicBool::new(false),
             camera,
         })
     }
 
     pub fn layout(&self) -> Layout {
         *self.layout.lock().unwrap()
+    }
+
+    /// A new layout, from the next frame composed on (D7).
+    pub fn set_layout(&self, layout: Layout) {
+        *self.layout.lock().unwrap() = layout.clamped();
+    }
+
+    pub fn hidden(&self) -> bool {
+        self.hidden.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Hides or shows the camera from the next frame on (D13).
+    pub fn set_hidden(&self, hidden: bool) {
+        self.hidden.store(hidden, std::sync::atomic::Ordering::Release);
     }
 
     pub fn preview_size(&self) -> (u32, u32) {
@@ -234,8 +251,8 @@ impl Compositor {
 
     fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32)) -> Result<CFRetained<CVPixelBuffer>, String> {
         autoreleasepool(|_| {
-            // Nothing while the camera is lost (D12): the screen alone.
-            let camera = self.camera.latest().map(|(image, _)| image.0);
+            // Nothing while the camera is lost (D12) or hidden (D13): the screen alone.
+            let camera = if self.hidden() { None } else { self.camera.latest().map(|(image, _)| image.0) };
             let output = pool.buffer()?;
             screen.propagate_attachments(&output);
             self.gpu.compose(screen, camera.as_deref(), &output, &self.params(out, camera.as_deref()))?;
@@ -467,6 +484,121 @@ mod tests {
         assert!(cb.abs_diff(146) <= 3, "edge chroma {cb}");
         let (inside, _) = chroma(&out, 20, 20);
         assert!(near(inside, 200));
+    }
+}
+
+#[cfg(test)]
+mod layout_test {
+    use super::*;
+    use objc2_core_video::{CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress};
+
+    struct Quiet;
+    impl crate::core::Events for Quiet {
+        fn progress(&self, _bytes: u64) {}
+        fn write_failed(&self, _failure: crate::writer::WriteFailure) {}
+        fn capture_failed(&self, _code: &'static str, _detail: String) {}
+        fn microphone_lost(&self, _detail: String) {}
+        fn microphone_resumed(&self, _detail: String) {}
+    }
+
+    /// A 4:2:0 frame whose luma and chroma vary with the position, so any change shows.
+    fn patterned(width: u32, height: u32, seed: u8) -> CFRetained<CVPixelBuffer> {
+        let buffer = test_frame(width, height);
+        unsafe { CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags(0)) };
+        for (plane, rows) in [(0, height as usize), (1, height as usize / 2)] {
+            let base = CVPixelBufferGetBaseAddressOfPlane(&buffer, plane).cast::<u8>();
+            let stride = CVPixelBufferGetBytesPerRowOfPlane(&buffer, plane);
+            for y in 0..rows {
+                let line = unsafe { std::slice::from_raw_parts_mut(base.add(y * stride), width as usize) };
+                for (x, value) in line.iter_mut().enumerate() {
+                    *value = 16 + ((x * 7 + y * 13 + usize::from(seed) * 31 + plane * 5) % 220) as u8;
+                }
+            }
+        }
+        unsafe { CVPixelBufferUnlockBaseAddress(&buffer, CVPixelBufferLockFlags(0)) };
+        buffer
+    }
+
+    /// Every byte of both planes, rows without their padding.
+    fn bytes(buffer: &CVPixelBuffer) -> Vec<u8> {
+        let (width, height) = (CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer));
+        unsafe { CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags(1)) };
+        let mut out = Vec::new();
+        for (plane, rows) in [(0, height), (1, height / 2)] {
+            let base = CVPixelBufferGetBaseAddressOfPlane(buffer, plane).cast::<u8>();
+            let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, plane);
+            for y in 0..rows {
+                out.extend_from_slice(unsafe { std::slice::from_raw_parts(base.add(y * stride), width) });
+            }
+        }
+        unsafe { CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(1)) };
+        out
+    }
+
+    fn luma_at(buffer: &CVPixelBuffer, x: usize, y: usize) -> u8 {
+        bytes(buffer)[y * CVPixelBufferGetWidth(buffer) + x]
+    }
+
+    fn solid(width: u32, height: u32, value: u8) -> CFRetained<CVPixelBuffer> {
+        let buffer = test_frame(width, height);
+        unsafe { CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags(0)) };
+        for (plane, rows) in [(0, height as usize), (1, height as usize / 2)] {
+            let base = CVPixelBufferGetBaseAddressOfPlane(&buffer, plane).cast::<u8>();
+            let stride = CVPixelBufferGetBytesPerRowOfPlane(&buffer, plane);
+            for y in 0..rows {
+                unsafe { std::slice::from_raw_parts_mut(base.add(y * stride), width as usize) }.fill(if plane == 1 { 128 } else { value });
+            }
+        }
+        unsafe { CVPixelBufferUnlockBaseAddress(&buffer, CVPixelBufferLockFlags(0)) };
+        buffer
+    }
+
+    #[test]
+    fn without_a_camera_or_hidden_the_composed_frame_is_the_screen_s_byte_for_byte() {
+        let feed = Arc::new(camera::Feed::default());
+        let compositor = Compositor::new(320, 180, Layout::default(), feed.clone()).unwrap();
+        let screen = patterned(320, 180, 3);
+        assert_eq!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "no camera frame yet");
+        feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
+        assert_ne!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "the camera shown");
+        compositor.set_hidden(true);
+        assert_eq!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "hidden");
+        compositor.set_hidden(false);
+        assert_ne!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "shown again");
+    }
+
+    #[test]
+    fn a_new_layout_lands_on_the_next_frame() {
+        let feed = Arc::new(camera::Feed::default());
+        let left = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 0.0, y: 0.5, mirror: false };
+        let compositor = Compositor::new(320, 180, left, feed.clone()).unwrap();
+        feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
+        let screen = solid(320, 180, 40);
+        let before = compositor.compose(&screen).unwrap();
+        assert!(luma_at(&before, 5, 90) > 200 && luma_at(&before, 314, 90) < 60);
+        compositor.set_layout(Layout { x: 1.0, ..left });
+        let after = compositor.compose(&screen).unwrap();
+        assert!(luma_at(&after, 5, 90) < 60 && luma_at(&after, 314, 90) > 200);
+    }
+
+    #[test]
+    fn the_bubble_is_where_the_layout_says_at_each_resolution_cap() {
+        let layout = Layout { width: 0.25, height: 0.2, rounding: 0.0, x: 0.3, y: 0.7, mirror: false };
+        for (width, height) in [(1920u32, 1080u32), (2560, 1440), (3840, 2160)] {
+            let feed = Arc::new(camera::Feed::default());
+            let compositor = Compositor::new(width, height, layout, feed.clone()).unwrap();
+            feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
+            let out = compositor.compose(&solid(width, height, 40)).unwrap();
+            let rect = layout.bubble(width, height);
+            let (x0, y0) = (rect.x as usize, rect.y as usize);
+            let (x1, y1) = ((rect.x + rect.width) as usize - 1, (rect.y + rect.height) as usize - 1);
+            for (x, y) in [(x0 + 1, y0 + 1), (x1 - 1, y1 - 1)] {
+                assert!(luma_at(&out, x, y) > 200, "{width}x{height}: inside at {x},{y}");
+            }
+            for (x, y) in [(x0 - 2, y0 + 5), (x1 + 2, y1 - 5), (x0 + 5, y0 - 2), (x1 - 5, y1 + 2)] {
+                assert!(luma_at(&out, x, y) < 60, "{width}x{height}: outside at {x},{y}");
+            }
+        }
     }
 }
 

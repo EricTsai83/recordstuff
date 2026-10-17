@@ -8,7 +8,7 @@
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
-import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { cameraPreviewOn } from "../../shared/camera-preview";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
@@ -58,6 +58,8 @@ interface NativeCapture {
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
   microphones(): Promise<MicrophoneDevice[]>;
+  /** Plan 075: the camera's bubble and whether it is shown, from the next frame on; false without a camera. */
+  setCameraLayout?(options: CameraOptions, hidden: boolean): boolean;
   /** Plan 075's prototype: preview chunks while a session composes the camera. */
   onPreview?(onFrame: (frame: PreviewFrame) => void): void;
 }
@@ -188,7 +190,18 @@ export class NativeHost {
       case "listMicrophones":
         void this.listMicrophones();
         return;
+      case "cameraLayout":
+        this.cameraLayout(message.sessionId, message.camera, message.hidden);
+        return;
     }
+  }
+
+  /** A new bubble or hiding for the session's camera (plan 075), logged with the session. */
+  private cameraLayout(sessionId: string, camera: CameraChoice, hidden: boolean): void {
+    if (this.session?.id !== sessionId) return;
+    const { deviceId: _device, ...layout } = camera;
+    const applied = this.capture.setCameraLayout?.(layout, hidden) ?? false;
+    this.log(`camera layout: ${JSON.stringify(layout)}, ${hidden ? "hidden" : "shown"}${applied ? "" : " (no camera in this session)"}`);
   }
 
   /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */

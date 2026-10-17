@@ -32,6 +32,13 @@ describe("isMainMessage", () => {
       expect(isMainMessage(start(bad)), JSON.stringify(bad)).toBe(false);
     }
   });
+  it("carries the camera's changes for a session (plan 075)", () => {
+    const camera = { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false };
+    expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera, hidden: false })).toBe(true);
+    expect(isMainMessage({ type: "cameraLayout", sessionId: "", camera, hidden: false })).toBe(false);
+    expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera: { ...camera, y: 2 }, hidden: false })).toBe(false);
+    expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera, hidden: "yes" })).toBe(false);
+  });
   it("carries the microphone choice and the request for the inputs (plan 074)", () => {
     const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
     const start = (microphone: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, microphone } });

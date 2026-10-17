@@ -413,6 +413,29 @@ impl NativeCapture {
         AsyncTask::new(PrepareTask { options: Some(options), session: self.session.clone(), events: self.events.clone(), preview: self.preview.clone() })
     }
 
+    /// The camera's bubble and whether it is shown (plan 075, D7 and D13), from the next frame on; answers false when
+    /// no session composes a camera. `device_id` and `preview` are ignored here.
+    #[napi]
+    pub fn set_camera_layout(&self, options: CameraOptions, hidden: bool) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let layout = camera_layout::Layout {
+                width: options.width,
+                height: options.height,
+                rounding: options.rounding,
+                x: options.x,
+                y: options.y,
+                mirror: options.mirror,
+            };
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_camera(layout, hidden)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = (options, hidden);
+            Ok(false)
+        }
+    }
+
     /// Starts writing the prepared session; returns at once.
     #[napi]
     pub fn record(&self) -> Result<()> {

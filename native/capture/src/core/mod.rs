@@ -715,7 +715,22 @@ impl<P: Platform> Core<P> {
     /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is
     /// composed into each encoded frame, so the picture moves while the screen stands still).
     pub fn encode_every_slot(&self, on: bool) {
+        let mut video = self.shared.video.lock().unwrap();
+        // Shown again after a still screen: from the current slot on, not every slot the hiding left empty, and the
+        // refresh thread woken for it rather than at the end of its 100 ms wait.
+        let resumed = on && !self.shared.every_slot.load(Ordering::Acquire);
+        if resumed {
+            if let Some(pacer) = video.pacer.as_mut() {
+                pacer.skip_to(P::now_ns());
+            }
+        }
         self.shared.every_slot.store(on, Ordering::Release);
+        drop(video);
+        if resumed {
+            if let Some(refresher) = self.refresher.as_ref() {
+                refresher.thread().unpark();
+            }
+        }
     }
 
     /// Writes the per-frame log for the recording at `path` when the development switch asks for one; returns where.
@@ -1001,7 +1016,8 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         Duration::from_millis(100)
     };
     while shared.phase.load(Ordering::Acquire) == RECORDING {
-        std::thread::sleep(wake);
+        // Parked rather than asleep, so showing the camera again wakes it for the next slot (`encode_every_slot`).
+        std::thread::park_timeout(wake);
         wake = Duration::from_millis(100);
         let now = P::now_ns();
         shared.sound_clock(now);

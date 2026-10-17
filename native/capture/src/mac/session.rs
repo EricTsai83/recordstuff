@@ -84,7 +84,8 @@ pub struct Video {
 
 impl VideoEncode<Frame> for Video {
     fn encode(&self, frame: &Frame, pts_ns: u64, key_frame: bool) -> Result<(), String> {
-        match self.compositor.as_ref() {
+        // Hidden (D13): the screen's own frame, exactly as with the camera off.
+        match self.compositor.as_ref().filter(|compositor| !compositor.hidden()) {
             Some(compositor) => {
                 let composed = compositor.compose(&frame.image).map_err(|detail| format!("composing the camera failed: {detail}"))?;
                 self.encoder.encode(&composed, pts_ns, key_frame)
@@ -370,8 +371,9 @@ pub struct Session {
     /// The picture's stream first, then the sound's when it has its own.
     streams: Vec<Stream>,
     microphone: Option<MicrophoneCapture>,
-    /// The camera composed into the frames (plan 075), which the core closes, and its preview.
+    /// The camera composed into the frames (plan 075), which the core closes, its compositor and its preview.
     camera: Option<Arc<CameraCapture>>,
+    compositor: Option<Arc<Compositor>>,
     preview: Option<Preview>,
     core: Core<Mac>,
 }
@@ -482,7 +484,7 @@ impl Session {
         if let (Some(audio_filter), Some(input)) = (audio_filter.as_ref(), system_input) {
             streams.push(Stream::new(audio_filter, &audio_only_config(), core.shared(), false, Some(input), "sound")?);
         }
-        let mut session = Session { streams, microphone: None, camera, preview: None, core };
+        let mut session = Session { streams, microphone: None, camera, compositor: compositor.clone(), preview: None, core };
         for (index, stream) in session.streams.iter().enumerate() {
             let what = if index == 0 { "starting capture" } else { "starting the sound's capture" };
             if let Err(error) = stream.start(what) {
@@ -542,6 +544,17 @@ impl Session {
             microphone: session.microphone.as_ref().map(|microphone| microphone.name.clone()),
         };
         Ok((session, prepared))
+    }
+
+    /// The camera's bubble and whether it is shown, from the next frame on (plan 075, D7 and D13); while it is hidden
+    /// the screen alone is encoded, at today's pace for a still screen. Answers false without a camera.
+    pub fn set_camera(&self, layout: crate::camera_layout::Layout, hidden: bool) -> bool {
+        let Some(compositor) = self.compositor.as_ref() else { return false };
+        compositor.set_layout(layout);
+        compositor.set_hidden(hidden);
+        self.core.encode_every_slot(!hidden);
+        eprintln!("camera: layout {:?}, {}", compositor.layout(), if hidden { "hidden" } else { "shown" });
+        true
     }
 
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.

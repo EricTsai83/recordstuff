@@ -66,6 +66,8 @@ export interface RecorderHost {
   /** Begins encoding the prepared session (plan 040); throws when it cannot be sent. */
   record(sessionId: string): void;
   stop(sessionId: string): void;
+  /** The session's camera from its next frame on (plan 075, D7 and D13); absent where no camera is composed. */
+  setCamera?(sessionId: string, camera: SessionCamera, hidden: boolean): void;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
     listener: (code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void,
@@ -242,6 +244,8 @@ interface Session {
   camera?: SessionCamera;
   /** The engine told that the camera stopped while recording. */
   cameraLost?: boolean;
+  /** Hidden from the tray (D13); the camera stays open. */
+  cameraHidden?: boolean;
   /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -495,6 +499,34 @@ export class Recorder {
       session.stopOnStart = reason;
       this.deps.log(`recorder: session ${session.id} cancel (${reason}) arrived after record was sent; stopping once capture starts`);
     }
+  }
+
+  /** The session's camera, when it has one: whether it is hidden from the tray (D13). */
+  get camera(): { hidden: boolean } | undefined {
+    const session = this.session;
+    return session?.camera ? { hidden: session.cameraHidden === true } : undefined;
+  }
+
+  /**
+   * Changes the camera of the session in progress (plan 075): a new layout (D7) or hiding and showing it (D13), from
+   * its next frame on. Only once the engine's session is prepared (the countdown, the start and the recording), so a
+   * change is never kept here but lost there; nothing without a session composing a camera. Logged with the session.
+   */
+  updateCamera(change: { layout?: CameraLayout; hidden?: boolean }): boolean {
+    const session = this.session;
+    const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";
+    if (!session?.camera || !prepared || this._state.type === "stopping") return false;
+    if (change.layout) session.camera = { ...session.camera, layout: change.layout };
+    if (change.hidden !== undefined) session.cameraHidden = change.hidden;
+    this.deps.log(`recorder: session ${session.id} camera ${change.layout ? "layout changed" : ""}${change.layout && change.hidden !== undefined ? ", " : ""}` +
+      `${change.hidden === undefined ? "" : change.hidden ? "hidden" : "shown"}`);
+    try {
+      this.deps.host.setCamera?.(session.id, session.camera, session.cameraHidden === true);
+    } catch (cause) {
+      this.deps.log(`recorder: session ${session.id} camera change not sent: ${messageOf(cause)}`);
+      return false;
+    }
+    return true;
   }
 
   stop(): void {

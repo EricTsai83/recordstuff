@@ -230,6 +230,9 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // `REC` beside the icon and Stop say it; the line is gone (2026-10-05).
       return model("recording", "REC", text("Recording"), [
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
+        // Hide and show the camera while recording (plan 075, D13); no global shortcut.
+        ...(ctx.camera?.session ? [{ kind: "item" as const, label: text(ctx.camera.session.hidden ? "Show camera" : "Hide camera"), enabled: true,
+          action: { setCameraHidden: !ctx.camera.session.hidden } }] : []),
       ]);
     case "stopping":
       return model("busy", "", text("Saving…"), [], [text("Saving…")]);

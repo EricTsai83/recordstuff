@@ -101,6 +101,8 @@ export class NativeCaptureHost implements RecorderHost {
   private readonly outcomes = new Map<string, FileOutcome>();
   private readonly finishing = new Map<UtilityProcess, Finishing>();
   private recordingPath: string | undefined;
+  /** The display the session records, for the camera's position on it (plan 075). */
+  private display: string | undefined;
   private excluding = false;
   /** Counts exclusions: a deferred release lets windows back in only if no exclusion came after its own. */
   private exclusions = 0;
@@ -168,6 +170,7 @@ export class NativeCaptureHost implements RecorderHost {
     await microphoneAsked;
     if (generation !== this.generation) throw new Error("capture host was invalidated while macOS asked for the microphone");
     const display = chosen.display;
+    this.display = display;
     this.log(`capture host: timing: process ready ${Math.round(readyAt - began)} ms, display chosen ${Math.round(chosenAt - began)} ms`);
     if (generation !== this.generation) throw new Error("capture host was invalidated while the display was chosen");
     if (!display || !/^\d+$/.test(display)) {
@@ -245,6 +248,12 @@ export class NativeCaptureHost implements RecorderHost {
   stop(sessionId: string): void {
     if (!this.child) return;
     this.post({ type: "stop", sessionId });
+  }
+
+  /** The session's camera from its next frame on (plan 075): the bubble at its position on the recorded display. */
+  setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
+    if (!this.child || this.watching !== sessionId || !this.display) return;
+    this.post({ type: "cameraLayout", sessionId, camera: cameraChoice(camera, this.display), hidden });
   }
 
   destroy(): void {

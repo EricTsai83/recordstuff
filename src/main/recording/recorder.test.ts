@@ -9,7 +9,7 @@ import { HostStartError, type EngineFileReport, type HostMessage } from "../../s
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import type { RecordingState } from "../../shared/state";
 import type { RecordingFailure } from "../../shared/recording-result";
-import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCapture } from "./recorder";
+import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCamera, type SessionCapture } from "./recorder";
 import { COUNTDOWN_TIMING } from "../../shared/countdown";
 import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
@@ -47,6 +47,11 @@ class FakeHost implements RecorderHost {
   }
   stop(sessionId: string): void {
     this.stopped.push(sessionId);
+  }
+  /** Each camera change sent (plan 075). */
+  cameraChanges: { sessionId: string; camera: SessionCamera; hidden: boolean }[] = [];
+  setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
+    this.cameraChanges.push({ sessionId, camera, hidden });
   }
   onMessage(listener: (m: HostMessage) => void): void {
     this.messageListener = listener;
@@ -216,6 +221,41 @@ describe("the camera (plan 075)", () => {
     expect(ctx.events).toContainEqual(expect.objectContaining({ type: "failed", code: "camera_unavailable", outcome: "empty" }));
     expect(ctx.host.recorded).toEqual([]);
     expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("changes the recording's camera from its next frame on: a new layout, hidden and shown, logged", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    const moved = { ...layout, width: 0.3 };
+    expect(ctx.recorder.updateCamera({ layout: moved })).toBe(true);
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(true);
+    expect(ctx.recorder.camera).toEqual({ hidden: true });
+    expect(ctx.host.cameraChanges).toEqual([
+      { sessionId: "s1", camera: { layout: moved }, hidden: false },
+      { sessionId: "s1", camera: { layout: moved }, hidden: true }]);
+    expect(logs).toContainEqual(expect.stringContaining("session s1 camera hidden"));
+    ctx.recorder.stop();
+    expect(ctx.recorder.updateCamera({ hidden: false }), "not while stopping").toBe(false);
+  });
+
+  it("takes no camera change before the engine's session is prepared", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.updateCamera({ hidden: true }), "preparing").toBe(false);
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(ctx.host.cameraChanges).toEqual([]);
+  });
+
+  it("has no camera to change without one, or between recordings", async () => {
+    const ctx = setup({});
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    await startRecording(ctx);
+    expect(ctx.recorder.camera).toBeUndefined();
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    expect(ctx.host.cameraChanges).toEqual([]);
   });
 
   it("keeps recording when the camera is lost, logs each dropout and its return, tells it once and marks the saved recording", async () => {

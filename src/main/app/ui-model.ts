@@ -75,6 +75,8 @@ export type AppAction =
   | { setMicrophone: boolean }
   /** The Camera switch (plan 075, D10). */
   | { setCamera: boolean }
+  /** Hides or shows the camera in the recording in progress (plan 075, D13); the camera stays open. */
+  | { setCameraHidden: boolean }
   /** `null` is the system default input. */
   | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }
@@ -100,12 +102,14 @@ export interface MicrophoneContext {
 export interface CameraContext {
   enabled: boolean;
   /**
-   * Whether the row is shown: until the engine records the camera from this setting (plan 075 step 6), only while the
-   * development switch RECORDSTUFF_CAMERA_PROTOTYPE is on, so no one turns on a switch that records nothing.
+   * Whether the row is shown: until the Camera group can arrange the bubble (plan 075 step 7), only while the
+   * development switch RECORDSTUFF_CAMERA_PROTOTYPE is on, so no one records a bubble they cannot place.
    */
   available: boolean;
   /** macOS's answer for the camera; absent on Windows, which has no status to read. */
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+  /** The recording in progress composes the camera: whether it is hidden from the tray (D13). */
+  session?: { hidden: boolean };
 }
 
 /** The persisted choice plus whether the OS actually accepted the registration. */

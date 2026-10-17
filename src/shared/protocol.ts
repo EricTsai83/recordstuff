@@ -103,6 +103,11 @@ export type MainMessage =
   | { type: "stop"; sessionId: string }
   /** List the audio inputs (plan 074); answered with `microphones`. Only to a host with no session. */
   | { type: "listMicrophones" }
+  /**
+   * The camera's bubble and whether it is shown, for the session's next frames (plan 075, D7 and D13); answered with
+   * nothing. `camera.deviceId` is ignored: the camera is not switched while recording.
+   */
+  | { type: "cameraLayout"; sessionId: string; camera: CameraChoice; hidden: boolean }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -198,6 +203,8 @@ export function isMainMessage(value: unknown): value is MainMessage {
     case "record":
     case "stop":
       return isNonEmptyString(value["sessionId"]);
+    case "cameraLayout":
+      return isNonEmptyString(value["sessionId"]) && isCameraChoice(value["camera"]) && typeof value["hidden"] === "boolean";
     case "listMicrophones":
     case "ping":
       return true;

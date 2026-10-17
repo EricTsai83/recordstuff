@@ -152,6 +152,18 @@ describe("createActionHandler", () => {
       expect(ctx.tray.notifyCameraDenied).not.toHaveBeenCalled();
     });
 
+    it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {
+      const updateCamera = vi.fn((_change: { hidden?: boolean }) => true);
+      const ctx = harness({ recorder: { updateCamera } } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setCameraHidden: true });
+      await ctx.act({ setCameraHidden: false });
+      expect(updateCamera.mock.calls).toEqual([[{ hidden: true }], [{ hidden: false }]]);
+      expect(ctx.deps.refresh).toHaveBeenCalledTimes(2);
+      updateCamera.mockReturnValueOnce(false);
+      await ctx.act({ setCameraHidden: true });
+      expect(vi.mocked(ctx.deps.log).mock.calls.map((call) => call[0])).toContainEqual(expect.stringContaining("no recording composes the camera"));
+    });
+
     it("opens the camera's privacy page on macOS and Windows and reports whether it opened", async () => {
       for (const platform of ["darwin", "win32"] as const) {
         const ctx = cameraHarness(true, platform);

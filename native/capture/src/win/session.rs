@@ -196,6 +196,11 @@ impl Session {
     }
 
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
+    /// No camera on Windows yet (plan 075 step 6's Windows part).
+    pub fn set_camera(&self, _layout: crate::camera_layout::Layout, _hidden: bool) -> bool {
+        false
+    }
+
     pub fn record(&mut self) -> Result<(), CaptureError> {
         self.core.record()
     }

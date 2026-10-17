@@ -528,6 +528,8 @@ export const ZH_TW = {
   "Connect a camera and allow desktop apps in Settings → Privacy & security → Camera, or turn Camera off in Recording settings.":
     "請連接相機，並在「設定 → 隱私權與安全性 → 相機」中允許桌面應用程式存取；或在錄影設定中關閉「相機」。",
   "RecordStuff cannot use the camera. Click to open System Settings.": "RecordStuff 無法使用相機。按一下以開啟系統設定。",
+  "Hide camera": "隱藏相機",
+  "Show camera": "顯示相機",
   "The camera dropped out during the recording. The screen was recorded without it while it was out.":
     "錄影途中相機曾中斷，中斷期間只錄到螢幕畫面。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */

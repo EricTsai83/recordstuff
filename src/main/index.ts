@@ -394,8 +394,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         : microphones?.find((candidate) => candidate.default)?.name;
       return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
     },
-    // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 6
-    // removes the development switch); autorecord never records it.
+    // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 7, with
+    // the Camera group's controls, removes the development switch); autorecord never records it.
     camera: () => {
       if (autoRecord?.ok || !settings.camera || process.platform !== "darwin" || !cameraPrototypeOn(process.env)) return undefined;
       const device = settings.cameraDevice;
@@ -510,8 +510,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     })(),
     camera: (() => {
       const access = cameraAccess();
-      // Shown only behind the development switch until the engine records the camera from this setting (step 6).
-      return { enabled: settings.camera, available: cameraPrototypeOn(process.env), ...(access ? { access } : {}) };
+      // Shown only behind the development switch until the Camera group can arrange the bubble (step 7).
+      const session = recorder.camera;
+      return { enabled: settings.camera, available: cameraPrototypeOn(process.env), ...(access ? { access } : {}), ...(session ? { session } : {}) };
     })(),
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),

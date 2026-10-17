@@ -32,7 +32,7 @@ export interface ActionDeps {
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
@@ -132,6 +132,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         log("settings: camera access is not allowed");
         tray.notifyCameraDenied();
       }
+      deps.refresh();
+    } else if ("setCameraHidden" in action) {
+      // The recording's own choice (D13), not a setting: the next recording shows the camera again.
+      if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");
       deps.refresh();
     } else if ("setMicrophoneDevice" in action) {
       await deps.savePreference("microphone device", {
