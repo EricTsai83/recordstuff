@@ -30,7 +30,7 @@ export type AppAction =
   | "openShortcutSettings"
   /** Settings on the Keyboard Shortcuts tab (plan 073): the macOS Help menu's Keyboard Shortcuts. */
   | "openShortcutList"
-  /** Settings on the Recording tab, where the resolution warning a capture notice names is shown. */
+  /** Settings on the Recording tab, where the microphone a lost-microphone notice names is set. */
   | "openRecordingSettings"
   /** The window on Recordings with the newest recording in view and focused: the tray's way to the last take. */
   | "showLastRecording"
@@ -43,6 +43,8 @@ export type AppAction =
   | "openNotificationSettings"
   /** System Settings → Privacy & Security → Microphone (plan 074), macOS only. */
   | "openMicrophoneSettings"
+  /** Windows Settings → Optional features (plan 078), where the Media Feature Pack is installed; Windows only. */
+  | "openOptionalFeatures"
   | "relaunch"
   | "start"
   | "stop"
@@ -54,6 +56,8 @@ export type AppAction =
   /** A quit held only by saves in the background: exit now, leaving them to be reported at the next launch. */
   | "quitWithoutWaiting"
   | "clearAppData"
+  /** Troubleshooting's way out of an unreadable failure history (plan 078), after a confirmation. */
+  | "resetFailureHistory"
   | "retryShortcuts"
   | "checkUpdates"
   | "openWebsite"
@@ -99,7 +103,6 @@ export interface AppContext {
   historyLoading?: boolean;
   historyFailed?: boolean;
   historyLimit?: number;
-  captureWarning?: string;
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;
@@ -108,6 +111,8 @@ export interface AppContext {
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
   platform: NodeJS.Platform;
+  /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
+  mediaComponentsMissing?: boolean;
   outputDir: string;
   homeDir: string;
   /** The output folder's videos for the Recordings tab; absent before the first listing. */

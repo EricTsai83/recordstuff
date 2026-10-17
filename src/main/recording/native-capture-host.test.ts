@@ -165,6 +165,22 @@ describe("NativeCaptureHost", () => {
     expect(excluded).toEqual([true, false]);
   });
 
+  it("rejects a start whose engine could not load for missing Windows media components with that code (plan 078)", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.emit("exit", 4);
+    await expect(start).rejects.toMatchObject({ name: "HostStartError", code: "media_components_missing" });
+  });
+
+  it("lets main make its window before the engine reads what it may capture (macOS lists only apps owning one)", async () => {
+    const order: string[] = [];
+    const ctx = setup("7", { beforeCapture: () => order.push(`before; ${ctx.children.at(-1)?.sent.length ?? 0} sent`) });
+    const child = await started(ctx);
+    expect(order).toEqual(["before; 0 sent"]);
+    expect(child.sent[0]).toMatchObject({ type: "start" });
+  });
+
   it("lets its windows back in after a bound when the process never reports its exit, unless a newer attempt excluded them", async () => {
     const excluded: boolean[] = [];
     const ctx = setup("7", { excludeOwnWindows: (on) => excluded.push(on) });

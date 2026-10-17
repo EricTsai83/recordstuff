@@ -80,6 +80,32 @@ pub fn decoder_config(sps: &[u8], pps: &[u8]) -> Vec<u8> {
     record
 }
 
+/// Back to Annex B, for a decoder (plan 078's self-test of a hardware encoder): `sample`'s length-prefixed NAL units
+/// after start codes, preceded by the parameter sets of `avcc` (a `decoder_config` record) when asked.
+pub fn annex_b(avcc: &[u8], sample: &[u8], with_parameter_sets: bool) -> Option<Vec<u8>> {
+    const START: [u8; 4] = [0, 0, 0, 1];
+    let mut out = Vec::with_capacity(sample.len() + avcc.len() + 16);
+    if with_parameter_sets {
+        let sps_len = usize::from(u16::from_be_bytes(avcc.get(6..8)?.try_into().ok()?));
+        let sps = avcc.get(8..8 + sps_len)?;
+        let at = 8 + sps_len + 1;
+        let pps_len = usize::from(u16::from_be_bytes(avcc.get(at..at + 2)?.try_into().ok()?));
+        let pps = avcc.get(at + 2..at + 2 + pps_len)?;
+        for unit in [sps, pps] {
+            out.extend_from_slice(&START);
+            out.extend_from_slice(unit);
+        }
+    }
+    let mut at = 0;
+    while at < sample.len() {
+        let length = u32::from_be_bytes(sample.get(at..at + 4)?.try_into().ok()?) as usize;
+        out.extend_from_slice(&START);
+        out.extend_from_slice(sample.get(at + 4..at + 4 + length)?);
+        at += 4 + length;
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +168,17 @@ mod tests {
     #[test]
     fn a_stream_without_parameter_sets_has_none() {
         assert!(parameter_sets(&stream(&[&IDR_UNIT], true)).is_none());
+    }
+
+    #[test]
+    fn a_sample_goes_back_to_annex_b_with_its_parameter_sets() {
+        let stream = [0, 0, 0, 1, 0x67, 0x64, 0, 0x1f, 0xac, 0, 0, 0, 1, 0x68, 0xee, 0x3c, 0x80, 0, 0, 1, 0x65, 0x88, 0x84];
+        let (sps, pps) = parameter_sets(&stream).unwrap();
+        let avcc = decoder_config(sps, pps);
+        let (data, _) = sample(&stream);
+        let back = annex_b(&avcc, &data, true).unwrap();
+        assert_eq!(nal_units(&back), nal_units(&stream));
+        assert_eq!(nal_units(&annex_b(&avcc, &data, false).unwrap()), [&[0x65, 0x88, 0x84][..]]);
+        assert_eq!(annex_b(&avcc, &[0, 0, 0, 9, 1], false), None, "a length past the end");
     }
 }

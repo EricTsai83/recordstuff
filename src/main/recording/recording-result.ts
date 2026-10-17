@@ -269,6 +269,30 @@ export class RecordingResults {
     if (ids.every(id => this.everSaved.has(id))) return Promise.resolve();
     return new Promise(settle => this.savedWatchers.push({ ids, settle }));
   }
+  /**
+   * Replaces a history that could not be read with an empty one (plan 078), the store keeping the old file, and saves
+   * this session's failures into it. False when nothing was unreadable or the reset failed; the history then stays
+   * as it was.
+   */
+  async resetHistory(): Promise<boolean> {
+    await this.ready;
+    if (!this.loadFailed || !this.storage?.reset || this.closed) return false;
+    try {
+      const kept = await this.storage.reset();
+      this.log(`recording history: reset by the user; the unreadable file was ${kept ? `kept as ${kept}` : "already gone"}`);
+    } catch (error) {
+      this.log(`recording history: reset failed: ${String(error)}`);
+      return false;
+    }
+    this.loadFailed = false;
+    this.persisted = [];
+    this.savedRows = new Map();
+    this.failures = 0;
+    this.issue = undefined;
+    this.revision++;
+    this.changed();
+    return this.persist();
+  }
   /** Resolves once everything changed so far is durable (true), or when that attempt fails (false). */
   persist(): Promise<boolean> {
     if (this.closed) return Promise.resolve(false);
@@ -490,7 +514,7 @@ const reasons: Record<ErrorCode, PlainMessageKey> = {
   no_display: "No display is available for recording.",
   no_audio_track: "System audio was unavailable at start, so nothing was recorded.",
   microphone_unavailable: "The microphone was unavailable, so recording did not start.",
-  mp4_unsupported: "MP4 recording is not supported on this computer.",
+  media_components_missing: "Windows's media components are missing, so recording cannot start.",
   capture_start_failed: "Could not start recording.",
   capture_failed: "Recording was interrupted.",
   capture_host_crashed: "The recording process crashed.",
@@ -526,8 +550,8 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
     : code === "app_terminated" ? "The recording file may be incomplete; missing content cannot be recovered."
     // Refused before anything started: no setting or retry helps, and nothing was lost.
     : code === "unsupported_os_version" ? "Update macOS, then record again."
-    // Also refused before anything started: the encoder, not a quality setting, lacks MP4.
-    : code === "mp4_unsupported" ? "Update the system and RecordStuff, then record again."
+    // Also refused before anything started: a Windows N edition lacks Media Foundation until the pack is installed.
+    : code === "media_components_missing" ? "Install the Media Feature Pack from Optional features in Windows Settings, then restart Windows and record again."
     // Ended before any media was kept, so nothing is missing; a source that stopped while quality settings were
     // applied, or a capture that never started, is what remains.
     : code === "capture_start_failed" ? "Try again. If it keeps failing, choose a lower video quality or relaunch RecordStuff."

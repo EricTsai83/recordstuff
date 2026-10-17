@@ -19,10 +19,12 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod frame_log;
 mod mixer;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
+pub use frame_log::FrameLog;
 use mixer::Mixer;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 
@@ -339,9 +341,21 @@ pub struct Shared<P: Platform> {
     /// When the microphone last delivered and whether it is told lost: one lock, so a loss and a return are judged
     /// and told in the order they happened.
     microphone: Mutex<MicrophoneState>,
+    /// The per-frame log, when the development switch asks for one (frame_log.rs). Locked inside the video lock.
+    frame_log: Mutex<Option<FrameLog>>,
 }
 
 impl<P: Platform> Shared<P> {
+    /// Logs a frame at `pts` while recording, when the per-frame log is on. Called under the video lock.
+    fn log_frame(&self, video: &VideoState<P>, pts: u64, kind: &str, kept: bool) {
+        let mut log = self.frame_log.lock().unwrap();
+        let Some(log) = log.as_mut() else { return };
+        if !matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING) && kind != "first" {
+            return;
+        }
+        log.line(self.t0_ns.load(Ordering::Acquire), pts, kind, kept, video.pacer.as_ref().map(Pacer::next_slot));
+    }
+
     fn send(&self, media: Media) {
         if let Some(writer) = self.writer.lock().unwrap().as_ref() {
             writer.send(media);
@@ -379,6 +393,11 @@ impl<P: Platform> Shared<P> {
         }
         let phase = self.phase.load(Ordering::Acquire);
         let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
+        if let Err(detail) = if eligible { self.fill_skipped(video, pts) } else { Ok(()) } {
+            drop(guard);
+            self.fail(detail);
+            return;
+        }
         let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
         video.pending = eligible && !wanted && video.pacer.is_some();
         if wanted {
@@ -391,12 +410,36 @@ impl<P: Platform> Shared<P> {
             }
             video.last_encoded_ns = pts;
         }
+        self.log_frame(video, pts, "picture", wanted);
         video.last = Some(frame);
         video.last_pts = pts;
     }
 
-    /// Capture delivered a frame without a picture (blank, suspended and the like); counted while recording.
-    pub fn frame_without_picture(&self) {
+    /// Before a delivery at `pts` is judged: when it shows that capture skipped the refresh the pacer wanted (see
+    /// `Pacer::skipped`), the newest picture is encoded at that refresh's time. An encoding failure is returned for the
+    /// caller to report once it has released the video lock, dropping the delivery.
+    fn fill_skipped(&self, video: &mut VideoState<P>, pts: u64) -> Result<(), String> {
+        let Some(at) = video.pacer.as_mut().and_then(|pacer| pacer.skipped(pts)) else { return Ok(()) };
+        if at <= video.last_encoded_ns {
+            return Ok(());
+        }
+        if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
+            encoder.encode(frame, at, false)?;
+        }
+        video.last_encoded_ns = at;
+        video.pending = false;
+        self.log_frame(video, at, "skipped", true);
+        Ok(())
+    }
+
+    /// Capture delivered a frame without a picture (blank, suspended and the like) at `pts`; counted while recording.
+    pub fn frame_without_picture(&self, pts: u64) {
+        self.count_without_picture();
+        let video = self.video.lock().unwrap();
+        self.log_frame(&video, pts, "blank", false);
+    }
+
+    fn count_without_picture(&self) {
         if self.phase.load(Ordering::Acquire) == RECORDING {
             self.captured_without_picture.fetch_add(1, Ordering::Relaxed);
         }
@@ -408,12 +451,18 @@ impl<P: Platform> Shared<P> {
     /// 30 fps from the test material on a 60 Hz display had 1–2% of its frames 50 ms apart, every one at an idle
     /// refresh, and none where capture missed one).
     pub fn frame_unchanged(&self, pts: u64) {
-        self.frame_without_picture();
+        self.count_without_picture();
         let mut guard = self.video.lock().unwrap();
         let video = &mut *guard;
         let phase = self.phase.load(Ordering::Acquire);
         let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
+        if let Err(detail) = if eligible { self.fill_skipped(video, pts) } else { Ok(()) } {
+            drop(guard);
+            self.fail(detail);
+            return;
+        }
         if !eligible || video.last.is_none() || !video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts)) {
+            self.log_frame(video, pts, "idle", false);
             return;
         }
         if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
@@ -425,6 +474,7 @@ impl<P: Platform> Shared<P> {
         }
         video.last_encoded_ns = pts;
         video.pending = false;
+        self.log_frame(video, pts, "idle", true);
     }
 
     /// The microphone stopped (or its sound can no longer be read): the recording goes on without it. Told once per
@@ -575,6 +625,7 @@ impl<P: Platform> Core<P> {
             captured_gap_max_ns: AtomicU64::new(0),
             microphone_input: AtomicUsize::new(usize::MAX),
             microphone: Mutex::new(MicrophoneState::default()),
+            frame_log: Mutex::new(None),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -582,6 +633,14 @@ impl<P: Platform> Core<P> {
     /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
     pub fn watch_microphone(&self, input: usize) {
         self.shared.microphone_input.store(input, Ordering::Release);
+    }
+
+    /// Writes the per-frame log for the recording at `path` when the development switch asks for one; returns where.
+    pub fn log_frames(&self, path: &std::path::Path) -> Option<PathBuf> {
+        let log = FrameLog::from_env(path)?;
+        let at = log.path.clone();
+        *self.shared.frame_log.lock().unwrap() = Some(log);
+        Some(at)
     }
 
     /// What capture callbacks hold.
@@ -713,6 +772,7 @@ impl<P: Platform> Core<P> {
                 } else if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
                     if encoder.encode(frame, at, false).is_ok() {
                         video.last_encoded_ns = at;
+                        self.shared.log_frame(video, at, "stop", true);
                     }
                 }
             }
@@ -832,6 +892,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         }
         video.last_encoded_ns = t0;
         video.pacer = Some(Pacer::new(t0, shared.frame_rate));
+        shared.log_frame(video, t0, "first", true);
         // Under the video lock: no captured frame can be encoded before the first one. A stop that came first keeps
         // its phase.
         if shared.phase.compare_exchange(PREPARED, RECORDING, Ordering::AcqRel, Ordering::Acquire).is_err() {
@@ -853,7 +914,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         // A frame the pacer left out, on a screen that has since stood still: due at its slot.
         let at = if video.pending {
             match video.pacer.as_mut().and_then(|pacer| pacer.due(now)) {
-                Some(slot) => Some(slot.max(video.last_encoded_ns + 1)),
+                Some(slot) => Some((slot.max(video.last_encoded_ns + 1), "due")),
                 None => {
                     let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
                     wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
@@ -861,17 +922,18 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
                 }
             }
         } else if now >= video.last_encoded_ns + REFRESH_NS {
-            Some(now)
+            Some((now, "refresh"))
         } else {
             None
         };
-        let Some(at) = at else { continue };
+        let Some((at, kind)) = at else { continue };
         video.pending = false;
         let result = match (video.encoder.as_ref(), video.last.as_ref()) {
             (Some(encoder), Some(frame)) => encoder.encode(frame, at, false),
             _ => Ok(()),
         };
         video.last_encoded_ns = at;
+        shared.log_frame(video, at, kind, true);
         drop(guard);
         if let Err(detail) = result {
             shared.fail(detail);

@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod content;
+pub mod hal;
 pub mod microphone;
 pub mod session;
 pub mod video;

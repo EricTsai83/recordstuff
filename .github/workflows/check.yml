@@ -116,6 +116,10 @@ jobs:
         env:
           RECORDSTUFF_SKIP_NATIVE: "1"
       - run: pnpm test:ui --shard=${{ matrix.shard }}/4
+      # Plan 078 step 5: how long each launch took to close, the slowest first, passing or not.
+      - name: Slowest closes
+        if: always()
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ui-close-timings.mts
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -125,6 +129,7 @@ jobs:
             test-results/ui/
             test-results/ui-summary.json
             test-results/ui-report.json
+            test-results/ui-close-timings.jsonl
           if-no-files-found: ignore
           retention-days: 7
   windows-installer:

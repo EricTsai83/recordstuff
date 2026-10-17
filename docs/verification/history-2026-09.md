@@ -112,7 +112,7 @@ Cleanup: RecordStuff and the temporary shortcut holder quit and no RecordStuff o
 
 ## Plan 053 closure — 2026-09-29
 
-Plan 053 took the six items the third audit on 2026-09-29 left out of its fixes, implemented by Claude with Codex GPT-6 Astra review in a separate worktree while 052 ran in the main checkout ([desktop](../system-design/desktop.md#settings-window), [second launch](../system-design/desktop.md#settings-shortcut), [notifications](../system-design/desktop.md#tray-and-notifications), [tooling](../system-design/tooling.md#frame-cadence-diagnostic)).
+Plan 053 took the six items the third audit on 2026-09-29 left out of its fixes, implemented by Claude with Codex GPT-6 Astra review in a separate worktree while 052 ran in the main checkout ([desktop](../system-design/desktop.md#settings-window), [second launch](../system-design/desktop.md#settings-shortcut), [notifications](../system-design/desktop.md#tray-and-notifications), [tooling](../system-design/tooling.md#per-frame-log)).
 
 - **Busy actions keep focus.** Action buttons, diagnostic Retry/Recovery and the failure rows share one rule: a busy button keeps `aria-disabled="true"` and the saving look, stays focusable and ignores activation; only a choice main does not offer is natively disabled. Main marks a running update check `busy` and still refuses it.
 - **Cadence percentiles.** The maintainer chose nearest-rank: `cadenceStats` uses the shared `stats.mts` helpers, so cadence p05/p95 written before 2026-09-29 are interpolated and not directly comparable; medians are unchanged.
@@ -615,7 +615,7 @@ While checking the release documents, the website trigger list was found incompl
 
 ## Plan 041 closure — 2026-09-26
 
-Capture cadence at the requested frame rate, implemented by Claude with Codex GPT-6 Astra review ([frame-rate request](../system-design/recording.md#frame-rate-request), [cadence diagnostic](../system-design/tooling.md#frame-cadence-diagnostic)). Every recording had delivered about 2% (30 fps) or 4% (60 fps) fewer frames than set, without drops.
+Capture cadence at the requested frame rate, implemented by Claude with Codex GPT-6 Astra review ([frame-rate request](../system-design/recording.md#frame-rate-request), [cadence diagnostic](../system-design/tooling.md#per-frame-log)). Every recording had delivered about 2% (30 fps) or 4% (60 fps) fewer frames than set, without drops.
 
 Environment for every round: M1 Pro (10 cores, 32 GB), macOS 26.6.2, Node 24.21.0, Electron 44.3.0 / Chromium 152.0.7977.78, ffmpeg 9.0.1, primary display BenQ 1920×1080 at 60.00 Hz (Electron `displayFrequency` 60), system audio to external headphones at volume 94, test material SHA-256 `e631b973…c41459`, from HEAD `86ecbc5` plus the uncommitted change. Each diagnostic and matrix run built `out/` itself.
 

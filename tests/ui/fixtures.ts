@@ -29,8 +29,16 @@ import { ProcessOwnership } from "./process-ownership";
 export { expect };
 export const ROOT = path.resolve(__dirname, "../..");
 const CLOSE_TIMEOUT_MS = 15_000;
-const EXIT_TIMEOUT_MS = 5_000;
+/**
+ * How long the rest of a launch's processes may take to end after its main process exited. Chromium's helpers end on
+ * their own once main is gone, and on CI's Windows runners some took seconds to (plan 078 step 5: main exited 70–100 ms
+ * into every close, the slowest helpers 1.8–7.7 s later), so Windows waits longer; a helper still running then is killed
+ * and fails the test.
+ */
+const EXIT_TIMEOUT_MS = process.platform === "win32" ? 15_000 : 5_000;
 const SCAN_INTERVAL_MS = 1_000;
+/** One line per launch's teardown (plan 078 step 5), read by `scripts/ui-close-timings.mts`. */
+export const CLOSE_TIMINGS_FILE = path.join(process.cwd(), "test-results", "ui-close-timings.jsonl");
 
 /**
  * A worker that dies between tests is reported by Playwright as "worker process exited unexpectedly" with nothing
@@ -176,6 +184,11 @@ export interface Teardown {
   remaining: number[];
   pageErrors: string[];
   error?: string;
+  /**
+   * How long each part of the teardown took, in ms (plan 078 step 5): the boundary audit, the normal close (which a
+   * timeout ends at `CLOSE_TIMEOUT_MS`), and the wait for every process to end, including after a timed-out close.
+   */
+  phases?: { audit?: number; close?: number; exit?: number; killed?: boolean; quit?: Record<string, number> };
 }
 
 /**
@@ -202,14 +215,34 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
   };
   await scan();
   result.desktop = await launched.probe.stop();
+  const phases: NonNullable<Teardown["phases"]> = {};
+  result.phases = phases;
+  let lap = Date.now();
+  const elapsed = (): number => { const now = Date.now(), ms = now - lap; lap = now; return ms; };
   if (launched.child.exitCode === null && launched.child.signalCode === null && !launched.closed) {
     try { await Promise.race([launched.evaluate(host => { host.prepareClose?.(); host.boundary.audit(); }), timeoutAfter(5000, "audit")]); }
     catch (error) { errors.push(`boundary audit failed: ${String(error)}`); }
+    phases.audit = elapsed();
     await scan();
+    elapsed();
+    const closeStarted = Date.now();
+    // A normal close is production's quit ending the main process. Playwright's own close resolves only once every
+    // process holding the launch's output has ended, which on Windows included helpers that lingered after main had
+    // exited (plan 078 step 5); their end is the exit wait's to confirm below, not the close's.
+    const child = launched.child;
+    const mainExited = new Promise<void>(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) resolve();
+      else child.once("exit", () => resolve());
+    });
+    const closing = launched.application.close();
+    closing.catch(() => undefined);
     try {
-      await Promise.race([launched.application.close(), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
+      await Promise.race([Promise.race([mainExited, closing]), timeoutAfter(CLOSE_TIMEOUT_MS, "close")]);
       result.closedNormally = true;
     } catch (error) { errors.push(`normal close failed: ${String(error)}`); }
+    phases.close = elapsed();
+    // The host's quit steps (hosts/boundary.ts), in ms after the close began, read from its log once it has ended.
+    phases.quit = { started: closeStarted };
   } else {
     // It ended before teardown: normally only when it quit itself with success (a test that quits the app).
     result.closedNormally = launched.closed || launched.child.exitCode === 0;
@@ -226,14 +259,25 @@ export async function tearDown(launched: Launched): Promise<Teardown> {
     if (scanned === before) await scan();
     return ended();
   };
-  if (!await until(gone, EXIT_TIMEOUT_MS)) {
+  const exited = await until(gone, EXIT_TIMEOUT_MS);
+  phases.exit = elapsed();
+  if (!exited) {
     // Only processes this launch owns are ever signalled: its main's descendants and its own Electron helpers.
     result.forced = true;
+    phases.killed = true;
     // A failed read must never authorize signalling identities from an older snapshot.
     if (await scan()) for (const pid of [...tree].reverse()) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
     await until(gone, EXIT_TIMEOUT_MS);
   }
   result.remaining = [...tree].filter(alive);
+  if (phases.quit) {
+    const started = phases.quit.started!;
+    const steps: Record<string, number> = {};
+    try {
+      for (const match of fs.readFileSync(path.join(launched.data, "electron.log"), "utf8").matchAll(/^\[quit\] (.+) at (\d+)$/gm)) steps[match[1]!] ??= Number(match[2]) - started;
+    } catch { /* no log */ }
+    phases.quit = steps;
+  }
   // The boundary appended every violation as it happened, so a launch that quit itself or hung still reports them.
   const file = path.join(launched.data, "violations.jsonl");
   try {
@@ -362,6 +406,12 @@ export const test = launchers.extend<{ containment: void }>({
     const reports: Array<Teardown & { kind: string; data: string }> = [];
     for (const launched of launches) reports.push({ kind: launched.kind, data: launched.data, ...launched.teardown ?? await tearDown(launched) });
     await testInfo.attach("teardown.json", { body: JSON.stringify(reports, null, 2), contentType: "application/json" });
+    // Every launch's close, passing or not, for the job's summary of the slowest (scripts/ui-close-timings.mts).
+    try {
+      const timings = reports.map(report => JSON.stringify({ test: testInfo.titlePath.slice(1).join(" › "), kind: report.kind, closedNormally: report.closedNormally, ...report.phases }));
+      fs.mkdirSync(path.dirname(CLOSE_TIMINGS_FILE), { recursive: true });
+      fs.appendFileSync(CLOSE_TIMINGS_FILE, timings.map(line => `${line}\n`).join(""));
+    } catch { /* a diagnostic only */ }
     if (process.env.RECORDSTUFF_UI_VERBOSE) console.log(JSON.stringify(reports.map(({ data: _data, ...report }) => report)));
     const problems = reports.flatMap(report => [
       ...report.violations.map(violation => `${report.kind}: containment violation ${violation.kind}: ${violation.detail}`),

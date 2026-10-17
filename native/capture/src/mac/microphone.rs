@@ -1,117 +1,62 @@
-//! The microphone, mixed into the recording's track (074's input; plan 076 step 4 builds it into the engine and its
-//! tests only): an `AVCaptureSession` with the chosen device or the system's default input, its sound converted by
-//! AVFoundation to one channel of 48 kHz 32-bit float, heard in both of the track's (074, as Cap does: an audio
-//! interface's microphone on its first input would otherwise be in the left ear only), and stamped on the host clock
-//! the screen's samples use.
+//! The microphone, mixed into the recording's track (074's input): CoreAudio's HAL (plan 078 step 6), an AUHAL input
+//! unit on the chosen device or the system's default input, read as one channel at the device's rate, converted to
+//! 48 kHz 32-bit float and heard in both of the track's (074, as Cap does: an audio interface's microphone on its first
+//! input would otherwise be in the left ear only), and stamped with the host time of each buffer (`mHostTime`), the
+//! clock the screen's samples use. Never voice processing: a plain HAL unit, not the voice-processing one.
 //!
 //! A microphone that cannot be opened refuses the recording with `microphone_unavailable` (074); one that stops while
-//! recording is told (`Shared::lose_microphone`) and the recording goes on without it, taking its sound again if it
-//! comes back to the same session (a stall). A device that is disconnected is not opened again: AVFoundation keeps
-//! its device list on the main run loop, which this utility process does not run, so the device stays as it was
-//! when it left, connected or not (a probe on 2026-10-16: CoreAudio's list followed a Bluetooth headset at once,
-//! AVFoundation's only with a run loop). Reopening needs CoreAudio's HAL, as Chromium's audio service and Cap (cpal)
-//! use (plan 078). The 2 s without sound in the core is what tells the loss. The usage description and the
-//! hardened runtime's audio-input entitlement, which a signed RecordStuff needs before macOS lets it open a microphone,
-//! are in electron-builder.yml and resources/entitlements.mac.plist.
+//! recording is told after 2 s without sound (`Shared::microphone_clock`) and the recording goes on without it. This
+//! module then takes it back. Every 250 ms it checks that the unit still records its device: when the device leaves,
+//! the HAL moves the unit to another input rather than stopping it, and that input's sound would go on unnoticed
+//! (`InputUnit::moved`), so the unit is closed at once, and the silence that follows tells the loss. A device that is
+//! gone, or still there but silent for 2 s, is opened again by its UID as soon as the HAL lists it, retrying after 2 s
+//! and backing off to 30 s, as Cap reconnects (cpal). The HAL follows devices in a process without a main run loop, which AVFoundation did
+//! not (074's probe, hal.rs). The device taken back is always the one opened at the start, the default input's
+//! included: a new default does not replace it (the maintainer's decision, 2026-10-17).
+//!
+//! The usage description and the hardened runtime's audio-input entitlement, which a signed RecordStuff needs before
+//! macOS lets it open a microphone, are in electron-builder.yml and resources/entitlements.mac.plist; the
+//! authorization is still read from AVFoundation, which answers it without a run loop.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
-use dispatch2::{DispatchQueue, DispatchRetained};
-use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{AnyThread, DefinedClass, define_class, msg_send};
-use objc2_av_foundation::{
-    AVAuthorizationStatus, AVCaptureAudioDataOutput, AVCaptureAudioDataOutputSampleBufferDelegate, AVCaptureConnection, AVCaptureDevice,
-    AVCaptureDeviceInput, AVCaptureOutput, AVCaptureSession, AVMediaTypeAudio,
-};
-use objc2_core_media::{CMClock, CMSampleBuffer, CMSyncConvertTime};
-use objc2_foundation::{NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSString};
+use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 
-use super::session::{Shared, sound};
-use super::{CaptureError, Unsent, host_ns};
+use super::hal::{self, Chunk, InputUnit, Resampler};
+use super::session::Shared;
+use super::CaptureError;
 use crate::core::{Microphone, SAMPLE_RATE};
 
-// AVFAudio's settings keys, re-exported by AVFoundation.
-unsafe extern "C" {
-    static AVFormatIDKey: &'static NSString;
-    static AVSampleRateKey: &'static NSString;
-    static AVNumberOfChannelsKey: &'static NSString;
-    static AVLinearPCMBitDepthKey: &'static NSString;
-    static AVLinearPCMIsFloatKey: &'static NSString;
-    static AVLinearPCMIsNonInterleaved: &'static NSString;
-    static AVLinearPCMIsBigEndianKey: &'static NSString;
-}
-
-/// kAudioFormatLinearPCM.
-const LINEAR_PCM: u32 = u32::from_be_bytes(*b"lpcm");
+/// How long without sound before the device is checked and opened again.
+const SILENT: Duration = Duration::from_secs(2);
+/// How often the open unit is checked to still record its own device.
+const CHECK: Duration = Duration::from_millis(250);
+/// The waits between attempts to open it again, the last repeated.
+const BACKOFF: [Duration; 5] = [Duration::from_secs(2), Duration::from_secs(4), Duration::from_secs(8), Duration::from_secs(16), Duration::from_secs(30)];
+/// Buffers the HAL's thread may queue ahead of the reading thread: as many as its pool holds.
+const QUEUE: usize = hal::POOL;
 
 fn unavailable(detail: impl Into<String>) -> CaptureError {
     CaptureError::new("microphone_unavailable", format!("microphone: {}", detail.into()))
 }
 
-fn audio_type() -> Result<&'static objc2_av_foundation::AVMediaType, CaptureError> {
-    unsafe { AVMediaTypeAudio }.ok_or_else(|| unavailable("AVFoundation has no audio media type"))
-}
-
 /// The audio input devices, the system's default marked.
 pub fn list() -> Result<Vec<Microphone>, CaptureError> {
-    let media = audio_type()?;
-    #[allow(deprecated)]
-    let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
-    let default = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.map(|device| unsafe { device.uniqueID() }.to_string());
-    Ok(devices
-        .iter()
-        .map(|device| {
-            let id = unsafe { device.uniqueID() }.to_string();
-            Microphone { default: default.as_deref() == Some(id.as_str()), name: unsafe { device.localizedName() }.to_string(), id }
-        })
+    let default = hal::default_input().map(|input| input.uid);
+    Ok(hal::inputs()
+        .into_iter()
+        .map(|input| Microphone { default: default.as_deref() == Some(input.uid.as_str()), name: input.name, id: input.uid })
         .collect())
 }
 
 /// AVFoundation's microphone authorization for this process: 0 not determined, 1 restricted, 2 denied, 3 authorized.
 pub fn authorization() -> Result<isize, CaptureError> {
-    Ok(unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio_type()?) }.0)
-}
-
-pub struct DelegateIvars {
-    shared: Arc<Shared>,
-    input: usize,
-    /// The session's clock, whose times are converted to the host clock; set once the session runs.
-    clock: Mutex<Option<Retained<CMClock>>>,
-}
-
-define_class!(
-    #[unsafe(super(NSObject))]
-    #[ivars = DelegateIvars]
-    struct Delegate;
-
-    unsafe impl NSObjectProtocol for Delegate {}
-
-    unsafe impl AVCaptureAudioDataOutputSampleBufferDelegate for Delegate {
-        #[unsafe(method(captureOutput:didOutputSampleBuffer:fromConnection:))]
-        fn capture_output(&self, _output: &AVCaptureOutput, sample: &CMSampleBuffer, _connection: &AVCaptureConnection) {
-            let ivars = self.ivars();
-            if !ivars.shared.wants_sound() {
-                return;
-            }
-            let time = unsafe { sample.presentation_time_stamp() };
-            let time = match ivars.clock.lock().unwrap().as_ref() {
-                Some(clock) => unsafe { CMSyncConvertTime(time, clock, &CMClock::host_time_clock()) },
-                None => time,
-            };
-            // Sound that cannot be read loses the microphone, not the recording.
-            if let Err(detail) = sound(&ivars.shared, ivars.input, sample, host_ns(time)) {
-                ivars.shared.lose_microphone(format!("microphone: {detail}"));
-            }
-        }
-    }
-);
-
-impl Delegate {
-    fn new(shared: Arc<Shared>, input: usize) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(DelegateIvars { shared, input, clock: Mutex::new(None) });
-        unsafe { msg_send![super(this), init] }
-    }
+    let media = unsafe { AVMediaTypeAudio }.ok_or_else(|| unavailable("AVFoundation has no audio media type"))?;
+    Ok(unsafe { AVCaptureDevice::authorizationStatusForMediaType(media) }.0)
 }
 
 pub struct MicrophoneCapture {
@@ -119,91 +64,156 @@ pub struct MicrophoneCapture {
     pub note: Option<String>,
     /// The device opened.
     pub name: String,
-    session: Unsent<AVCaptureSession>,
-    _delegate: Unsent<Delegate>,
-    _queue: DispatchRetained<DispatchQueue>,
+    stopped: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
-
-unsafe impl Send for MicrophoneCapture {}
 
 impl MicrophoneCapture {
     /// Opens `device` (the system's default input when `None`) and hands its sound to `shared` as `input`.
     pub fn start(device: Option<&str>, shared: Arc<Shared>, input: usize) -> Result<Self, CaptureError> {
-        let media = audio_type()?;
-        let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media) };
+        let status = AVAuthorizationStatus(authorization()?);
         if status == AVAuthorizationStatus::Denied || status == AVAuthorizationStatus::Restricted {
             return Err(unavailable("access is not allowed (System Settings > Privacy & Security > Microphone)"));
         }
-        // Never asked: AVFoundation would deliver silence without a prompt, and a narration would be lost unnoticed.
-        // Main asks before recording (074).
+        // Never asked: the HAL would deliver silence without a prompt, and a narration would be lost unnoticed. Main
+        // asks before recording (074).
         if status == AVAuthorizationStatus::NotDetermined {
             return Err(unavailable("access is not allowed yet: macOS has not asked for it"));
         }
         // A chosen device that is not connected falls back to the default input, and the note says so.
-        let chosen = device.and_then(|id| unsafe { AVCaptureDevice::deviceWithUniqueID(&NSString::from_str(id)) });
+        let chosen = device.and_then(|uid| hal::device_for_uid(uid).and_then(|id| hal::inputs().into_iter().find(|input| input.id == id)));
         let note = match (device, &chosen) {
-            (Some(id), None) => Some(format!("microphone: {id} is not connected; the default input is used")),
+            (Some(uid), None) => Some(format!("microphone: {uid} is not connected; the default input is used")),
             _ => None,
         };
-        let device = match chosen {
-            Some(device) => device,
-            None => unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.ok_or_else(|| unavailable("there is no audio input"))?,
+        let opened = match chosen {
+            Some(input) => input,
+            None => hal::default_input().ok_or_else(|| unavailable("there is no audio input"))?,
         };
-        let name = unsafe { device.localizedName() }.to_string();
-        let input_device = unsafe { AVCaptureDeviceInput::deviceInputWithDevice_error(&device) }
-            .map_err(|error| unavailable(format!("{name} could not be opened: {}", super::content::describe(&error))))?;
-
-        let session = unsafe { AVCaptureSession::new() };
-        let output = unsafe { AVCaptureAudioDataOutput::new() };
-        // NSNumber is an NSValue is an NSObject.
-        let object = |n: Retained<NSNumber>| -> Retained<AnyObject> { Retained::into_super(Retained::into_super(Retained::into_super(n))) };
-        let number = |value: f64| object(NSNumber::new_f64(value));
-        let settings = unsafe {
-            NSDictionary::from_retained_objects(
-                &[AVFormatIDKey, AVSampleRateKey, AVNumberOfChannelsKey, AVLinearPCMBitDepthKey, AVLinearPCMIsFloatKey, AVLinearPCMIsNonInterleaved, AVLinearPCMIsBigEndianKey],
-                &[
-                    number(f64::from(LINEAR_PCM)),
-                    number(f64::from(SAMPLE_RATE)),
-                    number(1.0),
-                    number(32.0),
-                    object(NSNumber::new_bool(true)),
-                    object(NSNumber::new_bool(false)),
-                    object(NSNumber::new_bool(false)),
-                ],
-            )
-        };
-        unsafe { output.setAudioSettings(Some(&settings)) };
-        let delegate = Delegate::new(shared, input);
-        let queue = DispatchQueue::new("com.ericts.record.capture.microphone", None);
-        unsafe {
-            output.setSampleBufferDelegate_queue(Some(ProtocolObject::from_ref(&*delegate)), Some(&queue));
-            session.beginConfiguration();
-            if !session.canAddInput(&input_device) {
-                return Err(unavailable(format!("{name} cannot be added to a capture session")));
-            }
-            session.addInput(&input_device);
-            if !session.canAddOutput(&output) {
-                return Err(unavailable("its sound cannot be read"));
-            }
-            session.addOutput(&output);
-            session.commitConfiguration();
-            session.startRunning();
-        }
-        if !unsafe { session.isRunning() } {
-            return Err(unavailable(format!("{name} did not start")));
-        }
-        let clock = unsafe { session.synchronizationClock() };
-        *delegate.ivars().clock.lock().unwrap() = clock;
-        Ok(Self { note, name, session: Unsent(session), _delegate: Unsent(delegate), _queue: queue })
+        let (chunks, received) = sync_channel(QUEUE);
+        let unit = InputUnit::open(opened.id, chunks.clone()).map_err(|why| unavailable(format!("{} could not be opened: {why}", opened.name)))?;
+        let resampler = converter(unit.rate).map_err(unavailable)?;
+        let stopped = Arc::new(AtomicBool::new(false));
+        let reader = Reader { shared, input, uid: opened.uid.clone(), name: opened.name.clone(), chunks, received, stopped: stopped.clone() };
+        let thread = std::thread::Builder::new()
+            .name("recordstuff-microphone".into())
+            .spawn(move || reader.run(unit, resampler))
+            .map_err(|e| unavailable(format!("its thread: {e}")))?;
+        Ok(Self { note, name: opened.name, stopped, thread: Some(thread) })
     }
 
     pub fn stop(&self) {
-        unsafe { self.session.0.stopRunning() };
+        self.stopped.store(true, Ordering::Release);
     }
 }
 
 impl Drop for MicrophoneCapture {
     fn drop(&mut self) {
         self.stop();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// A converter when the device does not run at 48 kHz.
+fn converter(rate: f64) -> Result<Option<Resampler>, String> {
+    if (rate - f64::from(SAMPLE_RATE)).abs() < 0.5 { Ok(None) } else { Resampler::new(rate, f64::from(SAMPLE_RATE)).map(Some) }
+}
+
+/// The thread that reads the HAL's buffers into the recording and takes the device back when it goes.
+struct Reader {
+    shared: Arc<Shared>,
+    input: usize,
+    uid: String,
+    name: String,
+    chunks: std::sync::mpsc::SyncSender<Chunk>,
+    received: Receiver<Chunk>,
+    stopped: Arc<AtomicBool>,
+}
+
+impl Reader {
+    /// One buffer into the recording, converted to 48 kHz first when the device runs at another rate. Sound that
+    /// cannot be converted or read loses the microphone, not the recording.
+    fn take(&self, chunk: &Chunk, resampler: Option<&mut Resampler>, converted: &mut Vec<f32>) {
+        let samples = match resampler {
+            Some(resampler) => {
+                converted.clear();
+                if let Err(why) = resampler.process(&chunk.samples, converted) {
+                    self.shared.lose_microphone(format!("microphone: {why}"));
+                    return;
+                }
+                &converted[..]
+            }
+            None => &chunk.samples[..],
+        };
+        if let Err(detail) = self.shared.sound(self.input, chunk.pts_ns, samples.len(), |frame, _| samples[frame]) {
+            self.shared.lose_microphone(format!("microphone: {detail}"));
+        }
+    }
+
+    fn run(self, unit: InputUnit, resampler: Option<Resampler>) {
+        let mut open = Some((unit, resampler));
+        let mut heard = Instant::now();
+        // When the device may next be opened again, and how many times that has failed.
+        let mut retry_at = Instant::now();
+        let mut attempts = 0usize;
+        let mut converted = Vec::new();
+        let mut checked = Instant::now();
+        while !self.stopped.load(Ordering::Acquire) {
+            match self.received.recv_timeout(Duration::from_millis(250)) {
+                Ok(chunk) => {
+                    heard = Instant::now();
+                    attempts = 0;
+                    if self.shared.wants_sound() {
+                        self.take(&chunk, open.as_mut().and_then(|(_, resampler)| resampler.as_mut()), &mut converted);
+                    }
+                    // Back to the pool of the unit now open, on every path (review of plan 078); one from a unit since
+                    // closed is simply let go.
+                    if let Some((unit, _)) = open.as_ref() {
+                        let _ = unit.recycle.try_send(chunk.samples);
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+            if checked.elapsed() >= CHECK {
+                checked = Instant::now();
+                if let Some(why) = open.as_ref().and_then(|(unit, _)| unit.moved()) {
+                    eprintln!("microphone: {} stopped being recorded ({why}); reopening it when it is there", self.name);
+                    open = None;
+                    // What it queued may be the other input's sound: let it go.
+                    while self.received.try_recv().is_ok() {}
+                    // Opened again as soon as the HAL lists it, without first waiting out the silence.
+                    heard = Instant::now().checked_sub(SILENT).unwrap_or(heard);
+                }
+            }
+            if heard.elapsed() < SILENT || Instant::now() < retry_at {
+                continue;
+            }
+            // Silent for 2 s: the device left, or it stalled. Either way it is opened again by its UID once listed.
+            if let Some((unit, _)) = open.take() {
+                eprintln!("microphone: {} delivered nothing for {} s; reopening it when it is there", self.name, SILENT.as_secs());
+                drop(unit);
+            }
+            let Some(device) = hal::device_for_uid(&self.uid) else {
+                retry_at = Instant::now() + Duration::from_secs(1);
+                continue;
+            };
+            match InputUnit::open(device, self.chunks.clone()).and_then(|unit| converter(unit.rate).map(|resampler| (unit, resampler))) {
+                Ok(reopened) => {
+                    eprintln!("microphone: {} opened again at {} Hz", self.name, reopened.0.rate);
+                    open = Some(reopened);
+                    heard = Instant::now();
+                    retry_at = Instant::now();
+                }
+                Err(why) => {
+                    let wait = BACKOFF[attempts.min(BACKOFF.len() - 1)];
+                    attempts += 1;
+                    eprintln!("microphone: {} could not be opened again ({why}); retrying in {} s", self.name, wait.as_secs());
+                    retry_at = Instant::now() + wait;
+                }
+            }
+        }
     }
 }

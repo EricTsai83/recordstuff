@@ -118,6 +118,15 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
     violations.push(violation);
     if (options.violationsFile) fs.appendFileSync(options.violationsFile, `${JSON.stringify(violation)}\n`);
   };
+  // Plan 078 step 5: how far a quit got, and when, in the launch's log (electron.log, attached when a test fails), so a
+  // close that times out shows whether Electron was still on its way out or had stalled.
+  let quitAt: number | undefined;
+  const quitStep = (what: string): void => {
+    quitAt ??= Date.now();
+    process.stderr.write(`[quit] ${what} at ${Date.now()}\n`);
+  };
+  for (const event of ["before-quit", "will-quit", "quit"] as const) electron.app.on(event as "quit", () => quitStep(event));
+  process.on("exit", () => quitStep("process exit"));
   const states = new WeakMap<BrowserWindowType, VirtualState>();
   const made: BrowserWindowType[] = [];
   const NativeWindow = electron.BrowserWindow;

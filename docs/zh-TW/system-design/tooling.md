@@ -120,9 +120,9 @@ matrix 只支援 macOS 開發環境。預設以 Chrome app 模式全螢幕在主
 
 Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退出流程取消；橫幅不屬於 autorecord 完成條件。
 
-### 影格節奏診斷
+### 逐影格 log
 
-`pnpm diagnose:cadence`（plan 041）只量測隱藏擷取 renderer 的 capture host，已於 2026-10-16 隨該 renderer 移除；原生引擎的節奏診斷由 plan 078 負責。
+`pnpm diagnose:cadence`（plan 041）只量測隱藏擷取 renderer 的 capture host，已於 2026-10-16 隨該 renderer 移除。原生引擎對應的工具（plan 078，依維護者的選擇做成開發用開關）是逐影格 log：App 的環境帶有 `RECORDSTUFF_FRAME_LOG=<folder>` 時，每段錄影都會在該資料夾寫入 `<file name>.frames.jsonl`，錄影期間擷取送來的每個影格（`picture`、`idle`、`blank`）與核心自行編碼的每個影格（`first`、`skipped`、`due`、`refresh`、`stop`）各一行，記錄它在開始後的時間、pacer 是否保留它，以及 pacer 的下一個格位（[frame_log.rs](../../../native/capture/src/core/frame_log.rs)）。prepared 的 warnings 會寫出檔名。`pnpm diagnose:frames -- <file>… [--fps 30]` 讀取它，印出保留影格的間隔直方圖，並針對每個一個半間隔以上與每個半個間隔以下的間隔，列出前後的送達與 pacer 的決定。出貨的程式不會設定這個開關，而 runner 會把它傳下去，所以 `RECORDSTUFF_FRAME_LOG=/tmp/frames pnpm matrix -- quick` 會記錄一輪 matrix。它找出了最後那些 50 ms 間隔背後被跳過的更新（見[影格節奏](recording.md#影格節奏)）。它回答間隔從哪裡來；間隔有多少仍由 `pnpm matrix` 量測。
 
 ### 收尾量測
 
@@ -247,7 +247,7 @@ pnpm audio:quality -- verify /absolute/path/recording-of-v2.mp4
 
 `record` 建置並驅動真正的開發版程式錄影 16 秒，擷取開始後以 macOS `afplay` 播放 12.1 秒測試音。先結束此專案的開發版程式；需要螢幕／系統音訊權限，以及 FFmpeg／ffprobe。保持輸出裝置與音量固定，暫停其他聲音；工具不更改設定。它會錄影主螢幕，並播放可聽見的聲音。`--repeat` 接受 1–10 次，預設 1 次；需要桌面環境，不能在無桌面的 CI 執行。
 
-`record` 無法錄到麥克風：開發用 Electron 沒有麥克風使用說明，macOS 不跳提示就拒絕，開著麥克風開始錄影會以 `microphone_unavailable` 失敗。麥克風的保真度量測改用 `pnpm start:app` 的打包 App 錄下素材（以快捷鍵開始，`afplay` 播放素材），再以 `verify` 量測檔案；plan 074 的量測見[音質設計第 18 節](audio-quality.md#18-麥克風結果2026-10-16)，是在比對 OBS、Chromium 與 Cap 之後的引擎修改之前做的；修改後的引擎尚未重新量測保真度。
+`record` 無法錄到麥克風：開發用 Electron 沒有麥克風使用說明，macOS 不跳提示就拒絕，開著麥克風開始錄影會以 `microphone_unavailable` 失敗。麥克風的保真度量測改用 `pnpm start:app` 的打包 App 錄下素材（以快捷鍵開始，`afplay` 播放素材），再以 `verify` 量測檔案；plan 074 的量測見[音質設計第 18 節](audio-quality.md#18-麥克風結果2026-10-16)，plan 078 在 CoreAudio HAL 上的量測見[第 19 節](audio-quality.md#19-coreaudio-hal-上的麥克風結果2026-10-17)。量測時請把輸出靜音、保持房間安靜，也不要說話：分析器預期只有素材本身，起始標記的間隔中有說話聲會讓該次量測無效。
 
 使用父目錄已存在的新目錄。每次保存 `reference.wav`、`capture.log`、`report.json`；多次量測分別存入 `run-1`、`run-2` 等子目錄。MP4 留在程式設定的輸出目錄，報告內有路徑。根目錄保存 `summary.json` 與前後環境快照，包括版本、原始碼／素材雜湊，以及能讀取的裝置資訊與音量。摘要提供最小值／中位數／最大值與缺少值數量，不隱藏任何失敗；前後裝置／音量快照改變時標為 invalid。整個 batch 與環境檢查完成前，部分摘要維持 `incomplete`；錯誤另寫入 `error.json`。
 
@@ -311,6 +311,7 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 - **輸入。** Playwright 的滑鼠與鍵盤是經 CDP 的 Chromium 輸入事件。main 在頁面之前攔截的按鍵（`before-input-event`：縮放、全螢幕後的 Escape 過濾）CDP 到不了，改用 Electron 的 `sendInputEvent` 送出（[helpers.ts](../../../tests/ui/helpers.ts) 的 `mainKey`）；Playwright 鍵盤配置沒有命名的鍵（F20）經 CDP 的 `Input.dispatchKeyEvent` 送出。`evaluate` 用於設定狀態、精確注入錯誤（延後 settings.json 的 rename、拒絕註冊、延遲失敗紀錄的儲存）與讀取結果；不會取代受測的點擊或按鍵。
 - **圍堵。** 每個測試結束後，不論結果，fixture（[fixtures.ts](../../../tests/ui/fixtures.ts)）都會稽核邊界：不是經由邊界建立的視窗、在螢幕上繪製或未靜音的頁面、取消靜音的要求（當下即拒絕），或到達真正 `globalShortcut`、`shell`、`desktopCapturer`、`dialog`、`Notification`、`app.focus`、Dock 或 Tray 方法的呼叫，都會使測試失敗。Electron 的 `Tray` 建構子無法替換，因此仍被建立的真實 Tray 會在第一次使用時被抓到。每個違規發生時就寫入這次啟動的資料夾，因此 App 自行結束或卡住時仍會回報。macOS 上的[視窗伺服器探測](../../../tests/ui/desktop-probe.ts)約每秒以唯讀方式取樣一次，檢查這次啟動的 main 程序是否有視窗在螢幕上、是否成了最前面的 App；任一發生、或探測無法取樣，都會使測試失敗。離屏視窗自己的 `isVisible()` 跟隨頁面，與螢幕無關，因此不使用。兩次取樣之間出現又消失的視窗看不到；adapter log 才是要求的完整紀錄。Windows CI 只有邊界本身的防護。
 - **清理。** teardown 以正常方式結束 App（正式的 quit，先放行測試延後的寫入），再從程序表（重新掃描直到結束）確認這次啟動的每個程序都已結束：main 程序的後代，以及以其專屬暫存資料夾執行的本 checkout Electron，例如本機資料清理 worker；只是提到這個資料夾的其他程式（例如對其 log 執行 `tail -f`）絕不會被收編。程序表或稽核無法讀取時，測試同樣失敗。關閉逾時或程序樹需要 SIGKILL 時測試失敗；無法確認結束的資料夾會保留供診斷。只對這次啟動自己的程序送訊號。`pnpm test:ui:drills`（[drills.spec.ts](../../../tests/ui/drills.spec.ts)）證明這些：App 起來前就失敗的啟動、斷言失敗、逾時（在子程序執行）、renderer 崩潰、main 卡住（強制清理會回報為失敗）、圍堵違規、繞過真實對話框、通知、啟用與取消靜音、App 自行結束前的違規、提到資料夾的外部程序（不予處理），以及對 runner 送 SIGINT（macOS／Linux），都在該失敗時失敗，且不留下這次啟動的程序。
+- **關閉時間（plan 078 第 5 步）。** 每次啟動的 teardown 都把各階段附加到 `test-results/ui-close-timings.jsonl`：邊界稽核、正常關閉與等待每個程序結束，以及 host 的 quit 步驟（`before-quit`、`will-quit`、`quit`、main 程序結束，由 host 寫入這次啟動的 log），以關閉開始後的 ms 表示。`node scripts/ui-close-timings.mts` 印出正常關閉的分布，以及最慢的幾次啟動與其各階段；check.yml 在每個 shard 之後執行它，該檔案也在失敗 artifact 中。2026-10-17 以它追查 Windows shard 間歇性的關閉逾時：每一次關閉（包括慢的）main 都在關閉開始後 70–100 ms 就已 quit 並結束，而 Playwright 的關閉要等所有持有這次啟動輸出的程序都結束才 resolve，最長花了 7.7 s，因為 Windows runner 上 Chromium 的 helper 有時在 main 結束後還會殘留。因此正常關閉以正式 quit 後 main 的結束為準（仍受 15 s 限制），helper 的結束則由結束等待確認：Windows 上 15 s（其他平台 5 s），逾時就砍掉程序樹並判定測試失敗。
 - **圖。** 每個測試都把圖留在 `test-results/ui/` 供檢視；不與任何基準比對，因此改設計不需要改測試（[規範](../testing.md#測試-ui-與-app-保持一致)）。`test-results/ui-summary.json` 列出每個測試的 ledger ID、結果、每次啟動的圍堵與清理，以及 `out/` digest。
 - **環境。** 需要可執行 Electron 的圖形工作階段：macOS 上為已登入的使用者工作階段（離屏視窗仍需要視窗伺服器）。維護者在完整執行中鎖定螢幕 96 秒時，仍以平常的 3.5 分鐘通過 53/53（2026-10-06），涵蓋元件、倒數、播放器與截圖矩陣測試；沒有螢幕的機器未測試，也不宣稱可用。CI 在 macOS 與 Windows 執行套件與演練（`check.yml`）；Windows job 通過不代表 Windows 原生視窗、Tray 或擷取有證據。
 - **速度。** 單一 worker。在參考 Mac 上 53 個測試約 3.5 分鐘，全程不佔用桌面；它取代的回歸會佔用桌面約 128 秒（2026-10-06 設定 fixture 88.6 秒、快捷鍵 fixture 39.4 秒）。

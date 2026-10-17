@@ -91,7 +91,8 @@ export function fitWithinCap(source: Dimensions, cap: ResolutionCap): Dimensions
  * Local verification (2026-09-13, macOS 26 / Electron 44, 1920x1080) measured the
  * encoder honouring these targets within 2% at 30 fps for all three levels
  * (4.4 / 8.1 / 14.9 Mbps); at 60 fps Chromium delivered about twice the
- * target (31 Mbps for 16.2). The values are kept; whether they *look* right
+ * target (31 Mbps for 16.2). The native engine (plan 076) delivers 101–102% of
+ * the target at 30 and 60 fps. The values are kept; whether they *look* right
  * is the subjective comparison tracked in docs/verification/measurements/.
  */
 const BITS_PER_PIXEL: Record<VideoQuality, number> = {
@@ -121,12 +122,13 @@ export function videoBitsPerSecond(size: Dimensions, frameRate: number, quality:
 export const AUDIO_BITS_PER_SECOND = 256_000;
 
 /**
- * About how many bytes one minute takes: the encoder targets above plus audio. At 60 fps Chromium
- * delivered about twice the video target in the verification noted at `BITS_PER_PIXEL`, so the
- * estimate doubles it there rather than promise half the real size.
+ * About how many bytes one minute takes: the encoder targets above plus audio. The native engine delivers 101–102%
+ * of its video target at 30 and 60 fps (8.25–8.28 of 8.10 Mbps, 15.11–15.19 of 14.90, 16.33–16.47 of 16.20; plan
+ * 078), so the target is the estimate at both rates; a still screen records smaller. Chromium's twice the target at
+ * 60 fps, which the estimate doubled for, went with it (plan 076).
  */
 export function estimatedBytesPerMinute(size: Dimensions, quality: QualitySettings): number {
-  const video = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality) * (quality.frameRate === 60 ? 2 : 1);
+  const video = videoBitsPerSecond(size, quality.frameRate, quality.videoQuality);
   return (video + AUDIO_BITS_PER_SECOND) * 60 / 8;
 }
 
@@ -161,12 +163,6 @@ export interface CaptureReport {
   audioBitsPerSecond: number;
   /** Non-fatal problems while applying the settings (e.g. a rejected constraint). */
   warnings: string[];
-  /**
-   * The recording may exceed the requested resolution cap: the cap could not be
-   * applied or its result could not be measured, or the frames came out larger.
-   * Frames smaller than the target stay within the cap and only log a warning.
-   */
-  capUnconfirmed?: true;
   /** The microphone mixed into the track, by the name of the device the engine opened (plan 074); absent without one. */
   microphone?: string;
 }
@@ -190,21 +186,8 @@ export function isCaptureReport(value: unknown): value is CaptureReport {
     Number.isFinite(record["audioBitsPerSecond"]) &&
     Array.isArray(record["warnings"]) &&
     record["warnings"].every((w) => typeof w === "string") &&
-    (record["capUnconfirmed"] === undefined || record["capUnconfirmed"] === true) &&
     (record["microphone"] === undefined || typeof record["microphone"] === "string")
   );
-}
-
-/**
- * A clear frame-rate downgrade: 60 was requested and the track settled on a
- * rate at or below 30. A clear downgrade is reported to the user as well as the log.
- * Fewer frames because the content is static is not a downgrade, so anything
- * the track does not report, or reports above 30, is not flagged.
- */
-export function frameRateDowngrade(requested: QualitySettings, report: CaptureReport): number | undefined {
-  if (requested.frameRate !== 60) return undefined;
-  if (report.frameRate === undefined || report.frameRate > 30) return undefined;
-  return Math.round(report.frameRate);
 }
 
 const unknown = (value: number | undefined, unit = ""): string => (value === undefined ? "unknown" : `${value}${unit}`);

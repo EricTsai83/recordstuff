@@ -2,7 +2,7 @@
 
 [English](075-camera-bubble.md) | [繁體中文](075-camera-bubble.zh-TW.md)
 
-狀態：已規劃；2026-10-17 依維護者要求重新設計（鏡頭改由引擎合成，和 OBS 一樣，不再是螢幕上的泡泡視窗）；先做步驟 1 的新決定與步驟 2 的原型關卡，尚未開始實作。建立：2026-10-14。優先順序：在 [078](078-native-capture-follow-ups.zh-TW.md) 之後，它的步驟 4（Windows 畫面留在 GPU 上）與步驟 6（macOS 上來來去去的裝置）是本計畫的基礎。硬性相依：076 的引擎，它掌管畫面、時鐘與編碼器；078；074 的權限卡片與失敗處理模式（[桌面](../docs/zh-TW/system-design/desktop.md)、[錄影](../docs/zh-TW/system-design/recording.md)）。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：已規劃；2026-10-17 依維護者要求重新設計（鏡頭改由引擎合成，和 OBS 一樣，不再是螢幕上的泡泡視窗）；先做步驟 1 的新決定與步驟 2 的原型關卡，尚未開始實作。建立：2026-10-14。優先順序：在 078（2026-10-17 結案，[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-078-結案--2026-10-17)）之後，它的步驟 4（Windows 畫面留在 GPU 上）與步驟 6（macOS 上來來去去的裝置）是本計畫的基礎。硬性相依：076 的引擎，它掌管畫面、時鐘與編碼器；078 的 GPU 畫面與裝置發現；074 的權限卡片與失敗處理模式（[桌面](../docs/zh-TW/system-design/desktop.md)、[錄影](../docs/zh-TW/system-design/recording.md)）。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -39,7 +39,7 @@
 
 - **076（已結案）。**引擎掌管螢幕、系統音訊與麥克風的擷取、時鐘、節奏、編碼與寫檔。RecordStuff 自己的視窗不出現在任何錄影中（ScreenCaptureKit 的 App 篩選；Windows 上為 `WDA_EXCLUDEFROMCAPTURE`），所以 Settings 預覽從不會被錄進去；現在也不需要任何例外，因為泡泡已不再是視窗。倒數 overlay 是 RecordStuff 在被錄螢幕上顯示的唯一視窗，而它在擷取開始前就已消失。
 - **074（已結案）。**權限卡片、拒絕提示、在倒數前拒絕開始、附退回提示的裝置選擇器，以及依送達判斷中斷，都可以沿用。它的後續發現 utility process 中的 AVFoundation 從來看不到裝置離開或回來（沒有主 run loop）；078 步驟 6 把麥克風改用 CoreAudio 的 HAL。
-- **078（已規劃）。**步驟 4 建立畫面留在 GPU 上的 Windows 硬體 H.264，這是 Windows 合成器需要的。步驟 6 解決 macOS 上的裝置變更。
+- **078（2026-10-17 結案，[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-078-結案--2026-10-17)）。**步驟 4 建立了畫面留在 GPU 上的 Windows 硬體 H.264，這是 Windows 合成器需要的（僅 CI，未測試任何 GPU）。步驟 6 把麥克風改用 CoreAudio 的 HAL，並發現離開的裝置不會讓它的錄音單元停止：HAL 會把單元移到另一個輸入，所以單靠送達無法判斷中斷，必須檢查裝置本身（[錄影](../docs/zh-TW/system-design/recording.md#音訊)）。相機方面，它的探測程式（`native/capture/src/mac/live_test.rs` 的 `probe_cameras_coming_and_going`，在沒有 run loop 的情況下每秒讀一次 CoreMediaIO 與 AVFoundation 的清單）看到兩邊都列出 iPhone 的接續互通相機，CoreMediaIO 還多列了它的桌上視角相機；但在 180 秒內、相機從 iPhone 斷開又重新選取的過程中，清單沒有任何變化：可能是從 iPhone 斷開不會把它移出清單，也可能是沒有 run loop 時清單不會更新。這會在本計畫步驟 2 用真正會離開的相機（拔掉 USB 相機）釐清，再設計 D12 的重新連線。
 - 程式中沒有從鏡頭擷取影像的程式碼。`electron-builder.yml` 沒有 `NSCameraUsageDescription`；`resources/entitlements.mac.plist` 沒有 `com.apple.security.device.camera`。
 - Settings → Recording → Screen 不經擷取就畫出螢幕的排列（`src/renderer/settings/tabs/display-arrangement.tsx`），預覽將擴充它。
 
@@ -78,7 +78,7 @@
 - [ ] **D4 在哪裡擺放。**原本：錄影前在預覽中擺放，另有「在螢幕上顯示」。建議：在 Settings 預覽中擺放，錄影前與錄影中都可以；捨棄「在螢幕上顯示」，因為螢幕上不再顯示任何東西。依據：維護者選擇了 OBS 的模式。
 - [ ] **D5 預覽顯示什麼。**建議：錄影前，以等比例顯示螢幕外框，加上選單列的帶狀區與即時鏡頭（不擷取螢幕，符合現行面板規則）；錄影中，以預覽大小與幀率顯示引擎合成後的畫面（D17）。替代方案：錄影前也顯示即時螢幕預覽，但這會在閒置時擷取、讓面板需要螢幕權限，而且只要 Settings 開著就耗用 CPU。
 - [ ] **D7 錄影中。**原本：鎖定。建議：錄影中可以從預覽更改擺放、大小、圓角與鏡像，從下一格生效，每次變更都隨 session 寫入 log；托盤的隱藏與顯示（D13）保留。依據：維護者的要求；合成消除了鎖定的理由。
-- [ ] **D12 錄影中鏡頭中斷。**建議：和麥克風一樣，2 秒沒有畫面即為中斷：錄影繼續但沒有鏡頭，結束時告知通知，存下的紀錄會標記；同一個 session 再次送達時就接回。會離開又回來的鏡頭如何重新連上，依 078 步驟 6 為 macOS 裝置建立的做法。依據：074 的規則與其發現。
+- [ ] **D12 錄影中鏡頭中斷。**建議：和麥克風一樣，2 秒沒有畫面即為中斷：錄影繼續但沒有鏡頭，結束時告知通知，存下的紀錄會標記；同一個 session 再次送達時就接回。會離開又回來的鏡頭如何重新連上：和麥克風一樣檢查裝置本身（是否還在、是否仍是 session 使用的裝置），絕不只看送達，並在清單再出現時以同一個 unique ID 重新打開；078 的探測沒有釐清清單在沒有 run loop 時是否會跟上鏡頭，所以由步驟 2 先釐清。依據：074 的規則、078 的發現。
 - [ ] **D15 鏡頭在哪裡合成（新增）。**建議：在引擎中、GPU 上、編碼之前：macOS 上用 Metal（或 Core Image）；Windows 上在 078 步驟 4 的 GPU 畫面上用 Direct3D 11。替代方案：在 Chromium 頁面中合成再擷取該頁面（每格都要繞經 renderer 來回）；CPU 合成器（每格一次整格複製）。依據：畫面已經在引擎的 GPU 記憶體中；OBS 也在 GPU 上合成。
 - [ ] **D16 引擎如何擷取鏡頭（新增）。**建議：macOS 上在引擎中用 AVFoundation 的 `AVCaptureVideoDataOutput`（它會在 utility process 中送達，和麥克風一樣；裝置變更依 D12），Windows 上用 Media Foundation 的 source reader；預設 720p、30 fps，鏡頭本身的幀率較低時用它的幀率。替代方案：在 renderer 中用 `getUserMedia`，再把畫面送給引擎（裝置由 Chromium 處理，代價是每格都要跨程序複製）。依據：畫面應該從鏡頭到編碼器都留在 GPU 記憶體中。
 - [ ] **D17 預覽如何送到 Settings（新增）。**關卡建議：引擎用它已有的硬體編碼器編碼一個小預覽（例如寬 640 px、15 fps），透過 message port 直接送給 Settings renderer，由它以 WebCodecs 解碼到 canvas，只在 Settings 顯示預覽時進行。替代方案：Electron 實驗性的 `sharedTexture`（不複製，但需要先把引擎的 surface 傳給 main）；每秒幾張的靜態圖片（JPEG）（最簡單、較粗糙）；由 main 承載的原生 GPU 圖層（和 Cap 與 OBS 的畫法一樣，工作量最大）。依據：先量測不需要新程序間管線的選項，其他保留為退路。
@@ -87,6 +87,7 @@
 ### 2. 原型關卡（macOS）
 
 - [ ] 在引擎中、以開發用開關啟用：開啟鏡頭（D16），以圓角遮罩合成到每一格（D15），編碼，並把預覽送到測試頁面（D17）。在參考 Mac 上量測：`pnpm measure:cpu`（鏡頭顯示，預覽關閉與開啟，螢幕靜止與變動）、以 `pnpm matrix` 量合成後影格的時序，以及鏡頭到畫面的時間差（對鏡頭閃光，和螢幕對照）。比較 D17 的各選項，直到其中一個符合 D18，或維護者接受這些數字。在步驟 3 之前記錄結果。
+- [ ] 裝置變更（來自 078）：在拔掉再插回 USB 相機時執行 `probe_cameras_coming_and_going`，確認 CoreMediaIO 與 AVFoundation 的清單在沒有 run loop 時是否跟得上；接著像麥克風一樣，檢查開著的 session 的裝置是否仍是它正在使用的那個，並記錄 D12 如何重新打開它。
 
 ### 3. 版面模型與設定（共用的純函式）
 

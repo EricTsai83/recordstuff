@@ -22,8 +22,11 @@ export const ZH_TW = {
   "Local data cleanup did not finish. Some app data may remain. Your recordings were kept. You can retry from Settings or remove the remaining app data manually.": "本機資料清除未完成，部分 App 資料可能仍保留。錄影檔未刪除。可從設定重試，或手動移除剩餘 App 資料。",
   "Retry shortcut registration": "重試註冊快捷鍵",
   "The shortcut is still unavailable; another app may be using it.": "快捷鍵仍無法使用，可能被其他 App 佔用。",
-  "Could not confirm the resolution cap. The recording may be larger.": "無法確認解析度上限，錄影尺寸可能較大。",
-  "Could not read the failure history. The file was kept; see the log.": "無法讀取失敗紀錄，原檔已保留，詳見 log。",
+  "Could not read the failure history, so new failures cannot be saved. Resetting keeps the file as a backup.": "無法讀取失敗紀錄，新的失敗無法儲存。重設時會把原檔保留為備份。",
+  "Reset failure history": "重設失敗紀錄",
+  "Reset failure history…": "重設失敗紀錄…",
+  "Reset failure history?": "要重設失敗紀錄嗎？",
+  "The failure history that could not be read is kept as a backup beside it, and an empty one replaces it so new failures can be saved. Recordings are kept.": "無法讀取的失敗紀錄會在原處保留為備份，並以空白紀錄取代，讓新的失敗可以儲存。錄影檔會保留。",
   "Show more failures": "顯示更多失敗紀錄",
   "Recording is still starting, saving or cleaning up, so RecordStuff stays open. A recording that has not started is cancelled. Try Quit or Relaunch again when it finishes.": "錄影仍在啟動、存檔或清理中，RecordStuff 會保持開啟；尚未開始的錄影會取消。完成後請再按一次結束或重新啟動。",
   "Settings or the log are still being written, so RecordStuff stays open. Try Quit or Relaunch again in a moment.": "設定或 log 仍在寫入，RecordStuff 會保持開啟。請稍後再按一次結束或重新啟動。",
@@ -52,7 +55,7 @@ export const ZH_TW = {
   "Check recording permissions in System Settings. Relaunch if access was recently granted.": "請在系統設定檢查錄影權限；若剛授權，請重新啟動 App。",
   "Check your recording settings, then try again. Missing content cannot be recovered.": "請檢查錄影設定後再試。遺失的內容無法恢復。",
   "Update macOS, then record again.": "請更新 macOS 後再錄影。",
-  "Update the system and RecordStuff, then record again.": "請更新系統與 RecordStuff 後再錄影。",
+  "Install the Media Feature Pack from Optional features in Windows Settings, then restart Windows and record again.": "請在 Windows 設定的「選用功能」安裝 Media Feature Pack，重新啟動 Windows 後再錄影。",
   "Try again. If it keeps failing, choose a lower video quality or relaunch RecordStuff.": "請再試一次；若持續失敗，請選擇較低的影像品質，或重新啟動 RecordStuff。",
   "Processing the recording…": "正在處理錄影…",
   "Not kept": "未保留",
@@ -89,6 +92,8 @@ export const ZH_TW = {
   "Recording cannot start on {label}.": "無法在 {label} 開始錄影。",
   "Choose Primary display or another screen.": "請選擇主螢幕或其他螢幕。",
   "Check that a display is connected and awake, then try again or choose another screen.": "請確認螢幕已連接且未進入睡眠後再試，或選擇其他螢幕。",
+  "Open Optional features": "開啟選用功能",
+  "Open Optional features…": "開啟選用功能…",
   "Use Primary display": "使用主螢幕",
   "Last recording interrupted": "上次錄影中斷",
   "Last recording failure": "上次錄影失敗",
@@ -235,7 +240,6 @@ export const ZH_TW = {
   "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Other apps use this combination.": "其他 App 會使用這個組合。",
   "Recording settings": "錄影設定",
-  "Recording resolution": "錄影解析度",
   General: "一般",
   Updates: "更新",
   "Manual check": "手動檢查",
@@ -384,8 +388,6 @@ export const ZH_TW = {
     "無法儲存錄影品質設定，仍使用原本的選項。",
   "Could not save the language. Your previous language is still in use.":
     "無法儲存語言設定，仍使用原本的語言。",
-  "The system cannot provide {requested} fps, so this recording uses {actual} fps.":
-    "系統無法提供 {requested} fps，本次以 {actual} fps 錄影。",
   "RecordStuff is ready in the system tray. Click to start recording; click again to stop.":
     "RecordStuff 在系統匣待命。左鍵點圖示開始錄影，再點一下停止。",
   "RecordStuff is ready in the menu bar. Click to start recording; click again to stop.":
@@ -398,7 +400,7 @@ export const ZH_TW = {
     "系統負載過重時可能無法取得系統音訊：請關閉耗資源的 App 後再試。若持續發生，請在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」允許 RecordStuff，然後重新啟動。",
   "System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.":
     "系統音訊取自預設的播放裝置。請確認已連接播放裝置，並在 Windows 音效設定中啟用後再試。",
-  "MP4 recording is not supported on this computer.": "這台電腦不支援 MP4 錄影",
+  "Windows's media components are missing, so recording cannot start.": "Windows 缺少媒體元件，無法開始錄影",
   "Could not start recording.": "無法開始錄影",
   "Recording was interrupted.": "錄影中斷",
   "The recording process crashed.": "錄影程序當機",

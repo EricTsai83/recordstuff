@@ -104,6 +104,29 @@ fn own_apps(content: &SCShareableContent, pids: &[i32]) -> Vec<Retained<SCRunnin
         .collect()
 }
 
+/// Why `own_apps` found nothing, for the warning (plan 078 step 2): the processes asked for, how many applications and
+/// windows the content lists, the windows owned by those processes, and the applications whose process is one of
+/// them or whose bundle identifier is Electron's.
+fn own_app_evidence(content: &SCShareableContent, pids: &[i32]) -> String {
+    let apps = unsafe { content.applications() };
+    let windows = unsafe { content.windows() };
+    let owned = windows
+        .iter()
+        .filter(|window| unsafe { window.owningApplication() }.is_some_and(|app| pids.contains(&unsafe { app.processID() })))
+        .count();
+    let related: Vec<String> = apps
+        .iter()
+        .filter(|app| pids.contains(&unsafe { app.processID() }) || bundle_id(app).to_lowercase().contains("electron"))
+        .map(|app| format!("{} pid {}", bundle_id(&app), unsafe { app.processID() }))
+        .collect();
+    format!(
+        "pids {pids:?}; {} applications and {} windows listed, {owned} of them owned by those pids; related: [{}]",
+        apps.len(),
+        windows.len(),
+        related.join(", ")
+    )
+}
+
 /// System chrome to leave out (D6): the menu bar and its status items, the Dock, desktop icons and widgets. An app's
 /// open menu is that app's window above these levels, so it is still recorded.
 fn system_ui_windows(content: &SCShareableContent, own: &[Retained<SCRunningApplication>]) -> Vec<Retained<SCWindow>> {
@@ -155,7 +178,10 @@ pub fn filter(content: &SCShareableContent, display: &SCDisplay, own_pids: &[i32
         }
     }
     if own.is_empty() {
-        warnings.push("RecordStuff's own app was not found among the shareable applications; its windows may be recorded".into());
+        warnings.push(format!(
+            "RecordStuff's own app was not found among the shareable applications; its windows may be recorded ({})",
+            own_app_evidence(content, own_pids)
+        ));
     }
     Filter { filter, excluded_apps: own.len(), hidden_windows: hidden.len(), warnings }
 }

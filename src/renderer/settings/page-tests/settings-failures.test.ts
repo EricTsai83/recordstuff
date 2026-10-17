@@ -174,6 +174,20 @@ it("shows the loading line instead of the empty state", async () => {
   expect(document.querySelector<HTMLElement>(".result-empty")!.hidden).toBe(true);
 });
 
+it("offers Reset beside an unreadable history and asks main for it, which confirms before anything changes (plan 078)", async () => {
+  const status = "Could not read the failure history, so new failures cannot be saved. Resetting keeps the file as a backup.";
+  await show(view([], { recordingHistoryStatus: status, recordingHistoryReset: { label: "Reset failure history…", enabled: true } }));
+  tab("failures").click();
+  const reset = document.getElementById("history-reset") as HTMLButtonElement;
+  expect([reset.textContent, reset.disabled]).toEqual(["Reset failure history…", false]);
+  choose.mockImplementationOnce(async () => ({ applied: true, view: view([]) }));
+  reset.click();
+  expect(choose).toHaveBeenLastCalledWith("recordingHistory", "reset");
+  // Once main has replaced the history, the status and the button go.
+  await vi.waitFor(() => expect(document.getElementById("history-reset")).toBeNull());
+  expect(document.querySelector<HTMLElement>(".result-history-status")!.hidden).toBe(true);
+});
+
 it("keeps each tab's scroll position when switching away and back; a first visit starts at the top", async () => {
   await show(view([row("s1"), row("s2")]));
   const panel = () => document.getElementById("settings-panel")!;

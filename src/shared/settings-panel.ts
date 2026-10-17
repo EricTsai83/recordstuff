@@ -137,7 +137,7 @@ export interface SettingsStatus {
   /** A secondary recovery action after the primary one: Relaunch once access may already be granted, as the tray offers. */
   secondaryAction?: { id: StatusActionId; label: string };
 }
-export type StatusActionId = "permission" | "relaunch" | "folder" | "primary";
+export type StatusActionId = "permission" | "relaunch" | "folder" | "primary" | "mediaComponents";
 /** One video in the Recordings tab; the page reaches its bytes only through these URLs, which name an id. */
 export interface LibraryItemView {
   id: string;
@@ -193,6 +193,8 @@ export interface SettingsView {
   recordingResults?: RecordingResultView[];
   /** Localized status while saved history loads. */
   recordingHistoryStatus?: string;
+  /** Offered with an unreadable history's status (plan 078): replaces it with an empty one, keeping the file. */
+  recordingHistoryReset?: { label: string; enabled: boolean };
   /** Changes only on explicit entry through notification/tray; the page then selects `entryTab`. */
   resultFocus?: number;
   /** The tab that entry opens: Troubleshooting when absent, General for the shortcut card. */

@@ -55,7 +55,7 @@ impl AacEncoder {
         super::media_foundation()?;
         let fail = super::failing;
         let transform: IMFTransform =
-            unsafe { CoCreateInstance(&CLSID_AAC_ENCODER, None, CLSCTX_INPROC_SERVER) }.map_err(fail("the AAC encoder is not available"))?;
+            unsafe { CoCreateInstance(&CLSID_AAC_ENCODER, None, CLSCTX_INPROC_SERVER) }.map_err(super::encoder_missing("the AAC encoder is not available"))?;
         let input = unsafe { MFCreateMediaType() }.map_err(fail("a media type"))?;
         let output = unsafe { MFCreateMediaType() }.map_err(fail("a media type"))?;
         (|| -> windows::core::Result<()> {

@@ -537,7 +537,7 @@ fn the_stop_reports_what_capture_delivered_while_recording() {
     let mut rig = Rig::new("captured");
     // Before recording: neither counted.
     rig.shared.frame(1, Fake::now_ns());
-    rig.shared.frame_without_picture();
+    rig.shared.frame_without_picture(Fake::now_ns());
     rig.core.first_frame(Duration::from_secs(1)).unwrap();
     rig.core.record().unwrap();
     wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
@@ -546,7 +546,7 @@ fn the_stop_reports_what_capture_delivered_while_recording() {
     let t = Fake::now_ns();
     rig.shared.frame(2, t + 1_000_000);
     rig.shared.frame(3, t + 18_000_000);
-    rig.shared.frame_without_picture();
+    rig.shared.frame_without_picture(t + 30_000_000);
     rig.shared.frame(4, t + 68_000_000);
     let (_, stopped, _) = rig.stop();
     assert_eq!(stopped.captured.pictures, 3);
@@ -574,5 +574,30 @@ fn a_refresh_the_screen_skipped_keeps_the_newest_picture_on_the_frame_grid() {
     let gaps: Vec<u64> = encoded[1..].windows(2).map(|w| (w[1].1 - w[0].1 + 500_000) / 1_000_000).collect();
     assert_eq!(gaps, [33, 33, 33], "encoded {encoded:?}");
     assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [101, 103, 104, 107]);
+    rig.stop();
+}
+
+#[test]
+fn a_refresh_capture_skipped_is_filled_with_the_newest_picture() {
+    let mut rig = Rig::new("skipped");
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.first_frame(Duration::from_secs(1)).unwrap();
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // Plan 078 step 1: 30 fps from a 60 Hz display, refreshes 8 ms before the slots' grid (as recorded on 2026-10-17);
+    // capture skipped the sixth refresh, a slot's, and delivered nothing for it.
+    let refresh = |n: u64| t0 + n * 16_666_667 - 8_000_000;
+    for n in 2..=10 {
+        if n != 6 {
+            rig.shared.frame(100 + n as u32, refresh(n));
+        }
+    }
+    let encoded: Vec<(u32, u64)> = rig.encoded.lock().unwrap().iter().map(|&(frame, pts, _)| (frame, pts)).collect();
+    let gaps: Vec<u64> = encoded[1..].windows(2).map(|w| (w[1].1 - w[0].1 + 500_000) / 1_000_000).collect();
+    // One every 33 ms: the skipped refresh's slot holds the picture of the refresh before it, and the one after it,
+    // too soon after that, is left out rather than kept 17 ms early.
+    assert_eq!(gaps, [33, 33, 33, 33], "encoded {encoded:?}");
+    assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [102, 104, 105, 108, 110]);
     rig.stop();
 }

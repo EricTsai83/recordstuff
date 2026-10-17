@@ -13,6 +13,8 @@ export interface ResultStorage {
   readonly loadIssue?: boolean;
   load(): Promise<RecordingResult[]>;
   save(results: readonly RecordingResult[]): Promise<void>;
+  /** Replaces an unreadable history with an empty one, keeping the old file; resolves to where it was kept. */
+  reset?(): Promise<string | undefined>;
 }
 
 /** A save that retrying cannot fix; any other rejection is treated as a recoverable I/O failure. */
@@ -122,6 +124,18 @@ export class RecordingResultStore implements ResultStorage {
       this.log(`recording history: initialization failed: ${String(error)}`);
     }
     return [];
+  }
+  /**
+   * The user's Reset failure history (plan 078): the file that could not be read, damaged or written by a newer
+   * version, is kept as `…reset-backup` and an empty history replaces it, so failures can be saved again without a
+   * relaunch. Only this replaces a file the load refused; the downgrade guard in `save` stays for everything else.
+   */
+  async reset(): Promise<string | undefined> {
+    const kept = await keepFile(this.file, "reset-backup");
+    this.blocked = false;
+    try { await this.save([]); }
+    catch (error) { this.blocked = true; throw error; }
+    return kept;
   }
   async save(results: readonly RecordingResult[]): Promise<void> {
     if (this.blocked) throw new HistoryStorageError("Existing recording history is unreadable; refusing to overwrite it", "blocked");

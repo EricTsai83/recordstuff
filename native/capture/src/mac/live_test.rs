@@ -185,3 +185,70 @@ fn live_display_with_only_the_microphone() {
     });
     record("microphone-only", Source::Display, AudioRequest { system: SystemAudio::Off, microphone: Some(device) });
 }
+
+/// Plan 078 step 6, for 075's camera: whether a camera that is disconnected and connected again is followed, in a
+/// process without a main run loop as the capture `utilityProcess` is, by CoreMediaIO's device list and by
+/// AVFoundation's, read once a second for `RECORDSTUFF_PROBE_SECONDS` (60) while someone unplugs a camera or takes an
+/// iPhone's Continuity Camera away and back. Prints each list whenever it changes; captures nothing.
+#[test]
+#[ignore = "a probe for someone to unplug and plug back a camera while it runs"]
+fn probe_cameras_coming_and_going() {
+    use std::ffi::c_void;
+    use std::ptr::{NonNull, null};
+    use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeVideo};
+    use objc2_core_foundation::{CFRetained, CFString};
+
+    #[repr(C)]
+    struct Address {
+        selector: u32,
+        scope: u32,
+        element: u32,
+    }
+    #[link(name = "CoreMediaIO", kind = "framework")]
+    unsafe extern "C" {
+        fn CMIOObjectGetPropertyDataSize(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const c_void, size: *mut u32) -> i32;
+        fn CMIOObjectGetPropertyData(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const c_void, size: u32, used: *mut u32, data: *mut c_void) -> i32;
+    }
+    let code = |text: &[u8; 4]| u32::from_be_bytes(*text);
+    let address = |selector: &[u8; 4]| Address { selector: code(selector), scope: code(b"glob"), element: 0 };
+    let cmio = || -> Vec<String> {
+        let mut size = 0u32;
+        if unsafe { CMIOObjectGetPropertyDataSize(1, &address(b"dev#"), 0, null(), &mut size) } != 0 {
+            return vec!["(the device list could not be read)".into()];
+        }
+        let mut ids = vec![0u32; size as usize / 4];
+        let mut used = 0u32;
+        unsafe { CMIOObjectGetPropertyData(1, &address(b"dev#"), 0, null(), size, &mut used, ids.as_mut_ptr().cast()) };
+        ids.truncate(used as usize / 4);
+        ids.iter()
+            .map(|&id| {
+                let mut name: usize = 0;
+                let mut used = 0u32;
+                let status = unsafe { CMIOObjectGetPropertyData(id, &address(b"lnam"), 0, null(), 8, &mut used, (&raw mut name).cast()) };
+                let name = NonNull::new(name as *mut CFString).filter(|_| status == 0).map(|text| unsafe { CFRetained::from_raw(text) }.to_string());
+                name.unwrap_or_else(|| format!("device {id}"))
+            })
+            .collect()
+    };
+    let avfoundation = || -> Vec<String> {
+        let Some(media) = (unsafe { AVMediaTypeVideo }) else { return Vec::new() };
+        #[allow(deprecated)]
+        let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
+        devices.iter().map(|device| unsafe { device.localizedName() }.to_string()).collect()
+    };
+    let seconds: u64 = std::env::var("RECORDSTUFF_PROBE_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
+    let began = std::time::Instant::now();
+    let (mut last_cmio, mut last_av) = (Vec::new(), Vec::new());
+    while began.elapsed().as_secs() < seconds {
+        let (now_cmio, now_av) = (cmio(), avfoundation());
+        if now_cmio != last_cmio {
+            println!("{:>5.1} s CoreMediaIO: {now_cmio:?}", began.elapsed().as_secs_f64());
+            last_cmio = now_cmio;
+        }
+        if now_av != last_av {
+            println!("{:>5.1} s AVFoundation: {now_av:?}", began.elapsed().as_secs_f64());
+            last_av = now_av;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}

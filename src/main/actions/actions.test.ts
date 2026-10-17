@@ -28,7 +28,6 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     showLastRecording: vi.fn(async () => {}),
     hideSettings: vi.fn(),
     displayPreferenceChanged: vi.fn(),
-    resolutionCapChanged: vi.fn(),
     applyAppearance: vi.fn(),
     quit: vi.fn(),
     quitWithoutWaiting: vi.fn(),
@@ -59,6 +58,30 @@ describe("createActionHandler", () => {
     // The way out of a quit held by saves in the background is offered while that quit runs.
     expect(await act("quitWithoutWaiting")).toBe(true);
     expect(deps.quitWithoutWaiting).toHaveBeenCalledOnce();
+  });
+
+  it("resets an unreadable failure history only after the user confirms, and only while it is unreadable (plan 078)", async () => {
+    const resetHistory = vi.fn(async () => true);
+    const confirm = vi.fn(async () => ({ response: 0 }));
+    const { deps, act } = harness({ recordingResults: { act: vi.fn(), historyFailed: true, resetHistory }, confirm } as Partial<ActionDeps>);
+    // Cancel: a successful no-op.
+    expect(await act("resetFailureHistory")).toBe(true);
+    expect(resetHistory).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ buttons: ["Cancel", "Reset failure history"], cancelId: 0 }));
+    confirm.mockResolvedValueOnce({ response: 1 });
+    expect(await act("resetFailureHistory")).toBe(true);
+    expect(resetHistory).toHaveBeenCalledOnce();
+    expect(deps.refresh).toHaveBeenCalled();
+    const readable = harness({ recordingResults: { act: vi.fn(), historyFailed: false, resetHistory }, confirm } as Partial<ActionDeps>);
+    expect(await readable.act("resetFailureHistory")).toBe(false);
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens Windows's Optional features only on Windows (plan 078)", async () => {
+    const openOptionalFeatures = vi.fn(async () => {});
+    expect(await harness({ platform: "win32", openOptionalFeatures }).act("openOptionalFeatures")).toBe(true);
+    expect(await harness({ platform: "darwin", openOptionalFeatures }).act("openOptionalFeatures")).toBe(false);
+    expect(openOptionalFeatures).toHaveBeenCalledOnce();
   });
 
   it("opens the Keyboard Shortcuts tab from Help, and not while a quit runs (plan 073)", async () => {

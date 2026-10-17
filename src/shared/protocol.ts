@@ -19,7 +19,7 @@ export const HOST_ERROR_CODES = [
   "no_display",
   "no_audio_track",
   "microphone_unavailable",
-  "mp4_unsupported",
+  "media_components_missing",
   "capture_start_failed",
   "capture_failed",
 ] as const satisfies readonly ErrorCode[];
@@ -28,6 +28,20 @@ export type HostErrorCode = (typeof HOST_ERROR_CODES)[number];
 function isHostErrorCode(value: unknown): value is HostErrorCode {
   return typeof value === "string" && (HOST_ERROR_CODES as readonly string[]).includes(value);
 }
+
+/** A capture host that could not start for a reason with its own code, as `media_components_missing` (plan 078). */
+export class HostStartError extends Error {
+  constructor(readonly code: HostErrorCode, message: string) {
+    super(message);
+    this.name = "HostStartError";
+  }
+}
+
+/**
+ * The capture host's exit code when the engine could not be loaded because Windows lacks its media components (an N
+ * edition without the Media Feature Pack has no mfplat.dll, which the engine links).
+ */
+export const MEDIA_COMPONENTS_MISSING_EXIT = 4;
 
 /** Whether the microphone is mixed into the track (plan 074), and which one: absent `deviceId` is the system default input. */
 export interface MicrophoneChoice {

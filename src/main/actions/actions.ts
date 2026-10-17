@@ -4,6 +4,7 @@
  * decided in one place. `index.ts` builds the collaborators and passes them in; this module creates none.
  */
 import fs from "node:fs/promises";
+import type { MessageBoxOptions } from "electron";
 import type { AppAction } from "../app/ui-model";
 import type { CaptureNotices } from "../recording/capture-notices";
 import type { DataCleanupRequest } from "../app/data-cleanup-request";
@@ -33,7 +34,7 @@ export interface ActionDeps {
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
-  recordingResults: Pick<RecordingResults, "act">;
+  recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
     | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied">;
   settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
@@ -50,10 +51,8 @@ export interface ActionDeps {
   showLastRecording(): Promise<void>;
   /** The same hide path as the application menu: release capture, pause playback and hide the Dock icon. */
   hideSettings(): void;
-  /** The display preference changed: the last screen's failure and unconfirmed cap no longer describe the next one. */
+  /** The display preference changed: the last screen's failure no longer describes the next one. */
   displayPreferenceChanged(): void;
-  /** Another resolution cap is the next recording's to confirm. */
-  resolutionCapChanged(): void;
   /** Applies the saved appearance to the native theme. */
   applyAppearance(): void;
   quit(): void;
@@ -66,6 +65,7 @@ export interface ActionDeps {
   openNotificationSettings(): Promise<void>;
   /** System Settings → Privacy & Security → Microphone (plan 074). */
   openMicrophoneSettings(): Promise<void>;
+  openOptionalFeatures(): Promise<void>;
   /**
    * Asks macOS for the microphone when it never has (plan 074): the prompt then follows the user's own click. Answers
    * whether access is allowed now; Windows, which has no prompt, answers true.
@@ -73,6 +73,8 @@ export interface ActionDeps {
   askMicrophoneAccess(): Promise<boolean>;
   /** A windowless informational box, brought forward first. */
   showInfo(detail: string): Promise<void>;
+  /** A warning with Cancel first and the named action second, brought forward first; answers the button pressed. */
+  confirm(options: MessageBoxOptions): Promise<{ response: number }>;
 }
 
 export type ActionHandler = (action: AppAction) => Promise<boolean | void>;
@@ -171,13 +173,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         applied: () => log(`settings: countdown sound ${settings.countdownSound ? "on" : "off"}`),
       });
     } else {
-      const cap = settings.quality.resolutionCap;
       await deps.savePreference("quality", {
         locked: true,
         write: () => settings.setQuality(action.setQuality),
         applied: () => {
-          // The unconfirmed cap was the last recording's; another cap is the next recording's to confirm.
-          if (settings.quality.resolutionCap !== cap) deps.resolutionCapChanged();
           log(`settings: quality ${JSON.stringify(settings.quality)}`);
         },
         notifyFailure: () => tray.notifyQualityWriteFailed(),
@@ -270,6 +269,20 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         return true;
       case "clearAppData":
         return deps.clearData.request();
+      case "resetFailureHistory": {
+        if (!deps.recordingResults.historyFailed) return false;
+        const language = settings.language;
+        const answer = await deps.confirm({
+          type: "warning", title: translate("Reset failure history?", language), message: translate("Reset failure history?", language),
+          detail: translate("The failure history that could not be read is kept as a backup beside it, and an empty one replaces it so new failures can be saved. Recordings are kept.", language),
+          buttons: [translate("Cancel", language), translate("Reset failure history", language)], defaultId: 0, cancelId: 0, noLink: true,
+        });
+        // Cancelling is a successful no-op, as for clearing app data.
+        if (answer.response !== 1) return true;
+        const reset = await deps.recordingResults.resetHistory();
+        deps.refresh();
+        return reset;
+      }
       // A pressed button that opens nothing must say so: this state blocks
       // recording entirely, and the tray menu is its only route.
       case "openPermissionSettings":
@@ -291,6 +304,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openNotificationSettings":
         try { await deps.openNotificationSettings(); return true; }
         catch (error) { log(`notifications: open settings failed: ${String(error)}`); return false; }
+      case "openOptionalFeatures":
+        if (deps.platform !== "win32") return false;
+        try { await deps.openOptionalFeatures(); return true; }
+        catch (error) { log(`media components: open Optional features failed: ${String(error)}`); return false; }
       case "openMicrophoneSettings":
         if (deps.platform !== "darwin") return false;
         try { await deps.openMicrophoneSettings(); return true; }

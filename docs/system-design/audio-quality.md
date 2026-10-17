@@ -281,7 +281,7 @@ Each engine had one valid run; this is a single-run comparison on one machine an
 
 ## 18. Microphone results — 2026-10-16
 
-These runs were made before the engine changes that followed plan 074's comparison against OBS, Chromium and Cap: the soft limit, the mono microphone, one-frame drift correction, a stalled microphone taken back when the same session delivers sound again, and Windows' packet times and ducking opt-out ([§16](#16-the-native-audio-path--why-it-preserves-fidelity)). They describe the engine as it was then. A desktop round on the changed engine the same day covered the points listed at the end of this section; fidelity, sync and CPU were not measured again after the soft limit and drift change.
+These runs were made before the engine changes that followed plan 074's comparison against OBS, Chromium and Cap: the soft limit, the mono microphone, one-frame drift correction, a stalled microphone taken back when the same session delivers sound again, and Windows' packet times and ducking opt-out ([§16](#16-the-native-audio-path--why-it-preserves-fidelity)). They describe the engine as it was then. A desktop round on the changed engine the same day covered the points listed at the end of this section; fidelity, sync and CPU were measured again on the HAL microphone in [§19](#19-microphone-results-on-coreaudios-hal--2026-10-17).
 
 Plan 074 step 6, on a MacBook Pro (arm64, macOS 26) with the packaged bundle from `pnpm start:app`, fixture v2 and the same analyzer and thresholds. `record` drives the development Electron, which macOS refuses the microphone without a prompt (it has no usage description), so these runs started the packaged app with its shortcut, played the fixture with `afplay` and measured the file with `pnpm audio:quality -- verify`. Output went to wired headphones at volume 100; the input was the system default, a BenQ monitor's USB microphone.
 
@@ -304,3 +304,20 @@ On the changed engine (2026-10-16, later the same day, macOS):
 - **Mono.** An iPhone Continuity microphone's recording had left minus right at −inf dB over 35 s: the one channel is heard identically in both.
 - **End to end.** `pnpm acceptance` with the microphone on passed: 10 flashes and 9 beeps (the first beep fell at the file's start, before any silence, so the detector cannot count it), the integrity check and the cancel check.
 - **Loss.** An iPhone Continuity microphone (twice) and a HUAWEI FreeClip 2 Bluetooth headset (twice), disconnected while recording, were each told lost by the core's 2 s without sound; the recording went on, the saved record carried `microphoneLost` and the notice appeared at the end. None was taken back after reconnecting ([recording](recording.md#audio)).
+
+## 19. Microphone results on CoreAudio's HAL — 2026-10-17
+
+Plan 078 step 6 replaced the macOS microphone's `AVCaptureSession` with an AUHAL input unit ([recording](recording.md#audio)) and measured again what §18 measured before the soft limit, the drift correction and the mono microphone, on the same MacBook Pro with the packaged bundle, fixture v2, the same analyzer and thresholds, the output muted and the system default input (the BenQ monitor's USB microphone).
+
+| Run (output muted) | Result | Gain, worst | Residual, worst | Separation, minimum | Clock |
+| --- | --- | --- | --- | --- | --- |
+| 1 | pass | within 0.007 dB | −42.8 dB | 47.2 dB | −0.83 ppm |
+| 2 | fail: R 250 Hz following gap −33.6 dB against −35 dB | within 0.005 dB | −40.0 dB | 43.2 dB | −0.16 ppm |
+| 3 | pass | within 0.006 dB | −42.3 dB | 46.3 dB | −0.58 ppm |
+
+- **Fidelity.** Every run kept 48 kHz stereo, a clock within 0.83 ppm and the gain within 0.007 dB; residual and separation, which measure the mix with the room in it, were 5 to 7 dB better than §18's. The one failed check is a quiet gap that the room's sound filled 1.4 dB above the limit. Four more takes are not in the table, each with a cause outside the mixer: two with the output audible (fail and invalid, the microphone hearing the fixture, as in §18), two in which the maintainer spoke during the start marker's gap (invalid, the gap −7.7 and −6.8 dB), and one muted take, before these three, that failed on the right channel's high-frequency gaps and separation (15.2 to 28.9 dB) while the left passed every check, the microphone being the same in both channels: sound in the room during the right channel's part.
+- **Sync.** The key-press page of §18, eight hard space-bar taps: the sound came 10 to 74 ms before the white frame, median −44 ms (§18: −20 to −40, median −30). The picture still passes through Chrome's drawing, compositing and capture, so the microphone shows no lag; key-to-photon latency is not separated out.
+- **CPU.** `pnpm measure:cpu -- --minutes 1 --skip-settings --skip-playback`: recording at 30 fps averaged 10.0% of a core (10.7% p95, encoder 2.6%) with the microphone on and 10.1% (10.8%, 2.9%) with it off the same day; idle 0.040 to 0.050% around both. §18's 3.4-point cost of the microphone, 13.3% against 9.9% on AVFoundation, is gone, which places it in `AVCaptureSession` and its format conversion; the microphone now costs nothing measurable.
+- **Reconnection.** A FreeClip 2 headset put in its case and taken out again was closed at once, told lost, reopened and resumed, with silence and no other microphone's sound in between ([recording](recording.md#audio)).
+
+Listening by ear was not part of these runs; the Windows microphone is checked by CI only. Raw reports are local (`docs/verification/measurements/2026-10-17-078-microphone/`); the conclusion is recorded in the [plan 078 closure](../verification/history-2026-10.md#plan-078-closure--2026-10-17).

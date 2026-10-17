@@ -8,7 +8,7 @@
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
-import { OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -59,7 +59,7 @@ export interface ParentPort {
   postMessage(message: unknown): void;
 }
 
-const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "mp4_unsupported", "capture_start_failed", "capture_failed"];
+const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
 
 const NUMBER_LIST = /^\d+(,\d+)*$/;
@@ -84,6 +84,15 @@ export function developmentCapture(env: Record<string, string | undefined>): { s
   if (audio === "off") result.audio = { system: "off", microphone: false };
   if (audio === "apps" && NUMBER_LIST.test(pids)) result.audio = { system: "apps", pids: numbers(pids), microphone: false };
   return result;
+}
+
+/**
+ * The exit code for an engine that could not be loaded: on Windows, a library the module links that is missing
+ * (ERROR_MOD_NOT_FOUND, whose text Node passes on) is a Windows without its media components, since the module links
+ * nothing else outside Windows itself (plan 078); anything else is 3.
+ */
+export function engineLoadExit(platform: NodeJS.Platform, message: string): number {
+  return platform === "win32" && /specified module could not be found/i.test(message) ? MEDIA_COMPONENTS_MISSING_EXIT : 3;
 }
 
 /** The engine rejects with `code|detail`. */
@@ -329,7 +338,8 @@ if (parentPort) {
     new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env));
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
-    console.error(`native capture host: the engine could not be loaded from ${addonPath ?? "?"}: ${cause instanceof Error ? cause.message : String(cause)}`);
-    process.exit(3);
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error(`native capture host: the engine could not be loaded from ${addonPath ?? "?"}: ${message}`);
+    process.exit(engineLoadExit(process.platform, message));
   }
 }

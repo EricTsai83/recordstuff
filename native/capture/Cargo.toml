@@ -26,16 +26,11 @@ objc2-video-toolbox = "0.3"
 objc2-audio-toolbox = "0.3"
 objc2-core-audio-types = "0.3"
 objc2-app-kit = "0.3"
-# The microphone (074) through AVCaptureSession.
+# The microphone's authorization (074), whose sound comes from CoreAudio's HAL (plan 078, mac/hal.rs), and the
+# camera probe's device list (mac/live_test.rs).
 objc2-av-foundation = { version = "0.3", default-features = false, features = [
     "std",
-    "dispatch2",
-    "objc2-core-media",
-    "AVCaptureAudioDataOutput",
     "AVCaptureDevice",
-    "AVCaptureInput",
-    "AVCaptureOutputBase",
-    "AVCaptureSession",
     "AVMediaFormat",
 ] }
 
