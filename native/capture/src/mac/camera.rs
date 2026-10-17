@@ -90,10 +90,24 @@ impl Delegate {
 }
 
 /// The system's default camera (D9): the one macOS prefers (macOS 13, as RecordStuff needs), which follows a Continuity
-/// Camera and the user's choice in other apps. `defaultDeviceWithMediaType` does not: on 2026-10-17 it answered the
-/// iPhone's camera to Settings' listing and the closed lid's FaceTime HD camera to a recording a minute later.
+/// Camera and the user's choice in other apps, else AVFoundation's default, else any camera connected, but never a
+/// suspended one. On 2026-10-17 `systemPreferredCamera` answered nothing at times and `defaultDeviceWithMediaType` the
+/// FaceTime HD camera behind a closed lid, which is connected but suspended and delivers nothing, while the iPhone's
+/// camera was there.
 fn system_default(media: &AVMediaType) -> Option<Retained<AVCaptureDevice>> {
-    unsafe { AVCaptureDevice::systemPreferredCamera() }.or_else(|| unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) })
+    let usable = |device: &Retained<AVCaptureDevice>| unsafe { device.isConnected() && !device.isSuspended() };
+    if let Some(device) = unsafe { AVCaptureDevice::systemPreferredCamera() }.filter(usable) {
+        return Some(device);
+    }
+    if let Some(device) = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.filter(usable) {
+        return Some(device);
+    }
+    // The discovery session's replacement needs a device type per kind of camera; this one lists them all.
+    #[allow(deprecated)]
+    let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
+    devices.iter().find(|device| usable(device))
+        // Nothing usable: the default as before, which the session reports as delivering nothing.
+        .or_else(|| unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) })
 }
 
 /// The cameras connected now, the system's default marked (D9). Read without access: listing them asks nothing.
