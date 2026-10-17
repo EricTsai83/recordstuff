@@ -27,6 +27,17 @@
  * `preview=0`. It measures A and R only: B, C and P need `--skip-settings --skip-playback`, and B is left
  * out, since the preview page is a renderer the idle contract does not allow after a recording.
  *
+ * `--studio` (plan 075 step 8, with `--camera`) adds, before the recordings with Settings closed and over the same
+ * moving material, the Recording Studio (D19, D20), opened from the tray's Open Recording Studio… before the material's
+ * full screen hides the menu bar, and closed again before R. Then
+ * S. the same recordings with the Studio showing the engine's preview and the meters, judged against R's median at the
+ * same rate (D18: at most 8 points more), and L. a Live preview held for 50 s, judged against the camera's recording
+ * budget at that rate (D18: a recording without the file), whose Live preview and Stop preview are found through
+ * Chromium's accessibility tree, turned off again at once (Chromium may keep some of its cost: L is measured after
+ * S for that reason), and pressed with the pointer. Run with `--camera preview=0`
+ * so R has no prototype page; the Studio window should stand on another display than the material, which the report
+ * notes.
+ *
  * Each idle scenario also checks the app's processes by Chromium role against the idle contract (`IDLE_ROLES`): no
  * pre-warmed renderer after launch, neither Chromium's audio service nor the native engine's capture process after a
  * recording (plan 076), and with Settings closed no renderer after a recording. Five seconds after
@@ -58,7 +69,7 @@ import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./
 import { launchdCaptureVariables } from "./lib/runner/capture-engine.mts";
 import { cameraPreviewOn } from "../src/shared/camera-preview.ts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
-import { AccessibilityBlockedError, FLAG, KEY, osascriptAx } from "./lib/runner/native-ax.mts";
+import { AccessibilityBlockedError, FLAG, KEY, centre, osascriptAx } from "./lib/runner/native-ax.mts";
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
 import { percentile } from "./lib/verification/stats.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
@@ -83,10 +94,11 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio (with --camera)] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
+let studio = false;
 /** Whether `--camera` opens the preview page, which `cameraPreviewOn` decides as the app does. */
 let cameraPreview = false;
 /** A role contract that also allows the camera prototype's preview page, one renderer, and nothing else more. */
@@ -104,12 +116,14 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--skip-playback") skipPlayback = true;
   else if (arg === "--hover-card") hoverCard = true;
   else if (arg === "--camera" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) camera = argv[++i];
+  else if (arg === "--studio") studio = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
 // An odd count, so the median is one run's own figure and its breakdown.
 if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 || repeat > 9 || repeat % 2 === 0) { console.error(usage); process.exit(2); }
 if (camera !== undefined && (!skipSettings || !skipPlayback || /[\s]/.test(camera))) { console.error(usage); process.exit(2); }
+if (studio && (camera === undefined || skipRecording)) { console.error(usage); process.exit(2); }
 cameraPreview = camera !== undefined && cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: camera });
 
 const controller = new AbortController();
@@ -228,7 +242,7 @@ const terminal = (line: string): boolean => ["saved", "failed"].includes(parseSe
 
 interface Scenario { name: string; key: string; summary: Summary; verdicts: Verdict[]; roles?: RoleCounts; note?: string }
 /** `roles` and `residentBytes` (the app's memory in total) five seconds after the save. */
-interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: RoleCounts; residentBytes: number; samplerFailure: string | undefined }
+interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: RoleCounts; residentBytes: number; samplerFailure: string | undefined; studio?: boolean }
 
 async function main(): Promise<number> {
   if (process.platform !== "darwin") fail("macOS only");
@@ -305,7 +319,7 @@ async function main(): Promise<number> {
     const problem = await closeMaterial();
     if (problem) fail(problem);
   };
-  const record = async (fps: 30 | 60): Promise<void> => {
+  const record = async (fps: 30 | 60, withStudio = false): Promise<void> => {
     const from = log.end();
     // Set before the key goes out, so cleanup settles a recording that the key may have started.
     active = { from, stopSent: false };
@@ -333,11 +347,11 @@ async function main(): Promise<number> {
     await sleep(5000);
     const roles = readRoles(appPid);
     const residentBytes = (sampler!.samples.at(-1)?.procs ?? []).filter((p) => !p.followed).reduce((total, p) => total + p.resident_bytes, 0);
-    recordings.push({ fps, ...(file ? { file } : {}), summary, roles, residentBytes, samplerFailure: sampler!.failure });
+    recordings.push({ fps, ...(file ? { file } : {}), summary, roles, residentBytes, samplerFailure: sampler!.failure, ...(withStudio ? { studio: true } : {}) });
     note(`recording at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%, 95th ${summary.cpuPercent.p95.toFixed(1)}%, encoder ${summary.followed.cpuPercent.average.toFixed(1)}%; ${file ?? "no file"}; then ${roleText(roles)}`);
   };
   const medianRecording = (fps: 30 | 60): void => {
-    const set = recordings.filter((r) => r.fps === fps);
+    const set = recordings.filter((r) => r.fps === fps && !r.studio);
     if (!set.length) return;
     const averages = set.map((r) => r.summary.cpuPercent.average);
     // Nearest rank, not the midpoint median: with an odd count it is one run's own figure.
@@ -349,6 +363,146 @@ async function main(): Promise<number> {
         { ...judgeRoles(set.at(-1)!.roles, cameraPreview ? withPreviewPage(roles.afterRecording) : roles.afterRecording), check: "Process roles 5 s after the last save" },
         judgeSteadyState(set.map((r) => r.roles))],
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
+  };
+
+  /** The median run of a set, by its average: with an odd count, one run's own figure. */
+  const medianOf = (set: Recording[]): Recording | undefined => {
+    if (!set.length) return undefined;
+    const median = percentile(set.map((r) => r.summary.cpuPercent.average), 0.5);
+    return set.find((r) => r.summary.cpuPercent.average === median) ?? set[0];
+  };
+  /** D18's camera budgets: a recording at 30 fps at most 20% of a core, at 60 fps 25%; a Live preview the same. */
+  const cameraBudget = (fps: 30 | 60): number => (fps === 30 ? 20 : 25);
+  /**
+   * Clicks the Settings element titled by one of `titles`, read through Chromium's accessibility tree, which is turned
+   * off again at once so it costs nothing measured; fails when it is not there.
+   */
+  /** Runs a step, its failure saying which it was: a timeout's own message names none. */
+  const step = async <T,>(what: string, run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new Error(`${what}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  };
+  const clickNamed = async (titles: readonly string[], what: string): Promise<void> => {
+    // Longer than the helper's 10 s: the first read of a busy page's tree, a preview and meters drawing, can take that.
+    const ax = osascriptAx(controller.signal, 30_000);
+    await ax.enableWebAccessibility(appPid);
+    let frame: { x: number; y: number; width: number; height: number } | undefined;
+    try {
+      for (let attempt = 0; attempt < 20 && !frame; attempt += 1) {
+        const layout = await ax.layout(appPid, "RecordStuff", { width: 10_000, height: 10_000 });
+        frame = layout.clickable.find((element) => titles.includes(element.title))?.frame;
+        if (!frame) await sleep(250);
+      }
+    } finally {
+      await ax.enableWebAccessibility(appPid, false);
+    }
+    if (!frame) fail(`${what}: no element titled ${titles.join(" or ")} in Settings`);
+    const point = centre(frame!);
+    await ax.mouse("left", point.x, point.y);
+  };
+  let studioDisplay = "unknown";
+  let studioOnAnotherDisplay = false;
+  // The primary display's size, in the top-left coordinates the window frames use: a window off it, on any side, is on another.
+  const [primaryWidth = 0, primaryHeight = 0] = spawnSync("osascript", ["-l", "JavaScript", "-e",
+    'ObjC.import("AppKit"); const f = $.NSScreen.screens.objectAtIndex(0).frame; `${f.size.width},${f.size.height}`'], { encoding: "utf8" }).stdout.trim().split(",").map(Number);
+  /**
+   * Opens the Recording Studio from the tray's Open Recording Studio… (D19), as a person does, so S measures a page whose
+   * accessibility tree was never asked for: Live preview's button, which only that tree finds, is pressed after S.
+   */
+  const openStudio = async (): Promise<void> => {
+    const stored = readSettings()["language"];
+    const language: Language = isLanguage(stored) ? stored : "en";
+    const tray = new TrayDriver(osascriptAx(controller.signal), appPid, controller.signal, undefined, BUNDLE_ID());
+    await tray.open();
+    await tray.select(translate("Open Recording Studio…", language));
+    await sleep(3000);
+    let settings = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff");
+    if (!settings) fail("the Recording Studio: Settings did not open");
+    // The window opens on the display under the pointer, the primary one with the tray's menu: moved to another
+    // display, so the material's full screen neither hides it (a page out of sight shows and costs nothing) nor is hidden.
+    const aside = await command("osascript", ["-l", "JavaScript", "-e", `ObjC.import("AppKit");
+      const screens = $.NSScreen.screens, main = screens.objectAtIndex(0).frame;
+      let target = null;
+      for (let i = 1; i < screens.count; i++) { const f = screens.objectAtIndex(i).frame; target = { x: f.origin.x + 40, y: main.size.height - (f.origin.y + f.size.height) + 80 }; break; }
+      if (target) { const p = Application("System Events").processes.whose({ unixId: ${appPid} })[0]; p.windows[0].position = [Math.round(target.x), Math.round(target.y)]; }
+      JSON.stringify(target)`], AbortSignal.timeout(10_000)).then((output) => output.trim(), () => "null");
+    if (aside === "null") note("the Recording Studio: no other display to stand on; S and L measure a window the material hides");
+    await sleep(1500);
+    settings = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff") ?? settings;
+    const frame = settings!.frame;
+    // An unread primary size judges nothing off it.
+    studioOnAnotherDisplay = aside !== "null" && frame !== undefined && primaryWidth > 0 && primaryHeight > 0 && (frame.x < 0 || frame.y < 0 || frame.x >= primaryWidth || frame.y >= primaryHeight);
+    studioDisplay = frame ? `${frame.x},${frame.y} ${frame.width}x${frame.height}${studioOnAnotherDisplay ? " (on another display)" : " (on the primary display, behind the material: S and L are not valid)"}` : "unknown";
+    note(`the Recording Studio open in Settings at ${studioDisplay}`);
+  };
+  /** S: the recordings again, with the Studio showing the engine's preview and the meters (D18: ≤ 8 points over R). */
+  const medianStudio = (fps: 30 | 60): void => {
+    const plain = medianOf(recordings.filter((r) => r.fps === fps && !r.studio));
+    const chosen = medianOf(recordings.filter((r) => r.fps === fps && r.studio));
+    if (!chosen) return;
+    const extra = plain ? chosen.summary.cpuPercent.average - plain.summary.cpuPercent.average : Number.NaN;
+    scenarios.push({ name: `S. Recording at ${fps} fps with the Recording Studio showing it`, key: `studioRecording${fps}`, summary: chosen.summary,
+      note: `The Studio window at ${studioDisplay}.`,
+      verdicts: [judgeCoverage(chosen.summary, RECORDING_SECONDS - 10, chosen.samplerFailure),
+        { check: "Over R's median at the same rate (D18)", limit: "≤ 8 points", actual: plain ? `${extra.toFixed(1)} points (${chosen.summary.cpuPercent.average.toFixed(1)}% against ${plain.summary.cpuPercent.average.toFixed(1)}%)` : "no R to compare",
+          verdict: !studioOnAnotherDisplay || !plain ? "report" : extra <= 8 ? "pass" : "fail" },
+        { check: "Average with the camera (D18)", limit: `≤ ${cameraBudget(fps) + 8}%`, actual: `${chosen.summary.cpuPercent.average.toFixed(1)}%`,
+          verdict: chosen.summary.cpuPercent.average <= cameraBudget(fps) + 8 ? "pass" : "fail" }] });
+    note(`S at ${fps} fps: average ${chosen.summary.cpuPercent.average.toFixed(1)}%${plain ? `, ${extra.toFixed(1)} points over R` : ""}`);
+  };
+  /** L: a Live preview held for 50 s (D20), judged as a recording with the camera at the launch's rate (D18). */
+  const livePreview = async (fps: 30 | 60): Promise<void> => {
+    const from = log.end();
+    // A click that reached no button (2026-10-18: a run aborted with none logged) is tried again, each step named.
+    for (let attempt = 1; ; attempt += 1) {
+      const clickFrom = log.end();
+      await step(`L: pressing Live preview (attempt ${attempt})`, () => clickNamed(["Live preview", "即時預覽"], "Live preview"));
+      // waitForLog's own timeout, which says what it waited for: an AbortSignal.timeout fires inside its delay as a
+      // bare "The operation was aborted".
+      const started = await waitForLog(log, clickFrom, /recorder: session \S+ prepared after|studio: Live preview not started/, "the Live preview's start",
+        controller.signal, 15_000).then((hit) => hit.line, (error: unknown) => { if (controller.signal.aborted) throw error; return undefined; });
+      if (started?.includes("prepared after")) break;
+      if (attempt === 3) fail(`L: Live preview did not start after ${attempt} presses${started ? `: ${started}` : " (nothing logged)"}`);
+      note(`L: Live preview did not start${started ? `: ${started}` : " within 15 s"}; pressing it again`);
+    }
+    note(`L. Live preview at ${fps} fps prepared; settling 5 s`);
+    await sleep(5000);
+    const lFrom = Date.now();
+    await sleep(50_000);
+    const summary = window(lFrom, Date.now());
+    const wrote = log.since(from).lines.some((line) => /\] state → recording|record sent/.test(line.text));
+    scenarios.push({ name: `L. Live preview at ${fps} fps in the Recording Studio`, key: `livePreview${fps}`, summary, note: `The Studio window at ${studioDisplay}.`,
+      verdicts: [judgeCoverage(summary, 50, sampler!.failure),
+        { check: "Average with the camera (D18: a recording without the file)", limit: `≤ ${cameraBudget(fps)}%`, actual: `${summary.cpuPercent.average.toFixed(1)}%`,
+          verdict: summary.cpuPercent.average <= cameraBudget(fps) ? "pass" : "fail" },
+        { check: "Nothing recorded", limit: "no record sent", actual: wrote ? "a recording began" : "none", verdict: wrote ? "fail" : "pass" }] });
+    note(`L at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%`);
+    const stopFrom = log.end();
+    await step("L: pressing Stop preview", () => clickNamed(["Stop preview", "停止預覽"], "Stop preview"));
+    await step("L: the Live preview let go of", () => waitForLog(log, stopFrom, /cancelled \(preview\)/, "the Live preview let go of", controller.signal, 15_000));
+  };
+  /** Closes Settings with ⌘W while it is focused in front; the quit closes it otherwise. */
+  const closeStudio = async (): Promise<void> => {
+    if (await settingsInFront()) {
+      await command("osascript", ["-e", 'tell application "System Events" to keystroke "w" using {command down}'], AbortSignal.timeout(5000));
+      await sleep(1000);
+    } else note("the Recording Studio: Settings is not focused in front; the quit closes it");
+  };
+  /**
+   * The Studio's scenarios at the launch's rate. The Studio opens from the tray before the material does, since the
+   * material's full screen hides the menu bar the tray is in; then S and L over the material, and the Studio closes
+   * before R, which runs with Settings closed.
+   */
+  const studioScenarios = async (fps: 30 | 60): Promise<void> => {
+    await openStudio();
+    await openMaterial();
+    for (let i = 0; i < repeat; i += 1) await record(fps, true);
+    await livePreview(fps);
+    await closeStudio();
   };
 
   /** How the app saved `file`, from its log: `to plain MP4` or `kept fragmented (…)`. */
@@ -425,10 +579,12 @@ async function main(): Promise<number> {
       verdicts: [judgeCoverage(idleAfterLaunch, minutes * 60, sampler.failure), ...judgeIdle(idleAfterLaunch), judgeRoles(launchRoles, roles.launch)] });
     note(`A: average ${idleAfterLaunch.cpuPercent.average.toFixed(3)}%, wake-ups ${idleAfterLaunch.wakeupsPerSecond.average.toFixed(2)}/s`);
     if (!skipRecording) {
+      if (studio) await studioScenarios(30);
       await openMaterial();
       for (let i = 0; i < repeat; i += 1) await record(30);
-      await closeMaterialOrFail();
       medianRecording(30);
+      if (studio) medianStudio(30);
+      await closeMaterialOrFail();
     }
     if (!skipRecording && camera !== undefined) note("B: left out with --camera (the preview page stays open)");
     if (!skipRecording && camera === undefined) {
@@ -520,10 +676,12 @@ async function main(): Promise<number> {
       sampler = new CpuSampler(binary, second.pid);
       note(`relaunched at 60 fps (pid ${second.pid}); warming up 20 s`);
       await sleep(20_000);
+      if (studio) await studioScenarios(60);
       await openMaterial();
       for (let i = 0; i < repeat; i += 1) await record(60);
-      await closeMaterialOrFail();
       medianRecording(60);
+      if (studio) medianStudio(60);
+      await closeMaterialOrFail();
       await sampler.stop();
       await quitApp();
     }
