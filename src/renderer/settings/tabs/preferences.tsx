@@ -86,7 +86,7 @@ function SectionIcon({ id }: { id: string }) {
  * A slider row (plan 075's camera size and rounding): it moves with the pointer or the arrow keys and shows the value
  * beside it, and the value let go of is the choice sent to main, so one drag is one save.
  */
-function SliderSetting({ id, group, slider, disabled, describedBy }: {
+export function SliderSetting({ id, group, slider, disabled, describedBy }: {
   id: string; group: SettingsGroup; slider: NonNullable<SettingsGroup["slider"]>; disabled: boolean; describedBy?: string | undefined;
 }) {
   const [moving, setMoving] = useState<number | undefined>(undefined);
@@ -119,7 +119,7 @@ function SliderSetting({ id, group, slider, disabled, describedBy }: {
 }
 
 /** The recording's elapsed time beside the Recording Studio's Stop (plan 075, D19), counted here from its start. */
-function Elapsed({ since }: { since: string }) {
+export function Elapsed({ since }: { since: string }) {
   const start = Date.parse(since);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

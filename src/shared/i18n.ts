@@ -548,6 +548,8 @@ export const ZH_TW = {
   "Turned on or off between recordings.": "可在錄影之間開啟或關閉。",
   "Show camera in recording": "在錄影中顯示相機",
   "Recording controls": "錄影控制",
+  "Collapse sidebar": "收合側邊欄",
+  "Expand sidebar": "展開側邊欄",
   "System audio": "系統聲音",
   "Its level shows, and it can be muted, while recording.": "錄影中會顯示音量，也可以靜音。",
   "Mute {label}": "將{label}靜音",

@@ -250,6 +250,8 @@
   --display-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.1);
   /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper, the bubble before its
      picture arrives, and the outline that is dragged over a recording's picture, the same in both themes. */
+  /* The Recording Studio's panels, raised as Settings' section cards are. */
+  --studio-panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 2px 10px rgb(0 0 0 / 0.035);
   --camera-preview-menubar: rgb(255 255 255 / 0.55);
   /* A level meter's bar: green to amber to red over its last 12 dB below full scale. */
   --meter-level: linear-gradient(90deg, oklch(0.72 0.17 150) 0% 80%, oklch(0.8 0.16 85) 80% 95%, oklch(0.63 0.22 27) 95%);
@@ -290,6 +292,7 @@
 /* The page sets .dark from the appearance setting (System follows the OS); color-scheme on :root keeps native controls
    and system colours in step with it. */
 .dark {
+  --studio-panel-shadow: none;
   --permission-card-bg: oklch(0.2550 0 0);
   --permission-card-fg: #fafafa;
   --permission-card-muted: rgb(250 250 250 / 0.66);
@@ -918,6 +921,123 @@
     text-shadow: var(--media-text-shadow);
     pointer-events: none;
   }
+  /* The Recording Studio (plan 075, D19), as OBS lays out its window: the preview across the top, panels under it. */
+  .studio {
+    display: grid;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+  .studio-stage {
+    display: grid;
+    gap: 6px;
+  }
+  /* The preview takes the panel's width, up to what the window's height leaves above the panels. */
+  .studio-stage .camera-preview-stage {
+    width: min(100%, calc(max(200px, 100dvh - 420px) * var(--preview-ratio, 16 / 9)));
+  }
+  .studio-panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+  .studio-panel {
+    display: grid;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: var(--studio-panel-shadow);
+  }
+  .studio-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 24px;
+  }
+  .studio-panel-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .studio-panel-head h2 svg {
+    width: 15px;
+    height: 15px;
+    color: var(--primary);
+  }
+  .studio-shape {
+    display: grid;
+    gap: 6px;
+  }
+  /* One label column for every row, so the controls line up; the shape's segments share the row's width. */
+  .studio-shape-row {
+    display: grid;
+    grid-template-columns: 6.4em minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .studio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+  }
+  /* The shape's four segments take the panel's whole width under their label, however narrow the panel. */
+  .studio-shape-row.studio-ratio {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .studio-shape-row .slider-setting {
+    width: 100%;
+  }
+  .studio-toggles {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .studio-toggle[aria-pressed="true"] {
+    color: var(--primary);
+    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  }
+  .studio-mixer {
+    display: grid;
+    gap: 10px;
+  }
+  .studio-channel {
+    display: grid;
+    gap: 2px;
+    font-size: 12px;
+  }
+  .studio-channel .audio-meter {
+    width: 100%;
+  }
+  .studio-state {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .studio-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .studio-note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .studio-failure {
+    margin: 0;
+    font-size: 12px;
+    color: var(--destructive-ink);
+  }
   /* The Recording Studio's level meters (plan 075, D19): a bar from silence to full scale, quiet when muted. */
   .audio-meter {
     display: flex;
@@ -1404,6 +1524,23 @@
   .sidebar-about {
     margin-top: auto;
     padding: 12px 0;
+  }
+  .sidebar-toggle {
+    display: flex;
+    margin-bottom: 2px;
+  }
+  /* A collapsed sidebar's status light, in the status card's tone. */
+  .status-light-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted-foreground);
+  }
+  .status-light[data-tone="attention"] .status-light-dot {
+    background: var(--destructive);
+  }
+  .status-light[data-tone="busy"] .status-light-dot {
+    background: var(--primary);
   }
   .titlebar {
     /* The empty top strip drags across both the sidebar and the content. */
@@ -2410,6 +2547,34 @@
       grid-column: 1;
       grid-row: 5;
       position: relative;
+    }
+    /* A collapsed sidebar (2026-10-17): a rail of icons, each named by its tooltip, giving its width to the page. */
+    main[data-sidebar="collapsed"] {
+      --settings-sidebar-width: 36px;
+    }
+    main[data-sidebar="collapsed"] .brand {
+      justify-content: center;
+    }
+    main[data-sidebar="collapsed"] .brand-name,
+    main[data-sidebar="collapsed"] .tab-name {
+      display: none;
+    }
+    main[data-sidebar="collapsed"] [role="tab"] {
+      position: relative;
+      justify-content: center;
+      padding-inline: 0;
+    }
+    /* Troubleshooting's unread count stays, small at its icon's corner. */
+    main[data-sidebar="collapsed"] .tab-badge {
+      position: absolute;
+      top: -2px;
+      right: -6px;
+    }
+    main[data-sidebar="collapsed"] .sidebar-about {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
     }
     /* The card rises to the window's top, inset as at its right; its head is the toolbar, the page title level with
        the window controls. */

@@ -25,13 +25,15 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect(card.hidden).toBe(true);
   // In the page's order after the tabs and before their content, as the sidebar draws it under them: the first Tab
   // reaches the tabs, not the card at the sidebar's foot.
-  expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["tabs", "status", "settings-content"]);
+  expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["settings-tabs", "status", "settings-content"]);
   expect(document.querySelector(".tabs")!.getAttribute("role")).toBe("tablist");
 
-  // The sidebar's split control keeps a named Hide action and a menu; credit, version and links stay in General.
+  // The sidebar's split control keeps a named Hide action and a menu, under the sidebar's own collapse button;
+  // credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
   const hide = foot.querySelector<HTMLButtonElement>("#sidebar-about-hide")!;
-  expect([foot.hidden, hide.textContent, hide.getAttribute("aria-label"), Boolean(hide.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Hide interface", "Hide interface", true, 2]);
+  expect([foot.hidden, hide.textContent, hide.getAttribute("aria-label"), Boolean(hide.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Hide interface", "Hide interface", true, 3]);
+  expect(foot.querySelector("#sidebar-toggle")?.getAttribute("aria-label")).toBe("Collapse sidebar");
   hide.click();
   expect(choose).toHaveBeenCalledWith("about", "hide");
   // One request at a time (settings.ts `choose`): the next click waits for this one to settle.
