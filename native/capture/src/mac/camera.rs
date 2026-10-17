@@ -25,7 +25,7 @@ use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput, AVCaptureOutput, AVCaptureSession,
-    AVCaptureSessionPreset1280x720, AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeVideo,
+    AVCaptureSessionPreset1280x720, AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaType, AVMediaTypeVideo,
 };
 use objc2_core_foundation::{CFRetained, CFString};
 use objc2_core_media::CMSampleBuffer;
@@ -89,10 +89,17 @@ impl Delegate {
     }
 }
 
+/// The system's default camera (D9): the one macOS prefers (macOS 13, as RecordStuff needs), which follows a Continuity
+/// Camera and the user's choice in other apps. `defaultDeviceWithMediaType` does not: on 2026-10-17 it answered the
+/// iPhone's camera to Settings' listing and the closed lid's FaceTime HD camera to a recording a minute later.
+fn system_default(media: &AVMediaType) -> Option<Retained<AVCaptureDevice>> {
+    unsafe { AVCaptureDevice::systemPreferredCamera() }.or_else(|| unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) })
+}
+
 /// The cameras connected now, the system's default marked (D9). Read without access: listing them asks nothing.
 pub fn list() -> Vec<crate::core::Camera> {
     let Some(media) = (unsafe { AVMediaTypeVideo }) else { return Vec::new() };
-    let default = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.map(|device| unsafe { device.uniqueID() }.to_string());
+    let default = system_default(media).map(|device| unsafe { device.uniqueID() }.to_string());
     // The discovery session's replacement needs a device type per kind of camera; this one lists them all.
     #[allow(deprecated)]
     let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
@@ -154,7 +161,7 @@ fn open(wanted: Wanted<'_>, feed: &Arc<Feed>, events: &Arc<dyn Events>, dropped:
     let device = match wanted {
         Wanted::Chosen(id) => match id.and_then(by_id) {
             Some(device) => device,
-            None => unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) }.ok_or_else(|| unavailable("no camera is connected"))?,
+            None => system_default(media).ok_or_else(|| unavailable("no camera is connected"))?,
         },
         Wanted::Exactly(id) => by_id(id).ok_or_else(|| unavailable(format!("{id} is not connected")))?,
     };
