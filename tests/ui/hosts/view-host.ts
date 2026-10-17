@@ -23,7 +23,7 @@ import type { RecordingState } from "../../../src/shared/state";
 import { DEFAULT_QUALITY } from "../../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../../src/shared/hotkey";
 import type { AppContext } from "../../../src/main/app/ui-model";
-import { applyRatio, DEFAULT_CAMERA_LAYOUT } from "../../../src/shared/camera-layout";
+import { applyRatio, DEFAULT_CAMERA_LAYOUT, withPosition } from "../../../src/shared/camera-layout";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../../src/main/library/recordings-library";
 import { videoThumbnail } from "../../../src/main/library/video-thumbnail";
 import { settingsWindowOptions } from "../../../src/main/settings/settings-window";
@@ -211,6 +211,8 @@ const state = {
 const retryDelays = [3_600_000];
 const heldSaves: Array<() => void> = [];
 const chooseCalls: Array<[string, unknown]> = [];
+/** What the page said about the camera preview being in sight (plan 075 step 7), in order. */
+const previewWatches: boolean[] = [];
 let panel: ElectronModule.BrowserWindow | undefined;
 let library: RecordingsLibrary | undefined;
 
@@ -234,6 +236,7 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:read", () => fixtureView(state.language, state.notifications));
   ipcMain.handle("settings:ready", () => {});
   ipcMain.handle("settings:zoom", () => {});
+  ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
     if (!state.captureView) return fixtureView(state.language, state.notifications);
     state.captureView = structuredClone(state.captureView);
@@ -277,6 +280,10 @@ function installPanelHandlers(): void {
       if (typeof action === "object" && "setCamera" in action) next = { ...camera, enabled: action.setCamera };
       if (typeof action === "object" && "setCameraShape" in action) next = { ...camera, layout: { ...layout, ...action.setCameraShape } };
       if (typeof action === "object" && "setCameraRatio" in action) next = { ...camera, layout: applyRatio(layout, action.setCameraRatio) };
+      if (typeof action === "object" && "setCameraPosition" in action) {
+        const { display, x, y } = action.setCameraPosition;
+        next = { ...camera, layout: withPosition(layout, display, { x, y }) };
+      }
       if (typeof action === "object" && "setCameraDevice" in action) {
         const { device: _device, ...rest } = camera;
         next = action.setCameraDevice ? { ...rest, device: action.setCameraDevice } : rest;
@@ -387,6 +394,7 @@ const hostControls: Record<string, unknown> = {
   state,
   retryDelays,
   chooseCalls,
+  previewWatches,
   results: recordingResults,
   translate,
   settingsView,

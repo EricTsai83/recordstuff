@@ -512,6 +512,11 @@ export class Recorder {
     return session ? { hidden: session.cameraHidden === true } : undefined;
   }
 
+  /** The id of the session `camera` describes, which Settings' preview joins (plan 075 step 7). */
+  get cameraSessionId(): string | undefined {
+    return this.cameraSession()?.id;
+  }
+
   private cameraSession(): Session | undefined {
     const session = this.session;
     const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";

@@ -122,6 +122,11 @@ export interface SettingsWindowOptions {
    * itself, rather than through `act`, which refuses at once, asks this.
    */
   quitRequested?: () => boolean;
+  /**
+   * The page has the camera preview in sight, or `undefined`: no page has (plan 075 step 7). Also told when the
+   * window closes, its page dies or RecordStuff is hidden.
+   */
+  cameraPreview?: (page: WebContents | undefined) => void;
   log?: (message: string) => void;
 }
 
@@ -203,6 +208,11 @@ export class SettingsWindow {
       authorize(event);
       return this.deliver(this.view());
     });
+    ipcMain.handle(SETTINGS_CHANNELS.cameraPreview, (event, watching: unknown) => {
+      const window = authorize(event);
+      if (typeof watching !== "boolean") throw new Error("Invalid camera preview request");
+      this.options.cameraPreview?.(watching && window.isVisible() ? window.webContents : undefined);
+    });
     ipcMain.handle(SETTINGS_CHANNELS.choose, (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
       if (group === "history" && choice === "more") {
@@ -279,6 +289,7 @@ export class SettingsWindow {
     if (!window || window.isDestroyed()) return Promise.resolve(true);
     this.hiddenByUser = true;
     this.release(this.leaseOf(window));
+    this.options.cameraPreview?.(undefined);
     // The player stops first: hidden, RecordStuff has no Dock icon, and a sound from nowhere would be hard to trace.
     window.webContents.send(SETTINGS_CHANNELS.hidden);
     if (!window.isFullScreen()) {
@@ -448,6 +459,7 @@ export class SettingsWindow {
     ipcMain.removeHandler(SETTINGS_CHANNELS.ready);
     ipcMain.removeHandler(SETTINGS_CHANNELS.choose);
     ipcMain.removeHandler(SETTINGS_CHANNELS.zoom);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.cameraPreview);
     this.window?.destroy();
     this.window = undefined;
   }
@@ -519,6 +531,7 @@ export class SettingsWindow {
     // A video playing full screen for it has nothing left to return to.
     this.options.fullScreen?.close();
     this.window = undefined; this.reveal = undefined; this.captureTimedOut = false;
+    this.options.cameraPreview?.(undefined);
     this.options.closed?.();
   }
 

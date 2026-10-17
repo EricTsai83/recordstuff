@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { withPosition } from "../../shared/camera-layout";
 import type { AppAction } from "../app/ui-model";
 import type { PreferenceSave } from "../settings/preferences";
 import { createActionHandler, type ActionDeps } from "./actions";
@@ -156,7 +157,8 @@ describe("createActionHandler", () => {
       const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [{ display: "primary", x: 0.1, y: 0.1 }] };
       const settings = { language: "en", cameraLayout: layout, cameraDevice: undefined as { id: string; label: string } | undefined,
         setCameraLayout: vi.fn(async (shape: Omit<typeof layout, "positions">) => { settings.cameraLayout = { ...settings.cameraLayout, ...shape }; }),
-        setCameraDevice: vi.fn(async (device: { id: string; label: string } | null) => { settings.cameraDevice = device ?? undefined; }) };
+        setCameraDevice: vi.fn(async (device: { id: string; label: string } | null) => { settings.cameraDevice = device ?? undefined; }),
+        setCameraPosition: vi.fn(async (display: string, position: { x: number; y: number }) => { settings.cameraLayout = withPosition(settings.cameraLayout, display, position); }) };
       const updateCamera = vi.fn(() => true);
       const ctx = harness({ settings, recorder: { updateCamera },
         savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
@@ -167,11 +169,14 @@ describe("createActionHandler", () => {
       expect(settings.cameraLayout.height).toBeCloseTo(0.4 * 9 / 16, 9);
       await ctx.act({ setCameraShape: { mirror: true } });
       expect(settings.cameraLayout.mirror).toBe(true);
+      await ctx.act({ setCameraPosition: { display: "9", x: 0.25, y: 0.5 } });
+      expect(settings.setCameraPosition).toHaveBeenLastCalledWith("9", { x: 0.25, y: 0.5 });
+      expect(updateCamera).toHaveBeenLastCalledWith({ layout: expect.objectContaining({ positions: expect.arrayContaining([{ display: "9", x: 0.25, y: 0.5 }]) }) });
       await ctx.act({ setCameraDevice: { id: "iphone", label: "iPhone Camera" } });
       expect(settings.cameraDevice).toEqual({ id: "iphone", label: "iPhone Camera" });
       // The shape is saved unlocked (D7), the device locked as the microphone's.
       const saves = vi.mocked(ctx.deps.savePreference).mock.calls;
-      expect(saves.filter(([what]) => what === "camera shape").every(([, save]) => !save.locked)).toBe(true);
+      expect(saves.filter(([what]) => what === "camera shape" || what === "camera position").every(([, save]) => !save.locked)).toBe(true);
       expect(saves.find(([what]) => what === "camera device")?.[1].locked).toBe(true);
     });
 

@@ -296,6 +296,49 @@ describe("the camera's rows (plan 075, step 7)", () => {
   });
 });
 
+describe("the camera's preview (plan 075, step 7)", () => {
+  const layout = { width: 0.2, height: 0.3, rounding: 0.5, mirror: true, positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "9", x: 0.4, y: 0.6 }] };
+  const displays = [
+    { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true, menuBar: 33 },
+    { id: "9", label: "Studio", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false },
+  ];
+  const devices = [{ id: "iphone", name: "iPhone Camera", default: true }];
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}, more: Partial<AppContext> = {}): AppContext =>
+    ({ ...context, displays, camera: { enabled: true, available: true, access: "granted", layout, devices, ...camera }, ...more });
+  const preview = (state: RecordingState, ctx: AppContext) => group(state, ctx, "cameraPreview");
+  const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+
+  it("shows the display the recording captures, its menu bar, and the bubble where the recording puts it", () => {
+    expect(settingsView(idle, on()).groups.filter((g) => g.section === "camera").map((g) => g.id).slice(0, 3)).toEqual(["camera", "cameraPreview", "cameraDevice"]);
+    expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
+      mode: "live", display: { width: 1512, height: 982, menuBar: 33 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
+      x: 0.1, y: 0.2, camera: "iPhone Camera" } });
+    // Another display: its own position; hiding the menu bar takes the band away.
+    const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" }, hideSystemUi: true });
+    expect(preview(idle, studio)?.cameraPreview).toMatchObject({ display: { width: 1080, height: 1920, menuBar: 0 }, x: 0.4, y: 0.6 });
+    expect(preview(idle, { ...on(), displays: [] }), "no display to show").toBeUndefined();
+    // The chosen camera by the name it has now, which the page matches; a renamed one keeps its stored label meanwhile.
+    expect(preview(idle, on({ device: { id: "iphone", label: "Old iPhone name" } }))?.cameraPreview?.camera).toBe("iPhone Camera");
+  });
+
+  it("says why there is no picture: the switch off, access not allowed, a recording without the camera yet", () => {
+    expect(preview(idle, on({ enabled: false }))?.cameraPreview).toMatchObject({ mode: "off", status: "Turn on Camera to see it here." });
+    expect(preview(idle, on({ access: "denied" }))?.cameraPreview).toMatchObject({ mode: "off", status: "Allow camera access to see it here." });
+    expect(preview({ type: "starting" }, on())?.cameraPreview).toMatchObject({ mode: "off", status: "Shown here once the recording starts." });
+    expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });
+    expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(idle, { ...on(), language: "zh-TW" })).toMatchObject({ label: "預覽" });
+  });
+
+  it("sends where the bubble was let go of on the display shown, also while recording, and nothing out of range", () => {
+    expect(settingsAction(idle, on(), "cameraPreview", "0.25,1")).toEqual({ setCameraPosition: { display: "1", x: 0.25, y: 1 } });
+    expect(settingsAction(recording, on({ session: { hidden: false } }), "cameraPreview", "0,0.5")).toEqual({ setCameraPosition: { display: "1", x: 0, y: 0.5 } });
+    for (const bad of ["1.5,0", "-0.1,0", "0.5", "0.5,0.5,0", "NaN,0", "0.1234567,0", "", "x,y"]) expect(settingsAction(idle, on(), "cameraPreview", bad), bad).toBeUndefined();
+    expect(settingsAction(idle, on({ enabled: false }), "cameraPreview", "0.5,0.5")).toBeUndefined();
+    expect(settingsAction(recording, on(), "cameraPreview", "0.5,0.5"), "a recording without the camera").toBeUndefined();
+  });
+});
+
 describe("microphone (plan 074)", () => {
   const devices = [
     { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },

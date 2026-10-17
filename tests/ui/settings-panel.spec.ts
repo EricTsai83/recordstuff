@@ -41,7 +41,7 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
-  expect.soft(rendered.bridge, "S004 the preload exposes only the settings and zoom APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onZoomChanged", "read", "ready", "zoom"]);
+  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom and camera preview APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onZoomChanged", "read", "ready", "watchCameraPreview", "zoom"]);
   expect.soft(rendered.exposed, "S005 no Node API reaches the sandboxed page").toEqual(["undefined", "undefined", "undefined"]);
   expect.soft([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.find(control => control.id === "setting-hotkey")?.label],
     "S006 the URL language localizes the first render").toEqual(["RecordStuff", "RecordStuff", "zh-Hant", "快捷鍵"]);
@@ -305,6 +305,149 @@ test("S124–S126 camera rows: a slider names its percent and commits once, a re
 
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "granted" } }); });
   await expect(page.getByRole("slider", { name: "寬度" }), "S124 zh-TW").toHaveAttribute("aria-valuetext", "20%");
+});
+
+test("S127–S130 camera preview: the camera in the bubble while in sight, dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await page.locator("#tab-recording").click();
+  // No real camera in a background run: the page's own camera calls are answered by a drawn picture.
+  await page.evaluate(() => {
+    const record = { opened: [] as string[], stopped: 0 };
+    (window as unknown as { cameraCalls: typeof record }).cameraCalls = record;
+    navigator.mediaDevices.enumerateDevices = async () => [
+      { kind: "videoinput", label: "FaceTime HD Camera", deviceId: "web-facetime" },
+      { kind: "videoinput", label: "iPhone Camera", deviceId: "web-iphone" }] as MediaDeviceInfo[];
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      record.opened.push(JSON.stringify(constraints));
+      const canvas = document.createElement("canvas");
+      canvas.width = 64; canvas.height = 36;
+      canvas.getContext("2d")!.fillRect(0, 0, 64, 36);
+      const stream = canvas.captureStream(5);
+      for (const track of stream.getTracks()) {
+        const stop = track.stop.bind(track);
+        track.stop = () => { record.stopped += 1; stop(); };
+      }
+      return stream;
+    };
+  });
+  const cameraCalls = (): Promise<{ opened: string[]; stopped: number }> =>
+    page.evaluate(() => ({ ...(window as unknown as { cameraCalls: { opened: string[]; stopped: number } }).cameraCalls }));
+  const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
+  await host.evaluate((h, list) => {
+    h.state.cameraState = undefined;
+    h.previewWatches.length = 0;
+    h.state.cameraContext = { ...h.baseContext(),
+      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0, menuBar: 33 }],
+      camera: { enabled: true, available: true, access: "granted", devices: list, device: { id: "iphone", label: "iPhone Camera" } } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  }, devices);
+  const bubble = page.getByRole("application", { name: "Preview" });
+  await bubble.scrollIntoViewIfNeeded();
+  await expect(bubble, "S127 the bubble says where it is").toHaveAccessibleDescription(/97% from the left, 95% from the top/);
+  await expect.poll(async () => (await cameraCalls()).opened, { message: "S127 the chosen camera, matched by its name, opens while in sight" })
+    .toEqual([expect.stringContaining("web-iphone")]);
+  await expect(page.locator(".camera-preview-camera"), "S127 and shows in the bubble").toBeVisible();
+  await expect(page.locator(".camera-preview-menubar"), "S127 under the menu bar's band").toBeVisible();
+
+  await clearCalls();
+  const box = (await bubble.boundingBox())!;
+  const stage = (await page.locator(".camera-preview-stage").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2, { steps: 4 });
+  await page.mouse.move(stage.x - 40, stage.y - 40, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(calls, { message: "S128 one drag is one save, where it was let go of, snapped inside the display" }).toEqual([["cameraPreview", "0,0"]]);
+  await expect(bubble).toHaveAccessibleDescription(/0% from the left, 0% from the top/);
+  await clearCalls();
+  await bubble.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(calls, { message: "S128 the arrow keys move it a step, Shift ten" }).toEqual([["cameraPreview", "0.01,0"], ["cameraPreview", "0.01,0.1"]]);
+  await expect(bubble).toHaveAccessibleDescription(/1% from the left, 10% from the top/);
+  // A step back to the saved place while the step out still saves is the newer intent, not nothing.
+  await host.evaluate(h => { h.state.holdSaves = true; });
+  await clearCalls();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls, { message: "S128 a step back while saving is sent" }).toEqual([["cameraPreview", "0.02,0.1"], ["cameraPreview", "0.01,0.1"]]);
+  await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); h.releaseSave(); });
+  await expect(bubble).toHaveAccessibleDescription(/1% from the left, 10% from the top/);
+  // Out, back and out again: the first save's end, for the same place as the last, does not undo the last's.
+  await host.evaluate(h => { h.state.holdSaves = true; });
+  await clearCalls();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(calls).toEqual([["cameraPreview", "0.02,0.1"], ["cameraPreview", "0.01,0.1"], ["cameraPreview", "0.02,0.1"]]);
+  await host.evaluate(h => { h.releaseSave(); h.releaseSave(); });
+  await expect(bubble, "S128 the last intent stays shown while it saves").toHaveAccessibleDescription(/2% from the left, 10% from the top/);
+  await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); });
+  await expect(bubble).toHaveAccessibleDescription(/2% from the left, 10% from the top/);
+
+  await page.locator("#tab-general").click();
+  await expect.poll(async () => (await cameraCalls()).stopped, { message: "S129 leaving the tab stops the camera" }).toBeGreaterThan(0);
+  // Leaving while the cameras are still being listed opens none afterwards.
+  await page.evaluate(() => {
+    const listed = navigator.mediaDevices.enumerateDevices;
+    const win = window as unknown as { finishListing?: () => void };
+    navigator.mediaDevices.enumerateDevices = () => new Promise(resolve => { win.finishListing = () => { void listed().then(resolve); }; });
+  });
+  const opened = (await cameraCalls()).opened.length;
+  await page.locator("#tab-recording").click();
+  await page.getByRole("application", { name: "Preview" }).scrollIntoViewIfNeeded();
+  await expect.poll(() => page.evaluate(() => typeof (window as unknown as { finishListing?: () => void }).finishListing)).toBe("function");
+  await page.locator("#tab-general").click();
+  await page.evaluate(() => (window as unknown as { finishListing: () => void }).finishListing());
+  await page.waitForTimeout(200);
+  expect((await cameraCalls()).opened.length, "S129 no camera opened once the preview was left").toBe(opened);
+  await page.locator("#tab-recording").click();
+
+  // However small the bubble is drawn, what is dragged is at least 24px across.
+  await host.evaluate(h => {
+    const ctx = h.state.cameraContext!;
+    h.state.cameraContext = { ...ctx, camera: { ...ctx.camera!, layout: { width: 0.05, height: 0.05, rounding: 1, mirror: false, positions: [] } } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  const small = (await page.getByRole("application", { name: "Preview" }).boundingBox())!;
+  expect(Math.min(small.width, small.height), "S128 a 5% bubble's target").toBeGreaterThanOrEqual(24);
+  expect((await page.locator(".camera-preview-bubble").boundingBox())!.width, "S128 the bubble itself stays to scale").toBeLessThan(24);
+  // In a corner too, the whole target is inside the stage, which would clip it.
+  await host.evaluate(h => {
+    const ctx = h.state.cameraContext!;
+    h.state.cameraContext = { ...ctx, camera: { ...ctx.camera!, layout: { width: 0.05, height: 0.05, rounding: 1, mirror: false, positions: [{ display: "1", x: 0, y: 0 }] } } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect.poll(async () => {
+    const target = (await page.getByRole("application", { name: "Preview" }).boundingBox())!;
+    const inner = await page.locator(".camera-preview-stage").evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.left + el.clientLeft, y: r.top + el.clientTop }; });
+    return [Math.round(target.x - inner.x), Math.round(target.y - inner.y), target.width >= 24 && target.height >= 24];
+  }, { message: "S128 a cornered 5% bubble's target is inside the stage" }).toEqual([0, 0, true]);
+  await host.evaluate(h => {
+    const ctx = h.state.cameraContext!;
+    h.state.cameraContext = { ...ctx, camera: { ...ctx.camera!, layout: { width: 0.05, height: 0.05, rounding: 1, mirror: false, positions: [] } } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: "2026-10-17T00:00:00Z" };
+    h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await page.getByRole("application", { name: "Preview" }).scrollIntoViewIfNeeded();
+  await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S130 a recording's preview is asked for while in sight" }).toEqual([true]);
+  await expect(page.locator(".camera-preview-picture"), "S130 its picture takes the stage").toBeVisible();
+  await expect(page.locator(".camera-preview-camera"), "S130 and the page's own camera is closed").toBeHidden();
+  await clearCalls();
+  await page.getByRole("application", { name: "Preview" }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls, { message: "S130 the bubble still moves while recording (D7)" }).toEqual([["cameraPreview", "0.96,0.95"]]);
+
+  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW",
+    displays: h.state.cameraContext!.displays, camera: { enabled: false, available: true, access: "granted" } }); });
+  await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S130 and let go of once the recording is over" }).toEqual([true, false]);
+  await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 95%/);
+  await expect(page.locator(".camera-preview-status")).toHaveText("開啟「相機」後即可在此預覽。");
 });
 
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {

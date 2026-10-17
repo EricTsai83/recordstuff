@@ -21,6 +21,7 @@ import {
   desktopCapturer,
   dialog,
   globalShortcut,
+  MessageChannelMain,
   nativeImage,
   net,
   nativeTheme,
@@ -37,6 +38,7 @@ import path from "node:path";
 import { NativeCaptureHost } from "./recording/native-capture-host";
 import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
 import { CameraPreview } from "./recording/camera-preview";
+import { CameraPreviewLink } from "./settings/camera-preview-link";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -282,6 +284,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
       logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor, x: d.bounds.x, y: d.bounds.y,
+      // The work area starts below the menu bar on macOS, on each display that has one.
+      ...(process.platform === "darwin" ? { menuBar: Math.max(0, d.workArea.y - d.bounds.y) } : {}),
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
   const displayMedia = new DisplayMedia<DesktopCapturerSource>({
@@ -558,8 +562,16 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ...savingContext(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
+  // Settings' preview of a recording's camera (plan 075 step 7): joined while the page shows it.
+  const cameraPreviewLink = new CameraPreviewLink<Electron.MessagePortMain>({
+    session: () => recorder.cameraSessionId,
+    watch: (sessionId, watching, port) => host.watchPreview(sessionId, watching, port),
+    channel: () => new MessageChannelMain(),
+    log,
+  });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
+    cameraPreview: (page) => cameraPreviewLink.watch(page),
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
@@ -654,6 +666,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     tray.render(state);
     settingsWindow.refresh();
     appMenu.refresh();
+    cameraPreviewLink.sync();
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {

@@ -10,7 +10,7 @@
  * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
-import { CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, CAMERA_RATIOS, DEFAULT_CAMERA_LAYOUT } from "../../shared/camera-layout";
+import { CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, CAMERA_RATIOS, DEFAULT_CAMERA_LAYOUT, recordedPosition } from "../../shared/camera-layout";
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../recording/recording-result";
 import { displayLabel, displayFailureText, type DisplayInfo } from "../../shared/display";
 import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "../display/display-source";
@@ -89,7 +89,7 @@ const SECTIONS: Record<string, string> = {
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio",
   camera: "camera", cameraDevice: "camera", cameraWidth: "camera", cameraHeight: "camera", cameraRatio: "camera",
-  cameraRounding: "camera", cameraMirror: "camera",
+  cameraRounding: "camera", cameraMirror: "camera", cameraPreview: "camera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -362,7 +362,9 @@ function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
       control: "slider", slider: { min, max, step, value, unit: "percent" } };
   };
   const ratio = layout.width / layout.height;
+  const preview = cameraPreviewGroup(ctx, unlocked);
   return [
+    ...(preview ? [preview] : []),
     device,
     { ...slider("cameraWidth", t("Width", language)), info: t("A share of the recording's shorter side.", language) },
     slider("cameraHeight", t("Height", language)),
@@ -375,6 +377,56 @@ function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
       switchChoices(language, layout.mirror, (value) => ({ setCameraShape: { mirror: value } }))),
     info: t("Flips the camera left to right in the recording, as a mirror shows you.", language) },
   ];
+}
+
+/**
+ * The preview (plan 075 step 7): the display the recording will capture, to scale, with the bubble where it will be
+ * composed, which can be dragged there. Before recording the page shows the camera itself in the bubble; while a
+ * recording composes the camera, the engine's preview of the picture. None without a display to show.
+ */
+function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefined {
+  const camera = ctx.camera;
+  const display = previewDisplay(ctx);
+  if (!camera || !display) return undefined;
+  const language = ctx.language;
+  const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
+  const { x, y } = recordedPosition(layout, display.id);
+  const granted = camera.access === undefined || camera.access === "granted";
+  const mode = !camera.enabled ? "off" : camera.session ? "recording" : unlocked && granted ? "live" : "off";
+  const status = !camera.enabled ? t("Turn on Camera to see it here.", language)
+    : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
+    : undefined;
+  const id = `${x},${y}`;
+  // The name the camera has now, which the page matches to its own list; the stored label may be an older one.
+  const chosen = camera.device && camera.devices?.find((device) => device.id === camera.device?.id);
+  const named = chosen ? chosen.name : camera.devices?.find((device) => device.default)?.name;
+  return {
+    ...group("cameraPreview", t("Preview", language), cameraShapeEnabled(ctx, unlocked),
+      [{ id, label: id, enabled: true, checked: true, action: { setCameraPosition: { display: display.id, x, y } } }]),
+    control: "cameraPreview",
+    info: t("Drag the bubble, or move it with the arrow keys (Shift for larger steps); it snaps to the edges and the centre.", language),
+    cameraPreview: {
+      mode,
+      display: { width: display.logicalWidth, height: display.logicalHeight, menuBar: ctx.hideSystemUi ? 0 : display.menuBar ?? 0 },
+      bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
+      x, y,
+      ...(named ? { camera: named } : {}),
+      ...(status ? { status } : {}),
+    },
+  };
+}
+
+/** The display a recording would capture now, which the preview shows; none when it cannot be found. */
+function previewDisplay(ctx: AppContext): DisplayInfo | undefined {
+  const resolution = displayResolution(ctx.displays, ctx.display);
+  return resolution.ok ? ctx.displays.find((display) => display.id === resolution.id) : undefined;
+}
+
+/** A position the preview sends, `x,y`, each a fraction from 0 to 1; anything else is refused. */
+function previewPosition(choice: unknown): { x: number; y: number } | undefined {
+  if (typeof choice !== "string" || !/^(0|1|0?\.\d{1,6}|1\.0{1,6}),(0|1|0?\.\d{1,6}|1\.0{1,6})$/.test(choice)) return undefined;
+  const [x, y] = choice.split(",").map(Number) as [number, number];
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : undefined;
 }
 
 /** The choice id of the system default input; device ids come from the engine. */
@@ -1024,6 +1076,13 @@ export function settingsAction(
     const value = typeof choiceId === "string" && /^\d{1,3}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
     return value >= min && value <= max && cameraShapeEnabled(ctx, preferencesUnlocked(state)) && ctx.camera?.available
       ? { setCameraShape: { [key]: value / 100 } } : undefined;
+  }
+  // The preview sends where the bubble was let go of, on the display it shows (D7: also while recording).
+  if (groupId === "cameraPreview") {
+    const position = previewPosition(choiceId);
+    const display = previewDisplay(ctx);
+    return position && display && ctx.camera?.available && cameraShapeEnabled(ctx, preferencesUnlocked(state))
+      ? { setCameraPosition: { display: display.id, ...position } } : undefined;
   }
   if (groupId === "status") {
     const { action: offered, secondaryAction: secondary } = settingsStatus(state, ctx);

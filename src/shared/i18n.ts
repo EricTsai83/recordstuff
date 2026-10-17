@@ -540,6 +540,15 @@ export const ZH_TW = {
   "100% is a circle, or round ends on a wide or tall bubble.": "100% 為圓形；較寬或較高的泡泡則兩端呈半圓。",
   "Flips the camera left to right in the recording, as a mirror shows you.": "在錄影中將相機畫面左右翻轉，就像照鏡子一樣。",
   "Record camera": "錄製相機",
+  Preview: "預覽",
+  "Drag the bubble, or move it with the arrow keys (Shift for larger steps); it snaps to the edges and the centre.":
+    "拖曳泡泡，或用方向鍵移動（按住 Shift 移動較多）；靠近邊緣或中央時會自動對齊。",
+  "{x}% from the left, {y}% from the top": "距左側 {x}%，距上方 {y}%",
+  "Turn on Camera to see it here.": "開啟「相機」後即可在此預覽。",
+  "Allow camera access to see it here.": "允許取用相機後即可在此預覽。",
+  "Shown here once the recording starts.": "錄影開始後會顯示在這裡。",
+  "Camera position": "相機位置",
+  "The camera could not be shown here.": "無法在此顯示相機。",
   "Show camera": "顯示相機",
   "The camera dropped out during the recording. The screen was recorded without it while it was out.":
     "錄影途中相機曾中斷，中斷期間只錄到螢幕畫面。",

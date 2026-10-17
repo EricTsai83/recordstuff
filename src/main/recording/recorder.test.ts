@@ -266,6 +266,7 @@ describe("the camera (plan 075)", () => {
     await flush();
     expect(ctx.recorder.state.type).toBe("recording");
     expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(ctx.recorder.cameraSessionId, "the session Settings' preview joins").toBe("s1");
   });
 
   it("has no camera to change without one, or between recordings", async () => {

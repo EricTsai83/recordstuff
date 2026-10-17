@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -19,6 +19,7 @@ import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
 import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
+import { CameraPreview } from "./camera-preview";
 import { WindowActions } from "../window-actions";
 
 const icons = {
@@ -37,6 +38,7 @@ const icons = {
   cameraRatio: Ratio,
   cameraRounding: SquareRoundCorner,
   cameraMirror: FlipHorizontal2,
+  cameraPreview: Move,
   videoQuality: Gauge,
   resolutionCap: Monitor,
   frameRate: Gauge,
@@ -348,7 +350,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           </div>
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
-          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" ? (
+          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" ? (
             <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
@@ -408,6 +410,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             <TextSetting group={group} description={description} />
           ) : group.control === "arrangement" ? (
             <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
+          ) : group.control === "cameraPreview" && group.cameraPreview ? (
+            <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "slider" && group.slider ? (
             <SliderSetting id={id} group={group} slider={group.slider} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "segmented" ? (

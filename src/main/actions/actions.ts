@@ -33,7 +33,7 @@ export interface ActionDeps {
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
-    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout">;
+    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
@@ -150,6 +150,17 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         applied: () => {
           const saved = settings.cameraLayout;
           log(`settings: camera ${Math.round(saved.width * 100)}% × ${Math.round(saved.height * 100)}%, rounding ${Math.round(saved.rounding * 100)}%, mirror ${saved.mirror ? "on" : "off"}`);
+          recorder.updateCamera({ layout: saved });
+        },
+      });
+    } else if ("setCameraPosition" in action) {
+      // Not locked while recording (D7), as the shape: the recording takes it from its next frame on.
+      const { display, x, y } = action.setCameraPosition;
+      await deps.savePreference("camera position", {
+        write: () => settings.setCameraPosition(display, { x, y }),
+        applied: () => {
+          const saved = settings.cameraLayout;
+          log(`settings: camera at ${Math.round(x * 100)}%, ${Math.round(y * 100)}% on display ${display}`);
           recorder.updateCamera({ layout: saved });
         },
       });

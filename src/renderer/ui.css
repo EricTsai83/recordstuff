@@ -248,6 +248,12 @@
   --display-glare: inset 0 1px 0 rgb(255 255 255 / 0.18);
   --display-ink: #fff;
   --display-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.1);
+  /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper, the bubble before its
+     picture arrives, and the outline that is dragged over a recording's picture, the same in both themes. */
+  --camera-preview-menubar: rgb(255 255 255 / 0.55);
+  --camera-preview-bubble: oklch(0.32 0.01 260);
+  --camera-preview-bubble-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  --camera-preview-outline: inset 0 0 0 1.5px rgb(255 255 255 / 0.9), 0 0 0 1px rgb(0 0 0 / 0.35);
   --display-text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
@@ -824,6 +830,92 @@
     background: var(--primary);
   }
   /* A slider row (plan 075's camera size and rounding): the track beside its value, as wide as a menu. */
+  /* The Camera section's preview takes the row's full width under its label, as the Screen row's arrangement does. */
+  .row-line:has(> .controls > .camera-preview) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .controls:has(> .camera-preview) {
+    max-width: 100%;
+  }
+  .camera-preview {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    justify-items: center;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--muted);
+  }
+  /* The recorded display to scale, in the arrangement's bezel and wallpaper, at most as tall as a portrait screen fits. */
+  .camera-preview-stage {
+    position: relative;
+    width: min(100%, calc(220px * var(--preview-ratio, 16 / 9)));
+    overflow: hidden;
+    border: 3px solid var(--display-bezel);
+    border-radius: 4px;
+    box-sizing: content-box;
+    background: var(--display-wallpaper);
+    box-shadow: var(--display-glare), var(--display-shadow);
+    touch-action: none;
+    user-select: none;
+  }
+  .camera-preview-picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--display-bezel);
+  }
+  .camera-preview-menubar {
+    position: absolute;
+    inset: 0 0 auto;
+    background: var(--camera-preview-menubar);
+    backdrop-filter: blur(6px);
+  }
+  .camera-preview-bubble {
+    position: absolute;
+    overflow: hidden;
+    background: var(--camera-preview-bubble);
+    box-shadow: var(--camera-preview-bubble-shadow);
+    pointer-events: none;
+  }
+  /* The target over the bubble, at least 24px however small the bubble is drawn: it carries the focus ring. */
+  .camera-preview-handle {
+    position: absolute;
+    cursor: grab;
+    outline: none;
+  }
+  .camera-preview-handle:active {
+    cursor: grabbing;
+  }
+  .camera-preview-handle[aria-disabled] {
+    cursor: default;
+  }
+  /* While recording the engine's picture holds the bubble; an outline over it is what is dragged. */
+  .camera-preview-bubble[data-outline] {
+    background: none;
+    box-shadow: var(--camera-preview-outline);
+  }
+  .camera-preview-handle:focus-visible {
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--ring);
+  }
+  .camera-preview-camera {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .camera-preview-status {
+    position: absolute;
+    inset: auto 8px 8px;
+    margin: 0;
+    color: var(--display-ink);
+    font-size: 11px;
+    text-align: center;
+    text-shadow: var(--media-text-shadow);
+    pointer-events: none;
+  }
   .slider-setting {
     display: flex;
     align-items: center;

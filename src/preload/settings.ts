@@ -1,7 +1,8 @@
 /**
  * The settings panel's only door to main (docs/system-design/desktop.md):
  * read the current view, choose one offered option, arm the shortcut editor,
- * subscribe to pushes and say when the first content is painted.
+ * subscribe to pushes, say when the first content is painted, and watch the
+ * camera preview, whose frames come on a port posted into the page.
  * No Node API and no generic IPC reaches the page.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -30,5 +31,13 @@ const bridge: SettingsBridge = {
     ipcRenderer.on("settings:hidden", listener);
     return () => ipcRenderer.removeListener("settings:hidden", listener);
   },
+  watchCameraPreview: (watching) => ipcRenderer.invoke("settings:camera-preview", watching),
 };
 contextBridge.exposeInMainWorld("settings", bridge);
+
+/** The page's `window`, which the preload's Node-typed build does not name. */
+const page = globalThis as unknown as { postMessage(message: unknown, targetOrigin: string, transfer: unknown[]): void };
+// A port cannot cross the context bridge; it is posted into the page's world, as the prototype's preview page has it.
+ipcRenderer.on("settings:camera-preview-port", (event) => {
+  page.postMessage("settings:camera-preview-port", "*", event.ports);
+});

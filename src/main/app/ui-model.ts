@@ -84,6 +84,8 @@ export type AppAction =
   | { setCameraShape: { width?: number; height?: number; rounding?: number; mirror?: boolean } }
   /** A ratio button (D1): the width kept, the height made to match. */
   | { setCameraRatio: CameraRatio }
+  /** Where the bubble sits on a display (plan 075 step 7): dragged or moved with the keys in Settings' preview. */
+  | { setCameraPosition: { display: string; x: number; y: number } }
   /** `null` is the system default input. */
   | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }

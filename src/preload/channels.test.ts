@@ -25,7 +25,18 @@ it("settings preload uses exactly the settings channels main handles and sends",
   bridge.onHidden(() => {})();
   await bridge.zoom("in");
   bridge.onZoomChanged(() => {})();
+  await bridge.watchCameraPreview(true);
   expect([...electron.used].sort()).toEqual(Object.values(SETTINGS_CHANNELS).sort());
+});
+
+it("settings preload passes the camera preview's port into the page (plan 075 step 7)", async () => {
+  const posted: unknown[][] = [];
+  vi.stubGlobal("postMessage", (...args: unknown[]) => { posted.push(args); });
+  await import("./settings");
+  const port = {};
+  electron.listeners.get(SETTINGS_CHANNELS.cameraPreviewPort)?.({ ports: [port] });
+  expect(posted).toEqual([[SETTINGS_CHANNELS.cameraPreviewPort, "*", [port]]]);
+  vi.unstubAllGlobals();
 });
 
 it("fullscreen video preload uses exactly the channels main handles for it", async () => {
