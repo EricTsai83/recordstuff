@@ -1,6 +1,6 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useLayoutEffect, useRef, useState } from "react";
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Palette, Play, Power, RefreshCw, ScreenShare, Settings2, Sun, Timer, Volume2 } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
@@ -10,6 +10,7 @@ import { ControlTooltip } from "../../components/control-tooltip";
 import { useTextSetting } from "../use-text-setting";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { Slider } from "../../components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card, CardContent } from "../../components/ui/card";
 import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/popover";
@@ -30,6 +31,12 @@ const icons = {
   microphone: Mic,
   microphoneDevice: AudioLines,
   camera: Camera,
+  cameraDevice: Webcam,
+  cameraWidth: MoveHorizontal,
+  cameraHeight: MoveVertical,
+  cameraRatio: Ratio,
+  cameraRounding: SquareRoundCorner,
+  cameraMirror: FlipHorizontal2,
   videoQuality: Gauge,
   resolutionCap: Monitor,
   frameRate: Gauge,
@@ -64,6 +71,42 @@ function SectionIcon({ id }: { id: string }) {
   const Icon = sectionIcons[id as keyof typeof sectionIcons];
   return Icon ? <Icon className="section-icon" aria-hidden="true" /> : null;
 }
+/**
+ * A slider row (plan 075's camera size and rounding): it moves with the pointer or the arrow keys and shows the value
+ * beside it, and the value let go of is the choice sent to main, so one drag is one save.
+ */
+function SliderSetting({ id, group, slider, disabled, describedBy }: {
+  id: string; group: SettingsGroup; slider: NonNullable<SettingsGroup["slider"]>; disabled: boolean; describedBy?: string | undefined;
+}) {
+  const [moving, setMoving] = useState<number | undefined>(undefined);
+  const shown = moving ?? slider.value;
+  const text = `${shown}%`;
+  return (
+    <div className="slider-setting">
+      <Slider
+        id={id}
+        className="slider-setting-track"
+        value={[shown]}
+        min={slider.min}
+        max={slider.max}
+        step={slider.step}
+        disabled={disabled}
+        thumbProps={{ "aria-label": group.label, "aria-valuetext": text, ...(describedBy ? { "aria-describedby": describedBy } : {}) }}
+        onValueChange={(value) => setMoving(Array.isArray(value) ? value[0] : value)}
+        onValueCommitted={(value) => {
+          const next = Array.isArray(value) ? value[0] : value;
+          if (next === undefined || next === slider.value) return setMoving(undefined);
+          // The value let go of stays shown while it saves, so a key held down goes on from it; the view then shows
+          // what was saved, or the old value after a failure.
+          setMoving(next);
+          void model.choose(group.id, String(next), id).finally(() => setMoving((shown) => (shown === next ? undefined : shown)));
+        }}
+      />
+      <span className="slider-setting-value" aria-hidden="true">{text}</span>
+    </div>
+  );
+}
+
 export function GroupIcon({ id }: { id: string }) {
   const Icon = icons[id as keyof typeof icons] ?? Settings2;
   return <Icon className="row-icon" aria-hidden="true" />;
@@ -365,6 +408,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             <TextSetting group={group} description={description} />
           ) : group.control === "arrangement" ? (
             <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
+          ) : group.control === "slider" && group.slider ? (
+            <SliderSetting id={id} group={group} slider={group.slider} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}

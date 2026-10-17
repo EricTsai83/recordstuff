@@ -152,6 +152,29 @@ describe("createActionHandler", () => {
       expect(ctx.tray.notifyCameraDenied).not.toHaveBeenCalled();
     });
 
+    it("saves the camera, the shape and a ratio, and hands a new shape to the recording in progress", async () => {
+      const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [{ display: "primary", x: 0.1, y: 0.1 }] };
+      const settings = { language: "en", cameraLayout: layout, cameraDevice: undefined as { id: string; label: string } | undefined,
+        setCameraLayout: vi.fn(async (shape: Omit<typeof layout, "positions">) => { settings.cameraLayout = { ...settings.cameraLayout, ...shape }; }),
+        setCameraDevice: vi.fn(async (device: { id: string; label: string } | null) => { settings.cameraDevice = device ?? undefined; }) };
+      const updateCamera = vi.fn(() => true);
+      const ctx = harness({ settings, recorder: { updateCamera },
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setCameraShape: { width: 0.4 } });
+      expect(settings.setCameraLayout).toHaveBeenLastCalledWith({ width: 0.4, height: 0.2, rounding: 1, mirror: false });
+      expect(updateCamera).toHaveBeenLastCalledWith({ layout: expect.objectContaining({ width: 0.4, positions: layout.positions }) });
+      await ctx.act({ setCameraRatio: "16:9" });
+      expect(settings.cameraLayout.height).toBeCloseTo(0.4 * 9 / 16, 9);
+      await ctx.act({ setCameraShape: { mirror: true } });
+      expect(settings.cameraLayout.mirror).toBe(true);
+      await ctx.act({ setCameraDevice: { id: "iphone", label: "iPhone Camera" } });
+      expect(settings.cameraDevice).toEqual({ id: "iphone", label: "iPhone Camera" });
+      // The shape is saved unlocked (D7), the device locked as the microphone's.
+      const saves = vi.mocked(ctx.deps.savePreference).mock.calls;
+      expect(saves.filter(([what]) => what === "camera shape").every(([, save]) => !save.locked)).toBe(true);
+      expect(saves.find(([what]) => what === "camera device")?.[1].locked).toBe(true);
+    });
+
     it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {
       const updateCamera = vi.fn((_change: { hidden?: boolean }) => true);
       const ctx = harness({ recorder: { updateCamera } } as unknown as Partial<ActionDeps>);

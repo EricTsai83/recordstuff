@@ -3,6 +3,7 @@
  * menu, notifications and the Settings shortcut all end here, so the quit gate and each preference's lock are
  * decided in one place. `index.ts` builds the collaborators and passes them in; this module creates none.
  */
+import { applyRatio } from "../../shared/camera-layout";
 import fs from "node:fs/promises";
 import type { MessageBoxOptions } from "electron";
 import type { AppAction } from "../app/ui-model";
@@ -31,7 +32,8 @@ export interface ActionDeps {
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
-    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera">;
+    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
+    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
@@ -133,6 +135,24 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         tray.notifyCameraDenied();
       }
       deps.refresh();
+    } else if ("setCameraDevice" in action) {
+      await deps.savePreference("camera device", {
+        locked: true,
+        write: () => settings.setCameraDevice(action.setCameraDevice),
+        applied: () => log(`settings: camera device ${settings.cameraDevice ? settings.cameraDevice.id : "system default"}`),
+      });
+    } else if ("setCameraShape" in action || "setCameraRatio" in action) {
+      // Not locked while recording (D7): the recording takes the new bubble from its next frame on.
+      const current = settings.cameraLayout;
+      const next = "setCameraRatio" in action ? applyRatio(current, action.setCameraRatio) : { ...current, ...action.setCameraShape };
+      await deps.savePreference("camera shape", {
+        write: () => settings.setCameraLayout({ width: next.width, height: next.height, rounding: next.rounding, mirror: next.mirror }),
+        applied: () => {
+          const saved = settings.cameraLayout;
+          log(`settings: camera ${Math.round(saved.width * 100)}% × ${Math.round(saved.height * 100)}%, rounding ${Math.round(saved.rounding * 100)}%, mirror ${saved.mirror ? "on" : "off"}`);
+          recorder.updateCamera({ layout: saved });
+        },
+      });
     } else if ("setCameraHidden" in action) {
       // The recording's own choice (D13), not a setting: the next recording shows the camera again.
       if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");

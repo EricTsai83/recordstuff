@@ -238,15 +238,34 @@ describe("the camera (plan 075)", () => {
     expect(logs).toContainEqual(expect.stringContaining("session s1 camera hidden"));
     ctx.recorder.stop();
     expect(ctx.recorder.updateCamera({ hidden: false }), "not while stopping").toBe(false);
+    expect(ctx.recorder.camera, "nor offered to Settings or the tray then").toBeUndefined();
   });
 
-  it("takes no camera change before the engine's session is prepared", async () => {
+  it("takes no camera change before the engine's session is prepared, and offers none there", async () => {
     const ctx = setup({ deps: { camera: () => ({ layout }) } });
     ctx.recorder.toggle();
     await flush();
     expect(ctx.recorder.updateCamera({ hidden: true }), "preparing").toBe(false);
-    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    // Settings' shape rows and the tray's Hide camera follow `camera`: a change they took here would be lost.
+    expect(ctx.recorder.camera).toBeUndefined();
     expect(ctx.host.cameraChanges).toEqual([]);
+  });
+
+  it("offers the camera from the state that redraws Settings: not while arming without a countdown, then once recording", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.state.type, "arming keeps starting").toBe("starting");
+    expect(ctx.recorder.camera).toBeUndefined();
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    ctx.host.emit(chunk("s1", 0));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
   });
 
   it("has no camera to change without one, or between recordings", async () => {

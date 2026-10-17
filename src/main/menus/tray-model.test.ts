@@ -128,6 +128,17 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(enabledActions(m.menu)).toEqual(["stop", "openSettings", "showLastRecording", "quit"]);
   });
 
+  it("idle: Record camera beside Record microphone where the camera is available (plan 075, D10)", () => {
+    const shown = trayModel({ type: "idle" }, { ...mac, camera: { enabled: true, available: true } });
+    const item = shown.menu.find((entry) => entry.kind === "item" && entry.label === "錄製相機");
+    expect(item).toMatchObject({ checked: true, action: { setCamera: false } });
+    expect(trayModel({ type: "idle" }, { ...mac, camera: { enabled: false, available: true } }).menu
+      .find((entry) => entry.kind === "item" && entry.label === "錄製相機")).toMatchObject({ checked: false, action: { setCamera: true } });
+    expect(labels(trayModel({ type: "idle" }, { ...mac, camera: { enabled: true, available: false } }).menu)).not.toContain("錄製相機");
+    // The Record menu keeps no checkbox, as for the microphone.
+    expect(recordMenu({ type: "idle" }, { ...mac, camera: { enabled: true, available: true } }).map((entry) => entry.kind === "item" ? entry.label : "—")).not.toContain("錄製相機");
+  });
+
   it("recording with the camera: Hide camera, then Show camera once it is hidden (plan 075, D13)", () => {
     const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
     const shown = trayModel(recording, { ...mac, camera: { enabled: true, available: true, session: { hidden: false } } });

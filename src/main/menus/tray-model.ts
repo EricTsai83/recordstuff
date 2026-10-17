@@ -211,6 +211,11 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // recordings start. Idle's only, since a session locks it as Settings does.
       const microphone = ctx.microphone?.enabled ?? false;
       actions.push({ kind: "item", label: text("Record microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
+      // The camera's switch beside it (plan 075, D10), where the camera is available.
+      if (ctx.camera?.available) {
+        const camera = ctx.camera.enabled;
+        actions.push({ kind: "item", label: text("Record camera"), enabled: true, action: { setCamera: !camera }, checked: camera });
+      }
       return model("idle", "", status, actions, lines);
     }
     case "starting":

@@ -8,6 +8,7 @@
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
+import type { CameraLayout, CameraRatio } from "../../shared/camera-layout";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
@@ -77,6 +78,12 @@ export type AppAction =
   | { setCamera: boolean }
   /** Hides or shows the camera in the recording in progress (plan 075, D13); the camera stays open. */
   | { setCameraHidden: boolean }
+  /** The camera to record (D9); `null` is the system default. */
+  | { setCameraDevice: { id: string; label: string } | null }
+  /** The bubble's shape or mirror (D1, D3, D8), also while recording (D7). */
+  | { setCameraShape: { width?: number; height?: number; rounding?: number; mirror?: boolean } }
+  /** A ratio button (D1): the width kept, the height made to match. */
+  | { setCameraRatio: CameraRatio }
   /** `null` is the system default input. */
   | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }
@@ -110,6 +117,12 @@ export interface CameraContext {
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
   /** The recording in progress composes the camera: whether it is hidden from the tray (D13). */
   session?: { hidden: boolean };
+  /** The stored camera; absent is the system default (D9). */
+  device?: { id: string; label: string };
+  /** The cameras the engine listed last; absent until they are listed, or when listing failed. */
+  devices?: readonly { id: string; name: string; default: boolean }[];
+  /** The bubble's shape and mirror (D1–D3, D8); absent is the default's. */
+  layout?: CameraLayout;
 }
 
 /** The persisted choice plus whether the OS actually accepted the registration. */

@@ -501,21 +501,32 @@ export class Recorder {
     }
   }
 
-  /** The session's camera, when it has one: whether it is hidden from the tray (D13). */
+  /**
+   * The session's camera and whether it is hidden (D13), while it can be changed (`updateCamera`), so nothing offers a
+   * change it would refuse: once the engine's session is prepared and the state says so (the countdown or the
+   * recording), since the state's change is what redraws Settings and the tray. Without a countdown the short arming
+   * after `prepared` keeps `starting`.
+   */
   get camera(): { hidden: boolean } | undefined {
+    const session = this.cameraSession();
+    return session ? { hidden: session.cameraHidden === true } : undefined;
+  }
+
+  private cameraSession(): Session | undefined {
     const session = this.session;
-    return session?.camera ? { hidden: session.cameraHidden === true } : undefined;
+    const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";
+    const shown = this._state.type === "countdown" || this._state.type === "recording";
+    return session?.camera && prepared && shown ? session : undefined;
   }
 
   /**
    * Changes the camera of the session in progress (plan 075): a new layout (D7) or hiding and showing it (D13), from
-   * its next frame on. Only once the engine's session is prepared (the countdown, the start and the recording), so a
-   * change is never kept here but lost there; nothing without a session composing a camera. Logged with the session.
+   * its next frame on. Only while `camera` offers it, so a change is never kept here but lost there; nothing without a
+   * session composing a camera. Logged with the session.
    */
   updateCamera(change: { layout?: CameraLayout; hidden?: boolean }): boolean {
-    const session = this.session;
-    const prepared = session?.phase === "countdown" || session?.phase === "arming" || session?.phase === "recording";
-    if (!session?.camera || !prepared || this._state.type === "stopping") return false;
+    const session = this.cameraSession();
+    if (!session?.camera) return false;
     if (change.layout) session.camera = { ...session.camera, layout: change.layout };
     if (change.hidden !== undefined) session.cameraHidden = change.hidden;
     this.deps.log(`recorder: session ${session.id} camera ${change.layout ? "layout changed" : ""}${change.layout && change.hidden !== undefined ? ", " : ""}` +

@@ -10,6 +10,7 @@
  * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
+import { CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, CAMERA_RATIOS, DEFAULT_CAMERA_LAYOUT } from "../../shared/camera-layout";
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../recording/recording-result";
 import { displayLabel, displayFailureText, type DisplayInfo } from "../../shared/display";
 import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "../display/display-source";
@@ -75,8 +76,8 @@ function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera"]);
-const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera", "cameraMirror"]);
+const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance", "cameraRatio"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
@@ -87,7 +88,8 @@ const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio",
-  camera: "camera",
+  camera: "camera", cameraDevice: "camera", cameraWidth: "camera", cameraHeight: "camera", cameraRatio: "camera",
+  cameraRounding: "camera", cameraMirror: "camera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -302,6 +304,77 @@ function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefined {
     result.noteKind = "status";
   }
   return result;
+}
+
+/** The choice id of the system default camera; device ids come from the engine. */
+const DEFAULT_CAMERA = "systemDefault";
+/** The sliders' groups and what each sets, as whole percents (D1, D3). */
+const CAMERA_SLIDERS = {
+  cameraWidth: { key: "width", min: CAMERA_MIN_SIZE * 100, max: CAMERA_MAX_SIZE * 100, step: 1 },
+  cameraHeight: { key: "height", min: CAMERA_MIN_SIZE * 100, max: CAMERA_MAX_SIZE * 100, step: 1 },
+  cameraRounding: { key: "rounding", min: 0, max: 100, step: 5 },
+} as const;
+type CameraSlider = keyof typeof CAMERA_SLIDERS;
+const isCameraSlider = (id: unknown): id is CameraSlider => typeof id === "string" && id in CAMERA_SLIDERS;
+
+/**
+ * Whether the bubble's shape may change now (D7): while the Camera switch is on, between recordings and while a
+ * recording composes the camera, which takes the change from its next frame on.
+ */
+function cameraShapeEnabled(ctx: AppContext, unlocked: boolean): boolean {
+  return ctx.camera?.enabled === true && (unlocked || ctx.camera.session !== undefined);
+}
+
+/**
+ * The camera's rows under its switch (plan 075, step 7): the device (D9), locked while recording as the microphone's,
+ * then the bubble's width, height, ratio buttons, rounding and mirror, which stay usable while recording (D7).
+ */
+function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
+  const camera = ctx.camera;
+  if (!camera?.available) return [];
+  const language = ctx.language;
+  const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
+  const devices = (camera.devices ?? []).filter((device) => device.id !== DEFAULT_CAMERA);
+  const current = devices.find((device) => device.default);
+  const stored = camera.device;
+  const choices: Group["choices"] = [{
+    id: DEFAULT_CAMERA, label: current ? t("System default ({name})", language, { name: current.name }) : t("System default", language),
+    enabled: true, checked: stored === undefined, action: { setCameraDevice: null },
+  }, ...devices.map((device) => ({
+    id: device.id, label: device.name, enabled: true, checked: stored?.id === device.id,
+    action: { setCameraDevice: { id: device.id, label: device.name } } satisfies AppAction,
+  }))];
+  const missing = stored !== undefined && !devices.some((device) => device.id === stored.id);
+  if (missing) choices.push({ id: stored.id,
+    label: camera.devices ? t("{label} — Not connected", language, { label: stored.label }) : stored.label,
+    enabled: !camera.devices, checked: true, action: { setCameraDevice: stored } });
+  const device = group("cameraDevice", t("Camera device", language), unlocked && camera.enabled, choices);
+  if (missing && camera.devices) {
+    device.note = t("Recordings use the system default camera until {label} is connected.", language, { label: stored.label });
+    device.noteKind = "status";
+  }
+  const shapeEnabled = cameraShapeEnabled(ctx, unlocked);
+  const slider = (id: CameraSlider, label: string): Group => {
+    const { key, min, max, step } = CAMERA_SLIDERS[id];
+    const value = Math.round(layout[key] * 100);
+    return { ...group(id, label, shapeEnabled, [{ id: String(value), label: `${value}%`, enabled: true, checked: true,
+      action: { setCameraShape: { [key]: layout[key] } } }]),
+      control: "slider", slider: { min, max, step, value, unit: "percent" } };
+  };
+  const ratio = layout.width / layout.height;
+  return [
+    device,
+    { ...slider("cameraWidth", t("Width", language)), info: t("A share of the recording's shorter side.", language) },
+    slider("cameraHeight", t("Height", language)),
+    group("cameraRatio", t("Shape", language), shapeEnabled, CAMERA_RATIOS.map((value) => {
+      const [w, h] = value.split(":").map(Number) as [number, number];
+      return { id: value, label: value, enabled: true, checked: Math.abs(ratio - w / h) < 0.01, action: { setCameraRatio: value } };
+    })),
+    { ...slider("cameraRounding", t("Rounding", language)), info: t("100% is a circle, or round ends on a wide or tall bubble.", language) },
+    { ...group("cameraMirror", t("Mirror in recording", language), shapeEnabled,
+      switchChoices(language, layout.mirror, (value) => ({ setCameraShape: { mirror: value } }))),
+    info: t("Flips the camera left to right in the recording, as a mirror shows you.", language) },
+  ];
 }
 
 /** The choice id of the system default input; device ids come from the engine. */
@@ -592,6 +665,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
     ...(() => { const camera = cameraGroup(ctx, unlocked); return camera ? [camera] : []; })(),
+    ...cameraGroups(ctx, unlocked),
     ...qualityGroups(ctx, unlocked),
     // General contains everyday preferences and its About footer; maintenance lives in Troubleshooting.
     trayClickGroup(ctx),
@@ -943,6 +1017,13 @@ export function settingsAction(
   if (groupId === "fileName") {
     const template = canonicalFileNameTemplate(choiceId);
     return template !== undefined && preferencesUnlocked(state) ? { setFileNameTemplate: template } : undefined;
+  }
+  // The camera's sliders send the whole percent let go of; any in range is offered while the shape may change (D7).
+  if (isCameraSlider(groupId)) {
+    const { key, min, max } = CAMERA_SLIDERS[groupId];
+    const value = typeof choiceId === "string" && /^\d{1,3}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
+    return value >= min && value <= max && cameraShapeEnabled(ctx, preferencesUnlocked(state)) && ctx.camera?.available
+      ? { setCameraShape: { [key]: value / 100 } } : undefined;
   }
   if (groupId === "status") {
     const { action: offered, secondaryAction: secondary } = settingsStatus(state, ctx);

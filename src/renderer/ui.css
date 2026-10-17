@@ -823,6 +823,24 @@
     border-radius: 50%;
     background: var(--primary);
   }
+  /* A slider row (plan 075's camera size and rounding): the track beside its value, as wide as a menu. */
+  .slider-setting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* A fixed width: in the controls' shrink-to-fit box a percentage leaves the track no length to place its thumb on. */
+    width: 220px;
+    max-width: 100%;
+  }
+  .slider-setting-track {
+    flex: 1;
+  }
+  .slider-setting-value {
+    min-width: 3.5ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted-foreground);
+  }
   /* A segmented control wraps rather than reach past the window when zoom leaves it no room (plan 067). */
   .controls .segments {
     flex-wrap: wrap;

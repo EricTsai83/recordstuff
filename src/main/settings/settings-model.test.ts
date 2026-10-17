@@ -246,6 +246,56 @@ describe("camera (plan 075)", () => {
   });
 });
 
+describe("the camera's rows (plan 075, step 7)", () => {
+  const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+  const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}): AppContext =>
+    ({ ...context, camera: { enabled: true, available: true, access: "granted", layout, devices, ...camera } });
+  const ids = (ctx: AppContext, state = idle) => settingsView(state, ctx).groups.filter((g) => g.section === "camera").map((g) => g.id);
+
+  it("follow the switch in its section: device, width, height, shape, rounding and mirror", () => {
+    expect(ids(on())).toEqual(["camera", "cameraDevice", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror"]);
+    expect(ids(context)).toEqual([]);
+    expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
+    expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
+    expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
+    expect(checked(idle, on(), "cameraMirror")).toBe("off");
+    expect(group(idle, { ...on(), language: "zh-TW" }, "cameraMirror")).toMatchObject({ label: "錄影時鏡像" });
+  });
+
+  it("offer the system default, named after the camera it is now, then each camera, and say when the chosen one is missing", () => {
+    expect(group(idle, on(), "cameraDevice")?.choices.map((c) => [c.id, c.label, c.checked])).toEqual([
+      ["systemDefault", "System default (FaceTime HD Camera)", true], ["built-in", "FaceTime HD Camera", false], ["iphone", "iPhone Camera", false]]);
+    expect(settingsAction(idle, on(), "cameraDevice", "iphone")).toEqual({ setCameraDevice: { id: "iphone", label: "iPhone Camera" } });
+    const missing = group(idle, on({ device: { id: "usb", label: "USB Camera" } }), "cameraDevice")!;
+    expect(missing.choices.at(-1)).toMatchObject({ id: "usb", label: "USB Camera — Not connected", checked: true, enabled: false });
+    expect(missing.note).toBe("Recordings use the system default camera until USB Camera is connected.");
+  });
+
+  it("send a slider's whole percent within range as the shape, and a ratio button or the mirror", () => {
+    expect(settingsAction(idle, on(), "cameraWidth", "35")).toEqual({ setCameraShape: { width: 0.35 } });
+    expect(settingsAction(idle, on(), "cameraRounding", "0")).toEqual({ setCameraShape: { rounding: 0 } });
+    for (const bad of ["4", "61", "3.5", "-1", "", "abc"]) expect(settingsAction(idle, on(), "cameraHeight", bad), bad).toBeUndefined();
+    expect(settingsAction(idle, on(), "cameraRatio", "16:9")).toEqual({ setCameraRatio: "16:9" });
+    expect(settingsAction(idle, on(), "cameraMirror", "on")).toEqual({ setCameraShape: { mirror: true } });
+    // Off: the rows wait for the switch.
+    expect(settingsAction(idle, on({ enabled: false }), "cameraWidth", "30")).toBeUndefined();
+    expect(group(idle, on({ enabled: false }), "cameraRatio")?.enabled).toBe(false);
+  });
+
+  it("keep the shape usable while a recording composes the camera, and lock the device", () => {
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    const live = on({ session: { hidden: false } });
+    expect(group(recording, live, "cameraWidth")?.enabled).toBe(true);
+    expect(group(recording, live, "cameraMirror")?.enabled).toBe(true);
+    expect(settingsAction(recording, live, "cameraWidth", "30")).toEqual({ setCameraShape: { width: 0.3 } });
+    expect(group(recording, live, "cameraDevice")?.enabled).toBe(false);
+    expect(group(recording, live, "camera")?.enabled).toBe(false);
+    // A recording without the camera keeps the rows locked with the others.
+    expect(settingsAction(recording, on(), "cameraWidth", "30")).toBeUndefined();
+  });
+});
+
 describe("microphone (plan 074)", () => {
   const devices = [
     { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },

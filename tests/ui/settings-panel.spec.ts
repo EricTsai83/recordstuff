@@ -254,6 +254,59 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
   await expect(page.getByRole("button", { name: "開啟相機設定…" })).toBeVisible();
 });
 
+test("S124–S126 camera rows: a slider names its percent and commits once, a recording with the camera keeps the shape editable (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await page.locator("#tab-recording").click();
+  const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
+  await host.evaluate((h, list) => {
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted", devices: list } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  }, devices);
+  const width = page.getByRole("slider", { name: "Width" });
+  await width.scrollIntoViewIfNeeded();
+  await expect(width, "S124 a slider is named by its row and reads as a percent").toHaveAttribute("aria-valuetext", "20%");
+  await clearCalls();
+  await width.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(calls, { message: "S124 a step commits the whole percent to main" }).toEqual([["cameraWidth", "21"]]);
+  await expect(width, "S124 the committed value shows").toHaveAttribute("aria-valuetext", "21%");
+  await host.evaluate(h => { h.state.holdSaves = true; });
+  await clearCalls();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(calls, { message: "S124 a key held while saving goes on from the value let go of" }).toEqual([["cameraWidth", "22"], ["cameraWidth", "23"]]);
+  await expect(width, "S124 and shows it while it saves").toHaveAttribute("aria-valuetext", "23%");
+  await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); h.releaseSave(); });
+  await expect(width).toHaveAttribute("aria-valuetext", "23%");
+  await clearCalls();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls).toEqual([["cameraWidth", "22"], ["cameraWidth", "21"]]);
+  await expect(width).toHaveAttribute("aria-valuetext", "21%");
+
+  await clearCalls();
+  await page.locator("#setting-cameraRatio-16\\:9").click();
+  await expect.poll(calls, { message: "S125 a shape asks main" }).toEqual([["cameraRatio", "16:9"]]);
+  await expect(page.locator("#setting-cameraRatio-16\\:9"), "S125 and is the shape then").toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("slider", { name: "Height" })).toHaveAttribute("aria-valuetext", "12%");
+
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: "2026-10-17T00:00:00Z" };
+    h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(page.locator("#setting-camera"), "S126 the switch is locked while recording").toBeDisabled();
+  await expect(width, "S126 the shape is not (D7)").toBeEnabled();
+  await clearCalls();
+  await width.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls, { message: "S126 a change while recording reaches main" }).toEqual([["cameraWidth", "20"]]);
+
+  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "granted" } }); });
+  await expect(page.getByRole("slider", { name: "寬度" }), "S124 zh-TW").toHaveAttribute("aria-valuetext", "20%");
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);

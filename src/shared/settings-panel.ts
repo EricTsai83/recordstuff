@@ -64,7 +64,12 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider";
+  /**
+   * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
+   * validates (plan 075's camera size and rounding).
+   */
+  slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
   iconChoices?: boolean;
   /** Consecutive rows with this id share an inset list. */

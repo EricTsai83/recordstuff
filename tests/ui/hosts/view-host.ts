@@ -23,6 +23,7 @@ import type { RecordingState } from "../../../src/shared/state";
 import { DEFAULT_QUALITY } from "../../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../../src/shared/hotkey";
 import type { AppContext } from "../../../src/main/app/ui-model";
+import { applyRatio, DEFAULT_CAMERA_LAYOUT } from "../../../src/shared/camera-layout";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../../src/main/library/recordings-library";
 import { videoThumbnail } from "../../../src/main/library/video-thumbnail";
 import { settingsWindowOptions } from "../../../src/main/settings/settings-window";
@@ -198,6 +199,7 @@ const state = {
   microphoneContext: undefined as AppContext | undefined,
   /** The Camera row's context (plan 075), as the microphone's. */
   cameraContext: undefined as AppContext | undefined,
+  cameraState: undefined as RecordingState | undefined,
   updateContext: undefined as AppContext | undefined,
   resultSaveFails: false,
   /** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
@@ -265,12 +267,26 @@ function installPanelHandlers(): void {
       }
       return { view: settingsView({ type: "idle" }, state.microphoneContext), applied: action !== undefined };
     }
-    if (group === "camera" && state.cameraContext) {
+    if (group.startsWith("camera") && state.cameraContext) {
       const context = state.cameraContext;
-      const action = settingsAction({ type: "idle" }, context, group, choice);
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
       const camera = context.camera ?? { enabled: false, available: true };
-      if (typeof action === "object" && "setCamera" in action) state.cameraContext = { ...context, camera: { ...camera, enabled: action.setCamera } };
-      return { view: settingsView({ type: "idle" }, state.cameraContext), applied: action !== undefined };
+      const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
+      let next = camera;
+      if (typeof action === "object" && "setCamera" in action) next = { ...camera, enabled: action.setCamera };
+      if (typeof action === "object" && "setCameraShape" in action) next = { ...camera, layout: { ...layout, ...action.setCameraShape } };
+      if (typeof action === "object" && "setCameraRatio" in action) next = { ...camera, layout: applyRatio(layout, action.setCameraRatio) };
+      if (typeof action === "object" && "setCameraDevice" in action) {
+        const { device: _device, ...rest } = camera;
+        next = action.setCameraDevice ? { ...rest, device: action.setCameraDevice } : rest;
+      }
+      const commit = () => {
+        state.cameraContext = { ...context, camera: next };
+        return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+      };
+      if (state.holdSaves) return new Promise(resolve => heldSaves.push(() => resolve(commit())));
+      return commit();
     }
     if (group === "updates" && state.updateContext) {
       const action = settingsAction({ type: "idle" }, state.updateContext, group, choice);
