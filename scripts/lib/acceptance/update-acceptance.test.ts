@@ -85,6 +85,14 @@ describe('recording lock contract', () => {
   const group = (s: LockSnapshot, id: string) => s.settings.groups.find(g => g.id === id)!;
   const withUpdate = (state: UpdateState): AppContext => ({ ...context, updates: { state, enabled: true } });
 
+  it('accepts the microphone on, its Studio meter included, idle and recording (plan 075, D19)', () => {
+    const on = { ...context, microphone: { enabled: true } };
+    for (const state of [{ type: 'idle' }, recording] as RecordingState[]) {
+      expect(snap(state, on).settings.groups.some(g => g.id === 'microphoneAudio')).toBe(true);
+      expect(() => assertLockContract(snap(state, on)), state.type).not.toThrow();
+    }
+  });
+
   it('accepts real recording snapshots in both languages for every update state', () => {
     const states: UpdateState[] = [{ kind: 'idle' }, { kind: 'checking' }, { kind: 'checking', previous: offered }, offered, { kind: 'failed' }, { kind: 'current', checkedAt: 0 }];
     for (const language of ['en', 'zh-TW'] as const) for (const state of states) {

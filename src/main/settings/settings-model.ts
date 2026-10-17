@@ -84,14 +84,14 @@ const ICON_SEGMENTS = new Set(["appearance"]);
 const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "camera", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 /** The Recording Studio's (plan 075, D19): what is watched and changed around a recording. */
-const STUDIO_SECTIONS = new Set(["studioPreview", "studioCamera", "studioControls"]);
+const STUDIO_SECTIONS = new Set(["studioPreview", "studioCamera", "studioAudio", "studioControls"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio",
   camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
-  studioControls: "studioControls", cameraPreview: "studioPreview",
+  studioControls: "studioControls", cameraPreview: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
   studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
   cameraRatio: "studioCamera", cameraRounding: "studioCamera", cameraMirror: "studioCamera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
@@ -106,6 +106,7 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   audio: "Audio",
   camera: "Camera",
   studioCamera: "Camera",
+  studioAudio: "Audio",
   studioControls: "Recording controls",
   video: "Video",
   controls: "Controls and notifications",
@@ -384,7 +385,27 @@ function studioGroups(state: RecordingState, ctx: AppContext, unlocked: boolean)
     }
     camerasRows.push(...cameraShapeGroups(ctx, unlocked));
   }
-  return [...camerasRows, studioControlsGroup(state, ctx)];
+  return [...camerasRows, ...studioAudioGroups(ctx), studioControlsGroup(state, ctx)];
+}
+
+/**
+ * The recording's inputs (D19): each one's level and mute, for the recording in progress only; the microphone's
+ * while the recording takes it, or before one while its switch is on.
+ */
+function studioAudioGroups(ctx: AppContext): Group[] {
+  const language = ctx.language;
+  const session = ctx.audioSession;
+  const row = (id: string, label: PlainMessageKey, source: "system" | "microphone", muted: boolean): Group => ({
+    ...group(id, t(label, language), session !== undefined, [
+      { id: "mute", label: t("Mute", language), enabled: true, checked: muted, action: { setAudioMuted: { source, muted: true } } },
+      { id: "unmute", label: t("Unmute", language), enabled: true, checked: !muted, action: { setAudioMuted: { source, muted: false } } },
+    ]),
+    control: "meter", meter: { source },
+    ...(session ? {} : { note: t("Its level shows, and it can be muted, while recording.", language) }),
+  });
+  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false)];
+  if (session ? session.microphone : ctx.microphone?.enabled) rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false));
+  return rows;
 }
 
 /** Start, Cancel or Stop, as the tray offers it now, with the recording's elapsed time (D19). */

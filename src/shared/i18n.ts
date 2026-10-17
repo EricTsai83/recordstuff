@@ -548,6 +548,10 @@ export const ZH_TW = {
   "Turned on or off between recordings.": "可在錄影之間開啟或關閉。",
   "Show camera in recording": "在錄影中顯示相機",
   "Recording controls": "錄影控制",
+  "System audio": "系統聲音",
+  "Its level shows, and it can be muted, while recording.": "錄影中會顯示音量，也可以靜音。",
+  "Mute {label}": "將{label}靜音",
+  "Unmute {label}": "取消{label}靜音",
   "Elapsed {time}": "已錄 {time}",
   "Starting…": "啟動中…",
   "Drag the bubble, or move it with the arrow keys (Shift for larger steps); it snaps to the edges and the centre.":

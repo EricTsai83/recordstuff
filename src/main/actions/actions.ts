@@ -34,7 +34,7 @@ export interface ActionDeps {
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
@@ -164,6 +164,12 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
           recorder.updateCamera({ layout: saved });
         },
       });
+    } else if ("setAudioMuted" in action) {
+      // The recording's own choice (D19), as hiding the camera: the next recording starts unmuted.
+      const { source, muted } = action.setAudioMuted;
+      // Judged as the switch is, by the muting now in force.
+      if (!recorder.updateAudio({ [source]: muted })) log(`audio: no recording to mute or unmute ${source === "system" ? "system audio" : "the microphone"} in`);
+      deps.refresh();
     } else if ("setCameraHidden" in action) {
       // The recording's own choice (D13), not a setting: the next recording shows the camera again.
       if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");

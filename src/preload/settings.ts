@@ -6,7 +6,7 @@
  * No Node API and no generic IPC reaches the page.
  */
 import { contextBridge, ipcRenderer } from "electron";
-import type { SettingsBridge, SettingsView, SettingsZoom } from "../shared/settings-panel";
+import type { SettingsBridge, SettingsView, SettingsZoom, StudioLevels } from "../shared/settings-panel";
 
 // Literal copies of `SETTINGS_CHANNELS` (channels.test.ts): a sandboxed preload imports nothing at runtime.
 
@@ -32,6 +32,12 @@ const bridge: SettingsBridge = {
     return () => ipcRenderer.removeListener("settings:hidden", listener);
   },
   watchCameraPreview: (watching) => ipcRenderer.invoke("settings:camera-preview", watching),
+  watchLevels: (watching) => ipcRenderer.invoke("settings:watch-levels", watching),
+  onLevels: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, levels: StudioLevels): void => callback(levels);
+    ipcRenderer.on("settings:levels", listener);
+    return () => ipcRenderer.removeListener("settings:levels", listener);
+  },
 };
 contextBridge.exposeInMainWorld("settings", bridge);
 

@@ -20,6 +20,7 @@ import { ShortcutEditor } from "./shortcut-editor";
 import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
 import { CameraPreview } from "./camera-preview";
+import { AudioMeter } from "./audio-meter";
 import { WindowActions } from "../window-actions";
 
 const icons = {
@@ -41,6 +42,8 @@ const icons = {
   cameraPreview: Move,
   studioCamera: Camera,
   cameraShown: Eye,
+  systemAudio: Volume2,
+  microphoneAudio: Mic,
   studioControls: Circle,
   videoQuality: Gauge,
   resolutionCap: Monitor,
@@ -64,6 +67,7 @@ const sectionIcons = {
   camera: Camera,
   studioCamera: Camera,
   studioControls: Circle,
+  studioAudio: AudioLines,
   video: Clapperboard,
   controls: MousePointerClick,
   display: Palette,
@@ -368,7 +372,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           </div>
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
-          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" ? (
+          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" || group.control === "meter" ? (
             <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
@@ -429,6 +433,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             <TextSetting group={group} description={description} />
           ) : group.control === "arrangement" ? (
             <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
+          ) : group.control === "meter" && group.meter ? (
+            <AudioMeter group={group} source={group.meter.source} muted={value === "mute"} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "cameraPreview" && group.cameraPreview ? (
             <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "slider" && group.slider ? (

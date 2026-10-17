@@ -41,7 +41,7 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
-  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom and camera preview APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onZoomChanged", "read", "ready", "watchCameraPreview", "zoom"]);
+  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom, camera preview and level APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onLevels", "onZoomChanged", "read", "ready", "watchCameraPreview", "watchLevels", "zoom"]);
   expect.soft(rendered.exposed, "S005 no Node API reaches the sandboxed page").toEqual(["undefined", "undefined", "undefined"]);
   expect.soft([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.find(control => control.id === "setting-hotkey")?.label],
     "S006 the URL language localizes the first render").toEqual(["RecordStuff", "RecordStuff", "zh-Hant", "快捷鍵"]);
@@ -484,6 +484,54 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
 
   await host.evaluate(h => h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "granted" } }));
   await expect(page.locator("#tab-studio"), "S131 zh-TW").toHaveAccessibleName("錄影工作室");
+});
+
+test("S133–S134 the Recording Studio's meters: levels while recording and in sight, a mute per input, said to assistive technology (plan 075, D19)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(h => {
+    h.levelWatches.length = 0;
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  const system = page.getByRole("button", { name: "Mute System audio" });
+  await system.scrollIntoViewIfNeeded();
+  await expect(system, "S133 between recordings there is nothing to mute").toBeDisabled();
+  await expect(page.getByRole("meter", { name: "Microphone" }), "S133 the microphone's meter while its switch is on").toBeVisible();
+  await page.waitForTimeout(200);
+  expect(await host.evaluate(h => [...h.levelWatches]), "S133 no levels are asked for between recordings").toEqual([]);
+
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.state.cameraContext = { ...h.state.cameraContext!, audioSession: { systemMuted: false, microphone: { muted: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 a recording's meter in sight asks for levels" }).toEqual([true]);
+  await host.evaluate(h => h.pushLevels({ system: 0.5, microphone: 0.1 }));
+  await expect(page.getByRole("meter", { name: "System audio" }), "S133 a level in dB below full scale").toHaveAttribute("aria-valuetext", "-6 dB");
+  await expect(page.getByRole("meter", { name: "Microphone" })).toHaveAttribute("aria-valuetext", "-20 dB");
+  // No level comes in silence (WASAPI's loopback sends none): the meter falls back with time all the same.
+  await expect.poll(async () => Number(await page.getByRole("meter", { name: "System audio" }).getAttribute("aria-valuenow")),
+    { message: "S133 it falls back without new levels", timeout: 3000 }).toBeLessThan(-20);
+  // Past full scale (a sum before the limiter) it reads full scale, within its range.
+  await host.evaluate(h => h.pushLevels({ system: 2 }));
+  await expect(page.getByRole("meter", { name: "System audio" })).toHaveAttribute("aria-valuenow", "0");
+  await clearCalls();
+  await page.getByRole("button", { name: "Mute Microphone" }).click();
+  await expect.poll(calls, { message: "S134 a mute asks main" }).toEqual([["microphoneAudio", "mute"]]);
+  await expect(page.getByRole("button", { name: "Unmute Microphone" }), "S134 and shows it").toHaveAttribute("aria-pressed", "true");
+
+  await page.locator("#tab-general").click();
+  await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 leaving the tab lets the levels go" }).toEqual([true, false]);
+  await page.locator("#tab-studio").click();
+  // The recording ends and the next one starts with the Studio open: its meters start from silence.
+  await host.evaluate(h => h.pushLevels({ system: 1 }));
+  await host.evaluate(h => { h.state.cameraState = undefined; h.push(h.settingsView({ type: "idle" }, { ...h.state.cameraContext!, audioSession: undefined })); });
+  await host.evaluate(h => h.push(h.settingsView({ type: "countdown", remaining: 3 }, h.state.cameraContext!)));
+  await expect(page.getByRole("meter", { name: "System audio" }), "S133 a next recording's meter starts from silence").toHaveAttribute("aria-valuenow", "-60");
+  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true } }); });
+  await expect(page.getByRole("button", { name: "將系統聲音靜音" }), "S133 zh-TW").toBeVisible();
 });
 
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {

@@ -39,6 +39,7 @@ import { NativeCaptureHost } from "./recording/native-capture-host";
 import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
 import { CameraPreview } from "./recording/camera-preview";
 import { CameraPreviewLink } from "./settings/camera-preview-link";
+import { LevelsLink } from "./settings/levels-link";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -537,6 +538,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return { enabled: settings.camera, available: cameraAvailable(), layout: settings.cameraLayout, ...(access ? { access } : {}),
         ...(session ? { session } : {}), ...(device ? { device } : {}), ...(cameras ? { devices: cameras } : {}) };
     })(),
+    ...(() => {
+      const audio = recorder.audio;
+      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
+    })(),
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: settings.outputDir,
@@ -569,9 +574,16 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     channel: () => new MessageChannelMain(),
     log,
   });
+  // The Recording Studio's meters (D19): the recording's levels while the page shows them.
+  const levelsLink = new LevelsLink({
+    session: () => recorder.audio?.sessionId,
+    watch: (sessionId, watching) => host.watchLevels(sessionId, watching),
+  });
+  host.onMessage((message) => levelsLink.deliver(message));
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
     cameraPreview: (page) => cameraPreviewLink.watch(page),
+    levels: (page) => levelsLink.watch(page),
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
@@ -667,6 +679,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     settingsWindow.refresh();
     appMenu.refresh();
     cameraPreviewLink.sync();
+    levelsLink.sync();
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {

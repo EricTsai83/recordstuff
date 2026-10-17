@@ -94,7 +94,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
+function setup(overrides: { levels?: SettingsWindowOptions["levels"]; cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -113,6 +113,7 @@ function setup(overrides: { cameraPreview?: SettingsWindowOptions["cameraPreview
     ...(overrides.move ? { move: overrides.move } : {}),
     ...(overrides.folders ? { folders: overrides.folders } : {}),
     ...(overrides.cameraPreview ? { cameraPreview: overrides.cameraPreview } : {}),
+    ...(overrides.levels ? { levels: overrides.levels } : {}),
     capture,
     state: overrides.state ?? (() => state),
     context: () => live,
@@ -223,6 +224,26 @@ describe("settings window lifecycle", () => {
     expect(closed).toHaveBeenCalledTimes(2);
     s.panel.destroy();
     expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells main whether its page watches the Studio's meters, and that none does once closed (plan 075, D19)", async () => {
+    const levels = vi.fn();
+    const s = setup({ levels });
+    s.panel.show();
+    const window = s.window();
+    const watch = (value: unknown) => mock.handlers.get("settings:watch-levels")!(s.event(), value);
+    await watch(true);
+    expect(levels).toHaveBeenLastCalledWith(window.webContents);
+    expect(() => watch(1)).toThrow();
+    // Asked before the window is shown: given once it is.
+    window.visible = false;
+    await watch(true);
+    expect(levels).toHaveBeenLastCalledWith(undefined);
+    window.visible = true;
+    window.events.get("show")?.();
+    expect(levels).toHaveBeenLastCalledWith(window.webContents);
+    window.close();
+    expect(levels).toHaveBeenLastCalledWith(undefined);
   });
 
   it("tells main whether its page watches the camera preview, and that none does once hidden or closed (plan 075 step 7)", async () => {

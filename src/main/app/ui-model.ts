@@ -86,6 +86,8 @@ export type AppAction =
   | { setCameraShape: { width?: number; height?: number; rounding?: number; mirror?: boolean } }
   /** A ratio button (D1): the width kept, the height made to match. */
   | { setCameraRatio: CameraRatio }
+  /** Mutes or unmutes an input of the recording in progress (plan 075, D19), for that recording only. */
+  | { setAudioMuted: { source: "system" | "microphone"; muted: boolean } }
   /** Where the bubble sits on a display (plan 075 step 7): dragged or moved with the keys in Settings' preview. */
   | { setCameraPosition: { display: string; x: number; y: number } }
   /** `null` is the system default input. */
@@ -149,6 +151,8 @@ export interface AppContext {
   microphone?: MicrophoneContext;
   /** The camera (plan 075); absent is off and not shown. */
   camera?: CameraContext;
+  /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
+  audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
   platform: NodeJS.Platform;
   /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
   mediaComponentsMissing?: boolean;

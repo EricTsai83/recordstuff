@@ -78,6 +78,7 @@ describe("settingsView", () => {
       "countdownSound",
       "microphone",
       "microphoneDevice",
+      "systemAudio",
       "studioControls",
       "videoQuality",
       "resolutionCap",
@@ -102,8 +103,9 @@ describe("settingsView", () => {
     ]);
     for (const entry of view.groups) {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" || entry.kind === "shortcutList" ? 0 : 1);
-      // The input device waits for the microphone's switch, which is off by default (plan 074).
-      expect(entry.enabled, entry.id).toBe(entry.id !== "microphoneDevice");
+      // The input device waits for the microphone's switch, which is off by default (plan 074); the Recording Studio's
+      // mutes for a recording (plan 075, D19).
+      expect(entry.enabled, entry.id).toBe(entry.id !== "microphoneDevice" && entry.id !== "systemAudio");
     }
     expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "countdownSound")).toBe("on");
@@ -262,9 +264,9 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
-    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "studioControls"]);
+    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "systemAudio", "studioControls"]);
     expect(ids(context)).toEqual([]);
-    expect(studio(context), "no camera: the Studio keeps its controls").toEqual(["studioControls"]);
+    expect(studio(context), "no camera: the Studio keeps its audio and controls").toEqual(["systemAudio", "studioControls"]);
     expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
     expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
     expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
@@ -323,6 +325,26 @@ describe("the Recording Studio's controls (plan 075, D19)", () => {
       expect(controls(state)).toMatchObject({ label: "Screen recording permission required", choices: [{ id: "start", enabled: false }] });
       expect(settingsAction(state, context, "studioControls", "start")).toBeUndefined();
     }
+  });
+});
+
+describe("the Recording Studio's audio (plan 075, D19)", () => {
+  const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+  it("shows each input's meter and mute for the recording in progress, the microphone's while it records one", () => {
+    expect(group(idle, context, "systemAudio")).toMatchObject({ tab: "studio", control: "meter", meter: { source: "system" }, enabled: false,
+      note: "Its level shows, and it can be muted, while recording." });
+    expect(group(idle, context, "microphoneAudio")).toBeUndefined();
+    expect(group(idle, { ...context, microphone: { enabled: true } }, "microphoneAudio")).toMatchObject({ enabled: false, meter: { source: "microphone" } });
+    const live = { ...context, audioSession: { systemMuted: true, microphone: { muted: false } } };
+    expect(group(recording, live, "systemAudio")).toMatchObject({ enabled: true, choices: [{ id: "mute", checked: true }, { id: "unmute", checked: false }] });
+    expect(group(recording, live, "systemAudio")?.note).toBeUndefined();
+    expect(checked(recording, live, "microphoneAudio")).toBe("unmute");
+    expect(settingsAction(recording, live, "systemAudio", "unmute")).toEqual({ setAudioMuted: { source: "system", muted: false } });
+    expect(settingsAction(recording, live, "microphoneAudio", "mute")).toEqual({ setAudioMuted: { source: "microphone", muted: true } });
+    // A recording without the microphone: no row for it, though its switch is on for the next.
+    expect(group(recording, { ...live, microphone: { enabled: true }, audioSession: { systemMuted: false } }, "microphoneAudio")).toBeUndefined();
+    expect(settingsAction(idle, context, "systemAudio", "mute"), "nothing to mute between recordings").toBeUndefined();
+    expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "音訊" });
   });
 });
 
@@ -758,7 +780,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
-    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioControls"],
+    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["systemAudio", "meter", "studioAudio"], ["studioControls", "menu", "studioControls"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
@@ -1014,13 +1036,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
-      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["systemAudio", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });

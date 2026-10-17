@@ -180,6 +180,17 @@ describe("createActionHandler", () => {
       expect(saves.find(([what]) => what === "camera device")?.[1].locked).toBe(true);
     });
 
+    it("mutes an input of the recording in progress, and says so when there is none (D19)", async () => {
+      const updateAudio = vi.fn(() => true);
+      const ctx = harness({ recorder: { updateAudio } } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setAudioMuted: { source: "microphone", muted: true } });
+      expect(updateAudio).toHaveBeenLastCalledWith({ microphone: true });
+      updateAudio.mockReturnValue(false);
+      await ctx.act({ setAudioMuted: { source: "system", muted: false } });
+      expect(updateAudio).toHaveBeenLastCalledWith({ system: false });
+      expect(ctx.deps.log).toHaveBeenCalledWith("audio: no recording to mute or unmute system audio in");
+    });
+
     it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {
       const updateCamera = vi.fn((_change: { hidden?: boolean }) => true);
       const ctx = harness({ recorder: { updateCamera } } as unknown as Partial<ActionDeps>);

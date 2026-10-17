@@ -213,6 +213,8 @@ const heldSaves: Array<() => void> = [];
 const chooseCalls: Array<[string, unknown]> = [];
 /** What the page said about the camera preview being in sight (plan 075 step 7), in order. */
 const previewWatches: boolean[] = [];
+/** What the page said about the Recording Studio's meters being in sight (plan 075, D19), in order. */
+const levelWatches: boolean[] = [];
 let panel: ElectronModule.BrowserWindow | undefined;
 let library: RecordingsLibrary | undefined;
 
@@ -237,6 +239,7 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:ready", () => {});
   ipcMain.handle("settings:zoom", () => {});
   ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
+  ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
     if (!state.captureView) return fixtureView(state.language, state.notifications);
     state.captureView = structuredClone(state.captureView);
@@ -274,6 +277,17 @@ function installPanelHandlers(): void {
     if (group === "studioControls" && state.cameraContext) {
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
+    }
+    if ((group === "systemAudio" || group === "microphoneAudio") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      if (typeof action === "object" && "setAudioMuted" in action && context.audioSession) {
+        const { source, muted } = action.setAudioMuted;
+        const audio = context.audioSession;
+        state.cameraContext = { ...context, audioSession: source === "system" ? { ...audio, systemMuted: muted } : { ...audio, microphone: { muted } } };
+      }
+      return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
     }
     if ((group.startsWith("camera") || group === "studioCamera") && state.cameraContext) {
       const context = state.cameraContext;
@@ -400,6 +414,9 @@ const hostControls: Record<string, unknown> = {
   retryDelays,
   chooseCalls,
   previewWatches,
+  levelWatches,
+  /** Levels as main passes them to a watching page. */
+  pushLevels: (levels: { system: number; microphone?: number }): void => { panel!.webContents.send("settings:levels", levels); },
   results: recordingResults,
   translate,
   settingsView,

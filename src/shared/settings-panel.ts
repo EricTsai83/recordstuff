@@ -64,12 +64,17 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter";
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
    * validates (plan 075's camera size and rounding).
    */
   slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
+  /**
+   * A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
+   * `mute` and `unmute`, one checked.
+   */
+  meter?: { source: "system" | "microphone" };
   /** The Recording Studio's controls (plan 075, D19): when the recording in progress began, for the elapsed time. */
   elapsedSince?: string;
   /** A `cameraPreview`'s stage and bubble (plan 075 step 7); the page sends a new position as the choice `x,y`. */
@@ -254,6 +259,9 @@ export const SETTINGS_CHANNELS = {
   /** Whether the camera preview is in sight (plan 075 step 7), and the port a recording's preview frames come on. */
   cameraPreview: "settings:camera-preview",
   cameraPreviewPort: "settings:camera-preview-port",
+  /** Whether the Recording Studio's meters are in sight, and the levels main passes them (plan 075, D19). */
+  watchLevels: "settings:watch-levels",
+  levels: "settings:levels",
 } as const;
 /** A recording's new name, as typed in its card (group `recordingFile:<id>`); main checks it before renaming. */
 export interface RenameChoice { action: "rename"; name: string }
@@ -323,7 +331,12 @@ export interface SettingsBridge {
    * `SETTINGS_CHANNELS.cameraPreviewPort`.
    */
   watchCameraPreview?(watching: boolean): Promise<void>;
+  /** The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come to `onLevels`. */
+  watchLevels?(watching: boolean): Promise<void>;
+  onLevels?(callback: (levels: StudioLevels) => void): () => void;
 }
+/** A recording's inputs' loudest samples since the last levels, linear (1 is full scale). */
+export interface StudioLevels { system: number; microphone?: number }
 
 export type SettingsZoomRequest = "in" | "out" | "reset";
 export interface SettingsZoom { factor: number; canZoomIn: boolean; canZoomOut: boolean }

@@ -251,6 +251,8 @@
   /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper, the bubble before its
      picture arrives, and the outline that is dragged over a recording's picture, the same in both themes. */
   --camera-preview-menubar: rgb(255 255 255 / 0.55);
+  /* A level meter's bar: green to amber to red over its last 12 dB below full scale. */
+  --meter-level: linear-gradient(90deg, oklch(0.72 0.17 150) 0% 80%, oklch(0.8 0.16 85) 80% 95%, oklch(0.63 0.22 27) 95%);
   --camera-preview-bubble: oklch(0.32 0.01 260);
   --camera-preview-bubble-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
   --camera-preview-outline: inset 0 0 0 1.5px rgb(255 255 255 / 0.9), 0 0 0 1px rgb(0 0 0 / 0.35);
@@ -915,6 +917,35 @@
     text-align: center;
     text-shadow: var(--media-text-shadow);
     pointer-events: none;
+  }
+  /* The Recording Studio's level meters (plan 075, D19): a bar from silence to full scale, quiet when muted. */
+  .audio-meter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 240px;
+    max-width: 100%;
+  }
+  .audio-meter-track {
+    position: relative;
+    flex: 1;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: var(--muted);
+  }
+  .audio-meter-fill {
+    height: 100%;
+    background: var(--meter-level);
+  }
+  .audio-meter-cover {
+    position: absolute;
+    inset: 0 0 0 auto;
+    background: var(--muted);
+  }
+  .audio-meter[data-muted] .audio-meter-fill {
+    background: var(--muted-foreground);
+    opacity: 0.5;
   }
   /* The Recording Studio's elapsed time, before its Stop (plan 075, D19). */
   .studio-elapsed {
