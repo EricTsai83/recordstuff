@@ -1,5 +1,5 @@
 /**
- * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--out <dir>]`
+ * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--out <dir>]`
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
@@ -20,6 +20,11 @@
  *   focuses its card's Play button, confirmed by its element id, Return plays it), judged over 50 s after a 5-second settle, per role: the app,
  *   its GPU process and its renderers. Skipped without a recording in this launch. The file must have been saved as
  *   a plain MP4: a fragmented one costs the renderer more the longer it is, which a 60-second file cannot show.
+ *
+ * `--camera <value>` (plan 075 step 2's gate) launches the bundle with `RECORDSTUFF_CAMERA_PROTOTYPE=<value>` (see
+ * native/capture/src/camera_layout.rs): the camera composed into every recording, and its preview page open unless the
+ * value has `preview=0`. It measures A and R only: B, C and P need `--skip-settings --skip-playback`, and B is left
+ * out, since the preview page is a renderer the idle contract does not allow after a recording.
  *
  * Each idle scenario also checks the app's processes by Chromium role against the idle contract (`IDLE_ROLES`): no
  * pre-warmed renderer after launch, neither Chromium's audio service nor the native engine's capture process after a
@@ -50,6 +55,7 @@ import {
 } from "./lib/verification/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { launchdCaptureVariables } from "./lib/runner/capture-engine.mts";
+import { cameraPreviewOn } from "../src/shared/camera-preview.ts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, osascriptAx } from "./lib/runner/native-ax.mts";
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
@@ -76,9 +82,15 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
+let camera: string | undefined;
+/** Whether `--camera` opens the preview page, which `cameraPreviewOn` decides as the app does. */
+let cameraPreview = false;
+/** A role contract that also allows the camera prototype's preview page, one renderer, and nothing else more. */
+const withPreviewPage = (contract: { required: readonly string[]; allowed: Readonly<Record<string, number>> }) =>
+  ({ required: contract.required, allowed: { ...contract.allowed, renderer: (contract.allowed["renderer"] ?? 0) + 1 } });
 const argv = runnerArgs();
 const roles = IDLE_ROLES;
 for (let i = 0; i < argv.length; i += 1) {
@@ -90,11 +102,14 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--skip-settings") skipSettings = true;
   else if (arg === "--skip-playback") skipPlayback = true;
   else if (arg === "--hover-card") hoverCard = true;
+  else if (arg === "--camera" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) camera = argv[++i];
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
 // An odd count, so the median is one run's own figure and its breakdown.
 if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 || repeat > 9 || repeat % 2 === 0) { console.error(usage); process.exit(2); }
+if (camera !== undefined && (!skipSettings || !skipPlayback || /[\s]/.test(camera))) { console.error(usage); process.exit(2); }
+cameraPreview = camera !== undefined && cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: camera });
 
 const controller = new AbortController();
 let interruptedBy: keyof typeof INTERRUPT_EXIT | undefined;
@@ -137,7 +152,7 @@ const LAUNCH_SETTLE_MS = 10_000;
 async function launch(): Promise<{ pid: number; run: string; recordingKey: string }> {
   const from = log.end();
   launchIssued = true;
-  await command("open", ["-a", BUNDLE], AbortSignal.timeout(15_000));
+  await command("open", [...(camera === undefined ? [] : ["--env", `RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), "-a", BUNDLE], AbortSignal.timeout(15_000));
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
   // Each wait is bounded by the launch's shared 60 s rather than its own default.
   const start = await waitForLog(log, from, /\] start: /, "`start:`", signal, 60_000);
@@ -326,7 +341,7 @@ async function main(): Promise<number> {
     scenarios.push({ name: `R. Recording at ${fps} fps (median of ${set.length})`, key: `recording${fps}`, summary: chosen.summary,
       verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(`measure:cpu recording ${fps}`, model)),
         ...set.map((r, i) => ({ ...judgeCoverage(r.summary, RECORDING_SECONDS - 10, r.samplerFailure), check: `Sampled coverage, run ${i + 1}` })),
-        { ...judgeRoles(set.at(-1)!.roles, roles.afterRecording), check: "Process roles 5 s after the last save" },
+        { ...judgeRoles(set.at(-1)!.roles, cameraPreview ? withPreviewPage(roles.afterRecording) : roles.afterRecording), check: "Process roles 5 s after the last save" },
         judgeSteadyState(set.map((r) => r.roles))],
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
   };
@@ -409,6 +424,9 @@ async function main(): Promise<number> {
       for (let i = 0; i < repeat; i += 1) await record(30);
       await closeMaterialOrFail();
       medianRecording(30);
+    }
+    if (!skipRecording && camera !== undefined) note("B: left out with --camera (the preview page stays open)");
+    if (!skipRecording && camera === undefined) {
       note("B. waiting 30 s after the last save");
       await sleep(30_000);
       const bFrom = Date.now();
@@ -558,7 +576,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);

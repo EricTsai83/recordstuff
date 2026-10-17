@@ -75,6 +75,8 @@ pub trait Events: Send + Sync {
     fn microphone_lost(&self, detail: String);
     /// The microphone told lost delivers sound again, which the track takes from then on.
     fn microphone_resumed(&self, detail: String);
+    /// A preview frame of the composed picture (plan 075, step 2's prototype): NV12, `width` × `height`.
+    fn preview(&self, _width: u32, _height: u32, _data: Vec<u8>) {}
 }
 
 /// Where encoded video goes, and who hears that encoding failed. Called on the encoder's thread.
@@ -343,6 +345,9 @@ pub struct Shared<P: Platform> {
     microphone: Mutex<MicrophoneState>,
     /// The per-frame log, when the development switch asks for one (frame_log.rs). Locked inside the video lock.
     frame_log: Mutex<Option<FrameLog>>,
+    /// Every slot of the frame rate is encoded, still screen or not: the picture changes every frame while a camera
+    /// is composed into it (plan 075), which the encoder sees at encoding time.
+    every_slot: AtomicBool,
 }
 
 impl<P: Platform> Shared<P> {
@@ -580,6 +585,23 @@ impl<P: Platform> Shared<P> {
     fn has_frame(&self) -> bool {
         self.video.lock().unwrap().last.is_some()
     }
+
+    /// The newest captured frame, for a preview (plan 075); a clone, so the video lock is not held while it is used.
+    pub fn newest(&self) -> Option<P::Frame>
+    where
+        P::Frame: Clone,
+    {
+        self.video.lock().unwrap().last.clone()
+    }
+
+    /// Whether capture has ended (`Core::halt`).
+    pub fn halted(&self) -> bool {
+        self.phase.load(Ordering::Acquire) == STOPPING
+    }
+
+    pub fn events(&self) -> Arc<dyn Events> {
+        self.events.clone()
+    }
 }
 
 impl<P: Platform> VideoSink for Shared<P> {
@@ -626,6 +648,7 @@ impl<P: Platform> Core<P> {
             microphone_input: AtomicUsize::new(usize::MAX),
             microphone: Mutex::new(MicrophoneState::default()),
             frame_log: Mutex::new(None),
+            every_slot: AtomicBool::new(false),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -633,6 +656,12 @@ impl<P: Platform> Core<P> {
     /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
     pub fn watch_microphone(&self, input: usize) {
         self.shared.microphone_input.store(input, Ordering::Release);
+    }
+
+    /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is
+    /// composed into each encoded frame, so the picture moves while the screen stands still).
+    pub fn encode_every_slot(&self, on: bool) {
+        self.shared.every_slot.store(on, Ordering::Release);
     }
 
     /// Writes the per-frame log for the recording at `path` when the development switch asks for one; returns where.
@@ -876,7 +905,7 @@ impl<P: Platform> Core<P> {
 }
 
 /// The refresh thread: encodes the first frame at t0, then a frame the pacer left out at its slot, and the last frame
-/// again every second while the screen stands still.
+/// again every second while the screen stands still, or at every slot while a camera is composed.
 fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
     {
         let mut guard = shared.video.lock().unwrap();
@@ -899,7 +928,14 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
             return;
         }
     }
-    let mut wake = Duration::from_millis(100);
+    // With a composed camera the first slot comes before the usual 100 ms, so each slot samples the camera in turn
+    // rather than the first few catching up at once.
+    let mut wake = if shared.every_slot.load(Ordering::Acquire) {
+        let slot = shared.video.lock().unwrap().pacer.as_ref().map_or(t0, |pacer| pacer.next_slot());
+        Duration::from_nanos(slot.saturating_sub(P::now_ns()).clamp(1_000_000, 100_000_000))
+    } else {
+        Duration::from_millis(100)
+    };
     while shared.phase.load(Ordering::Acquire) == RECORDING {
         std::thread::sleep(wake);
         wake = Duration::from_millis(100);
@@ -921,6 +957,16 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
                     None
                 }
             }
+        } else if shared.every_slot.load(Ordering::Acquire) {
+            // A composed camera: the newest frame again at each slot no capture took.
+            match video.pacer.as_mut().and_then(|pacer| pacer.due(now)) {
+                Some(slot) => Some((slot.max(video.last_encoded_ns + 1), "slot")),
+                None => {
+                    let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
+                    wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
+                    None
+                }
+            }
         } else if now >= video.last_encoded_ns + REFRESH_NS {
             Some((now, "refresh"))
         } else {
@@ -934,6 +980,10 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         };
         video.last_encoded_ns = at;
         shared.log_frame(video, at, kind, true);
+        if shared.every_slot.load(Ordering::Acquire) {
+            let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
+            wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
+        }
         drop(guard);
         if let Err(detail) = result {
             shared.fail(detail);

@@ -58,6 +58,13 @@ async function started(ctx: ReturnType<typeof setup>): Promise<Child> {
 }
 
 describe("NativeCaptureHost", () => {
+  it("hands each recording attempt's process to onLaunch, and never the microphone list's (plan 075's prototype)", async () => {
+    const launched: unknown[] = [];
+    const ctx = setup(undefined, { onLaunch: (child) => launched.push(child) });
+    const child = await started(ctx);
+    expect(launched).toEqual([child]);
+  });
+
   it("forks a host with the engine's path and posts start with the display, the file and what to leave out", async () => {
     const ctx = setup();
     const child = await started(ctx);

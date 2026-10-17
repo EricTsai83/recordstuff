@@ -16,6 +16,7 @@ pub mod writer;
 pub mod aac;
 pub mod async_encoder;
 pub mod avc;
+pub mod camera_layout;
 pub mod encoder_choice;
 pub mod nv12;
 
@@ -30,7 +31,7 @@ use win as platform;
 
 use std::sync::{Arc, Mutex};
 
-use napi::bindgen_prelude::{AsyncTask, Function};
+use napi::bindgen_prelude::{AsyncTask, Buffer, Function};
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi::{Env, Error, Result, Status, Task};
 use napi_derive::napi;
@@ -203,11 +204,31 @@ pub struct EngineEvent {
 
 type EventCallback = ThreadsafeFunction<EngineEvent, (), EngineEvent, Status, false>;
 
+/// A preview frame of the composed picture (plan 075, step 2's prototype): NV12, the luma plane then the interleaved
+/// chroma one, rows without padding.
+#[napi(object)]
+pub struct PreviewFrame {
+    pub width: u32,
+    pub height: u32,
+    pub data: Buffer,
+}
+
+type PreviewCallback = ThreadsafeFunction<PreviewFrame, (), PreviewFrame, Status, false, true>;
+
+/// At most this many preview frames wait for the JavaScript thread; newer ones are dropped before they are queued.
+/// The queue itself is unbounded: a call napi refuses as full leaks its frame (napi 3.14's `call` does not take it back).
+const PREVIEW_IN_FLIGHT: usize = 2;
+
+struct PreviewSink {
+    callback: PreviewCallback,
+    in_flight: Arc<std::sync::atomic::AtomicUsize>,
+}
+
 fn failure(code: &str, detail: impl std::fmt::Display) -> Error {
     Error::new(Status::GenericFailure, format!("{code}|{detail}"))
 }
 
-struct Emitter(Arc<EventCallback>);
+struct Emitter(Arc<EventCallback>, Arc<Mutex<Option<PreviewSink>>>);
 
 impl Emitter {
     fn emit(&self, event: EngineEvent) {
@@ -235,6 +256,30 @@ impl core::Events for Emitter {
     fn microphone_resumed(&self, detail: String) {
         self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail) });
     }
+
+    fn preview(&self, width: u32, height: u32, data: Vec<u8>) {
+        use std::sync::atomic::Ordering;
+        let guard = self.1.lock().unwrap();
+        let Some(sink) = guard.as_ref() else { return };
+        if sink.in_flight.fetch_add(1, Ordering::AcqRel) >= PREVIEW_IN_FLIGHT {
+            sink.in_flight.fetch_sub(1, Ordering::AcqRel);
+            return;
+        }
+        let in_flight = sink.in_flight.clone();
+        let done = in_flight.clone();
+        let status = sink.callback.call_with_return_value(
+            PreviewFrame { width, height, data: data.into() },
+            ThreadsafeFunctionCallMode::NonBlocking,
+            move |_, _| {
+                done.fetch_sub(1, Ordering::AcqRel);
+                Ok(())
+            },
+        );
+        // Not queued (the callback is closing): it will never answer.
+        if status != Status::Ok {
+            in_flight.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
 }
 
 #[cfg(any(target_os = "macos", windows))]
@@ -252,6 +297,8 @@ pub struct NativeCapture {
     /// The stopped session's file, until `finish` takes it.
     finishing: Arc<Mutex<Option<Finishing>>>,
     events: Arc<EventCallback>,
+    /// Where preview frames go, when a preview is wanted (plan 075's prototype).
+    preview: Arc<Mutex<Option<PreviewSink>>>,
 }
 
 #[napi]
@@ -259,7 +306,22 @@ impl NativeCapture {
     #[napi(constructor)]
     pub fn new(on_event: Function<EngineEvent, ()>) -> Result<Self> {
         let events = on_event.build_threadsafe_function().callee_handled::<false>().build()?;
-        Ok(Self { session: Arc::new(Mutex::new(None)), finishing: Arc::new(Mutex::new(None)), events: Arc::new(events) })
+        Ok(Self {
+            session: Arc::new(Mutex::new(None)),
+            finishing: Arc::new(Mutex::new(None)),
+            events: Arc::new(events),
+            preview: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    /// Sends preview frames of the composed picture to `on_frame` while a session with the camera prototype runs.
+    /// Kept for the sessions after; while `PREVIEW_IN_FLIGHT` frames wait for the JavaScript thread, newer ones are
+    /// dropped rather than queued behind them.
+    #[napi]
+    pub fn on_preview(&self, on_frame: Function<PreviewFrame, ()>) -> Result<()> {
+        let callback = on_frame.build_threadsafe_function().callee_handled::<false>().weak::<true>().build()?;
+        *self.preview.lock().unwrap() = Some(PreviewSink { callback, in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)) });
+        Ok(())
     }
 
     /// The source's size in pixels, for choosing the output size: the display's, the window's or the area's.
@@ -276,7 +338,7 @@ impl NativeCapture {
 
     #[napi(ts_return_type = "Promise<PreparedInfo>")]
     pub fn prepare(&self, options: PrepareOptions) -> AsyncTask<PrepareTask> {
-        AsyncTask::new(PrepareTask { options: Some(options), session: self.session.clone(), events: self.events.clone() })
+        AsyncTask::new(PrepareTask { options: Some(options), session: self.session.clone(), events: self.events.clone(), preview: self.preview.clone() })
     }
 
     /// Starts writing the prepared session; returns at once.
@@ -361,6 +423,7 @@ pub struct PrepareTask {
     options: Option<PrepareOptions>,
     session: Arc<Mutex<Option<Session>>>,
     events: Arc<EventCallback>,
+    preview: Arc<Mutex<Option<PreviewSink>>>,
 }
 
 impl Task for PrepareTask {
@@ -389,7 +452,7 @@ impl Task for PrepareTask {
                 audio: audio(options.audio)?,
             };
             let (session, prepared) =
-                Session::prepare(request, Arc::new(Emitter(self.events.clone()))).map_err(|e| failure(e.code, e.detail))?;
+                Session::prepare(request, Arc::new(Emitter(self.events.clone(), self.preview.clone()))).map_err(|e| failure(e.code, e.detail))?;
             *self.session.lock().unwrap() = Some(session);
             Ok(PreparedInfo {
                 width: prepared.width,
@@ -406,7 +469,7 @@ impl Task for PrepareTask {
         }
         #[cfg(not(any(target_os = "macos", windows)))]
         {
-            let _ = (options, &self.events);
+            let _ = (options, &self.events, &self.preview);
             Err(failure("capture_start_failed", "native capture is not available on this platform yet"))
         }
     }

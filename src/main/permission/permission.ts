@@ -100,6 +100,15 @@ export async function askMicrophoneAccess(platform: NodeJS.Platform = process.pl
   return systemPreferences.askForMediaAccess("microphone");
 }
 
+/** The same for the camera (plan 075, step 2's prototype until step 4's card). */
+export async function askCameraAccess(platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  if (platform !== "darwin") return true;
+  const status = systemPreferences.getMediaAccessStatus("camera");
+  if (status === "granted") return true;
+  if (status !== "not-determined") return false;
+  return systemPreferences.askForMediaAccess("camera");
+}
+
 /** Number of screens capture can currently see; throws when macOS refuses. */
 async function countCapturableScreens(): Promise<number> {
   const sources = await desktopCapturer.getSources({

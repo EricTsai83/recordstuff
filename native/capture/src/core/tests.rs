@@ -455,6 +455,41 @@ fn a_still_screen_is_encoded_again_every_second() {
 }
 
 #[test]
+fn with_every_slot_on_a_still_screen_is_encoded_at_the_frame_rate() {
+    let mut rig = Rig::new("every-slot");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    std::thread::sleep(Duration::from_millis(1_000));
+    let encoded = rig.encoded.lock().unwrap().clone();
+    rig.stop();
+    // 30 fps for a second, give or take the first frame and the scheduler.
+    assert!((27..=32).contains(&encoded.len()), "{} frames: {encoded:?}", encoded.len());
+    assert!(encoded.iter().all(|&(frame, _, _)| frame == 7));
+    let t0 = encoded[0].1;
+    for (n, &(_, at, _)) in encoded.iter().enumerate().skip(1) {
+        assert_eq!(at, t0 + n as u64 * 33_333_333, "frame {n} on the grid");
+    }
+    assert!(encoded.windows(2).all(|w| w[1].1 > w[0].1));
+}
+
+#[test]
+fn with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst() {
+    let mut rig = Rig::new("every-slot-start");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let started = Instant::now();
+    wait_for("the first slot", || rig.encoded.lock().unwrap().len() >= 2);
+    // The slot is 33 ms after the start; the old first wake came at 100 ms, with three slots at once.
+    assert!(started.elapsed() < Duration::from_millis(80), "first slot after {:?}", started.elapsed());
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(rig.encoded.lock().unwrap().len() <= 3, "{:?}", rig.encoded.lock().unwrap());
+    rig.stop();
+}
+
+#[test]
 fn a_change_left_out_by_the_pacer_is_encoded_at_its_slot() {
     let mut rig = Rig::new("pending");
     rig.shared.frame(1, Fake::now_ns());

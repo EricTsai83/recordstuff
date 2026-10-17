@@ -35,6 +35,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { NativeCaptureHost } from "./recording/native-capture-host";
+import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
+import { CameraPreview } from "./recording/camera-preview";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -45,7 +47,7 @@ import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
 import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
-import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
+import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
 import type { MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
@@ -311,6 +313,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Windows adapters' hardware encoders passed their self-test or failed); the capture process inherits it.
   process.env["RECORDSTUFF_ENGINE_DATA"] = path.join(app.getPath("userData"), "engine");
   let captureAnchor: BaseWindow | undefined;
+  const cameraPreview = process.platform === "darwin" && cameraPreviewOn(process.env) ? new CameraPreview({
+    preloadPath: path.join(__dirname, "../preload/camera-preview.js"),
+    devUrl: !app.isPackaged && process.env["ELECTRON_RENDERER_URL"]
+      ? new URL("camera-preview.html", process.env["ELECTRON_RENDERER_URL"]).href : undefined,
+    htmlPath: path.join(__dirname, "../renderer/camera-preview.html"),
+    log,
+  }) : undefined;
+  if (process.platform === "darwin" && cameraPrototypeOn(process.env)) {
+    log(`camera prototype: on (${process.env["RECORDSTUFF_CAMERA_PROTOTYPE"] ?? ""}), preview page ${cameraPreview ? "on" : "off"}`);
+    void askCameraAccess().then((granted) => log(`camera prototype: camera access ${granted ? "granted" : "not allowed"}`));
+  }
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     // Native code cannot load from inside the asar archive; packaging unpacks out/native.
@@ -330,6 +343,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
+    // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
+    // attempt's capture process joined to the preview page.
+    ...(cameraPreview ? { onLaunch: (child: Electron.UtilityProcess) => cameraPreview.connect(child) } : {}),
     ...(process.platform === "win32" ? {
       // The engine finds the display by the physical point at its centre: Electron's ids name no monitor there.
       displayPoint: (displayId: string) => {

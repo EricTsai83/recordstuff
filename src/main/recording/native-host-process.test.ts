@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { NativeHost, developmentCapture, engineFailure, engineLoadExit, type ParentPort } from "./native-host-process";
+import { NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
-  private listener: ((message: { data: unknown }) => void) | undefined;
-  on(_event: "message", listener: (message: { data: unknown }) => void): void { this.listener = listener; }
+  private listener: ((message: { data: unknown; ports?: PreviewPort[] }) => void) | undefined;
+  on(_event: "message", listener: (message: { data: unknown; ports?: PreviewPort[] }) => void): void { this.listener = listener; }
   postMessage(message: unknown): void { this.sent.push(message as HostMessage); }
-  deliver(data: unknown): void { this.listener?.({ data }); }
+  deliver(data: unknown, ports?: PreviewPort[]): void { this.listener?.({ data, ...(ports ? { ports } : {}) }); }
 }
 
 type Event = { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string };
@@ -55,6 +55,56 @@ describe("engineFailure", () => {
   it("splits the engine's code from its detail, and treats anything else as a start failure", () => {
     expect(engineFailure(new Error("permission_denied|declined (-3801)"))).toEqual({ code: "permission_denied", detail: "declined (-3801)" });
     expect(engineFailure("boom")).toEqual({ code: "capture_start_failed", detail: "boom" });
+  });
+});
+
+describe("cameraPrototypeOn", () => {
+  it("is on for any value the engine reads as on", () => {
+    expect(cameraPrototypeOn({})).toBe(false);
+    for (const value of ["", " ", "0", "off", "OFF"]) expect(cameraPrototypeOn({ RECORDSTUFF_CAMERA_PROTOTYPE: value })).toBe(false);
+    for (const value of ["1", "on", "width=0.3,mirror=1"]) expect(cameraPrototypeOn({ RECORDSTUFF_CAMERA_PROTOTYPE: value })).toBe(true);
+  });
+
+  it("asks for preview frames unless preview=0", () => {
+    expect(cameraPreviewOn({})).toBe(false);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "1" })).toBe(true);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "width=0.3, preview=1" })).toBe(true);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "width=0.3, preview = 0" })).toBe(false);
+  });
+});
+
+describe("the camera prototype's preview (plan 075)", () => {
+  const frame: PreviewFrame = { width: 4, height: 2, data: new Uint8Array(12) };
+  const withPreview = () => {
+    let send: (frame: PreviewFrame) => void = () => undefined;
+    const fake = fakeEngine();
+    const engine = { ...fake.engine, onPreview: vi.fn((onFrame: (frame: PreviewFrame) => void) => { send = onFrame; }) };
+    return { engine, send: (f: PreviewFrame) => send(f) };
+  };
+
+  it("forwards frames to the port main handed over, and drops them before it or after a newer one", () => {
+    const port = new Port();
+    const { engine, send } = withPreview();
+    new NativeHost(port, engine, () => undefined, undefined, {}, true);
+    expect(engine.onPreview).toHaveBeenCalledTimes(1);
+    send(frame);
+    const first = { posted: [] as unknown[], closed: false, postMessage(m: unknown) { this.posted.push(m); }, close() { this.closed = true; } };
+    const second = { posted: [] as unknown[], closed: false, postMessage(m: unknown) { this.posted.push(m); }, close() { this.closed = true; } };
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [first]);
+    send(frame);
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
+    send(frame);
+    expect(first.posted).toEqual([expect.objectContaining({ width: 4, height: 2, data: frame.data, n: 1 })]);
+    expect(first.closed).toBe(true);
+    expect(second.posted).toEqual([expect.objectContaining({ n: 2 })]);
+    // The port's message is not the capture protocol's: nothing answers it.
+    expect(port.sent.filter((m) => m.type !== "ready")).toEqual([]);
+  });
+
+  it("asks the engine for no preview without the switch", () => {
+    const { engine } = withPreview();
+    new NativeHost(new Port(), engine, () => undefined);
+    expect(engine.onPreview).not.toHaveBeenCalled();
   });
 });
 

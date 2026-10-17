@@ -2,7 +2,7 @@
 
 [English](075-camera-bubble.md) | [繁體中文](075-camera-bubble.zh-TW.md)
 
-狀態：已規劃；2026-10-17 依維護者要求重新設計（鏡頭改由引擎合成，和 OBS 一樣，不再是螢幕上的泡泡視窗）；先做步驟 1 的新決定與步驟 2 的原型關卡，尚未開始實作。建立：2026-10-14。優先順序：在 078（2026-10-17 結案，[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-078-結案--2026-10-17)）之後，它的步驟 4（Windows 畫面留在 GPU 上）與步驟 6（macOS 上來來去去的裝置）是本計畫的基礎。硬性相依：076 的引擎，它掌管畫面、時鐘與編碼器；078 的 GPU 畫面與裝置發現；074 的權限卡片與失敗處理模式（[桌面](../docs/zh-TW/system-design/desktop.md)、[錄影](../docs/zh-TW/system-design/recording.md)）。依[計畫索引](README.zh-TW.md)按順序執行。
+狀態：進行中；2026-10-17 依維護者要求重新設計（鏡頭改由引擎合成，和 OBS 一樣，不再是螢幕上的泡泡視窗）；步驟 1 的決定已於 2026-10-17 記錄；步驟 2 的原型以開發用開關建置，2026-10-17 量測結果超出 D18 的預算；由維護者決定改用 Metal 合成器與 D17 的第二個選項，或接受這些數字。建立：2026-10-14。優先順序：在 078（2026-10-17 結案，[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-078-結案--2026-10-17)）之後，它的步驟 4（Windows 畫面留在 GPU 上）與步驟 6（macOS 上來來去去的裝置）是本計畫的基礎。硬性相依：076 的引擎，它掌管畫面、時鐘與編碼器；078 的 GPU 畫面與裝置發現；074 的權限卡片與失敗處理模式（[桌面](../docs/zh-TW/system-design/desktop.md)、[錄影](../docs/zh-TW/system-design/recording.md)）。依[計畫索引](README.zh-TW.md)按順序執行。
 
 ## 目標與邊界
 
@@ -72,21 +72,30 @@
 - [x] **D13 錄影中隱藏與顯示。**一個托盤項目；隱藏時鏡頭保持開啟。不做全域快捷鍵。
 - [x] **D14 自己的視窗。**RecordStuff 的視窗不出現在任何錄影中（076）；合成的鏡頭不是視窗，所以不再需要例外。
 
-已變更或新增、待維護者決定（附建議）：
+已變更或新增，維護者於 2026-10-17 決定：
 
-- [ ] **D2 圓角樣式。**原本：CSS `border-radius`，Chromium 支援時用 squircle。現在由引擎畫遮罩。建議：在合成器的 shader 中畫圓弧圓角矩形，預覽用同一個公式；squircle 只列為之後的選項。依據：同一個公式畫在兩個地方，必須完全一致。
-- [ ] **D4 在哪裡擺放。**原本：錄影前在預覽中擺放，另有「在螢幕上顯示」。建議：在 Settings 預覽中擺放，錄影前與錄影中都可以；捨棄「在螢幕上顯示」，因為螢幕上不再顯示任何東西。依據：維護者選擇了 OBS 的模式。
-- [ ] **D5 預覽顯示什麼。**建議：錄影前，以等比例顯示螢幕外框，加上選單列的帶狀區與即時鏡頭（不擷取螢幕，符合現行面板規則）；錄影中，以預覽大小與幀率顯示引擎合成後的畫面（D17）。替代方案：錄影前也顯示即時螢幕預覽，但這會在閒置時擷取、讓面板需要螢幕權限，而且只要 Settings 開著就耗用 CPU。
-- [ ] **D7 錄影中。**原本：鎖定。建議：錄影中可以從預覽更改擺放、大小、圓角與鏡像，從下一格生效，每次變更都隨 session 寫入 log；托盤的隱藏與顯示（D13）保留。依據：維護者的要求；合成消除了鎖定的理由。
-- [ ] **D12 錄影中鏡頭中斷。**建議：和麥克風一樣，2 秒沒有畫面即為中斷：錄影繼續但沒有鏡頭，結束時告知通知，存下的紀錄會標記；同一個 session 再次送達時就接回。會離開又回來的鏡頭如何重新連上：和麥克風一樣檢查裝置本身（是否還在、是否仍是 session 使用的裝置），絕不只看送達，並在清單再出現時以同一個 unique ID 重新打開；078 的探測沒有釐清清單在沒有 run loop 時是否會跟上鏡頭，所以由步驟 2 先釐清。依據：074 的規則、078 的發現。
-- [ ] **D15 鏡頭在哪裡合成（新增）。**建議：在引擎中、GPU 上、編碼之前：macOS 上用 Metal（或 Core Image）；Windows 上在 078 步驟 4 的 GPU 畫面上用 Direct3D 11。替代方案：在 Chromium 頁面中合成再擷取該頁面（每格都要繞經 renderer 來回）；CPU 合成器（每格一次整格複製）。依據：畫面已經在引擎的 GPU 記憶體中；OBS 也在 GPU 上合成。
-- [ ] **D16 引擎如何擷取鏡頭（新增）。**建議：macOS 上在引擎中用 AVFoundation 的 `AVCaptureVideoDataOutput`（它會在 utility process 中送達，和麥克風一樣；裝置變更依 D12），Windows 上用 Media Foundation 的 source reader；預設 720p、30 fps，鏡頭本身的幀率較低時用它的幀率。替代方案：在 renderer 中用 `getUserMedia`，再把畫面送給引擎（裝置由 Chromium 處理，代價是每格都要跨程序複製）。依據：畫面應該從鏡頭到編碼器都留在 GPU 記憶體中。
-- [ ] **D17 預覽如何送到 Settings（新增）。**關卡建議：引擎用它已有的硬體編碼器編碼一個小預覽（例如寬 640 px、15 fps），透過 message port 直接送給 Settings renderer，由它以 WebCodecs 解碼到 canvas，只在 Settings 顯示預覽時進行。替代方案：Electron 實驗性的 `sharedTexture`（不複製，但需要先把引擎的 surface 傳給 main）；每秒幾張的靜態圖片（JPEG）（最簡單、較粗糙）；由 main 承載的原生 GPU 圖層（和 Cap 與 OBS 的畫法一樣，工作量最大）。依據：先量測不需要新程序間管線的選項，其他保留為退路。
-- [ ] **D18 預算（新增）。**建議，對照參考 Mac 2026-10-16 的數字：顯示鏡頭時以 30 fps 錄影最多佔一個核心的 20%（沒有鏡頭時 10.4%），60 fps 最多 25%（14.0%）；錄影中開著 Settings 預覽，RecordStuff 各程序合計最多多 8 個百分點；閒置不變（鏡頭關閉）。超出預算時，步驟 2 改選 D17 的其他選項，或由維護者接受該數字。
+- [x] **D2 圓角樣式。**由合成器畫圓弧圓角矩形，預覽用同一個公式；squircle 只列為之後的選項。依據：同一個公式畫在兩個地方，必須完全一致。
+- [x] **D4 在哪裡擺放。**在 Settings 預覽中擺放，錄影前與錄影中都可以；捨棄「在螢幕上顯示」，因為螢幕上不再顯示任何東西。
+- [x] **D5 預覽顯示什麼。**依維護者要求改變建議：維護者希望錄影前就能確認畫面與聲音都正常，就像 OBS 的預覽。因此提供一個**即時預覽**按鈕，按下後啟動一個預覽 session，跑的就是錄影本身的管線（所選螢幕走同一個 filter，RecordStuff 的視窗與隱藏的選單列和 Dock 和錄影一樣排除在外；系統音訊、麥克風與鏡頭，合成後的畫面），只是不寫檔；以預覽大小與幀率顯示在預覽中（D17），並以系統音訊與麥克風的音量表代替播放聲音（避免回授與回音）。視窗關閉、離開分頁或開始錄影時停止；把其他 app 帶到前景時不停止，讓使用者可以一邊操作要錄的 app 一邊看。沒有按下時，預覽以等比例顯示螢幕外框、選單列的帶狀區與即時鏡頭（不擷取螢幕）。錄影中顯示錄影 session 合成後的畫面。依據：預覽就是錄影的管線，才能確認錄影會錄到什麼；按下才開始，避免 Settings 只要開著就擷取（OBS 就是如此）。
+- [x] **D7 錄影中。**錄影中可以從預覽更改擺放、大小、圓角與鏡像，從下一格生效，每次變更都隨 session 寫入 log；托盤的隱藏與顯示（D13）保留。
+- [x] **D12 錄影中鏡頭中斷。**和麥克風一樣，2 秒沒有畫面即為中斷：錄影繼續但沒有鏡頭，結束時告知通知，存下的紀錄會標記；同一個 session 再次送達時就接回。會離開又回來的鏡頭如何重新連上：和麥克風一樣檢查裝置本身（是否還在、是否仍是 session 使用的裝置），絕不只看送達，並在清單再出現時以同一個 unique ID 重新打開；清單在沒有 run loop 時是否跟得上鏡頭，由步驟 2 先釐清。
+- [x] **D15 鏡頭在哪裡合成。**在引擎中、GPU 上、編碼之前：macOS 上用 Metal 或 Core Image；Windows 上在 078 步驟 4 的 GPU 畫面上用 Direct3D 11。
+- [x] **D16 引擎如何擷取鏡頭。**macOS 上在引擎中用 AVFoundation 的 `AVCaptureVideoDataOutput`，Windows 上用 Media Foundation 的 source reader；預設 720p、30 fps，鏡頭本身的幀率較低時用它的幀率。
+- [x] **D17 預覽如何送到 Settings。**比較其他產品的做法後改變建議。OBS 把合成好的 GPU texture 直接畫進原生 view（`obs_display`），不複製也不經過編解碼；Cap 錄影時的鏡頭預覽是原生 wgpu 視窗（`apps/desktop/src-tauri/src/camera.rs`），編輯器則把畫面以未壓縮的 NV12 或 RGBA 經本機 WebSocket 送進 web view（`frame_ws.rs`，於 `f2e13fb` 閱讀）。關卡依序量測，第一個符合 D18 的就採用：(1) 在 GPU 上縮成寬約 640 px、15 fps 的 NV12，讀回後經 message port 直接送給 Settings renderer，以 WebGL 繪製（Cap 編輯器的做法；不需要第二個編碼器）；(2) 由硬體編碼器產生的小 H.264 串流，以 WebCodecs 解碼；(3) 由 main 承載的原生 GPU 圖層（OBS 的做法），排在最後，因為引擎的 surface 必須跨進 main（Electron 的 `utilityProcess` 不傳 Mach port，只能用 private 的 `CAContext`/`CALayerHost` 或自建 rendezvous），main 必須載入原生程式碼（076 的 D2 刻意排除），預覽上不能疊 HTML（把手、tooltip、選單），Windows 也要另做一套；估計工作量是第一個選項的四到六倍。維護者選擇符合預算中最有效率的選項，而不是絕對最有效率的選項。
+- [x] **D18 預算。**對照參考 Mac 2026-10-16 的數字：顯示鏡頭時以 30 fps 錄影最多佔一個核心的 20%（沒有鏡頭時 10.4%），60 fps 最多 25%（14.0%）；錄影中開著 Settings 預覽，RecordStuff 各程序合計最多多 8 個百分點；錄影前的即時預覽（D5）與錄影適用同樣的數字，因為它就是不寫檔的錄影；閒置不變（鏡頭關閉）。超出預算時，步驟 2 改用 D17 的下一個選項，或由維護者接受該數字。
 
 ### 2. 原型關卡（macOS）
 
 - [ ] 在引擎中、以開發用開關啟用：開啟鏡頭（D16），以圓角遮罩合成到每一格（D15），編碼，並把預覽送到測試頁面（D17）。在參考 Mac 上量測：`pnpm measure:cpu`（鏡頭顯示，預覽關閉與開啟，螢幕靜止與變動）、以 `pnpm matrix` 量合成後影格的時序，以及鏡頭到畫面的時間差（對鏡頭閃光，和螢幕對照）。比較 D17 的各選項，直到其中一個符合 D18，或維護者接受這些數字。在步驟 3 之前記錄結果。
+- 2026-10-17 已建置，並於同日量測（見下）。開關 `RECORDSTUFF_CAMERA_PROTOTYPE`（`1`，或 `width=…,height=…,rounding=…,x=…,y=…,mirror=…,device=…,preview=0`；`native/capture/src/camera_layout.rs`）會在引擎中開啟鏡頭（`mac/camera.rs`，1280×720、420v，只保留最新一格），在 VideoToolbox 之前以 Core Image 合成（`mac/compositor.rs`，`CIRoundedRectangleGenerator` 遮罩，不做色彩管理），開啟時依幀率的每個 slot 編碼（`Core::encode_every_slot`），並每秒產生 15 張寬 640 像素的 NV12 預覽影格，由 capture host 經 `MessageChannelMain` 的 port 直接送到以 WebGL 繪製的開發用頁面（`src/main/recording/camera-preview.ts`、`src/renderer/camera-preview/`）。Bundle 帶有 `NSCameraUsageDescription` 與 `com.apple.security.device.camera`，開關開啟時 main 在啟動時詢問鏡頭權限。`pnpm measure:cpu -- --camera <value> --skip-settings --skip-playback` 以它量測 A 與 R；`cargo test --lib -- --ignored --nocapture camera_delivers_without_a_run_loop` 確認鏡頭在沒有 run loop 時會送達。錄影前的即時預覽（D5）尚未建置：準備好的 session 在倒數期間就會產生預覽影格，它的成本以 R 為上限。
+- **2026-10-17 量測**（參考 M1 Pro，蓋子闔上、以外接 1920×1080 螢幕為主螢幕，`pnpm measure:cpu -- --minutes 1 --camera …`，各跑一次，報告在 `docs/verification/measurements/2026-10-17T16*-camera-cpu-*`，不納入版本控制）。鏡頭是 iPhone 的接續互通相機：內建 FaceTime HD 相機在蓋子闔上時仍能開啟、回報執行中，卻送不出任何畫面（感光元件 4 秒後斷電）；起初看似 run loop 的問題，其實不是（同一份程式碼在 capture process 與純 Node 中都能收到 iPhone 的畫面，不需要 run loop，也不需要處理 main queue）。每段 60 秒的錄影，鏡頭送出約 1,780 格（每秒 29.7 格），沒有丟格；檔案為 30.02 與 60.01 fps，音訊與影像同時開始，泡泡的位置與版面一致（於 30 秒處讀回一格確認）。
+  | 錄影 | CPU，App 與 helper 合計 | Capture process | GPU process | 預覽 renderer | 編碼服務 | 預算（D18） |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 30 fps，鏡頭，無預覽 | 20.9% | 20.8% | — | — | 2.1% | 20% |
+  | 30 fps，鏡頭與預覽頁 | 33.6% / 33.3% | 24.2% | 5.5% | 3.6% | 1.9% | 28% |
+  | 60 fps，鏡頭與預覽頁 | 43.2% | 34.0% | 5.6% | 3.4% | 3.1% | 33% |
+
+  對照沒有鏡頭時的 10.4% / 14.0%，以 Core Image 合成並在每個 slot 編碼，30 fps 時約多 10 個百分點；預覽（D17 的第一個選項：讀回 NV12、經 port 傳送、以 WebGL 繪製）約多 12.7 個百分點，其中 renderer 與 Chromium 的 GPU process 佔 9 點。兩者都超出 D18：合成在 30 fps 時約超出 1 點，預覽約超出 5 點。依 D18 的規則，下一步是以 Metal kernel 取代 Core Image 每格建立的 graph，預覽改試 D17 的第二個選項（以 WebCodecs 解碼的小 H.264 串流，用硬體解碼取代 GPU process 的 texture 上傳），除非維護者接受這些數字。尚未量測：以 `pnpm matrix` 量影格時序、鏡頭到畫面的時間差、60 fps 無預覽、蓋子打開時的內建相機，以及真正會離開的鏡頭：手邊沒有可拔插的相機，維護者於 2026-10-17 決定把下方的裝置變更檢查延後到有設備時再做。
 - [ ] 裝置變更（來自 078）：在拔掉再插回 USB 相機時執行 `probe_cameras_coming_and_going`，確認 CoreMediaIO 與 AVFoundation 的清單在沒有 run loop 時是否跟得上；接著像麥克風一樣，檢查開著的 session 的裝置是否仍是它正在使用的那個，並記錄 D12 如何重新打開它。
 
 ### 3. 版面模型與設定（共用的純函式）
@@ -116,7 +125,7 @@
 ### 7. Settings 中的預覽
 
 - [ ] Settings → Recording 新增 Camera 群組：開關與選單（D9、D10）、權限狀態、預覽、寬、高與圓角搭配比例按鈕、錄影時鏡像；錄影中可以操作（D7），其他錄影設定則維持鎖定。新字串加進 `ZH_TW`。
-- [ ] 錄影前：等比例的螢幕加上即時鏡頭（`getUserMedia`，只在可見時，D6）。錄影中：引擎的預覽（D17），只在可見時；拖曳與控制項會送出版面訊息。
+- [ ] 錄影前：等比例的螢幕加上即時鏡頭（`getUserMedia`，只在可見時，D6），以及即時預覽按鈕（D5），在引擎中啟動預覽 session 並顯示音量表，視窗關閉、離開分頁或開始錄影時停止。錄影中：引擎的預覽（D17），只在可見時；拖曳與控制項會送出版面訊息。
 - [ ] 頁面測試：控制項與數值、拖曳與鍵盤擺放會保存、錄影中可編輯、被拒絕的狀態、zh-TW、離開分頁時鏡頭與預覽停止；無障礙名稱與數值文字。
 
 ### 8. 量測

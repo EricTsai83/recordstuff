@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { COUNTDOWN_VALUE_CHANNEL } from "../shared/countdown";
 import { SETTINGS_CHANNELS } from "../shared/settings-panel";
 import { VIDEO_CHANNELS } from "../shared/video-player";
+import { CAMERA_PREVIEW_PORT_CHANNEL } from "../shared/camera-preview";
 
 /** Each sandboxed preload spells its channels out; these pin them to the constants main uses. */
 const electron = vi.hoisted(() => ({ used: new Set<string>(), exposed: {} as Record<string, any>,
@@ -38,4 +39,15 @@ it("countdown preload subscribes to the channel the overlay sends on", async () 
   await import("./countdown");
   electron.exposed.countdown.onValue(() => {});
   expect([...electron.used]).toEqual([COUNTDOWN_VALUE_CHANNEL]);
+});
+
+it("camera preview preload passes the port main sends on its channel into the page (plan 075's prototype)", async () => {
+  const posted: unknown[][] = [];
+  vi.stubGlobal("postMessage", (...args: unknown[]) => { posted.push(args); });
+  await import("./camera-preview");
+  expect([...electron.used]).toEqual([CAMERA_PREVIEW_PORT_CHANNEL]);
+  const port = {};
+  electron.listeners.get(CAMERA_PREVIEW_PORT_CHANNEL)?.({ ports: [port] });
+  expect(posted).toEqual([[CAMERA_PREVIEW_PORT_CHANNEL, "*", [port]]]);
+  vi.unstubAllGlobals();
 });

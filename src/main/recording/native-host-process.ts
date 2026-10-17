@@ -9,6 +9,7 @@
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { cameraPreviewOn } from "../../shared/camera-preview";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -29,6 +30,8 @@ interface StopReport {
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string }
+/** A preview frame of the composed picture (plan 075's prototype): NV12, the luma plane then the chroma one. */
+export interface PreviewFrame { width: number; height: number; data: Uint8Array }
 /** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
 export interface CaptureSource {
   kind: "display" | "window" | "area" | "apps";
@@ -50,14 +53,26 @@ interface NativeCapture {
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
   microphones(): Promise<MicrophoneDevice[]>;
+  /** Plan 075's prototype: preview frames while a session composes the camera. */
+  onPreview?(onFrame: (frame: PreviewFrame) => void): void;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
+/** Where preview frames go: a `MessagePortMain` main hands over to a preview page (plan 075's prototype). */
+export interface PreviewPort {
+  postMessage(message: unknown): void;
+  close(): void;
+}
+
 /** The subset of Electron's `process.parentPort` the host uses; lets tests pass a fake. */
 export interface ParentPort {
-  on(event: "message", listener: (message: { data: unknown }) => void): void;
+  on(event: "message", listener: (message: { data: unknown; ports?: PreviewPort[] }) => void): void;
   postMessage(message: unknown): void;
 }
+
+/** Main's message that hands this process the preview page's port; not part of the capture protocol. */
+export const PREVIEW_PORT_MESSAGE = "cameraPreviewPort";
+export { cameraPreviewOn, cameraPrototypeOn } from "../../shared/camera-preview";
 
 const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
@@ -106,6 +121,8 @@ type Phase = "preparing" | "prepared" | "recording" | "stopping";
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
+  private previewPort: PreviewPort | undefined;
+  private previewFrames = 0;
 
   constructor(
     private readonly port: ParentPort,
@@ -114,10 +131,26 @@ export class NativeHost {
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
     private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
+    cameraPrototype = false,
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
-    port.on("message", ({ data }) => this.handle(data));
+    if (cameraPrototype) this.capture.onPreview?.((frame) => this.preview(frame));
+    port.on("message", ({ data, ports }) => {
+      if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === PREVIEW_PORT_MESSAGE) {
+        this.previewPort?.close();
+        this.previewPort = ports?.[0];
+        return;
+      }
+      this.handle(data);
+    });
     this.send({ type: "ready" });
+  }
+
+  /** Forwards a preview frame to the preview page, when main gave one; dropped otherwise. */
+  private preview(frame: PreviewFrame): void {
+    if (!this.previewPort) return;
+    this.previewFrames += 1;
+    this.previewPort.postMessage({ width: frame.width, height: frame.height, data: frame.data, sent: Date.now(), n: this.previewFrames });
   }
 
   private get capture(): NativeCapture {
@@ -335,7 +368,7 @@ if (parentPort) {
     if (!addonPath) throw new Error("no engine path was given");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const engine = require(addonPath) as EngineModule;
-    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env));
+    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env), cameraPreviewOn(process.env));
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
     const message = cause instanceof Error ? cause.message : String(cause);

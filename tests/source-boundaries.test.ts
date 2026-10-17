@@ -33,6 +33,8 @@ const ALLOWED: Record<string, readonly string[]> = {
   "renderer/countdown": RENDERER_SHARED,
   "renderer/settings": RENDERER_SHARED,
   "renderer/video": RENDERER_SHARED,
+  // Plan 075 step 2's preview page, a measurement harness behind a development switch.
+  "renderer/camera-preview": ["shared"],
   "renderer/testing": [],
   "scripts/lib/runner": [ANY_SRC],
   "scripts/lib/release": [ANY_SRC],

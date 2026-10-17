@@ -32,6 +32,26 @@ objc2-av-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "AVCaptureDevice",
     "AVMediaFormat",
+    # The camera (plan 075, mac/camera.rs).
+    "AVCaptureInput",
+    "AVCaptureOutputBase",
+    "AVCaptureSession",
+    "AVCaptureSessionPreset",
+    "AVCaptureVideoDataOutput",
+    "dispatch2",
+    "objc2-core-media",
+    "objc2-core-video",
+] }
+# Composing the camera into the recording's frames on the GPU (plan 075, mac/compositor.rs).
+objc2-core-image = { version = "0.3", default-features = false, features = [
+    "std",
+    "CIColor",
+    "CIContext",
+    "CIFilter",
+    "CIImage",
+    "CIVector",
+    "objc2-core-foundation",
+    "objc2-core-video",
 ] }
 
 [target.'cfg(windows)'.dependencies]

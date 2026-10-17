@@ -93,7 +93,7 @@ scripts:   runner, release ← verification ← audio;  runner, verification ←
 - **功能資料夾**（`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`）只匯入 `lib/`、`src/shared/` 與自己，彼此不互相匯入。兩者需要同一樣東西時，把它移到 `lib/` 或 `src/shared/`，或由 `index.ts` 接起來。
 - **`app/`** 可以使用功能資料夾。`settings/` 還可以使用 `app/`，`menus/` 還可以使用 `settings/`，`actions/` 則可以使用以上全部。沒有任何匯入往上走。
 - **沒有任何模組匯入 `index.ts`。** 它是 composition root；action 實際做的事放在 `actions/`，因此它只負責建立與接線。更新與受控驗收 runner 會依文字錨點修改它的副本，這也是它留在 `src/main/` 頂層的原因之一。
-- **Renderer 頁面彼此不互相匯入。** 兩個頁面共用的東西放在 `player/`、`components/` 或 `lib/`。只有測試會匯入 `testing/`。
+- **Renderer 頁面彼此不互相匯入。** 兩個頁面共用的東西放在 `player/`、`components/` 或 `lib/`。只有測試會匯入 `testing/`。`camera-preview/` 是計畫 075 步驟 2 以開發用開關啟用的量測頁面，只匯入 `src/shared/`。
 - **HTML 入口留在 `src/renderer/` 頂層，** 讓建置後的頁面維持在 `out/renderer/<name>.html`，也就是 main 與 fixture 載入它們的位置。
 - **原生引擎在 TypeScript 匯入關係之外。** 沒有任何模組匯入它；`native-host-process.ts` 在執行期從 main 傳入的路徑 `require` 它，`scripts/native-load.mjs` 只為檢查其方法而載入它。它對 TypeScript 的形狀由 `native-host-process.ts` 手寫宣告，並由 `native-load.mjs` 的方法清單檢查。
 - **開發者工具不進入 App 的匯入關係。** `src/` 不匯入 `scripts/`。在 `scripts/lib/` 內，`runner/` 與 `release/` 不匯入其他分組；`verification/` 建在它們之上，`audio/` 建在 `verification/` 之上，`acceptance/` 建在 `runner/` 與 `verification/` 之上。Fixture 只匯入 `src/`、`scripts/lib/` 與其他 fixture，`scripts/lib/` 不匯入任何入口檔。

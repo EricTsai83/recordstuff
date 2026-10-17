@@ -54,6 +54,8 @@ export interface NativeCaptureHostOptions {
   log?: (message: string) => void;
   /** Forks the host; tests pass a fake. */
   fork?: (entryPath: string, args: string[]) => UtilityProcess;
+  /** Each recording attempt's process, once forked (plan 075's prototype hands it the preview page's port). */
+  onLaunch?: (child: UtilityProcess) => void;
   now?: () => number;
 }
 
@@ -264,6 +266,7 @@ export class NativeCaptureHost implements RecorderHost {
         for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host: ${line.trim()}`);
       });
     }
+    this.options.onLaunch?.(child);
     let resolveReady!: () => void;
     let rejectReady!: (cause: Error) => void;
     const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });

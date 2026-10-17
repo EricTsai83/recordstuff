@@ -252,3 +252,38 @@ fn probe_cameras_coming_and_going() {
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }
+
+/// Plan 075 step 2: the camera opened in a process without a main run loop delivers frames, and a composed frame
+/// holds them. `RECORDSTUFF_PROBE_SECONDS` (3) long; prints the frames delivered, the rate and the camera's size.
+/// Without camera access for the process that runs it, says so and passes.
+#[test]
+#[ignore = "needs a camera and camera access for the process that runs it"]
+fn camera_delivers_without_a_run_loop() {
+    use super::camera::CameraCapture;
+    let seconds: u64 = std::env::var("RECORDSTUFF_PROBE_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(3);
+    if super::camera::authorization().unwrap_or(0) == 0 {
+        // Never asked for this process (its responsible app): ask, and wait for the answer.
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let block = block2::RcBlock::new(move |granted: objc2::runtime::Bool| {
+            let _ = sender.send(granted.as_bool());
+        });
+        let media = unsafe { objc2_av_foundation::AVMediaTypeVideo }.unwrap();
+        let _: () = unsafe { objc2::msg_send![<objc2_av_foundation::AVCaptureDevice as objc2::ClassType>::class(), requestAccessForMediaType: media, completionHandler: &*block] };
+        println!("camera access asked: {:?}", receiver.recv_timeout(Duration::from_secs(60)));
+    }
+    let camera = match CameraCapture::start(std::env::var("RECORDSTUFF_CAMERA_DEVICE").ok().as_deref()) {
+        Ok(camera) => camera,
+        Err(error) => {
+            println!("macOS live camera UNTESTED: {}: {}", error.code, error.detail);
+            return;
+        }
+    };
+    std::thread::sleep(Duration::from_secs(seconds));
+    let delivered = camera.shared.delivered();
+    let size = camera.shared.latest().map(|(image, _)| {
+        (objc2_core_video::CVPixelBufferGetWidth(&image), objc2_core_video::CVPixelBufferGetHeight(&image))
+    });
+    println!("camera {}: {delivered} frames in {seconds} s ({:.1} fps), size {size:?}; {}", camera.name, delivered as f64 / seconds as f64, camera.state());
+    camera.stop();
+    assert!(delivered as f64 >= seconds as f64 * 10.0, "the camera delivered {delivered} frames in {seconds} s");
+}

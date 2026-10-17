@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+  <title>Camera preview (plan 075 prototype)</title>
+  <link rel="stylesheet" href="./ui.css" />
+</head>
+<body class="bg-background p-3 text-xs text-muted-foreground">
+  <canvas id="preview" class="block max-w-full bg-black" width="640" height="360"></canvas>
+  <p id="status" class="mt-2 tabular-nums">Waiting for a recording with the camera prototype…</p>
+  <script type="module" src="./camera-preview/camera-preview.ts"></script>
+</body>
+</html>
