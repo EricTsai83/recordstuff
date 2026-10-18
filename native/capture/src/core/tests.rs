@@ -391,12 +391,19 @@ fn sound_that_does_not_arrive_by_the_deadline_becomes_silence() {
     rig.shared.frame(1, Fake::now_ns());
     rig.core.record().unwrap();
     rig.capture(Duration::from_millis(200), Duration::from_millis(33), true);
-    // The sound stops arriving 100 ms before the stop.
+    // The sound stops arriving 100 ms before the stop, or longer on a busy machine: the gap is read on the clock.
+    let silent_from = Fake::now_ns();
     rig.capture(Duration::from_millis(100), Duration::from_millis(33), false);
-    let (_, stopped, _) = rig.stop();
+    let (stop_ns, stopped, _) = rig.stop();
     assert!(stopped.drain_ms >= 240.0, "waited {} ms", stopped.drain_ms);
-    // About 100 ms, and the part of the last buffer that had not been handed over.
-    assert!((4_000..=6_000).contains(&stopped.drain_padded_frames), "{} frames of silence", stopped.drain_padded_frames);
+    // The gap, and the part of the last buffer (480 frames) that had not been handed over: a CI runner's 100 ms took
+    // 127 (2026-10-19), which a fixed 4,000–6,000 frames failed.
+    let gap = ((stop_ns - silent_from) as u128 * 48_000 / 1_000_000_000) as u64;
+    assert!(
+        (gap.saturating_sub(480)..=gap + 960).contains(&stopped.drain_padded_frames),
+        "{} frames of silence for a {gap}-frame gap",
+        stopped.drain_padded_frames
+    );
     let file = rig.file();
     let (video_ms, audio_ms) = lengths(&file);
     assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
