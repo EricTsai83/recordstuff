@@ -37,6 +37,8 @@ mac:
     NSMicrophoneUsageDescription: RecordStuff records your microphone with the screen when you turn Microphone on.
     # Plan 075: asked only when the camera is turned on; without it macOS ends the app that opens one.
     NSCameraUsageDescription: RecordStuff shows your camera in the recording when you turn Camera on.
+# The capture helper's own Info.plist entries (Reactions' gestures start off), which extendInfo does not reach.
+afterPack: ./scripts/after-pack.mjs
 dmg:
   # Installer UI: the App, an Applications link and a drag arrow only. Help,
   # update and removal guidance live on GitHub; no documents are bundled.

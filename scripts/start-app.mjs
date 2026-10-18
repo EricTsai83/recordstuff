@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { CAPTURE_HELPER_INFO, captureHelperPlist } from "./after-pack.mjs";
 import { removeBuildStamp, runtimeInputFiles, staleBundleReason, writeBuildStamp } from "./lib/runner/runtime-inputs.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -136,6 +137,12 @@ function verifyBundle(appPath, identity, { identifier = "com.ericts.record", run
     if (!existsSync(engine)) throw new Error(`The native capture engine is missing: ${engine}`);
     run("codesign", ["--verify", "--strict", engine]);
     bundles.push(engine);
+    // The camera's process reads its own bundle's entries (scripts/after-pack.mjs).
+    const helper = captureHelperPlist(appPath, "RecordStuff");
+    for (const [key, value] of Object.entries(CAPTURE_HELPER_INFO)) {
+      const found = run("plutil", ["-extract", key, "raw", helper], true).stdout.trim();
+      if (found !== String(value)) throw new Error(`The capture helper's ${key} is ${found || "missing"}, not ${value}: ${helper}`);
+    }
   }
   const scratch = mkdtempSync(path.join(tmpdir(), "recordstuff-signature-"));
   try {

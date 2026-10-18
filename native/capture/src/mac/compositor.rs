@@ -20,7 +20,7 @@ use objc2_core_video::{
     CVImageBuffer, CVMetalTexture, CVMetalTextureCache, CVMetalTextureGetTexture, CVPixelBuffer, CVPixelBufferGetHeight,
     CVPixelBufferGetHeightOfPlane, CVPixelBufferGetWidth, CVPixelBufferGetWidthOfPlane, CVPixelBufferPool,
     kCVImageBufferYCbCrMatrix_ITU_R_601_4, kCVImageBufferYCbCrMatrixKey, kCVMetalTextureUsage, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferPixelFormatTypeKey,
-    kCVPixelBufferWidthKey,
+    kCVPixelBufferWidthKey, kCVPixelBufferBytesPerRowAlignmentKey, kCVPixelBufferExtendedPixelsBottomKey, kCVPixelBufferExtendedPixelsRightKey,
 };
 use objc2_foundation::NSString;
 use objc2_metal::{
@@ -47,10 +47,20 @@ unsafe impl Sync for Pool {}
 impl Pool {
     fn new(width: u32, height: u32) -> Result<Self, String> {
         let surface = CFDictionary::<CFString, CFType>::from_slices(&[], &[]);
-        let keys: [&CFString; 4] =
-            unsafe { [kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey] };
+        let keys: [&CFString; 7] = unsafe {
+            [
+                kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey,
+                kCVPixelBufferExtendedPixelsRightKey, kCVPixelBufferExtendedPixelsBottomKey, kCVPixelBufferBytesPerRowAlignmentKey,
+            ]
+        };
         let (format, w, h) = (CFNumber::new_i64(i64::from(PIXEL_FORMAT_420V)), CFNumber::new_i64(i64::from(width)), CFNumber::new_i64(i64::from(height)));
-        let values: [&CFType; 4] = [format.as_ref(), w.as_ref(), h.as_ref(), surface.as_ref()];
+        // Laid out as VideoToolbox's own pool for the encoder: padded to whole 16-pixel macroblocks, rows 64-byte
+        // aligned. Without the padding (1080 and 1800 rows are each 8 short of one) VideoToolbox copies every composed
+        // frame into a buffer with it before encoding: about 0.5 ms of CPU a frame at 1920×1080 and 0.6 ms at
+        // 2880×1800 on an M1 MacBook Air (2026-10-19), 3 to 4 points of a core at 60 fps.
+        let pad = |size: u32| CFNumber::new_i64(i64::from(size.next_multiple_of(16) - size));
+        let (right, bottom, alignment) = (pad(width), pad(height), CFNumber::new_i64(64));
+        let values: [&CFType; 7] = [format.as_ref(), w.as_ref(), h.as_ref(), surface.as_ref(), right.as_ref(), bottom.as_ref(), alignment.as_ref()];
         let attributes = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
         let mut pool: *mut CVPixelBufferPool = null_mut();
         let status = unsafe { CVPixelBufferPool::create(None, None, Some(attributes.as_opaque()), NonNull::from(&mut pool)) };

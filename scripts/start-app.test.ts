@@ -60,6 +60,7 @@ async function invoke(overrides: Record<string, string> = {}, args: string[] = [
     writeFileSync(path.join(electron, "dist/Electron.app/Contents/MacOS/Electron"), "");
     symlinkSync(electron, path.join(root, "node_modules/electron"));
     copyFileSync(path.resolve("scripts/start-app.mjs"), path.join(root, "scripts/start-app.mjs"));
+    copyFileSync(path.resolve("scripts/after-pack.mjs"), path.join(root, "scripts/after-pack.mjs"));
     if (args.includes("--open") || args.includes("--verify-app")) {
       const app = path.join(root, "dist", process.arch === "arm64" ? "mac-arm64" : "mac", "RecordStuff.app");
       mkdirSync(path.join(app, "Contents/Frameworks/RecordStuff Helper.app/Contents"), { recursive: true });
@@ -89,6 +90,11 @@ if (name === 'pgrep' && env.PGREP_STATUS3) {
 if (name === 'pgrep') {
   const running = (env.RUNNING || '').replaceAll('{root}', env.ROOT);
   process.exit(running && new RegExp(args[1]).test(running) ? 0 : 1);
+}
+if (name === 'plutil' && args[0] === '-extract') {
+  // The capture helper's Info.plist entries, as scripts/after-pack.mjs writes them.
+  if (env.HELPER_INFO === 'missing') { process.stderr.write('No value at that key path or invalid key path\\n'); process.exit(1); }
+  process.stdout.write((env.HELPER_INFO ?? 'false') + '\\n');
 }
 if (name === 'security' && args[0] === 'find-identity') {
   process.stdout.write(env.IDENTITIES ?? '  1) ' + env.HASH + ' "RecordStuff Dev"\\n  1 valid identities found\\n');
@@ -122,7 +128,7 @@ if (name === 'codesign' && args.includes('-r-')) {
     writeFileSync(wrapper, '#!/bin/sh\nexec "$TEST_NODE" "$TEST_STUB" "$0" "$@"\n', { mode: 0o755 });
     const testNode = path.join(dir, "node with spaces");
     symlinkSync(process.execPath, testNode);
-    for (const name of ["pgrep", "security", "pnpm", "codesign", "open", "ditto"]) symlinkSync(wrapper, path.join(bin, name));
+    for (const name of ["pgrep", "security", "pnpm", "codesign", "open", "ditto", "plutil"]) symlinkSync(wrapper, path.join(bin, name));
     const clock = path.join(dir, "clock.mjs");
     writeFileSync(clock, 'if (process.env.TEST_NOW) Date.now = () => Number(process.env.TEST_NOW);');
     const result = await run(process.execPath, ["--import", clock, path.join(root, "scripts/start-app.mjs"), ...args], {
@@ -301,6 +307,15 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", { co
     expect(result.commands.some(call => call.name === "open")).toBe(false);
   });
 
+  it("refuses an app whose camera process would start Reactions' gestures on (plan 075)", async () => {
+    for (const value of ["true", "missing"]) {
+      const result = await invoke({ HELPER_INFO: value });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(value === "true" ? "NSCameraReactionEffectGesturesEnabledDefault is true, not false" : "plutil failed: No value");
+      expect(result.commands.some(call => call.name === "open")).toBe(false);
+    }
+  });
+
   it("builds a DMG from the verified app only and does not launch or publish", async () => {
     const result = await invoke({}, ["--dmg"]);
     expect(result.status, result.stderr).toBe(0);
@@ -360,7 +375,8 @@ describe.skipIf(process.platform !== "darwin")("local self-signed app/DMG", { co
     const app = `dist/${process.arch === "arm64" ? "mac-arm64" : "mac"}/RecordStuff.app`;
     const result = await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash }, ["--verify-app", app]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.commands.every(call => call.name === "codesign")).toBe(true);
+    // Read-only checks: signatures and the capture helper's Info.plist entries.
+    expect(result.commands.every(call => call.name === "codesign" || (call.name === "plutil" && call.args[0] === "-extract"))).toBe(true);
     expectNoDelivery(await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, WRONG_CERT: "helper" }, ["--verify-app", app]));
     expectNoDelivery(await invoke({ RECORDSTUFF_SIGN_IDENTITY: hash, FAIL_VERIFY: "1" }, ["--verify-app", app]));
     expectNoDelivery(await invoke({}, ["--verify-app", app]));
