@@ -91,6 +91,8 @@ export default defineConfig({
           settings: resolve(__dirname, "src/preload/settings.ts"),
           countdown: resolve(__dirname, "src/preload/countdown.ts"),
           video: resolve(__dirname, "src/preload/video.ts"),
+          // Plan 075 step 2's preview page, opened only behind its development switch.
+          "camera-preview": resolve(__dirname, "src/preload/camera-preview.ts"),
         },
       },
     },
@@ -103,6 +105,7 @@ export default defineConfig({
           settings: resolve(__dirname, "src/renderer/settings.html"),
           countdown: resolve(__dirname, "src/renderer/countdown.html"),
           video: resolve(__dirname, "src/renderer/video.html"),
+          "camera-preview": resolve(__dirname, "src/renderer/camera-preview.html"),
         },
       },
     },

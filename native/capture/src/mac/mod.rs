@@ -1,6 +1,8 @@
 //! macOS capture: ScreenCaptureKit for the display and system audio, VideoToolbox and AudioToolbox for encoding.
 
 pub mod audio;
+pub mod camera;
+pub mod compositor;
 pub mod content;
 pub mod hal;
 pub mod microphone;

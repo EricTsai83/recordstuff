@@ -33,6 +33,7 @@ export const ERROR_CODES = [
   "display_unavailable",
   "no_audio_track",
   "microphone_unavailable",
+  "camera_unavailable",
   "media_components_missing",
   "capture_start_failed",
   "capture_failed",

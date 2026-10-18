@@ -6,17 +6,20 @@ export function ControlTooltip({
   label,
   enabled = true,
   delay,
+  side,
   children,
 }: {
   label?: string | undefined;
   enabled?: boolean;
   delay?: number;
+  /** Where it opens; above by default. A collapsed sidebar's open beside it. */
+  side?: "top" | "right";
   children: ReactElement;
 }) {
   return (
     <Tooltip disabled={!enabled || !label}>
       <TooltipTrigger render={children} delay={delay} />
-      <TooltipContent className="[overflow-wrap:anywhere]">{label}</TooltipContent>
+      <TooltipContent className="[overflow-wrap:anywhere]" {...(side ? { side } : {})}>{label}</TooltipContent>
     </Tooltip>
   );
 }

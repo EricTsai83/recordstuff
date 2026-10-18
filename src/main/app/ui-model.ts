@@ -8,11 +8,14 @@
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
+import type { CameraLayout, CameraRatio } from "../../shared/camera-layout";
+import type { AudioGain } from "../../shared/audio-gain";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
 import type { Language, PlainMessageKey } from "../../shared/i18n";
 import type { QualitySettings } from "../../shared/quality";
+import type { ErrorCode } from "../../shared/state";
 import type { CountdownSeconds } from "../../shared/countdown";
 import type { HotkeySettings } from "../../shared/hotkey";
 import type { SettingsHotkeyStatus } from "../shortcuts/settings-hotkey";
@@ -43,11 +46,18 @@ export type AppAction =
   | "openNotificationSettings"
   /** System Settings → Privacy & Security → Microphone (plan 074), macOS only. */
   | "openMicrophoneSettings"
+  /** System Settings → Privacy & Security → Camera on macOS, Settings → Privacy & security → Camera on Windows (plan 075). */
+  | "openCameraSettings"
   /** Windows Settings → Optional features (plan 078), where the Media Feature Pack is installed; Windows only. */
   | "openOptionalFeatures"
   | "relaunch"
   | "start"
   | "stop"
+  /** A Live preview in the Recording Studio (plan 075, D20), and letting it go. */
+  | "startPreview"
+  | "stopPreview"
+  /** The main window at its Recording Studio tab (plan 075, D19). */
+  | "openStudio"
   | "cancelCountdown"
   | "openOutputDir"
   | "changeOutputDir"
@@ -71,6 +81,22 @@ export type AppAction =
   | { setCountdownSound: boolean }
   | { setHideSystemUi: boolean }
   | { setMicrophone: boolean }
+  /** The Camera switch (plan 075, D10). */
+  | { setCamera: boolean }
+  /** Hides or shows the camera in the recording in progress (plan 075, D13); the camera stays open. */
+  | { setCameraHidden: boolean }
+  /** The camera to record (D9); `null` is the system default. */
+  | { setCameraDevice: { id: string; label: string } | null }
+  /** The bubble's shape or mirror (D1, D3, D8), also while recording (D7). */
+  | { setCameraShape: { width?: number; height?: number; rounding?: number; mirror?: boolean } }
+  /** A ratio button (D1): the width kept, the height made to match. */
+  | { setCameraRatio: CameraRatio }
+  /** Mutes or unmutes an input of the recording in progress (plan 075, D19), for that recording only. */
+  | { setAudioMuted: { source: "system" | "microphone"; muted: boolean } }
+  /** An input's volume in whole dB (D21): saved, and taken by a preview or recording from its next sound on. */
+  | { setAudioGain: { source: "system" | "microphone"; db: number } }
+  /** Where the bubble sits on a display (plan 075 step 7): dragged or moved with the keys in Settings' preview. */
+  | { setCameraPosition: { display: string; x: number; y: number } }
   /** `null` is the system default input. */
   | { setMicrophoneDevice: { id: string; label: string } | null }
   | { setAppearance: Appearance }
@@ -92,6 +118,26 @@ export interface MicrophoneContext {
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
 }
 
+/** What the Camera row shows (plan 075). */
+export interface CameraContext {
+  enabled: boolean;
+  /**
+   * Whether the row is shown: until the Camera group can arrange the bubble (plan 075 step 7), only while the
+   * development switch RECORDSTUFF_CAMERA_PROTOTYPE is on, so no one records a bubble they cannot place.
+   */
+  available: boolean;
+  /** macOS's answer for the camera; absent on Windows, which has no status to read. */
+  access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
+  /** The recording in progress composes the camera: whether it is hidden from the tray (D13). */
+  session?: { hidden: boolean };
+  /** The stored camera; absent is the system default (D9). */
+  device?: { id: string; label: string };
+  /** The cameras the engine listed last; absent until they are listed, or when listing failed. */
+  devices?: readonly { id: string; name: string; default: boolean }[];
+  /** The bubble's shape and mirror (D1–D3, D8); absent is the default's. */
+  layout?: CameraLayout;
+}
+
 /** The persisted choice plus whether the OS actually accepted the registration. */
 export interface AppHotkey extends HotkeySettings {
   registered: boolean;
@@ -110,6 +156,17 @@ export interface AppContext {
   hideSystemUi?: boolean;
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
+  /** The camera (plan 075); absent is off and not shown. */
+  camera?: CameraContext;
+  /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
+  audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
+  /** The inputs' saved volumes in dB (plan 075, D21); absent is 0 dB. */
+  audioGain?: AudioGain;
+  /**
+   * The Recording Studio's picture (plan 075, D20): a Live preview, whether it is live yet, the session the Studio
+   * may show (a live preview or a recording), and why the last preview could not start.
+   */
+  studio?: { preview?: { live: boolean }; showing: boolean; previewFailure?: ErrorCode };
   platform: NodeJS.Platform;
   /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
   mediaComponentsMissing?: boolean;

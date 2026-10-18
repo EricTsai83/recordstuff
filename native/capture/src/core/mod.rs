@@ -14,16 +14,18 @@
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod camera;
 mod frame_log;
 mod mixer;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
+pub use camera::{CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
 pub use frame_log::FrameLog;
 use mixer::Mixer;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
@@ -75,6 +77,105 @@ pub trait Events: Send + Sync {
     fn microphone_lost(&self, detail: String);
     /// The microphone told lost delivers sound again, which the track takes from then on.
     fn microphone_resumed(&self, detail: String);
+    /// A preview chunk of the composed picture (plan 075, step 2's prototype; D17's second option).
+    fn preview(&self, _chunk: PreviewChunk) {}
+    /// The camera stopped delivering while recording (plan 075, D12): the recording goes on without it. Told once per
+    /// dropout.
+    fn camera_lost(&self, _detail: String) {}
+    /// The camera told lost delivers again, and is composed again.
+    fn camera_resumed(&self, _detail: String) {}
+    /// The loudest sample of each kind of input since the last levels (plan 075, D19), 10 times a second while
+    /// they are watched and sound is taken; called on an input's thread.
+    fn levels(&self, _levels: Levels) {}
+}
+
+/// Peak levels, linear (1 is full scale), of the inputs after their volumes (D21), before any muting.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Levels {
+    /// System audio and any apps' audio together.
+    pub system: f32,
+    /// The microphone, when the session records one.
+    pub microphone: Option<f32>,
+}
+
+/// An input's volume at or below this is silence (D21), the bottom of its fader.
+pub const SILENT_GAIN_DB: f64 = -60.0;
+/// The loudest an input's volume raises it: +12 dB, about four times.
+pub const MAX_GAIN_DB: f64 = 12.0;
+
+/// How often levels are told while watched: 10 times a second, the preview's rate (D21).
+const LEVELS_INTERVAL_NS: u64 = NANOS_PER_SECOND / 10;
+
+/// The level meters, the volumes and the mutes of the recording in progress (plan 075, D19, D21).
+struct Meters {
+    watched: AtomicBool,
+    /// Each kind's loudest sample since the last levels told, as f32 bits: a non-negative f32 orders as its bits do.
+    system_peak: AtomicU32,
+    microphone_peak: AtomicU32,
+    told_ns: AtomicU64,
+    system_muted: AtomicBool,
+    microphone_muted: AtomicBool,
+    /// Each kind's volume, a linear factor as f32 bits: 1 leaves its samples as they are.
+    system_gain: AtomicU32,
+    microphone_gain: AtomicU32,
+}
+
+impl Default for Meters {
+    fn default() -> Self {
+        Self {
+            watched: AtomicBool::new(false),
+            system_peak: AtomicU32::new(0),
+            microphone_peak: AtomicU32::new(0),
+            told_ns: AtomicU64::new(0),
+            system_muted: AtomicBool::new(false),
+            microphone_muted: AtomicBool::new(false),
+            system_gain: AtomicU32::new(1.0f32.to_bits()),
+            microphone_gain: AtomicU32::new(1.0f32.to_bits()),
+        }
+    }
+}
+
+/// One encoded frame of the preview: H.264 in AVCC form (length-prefixed NAL units), for WebCodecs' `VideoDecoder`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewChunk {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+    /// Whether it is a key frame, which a decoder can start from.
+    pub key: bool,
+    /// Host time it was captured, in microseconds.
+    pub timestamp_us: u64,
+    /// The `avcC` record a decoder is configured with; with every key frame, so a page that joins late can start.
+    pub description: Option<Vec<u8>>,
+}
+
+/// Takes a preview encoder's output and tells it as preview chunks, the `avcC` record with every key frame (plan 075,
+/// D17), on every platform.
+pub struct PreviewSink {
+    events: Arc<dyn Events>,
+    format: Mutex<Option<(Vec<u8>, u32, u32)>>,
+}
+
+impl PreviewSink {
+    pub fn new(events: Arc<dyn Events>) -> Self {
+        Self { events, format: Mutex::new(None) }
+    }
+}
+
+impl VideoSink for PreviewSink {
+    fn media(&self, media: Media) {
+        match media {
+            Media::VideoFormat { avcc, width, height } => *self.format.lock().unwrap() = Some((avcc, u32::from(width), u32::from(height))),
+            Media::Video { data, pts_ns, sync } => {
+                let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
+                self.events.preview(PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
+            }
+            Media::Audio { .. } => {}
+        }
+    }
+
+    // A preview is a convenience: one whose encoder fails stops showing, the recording does not.
+    fn failed(&self, _detail: String) {}
 }
 
 /// Where encoded video goes, and who hears that encoding failed. Called on the encoder's thread.
@@ -153,6 +254,16 @@ impl Default for AudioRequest {
     }
 }
 
+/// A camera, for choosing one (plan 075, D9).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Camera {
+    /// Stable across launches: AVCaptureDevice's unique ID.
+    pub id: String,
+    pub name: String,
+    /// Whether it is the system's default camera now.
+    pub default: bool,
+}
+
 /// An audio input device, for choosing the microphone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Microphone {
@@ -179,6 +290,18 @@ pub struct PrepareRequest {
     pub path: PathBuf,
     pub source: Source,
     pub audio: AudioRequest,
+    /// The camera composed into the frames (plan 075); absent is none.
+    pub camera: Option<CameraRequest>,
+}
+
+/// Which camera and where its bubble is (plan 075): main's setting and its layout on the recorded display.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraRequest {
+    /// AVCaptureDevice's unique ID; absent is the system's default camera, as is one not connected (D9).
+    pub device: Option<String>,
+    pub layout: crate::camera_layout::Layout,
+    /// Whether the preview is watched from the start (step 7: Settings shows it); `Session::set_preview` changes it.
+    pub preview: bool,
 }
 
 pub struct Prepared {
@@ -343,6 +466,12 @@ pub struct Shared<P: Platform> {
     microphone: Mutex<MicrophoneState>,
     /// The per-frame log, when the development switch asks for one (frame_log.rs). Locked inside the video lock.
     frame_log: Mutex<Option<FrameLog>>,
+    /// Every slot of the frame rate is encoded, still screen or not: the picture changes every frame while a camera
+    /// is composed into it (plan 075), which the encoder sees at encoding time.
+    every_slot: AtomicBool,
+    /// The camera composed into the frames (plan 075): judged on the refresh thread, closed when capture ends.
+    camera: Mutex<Option<Arc<dyn CameraControl>>>,
+    meters: Meters,
 }
 
 impl<P: Platform> Shared<P> {
@@ -510,6 +639,12 @@ impl<P: Platform> Shared<P> {
         self.events.microphone_lost(format!("the microphone delivered no sound for {} s", MICROPHONE_SILENT_NS / NANOS_PER_SECOND));
     }
 
+    /// Whether capture should read its sound now: while it is taken, or while its levels are watched before (plan 075,
+    /// D20: a Live preview is a prepared session, whose meters show what each input hears).
+    pub fn reads_sound(&self) -> bool {
+        self.wants_sound() || self.meters.watched.load(Ordering::Acquire)
+    }
+
     /// Whether sound is taken now; capture may skip reading a buffer when it is not.
     pub fn wants_sound(&self) -> bool {
         matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
@@ -519,10 +654,33 @@ impl<P: Platform> Shared<P> {
     /// or 1 (a mono input gives the same sample for both). Inputs are numbered from 0 in the order the platform told
     /// `Core::new` it has them.
     pub fn sound(&self, input: usize, pts: u64, frames: usize, sample: impl Fn(usize, usize) -> f32) -> Result<(), String> {
-        if !self.wants_sound() || frames == 0 {
+        if frames == 0 {
             return Ok(());
         }
-        if self.is_microphone(input) {
+        let microphone_input = self.is_microphone(input);
+        // Its volume (D21): raised past -1 dBFS, softly limited as a loud sum is, rather than clipped by the encoder.
+        let gain = f32::from_bits(if microphone_input { &self.meters.microphone_gain } else { &self.meters.system_gain }.load(Ordering::Acquire));
+        let sample = |frame: usize, channel: usize| {
+            let value = sample(frame, channel) * gain;
+            if gain > 1.0 { mixer::limit(value) } else { value }
+        };
+        // Levels from the moment sound arrives, before recording too (D20: a Live preview is a prepared session): after
+        // the volume, so the meter shows what is recorded, and before the mute, so a muted input still shows it hears.
+        if self.meters.watched.load(Ordering::Acquire) {
+            let peak = (0..frames).fold(0.0f32, |peak, frame| peak.max(sample(frame, 0).abs()).max(sample(frame, 1).abs()));
+            let kind = if microphone_input { &self.meters.microphone_peak } else { &self.meters.system_peak };
+            if peak.is_finite() {
+                kind.fetch_max(peak.to_bits(), Ordering::AcqRel);
+            }
+            self.tell_levels(P::now_ns());
+        }
+        if !self.wants_sound() {
+            return Ok(());
+        }
+        // Muted (D19): silence in its place, so the input stays on the clock and unmuting needs no realigning.
+        let muted = if microphone_input { &self.meters.microphone_muted } else { &self.meters.system_muted }.load(Ordering::Acquire);
+        let sample = |frame: usize, channel: usize| if muted { 0.0 } else { sample(frame, channel) };
+        if microphone_input {
             let mut microphone = self.microphone.lock().unwrap();
             let now = P::now_ns();
             let heard = std::mem::replace(&mut microphone.heard_ns, now).max(self.t0_ns.load(Ordering::Acquire));
@@ -562,6 +720,19 @@ impl<P: Platform> Shared<P> {
         Ok(())
     }
 
+    /// Tells the levels gathered since the last ones, once `LEVELS_INTERVAL_NS` has passed; one input's thread does.
+    fn tell_levels(&self, now_ns: u64) {
+        let told = self.meters.told_ns.load(Ordering::Acquire);
+        if now_ns.saturating_sub(told) < LEVELS_INTERVAL_NS
+            || self.meters.told_ns.compare_exchange(told, now_ns, Ordering::AcqRel, Ordering::Acquire).is_err()
+        {
+            return;
+        }
+        let take = |peak: &AtomicU32| f32::from_bits(peak.swap(0, Ordering::AcqRel));
+        let microphone = (self.microphone_input.load(Ordering::Acquire) != usize::MAX).then(|| take(&self.meters.microphone_peak));
+        self.events.levels(Levels { system: take(&self.meters.system_peak), microphone });
+    }
+
     /// Advances the track with the clock past an input that delivers nothing (see mixer.rs).
     fn sound_clock(&self, now_ns: u64) {
         let mut audio = self.audio.lock().unwrap();
@@ -579,6 +750,36 @@ impl<P: Platform> Shared<P> {
 
     fn has_frame(&self) -> bool {
         self.video.lock().unwrap().last.is_some()
+    }
+
+    /// The newest captured frame, for a preview (plan 075); a clone, so the video lock is not held while it is used.
+    pub fn newest(&self) -> Option<P::Frame>
+    where
+        P::Frame: Clone,
+    {
+        self.video.lock().unwrap().last.clone()
+    }
+
+    /// Whether the recording is on (its first frame encoded) and not yet stopped: when a camera's loss is told.
+    pub fn recording(&self) -> bool {
+        matches!(self.phase.load(Ordering::Acquire), RECORDING | DRAINING)
+    }
+
+    /// Closes the camera, if one is watched; idempotent.
+    fn close_camera(&self) {
+        let camera = self.camera.lock().unwrap().take();
+        if let Some(camera) = camera {
+            camera.close();
+        }
+    }
+
+    /// Whether capture has ended (`Core::halt`).
+    pub fn halted(&self) -> bool {
+        self.phase.load(Ordering::Acquire) == STOPPING
+    }
+
+    pub fn events(&self) -> Arc<dyn Events> {
+        self.events.clone()
     }
 }
 
@@ -626,6 +827,9 @@ impl<P: Platform> Core<P> {
             microphone_input: AtomicUsize::new(usize::MAX),
             microphone: Mutex::new(MicrophoneState::default()),
             frame_log: Mutex::new(None),
+            every_slot: AtomicBool::new(false),
+            camera: Mutex::new(None),
+            meters: Meters::default(),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -633,6 +837,51 @@ impl<P: Platform> Core<P> {
     /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
     pub fn watch_microphone(&self, input: usize) {
         self.shared.microphone_input.store(input, Ordering::Release);
+    }
+
+    /// The camera composed into this session's frames (plan 075): judged while recording and closed with the session.
+    pub fn watch_camera(&self, camera: Arc<dyn CameraControl>) {
+        *self.shared.camera.lock().unwrap() = Some(camera);
+    }
+
+    /// Whether the level meters are watched (plan 075, D19): levels are gathered and told only then.
+    pub fn watch_levels(&self, watching: bool) {
+        self.shared.meters.watched.store(watching, Ordering::Release);
+    }
+
+    /// Mutes system audio, the microphone or both from their next sound on (D19): silence in their place.
+    pub fn set_muted(&self, system: bool, microphone: bool) {
+        self.shared.meters.system_muted.store(system, Ordering::Release);
+        self.shared.meters.microphone_muted.store(microphone, Ordering::Release);
+    }
+
+    /// Sets system audio's and the microphone's volumes, in dB, from their next sound on (D21); at or below
+    /// `SILENT_GAIN_DB` an input is silent. The meters show the levels after them.
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) {
+        let factor = |db: f64| if !db.is_finite() || db <= SILENT_GAIN_DB { 0.0 } else { 10f64.powf(db.min(MAX_GAIN_DB) / 20.0) as f32 };
+        self.shared.meters.system_gain.store(factor(system_db).to_bits(), Ordering::Release);
+        self.shared.meters.microphone_gain.store(factor(microphone_db).to_bits(), Ordering::Release);
+    }
+
+    /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is
+    /// composed into each encoded frame, so the picture moves while the screen stands still).
+    pub fn encode_every_slot(&self, on: bool) {
+        let mut video = self.shared.video.lock().unwrap();
+        // Shown again after a still screen: from the current slot on, not every slot the hiding left empty, and the
+        // refresh thread woken for it rather than at the end of its 100 ms wait.
+        let resumed = on && !self.shared.every_slot.load(Ordering::Acquire);
+        if resumed {
+            if let Some(pacer) = video.pacer.as_mut() {
+                pacer.skip_to(P::now_ns());
+            }
+        }
+        self.shared.every_slot.store(on, Ordering::Release);
+        drop(video);
+        if resumed {
+            if let Some(refresher) = self.refresher.as_ref() {
+                refresher.thread().unpark();
+            }
+        }
     }
 
     /// Writes the per-frame log for the recording at `path` when the development switch asks for one; returns where.
@@ -813,6 +1062,8 @@ impl<P: Platform> Core<P> {
         if let Some(thread) = self.refresher.take() {
             let _ = thread.join();
         }
+        // Capture has ended: the camera's light goes off now, not when the file is finished.
+        self.shared.close_camera();
     }
 
     pub fn stopping(&self) -> bool {
@@ -864,8 +1115,9 @@ impl<P: Platform> Core<P> {
         (stopped, Finishing { outcome, began: Instant::now() })
     }
 
-    /// Releases the encoders of a session that never recorded.
+    /// Releases the encoders and the camera of a session that never recorded.
     pub fn release(&self) {
+        self.shared.close_camera();
         self.shared.video.lock().unwrap().encoder.take();
         self.shared.audio.lock().unwrap().encoder.take();
     }
@@ -875,8 +1127,15 @@ impl<P: Platform> Core<P> {
     }
 }
 
+impl<P: Platform> Drop for Core<P> {
+    /// A core dropped without a stop or a release (its owner went away, or preparing failed) still closes the camera.
+    fn drop(&mut self) {
+        self.shared.close_camera();
+    }
+}
+
 /// The refresh thread: encodes the first frame at t0, then a frame the pacer left out at its slot, and the last frame
-/// again every second while the screen stands still.
+/// again every second while the screen stands still, or at every slot while a camera is composed.
 fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
     {
         let mut guard = shared.video.lock().unwrap();
@@ -899,13 +1158,25 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
             return;
         }
     }
-    let mut wake = Duration::from_millis(100);
+    // With a composed camera the first slot comes before the usual 100 ms, so each slot samples the camera in turn
+    // rather than the first few catching up at once.
+    let mut wake = if shared.every_slot.load(Ordering::Acquire) {
+        let slot = shared.video.lock().unwrap().pacer.as_ref().map_or(t0, |pacer| pacer.next_slot());
+        Duration::from_nanos(slot.saturating_sub(P::now_ns()).clamp(1_000_000, 100_000_000))
+    } else {
+        Duration::from_millis(100)
+    };
     while shared.phase.load(Ordering::Acquire) == RECORDING {
-        std::thread::sleep(wake);
+        // Parked rather than asleep, so showing the camera again wakes it for the next slot (`encode_every_slot`).
+        std::thread::park_timeout(wake);
         wake = Duration::from_millis(100);
         let now = P::now_ns();
         shared.sound_clock(now);
         shared.microphone_clock(now);
+        let camera = shared.camera.lock().unwrap().clone();
+        if let Some(camera) = camera {
+            camera.judge(now, t0, &*shared.events);
+        }
         let mut guard = shared.video.lock().unwrap();
         let video = &mut *guard;
         if shared.phase.load(Ordering::Acquire) != RECORDING {
@@ -915,6 +1186,16 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         let at = if video.pending {
             match video.pacer.as_mut().and_then(|pacer| pacer.due(now)) {
                 Some(slot) => Some((slot.max(video.last_encoded_ns + 1), "due")),
+                None => {
+                    let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
+                    wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
+                    None
+                }
+            }
+        } else if shared.every_slot.load(Ordering::Acquire) {
+            // A composed camera: the newest frame again at each slot no capture took.
+            match video.pacer.as_mut().and_then(|pacer| pacer.due(now)) {
+                Some(slot) => Some((slot.max(video.last_encoded_ns + 1), "slot")),
                 None => {
                     let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
                     wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
@@ -934,6 +1215,10 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         };
         video.last_encoded_ns = at;
         shared.log_frame(video, at, kind, true);
+        if shared.every_slot.load(Ordering::Acquire) {
+            let slot = video.pacer.as_ref().map_or(now, |pacer| pacer.next_slot());
+            wake = Duration::from_nanos(slot.saturating_sub(now).clamp(1_000_000, 100_000_000));
+        }
         drop(guard);
         if let Err(detail) = result {
             shared.fail(detail);

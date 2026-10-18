@@ -1,6 +1,6 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Film, Wrench, Video, Settings, Lock, Keyboard } from "lucide-react";
+import { Film, Wrench, Video, Settings, Lock, Keyboard, MonitorPlay, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Card } from "../components/ui/card";
@@ -13,6 +13,7 @@ import type { SettingsStatus } from "../../shared/settings-panel";
 import { translate } from "../../shared/i18n";
 import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
+import { Studio } from "./tabs/studio";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
 import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog } from "./tabs/library";
@@ -21,6 +22,7 @@ import { useDarkClass } from "../lib/color-scheme";
 
 const tabIcons = {
   library: Film,
+  studio: MonitorPlay,
   recording: Video,
   general: Settings,
   shortcuts: Keyboard,
@@ -28,7 +30,24 @@ const tabIcons = {
 };
 const isPermissionStatus = (status?: SettingsStatus): boolean => status?.tone === "attention" &&
   (status.action?.id === "permission" || status.action?.id === "relaunch");
-function Status() {
+/** Where a collapsed sidebar is remembered (2026-10-17, plan 075 D19's larger preview): this window's own look only. */
+const SIDEBAR_KEY = "recordstuff.sidebarCollapsed";
+const remembered = (): boolean => { try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; } };
+
+/** A collapsed sidebar's status: a light in the card's tone, named by its title, which opens the sidebar to show it. */
+function StatusLight({ expand }: { expand: () => void }) {
+  const status = model.view?.status;
+  if (!status || status.tone === "ready" || status.tone === "recording") return null;
+  return (
+    <ControlTooltip label={status.title} side="right">
+      <Button id="status-light" variant="ghost" size="icon" className="status-light darwin:wide:window-no-drag" data-tone={status.tone}
+        aria-label={status.title} onClick={expand}>
+        <span className="status-light-dot" aria-hidden="true" />
+      </Button>
+    </ControlTooltip>
+  );
+}
+function Status({ rail = false }: { rail?: boolean }) {
   const current = model.view,
     status = current?.status,
     failure = model.failure?.group === "status" ? model.failure.text : "",
@@ -46,7 +65,8 @@ function Status() {
         ? "status grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 rounded-xl bg-(--permission-card-bg) p-3 text-(--permission-card-fg) shadow-(--permission-card-shadow) ring-0 dark:bg-(--permission-card-bg) dark:shadow-(--permission-card-shadow)"
         : "status gap-2.5 p-3 shadow-none data-[tone=recording]:bg-recording-surface data-[tone=recording]:ring-recording-border dark:data-[tone=recording]:bg-recording-surface"}
       // Only what needs the user: a ready app and a recording in progress show no card (#feedback still says the state).
-      hidden={!status || status.tone === "ready" || status.tone === "recording"}
+      // A collapsed sidebar says it with a light instead (StatusLight).
+      hidden={rail || !status || status.tone === "ready" || status.tone === "recording"}
       data-tone={status?.tone}
       data-permission={permission || undefined}
     >
@@ -141,7 +161,14 @@ export function SettingsApp() {
       () => matchMedia("(min-width: 600px)").matches,
     ),
     panel = useRef<HTMLDivElement>(null),
-    [head, setHead] = useState<HTMLDivElement | null>(null);
+    [head, setHead] = useState<HTMLDivElement | null>(null),
+    [collapsed, setCollapsedState] = useState(remembered);
+  const setCollapsed = (value: boolean): void => {
+    setCollapsedState(value);
+    try { localStorage.setItem(SIDEBAR_KEY, value ? "1" : "0"); } catch { /* a page without storage keeps it until closed */ }
+  };
+  // Only the sidebar collapses: a narrow window's tabs are a line already.
+  const rail = collapsed && vertical;
   useEffect(model.start, []);
   useDarkClass();
   useEffect(() => {
@@ -155,7 +182,7 @@ export function SettingsApp() {
   return (
     <TooltipProvider delay={600}>
       <div className="titlebar window-drag" aria-hidden="true" />
-      <main>
+      <main data-sidebar={rail ? "collapsed" : undefined}>
         <div className="sidebar-background darwin:wide:window-drag" aria-hidden="true" />
         <h1 id="title" className="sr-only visually-hidden">
           {current?.title ?? "RecordStuff"}
@@ -172,6 +199,7 @@ export function SettingsApp() {
             onValueChange={(value) => {
               if (
                 value === "library" ||
+                value === "studio" ||
                 value === "general" ||
                 value === "recording" ||
                 value === "shortcuts" ||
@@ -181,6 +209,7 @@ export function SettingsApp() {
             }}
           >
             <TabsList
+              id="settings-tabs"
               activateOnFocus
               aria-orientation={vertical ? "vertical" : "horizontal"}
               className="tabs flex-none items-stretch wide:col-start-1 wide:row-start-2 wide:w-full wide:flex-col wide:self-start narrow:w-full"
@@ -216,15 +245,17 @@ export function SettingsApp() {
                 const Icon = tabIcons[tab.id],
                   count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(tab.label);
                 return (
-                  <ControlTooltip key={tab.id} label={!vertical || tab.id === "failures" ? tab.label : undefined}>
+                  <ControlTooltip key={tab.id} label={!vertical || rail || tab.id === "failures" ? tab.label : undefined} {...(rail ? { side: "right" as const } : {})}>
                     <TabsTrigger
                       id={`tab-${tab.id}`}
                       value={tab.id}
                       aria-label={tab.accessibleLabel ?? tab.label}
                       // A narrow window shows only the selected tab's name; the others name themselves on hover.
                       // Every tab stays in the window, even zoomed in at the smallest size: the icon-only tabs keep their
-                      // width and the selected tab's name gives way, with its full name on hover (plan 067).
-                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-9 wide:gap-2.5 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-0 narrow:aria-selected:flex-auto"
+                      // width and the selected tab's name gives way, with its full name on hover (plan 067), the tab itself never
+                      // narrower than its icon's target, as six tabs came to fill the line (plan 075, D19). The icon-only tabs
+                      // take their own width, so Troubleshooting's count beside its icon is never cut, and the selected the rest.
+                      className="darwin:wide:window-no-drag min-h-[34px] wide:min-h-9 wide:gap-2.5 justify-start narrow:justify-center narrow:px-2 narrow:min-w-9 narrow:aria-selected:min-w-9 narrow:aria-selected:flex-auto narrow:not-aria-selected:flex-none"
                     >
                       <Icon className="tab-icon size-4" strokeWidth={2} />
                       {count ? (
@@ -250,7 +281,7 @@ export function SettingsApp() {
                 );
               })}
             </TabsList>
-            <Status />
+            <Status rail={rail} />
             <div className="settings-content">
               {/* The card's top stays put while the page under it scrolls: the page's name, the library's summary and
                   folder controls, and Troubleshooting's section tabs. */}
@@ -282,6 +313,8 @@ export function SettingsApp() {
                     </div>
                     {model.selectedTab === "failures" ? (
                       <Troubleshooting head={head} />
+                    ) : model.selectedTab === "studio" ? (
+                      <Studio />
                     ) : model.selectedTab !== "library" ? (
                       <Preferences />
                     ) : null}
@@ -298,12 +331,31 @@ export function SettingsApp() {
           </Tabs>
         </form>
         <footer id="sidebar-about" className="sidebar-about" hidden={!quit}>
+          {rail && <StatusLight expand={() => {
+            setCollapsed(false);
+            // The light is gone once the card shows: focus stays in the sidebar's foot, at its toggle.
+            requestAnimationFrame(() => document.getElementById("sidebar-toggle")?.focus({ preventScroll: true }));
+          }} />}
+          {vertical && (
+            // The same button in either mode, so a keyboard's focus stays on it as it toggles.
+            <ControlTooltip label={rail ? model.text("Expand sidebar") : undefined} side="right">
+              <Button id="sidebar-toggle" variant="ghost" size="icon" aria-expanded={!rail} aria-controls="settings-tabs"
+                aria-label={model.text(rail ? "Expand sidebar" : "Collapse sidebar")}
+                className="sidebar-toggle darwin:wide:window-no-drag text-muted-foreground wide:hover:bg-sidebar-accent"
+                onClick={() => setCollapsed(!rail)}>
+                {rail ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+              </Button>
+            </ControlTooltip>
+          )}
           {about && quit && (
             <WindowActions
+              // Keyed by the mode, so its tooltip, open in the rail, never stays over the full sidebar's controls.
+              key={rail ? "actions-rail" : "actions-full"}
               group={about}
               quit={quit}
               id="sidebar-about-hide"
               sidebar
+              compact={rail}
             />
           )}
           <p

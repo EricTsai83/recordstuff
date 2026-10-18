@@ -82,6 +82,16 @@ impl Pacer {
         Some(slot)
     }
 
+    /// Moves the next slot to the first one at or after `now_ns`, on the same grid, when it is behind: slots the
+    /// recording left empty on purpose (a camera hidden over a still screen, plan 075) are not filled afterwards.
+    pub fn skip_to(&mut self, now_ns: u64) {
+        if self.next_ns >= now_ns {
+            return;
+        }
+        let since = now_ns - self.start_ns;
+        self.next_ns = self.start_ns + since.div_ceil(self.interval_ns) * self.interval_ns;
+    }
+
     /// The next slot's time.
     pub fn next_slot(&self) -> u64 {
         self.next_ns

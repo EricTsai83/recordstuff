@@ -8,7 +8,8 @@
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
-import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -28,7 +29,17 @@ interface StopReport {
   capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
-interface EngineEvent { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string }
+interface EngineEvent {
+  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed" | "levels";
+  bytes?: number; code?: string; detail?: string;
+  /** With `levels` (plan 075, D19). */
+  system?: number | null; microphone?: number | null;
+}
+/**
+ * A preview chunk of the composed picture (plan 075's prototype, D17's second option): H.264 in AVCC form for WebCodecs,
+ * the `avcC` record (`description`) with every key frame; `timestamp` is host time in microseconds.
+ */
+export interface PreviewFrame { width: number; height: number; data: Uint8Array; key: boolean; timestamp: number; description?: Uint8Array | null }
 /** What the picture shows (plan 076 step 4: the engine's; the pickers are a later plan). */
 export interface CaptureSource {
   kind: "display" | "window" | "area" | "apps";
@@ -36,6 +47,8 @@ export interface CaptureSource {
   area?: { x: number; y: number; width: number; height: number };
   pids?: number[];
 }
+/** The camera composed into the frames (plan 075): the engine's `CameraOptions`. */
+export interface CameraOptions { deviceId?: string; width: number; height: number; rounding: number; x: number; y: number; mirror: boolean; preview?: boolean }
 /** Whose sound the track holds: the system's (or chosen apps'), and the microphone mixed in (plan 074). */
 export interface AudioOptions { system: "all" | "apps" | "off"; pids?: number[]; microphone: boolean; microphoneId?: string }
 interface NativeCapture {
@@ -43,23 +56,44 @@ interface NativeCapture {
   prepare(options: {
     displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
-    source?: CaptureSource; audio?: AudioOptions;
+    source?: CaptureSource; audio?: AudioOptions; camera?: CameraOptions;
   }): Promise<PreparedInfo>;
   record(): void;
   stop(): Promise<StopReport>;
   finish(): Promise<FinishReport>;
   cancel(): Promise<void>;
   microphones(): Promise<MicrophoneDevice[]>;
+  /** Plan 075: the cameras. */
+  cameras?(): Promise<MicrophoneDevice[]>;
+  /** Plan 075: the camera's bubble and whether it is shown, from the next frame on; false without a camera. */
+  setCameraLayout?(options: CameraOptions, hidden: boolean): boolean;
+  /** Plan 075: preview chunks while a session composes the camera and its preview is watched. */
+  onPreview?(onFrame: (frame: PreviewFrame) => void): void;
+  /** Plan 075 step 7: whether the session's preview is watched; false without a camera. */
+  setCameraPreview?(watching: boolean): boolean;
+  /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
+  watchLevels?(watching: boolean): boolean;
+  setMuted?(system: boolean, microphone: boolean): boolean;
+  /** Plan 075, D21: the inputs' volumes in dB. */
+  setGains?(system: number, microphone: number): boolean;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
+/** Where preview frames go: a `MessagePortMain` main hands over to Settings or the prototype's page (plan 075). */
+export interface PreviewPort {
+  postMessage(message: unknown): void;
+  close(): void;
+}
+
 /** The subset of Electron's `process.parentPort` the host uses; lets tests pass a fake. */
 export interface ParentPort {
-  on(event: "message", listener: (message: { data: unknown }) => void): void;
+  on(event: "message", listener: (message: { data: unknown; ports?: PreviewPort[] }) => void): void;
   postMessage(message: unknown): void;
 }
 
-const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
+export { cameraPreviewOn, cameraPrototypeOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
+
+const HOST_CODES: readonly string[] = ["permission_denied", "no_display", "no_audio_track", "microphone_unavailable", "camera_unavailable", "media_components_missing", "capture_start_failed", "capture_failed"];
 const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
 
 const NUMBER_LIST = /^\d+(,\d+)*$/;
@@ -106,6 +140,8 @@ type Phase = "preparing" | "prepared" | "recording" | "stopping";
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
+  private previewPort: PreviewPort | undefined;
+  private previewFrames = 0;
 
   constructor(
     private readonly port: ParentPort,
@@ -114,10 +150,31 @@ export class NativeHost {
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
     private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
+    /** The prototype's switch: the preview is watched from the start, for its page. */
+    private readonly cameraPreview = false,
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
-    port.on("message", ({ data }) => this.handle(data));
+    // Frames come only while main says the preview is watched, or from the start under the prototype's switch.
+    this.capture.onPreview?.((frame) => this.preview(frame));
+    port.on("message", ({ data, ports }) => {
+      if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === PREVIEW_PORT_MESSAGE) {
+        this.previewPort?.close();
+        this.previewPort = ports?.[0];
+        return;
+      }
+      this.handle(data);
+    });
     this.send({ type: "ready" });
+  }
+
+  /** Forwards a preview chunk to the preview page, when main gave one; dropped otherwise. */
+  private preview(frame: PreviewFrame): void {
+    if (!this.previewPort) return;
+    this.previewFrames += 1;
+    this.previewPort.postMessage({
+      width: frame.width, height: frame.height, data: frame.data, key: frame.key, timestamp: frame.timestamp,
+      ...(frame.description ? { description: frame.description } : {}), sent: Date.now(), n: this.previewFrames,
+    });
   }
 
   private get capture(): NativeCapture {
@@ -147,6 +204,50 @@ export class NativeHost {
       case "listMicrophones":
         void this.listMicrophones();
         return;
+      case "listCameras":
+        void this.listCameras();
+        return;
+      case "cameraLayout":
+        this.cameraLayout(message.sessionId, message.camera, message.hidden);
+        return;
+      case "levels":
+        if (this.session?.id !== message.sessionId) return;
+        this.capture.watchLevels?.(message.watching);
+        return;
+      case "mute":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`audio: system ${message.system ? "muted" : "on"}, microphone ${message.microphone ? "muted" : "on"}${this.capture.setMuted?.(message.system, message.microphone) ? "" : " (no session)"}`);
+        return;
+      case "gain":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`audio: system ${message.system} dB, microphone ${message.microphone} dB${this.capture.setGains?.(message.system, message.microphone) ? "" : " (no session)"}`);
+        return;
+      case "cameraPreview":
+        if (this.session?.id !== message.sessionId) return;
+        this.log(`camera preview: ${message.watching ? "watched" : "not watched"}${this.capture.setCameraPreview?.(message.watching) ? "" : " (no camera in this session)"}`);
+        return;
+    }
+  }
+
+  /** A new bubble or hiding for the session's camera (plan 075), logged with the session. */
+  private cameraLayout(sessionId: string, camera: CameraChoice, hidden: boolean): void {
+    if (this.session?.id !== sessionId) return;
+    const { deviceId: _device, ...layout } = camera;
+    const applied = this.capture.setCameraLayout?.(layout, hidden) ?? false;
+    this.log(`camera layout: ${JSON.stringify(layout)}, ${hidden ? "hidden" : "shown"}${applied ? "" : " (no camera in this session)"}`);
+  }
+
+  /** The cameras, for the Settings device menu (plan 075). Never while a session holds the engine. */
+  private async listCameras(): Promise<void> {
+    if (this.session) {
+      this.send({ type: "cameras", error: "a recording is in progress" });
+      return;
+    }
+    try {
+      const devices = (await this.capture.cameras?.()) ?? [];
+      this.send({ type: "cameras", devices: devices.map(({ id, name, default: isDefault }) => ({ id, name, default: isDefault })) });
+    } catch (cause) {
+      this.send({ type: "cameras", error: engineFailure(cause).detail });
     }
   }
 
@@ -199,6 +300,7 @@ export class NativeHost {
         videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
         ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
+        ...(native.camera ? { camera: { ...native.camera, preview: this.cameraPreview } } : {}),
       });
       this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
         `${prepared.timings ? ` (${prepared.timings})` : ""}`);
@@ -312,6 +414,13 @@ export class NativeHost {
       this.send({ type: "microphoneLost", sessionId: session.id, detail: event.detail ?? "the microphone stopped" });
     } else if (event.kind === "microphoneResumed") {
       this.send({ type: "microphoneResumed", sessionId: session.id, detail: event.detail ?? "the microphone delivered sound again" });
+    } else if (event.kind === "cameraLost") {
+      this.send({ type: "cameraLost", sessionId: session.id, detail: event.detail ?? "the camera stopped" });
+    } else if (event.kind === "cameraResumed") {
+      this.send({ type: "cameraResumed", sessionId: session.id, detail: event.detail ?? "the camera delivered frames again" });
+    } else if (event.kind === "levels" && typeof event.system === "number") {
+      this.send({ type: "levels", sessionId: session.id, system: event.system,
+        ...(typeof event.microphone === "number" ? { microphone: event.microphone } : {}) });
     } else if (event.kind === "captureError") {
       const code = HOST_CODES.includes(event.code ?? "") ? event.code as HostErrorCode : "capture_failed";
       this.fail(session.id, code, event.detail ?? "capture ended");
@@ -335,7 +444,7 @@ if (parentPort) {
     if (!addonPath) throw new Error("no engine path was given");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const engine = require(addonPath) as EngineModule;
-    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env));
+    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env), cameraPreviewOn(process.env));
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
     const message = cause instanceof Error ? cause.message : String(cause);

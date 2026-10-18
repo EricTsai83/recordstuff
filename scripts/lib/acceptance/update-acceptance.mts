@@ -57,14 +57,22 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  * About links and read-only shortcut lists stay usable; the output folder keeps Show in Finder and locks only Change…. A group missing
  * from this table, or a listed group the panel no longer offers, fails until someone classifies it here.
  */
-export type BusyPolicy = "locked" | "available" | { lockedChoices: readonly string[] };
+/** `session`: usable while a recording in progress offers it, whatever the lock (the Recording Studio's mutes, plan 075 D19). */
+export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[] };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", microphone: "locked", microphoneDevice: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
+  // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
+  studioControls: { lockedChoices: ["saving"] },
+  systemAudio: "session", microphoneAudio: "session",
+  // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
+  systemGain: "available", microphoneGain: "available",
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
   "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
+/** Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19). */
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain"]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 
 /**
@@ -89,7 +97,7 @@ export function assertLockContract(s: LockSnapshot): void {
   const ids = s.settings.groups.map(g => g.id);
   const unknown = ids.filter(id => !Object.hasOwn(BUSY_SETTINGS_POLICY, id));
   assert.deepEqual(unknown, [], `settings groups without a lock policy: ${unknown.join(", ")}`);
-  const missing = Object.keys(BUSY_SETTINGS_POLICY).filter(id => !ids.includes(id));
+  const missing = Object.keys(BUSY_SETTINGS_POLICY).filter(id => !ids.includes(id) && !OPTIONAL_GROUPS.has(id));
   assert.deepEqual(missing, [], `settings groups no longer offered: ${missing.join(", ")}`);
   for (const group of s.settings.groups) {
     const policy = BUSY_SETTINGS_POLICY[group.id]!;
@@ -102,10 +110,12 @@ export function assertLockContract(s: LockSnapshot): void {
     // The input device follows the microphone's switch even when idle (plan 074).
     const microphoneOff = s.settings.groups.find(g => g.id === "microphone")?.choices.some(c => c.checked && c.id === "off");
     const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !(group.id === "microphoneDevice" && microphoneOff) && !unavailable;
-    assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
+    if (policy !== "session") assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group; a partly locked one locks exactly its listed choices.
+    // The Recording Studio's Start (plan 075, D19) is usable exactly when the tray's is.
+    const trayStarts = s.model.menu.some(item => item.kind === "item" && item.action === "start" && item.enabled);
     if (available) for (const choice of [...group.choices, ...group.actions ?? []]) {
-      const locked = busy && lockedChoices.includes(choice.id);
+      const locked = group.id === "studioControls" && choice.id === "start" ? !trayStarts : busy && lockedChoices.includes(choice.id);
       assert.equal(choice.enabled, !locked, `settings choice ${group.id}/${choice.id} while ${state}`);
     }
   }

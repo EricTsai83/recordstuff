@@ -13,6 +13,8 @@ export interface DisplayInfo {
   /** The display's top-left in the desktop's logical coordinates, for drawing the arrangement; absent when unknown. */
   x?: number;
   y?: number;
+  /** The menu bar's height at the display's top in logical pixels, which a recording shows unless it hides it (plan 075's preview). */
+  menuBar?: number;
 }
 export type DisplayFailure = "target_missing" | "source_missing" | "topology_changed" | "target_removed" | "track_ended";
 function isDisplayId(value: unknown): value is string {
@@ -28,7 +30,8 @@ export function isDisplayInfo(value: unknown): value is DisplayInfo {
   const v = value as Record<string, unknown>;
   return isDisplayId(v["id"]) && typeof v["label"] === "string" && typeof v["internal"] === "boolean" && typeof v["primary"] === "boolean"
     && [v["logicalWidth"], v["logicalHeight"], v["scaleFactor"]].every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)
-    && [v["x"], v["y"]].every((n) => n === undefined || (typeof n === "number" && Number.isFinite(n)));
+    && [v["x"], v["y"]].every((n) => n === undefined || (typeof n === "number" && Number.isFinite(n)))
+    && (v["menuBar"] === undefined || (typeof v["menuBar"] === "number" && Number.isFinite(v["menuBar"]) && v["menuBar"] >= 0));
 }
 export function displayLabel(display: { id: string; label: string; primary?: boolean }, language: Language): string {
   const label = display.label.trim() || t("Display {id}", language, { id: display.id });

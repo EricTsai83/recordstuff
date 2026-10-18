@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Screen and sound. Nothing else. A menu bar app that records one screen with its system audio to a plain MP4. No account required.
+Screen, sound and camera. Nothing else. A menu bar app that records one screen with its system audio, and your microphone and camera if you turn them on, to a plain MP4. No account required.
 
 [Website](https://record.ericts.com) · [Downloads](https://record.ericts.com/download) · [Help](https://record.ericts.com/help)
 
@@ -36,6 +36,7 @@ Updates, removal and data locations: [installation guide](resources/INSTALL.md).
 1. Launch RecordStuff and grant screen and system-audio recording permission.
 2. Press **⇧⌘1** (Ctrl+Shift+1 on Windows), or choose **Start recording** from the menu bar icon. Recording starts after a 3-second countdown. Do the same to stop.
 3. Recordings are saved to `~/Movies/RecordStuff` (`Videos\RecordStuff` on Windows). Click the notification or choose **Open RecordStuff** to play, rename, reveal or delete them.
+4. To add your camera, check **Record camera** in the menu bar menu, then choose **Open Recording Studio…**. There you drag the camera bubble into place, set its size, shape, rounding and mirror, watch a **Live preview** with sound meters, and set the volume of system audio and the microphone. During a recording you can still move and resize the bubble there, or hide it from the menu bar menu. The camera is drawn into the video, not shown on your screen.
 
 Open settings with **⌥⌘,**:
 
@@ -47,6 +48,8 @@ Open settings with **⌥⌘,**:
 | Countdown | Off / 3 / 5 / 10 s, optional tick | 3 s, tick on |
 | Microphone | On / Off, also in the menu bar menu; recorded with system audio in one track (headphones avoid speaker echo) | Off |
 | Input device | System default / a connected microphone | System default |
+| Camera | On / Off, also in the menu bar menu; arranged in the Recording Studio (not yet tested with a camera on Windows) | Off |
+| Camera device | System default / a connected camera | System default |
 | Video quality | Economy / Standard / High | Standard |
 | Resolution cap | 1080p / 1440p / 4K / Source | Source |
 | Frame rate | 30 / 60 fps (60 on macOS only) | 30 |

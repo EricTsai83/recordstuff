@@ -78,6 +78,9 @@ describe("settingsView", () => {
       "countdownSound",
       "microphone",
       "microphoneDevice",
+      "systemAudio",
+      "systemGain",
+      "studioControls",
       "videoQuality",
       "resolutionCap",
       "frameRate",
@@ -101,8 +104,9 @@ describe("settingsView", () => {
     ]);
     for (const entry of view.groups) {
       expect(entry.choices.filter((choice) => choice.checked), entry.id).toHaveLength(entry.kind === "actions" || entry.kind === "shortcutList" ? 0 : 1);
-      // The input device waits for the microphone's switch, which is off by default (plan 074).
-      expect(entry.enabled, entry.id).toBe(entry.id !== "microphoneDevice");
+      // The input device waits for the microphone's switch, which is off by default (plan 074); the Recording Studio's
+      // mutes for a recording (plan 075, D19).
+      expect(entry.enabled, entry.id).toBe(entry.id !== "microphoneDevice" && entry.id !== "systemAudio");
     }
     expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "countdownSound")).toBe("on");
@@ -198,6 +202,233 @@ describe("tabs follow sections", () => {
   });
 });
 
+describe("camera (plan 075)", () => {
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}): AppContext =>
+    ({ ...context, camera: { enabled: true, available: true, access: "granted", ...camera } });
+
+  it("is not shown until it is available, and then is a switch, off by default, in the Recording tab's Camera section", () => {
+    expect(group(idle, context, "camera")).toBeUndefined();
+    expect(group(idle, { ...context, camera: { enabled: true, available: false } }, "camera")).toBeUndefined();
+    const row = group(idle, on({ enabled: false }), "camera")!;
+    expect(row).toMatchObject({ label: "Camera", control: "switch", tab: "recording", section: "camera", sectionHeading: "Camera" });
+    expect(checked(idle, on({ enabled: false }), "camera")).toBe("off");
+    expect(checked(idle, on(), "camera")).toBe("on");
+    expect(settingsAction(idle, on({ enabled: false }), "camera", "on")).toEqual({ setCamera: true });
+    expect(settingsAction(idle, on(), "camera", "off")).toEqual({ setCamera: false });
+    expect(group(idle, { ...on(), language: "zh-TW" }, "camera")).toMatchObject({ label: "相機", sectionHeading: "相機" });
+  });
+
+  it("is locked while a session runs", () => {
+    for (const state of busy) {
+      expect(group(state, on(), "camera")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, on(), "camera", "off"), state.type).toBeUndefined();
+    }
+  });
+
+  it("shows a macOS denial with the pane that changes it, only while the switch is on", () => {
+    const denied = group(idle, on({ access: "denied" }), "camera")!;
+    expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Camera access is off",
+      guidance: "Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off." })]);
+    // macOS shows access allowed meanwhile only after a relaunch (2026-10-18), so the card offers one.
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open camera settings…" }),
+      expect.objectContaining({ id: "relaunch", label: "Already allowed? Relaunch RecordStuff" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "camera", "relaunch")).toBe("relaunch");
+    expect(settingsAction(idle, on(), "camera", "relaunch"), "offered only beside a denial").toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, on({ access: "denied" }), "camera", "relaunch"), state.type).toBeUndefined();
+    expect(settingsAction(idle, on({ access: "denied" }), "camera", "openSettings")).toBe("openCameraSettings");
+    expect(group(idle, on({ access: "restricted" }), "camera")?.diagnostics).toHaveLength(1);
+    expect(group(idle, on({ enabled: false, access: "denied" }), "camera")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on(), "camera")).not.toHaveProperty("diagnostics");
+    expect(group(idle, on(), "camera")).not.toHaveProperty("actions");
+    expect(group(idle, on({ access: "not-determined" }), "camera")).toMatchObject({ noteKind: "status",
+      note: "macOS asks for camera access when you next record." });
+    expect(group(idle, { ...on({ access: "denied" }), language: "zh-TW" }, "camera")?.diagnostics?.[0]?.guidance).toContain("隱私權與安全性 → 相機");
+  });
+
+  it("names Windows's camera privacy page while it is on there, which has no status to read", () => {
+    const windows = { ...context, platform: "win32" as const, camera: { enabled: true, available: true } };
+    const row = group(idle, windows, "camera")!;
+    expect(row.note).toContain("Settings → Privacy & security → Camera");
+    expect(row).not.toHaveProperty("diagnostics");
+    expect(settingsAction(idle, windows, "camera", "openSettings")).toBe("openCameraSettings");
+    expect(group(idle, { ...windows, camera: { enabled: false, available: true } }, "camera")).not.toHaveProperty("note");
+  });
+});
+
+describe("the camera's rows (plan 075, step 7)", () => {
+  const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+  const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}): AppContext =>
+    ({ ...context, camera: { enabled: true, available: true, access: "granted", layout, devices, ...camera } });
+  const ids = (ctx: AppContext, state = idle) => settingsView(state, ctx).groups.filter((g) => g.section === "camera").map((g) => g.id);
+  const studio = (ctx: AppContext, state = idle) => settingsView(state, ctx).groups.filter((g) => g.tab === "studio").map((g) => g.id);
+
+  it("follow the switch: the device in Recording settings with the way to the Studio, the shape in the Studio (D19)", () => {
+    expect(ids(on())).toEqual(["camera", "cameraDevice", "cameraStudio"]);
+    expect(group(idle, on(), "cameraStudio")).toMatchObject({ kind: "actions", choices: [{ id: "openStudio", label: "Arrange in Recording Studio…", enabled: true }] });
+    // The way there stays open whether or not the device may change: the camera off, or a recording.
+    expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
+    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "systemAudio", "systemGain", "studioControls"]);
+    expect(ids(context)).toEqual([]);
+    expect(studio(context), "no camera: the Studio keeps its audio and controls").toEqual(["systemAudio", "systemGain", "studioControls"]);
+    expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
+    expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
+    expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
+    expect(checked(idle, on(), "cameraMirror")).toBe("off");
+    expect(group(idle, { ...on(), language: "zh-TW" }, "cameraMirror")).toMatchObject({ label: "錄影時鏡像" });
+  });
+
+  it("offer the system default, named after the camera it is now, then each camera, and say when the chosen one is missing", () => {
+    expect(group(idle, on(), "cameraDevice")?.choices.map((c) => [c.id, c.label, c.checked])).toEqual([
+      ["systemDefault", "System default (FaceTime HD Camera)", true], ["built-in", "FaceTime HD Camera", false], ["iphone", "iPhone Camera", false]]);
+    expect(settingsAction(idle, on(), "cameraDevice", "iphone")).toEqual({ setCameraDevice: { id: "iphone", label: "iPhone Camera" } });
+    const missing = group(idle, on({ device: { id: "usb", label: "USB Camera" } }), "cameraDevice")!;
+    expect(missing.choices.at(-1)).toMatchObject({ id: "usb", label: "USB Camera — Not connected", checked: true, enabled: false });
+    expect(missing.note).toBe("Recordings use the system default camera until USB Camera is connected.");
+  });
+
+  it("send a slider's whole percent within range as the shape, and a ratio button or the mirror", () => {
+    expect(settingsAction(idle, on(), "cameraWidth", "35")).toEqual({ setCameraShape: { width: 0.35 } });
+    expect(settingsAction(idle, on(), "cameraRounding", "0")).toEqual({ setCameraShape: { rounding: 0 } });
+    for (const bad of ["4", "61", "3.5", "-1", "", "abc"]) expect(settingsAction(idle, on(), "cameraHeight", bad), bad).toBeUndefined();
+    expect(settingsAction(idle, on(), "cameraRatio", "16:9")).toEqual({ setCameraRatio: "16:9" });
+    expect(settingsAction(idle, on(), "cameraMirror", "on")).toEqual({ setCameraShape: { mirror: true } });
+    // Off: the rows wait for the switch.
+    expect(settingsAction(idle, on({ enabled: false }), "cameraWidth", "30")).toBeUndefined();
+    expect(group(idle, on({ enabled: false }), "cameraRatio")?.enabled).toBe(false);
+  });
+
+  it("keep the shape usable while a recording composes the camera, and lock the device", () => {
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    const live = on({ session: { hidden: false } });
+    expect(group(recording, live, "cameraWidth")?.enabled).toBe(true);
+    expect(group(recording, live, "cameraMirror")?.enabled).toBe(true);
+    expect(settingsAction(recording, live, "cameraWidth", "30")).toEqual({ setCameraShape: { width: 0.3 } });
+    expect(group(recording, live, "cameraDevice")?.enabled).toBe(false);
+    expect(group(recording, live, "camera")?.enabled).toBe(false);
+    // A recording without the camera keeps the rows locked with the others.
+    expect(settingsAction(recording, on(), "cameraWidth", "30")).toBeUndefined();
+  });
+});
+
+describe("the Recording Studio's controls (plan 075, D19)", () => {
+  const controls = (state: RecordingState, ctx: AppContext = context) => group(state, ctx, "studioControls")!;
+  it("name the state and offer what the tray offers now, with the elapsed time while recording", () => {
+    expect(controls(idle)).toMatchObject({ tab: "studio", kind: "actions", label: "Ready", choices: [{ id: "start", enabled: true }] });
+    expect(settingsAction(idle, context, "studioControls", "start")).toBe("start");
+    expect(controls({ type: "countdown", remaining: 2 })).toMatchObject({ label: "Recording starts in 2 s", choices: [{ id: "cancel", enabled: true }] });
+    expect(settingsAction({ type: "starting" }, context, "studioControls", "cancel")).toBe("cancelCountdown");
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    expect(controls(recording)).toMatchObject({ label: "Recording", elapsedSince: "2026-10-17T00:00:00Z", choices: [{ id: "stop", enabled: true }] });
+    expect(controls({ type: "stopping" })).toMatchObject({ label: "Saving…", choices: [{ id: "saving", enabled: false }] });
+    expect(controls(idle).elapsedSince).toBeUndefined();
+  });
+  it("offer Live preview between recordings where the engine makes one, Stop preview while there is one, and say why one could not start (D20)", () => {
+    const mac = { ...context, camera: { enabled: false, available: true } };
+    expect(controls(idle, mac).choices.map((c) => [c.id, c.enabled])).toEqual([["preview", true], ["start", true]]);
+    expect(settingsAction(idle, mac, "studioControls", "preview")).toBe("startPreview");
+    expect(controls(idle, context).choices.map((c) => c.id), "none without the engine's preview (Windows)").toEqual(["start"]);
+    const starting = { ...mac, studio: { preview: { live: false }, showing: false } };
+    expect(controls(idle, starting)).toMatchObject({ label: "Starting preview…", choices: [{ id: "stopPreview" }, { id: "start", enabled: true }] });
+    const live = { ...mac, studio: { preview: { live: true }, showing: true } };
+    expect(controls(idle, live).label).toBe("Previewing");
+    expect(settingsAction(idle, live, "studioControls", "stopPreview")).toBe("stopPreview");
+    expect(settingsAction(idle, live, "studioControls", "start"), "Start takes it").toBe("start");
+    expect(controls(idle, { ...mac, studio: { showing: false, previewFailure: "camera_unavailable" } }).note).toMatch(/^Live preview could not start: /);
+    expect(controls({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, live).choices.map((c) => c.id), "a recording has no preview to start").toEqual(["stop"]);
+  });
+  it("wait for screen recording's permission, whose fix the status card offers, in either of its steps", () => {
+    for (const needsRelaunch of [false, true]) {
+      const state = { type: "needsPermission" as const, needsRelaunch };
+      expect(controls(state)).toMatchObject({ label: "Screen recording permission required", choices: [{ id: "start", enabled: false }] });
+      expect(settingsAction(state, context, "studioControls", "start")).toBeUndefined();
+    }
+  });
+});
+
+describe("the Recording Studio's audio (plan 075, D19)", () => {
+  const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+  it("shows each input's meter and mute for the recording in progress, the microphone's while it records one", () => {
+    expect(group(idle, context, "systemAudio")).toMatchObject({ tab: "studio", control: "meter", meter: { source: "system" }, enabled: false,
+      note: "Its level shows, and it can be muted, while recording." });
+    expect(group(idle, context, "microphoneAudio")).toBeUndefined();
+    expect(group(idle, { ...context, microphone: { enabled: true } }, "microphoneAudio")).toMatchObject({ enabled: false, meter: { source: "microphone" } });
+    const live = { ...context, audioSession: { systemMuted: true, microphone: { muted: false } } };
+    expect(group(recording, live, "systemAudio")).toMatchObject({ enabled: true, choices: [{ id: "mute", checked: true }, { id: "unmute", checked: false }] });
+    expect(group(recording, live, "systemAudio")?.note).toBeUndefined();
+    expect(checked(recording, live, "microphoneAudio")).toBe("unmute");
+    expect(settingsAction(recording, live, "systemAudio", "unmute")).toEqual({ setAudioMuted: { source: "system", muted: false } });
+    expect(settingsAction(recording, live, "microphoneAudio", "mute")).toEqual({ setAudioMuted: { source: "microphone", muted: true } });
+    // A recording without the microphone: no row for it, though its switch is on for the next.
+    expect(group(recording, { ...live, microphone: { enabled: true }, audioSession: { systemMuted: false } }, "microphoneAudio")).toBeUndefined();
+    expect(settingsAction(idle, context, "systemAudio", "mute"), "nothing to mute between recordings").toBeUndefined();
+    // Each input's fader (D21): saved, offered between and during recordings, the microphone's only with its meter.
+    expect(group(idle, { ...context, audioGain: { system: -6, microphone: 3 } }, "systemGain")).toMatchObject({ tab: "studio", control: "slider", enabled: true,
+      label: "System audio volume", slider: { min: -60, max: 12, step: 1, value: -6, unit: "decibels" }, choices: [{ id: "-6", label: "−6 dB", checked: true }] });
+    expect(group(idle, context, "systemGain")?.slider?.value, "absent is 0 dB").toBe(0);
+    expect(group(idle, { ...context, audioGain: { system: -60, microphone: 0 } }, "systemGain")?.choices[0]?.label).toBe("−∞ dB");
+    expect(group(idle, { ...context, microphone: { enabled: true }, language: "zh-TW" }, "microphoneGain")).toMatchObject({ label: "麥克風音量", enabled: true });
+    expect(group(idle, context, "microphoneGain")).toBeUndefined();
+    expect(settingsAction(recording, live, "systemGain", "12")).toEqual({ setAudioGain: { source: "system", db: 12 } });
+    expect(settingsAction(recording, live, "microphoneGain", "-60")).toEqual({ setAudioGain: { source: "microphone", db: -60 } });
+    expect(settingsAction(idle, context, "systemGain", "-7")).toEqual({ setAudioGain: { source: "system", db: -7 } });
+    for (const choice of ["13", "-61", "1.5", "loud"]) expect(settingsAction(idle, context, "systemGain", choice), choice).toBeUndefined();
+    expect(settingsAction(idle, context, "microphoneGain", "0"), "no microphone: no fader").toBeUndefined();
+    expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "音訊" });
+  });
+});
+
+describe("the camera's preview (plan 075, step 7)", () => {
+  const layout = { width: 0.2, height: 0.3, rounding: 0.5, mirror: true, positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "9", x: 0.4, y: 0.6 }] };
+  const displays = [
+    { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true, menuBar: 33 },
+    { id: "9", label: "Studio", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false },
+  ];
+  const devices = [{ id: "iphone", name: "iPhone Camera", default: true }];
+  const on = (camera: Partial<NonNullable<AppContext["camera"]>> = {}, more: Partial<AppContext> = {}): AppContext =>
+    ({ ...context, displays, camera: { enabled: true, available: true, access: "granted", layout, devices, ...camera }, ...more });
+  const preview = (state: RecordingState, ctx: AppContext) => group(state, ctx, "cameraPreview");
+  const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+
+  it("shows the display the recording captures, its menu bar, and the bubble where the recording puts it", () => {
+    expect(settingsView(idle, on()).groups.filter((g) => g.tab === "studio").map((g) => g.id).slice(0, 2), "the Studio's first row").toEqual(["cameraPreview", "studioCamera"]);
+    expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
+      mode: "live", display: { width: 1512, height: 982, menuBar: 33 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
+      x: 0.1, y: 0.2, camera: "iPhone Camera" } });
+    // Another display: its own position; hiding the menu bar takes the band away.
+    const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" }, hideSystemUi: true });
+    expect(preview(idle, studio)?.cameraPreview).toMatchObject({ display: { width: 1080, height: 1920, menuBar: 0 }, x: 0.4, y: 0.6 });
+    expect(preview(idle, { ...on(), displays: [] }), "no display to show").toBeUndefined();
+    // The chosen camera by the name it has now, which the page matches; a renamed one keeps its stored label meanwhile.
+    expect(preview(idle, on({ device: { id: "iphone", label: "Old iPhone name" } }))?.cameraPreview?.camera).toBe("iPhone Camera");
+  });
+
+  it("says why there is no picture: the switch off, access not allowed, a recording without the camera yet", () => {
+    expect(preview(idle, on({ enabled: false }))?.cameraPreview).toMatchObject({ mode: "off", status: "Turn on Camera to see it here." });
+    expect(preview(idle, on({ access: "denied" }))?.cameraPreview).toMatchObject({ mode: "off", status: "Allow camera access to see it here." });
+    expect(preview({ type: "starting" }, on())?.cameraPreview).toMatchObject({ mode: "off", status: "Shown here once the recording starts." });
+    expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });
+    expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(idle, { ...on(), language: "zh-TW" })).toMatchObject({ label: "預覽" });
+    // A Live preview's picture, with the camera off: the engine's, with no bubble to place (D20).
+    expect(preview(idle, on({ enabled: false }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview)
+      .toMatchObject({ mode: "recording", composed: false });
+    expect(preview(idle, on({ enabled: false }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(idle, on({ session: { hidden: false } }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview)
+      .toMatchObject({ mode: "recording", composed: true });
+  });
+
+  it("sends where the bubble was let go of on the display shown, also while recording, and nothing out of range", () => {
+    expect(settingsAction(idle, on(), "cameraPreview", "0.25,1")).toEqual({ setCameraPosition: { display: "1", x: 0.25, y: 1 } });
+    expect(settingsAction(recording, on({ session: { hidden: false } }), "cameraPreview", "0,0.5")).toEqual({ setCameraPosition: { display: "1", x: 0, y: 0.5 } });
+    for (const bad of ["1.5,0", "-0.1,0", "0.5", "0.5,0.5,0", "NaN,0", "0.1234567,0", "", "x,y"]) expect(settingsAction(idle, on(), "cameraPreview", bad), bad).toBeUndefined();
+    expect(settingsAction(idle, on({ enabled: false }), "cameraPreview", "0.5,0.5")).toBeUndefined();
+    expect(settingsAction(recording, on(), "cameraPreview", "0.5,0.5"), "a recording without the camera").toBeUndefined();
+  });
+});
+
 describe("microphone (plan 074)", () => {
   const devices = [
     { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },
@@ -229,7 +460,12 @@ describe("microphone (plan 074)", () => {
   it("shows a macOS denial with the pane that changes it, only while the switch is on", () => {
     const denied = group(idle, on({ access: "denied" }), "microphone")!;
     expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Microphone access is off" })]);
-    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open microphone settings…" })]);
+    // macOS shows access allowed meanwhile only after a relaunch (2026-10-18), so the card offers one.
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open microphone settings…" }),
+      expect.objectContaining({ id: "relaunch", label: "Already allowed? Relaunch RecordStuff" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "microphone", "relaunch")).toBe("relaunch");
+    expect(settingsAction(idle, on(), "microphone", "relaunch"), "offered only beside a denial").toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, on({ access: "denied" }), "microphone", "relaunch"), state.type).toBeUndefined();
     expect(settingsAction(idle, on({ access: "denied" }), "microphone", "openSettings")).toBe("openMicrophoneSettings");
     expect(group(idle, on({ access: "restricted" }), "microphone")?.diagnostics).toHaveLength(1);
     expect(group(idle, { ...context, microphone: { enabled: false, access: "denied" } }, "microphone")).not.toHaveProperty("diagnostics");
@@ -278,7 +514,9 @@ describe("recording locks every preference except the language", () => {
   it.each(busy)("$type", (state) => {
     const view = settingsView(state, context);
     expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about"].includes(entry.id) || entry.kind === "shortcutList");
+    // The Recording Studio's controls stop or cancel what runs (D19).
+    // The Recording Studio's controls stop or cancel what runs (D19); its faders change the sound from the next on (D21).
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about", "studioControls", "systemGain"].includes(entry.id) || entry.kind === "shortcutList");
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
@@ -586,7 +824,7 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
-    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"],
+    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["systemAudio", "meter", "studioAudio"], ["systemGain", "slider", "studioAudio"], ["studioControls", "menu", "studioControls"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
@@ -747,21 +985,21 @@ it("gives accurate persistence guidance, retries only what retrying can fix and 
 
 describe("Recording failures tab (plan 047)", () => {
   const base = { occurredAt: "2026-09-24T12:00:00Z", code: "disk_full" as const, detail: "ENOSPC", outcome: "empty" as const };
-  it("always offers Troubleshooting last, after Recordings, Recording and General, counting unread failures in its label and accessible name", () => {
+  it("always offers Troubleshooting last, after Recordings, the Recording Studio, Recording and General, counting unread failures in its label and accessible name", () => {
     expect(settingsView(idle, context).tabs).toEqual([
-      { id: "library", label: "Recordings" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
+      { id: "library", label: "Recordings" }, { id: "studio", label: "Recording Studio" }, { id: "recording", label: "Recording settings" }, { id: "general", label: "General" },
       { id: "shortcuts", label: "Keyboard Shortcuts" }, { id: "failures", label: "Troubleshooting" },
     ]);
     const results = [{ ...base, id: "a", acknowledged: false }, { ...base, id: "b", acknowledged: false }, { ...base, id: "c", acknowledged: true }];
-    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[4]).toEqual({
+    expect(settingsView(idle, { ...context, recordingResults: results }).tabs[5]).toEqual({
       id: "failures", label: "Troubleshooting (2)", accessibleLabel: "Troubleshooting, 2 unread recording failures",
     });
     expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs.map((tab) => tab.label))
-      .toEqual(["錄影檔", "錄影設定", "一般", "鍵盤快捷鍵", "疑難排解（2）"]);
-    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[4]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
-    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[4]).toEqual({ id: "failures", label: "Troubleshooting" });
+      .toEqual(["錄影檔", "錄影工作室", "錄影設定", "一般", "鍵盤快捷鍵", "疑難排解（2）"]);
+    expect(settingsView(idle, { ...context, language: "zh-TW", recordingResults: results }).tabs[5]!.accessibleLabel).toBe("疑難排解，2 筆未確認失敗紀錄");
+    expect(settingsView(idle, { ...context, recordingResults: [results[2]!] }).tabs[5]).toEqual({ id: "failures", label: "Troubleshooting" });
     // One unread failure is said in the singular.
-    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[4]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
+    expect(settingsView(idle, { ...context, recordingResults: [results[0]!] }).tabs[5]!.accessibleLabel).toBe("Troubleshooting, 1 unread recording failure");
   });
 
   it("names the day a row is grouped under: Today, Yesterday, then the date with the year only for an earlier year", () => {
@@ -842,13 +1080,13 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
-      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["videoQuality", "Video"],
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["systemAudio", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "影像", "操作與通知", "語言與外觀", "更新",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });

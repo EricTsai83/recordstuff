@@ -133,6 +133,13 @@ it("explains an unavailable microphone on each platform, with turning it off as 
   expect(failureGuidance("microphone_unavailable", "zh-TW", "darwin")).toContain("關閉「麥克風」");
   // Not a screen-permission failure: its Open System Settings would open the wrong pane.
   expect(isPermissionFailure("microphone_unavailable")).toBe(false);
+  expect(failureReason("camera_unavailable", "en")).toBe("The camera was unavailable, so recording did not start.");
+  expect(failureReason("camera_unavailable", "zh-TW")).toBe("相機無法使用，因此沒有開始錄影");
+  expect(failureGuidance("camera_unavailable", "en", "darwin")).toContain("System Settings → Privacy & Security → Camera");
+  expect(failureGuidance("camera_unavailable", "en", "win32")).toContain("Settings → Privacy & security → Camera");
+  for (const platform of ["darwin", "win32"] as const) expect(failureGuidance("camera_unavailable", "en", platform)).toContain("turn Camera off");
+  expect(failureGuidance("camera_unavailable", "zh-TW", "darwin")).toContain("關閉「相機」");
+  expect(isPermissionFailure("camera_unavailable")).toBe(false);
 });
 
 it("does not relaunch again for a restored permission error unless current permission needs it", async () => {

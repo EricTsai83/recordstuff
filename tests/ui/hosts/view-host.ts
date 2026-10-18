@@ -23,6 +23,7 @@ import type { RecordingState } from "../../../src/shared/state";
 import { DEFAULT_QUALITY } from "../../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../../src/shared/hotkey";
 import type { AppContext } from "../../../src/main/app/ui-model";
+import { applyRatio, DEFAULT_CAMERA_LAYOUT, withPosition } from "../../../src/shared/camera-layout";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../../src/main/library/recordings-library";
 import { videoThumbnail } from "../../../src/main/library/video-thumbnail";
 import { settingsWindowOptions } from "../../../src/main/settings/settings-window";
@@ -196,6 +197,9 @@ const state = {
   soundContext: undefined as AppContext | undefined,
   /** The Microphone rows' context (plan 074); a choice commits as main would and pushes the view. */
   microphoneContext: undefined as AppContext | undefined,
+  /** The Camera row's context (plan 075), as the microphone's. */
+  cameraContext: undefined as AppContext | undefined,
+  cameraState: undefined as RecordingState | undefined,
   updateContext: undefined as AppContext | undefined,
   resultSaveFails: false,
   /** Every durable result save waits, so replies arrive after Chromium's focus fixup (plan 036). */
@@ -207,6 +211,12 @@ const state = {
 const retryDelays = [3_600_000];
 const heldSaves: Array<() => void> = [];
 const chooseCalls: Array<[string, unknown]> = [];
+/** What the page said about the camera preview being in sight (plan 075 step 7), in order. */
+const previewWatches: boolean[] = [];
+/** What the page said about the Recording Studio's meters being in sight (plan 075, D19), in order. */
+const levelWatches: boolean[] = [];
+/** What the page said about the Recording Studio being open in sight (plan 075, D20), in order. */
+const studioWatches: boolean[] = [];
 let panel: ElectronModule.BrowserWindow | undefined;
 let library: RecordingsLibrary | undefined;
 
@@ -230,6 +240,9 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:read", () => fixtureView(state.language, state.notifications));
   ipcMain.handle("settings:ready", () => {});
   ipcMain.handle("settings:zoom", () => {});
+  ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
+  ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); });
+  ipcMain.handle("settings:watch-studio", (_event, open: boolean) => { studioWatches.push(open); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
     if (!state.captureView) return fixtureView(state.language, state.notifications);
     state.captureView = structuredClone(state.captureView);
@@ -262,6 +275,58 @@ function installPanelHandlers(): void {
         state.microphoneContext = { ...context, microphone: action.setMicrophoneDevice ? { ...rest, device: action.setMicrophoneDevice } : rest };
       }
       return { view: settingsView({ type: "idle" }, state.microphoneContext), applied: action !== undefined };
+    }
+    // The Recording Studio's Start, Cancel and Stop (plan 075, D19): main's to act on; the view follows the state pushed.
+    if (group === "studioControls" && state.cameraContext) {
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
+    }
+    // The faders (D21): main saves the volume, and the view shows it.
+    if ((group === "systemGain" || group === "microphoneGain") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      if (typeof action === "object" && "setAudioGain" in action) {
+        const { source, db } = action.setAudioGain;
+        state.cameraContext = { ...context, audioGain: { ...(context.audioGain ?? { system: 0, microphone: 0 }), [source]: db } };
+      }
+      return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+    }
+    if ((group === "systemAudio" || group === "microphoneAudio") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      if (typeof action === "object" && "setAudioMuted" in action && context.audioSession) {
+        const { source, muted } = action.setAudioMuted;
+        const audio = context.audioSession;
+        state.cameraContext = { ...context, audioSession: source === "system" ? { ...audio, systemMuted: muted } : { ...audio, microphone: { muted } } };
+      }
+      return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+    }
+    if ((group.startsWith("camera") || group === "studioCamera") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      const camera = context.camera ?? { enabled: false, available: true };
+      const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
+      let next = camera;
+      if (typeof action === "object" && "setCamera" in action) next = { ...camera, enabled: action.setCamera };
+      if (typeof action === "object" && "setCameraShape" in action) next = { ...camera, layout: { ...layout, ...action.setCameraShape } };
+      if (typeof action === "object" && "setCameraRatio" in action) next = { ...camera, layout: applyRatio(layout, action.setCameraRatio) };
+      if (typeof action === "object" && "setCameraPosition" in action) {
+        const { display, x, y } = action.setCameraPosition;
+        next = { ...camera, layout: withPosition(layout, display, { x, y }) };
+      }
+      if (typeof action === "object" && "setCameraDevice" in action) {
+        const { device: _device, ...rest } = camera;
+        next = action.setCameraDevice ? { ...rest, device: action.setCameraDevice } : rest;
+      }
+      const commit = () => {
+        state.cameraContext = { ...context, camera: next };
+        return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+      };
+      if (state.holdSaves) return new Promise(resolve => heldSaves.push(() => resolve(commit())));
+      return commit();
     }
     if (group === "updates" && state.updateContext) {
       const action = settingsAction({ type: "idle" }, state.updateContext, group, choice);
@@ -362,6 +427,11 @@ const hostControls: Record<string, unknown> = {
   state,
   retryDelays,
   chooseCalls,
+  previewWatches,
+  levelWatches,
+  studioWatches,
+  /** Levels as main passes them to a watching page. */
+  pushLevels: (levels: { system: number; microphone?: number }): void => { panel!.webContents.send("settings:levels", levels); },
   results: recordingResults,
   translate,
   settingsView,

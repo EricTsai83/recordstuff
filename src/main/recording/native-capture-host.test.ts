@@ -6,7 +6,7 @@ import type { HostMessage, MainMessage } from "../../shared/protocol";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("tests pass their own fork"); } } }));
 
-const { NativeCaptureHost } = await import("./native-capture-host");
+const { NativeCaptureHost, cameraChoice } = await import("./native-capture-host");
 
 class Child extends EventEmitter {
   sent: MainMessage[] = [];
@@ -14,7 +14,8 @@ class Child extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
   args: string[] = [];
-  postMessage(message: MainMessage): void { this.sent.push(message); }
+  transferred: unknown[][] = [];
+  postMessage(message: MainMessage, ports?: unknown[]): void { this.sent.push(message); if (ports) this.transferred.push(ports); }
   kill(): boolean { this.killed = true; return true; }
   /** Deliver a message as if the utility process had sent it. */
   deliver(message: unknown): void { this.emit("message", message); }
@@ -57,7 +58,83 @@ async function started(ctx: ReturnType<typeof setup>): Promise<Child> {
   return child;
 }
 
+describe("cameraChoice (plan 075)", () => {
+  const layout = { width: 0.3, height: 0.2, rounding: 0.5, mirror: true,
+    positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "69733632", x: 0.9, y: 0.8 }] };
+
+  it("takes the bubble's position on the recorded display, else the primary display's, else the default", () => {
+    expect(cameraChoice({ deviceId: "cam", layout }, "69733632")).toEqual({ deviceId: "cam", width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: true });
+    expect(cameraChoice({ layout }, "1")).toEqual({ width: 0.3, height: 0.2, rounding: 0.5, x: 0.1, y: 0.2, mirror: true });
+    expect(cameraChoice({ layout: { ...layout, positions: [] } }, "1")).toMatchObject({ x: 0.97, y: 0.95 });
+  });
+
+  it("posts start with the camera for the display granted", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await start;
+    expect(ctx.children.at(-1)!.sent.at(-1)).toMatchObject({ type: "start", native: { displayId: 69733632, camera: { x: 0.9, y: 0.8, mirror: true } } });
+  });
+
+  it("sends the session's camera changes with the position on its display, and none for another session", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    ctx.host.setCamera("s1", { layout: { ...layout, mirror: false } }, true);
+    ctx.host.setCamera("other", { layout }, false);
+    expect(child.sent.filter((m) => m.type === "cameraLayout")).toEqual([{ type: "cameraLayout", sessionId: "s1",
+      camera: { width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: false }, hidden: true }]);
+  });
+
+  it("sends the session's level watching and mutes, and none for another session (D19)", async () => {
+    const ctx = setup();
+    expect(ctx.host.watchLevels("s1", true), "no process yet").toBe(false);
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    expect(ctx.host.watchLevels("other", true)).toBe(false);
+    expect(ctx.host.watchLevels("s1", true)).toBe(true);
+    ctx.host.setMuted("s1", true, false);
+    ctx.host.setMuted("other", true, true);
+    ctx.host.setGains("s1", { system: -6, microphone: 0 });
+    ctx.host.setGains("other", { system: 0, microphone: 0 });
+    expect(child.sent.filter((m) => m.type === "levels" || m.type === "mute" || m.type === "gain")).toEqual([
+      { type: "levels", sessionId: "s1", watching: true }, { type: "mute", sessionId: "s1", system: true, microphone: false },
+      { type: "gain", sessionId: "s1", system: -6, microphone: 0 }]);
+  });
+
+  it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {
+    const ctx = setup();
+    const port = { close: () => undefined } as unknown as Electron.MessagePortMain;
+    expect(ctx.host.watchPreview("s1", true, port), "no process yet").toBe(false);
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    expect(ctx.host.watchPreview("other", true, port)).toBe(false);
+    expect(ctx.host.watchPreview("s1", true, port)).toBe(true);
+    expect(ctx.host.watchPreview("s1", false)).toBe(true);
+    expect(child.transferred).toEqual([[port]]);
+    expect(child.sent.filter((m) => m.type === "cameraPreview" || (m as { type: string }).type === "cameraPreviewPort")).toEqual([
+      { type: "cameraPreviewPort" }, { type: "cameraPreview", sessionId: "s1", watching: true }, { type: "cameraPreview", sessionId: "s1", watching: false }]);
+  });
+});
+
 describe("NativeCaptureHost", () => {
+  it("hands each recording attempt's process to onLaunch, and never the microphone list's (plan 075's prototype)", async () => {
+    const launched: unknown[] = [];
+    const ctx = setup(undefined, { onLaunch: (child) => launched.push(child) });
+    const child = await started(ctx);
+    expect(launched).toEqual([child]);
+  });
+
   it("forks a host with the engine's path and posts start with the display, the file and what to leave out", async () => {
     const ctx = setup();
     const child = await started(ctx);
@@ -119,6 +196,24 @@ describe("NativeCaptureHost", () => {
     const crashed = ctx.host.listMicrophones();
     ctx.children.at(-1)!.emit("exit", 3);
     await expect(crashed).rejects.toThrow("exited with 3");
+  });
+
+  it("lists the cameras the same way, one listing at a time (plan 075)", async () => {
+    const ctx = setup();
+    const listed = ctx.host.listCameras();
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    expect(child.sent).toEqual([{ type: "listCameras" }]);
+    // A microphones answer is not the cameras'.
+    child.deliver({ type: "microphones", devices: [{ id: "mic", name: "Mic", default: true }] });
+    child.deliver({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] });
+    await expect(listed).resolves.toEqual([{ id: "iphone", name: "iPhone Camera", default: false }]);
+    expect(child.killed).toBe(true);
+
+    const refused = ctx.host.listCameras();
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    ctx.children.at(-1)!.deliver({ type: "cameras", error: "no video media type" });
+    await expect(refused).rejects.toThrow("no video media type");
   });
 
   it("never lists while a session runs: a start or cancelListing ends the listing, and a ready process asks again first (plan 074)", async () => {

@@ -456,9 +456,11 @@ mod tests {
         unsafe extern "C" {
             fn mach_absolute_time() -> u64;
         }
+        // Read between two of CoreMedia's, so a thread preempted between the reads (a busy CI runner) cannot fail it.
+        let before = super::super::now_ns();
         let host = host_time_ns(unsafe { mach_absolute_time() });
-        let core_media = super::super::now_ns();
-        assert!(core_media.abs_diff(host) < 5_000_000, "{host} vs {core_media}");
+        let after = super::super::now_ns();
+        assert!(host + 1_000_000 >= before && host <= after + 1_000_000, "{host} not within {before}..{after}");
     }
 
     #[test]

@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>在螢幕錄影裡放進攝影機：合成在哪裡、預覽怎麼送、形狀與鏡像的取捨</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+pre.language-shell { background: #11110f; }
+pre code .sh-command { color: #ff946e; font-weight: 400; }
+pre code .sh-flag { color: #cfc6a2; font-weight: 400; }
+pre code .sh-string { color: #8fb86a; }
+pre code .sh-var { color: #cfc6a2; }
+pre code .sh-comment { color: #858177; font-style: italic; }
+pre code .sh-prompt { color: #ff946e; font-weight: 400; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+.flow-figure .flow-mobile { display: none; }
+.fig-node rect { fill: var(--white); stroke: var(--oat); stroke-width: 1.5; }
+.fig-label { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 15px; font-weight: 650; }
+.fig-note { fill: var(--gray-700); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 13px; font-weight: 500; }
+.fig-arrow { stroke: var(--clay); stroke-width: 2; fill: none; }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 600px; }
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+.geo-frame { fill: var(--white); stroke: var(--gray-500); stroke-width: 1.5; }
+.geo-bubble { fill: #F5DDD2; stroke: var(--clay); stroke-width: 1.8; }
+.geo-dim { stroke: var(--gray-700); stroke-width: 1.2; fill: none; }
+.geo-dash { stroke-dasharray: 5 4; }
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>在螢幕錄影裡放進攝影機：合成在哪裡、預覽怎麼送、形狀與鏡像的取捨</h1>
+
+<p class="deck">教學影片、產品示範、程式碼導覽，常在畫面一角放一個講者的小圓框。看起來只是「把攝影機疊在螢幕上」，但疊在哪一層，決定了觀眾看到的和使用者看到的是不是同一件事、圓框會不會擋住正在操作的 App、錄完還能不能調整，以及每秒要多編碼多少張畫面。本文先比較三種架構：讓攝影機成為螢幕上的一個視窗被錄下（Loom 的泡泡）、在錄影器裡先合成再編碼（OBS 的場景）、分軌錄製再在編輯器組合（Cap Studio、Screen Studio）。接著深入第二種：在 GPU 上、編碼器之前合成時的著色器、YUV 平面與色彩矩陣、時間與攝影機遺失；再談怎麼把即時預覽從另一個行程送進網頁，以及形狀、尺寸與鏡像的慣例。貫穿範例是 RecordStuff 的計畫 075。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#problem">問題：講者的臉要放進錄影，放在哪一層？</a></li>
+    <li><a href="#model">心智模型：合成、畫布、YUV 與兩個觀眾</a></li>
+    <li><a href="#architectures">三種架構與它們的後果</a></li>
+    <li><a href="#gpu">在 GPU 上、編碼器之前合成</a></li>
+    <li><a href="#timing">時間：攝影機和螢幕是兩個來源</a></li>
+    <li><a href="#loss">攝影機遺失與回來</a></li>
+    <li><a href="#preview">從另一個行程顯示即時預覽，以及網頁的代價</a></li>
+    <li><a href="#shape">自由的形狀與尺寸</a></li>
+    <li><a href="#mirror">鏡像：通話和錄影的慣例不同</a></li>
+    <li><a href="#example">實例：RecordStuff 的攝影機與它量到的數字</a></li>
+    <li><a href="#table">決策總表</a></li>
+    <li><a href="#boundaries">不要這樣做的情況</a></li>
+    <li><a href="#criteria">可以帶走的判斷準則</a></li>
+  </ol>
+</nav>
+
+<h2 id="problem">問題：講者的臉要放進錄影，放在哪一層？</h2>
+
+<p>想像一個螢幕錄影工具要加上攝影機。使用者的期待很具體：</p>
+
+<ul>
+  <li>錄出來的影片右下角有他的臉，位置、大小、圓角都是他選的。</li>
+  <li>錄影時他照常操作螢幕上的 App，攝影機框不擋住他要點的按鈕。</li>
+  <li>錄到一半發現框擋住了程式碼，可以把它拖開，或暫時藏起來。</li>
+  <li>開始錄之前，他能確認自己入鏡、光線可以、框沒有蓋到重點。</li>
+  <li>不開攝影機時，錄影和以前完全一樣：不多吃 CPU，畫面也不變。</li>
+  <li>攝影機中途斷線（無線的 iPhone 相機、USB 線鬆了），錄影不會毀掉。</li>
+</ul>
+
+<p>最直覺的做法，是開一個無邊框、永遠在最上層的小視窗，裡面播放攝影機畫面，再照常錄整個螢幕。框就在螢幕上，錄影自然就有它。這個做法很快就能做出來，也確實是 Loom 這類產品的核心體驗，但它把幾件事綁在一起：</p>
+
+<ul>
+  <li><strong>使用者看到的就是觀眾看到的。</strong>框在螢幕上擋住什麼，錄影裡就擋住什麼；框上的任何控制項（調整大小的把手、關閉按鈕、滑鼠游標停在上面時的提示）也都會被錄進去，除非刻意藏起來。</li>
+  <li><strong>框會攔截點擊。</strong>一個可以拖曳的視窗必須接收滑鼠事件，於是它底下那塊 App 就點不到。要讓點擊穿透，就不能拖曳；要能拖曳，就擋住點擊。</li>
+  <li><strong>錄影工具自己的視窗通常要排除在錄影之外</strong>，但這個框又必須被錄到，所以排除規則要開一個例外。</li>
+  <li><strong>錄完就固定了。</strong>攝影機已經被燒進螢幕的像素裡，事後無法移動或拿掉。</li>
+</ul>
+
+<p>這些問題背後有幾股互相拉扯的力量：</p>
+
+<ul>
+  <li><strong>所見即所錄：</strong>使用者要能確認錄影裡會是什麼樣子。</li>
+  <li><strong>不干擾：</strong>錄影工具不應該擋住、改變或攔截使用者正在操作的東西。</li>
+  <li><strong>可修改：</strong>錄影中或錄影後還能調整框的位置與形狀。</li>
+  <li><strong>成品即可分享：</strong>停止錄影時，檔案就是最終成品，不需要再匯出。</li>
+  <li><strong>成本：</strong>CPU、GPU、記憶體，以及每秒要編碼的畫面數。</li>
+  <li><strong>可攜：</strong>同一套規則要在 macOS 和 Windows 上畫出同樣的框。</li>
+</ul>
+
+<p>所以本文要回答的是：<strong>攝影機畫面該在管線的哪一層和螢幕畫面相遇？選定之後，合成、時間、遺失、預覽、形狀與鏡像各要怎麼處理，才能讓使用者確認的和觀眾看到的一致，又不付出不必要的代價？</strong></p>
+
+<h2 id="model">心智模型：合成、畫布、YUV 與兩個觀眾</h2>
+
+<p>先把幾個詞講清楚。</p>
+
+<p><strong>合成（compositing）</strong>是把多張圖依序疊成一張的動作。螢幕上本來就時時刻刻在合成：作業系統的視窗伺服器（macOS 的 WindowServer、Windows 的 DWM）把每個視窗的內容疊成你看到的畫面。螢幕擷取 API 拿到的，就是這個合成之後的結果，或是依過濾條件重新合成、排除了某些視窗的結果。所以「把攝影機放進錄影」的問題，其實是：<strong>由誰來做這次合成？</strong>可以是作業系統（攝影機是一個視窗）、錄影器（攝影機是一個來源），或是事後的編輯器（攝影機是一條軌）。</p>
+
+<p><strong>畫布（canvas）</strong>是錄影器自己的合成目標。OBS 的術語是場景（scene）與來源（source）：螢幕擷取是一個來源，攝影機是另一個來源，每個來源在畫布上有位置、大小、裁切、翻轉等變形，OBS 每一格都在 GPU 上把它們畫到畫布上，畫布再交給編碼器。</p>
+
+<p><strong>YUV 與 NV12。</strong>螢幕和攝影機的畫面，送進硬體編碼器之前通常不是 RGB，而是亮度（Y）與兩個色差（Cb、Cr）分開存放的 YUV。4:2:0 取樣讓每 2×2 個像素共用一組色差，資料量是 RGB 的一半；NV12 是它最常見的排列：一個全尺寸的 Y 平面，加上一個半寬半高、Cb 與 Cr 交錯的 UV 平面。在 YUV 上直接合成，就是兩個平面各畫一次，而且色差平面的一個樣本，對應亮度平面的四個像素。</p>
+
+<p><strong>色彩矩陣。</strong>從 RGB 換到 YUV 的係數有不只一套。標準畫質的 BT.601 以 Y = 0.299R + 0.587G + 0.114B 計算亮度，高畫質的 BT.709 用 0.2126、0.7152、0.0722。兩者的 Y 和色差意義不同；把 BT.601 的攝影機畫面當成 BT.709 直接貼進錄影，膚色會微微偏綠或偏紅。另外，影像用的「video range」只用 16–235（亮度）與 16–240（色差），不是 0–255。</p>
+
+<p><strong>兩個觀眾。</strong>這是整篇文章最重要的區分。錄影時有兩個人在看：<em>使用者</em>，他看著自己的螢幕和預覽；<em>觀眾</em>，他之後看錄好的檔案。三種架構的差別，說到底就是這兩個人看到的東西何時相同、何時不同，以及使用者靠什麼確認觀眾會看到什麼。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>名詞</th><th>白話解釋</th></tr></thead>
+  <tbody>
+    <tr><td>泡泡（bubble）</td><td>錄影裡攝影機畫面所在的框，常是圓形或圓角矩形。</td></tr>
+    <tr><td>來源（source）</td><td>錄影器裡的一個輸入：螢幕、視窗、攝影機、圖片。</td></tr>
+    <tr><td>軌（track）</td><td>容器檔案裡一條獨立的影像或聲音串流。分軌錄製時，螢幕與攝影機各是一條軌，甚至各是一個檔案。</td></tr>
+    <tr><td>pacer</td><td>決定每一格何時送進編碼器的元件。螢幕沒有變化時，錄影器常降低送出頻率以省資源。</td></tr>
+    <tr><td>主機時脈</td><td>作業系統的單調時鐘（macOS 的 mach absolute time、Windows 的 QueryPerformanceCounter），用來把不同來源的畫面放到同一條時間軸上。</td></tr>
+    <tr><td>IOSurface</td><td>macOS 上可以跨行程共用的 GPU 影像記憶體。攝影機、螢幕擷取與硬體編碼器都能直接讀寫，不必複製到 CPU。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="architectures">三種架構與它們的後果</h2>
+
+<p>攝影機和螢幕相遇的位置有三種典型選擇：</p>
+
+<figure class="flow-figure">
+<svg style="max-width: 680px; margin: 0 auto" id="mermaid-mvdgrtzq-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart flow-desktop" viewBox="4 4 920 685" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mvdgrtzq-title mermaid-mvdgrtzq-desc"><title id="mermaid-mvdgrtzq-title">攝影機進入錄影的三種架構</title><desc id="mermaid-mvdgrtzq-desc">A 讓攝影機成為螢幕上的一個視窗，由螢幕擷取一起錄下；B 在錄影器裡把攝影機畫面合成到螢幕畫面上再編碼；C 把螢幕與攝影機錄成兩條軌，事後在編輯器裡組合並匯出。</desc><style>#mermaid-mvdgrtzq-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvdgrtzq-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvdgrtzq-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvdgrtzq-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvdgrtzq-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvdgrtzq-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvdgrtzq-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvdgrtzq-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvdgrtzq-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvdgrtzq-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvdgrtzq-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvdgrtzq-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvdgrtzq-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvdgrtzq-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvdgrtzq-my-svg p{margin:0;}#mermaid-mvdgrtzq-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mvdgrtzq-my-svg .cluster-label text{fill:#05060a;}#mermaid-mvdgrtzq-my-svg .cluster-label span{color:#05060a;}#mermaid-mvdgrtzq-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mvdgrtzq-my-svg .label text,#mermaid-mvdgrtzq-my-svg span{fill:#141413;color:#141413;}#mermaid-mvdgrtzq-my-svg .node rect,#mermaid-mvdgrtzq-my-svg .node circle,#mermaid-mvdgrtzq-my-svg .node ellipse,#mermaid-mvdgrtzq-my-svg .node polygon,#mermaid-mvdgrtzq-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvdgrtzq-my-svg .rough-node .label text,#mermaid-mvdgrtzq-my-svg .node .label text,#mermaid-mvdgrtzq-my-svg .image-shape .label,#mermaid-mvdgrtzq-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mvdgrtzq-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mvdgrtzq-my-svg .rough-node .label,#mermaid-mvdgrtzq-my-svg .node .label,#mermaid-mvdgrtzq-my-svg .image-shape .label,#mermaid-mvdgrtzq-my-svg .icon-shape .label{text-align:center;}#mermaid-mvdgrtzq-my-svg .node.clickable{cursor:pointer;}#mermaid-mvdgrtzq-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mvdgrtzq-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mvdgrtzq-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mvdgrtzq-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mvdgrtzq-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgrtzq-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvdgrtzq-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgrtzq-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mvdgrtzq-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.05%);stroke-width:1px;}#mermaid-mvdgrtzq-my-svg .cluster text{fill:#05060a;}#mermaid-mvdgrtzq-my-svg .cluster span{color:#05060a;}#mermaid-mvdgrtzq-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.05%);stroke:none;opacity:0.6;}#mermaid-mvdgrtzq-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.05%);stroke-width:0.75px;}#mermaid-mvdgrtzq-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.05%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mvdgrtzq-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvdgrtzq-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mvdgrtzq-my-svg .icon-shape,#mermaid-mvdgrtzq-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgrtzq-my-svg .icon-shape p,#mermaid-mvdgrtzq-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mvdgrtzq-my-svg .icon-shape .label rect,#mermaid-mvdgrtzq-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgrtzq-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.12em;}#mermaid-mvdgrtzq-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mvdgrtzq-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node rect,#mermaid-mvdgrtzq-my-svg [data-look="neo"].cluster rect,#mermaid-mvdgrtzq-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvdgrtzq-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgrtzq-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvdgrtzq-my-svg-gradient);stroke-width:1px;}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvdgrtzq-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgrtzq-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvdgrtzq-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvdgrtzq-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgrtzq-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvdgrtzq-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgrtzq-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"><g class="cluster" id="mermaid-mvdgrtzq-my-svg-C" data-look="neo"><rect x="170" y="460" width="588" height="221"/><g class="cluster-label" transform="translate(254.36, 460)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">C</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 分軌，事後在編輯器組合（Cap</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Studio、Screen</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Studio）</tspan></tspan></text></g></g></g><g class="cluster" id="mermaid-mvdgrtzq-my-svg-B" data-look="neo"><rect x="82" y="199" width="764" height="221"/><g class="cluster-label" transform="translate(369.30, 199)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">B</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 在錄影器裡合成（OBS）</tspan></tspan></text></g></g></g><g class="cluster" id="mermaid-mvdgrtzq-my-svg-A" data-look="neo"><rect x="12" y="12" width="904" height="147"/><g class="cluster-label" transform="translate(323.67, 12)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 錄下一個視窗（Loom、Cap</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Instant）</tspan></tspan></text></g></g></g></g><g class="edges edgePaths"><path d="M188,99L208,99" id="mermaid-mvdgrtzq-my-svg-L_A1_A2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M364,99L384,99" id="mermaid-mvdgrtzq-my-svg-L_A2_A3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M540,99L560,99" id="mermaid-mvdgrtzq-my-svg-L_A3_A4_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M716,99L736,99" id="mermaid-mvdgrtzq-my-svg-L_A4_A5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M258,372L280.92,372Q288,372 288,364.92L288,334.47Q288,327.4 295.07,327.4L314,327.4" id="mermaid-mvdgrtzq-my-svg-L_B1_B3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 91.27 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M258,274L280.92,274Q288,274 288,281.07L288,311.52Q288,318.6 295.07,318.6L314,318.6" id="mermaid-mvdgrtzq-my-svg-L_B2_B3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 91.27 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M470,323L490,323" id="mermaid-mvdgrtzq-my-svg-L_B3_B4_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M646,323L666,323" id="mermaid-mvdgrtzq-my-svg-L_B4_B5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M346,633L366,633" id="mermaid-mvdgrtzq-my-svg-L_C1_C3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M346,535L366,535" id="mermaid-mvdgrtzq-my-svg-L_C2_C4_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M522,633L544.92,633Q552,633 552,625.92L552,599.47Q552,592.4 559.07,592.4L578,592.4" id="mermaid-mvdgrtzq-my-svg-L_C3_C5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 87.27 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M522,535L544.92,535Q552,535 552,542.07L552,568.52Q552,575.6 559.07,575.6L578,575.6" id="mermaid-mvdgrtzq-my-svg-L_C4_C5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 87.27 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgrtzq-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M464,159L464,199" id="mermaid-mvdgrtzq-my-svg-L_A_B_0" class="edge-thickness-invisible edge-pattern-solid" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;;" data-look="neo"/><path d="M464,420L464,460" id="mermaid-mvdgrtzq-my-svg-L_B_C_0" class="edge-thickness-invisible edge-pattern-solid" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;;" data-look="neo"/></g><g class="edgeLabels"/><g class="nodes"><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-A1-0" data-look="neo" transform="translate(112, 99)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>攝影機</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-A2-1" data-look="neo" transform="translate(288, 99)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕上的<br />浮動視窗</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-A3-2" data-look="neo" transform="translate(464, 99)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕擷取</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-A4-3" data-look="neo" transform="translate(640, 99)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>編碼器</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-A5-4" data-look="neo" transform="translate(816, 99)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>一個檔案</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-B1-5" data-look="neo" transform="translate(182, 372)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>攝影機</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-B3-6" data-look="neo" transform="translate(394, 323)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>GPU 合成</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-B2-7" data-look="neo" transform="translate(182, 274)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕擷取</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-B4-9" data-look="neo" transform="translate(570, 323)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>編碼器</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-B5-10" data-look="neo" transform="translate(746, 323)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>一個檔案</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-C1-11" data-look="neo" transform="translate(270, 633)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>攝影機</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-C3-12" data-look="neo" transform="translate(446, 633)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>攝影機軌</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-C2-13" data-look="neo" transform="translate(270, 535)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕擷取</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-C4-14" data-look="neo" transform="translate(446, 535)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕軌</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgrtzq-my-svg-flowchart-C5-16" data-look="neo" transform="translate(658, 584)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>編輯器<br />匯出時合成</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvdgrtzq-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvdgrtzq-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvdgrtzq-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.15%)" stop-opacity="1"/></linearGradient></svg>
+<svg style="max-width: 400px; margin: 0 auto" id="mermaid-mvdgsk9a-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart flow-mobile" viewBox="4 4 568 465" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mvdgsk9a-title mermaid-mvdgsk9a-desc"><title id="mermaid-mvdgsk9a-title">攝影機進入錄影的三種架構</title><desc id="mermaid-mvdgsk9a-desc">A 錄下螢幕上的攝影機視窗；B 在錄影器裡合成再編碼；C 分軌錄製、在編輯器裡匯出時合成。</desc><style>#mermaid-mvdgsk9a-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvdgsk9a-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvdgsk9a-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvdgsk9a-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvdgsk9a-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvdgsk9a-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvdgsk9a-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvdgsk9a-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvdgsk9a-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvdgsk9a-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvdgsk9a-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvdgsk9a-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvdgsk9a-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvdgsk9a-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvdgsk9a-my-svg p{margin:0;}#mermaid-mvdgsk9a-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mvdgsk9a-my-svg .cluster-label text{fill:#05060a;}#mermaid-mvdgsk9a-my-svg .cluster-label span{color:#05060a;}#mermaid-mvdgsk9a-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mvdgsk9a-my-svg .label text,#mermaid-mvdgsk9a-my-svg span{fill:#141413;color:#141413;}#mermaid-mvdgsk9a-my-svg .node rect,#mermaid-mvdgsk9a-my-svg .node circle,#mermaid-mvdgsk9a-my-svg .node ellipse,#mermaid-mvdgsk9a-my-svg .node polygon,#mermaid-mvdgsk9a-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvdgsk9a-my-svg .rough-node .label text,#mermaid-mvdgsk9a-my-svg .node .label text,#mermaid-mvdgsk9a-my-svg .image-shape .label,#mermaid-mvdgsk9a-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mvdgsk9a-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mvdgsk9a-my-svg .rough-node .label,#mermaid-mvdgsk9a-my-svg .node .label,#mermaid-mvdgsk9a-my-svg .image-shape .label,#mermaid-mvdgsk9a-my-svg .icon-shape .label{text-align:center;}#mermaid-mvdgsk9a-my-svg .node.clickable{cursor:pointer;}#mermaid-mvdgsk9a-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mvdgsk9a-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mvdgsk9a-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mvdgsk9a-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mvdgsk9a-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgsk9a-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvdgsk9a-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgsk9a-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mvdgsk9a-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.05%);stroke-width:1px;}#mermaid-mvdgsk9a-my-svg .cluster text{fill:#05060a;}#mermaid-mvdgsk9a-my-svg .cluster span{color:#05060a;}#mermaid-mvdgsk9a-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.05%);stroke:none;opacity:0.6;}#mermaid-mvdgsk9a-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.05%);stroke-width:0.75px;}#mermaid-mvdgsk9a-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.05%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mvdgsk9a-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvdgsk9a-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mvdgsk9a-my-svg .icon-shape,#mermaid-mvdgsk9a-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgsk9a-my-svg .icon-shape p,#mermaid-mvdgsk9a-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mvdgsk9a-my-svg .icon-shape .label rect,#mermaid-mvdgsk9a-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgsk9a-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.12em;}#mermaid-mvdgsk9a-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mvdgsk9a-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node rect,#mermaid-mvdgsk9a-my-svg [data-look="neo"].cluster rect,#mermaid-mvdgsk9a-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvdgsk9a-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgsk9a-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvdgsk9a-my-svg-gradient);stroke-width:1px;}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvdgsk9a-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgsk9a-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvdgsk9a-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvdgsk9a-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgsk9a-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvdgsk9a-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgsk9a-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"><g class="cluster" id="mermaid-mvdgsk9a-my-svg-C" data-look="neo"><rect x="12" y="338" width="552" height="123"/><g class="cluster-label" transform="translate(248.57, 338)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">C</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 分軌編輯</tspan></tspan></text></g></g></g><g class="cluster" id="mermaid-mvdgsk9a-my-svg-B" data-look="neo"><rect x="12" y="175" width="552" height="123"/><g class="cluster-label" transform="translate(241.10, 175)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">B</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 錄影器合成</tspan></tspan></text></g></g></g><g class="cluster" id="mermaid-mvdgsk9a-my-svg-A" data-look="neo"><rect x="12" y="12" width="552" height="123"/><g class="cluster-label" transform="translate(248.91, 12)"><g><rect class="background" style="stroke: none"/><text y="-10.1"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 錄下視窗</tspan></tspan></text></g></g></g></g><g class="edges edgePaths"><path d="M188,87L208,87" id="mermaid-mvdgsk9a-my-svg-L_A2_A3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M364,87L384,87" id="mermaid-mvdgsk9a-my-svg-L_A3_A5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M188,250L208,250" id="mermaid-mvdgsk9a-my-svg-L_B2_B3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M364,250L384,250" id="mermaid-mvdgsk9a-my-svg-L_B3_B5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M188,413L208,413" id="mermaid-mvdgsk9a-my-svg-L_C2_C3_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M364,413L384,413" id="mermaid-mvdgsk9a-my-svg-L_C3_C5_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 16 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgsk9a-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M288,135L288,175" id="mermaid-mvdgsk9a-my-svg-L_A_B_0" class="edge-thickness-invisible edge-pattern-solid" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;;" data-look="neo"/><path d="M288,298L288,338" id="mermaid-mvdgsk9a-my-svg-L_B_C_0" class="edge-thickness-invisible edge-pattern-solid" style="stroke-dasharray: 0 0 40 0; stroke-dashoffset: 0;;" data-look="neo"/></g><g class="edgeLabels"/><g class="nodes"><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-A2-0" data-look="neo" transform="translate(112, 87)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>攝影機視窗</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-A3-1" data-look="neo" transform="translate(288, 87)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕擷取</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-A5-2" data-look="neo" transform="translate(464, 87)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>檔案</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-B2-3" data-look="neo" transform="translate(112, 250)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>螢幕＋攝影機</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-B3-4" data-look="neo" transform="translate(288, 250)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>GPU 合成</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-B5-5" data-look="neo" transform="translate(464, 250)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>檔案</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-C2-6" data-look="neo" transform="translate(112, 413)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>兩條軌</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-C3-7" data-look="neo" transform="translate(288, 413)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>編輯器</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgsk9a-my-svg-flowchart-C5-8" data-look="neo" transform="translate(464, 413)"><rect class="basic label-container" x="-76" y="-24" width="152" height="48"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>匯出檔案</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvdgsk9a-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvdgsk9a-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvdgsk9a-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.15%)" stop-opacity="1"/></linearGradient></svg>
+<figcaption>三種架構的差別在於攝影機和螢幕在哪裡相遇：A 由作業系統在螢幕上合成，B 由錄影器在編碼之前合成，C 延到編輯器匯出時才合成。越往後，事後能改的越多，停止錄影時離成品也越遠。</figcaption>
+</figure>
+
+<h3>A：錄下一個視窗</h3>
+
+<p>攝影機是一個無邊框、置頂的視窗，螢幕擷取把它和其他視窗一起錄下。Loom 是代表：它的 macOS App 提供方形圓角、圓形、橫向與直向矩形四種泡泡形狀與五種尺寸，泡泡可以拖到螢幕任何位置，靠近角落與邊緣時會吸附，下次開啟會記得位置；錄影中雙擊泡泡會讓攝影機佔滿畫面。Cap 的 Instant 模式也屬於這一類。</p>
+
+<p>它的優點是簡單、即時、成品即可分享：作業系統已經在做合成，錄影器什麼都不用加。它的代價就是前一節列的那些：框擋住的東西在錄影裡也被擋住；框要嘛能拖曳、要嘛讓點擊穿透；框的控制項要小心藏好；錄影工具必須讓自己的這一個視窗被錄到，而其他視窗不被錄到；錄完就無法調整。Loom 的說明甚至直接提醒：鏡像要在錄影前設定，錄完就不能翻轉了。</p>
+
+<h3>B：在錄影器裡合成</h3>
+
+<p>攝影機是錄影器的一個來源，錄影器每一格把它畫到螢幕畫面上，再交給編碼器。OBS Studio 是代表：所有來源都在它的 GPU 畫布上合成，使用者在 OBS 主視窗的預覽裡看到合成後的畫布，並可以在錄影中移動任何來源。macOS 的 Presenter Overlay 也是這個模型，只是合成者換成了系統：它把講者疊在分享的畫面上，小型模式下講者是一個可以拖曳的泡泡。</p>
+
+<p>這個架構把兩個觀眾分開了：<strong>使用者的螢幕上沒有框</strong>，不擋東西、不攔點擊、沒有控制項會被錄到；錄影工具自己的視窗可以照常全部排除，不需要例外。代價是使用者必須<strong>靠預覽</strong>確認觀眾會看到什麼，所以預覽成了這個架構的必要部分，而不是附加功能；而且合成要由錄影器自己做，每一格都要付出 GPU 工作，螢幕靜止時也得一直編碼（攝影機畫面在動）。錄完一樣是燒進像素，事後不能修改，但<strong>錄影中</strong>可以隨時修改，並在下一格生效。</p>
+
+<h3>C：分軌，事後在編輯器組合</h3>
+
+<p>螢幕與攝影機錄成兩條獨立的軌，錄影結束後在編輯器裡排版，匯出時才合成。Cap 的 Studio 模式與 Screen Studio 都是這一類：Cap 說明它分開錄下螢幕與攝影機，再即時合成或在編輯器裡調整版面；Screen Studio 的說明則提到錄完之後可以修改攝影機的大小、版面與位置，畫面縮放時還會自動縮小攝影機框，並可以在時間軸上切換版面。錄影時，這些產品通常仍顯示一個浮動的攝影機視窗讓使用者看到自己，但它被排除在螢幕軌之外。</p>
+
+<p>這是最有彈性的架構：位置、大小、圓角、甚至要不要出現，全部可以事後決定，也可以隨時間變化。代價是<strong>停止錄影時還沒有成品</strong>，需要一個編輯器和一次匯出；兩條軌要對齊時間；匯出時的合成往往比錄影時昂貴得多（Cap 的編輯器要畫背景、模糊、游標、字幕、轉場等十幾層）。</p>
+
+<h3>比較</h3>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>考量</th><th>A 錄下視窗</th><th>B 錄影器合成</th><th>C 分軌編輯</th></tr></thead>
+  <tbody>
+    <tr><td>使用者螢幕上</td><td>有框，擋住底下的東西</td><td>沒有框</td><td>有一個預覽視窗，不被錄進螢幕軌</td></tr>
+    <tr><td>使用者怎麼確認</td><td>直接看螢幕</td><td>看錄影器的預覽</td><td>錄完在編輯器看</td></tr>
+    <tr><td>點擊</td><td>框攔截點擊，或不能拖曳</td><td>不受影響</td><td>浮動視窗攔截點擊</td></tr>
+    <tr><td>自己的視窗</td><td>必須讓這一個被錄到</td><td>全部排除</td><td>全部排除</td></tr>
+    <tr><td>錄影中修改</td><td>拖曳視窗（會被錄到）</td><td>任何屬性，下一格生效</td><td>不需要，事後改</td></tr>
+    <tr><td>錄影後修改</td><td>不能</td><td>不能</td><td>可以，且可隨時間變化</td></tr>
+    <tr><td>停止時</td><td>成品</td><td>成品</td><td>素材，要匯出</td></tr>
+    <tr><td>錄影時的成本</td><td>幾乎不加（系統已在合成）</td><td>每格一次 GPU 合成，靜止畫面也要持續編碼</td><td>多一路編碼與寫檔</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>產品</th><th>攝影機在哪裡合成</th><th>預覽</th><th>錄影中可改</th></tr></thead>
+  <tbody>
+    <tr><td>Loom、Cap Instant</td><td>不合成：攝影機視窗在螢幕上，被錄下</td><td>視窗本身</td><td>拖曳（Loom）；Cap 幾乎都能改</td></tr>
+    <tr><td>OBS Studio</td><td>即時，在 GPU 畫布上</td><td>合成後的畫布，原生繪製</td><td>任何來源</td></tr>
+    <tr><td>Cap Studio、Screen Studio</td><td>事後，在編輯器（攝影機另成一軌）</td><td>浮動攝影機視窗，螢幕軌排除它</td><td>錄完在編輯器改</td></tr>
+    <tr><td>macOS Presenter Overlay</td><td>系統即時合成</td><td>分享出去的畫面本身</td><td>拖曳（小型模式）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><strong>怎麼選。</strong>如果產品已經有編輯器，或使用者習慣錄完再剪，C 給的彈性最大，錄影時的工作也最單純。如果沒有編輯器、停止錄影就要拿到成品，A 和 B 二選一：A 最便宜，但使用者的螢幕要讓出一塊；B 讓螢幕保持乾淨、錄影中可以自由修改，代價是要自己合成，以及一個可信的預覽。</p>
+
+<p>RecordStuff 一開始（2026-10-14）選了 A：一個會被螢幕擷取錄到的泡泡視窗。維護者問「為什麼錄影中不能移動泡泡」，答案正好暴露了 A 的結構：視窗上畫的任何東西都會被錄進去，可移動的視窗又一定會攔截底下 App 的點擊，所以設計只好在錄影中鎖住位置。2026-10-17 設計改成 B：引擎合成，鎖住位置的兩個理由同時消失，泡泡也不必出現在螢幕上，它擋住什麼改由預覽呈現。檢查過的產品裡，沒有一個是「看不到、也不能動」的泡泡：一旦攝影機改由程式合成，OBS 用預覽呈現結果，Cap Studio 與 Screen Studio 讓它事後移動。RecordStuff 沒有編輯器，所以照 OBS 即時做。</p>
+
+<h2 id="gpu">在 GPU 上、編碼器之前合成</h2>
+
+<p>選了 B 之後，合成器要回答四個問題：在 CPU 還是 GPU 上做、用哪一套繪圖 API、在什麼色彩格式上做，以及沒有攝影機時要不要碰畫面。</p>
+
+<h3>為什麼在 GPU、為什麼在編碼器之前</h3>
+
+<p>螢幕擷取與硬體編碼器之間，畫面一直待在 GPU 記憶體裡：macOS 上是 IOSurface 撐起的 <code>CVPixelBuffer</code>，Windows 上是 Direct3D 11 的貼圖。合成如果在 CPU 上做，每一格都要把整張螢幕畫面讀回主記憶體、改幾萬個像素、再上傳，一張 4K 的 NV12 畫面約 12 MB，60 fps 時光是單向就超過每秒 700 MB。在 GPU 上做，畫面原地讀寫，CPU 只負責送出指令。合成必須在編碼器<em>之前</em>，因為編碼之後的位元流已經無法逐像素修改。</p>
+
+<p>用什麼 API 也有差別。RecordStuff 的第一個原型在 macOS 用 Core Image：寫起來最短，但它每一格都在 CPU 上重建一次濾鏡圖。在參考機（M1 Pro）上，30 fps 錄影時，攝影機加上「每一格都編碼」一共多了約 10 個百分點的單核 CPU（10.4% 變成 20.9%）。改成自己寫的 Metal compute 著色器之後，同樣的錄影只多約 4 個百分點（14.7%），60 fps 多約 7 個百分點（14.0% 變成 21.2%）。差別不在 GPU，而在每一格的 CPU 準備工作。</p>
+
+<h3>一個著色器，翻譯到每個平台</h3>
+
+<p>macOS 要 Metal，Windows 要 Direct3D 11，兩邊的泡泡必須畫得一模一樣：同樣的圓角、裁切、鏡像，以及同樣的邊緣反鋸齒。最容易出錯的做法是各寫一份著色器，然後期待它們永遠同步。另一個常見選擇是用 wgpu 這類跨平台繪圖函式庫，讓它在各平台選後端。</p>
+
+<p>RecordStuff 走中間的路：只寫<strong>一份 WGSL 著色器</strong>（WebGPU 的著色語言），在建置時用 naga（wgpu 專案的著色器翻譯器）驗證並翻譯成 Metal 的 MSL 與 Direct3D 11 的 HLSL（shader model 5.0）。各平台仍用自己的原生 API 綁定貼圖、送出工作、把結果交給自己的編碼器。著色器只要驗證或翻譯失敗，任何平台的建置都會失敗，所以 macOS 上開發時也能抓到 Windows 那一份的問題。</p>
+
+<pre class="language-typescript"><span class="label">Rust</span><code><span class="c">// build.rs（節錄，註解為本文所加）：一份 WGSL，兩份輸出</span>
+<span class="k">let</span> module <span class="o">=</span> naga<span class="o">:</span><span class="o">:</span>front<span class="o">:</span><span class="o">:</span>wgsl<span class="o">:</span><span class="o">:</span><span class="f">parse_str</span><span class="o">(</span><span class="o">&amp;</span>source<span class="o">)</span><span class="o">?</span><span class="o">;</span>
+<span class="k">let</span> info <span class="o">=</span> <span class="t">Validator</span><span class="o">:</span><span class="o">:</span><span class="k">new</span><span class="o">(</span><span class="t">ValidationFlags</span><span class="o">:</span><span class="o">:</span><span class="f">all</span><span class="o">(</span><span class="o">)</span><span class="o">,</span> <span class="t">Capabilities</span><span class="o">:</span><span class="o">:</span><span class="f">empty</span><span class="o">(</span><span class="o">)</span><span class="o">)</span><span class="o">.</span><span class="p">validate</span><span class="o">(</span><span class="o">&amp;</span>module<span class="o">)</span><span class="o">?</span><span class="o">;</span>
+<span class="c">// macOS：MSL，執行時由 Metal 編譯</span>
+<span class="k">let</span> <span class="o">(</span>metal<span class="o">,</span> _<span class="o">)</span> <span class="o">=</span> msl<span class="o">:</span><span class="o">:</span><span class="f">write_string</span><span class="o">(</span><span class="o">&amp;</span>module<span class="o">,</span> <span class="o">&amp;</span>info<span class="o">,</span> <span class="o">&amp;</span>msl_options<span class="o">,</span> <span class="o">&amp;</span>pipeline<span class="o">)</span><span class="o">?</span><span class="o">;</span>
+<span class="c">// Windows：HLSL，執行時由 D3DCompile 編譯</span>
+<span class="k">let</span> mut direct3d <span class="o">=</span> <span class="t">String</span><span class="o">:</span><span class="o">:</span><span class="k">new</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+hlsl<span class="o">:</span><span class="o">:</span><span class="t">Writer</span><span class="o">:</span><span class="o">:</span><span class="k">new</span><span class="o">(</span><span class="o">&amp;</span>mut direct3d<span class="o">,</span> <span class="o">&amp;</span>hlsl_options<span class="o">,</span> <span class="o">&amp;</span>hlsl_pipeline<span class="o">)</span><span class="o">.</span><span class="p">write</span><span class="o">(</span><span class="o">&amp;</span>module<span class="o">,</span> <span class="o">&amp;</span>info<span class="o">,</span> <span class="t">None</span><span class="o">)</span><span class="o">?</span><span class="o">;</span></code></pre>
+
+<p>為什麼不直接用 wgpu？因為在這個情境下，wgpu 能共用的也只有著色器，而 naga 已經做到了：貼圖仍要從各平台的擷取 API 進來、再交給各平台的編碼器，跨過 wgpu 的邊界反而多了一層。更具體的是，wgpu 在 Windows 上沒有 Direct3D 11 後端，而 RecordStuff 的擷取與編碼都在 Direct3D 11 上，每一格都得在 Direct3D 11 與 12 之間共用貼圖並用 fence 同步。Cap 用 wgpu 是合理的，因為它的編輯器在很多個 pass 裡畫十幾層東西；當合成的場景長到那個規模（一個編輯器、需要多個 pass 的特效），就是換到 wgpu 的時候，而著色器已經是 WGSL。</p>
+
+<p>翻譯也有它的稜角。naga 輸出的 HLSL 會把取樣器（sampler）寫成 Direct3D 12 的 sampler heap 形式，Direct3D 11 沒有這個東西，所以著色器不用取樣器，而是自己用四次 <code>textureLoad</code> 做雙線性內插。另一個稜角在 Windows：Direct3D 11.1 可以把 NV12 貼圖的兩個平面當成 render target 寫入，但要從 compute shader 寫入，得靠 Direct3D 11.3 的選用功能。所以 Windows 版讓兩個 kernel 各寫一張自己平面的貼圖，再用一個三角形把它畫進 NV12 輸出的對應平面。</p>
+
+<h3>在 NV12 的兩個平面上畫圓角</h3>
+
+<p>著色器有兩個進入點：<code>luma</code> 寫 Y 平面，<code>chroma</code> 寫 UV 平面。每個輸出像素先讀螢幕在同一位置的值，再算出泡泡蓋住這個像素多少（0 到 1），以這個比例混入攝影機的值。蓋住多少用圓角矩形的<strong>有號距離（signed distance）</strong>來算：像素中心在形狀內部為負、外部為正，邊界上的那一個像素依距離取 0 到 1 之間的值，這就是反鋸齒。</p>
+
+<pre class="language-typescript"><span class="label">WGSL</span><code><span class="c">// compose.wgsl（節錄）：像素中心 p 被泡泡蓋住多少，一個像素寬的反鋸齒</span>
+fn <span class="f">coverage</span><span class="o">(</span>p<span class="o">:</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">)</span> <span class="o">-</span><span class="o">&gt;</span> f32 <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span>params<span class="o">.</span><span class="p">camera_on</span> <span class="o">&lt;</span> <span class="n">0.5</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">0.0</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="k">let</span> half_size <span class="o">=</span> params<span class="o">.</span><span class="p">bubble_size</span> <span class="o">*</span> <span class="n">0.5</span><span class="o">;</span>
+    <span class="k">let</span> local <span class="o">=</span> p <span class="o">-</span> <span class="o">(</span>params<span class="o">.</span><span class="p">bubble_origin</span> <span class="o">+</span> half_size<span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> r <span class="o">=</span> <span class="f">min</span><span class="o">(</span>params<span class="o">.</span><span class="p">radius</span><span class="o">,</span> <span class="f">min</span><span class="o">(</span>half_size<span class="o">.</span><span class="p">x</span><span class="o">,</span> half_size<span class="o">.</span><span class="p">y</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> q <span class="o">=</span> <span class="f">abs</span><span class="o">(</span>local<span class="o">)</span> <span class="o">-</span> half_size <span class="o">+</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span>r<span class="o">,</span> r<span class="o">)</span><span class="o">;</span>
+    <span class="k">let</span> distance <span class="o">=</span> <span class="f">length</span><span class="o">(</span><span class="f">max</span><span class="o">(</span>q<span class="o">,</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span><span class="n">0.0</span><span class="o">,</span> <span class="n">0.0</span><span class="o">)</span><span class="o">)</span><span class="o">)</span> <span class="o">+</span> <span class="f">min</span><span class="o">(</span><span class="f">max</span><span class="o">(</span>q<span class="o">.</span><span class="p">x</span><span class="o">,</span> q<span class="o">.</span><span class="p">y</span><span class="o">)</span><span class="o">,</span> <span class="n">0.0</span><span class="o">)</span> <span class="o">-</span> r<span class="o">;</span>
+    <span class="k">return</span> <span class="f">clamp</span><span class="o">(</span><span class="n">0.5</span> <span class="o">-</span> distance<span class="o">,</span> <span class="n">0.0</span><span class="o">,</span> <span class="n">1.0</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="c">// 色差樣本的覆蓋率：它對應的四個亮度像素的平均</span>
+fn <span class="f">chroma_coverage</span><span class="o">(</span>p<span class="o">:</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">)</span> <span class="o">-</span><span class="o">&gt;</span> f32 <span class="o">{</span>
+    <span class="k">return</span> <span class="n">0.25</span> <span class="o">*</span> <span class="o">(</span><span class="f">coverage</span><span class="o">(</span>p <span class="o">+</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span><span class="o">-</span><span class="n">0.5</span><span class="o">,</span> <span class="o">-</span><span class="n">0.5</span><span class="o">)</span><span class="o">)</span> <span class="o">+</span> <span class="f">coverage</span><span class="o">(</span>p <span class="o">+</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span><span class="n">0.5</span><span class="o">,</span> <span class="o">-</span><span class="n">0.5</span><span class="o">)</span><span class="o">)</span>
+        <span class="o">+</span> <span class="f">coverage</span><span class="o">(</span>p <span class="o">+</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span><span class="o">-</span><span class="n">0.5</span><span class="o">,</span> <span class="n">0.5</span><span class="o">)</span><span class="o">)</span> <span class="o">+</span> <span class="f">coverage</span><span class="o">(</span>p <span class="o">+</span> vec2<span class="o">&lt;</span>f32<span class="o">&gt;</span><span class="o">(</span><span class="n">0.5</span><span class="o">,</span> <span class="n">0.5</span><span class="o">)</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>第二個函式處理 4:2:0 的細節。色差平面的一個樣本代表 2×2 個亮度像素；如果它只看自己中心的覆蓋率，泡泡邊緣的顏色會比亮度「硬」半個像素，在圓弧上看得到一圈色邊。取四個亮度像素覆蓋率的平均，邊緣的顏色就和亮度一樣柔和地過渡。</p>
+
+<p>攝影機的顏色也要先換算。攝影機常交出標成 BT.601 的 YCbCr，錄影的輸出則標成 BT.709。著色器讀到 BT.601 的攝影機畫面時，先把它的亮度與色差換算成 BT.709 的值再混合（亮度的換算也要用到色差，因為兩套矩陣對 R、G、B 的權重不同）。少了這一步，泡泡裡的膚色會有些微但看得出來的偏色，而且只有某些攝影機會這樣，很難追。</p>
+
+<h3>沒有攝影機時，不要碰畫面</h3>
+
+<p>一個重要的不變式：<strong>不開攝影機、攝影機被隱藏、或攝影機暫時沒有畫面時，錄影要和沒有這個功能時逐位元組相同。</strong>RecordStuff 的做法分三層：攝影機沒開時根本不建立合成器；隱藏時把螢幕原本的畫面直接交給編碼器；有合成器但還沒有攝影機畫面（剛開啟、或遺失中）時，著色器的覆蓋率全為 0，而且螢幕是在輸出像素的中心取樣，同尺寸時剛好讀到每個像素本身。合成器的單元測試直接比對：沒有攝影機畫面或隱藏時，輸出的兩個平面與螢幕畫面逐位元組相同。這個不變式讓「加了攝影機功能之後，不開攝影機的錄影有沒有變」成為一個可以自動驗證的問題，而不是一個靠感覺的問題。</p>
+
+<h3>Pacer：攝影機在動，就要每一格都編碼</h3>
+
+<p>螢幕錄影器常有一個省資源的設計：螢幕沒有變化時，擷取 API 不送新畫面，錄影器也只偶爾（例如一秒一次）重送最後一張，讓檔案的時間軸不中斷。RecordStuff 的引擎就是這樣。加上攝影機之後，這個假設失效了：螢幕靜止，攝影機裡的人還在說話，每一格的合成結果都不同。所以泡泡顯示時，pacer 要在每一個時間格（30 fps 就是每 33.3 ms）都取最新的螢幕畫面重新合成並編碼；泡泡隱藏時，回到靜止螢幕原本的節奏。從隱藏切回顯示時，pacer 從<em>目前</em>的時間格開始，而不是把隱藏期間空下來的格子全部補上。</p>
+
+<p>這是 B 架構最容易被低估的成本：原本靜止畫面幾乎免費，現在每一格都要合成與編碼。硬體編碼器讓它停在「螢幕一直在動」的成本，而不是更多，但它不再是零。</p>
+
+<h2 id="timing">時間：攝影機和螢幕是兩個來源</h2>
+
+<p>攝影機有自己的節奏：一台 30 fps 的攝影機每 33 ms 交一張，錄影可能是 60 fps；Continuity Camera 走無線，交付時間會抖動。合成器每一格要決定：用攝影機的哪一張？</p>
+
+<ul>
+  <li><strong>排隊，一張配一張。</strong>每一格都等攝影機的下一張。攝影機一慢，錄影就跟著卡；攝影機比錄影快，佇列就越積越長，延遲越來越大。</li>
+  <li><strong>依時間戳配對。</strong>為每一格找出拍攝時間最接近的攝影機畫面。這需要保留一段攝影機的歷史畫面，而且攝影機的時間戳本身就落後實際拍攝一段時間，配對得再準，也只是把螢幕延後去配合攝影機。</li>
+  <li><strong>只留最新的一張。</strong>攝影機每交一張就覆蓋前一張，合成器每一格取當下最新的那張。攝影機比錄影慢時，同一張會用兩次；比錄影快時，中間的會被丟掉。永遠不排隊，延遲有上限。</li>
+</ul>
+
+<p>對講者泡泡來說，第三種是合理的預設：泡泡是一張小小的臉，觀眾對它的時間精度要求，遠低於對嘴型與聲音的要求（聲音與畫面的對齊另有機制）。RecordStuff 的 <code>CameraFeed</code> 就只存最新一張畫面與它的拍攝時間；macOS 上攝影機輸出設定 <code>alwaysDiscardsLateVideoFrames</code>，讓 AVFoundation 自己也不排隊。攝影機畫面的時間戳換算到螢幕畫面用的同一個主機時脈，於是可以量一件事：<strong>每一格錄影裡的攝影機畫面，比這一格本身老多少。</strong></p>
+
+<p>RecordStuff 在停止錄影時把這個數字寫進記錄。2026-10-18 在參考機上用 iPhone 的 Continuity Camera 錄一段 60 fps 的影片，1005 格含攝影機的畫面裡，攝影機畫面平均比它所在的那一格老 <strong>113.9 ms</strong>，範圍 87.7 到 138.7 ms。這包含無線連線與 iPhone 本身的處理，換成 USB 攝影機數字會不同，這次沒有量。這個量測有一個平台差異要記得：Windows 上 Media Foundation 的攝影機畫面是在<em>到達</em>時才蓋時間戳，所以同樣的數字在 Windows 上會漏掉攝影機自己持有畫面的時間。</p>
+
+<p>約 0.1 秒的落後意味著什麼？講者的臉會比螢幕上的游標晚一點點，通常沒人注意；但如果講者說「看這裡」同時指向螢幕，或錄的是手部示範，就值得考慮把螢幕延後一點去配合。那需要為螢幕畫面排隊，記憶體與複雜度都上升，而且延遲要量對才能補對。這是一個可以等量測和使用回饋再決定的選擇。</p>
+
+<h2 id="loss">攝影機遺失與回來</h2>
+
+<p>攝影機會在錄影中消失：USB 線被拔、Continuity Camera 的 iPhone 被拿走或在 iPhone 上選了中斷連線、權限被撤銷。設計要回答三件事：怎麼知道它不見了、不見時錄影裡顯示什麼、它回來時怎麼辦。</p>
+
+<p><strong>怎麼知道。</strong>攝影機和麥克風不同：攝影機只要開著就持續交畫面，所以「一段時間沒有畫面」本身就是可靠的訊號。RecordStuff 錄影中超過 2 秒沒有畫面就判定遺失；macOS 上另外每 250 ms 檢查裝置是否仍然連著，斷線時立刻判定，不必等那 2 秒。只看交付有一個盲點，值得記下來：iPhone 的 Continuity Camera 在 iPhone 上按「暫停」時，交的是黑畫面而不是沒有畫面，所以那不會被當成遺失（拿起或解鎖 iPhone 也沒有讓它停頓）。</p>
+
+<p><strong>不見時顯示什麼。</strong>最簡單的實作會一直用最後一張畫面，於是錄影裡出現一張凍結的臉，觀眾會以為講者當機了。RecordStuff 遺失時不再給合成器任何攝影機畫面，錄影只剩螢幕；錄影繼續，結束時才告知使用者，存下的紀錄標記這次錄影遺失過攝影機，和麥克風遺失的處理一致。</p>
+
+<p><strong>回來時。</strong>同一個工作階段再交出畫面，就重新合成。更難的是裝置真的離開又回來：RecordStuff 以開啟時的唯一 ID 重新開啟<em>同一台</em>攝影機，第一次在 2 秒後，之後逐步退避到 30 秒，絕不改開另一台；換一台攝影機會讓錄影裡突然出現另一個角度，比沒有攝影機更糟。2026-10-18 的實測中，維護者在 iPhone 上選了中斷連線：引擎在 31.6 秒時判定遺失，錄影繼續並在存檔時標記；引擎又試了 9 次，因為 iPhone 一直沒有重新連上，攝影機也就沒有回來。維護者判定這對使用者自己選擇的中斷是正確的行為。</p>
+
+<div class="callout warning">
+  <p><strong>沒有主 run loop 的行程裡，裝置清單可能不會更新。</strong>RecordStuff 的引擎跑在一個沒有主 run loop 的子行程裡。先前的麥克風工作發現，AVFoundation 在這種行程裡看不到裝置的離開與回來；對攝影機，實測時 CoreMediaIO 與 AVFoundation 的清單在 iPhone 中斷連線後都沒有變化，但這也可能只是 Continuity Camera 中斷後仍留在清單上。要等拔掉一台真正的 USB 攝影機才能分辨，這一點仍未驗證；攝影機在同一個錄影中回來的情況，目前只由核心的單元測試涵蓋。</p>
+</div>
+
+<p>還有一個和遺失相近的陷阱：<strong>「系統預設攝影機」在不同行程裡可能不是同一台。</strong>RecordStuff 的設定頁（Chromium 的 renderer）和錄影引擎（另一個行程）各自問 macOS 預設攝影機是哪一台，結果在筆電闔上螢幕時，設定頁顯示 iPhone，引擎卻開了內建的 FaceTime HD 相機。內建相機在螢幕闔上時仍列為已連線，也能開啟，只是送不出任何畫面，於是錄影從頭到尾沒有攝影機，還被標成遺失。修正是讓兩邊都用同一個規則決定預設：先問系統偏好的攝影機（<code>systemPreferredCamera</code>，會跟著 Continuity Camera 與使用者的選擇），跳過處於暫停狀態的裝置。教訓是：「預設」是一個要明確解析、在每個行程用同一規則解析的值，不是一個可以各自去問的常數。</p>
+
+<h2 id="preview">從另一個行程顯示即時預覽，以及網頁的代價</h2>
+
+<p>B 架構把確認的責任交給預覽，所以預覽必須是<strong>錄影本身</strong>，而不是另一個模擬。最可靠的方式，是直接顯示合成器產生的畫面。問題在於合成器在哪裡，而預覽要畫在哪裡。</p>
+
+<h3>原生應用程式：同一個行程，直接畫貼圖</h3>
+
+<p>OBS 的預覽是一個原生的 display：libobs 在主視窗的一塊原生視圖上註冊繪製回呼，回呼裡呼叫 <code>obs_render_main_texture()</code>，把畫布那張貼圖直接畫上去。合成器與預覽在同一個行程、同一個 GPU 裝置上，沒有複製也沒有編解碼。Cap 錄影時的攝影機預覽是一個獨立的原生視窗，用 wgpu 繪製；在 macOS 上，攝影機畫面從 IOSurface 經 Metal 匯入 wgpu，同樣不經 CPU。</p>
+
+<h3>Electron：合成器和網頁在不同行程</h3>
+
+<p>RecordStuff 的介面是 Electron 的網頁，錄影引擎跑在另一個 <code>utilityProcess</code> 裡（原生程式碼當掉時只會結束那個子行程，main 會保住已寫好的部分並回報失敗）。預覽要從擷取行程進到網頁的 renderer，跨過行程邊界，再由 Chromium 的 GPU 行程畫到螢幕。每一條路都有代價：</p>
+
+<ol>
+  <li><p><strong>原始畫面經訊息傳送，網頁用 WebGL 畫。</strong>在 GPU 上把合成結果縮成約 640 像素寬的 NV12，讀回 CPU，透過 <code>MessagePort</code> 直接送到網頁，網頁上傳成貼圖再畫。Cap 的編輯器把畫面送進網頁也是類似的路線：未壓縮的 NV12 或 RGBA，經本機 WebSocket。這條路不需要第二個編碼器，但 RecordStuff 量到它在 30 fps 錄影上多了約 12.7 個百分點，其中 9 點是網頁 renderer 與 Chromium GPU 行程在上傳貼圖。</p></li>
+  <li><p><strong>小尺寸的 H.264 串流，網頁用 WebCodecs 解碼。</strong>同樣縮成 640 像素寬，但交給硬體編碼器編成約 1 Mbps 的 Constrained Baseline H.264，送到網頁用 WebCodecs 的 <code>VideoDecoder</code> 解碼再畫到 canvas。資料量小了一個數量級，代價是一次編碼和一次解碼。</p></li>
+  <li><p><strong>原生圖層由 main 託管。</strong>OBS 的做法搬進 Electron：main 行程放一塊原生圖層顯示合成結果。代價最高：引擎的 IOSurface 要跨進 main（<code>utilityProcess</code> 不傳 Mach port，得自己建管道），main 要載入原生程式碼，網頁的 HTML 無法畫在原生圖層上面（拖曳把手、提示、選單都不行），Windows 還要另做一套。估計工作量是第一種的四到六倍。</p></li>
+  <li><p><strong>Electron 的 <code>sharedTexture</code>。</strong>Electron 44 有一個實驗性的模組，能把平台的共用貼圖（macOS 的 IOSurface、Windows 的 Direct3D 11 共用 handle）匯入成網頁裡的 <code>VideoFrame</code>，不經複製。限制是 <code>importSharedTexture</code> 只能在 main 行程呼叫，所以在 macOS 上，IOSurface 還是得先以 Mach port 送進 main，而 main 需要一個小的原生模組來接收。</p></li>
+</ol>
+
+<h3>WebCodecs 的意外：硬體解碼器扣住了六格</h3>
+
+<p>第二條路有一個量了才知道的細節。Chromium 的硬體解碼器即使設了 <code>optimizeForLatency</code>、串流也是不重排的 Constrained Baseline，仍扣住約六格才交出畫面：15 fps 時預覽比擷取行程送出的時間晚了 397 ms。改成軟體解碼，每一格在擷取行程送出後約 2.5 ms 就畫出來，而且處理器時間差不多（640 像素寬的畫面，軟體解碼一格約 2 ms）。所以 RecordStuff 的預覽解碼器明確要求軟體解碼：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// preview-decoder.ts（節錄）：每個關鍵畫格附帶 avcC，用它設定解碼器</span>
+decoder <span class="o">=</span> <span class="k">new</span> <span class="f">VideoDecoder</span><span class="o">(</span><span class="o">{</span> output<span class="o">:</span> draw<span class="o">,</span> error<span class="o">:</span> <span class="o">(</span>error<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">reset</span><span class="o">(</span><span class="s">`Decoding failed: ${error.message}`</span><span class="o">)</span> <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+decoder<span class="o">.</span><span class="p">configure</span><span class="o">(</span><span class="o">{</span>
+  codec<span class="o">,</span>
+  description<span class="o">:</span> message<span class="o">.</span><span class="p">description</span><span class="o">,</span>
+  optimizeForLatency<span class="o">:</span> <span class="n">true</span><span class="o">,</span>
+  <span class="c">// 硬體解碼器扣住約六格（15 fps 時 397 ms）；軟體解碼約 2 ms 一格</span>
+  hardwareAcceleration<span class="o">:</span> <span class="s">"prefer-software"</span><span class="o">,</span>
+<span class="o">}</span><span class="o">)</span><span class="o">;</span></code></pre>
+
+<p>「硬體一定比較好」在這裡不成立：對一個 640 像素的小串流，延遲比吞吐量重要，而硬體解碼器為吞吐量做的緩衝，正好傷到延遲。</p>
+
+<figure class="flow-figure">
+<svg style="max-width: 320px; margin: 0 auto" id="mermaid-mvdgthxj-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 360 660" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mvdgthxj-title mermaid-mvdgthxj-desc"><title id="mermaid-mvdgthxj-title">預覽從擷取行程到頁面的兩條路</title><desc id="mermaid-mvdgthxj-desc">實線是目前的做法：引擎把合成好的 640 像素小畫面編成 H.264，經 MessagePort 送到頁面，由 WebCodecs 解碼後畫到 canvas。虛線是計畫 080：把 IOSurface 以 Mach port 交給 main 行程的原生模組，再用 Electron 的 sharedTexture 匯入成 VideoFrame 送到頁面，不經編解碼。</desc><style>#mermaid-mvdgthxj-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvdgthxj-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvdgthxj-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvdgthxj-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvdgthxj-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvdgthxj-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvdgthxj-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvdgthxj-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvdgthxj-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvdgthxj-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvdgthxj-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvdgthxj-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvdgthxj-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvdgthxj-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvdgthxj-my-svg p{margin:0;}#mermaid-mvdgthxj-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mvdgthxj-my-svg .cluster-label text{fill:#05060a;}#mermaid-mvdgthxj-my-svg .cluster-label span{color:#05060a;}#mermaid-mvdgthxj-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mvdgthxj-my-svg .label text,#mermaid-mvdgthxj-my-svg span{fill:#141413;color:#141413;}#mermaid-mvdgthxj-my-svg .node rect,#mermaid-mvdgthxj-my-svg .node circle,#mermaid-mvdgthxj-my-svg .node ellipse,#mermaid-mvdgthxj-my-svg .node polygon,#mermaid-mvdgthxj-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvdgthxj-my-svg .rough-node .label text,#mermaid-mvdgthxj-my-svg .node .label text,#mermaid-mvdgthxj-my-svg .image-shape .label,#mermaid-mvdgthxj-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mvdgthxj-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mvdgthxj-my-svg .rough-node .label,#mermaid-mvdgthxj-my-svg .node .label,#mermaid-mvdgthxj-my-svg .image-shape .label,#mermaid-mvdgthxj-my-svg .icon-shape .label{text-align:center;}#mermaid-mvdgthxj-my-svg .node.clickable{cursor:pointer;}#mermaid-mvdgthxj-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mvdgthxj-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mvdgthxj-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mvdgthxj-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mvdgthxj-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgthxj-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvdgthxj-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgthxj-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mvdgthxj-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.05%);stroke-width:1px;}#mermaid-mvdgthxj-my-svg .cluster text{fill:#05060a;}#mermaid-mvdgthxj-my-svg .cluster span{color:#05060a;}#mermaid-mvdgthxj-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.05%);stroke:none;opacity:0.6;}#mermaid-mvdgthxj-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.05%);stroke-width:0.75px;}#mermaid-mvdgthxj-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.05%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mvdgthxj-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvdgthxj-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mvdgthxj-my-svg .icon-shape,#mermaid-mvdgthxj-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mvdgthxj-my-svg .icon-shape p,#mermaid-mvdgthxj-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mvdgthxj-my-svg .icon-shape .label rect,#mermaid-mvdgthxj-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvdgthxj-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.12em;}#mermaid-mvdgthxj-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mvdgthxj-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvdgthxj-my-svg [data-look="neo"].node rect,#mermaid-mvdgthxj-my-svg [data-look="neo"].cluster rect,#mermaid-mvdgthxj-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvdgthxj-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgthxj-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvdgthxj-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvdgthxj-my-svg-gradient);stroke-width:1px;}#mermaid-mvdgthxj-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgthxj-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvdgthxj-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvdgthxj-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgthxj-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvdgthxj-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvdgthxj-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgthxj-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvdgthxj-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvdgthxj-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M162,84L162,96.92Q162,104 154.92,104L95.07,104Q88,104 88,111.07L88,182" id="mermaid-mvdgthxj-my-svg-L_C_H_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 162.67 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M88,258L88,396L88,468" id="mermaid-mvdgthxj-my-svg-L_H_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 206 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M88,544L88,556.92Q88,564 95.07,564L154.92,564Q162,564 162,571.07L162,580" id="mermaid-mvdgthxj-my-svg-L_D_V_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 100.67 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M206,84L206,96.92Q206,104 213.07,104L272.92,104Q280,104 280,111.07L280,182" id="mermaid-mvdgthxj-my-svg-L_C_N_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M280,258L280,356" id="mermaid-mvdgthxj-my-svg-L_N_S_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M280,432L280,556.92Q280,564 272.92,564L213.07,564Q206,564 206,571.07L206,580" id="mermaid-mvdgthxj-my-svg-L_S_V_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-look="neo" marker-end="url(#mermaid-mvdgthxj-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(87.88, 135)"><g class="label" transform="translate(0, -10)"><g><rect class="background" x="-17.88" y="-1" width="35.76" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">目前</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(87.72, 309)"><g class="label" transform="translate(0, -10)"><g><rect class="background" x="-49.72" y="-1" width="99.45" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">MessagePort</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(279.69, 135)"><g class="label" transform="translate(0, -10)"><g><rect class="background" x="-34.69" y="-1" width="69.39" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">計畫</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 080</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(279.69, 309)"><g class="label" transform="translate(0, -10)"><g><rect class="background" x="-38.19" y="-1" width="76.39" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">IOSurface</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(279.58, 508)"><g class="label" transform="translate(0, -10)"><g><rect class="background" x="-45.58" y="-1" width="91.17" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">VideoFrame</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-C-0" data-look="neo" transform="translate(184, 48)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>擷取行程<br />GPU 合成</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-H-2" data-look="neo" transform="translate(88, 222)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>擷取行程<br />H.264 編碼</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-D-4" data-look="neo" transform="translate(88, 508)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>頁面<br />WebCodecs</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-V-6" data-look="neo" transform="translate(184, 620)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>頁面<br />canvas</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-N-8" data-look="neo" transform="translate(280, 222)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>main 行程<br />原生模組</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvdgthxj-my-svg-flowchart-S-10" data-look="neo" transform="translate(280, 396)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>main 行程<br />sharedTexture</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvdgthxj-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvdgthxj-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvdgthxj-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.15%)" stop-opacity="1"/></linearGradient></svg>
+<figcaption>實線是 RecordStuff 目前的預覽路徑：引擎在擷取行程裡合成並編碼，頁面解碼後畫出。虛線是計畫 080 的設計：IOSurface 經 main 的原生模組與 Electron 的 sharedTexture 直接成為頁面的 VideoFrame，省掉編碼與解碼。</figcaption>
+</figure>
+
+<h3>網頁的代價有多大</h3>
+
+<p>RecordStuff 的預覽後來移到一個獨立的「Recording Studio」分頁（像 OBS 主視窗那樣放預覽、攝影機設定、音量表與錄影控制）。量測用三種情境：R 是一般錄影，Studio 關著；S 是同樣的錄影，Studio 開著並顯示它；L 是開始錄影前的「即時預覽」，跑的是錄影本身的管線，只是不寫檔。數字是 RecordStuff 所有行程合計的單核 CPU 百分比：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>情境（2026-10-18，M1 Pro）</th><th>30 fps</th><th>60 fps</th></tr></thead>
+  <tbody>
+    <tr><td>R：錄影，Studio 關著</td><td>15.5%</td><td>19.4%</td></tr>
+    <tr><td>S：錄影，Studio 顯示預覽</td><td>24.5%（多 8.9 點）</td><td>30.7%（多 11.3 點）</td></tr>
+    <tr><td>L：即時預覽，不寫檔</td><td>16.9%</td><td>16.9%</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>預算原本給預覽 8 個百分點。預覽在 15 fps 時，S 起初是 35.7%，把音量表改成不經 React 繪製後是 31.1%，再讓所有繪製共用一個時鐘後是 28.9%，仍比 R 多約 14 點，幾乎全是網頁在解碼與繪製預覽。把預覽降到 10 fps（錄影本身的幀率不變）後得到上表，超出預算的 0.9 與 3.3 點由維護者接受，理由是這筆成本只在 Studio 開著、而且看得到時才付。</p>
+
+<p>這組數字說明了 Electron 這類網頁介面在這件事上的結構性代價：合成本身很便宜（每格幾個百分點），<strong>把畫面送進網頁再畫出來</strong>才是大宗。原生應用程式沒有這筆費用。換成 Tauri 也不會消失，它一樣是透過網頁顯示預覽。</p>
+
+<h3>下一步：IOSurface 直接進網頁</h3>
+
+<p>RecordStuff 的計畫 080 已接受一個設計，尚未實作：在 macOS 上省掉預覽的編碼與解碼。引擎把預覽的 IOSurface 以 Mach port 送出；main 行程在 Studio 第一次觀看預覽時才載入一個很小的原生模組，它只做三件事：建立管道、收一個 surface、釋放一個 surface；main 再用 <code>sharedTexture</code> 把它匯入成 <code>VideoFrame</code> 交給頁面。幾個設計重點都是為了守住「main 不能被卡住」：</p>
+
+<ul>
+  <li><strong>永遠不等。</strong>引擎先送 Mach 訊息，再經既有的 port 送該格的 JavaScript 訊息，而且頁面放掉上一格之前不送下一格（同時只有一格在路上）；main 以零逾時接收，沒東西就跳過這一格。</li>
+  <li><strong>驗證對方。</strong>管道名稱含 bundle ID、行程 ID 與隨機部分，用 <code>bootstrap_check_in</code> 建立（Chromium 的 Mach port rendezvous 也是這樣）；每則訊息的 audit trailer 必須來自正在被觀看的那個擷取行程。</li>
+  <li><strong>壽命明確。</strong>每個 surface 在 main 只有一個擁有者，等 Electron 回報所有參照都釋放才放掉；引擎在它被持有時不重用那塊貼圖。</li>
+  <li><strong>能退回。</strong>模組載入失敗、管道建不起來或接收失敗，該次預覽就退回現在的 H.264 串流，錄影不受影響。</li>
+</ul>
+
+<p>這個形狀參考了開源的 ghostty-xterm-bench（MIT 授權的研究示範）：它在 <code>utilityProcess</code> 裡算繪終端機，用 <code>IOSurfaceCreateMachPort</code> 把 IOSurface 變成 Mach send right，經 main 裡 N-API 模組建立的管道送出，main 用 <code>IOSurfaceLookupFromMachPort</code> 取回、<code>importSharedTexture</code> 匯入，再把 <code>VideoFrame</code> 送到沙箱化的頁面。計畫的閘門是：Studio 在 30 fps 錄影上的額外成本至少降 2 個百分點，且 main 事件迴圈延遲的 p99 不比現在多超過 2 ms，否則保留現有做法並記錄結果。Windows 繼續用編碼後的串流（Direct3D 11 的共用 handle 不需要原生模組就能複製進 main，是之後的選項）。</p>
+
+<h3>錄影前的預覽</h3>
+
+<p>還沒錄影時，引擎沒有在跑，預覽可以有兩種：一種只用網頁自己的 <code>getUserMedia</code> 打開攝影機，螢幕則只畫出顯示器的輪廓與選單列的位置，完全不擷取螢幕；另一種是按下「即時預覽」，讓引擎準備好錄影本身的工作階段（同樣的螢幕過濾條件、攝影機合成、系統音訊與麥克風），只是不寫檔。RecordStuff 兩者都有，第二種只在使用者要求時開始，離開分頁或關閉視窗就停止，所以設定頁不會一打開就擷取螢幕。按下開始錄影時，引擎直接把這個預覽的工作階段帶進倒數與錄影：畫面不中斷，攝影機也不重開（另開一個新工作階段會留下約 0.5 到 1.5 秒的空檔）。這也是 OBS 的模型：一條管線，預覽顯示它，錄影只是多掛一個編碼器。</p>
+
+<h2 id="shape">自由的形狀與尺寸</h2>
+
+<p>泡泡的形狀選擇，從固定幾個（Loom 的四種形狀與五種尺寸；Cap 的錄影預覽是 150 到 600 像素、圓形或方形或完整畫面）到完全自由（Cap 編輯器的 0 到 100 圓角，可選 squircle 或一般圓角）。如果給使用者自由，有幾個表示法的問題要先決定，因為同一個設定要套用到不同大小、不同比例的螢幕上。</p>
+
+<h3>尺寸用短邊的比例</h3>
+
+<p>用像素存尺寸，換到另一台解析度不同的螢幕就會變大或變小；用「畫面寬度的比例」存，換到直立的螢幕又會變形。RecordStuff 把寬與高都存成<strong>畫面短邊的比例</strong>（5% 到 60%，預設 20% × 20%）：一個 20% 的圓，在 1920×1080 上是 216 像素，在 3840×2160 上是 432 像素，在直立的 1080×1920 上一樣是 216 像素，形狀永遠是圓。寬與高是兩個獨立的值，再加上圓角，三者合起來就能表示圓、膠囊、方形與各種比例的圓角矩形。</p>
+
+<h3>位置用剩餘空間的比例</h3>
+
+<p>位置如果存成左上角的座標比例，泡泡在小螢幕上可能超出畫面，換顯示器或解析度時就得夾回來。RecordStuff 存的是<strong>剩餘空間的比例</strong>：x = 0 貼左邊、1 貼右邊，實際位置是 (畫面寬 − 泡泡寬) × x。這個表示法保證泡泡永遠在畫面內，任何顯示器或解析度改變都不需要夾值。位置也依顯示器分開記（最多 16 台），因為在一台螢幕上避開內容的位置，到另一台不一定合適。</p>
+
+<h3>圓角用圓弧</h3>
+
+<p>圓角是「泡泡短邊一半」的比例（0 到 100%），100% 時短邊兩端是半圓：正方形變成圓，寬的矩形變成膠囊。角的形狀是一般的<strong>圓弧</strong>圓角矩形，不是 squircle（Apple 圖示那種曲率連續的超橢圓）。理由很實際：同一個公式要在兩個地方畫，網頁的預覽和引擎的合成，必須逐像素相符；圓弧在 CSS（<code>border-radius</code>）、著色器（上面的有號距離）與測試裡都是同一個簡單的定義，squircle 則每個地方的近似都不同。Squircle 留作日後的選項。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-geo-d-title fig-geo-d-desc" viewBox="0 0 680 300" style="max-width: 680px"><title id="fig-geo-d-title">泡泡的尺寸、位置與圓角怎麼表示</title><desc id="fig-geo-d-desc">左邊是一個 16:9 的錄影畫面，泡泡的寬與高各是畫面短邊的 0.3 倍，水平位置是剩餘寬度的 0.97 倍，垂直位置是剩餘高度的 0.95 倍，圓角 50%。右邊是同一個 16:9 泡泡在圓角 0%、50% 與 100% 時的形狀：直角矩形、圓角矩形與膠囊。</desc><defs><marker id="fig-geo-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3D3D3A"></path></marker></defs>
+    <text class="fig-label" x="40" y="28">錄影畫面（16:9）</text>
+    <rect class="geo-frame" x="40" y="40" width="400" height="225"></rect>
+    <path class="geo-dim" d="M 24 44 V 261" marker-start="url(#fig-geo-d-head)" marker-end="url(#fig-geo-d-head)"></path>
+    <text class="fig-note" x="16" y="152" text-anchor="middle" transform="rotate(-90 16 152)">短邊</text>
+    <path class="geo-dim geo-dash" d="M 44 178 H 358" marker-start="url(#fig-geo-d-head)" marker-end="url(#fig-geo-d-head)"></path>
+    <text class="fig-note" x="200" y="170" text-anchor="middle">x = 0.97 × 剩餘寬度</text>
+    <rect class="geo-bubble" x="362" y="189" width="68" height="68" rx="17"></rect>
+    <text class="fig-note" x="352" y="220" text-anchor="end">寬 = 高 = 0.3 × 短邊</text>
+    <text class="fig-note" x="352" y="238" text-anchor="end">圓角 50%</text>
+    <text class="fig-note" x="40" y="290">半徑 = 圓角 × 泡泡短邊 ÷ 2；位置永遠在畫面內</text>
+    <text class="fig-label" x="490" y="28">同一個 16:9 泡泡</text>
+    <rect class="geo-bubble" x="490" y="48" width="112" height="63"></rect>
+    <text class="fig-note" x="614" y="84">圓角 0%</text>
+    <rect class="geo-bubble" x="490" y="132" width="112" height="63" rx="15.75"></rect>
+    <text class="fig-note" x="614" y="168">50%</text>
+    <rect class="geo-bubble" x="490" y="216" width="112" height="63" rx="31.5"></rect>
+    <text class="fig-note" x="614" y="244">100%</text>
+    <text class="fig-note" x="614" y="262">膠囊</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-geo-m-title fig-geo-m-desc" viewBox="0 0 360 360" style="max-width: 360px"><title id="fig-geo-m-title">泡泡的尺寸、位置與圓角怎麼表示</title><desc id="fig-geo-m-desc">16:9 的錄影畫面裡，泡泡的寬與高是短邊的 0.3 倍，水平位置是剩餘寬度的 0.97 倍；下方是同一個 16:9 泡泡在圓角 0%、50% 與 100% 時的形狀。</desc><defs><marker id="fig-geo-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3D3D3A"></path></marker></defs>
+    <text class="fig-label" x="20" y="24">錄影畫面（16:9），短邊是高</text>
+    <rect class="geo-frame" x="20" y="36" width="320" height="180"></rect>
+    <path class="geo-dim geo-dash" d="M 24 146 H 274" marker-start="url(#fig-geo-m-head)" marker-end="url(#fig-geo-m-head)"></path>
+    <text class="fig-note" x="149" y="138" text-anchor="middle">x = 0.97 × 剩餘寬度</text>
+    <rect class="geo-bubble" x="278" y="156" width="54" height="54" rx="13.5"></rect>
+    <text class="fig-note" x="268" y="180" text-anchor="end">寬 = 高 = 0.3 × 短邊</text>
+    <text class="fig-note" x="268" y="198" text-anchor="end">圓角 50%</text>
+    <text class="fig-label" x="20" y="252">同一個 16:9 泡泡</text>
+    <rect class="geo-bubble" x="20" y="264" width="96" height="54"></rect>
+    <rect class="geo-bubble" x="132" y="264" width="96" height="54" rx="13.5"></rect>
+    <rect class="geo-bubble" x="244" y="264" width="96" height="54" rx="27"></rect>
+    <text class="fig-note" x="68" y="340" text-anchor="middle">圓角 0%</text>
+    <text class="fig-note" x="180" y="340" text-anchor="middle">50%</text>
+    <text class="fig-note" x="292" y="340" text-anchor="middle">100%：膠囊</text>
+  </svg>
+  <figcaption>尺寸是短邊的比例，所以同一個設定在任何比例的畫面上都是同樣的形狀；位置是剩餘空間的比例，所以泡泡不會超出畫面；圓角是泡泡短邊一半的比例，100% 時短邊兩端是半圓。</figcaption>
+</figure>
+
+<h3>攝影機畫面怎麼填滿泡泡</h3>
+
+<p>攝影機是 16:9 的 1280×720，泡泡可能是圓、4:3 或 16:9。填法和 CSS 的 <code>object-fit: cover</code> 相同：取攝影機畫面中央、與泡泡同比例的最大區塊，等比縮放到蓋滿泡泡，不變形、不留黑邊。鏡像在這一步之後做，對泡泡內的座標左右翻轉。</p>
+
+<h3>操作：比例按鈕與吸附</h3>
+
+<p>完全自由的寬與高，對大多數人反而難用，所以 RecordStuff 提供 1:1、4:3、3:4、16:9 四個比例按鈕：保留寬度、調整高度去符合比例（超出範圍時才改動寬度）。拖曳泡泡時，靠近邊緣與中央（剩餘空間的 3% 以內）會吸附；鍵盤方向鍵每次移動 1%，加 Shift 移動 10%，讓不用滑鼠的人也能精確擺放。</p>
+
+<h3>兩種語言，一組測試案例</h3>
+
+<p>泡泡的幾何在兩種語言裡各實作一次：TypeScript 給網頁的預覽與拖曳，Rust 給引擎的合成。兩份實作很容易在某個邊界上分歧，例如四捨五入：Rust 的 <code>round</code> 是遠離零進位，JavaScript 的 <code>Math.round</code> 是往正無窮進位，兩者只在負數的 .5 上不同，而這裡的值都是正數。RecordStuff 的做法是一個共用的 JSON 檔，放 180 個案例（各種解析度上限、比例、圓角，包含落在半個像素上的位置），兩種語言的測試都讀它、比對同一組答案。預覽與錄影「看起來一樣」就從一個期望，變成一個每次測試都驗證的事實。</p>
+
+<h2 id="mirror">鏡像：通話和錄影的慣例不同</h2>
+
+<p>人看自己的臉，習慣看鏡子裡的樣子：舉右手，畫面裡的人舉的是靠右邊的那隻手。不鏡像的自拍畫面會讓人覺得自己「歪了」，動作也難以對準。另一方面，別人看你時看到的是不鏡像的你；鏡像畫面裡，你衣服上的字和你舉起的書都是反的。</p>
+
+<p>視訊通話軟體用一個區分解決這個衝突：<strong>只鏡像自己看到的預覽</strong>。Zoom 的「Mirror my video」只改變你看到的自己，其他參與者與錄影看到的都是不鏡像的畫面；Microsoft Teams 的「Mirror my video」預設開啟，同樣只影響自己的畫面，關掉它是為了在舉起文字或白板時看到和別人一樣的畫面。</p>
+
+<p>錄影工具通常也是預設不鏡像：Cap 的攝影機預覽設定預設 <code>mirrored: false</code>；OBS 的攝影機來源預設照原樣，要鏡像得在來源的變形裡選水平翻轉。Loom 提供「Flip camera」設定，說明裡特別提醒要讓畫面裡的文字讀起來正確，就要關掉它，而且錄完之後無法翻轉。</p>
+
+<p>對錄影來說，困難在於：B 架構的預覽<em>就是</em>錄影，沒有「只給自己看」的那一層。可以有兩種預覽策略：</p>
+
+<ul>
+  <li><strong>預覽鏡像、錄影不鏡像</strong>（通話的慣例）。使用者看預覽時覺得自然，但預覽和錄影就不一樣了，正好打破 B 架構「預覽就是錄影」的前提：他舉起一本書，預覽裡的字是反的、錄影裡卻是正的，預覽不再能回答「錄影裡會是什麼樣子」。</li>
+  <li><strong>預覽和錄影一致</strong>（所見即所錄）。預覽顯示錄影將會是的樣子，鏡像是一個明確的「錄影時鏡像」選項。代價是不鏡像時，使用者在預覽裡看到的自己有點陌生。</li>
+</ul>
+
+<p>RecordStuff 選了第二種：「Mirror in recording」預設關閉，預覽一律顯示錄影將會是的樣子，包括鏡像與否。名稱本身就說清楚了它影響的是什麼。理由是這個架構的預覽是用來確認錄影的；一旦預覽可以和錄影不同，使用者就失去了確認的依據。鏡像是錄影的屬性，可以在錄影中改，下一格生效。實測中，錄影進行到 3.6 秒時關掉鏡像，畫面在 3.2 秒與 4.2 秒的兩格之間翻轉。</p>
+
+<h2 id="example">實例：RecordStuff 的攝影機與它量到的數字</h2>
+
+<p>RecordStuff 是一個 macOS 與 Windows 的選單列錄影工具，介面以 Electron 撰寫；擷取、時鐘、編碼與寫檔由一個 Rust 原生引擎負責，跑在 Electron 的 <code>utilityProcess</code> 裡（計畫 076）。它的攝影機功能（計畫 075）沒有編輯器，所以選了 B 架構，各部分的選擇整理如下：</p>
+
+<ul>
+  <li><strong>擷取：</strong>macOS 用 AVFoundation 的 <code>AVCaptureVideoDataOutput</code>，1280×720 的 420v（video range 的 NV12），只留最新一張；Windows 用 Media Foundation 的 source reader，要求接近 1280×720、最多 30 fps 的 NV12，MJPEG 的攝影機由 reader 解碼與縮放。</li>
+  <li><strong>合成：</strong><code>compose.wgsl</code> 一份，建置時由 naga 翻成 MSL 與 HLSL；macOS 經 <code>CVMetalTextureCache</code> 把 IOSurface 的兩個平面當成 Metal 貼圖原地讀寫，Windows 在 Direct3D 11 上做；沒有硬體影像處理器的 Windows 裝置（WARP）則把螢幕讀回 CPU 再上傳。</li>
+  <li><strong>錄影中修改：</strong>位置、大小、圓角與鏡像從 Studio 的預覽送出一則版面訊息，下一格生效，每次修改都記進該次錄影的記錄；系統匣（選單列）可以隱藏與顯示攝影機，隱藏時攝影機仍開著。</li>
+  <li><strong>遺失：</strong>2 秒沒有畫面，或裝置斷線，就判定遺失；錄影只剩螢幕，結束時告知並標記；以同一個唯一 ID 重新開啟，退避 2 到 30 秒。</li>
+  <li><strong>預覽：</strong>640 像素寬、10 fps 的 H.264，經 <code>MessagePort</code> 送到 Studio 頁面，以 WebCodecs 軟體解碼。</li>
+</ul>
+
+<p>以下是在參考機（M1 Pro，外接 1920×1080 顯示器，iPhone 的 Continuity Camera）上量到的數字，全部是 RecordStuff 所有行程合計的單核 CPU 百分比。沒有攝影機的基準是 30 fps 10.4%、60 fps 14.0%。</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>原型或情境（日期）</th><th>30 fps</th><th>60 fps</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td>Core Image 合成，無預覽（10-17）</td><td>20.9%</td><td>未量</td><td>每格在 CPU 重建濾鏡圖</td></tr>
+    <tr><td>Core Image＋NV12 預覽經 WebGL（10-17）</td><td>33.6%</td><td>43.2%</td><td>預覽約 12.7 點，其中 9 點是 renderer 與 GPU 行程</td></tr>
+    <tr><td>Metal 著色器，無預覽（10-17）</td><td>14.7%</td><td>21.2%</td><td>合成約 4 點與 7 點</td></tr>
+    <tr><td>Metal＋15 fps H.264 預覽（10-17）</td><td>24.8% 硬體解碼／24.3% 軟體</td><td>29.4%／29.9%</td><td>預覽本身 10.5 點與 8.7 點，超過 8 點的預算，維護者接受</td></tr>
+    <tr><td>R：10 fps 預覽版，Studio 關著（10-18）</td><td>15.5%</td><td>19.4%</td><td></td></tr>
+    <tr><td>S：同上，Studio 開著（10-18）</td><td>24.5%</td><td>30.7%</td><td>比 R 多 8.9 與 11.3 點</td></tr>
+    <tr><td>L：即時預覽（10-18）</td><td>16.9%</td><td>16.9%</td><td>錄影的管線，不寫檔</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>其他量到的：攝影機每分鐘交出約 1,766 到 1,795 張，沒有掉格；錄影檔的幀率在 30.00 到 30.03 與 59.97 到 60.03 之間，聲音與畫面同時開始；讀回的畫格裡，泡泡出現在記錄所說的位置與大小；60 fps 錄影的 1247 格中，沒有任何間隔超過 17.5 ms；隱藏與顯示在記錄的時間點生效；倒數中取消錄影時，選單列的攝影機指示燈在 2.5 秒內熄滅。</p>
+
+<p><strong>沒有量到、或只靠自動化檢查的：</strong>拔掉真正的 USB 攝影機時裝置清單會不會更新；攝影機在同一次錄影中回來（只有單元測試）；筆電螢幕打開時的內建相機；Windows 上真實攝影機的開啟、畫面、遺失與指示燈（Windows 只在 CI 的軟體 GPU 上跑過合成器的像素測試）；以及錄影開始前的即時預覽中，攝影機停頓時不會被判定遺失，要等開始錄影才會。</p>
+
+<h2 id="table">決策總表</h2>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
+  <tbody>
+    <tr><td>合成在哪一層</td><td>錄影器內，編碼器之前（B）</td><td>沒有編輯器；停止即成品；螢幕要保持乾淨</td><td>要自己合成；靜止畫面也要持續編碼；需要可信的預覽</td><td>加上編輯器（改 C）；極低成本是第一優先（改 A）</td></tr>
+    <tr><td>合成在哪裡做</td><td>GPU，自寫 compute 著色器</td><td>畫面已在 GPU 記憶體；硬體編碼器</td><td>要處理 NV12 與色彩矩陣的細節</td><td>沒有可用 GPU 的環境（CPU 路徑）</td></tr>
+    <tr><td>跨平台方式</td><td>一份 WGSL，naga 翻成 MSL／HLSL，各平台原生 API</td><td>只有一兩層、一兩個 pass 的合成</td><td>不用取樣器；各平台仍要自己綁貼圖</td><td>多層、多 pass 的編輯器或特效（改 wgpu）</td></tr>
+    <tr><td>攝影機畫面選擇</td><td>只留最新一張，主機時脈</td><td>泡泡的時間精度要求低</td><td>約 0.1 秒的落後（Continuity Camera）</td><td>手部示範、指著螢幕講解成為主要用途</td></tr>
+    <tr><td>遺失</td><td>2 秒或斷線即遺失；只剩螢幕；同一台退避重開</td><td>錄影比攝影機重要</td><td>遺失期間沒有臉；換一台攝影機不會自動接上</td><td>使用者要求自動換到另一台</td></tr>
+    <tr><td>預覽路徑</td><td>640 px、10 fps H.264＋WebCodecs 軟體解碼</td><td>介面是網頁；行程隔離</td><td>Studio 開著時多約 9 到 11 點</td><td>sharedTexture 路徑通過量測閘門（計畫 080）</td></tr>
+    <tr><td>尺寸與位置</td><td>短邊比例；剩餘空間比例，依顯示器記</td><td>多台、多解析度的顯示器</td><td>使用者看不到像素值</td><td>需要精確像素的專業用途</td></tr>
+    <tr><td>圓角</td><td>圓弧，0 到 100%</td><td>預覽與合成要逐像素相符</td><td>沒有 squircle 的柔和感</td><td>兩邊都有同一份 squircle 公式</td></tr>
+    <tr><td>鏡像</td><td>「錄影時鏡像」，預設關；預覽與錄影一致</td><td>預覽是確認錄影的依據</td><td>預覽裡的自己像別人看到的</td><td>有一層只給自己看的預覽（例如 A 或 C 的浮動視窗）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="boundaries">不要這樣做的情況</h2>
+
+<ul>
+  <li><strong>不要在已經有編輯器的產品裡，把攝影機燒進螢幕畫面。</strong>使用者既然會打開編輯器，分軌就幾乎免費地換來事後調整的自由；燒進去等於丟掉它。</li>
+  <li><strong>不要為了 B 架構而放棄預覽，或讓預覽變成另一份模擬。</strong>使用者看不到框，唯一的確認依據就是預覽；預覽若不是合成器的輸出，它和錄影遲早會不一致。</li>
+  <li><strong>不要讓預覽鏡像、錄影不鏡像</strong>，如果你的預覽就是錄影本身。要通話式的自拍鏡像，就需要一層只給使用者看的畫面，例如 A 或 C 的浮動視窗。</li>
+  <li><strong>不要在 CPU 上逐像素合成整張螢幕</strong>，除非畫面本來就在 CPU 記憶體裡（例如沒有 GPU 的虛擬機）。讀回與上傳本身就比合成貴。</li>
+  <li><strong>不要因為有跨平台繪圖函式庫就引入它</strong>，如果你的合成只有一層、而它在某個平台上沒有你用的 API 後端。先問它除了著色器還共用了什麼。</li>
+  <li><strong>不要在攝影機遺失時凍結最後一張畫面。</strong>錄影裡一張不動的臉，比沒有臉更令人困惑。</li>
+  <li><strong>不要讓每個行程各自決定「預設攝影機」是哪一台。</strong>同一個規則、明確解析，否則設定頁和錄影會各開一台。</li>
+  <li><strong>不要假設硬體解碼器的延遲比較低。</strong>對小而即時的預覽串流，先量從送出到畫出的時間。</li>
+  <li><strong>不要把「預覽送進網頁」的成本算成合成的成本。</strong>它們在不同行程，成因不同，解法也不同；分開量，才知道該改哪一個。</li>
+</ul>
+
+<h2 id="criteria">可以帶走的判斷準則</h2>
+
+<ul>
+  <li><strong>停止錄影時，使用者要的是成品還是素材？</strong>成品就是 A 或 B；素材而且有編輯器，就是 C。</li>
+  <li><strong>使用者的螢幕能不能讓出一塊？</strong>能，A 最便宜；不能（要點到底下的按鈕、框會擋住內容），就是 B 或 C。</li>
+  <li><strong>使用者靠什麼確認觀眾會看到什麼？</strong>如果答案是預覽，預覽就是核心功能，要量它的成本、要保證它就是錄影。</li>
+  <li><strong>合成器和顯示預覽的地方在不在同一個行程、同一個 GPU 裝置上？</strong>在，直接畫貼圖；不在，就要選一條跨行程的路，並量網頁那一側的成本。</li>
+  <li><strong>沒有攝影機時，錄影有沒有逐位元組不變？</strong>把它寫成測試。</li>
+  <li><strong>你的錄影器在螢幕靜止時做了什麼省資源的事？</strong>攝影機會讓它失效，成本要用「螢幕一直在動」來估。</li>
+  <li><strong>每個尺寸與位置的表示法，在別的螢幕上還成立嗎？</strong>短邊比例與剩餘空間比例讓「換顯示器」不需要任何修正。</li>
+  <li><strong>同一個形狀在幾個地方畫？</strong>每多一個，就選一個更簡單、更容易在每處精確實作的公式，並用共用的測試案例綁住它們。</li>
+  <li><strong>你的預覽是給自己看的，還是給觀眾看的？</strong>這決定了鏡像的預設值。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>Loom：<a href="https://support.atlassian.com/loom/docs/get-started-with-loom-for-macos">Get started with Loom for macOS</a>（泡泡的四種形狀、五種尺寸、拖曳與吸附）、<a href="https://support.atlassian.com/loom/docs/resize-your-camera-on-the-chrome-extension/">Resize your camera on the Chrome extension</a>、<a href="https://support.atlassian.com/loom/docs/flip-your-camera/">Flip your camera</a>（錄完無法翻轉）。</li>
+  <li>Cap：<a href="https://cap.so/features/studio-mode">Studio Mode</a>（分開錄螢幕與攝影機、事後在編輯器調整版面）；原始碼 <a href="https://github.com/CapSoftware/Cap/blob/main/apps/desktop/src-tauri/src/camera.rs"><code>apps/desktop/src-tauri/src/camera.rs</code></a>（以 wgpu 繪製的原生攝影機預覽視窗、150 到 600 像素、形狀與預設不鏡像）與 <a href="https://github.com/CapSoftware/Cap/blob/main/apps/desktop/src-tauri/src/frame_ws.rs"><code>frame_ws.rs</code></a>（編輯器畫面經本機 WebSocket 送進網頁）。Cap 以 AGPL 授權，僅閱讀其設計。</li>
+  <li>Screen Studio：<a href="https://www.screen.studio/guide/camera">Camera</a> 與 <a href="https://screen.studio/guide/webcam-microphone">Webcam &amp; microphone</a>（錄影後調整攝影機大小、位置與圓角，縮放時自動縮小）。</li>
+  <li>OBS Studio：<a href="https://docs.obsproject.com/frontends">Frontends 文件</a>（<code>obs_display_create</code>、繪製回呼與 <code>obs_render_main_texture</code>）。</li>
+  <li>Apple：<a href="https://support.apple.com/guide/facetime/fctm6333f4bd/mac">Use Presenter Overlay during video conferencing</a>（小型與大型疊加）。</li>
+  <li>Zoom 社群：<a href="https://community.zoom.com/meetings-2/recorded-video-not-mirroring-15796">Recorded video not mirroring</a>（「Mirror my video」只影響自己的畫面，錄影不鏡像）；Microsoft：<a href="https://support.microsoft.com/en-us/office/manage-your-device-settings-5b5ca50f-eea2-47b6-a98c-611548528498">Manage your device settings in Teams</a>（Mirror my video）。</li>
+  <li>Electron：<a href="https://electronjs.org/docs/latest/api/shared-texture"><code>sharedTexture</code></a>（實驗性；<code>importSharedTexture</code> 只能在 main 行程呼叫）與 <a href="https://github.com/electron/electron/blob/v44.7.0/shell/common/api/shared_texture/README.md">設計說明</a>。</li>
+  <li><a href="https://github.com/mxschmitt/ghostty-xterm-bench">ghostty-xterm-bench</a>（MIT；在 Electron 裡以 IOSurface 與 <code>sharedTexture</code> 零複製顯示另一個行程算繪的畫面）；Chromium：<a href="https://chromium.googlesource.com/chromium/src.git/+/main/base/apple/mach_port_rendezvous_mac.cc">Mach port rendezvous</a>。</li>
+  <li>naga：<a href="https://github.com/gfx-rs/wgpu/tree/trunk/naga">gfx-rs/wgpu 的 naga</a>（WGSL 到 MSL、HLSL 等的著色器翻譯）。</li>
+  <li>W3C：<a href="https://www.w3.org/TR/webcodecs/">WebCodecs</a>（<code>VideoDecoder</code>、<code>hardwareAcceleration</code>、<code>optimizeForLatency</code>）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/avfoundation/avcapturevideodataoutput/alwaysdiscardslatevideoframes"><code>alwaysDiscardsLateVideoFrames</code></a>。</li>
+  <li>ITU-R：<a href="https://www.itu.int/rec/R-REC-BT.601/en">BT.601</a> 與 <a href="https://www.itu.int/rec/R-REC-BT.709/en">BT.709</a>（兩套 YCbCr 係數與 video range）。</li>
+  <li>相關文章：<a href="codecs-containers-and-crash-safe-recording.html">編解碼器、容器與不怕當機的錄影</a>（硬體編碼器與 H.264）、<a href="audio-clocks-mixing-and-av-sync.html">音訊時脈、混音與影音同步</a>（主機時脈與來源遺失）、<a href="native-apis-and-tech-stack-choices.html">從瀏覽器 API 到作業系統 API</a>（為什麼錄影在 utility process 的 Rust 引擎裡）。</li>
+  <li>原始碼：<code>native/capture/shaders/compose.wgsl</code>（合成著色器）、<code>native/capture/build.rs</code>（naga 翻譯）、<code>native/capture/src/camera_layout.rs</code> 與 <code>src/shared/camera-layout.ts</code>（泡泡幾何，兩者共用 <code>camera-layout.cases.json</code>）、<code>native/capture/src/core/camera.rs</code>（最新一張、遺失判定與攝影機畫面的年齡）、<code>native/capture/src/mac/compositor.rs</code> 與 <code>win/compositor.rs</code>（各平台的合成器）、<code>src/renderer/lib/preview-decoder.ts</code>（WebCodecs 預覽解碼）。</li>
+</ul>
+</section>
+
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

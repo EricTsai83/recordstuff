@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { NativeHost, developmentCapture, engineFailure, engineLoadExit, type ParentPort } from "./native-host-process";
+import { NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
-  private listener: ((message: { data: unknown }) => void) | undefined;
-  on(_event: "message", listener: (message: { data: unknown }) => void): void { this.listener = listener; }
+  private listener: ((message: { data: unknown; ports?: PreviewPort[] }) => void) | undefined;
+  on(_event: "message", listener: (message: { data: unknown; ports?: PreviewPort[] }) => void): void { this.listener = listener; }
   postMessage(message: unknown): void { this.sent.push(message as HostMessage); }
-  deliver(data: unknown): void { this.listener?.({ data }); }
+  deliver(data: unknown, ports?: PreviewPort[]): void { this.listener?.({ data, ...(ports ? { ports } : {}) }); }
 }
 
 type Event = { kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed"; bytes?: number; code?: string; detail?: string };
@@ -55,6 +55,148 @@ describe("engineFailure", () => {
   it("splits the engine's code from its detail, and treats anything else as a start failure", () => {
     expect(engineFailure(new Error("permission_denied|declined (-3801)"))).toEqual({ code: "permission_denied", detail: "declined (-3801)" });
     expect(engineFailure("boom")).toEqual({ code: "capture_start_failed", detail: "boom" });
+  });
+});
+
+describe("cameraPrototypeOn", () => {
+  it("is on for any value the engine reads as on", () => {
+    expect(cameraPrototypeOn({})).toBe(false);
+    for (const value of ["", " ", "0", "off", "OFF"]) expect(cameraPrototypeOn({ RECORDSTUFF_CAMERA_PROTOTYPE: value })).toBe(false);
+    for (const value of ["1", "on", "width=0.3,mirror=1"]) expect(cameraPrototypeOn({ RECORDSTUFF_CAMERA_PROTOTYPE: value })).toBe(true);
+  });
+
+  it("asks for preview frames unless preview=0", () => {
+    expect(cameraPreviewOn({})).toBe(false);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "1" })).toBe(true);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "width=0.3, preview=1" })).toBe(true);
+    expect(cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: "width=0.3, preview = 0" })).toBe(false);
+  });
+});
+
+describe("the camera (plan 075)", () => {
+  const camera = { deviceId: "cam", width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: true };
+
+  it("passes the camera to the engine, with whether this process makes preview frames", async () => {
+    for (const preview of [false, true]) {
+      const port = new Port();
+      const fake = fakeEngine();
+      new NativeHost(port, fake.factory, () => undefined, undefined, {}, preview);
+      port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera } });
+      await flush();
+      expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ camera: { ...camera, preview } }));
+    }
+    const port = new Port();
+    const fake = fakeEngine();
+    new NativeHost(port, fake.factory, () => undefined);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    expect(fake.engine.prepare.mock.calls[0]![0]).not.toHaveProperty("camera");
+  });
+
+  it("hands the session's camera changes to the engine without the device, logs them and ignores another session's", async () => {
+    const logs: string[] = [];
+    const port = new Port();
+    const fake = fakeEngine();
+    const setCameraLayout = vi.fn(() => true);
+    new NativeHost(port, (onEvent) => ({ ...fake.factory(onEvent), setCameraLayout }), (line) => logs.push(line));
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera } });
+    await flush();
+    port.deliver({ type: "cameraLayout", sessionId: "s1", camera: { ...camera, x: 0 }, hidden: true });
+    port.deliver({ type: "cameraLayout", sessionId: "other", camera, hidden: false });
+    const { deviceId: _device, ...layout } = camera;
+    expect(setCameraLayout.mock.calls).toEqual([[{ ...layout, x: 0 }, true]]);
+    expect(logs).toContainEqual(expect.stringMatching(/^camera layout: .*"x":0.*, hidden$/));
+  });
+
+  it("lists the cameras, never while a session holds the engine", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const cameras = vi.fn(async () => [{ id: "iphone", name: "iPhone Camera", default: false, extra: 1 }]);
+    new NativeHost(port, (onEvent) => ({ ...fake.factory(onEvent), cameras }));
+    port.deliver({ type: "listCameras" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    port.deliver({ type: "listCameras" });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "cameras", error: "a recording is in progress" });
+  });
+
+  it("passes the session's level watching and mutes to the engine, and its levels to main (D19)", async () => {
+    const { port, emit, engine, logs } = await prepared();
+    const watchLevels = vi.fn(() => true), setMuted = vi.fn(() => true), setGains = vi.fn(() => true);
+    Object.assign(engine, { watchLevels, setMuted, setGains });
+    port.deliver({ type: "levels", sessionId: "s1", watching: true });
+    port.deliver({ type: "levels", sessionId: "other", watching: false });
+    port.deliver({ type: "mute", sessionId: "s1", system: false, microphone: true });
+    expect(watchLevels.mock.calls).toEqual([[true]]);
+    expect(setMuted.mock.calls).toEqual([[false, true]]);
+    expect(logs).toContainEqual("audio: system on, microphone muted");
+    port.deliver({ type: "gain", sessionId: "s1", system: -6, microphone: 12 });
+    port.deliver({ type: "gain", sessionId: "other", system: 0, microphone: 0 });
+    expect(setGains.mock.calls).toEqual([[-6, 12]]);
+    expect(logs).toContainEqual("audio: system -6 dB, microphone 12 dB");
+    emit({ kind: "levels", system: 0.5, microphone: null } as never);
+    emit({ kind: "levels", system: 0.25, microphone: 0.75 } as never);
+    expect(port.sent.slice(-2)).toEqual([{ type: "levels", sessionId: "s1", system: 0.5 }, { type: "levels", sessionId: "s1", system: 0.25, microphone: 0.75 }]);
+  });
+
+  it("forwards the engine's camera loss and return for the session", async () => {
+    const { port, emit } = await prepared();
+    emit({ kind: "cameraLost", detail: "the camera delivered no frame for 2 s" } as never);
+    emit({ kind: "cameraResumed", detail: "the camera delivered frames again after 3.0 s" } as never);
+    expect(port.sent.slice(-2)).toEqual([
+      { type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" },
+      { type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.0 s" }]);
+  });
+});
+
+describe("the camera's preview (plan 075)", () => {
+  const frame: PreviewFrame = { width: 640, height: 360, data: new Uint8Array(12), key: true, timestamp: 1_000_000, description: new Uint8Array([1, 100, 0, 30]) };
+  const withPreview = () => {
+    let send: (frame: PreviewFrame) => void = () => undefined;
+    const fake = fakeEngine();
+    const engine = { ...fake.engine, onPreview: vi.fn((onFrame: (frame: PreviewFrame) => void) => { send = onFrame; }) };
+    return { engine, send: (f: PreviewFrame) => send(f) };
+  };
+
+  it("forwards frames to the port main handed over, and drops them before it or after a newer one", () => {
+    const port = new Port();
+    const { engine, send } = withPreview();
+    new NativeHost(port, engine, () => undefined, undefined, {}, true);
+    expect(engine.onPreview).toHaveBeenCalledTimes(1);
+    send(frame);
+    const first = { posted: [] as unknown[], closed: false, postMessage(m: unknown) { this.posted.push(m); }, close() { this.closed = true; } };
+    const second = { posted: [] as unknown[], closed: false, postMessage(m: unknown) { this.posted.push(m); }, close() { this.closed = true; } };
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [first]);
+    send(frame);
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
+    send(frame);
+    expect(first.posted).toEqual([expect.objectContaining({ width: 640, height: 360, data: frame.data, key: true, timestamp: 1_000_000, description: frame.description, n: 1 })]);
+    expect(first.closed).toBe(true);
+    expect(second.posted).toEqual([expect.objectContaining({ n: 2 })]);
+    send({ ...frame, key: false, description: null });
+    expect(second.posted[1]).not.toHaveProperty("description");
+    // The port's message is not the capture protocol's: nothing answers it.
+    expect(port.sent.filter((m) => m.type !== "ready")).toEqual([]);
+  });
+
+  it("takes the engine's preview frames in any case, which the engine makes only while main says they are watched (step 7)", async () => {
+    const { engine } = withPreview();
+    const setCameraPreview = vi.fn(() => true);
+    const port = new Port();
+    const logs: string[] = [];
+    new NativeHost(port, { ...engine, setCameraPreview }, (line) => logs.push(line));
+    expect(engine.onPreview).toHaveBeenCalledTimes(1);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, camera: { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false } } });
+    await flush();
+    expect(engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ camera: expect.objectContaining({ preview: false }) }));
+    port.deliver({ type: "cameraPreview", sessionId: "s1", watching: true });
+    port.deliver({ type: "cameraPreview", sessionId: "other", watching: false });
+    port.deliver({ type: "cameraPreview", sessionId: "s1", watching: false });
+    expect(setCameraPreview.mock.calls).toEqual([[true], [false]]);
+    expect(logs).toContainEqual("camera preview: watched");
   });
 });
 
@@ -129,6 +271,10 @@ describe("NativeHost", () => {
       start(port, { enabled: true, deviceId: "usb-mic" });
       await flush();
       expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s1", code: "microphone_unavailable", detail: "microphone: device usb-mic is not connected" });
+      fake.engine.prepare.mockRejectedValueOnce(new Error("camera_unavailable|camera: access is not allowed (status 2)"));
+      port.deliver({ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY, native });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "error", sessionId: "s2", code: "camera_unavailable", detail: "camera: access is not allowed (status 2)" });
       expect(port.sent.some((message) => message.type === "prepared")).toBe(false);
     });
 

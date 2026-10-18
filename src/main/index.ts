@@ -4,6 +4,7 @@
  * capture runs in the native engine's `utilityProcess` (plan 076).
  */
 import { createPreferenceActions } from "./settings/preferences";
+import { DEFAULT_AUDIO_GAIN } from "../shared/audio-gain";
 import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
 import { QuitStatus } from "./app/quit-status";
 import { installQuitCoordinator } from "./app/quit-coordinator";
@@ -21,6 +22,7 @@ import {
   desktopCapturer,
   dialog,
   globalShortcut,
+  MessageChannelMain,
   nativeImage,
   net,
   nativeTheme,
@@ -35,6 +37,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { NativeCaptureHost } from "./recording/native-capture-host";
+import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
+import { CameraPreview } from "./recording/camera-preview";
+import { CameraPreviewLink } from "./settings/camera-preview-link";
+import { LevelsLink } from "./settings/levels-link";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -45,9 +51,9 @@ import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
 import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
-import { PermissionWatcher, askMicrophoneAccess, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
+import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, openCameraSettings, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
-import type { MicrophoneDevice } from "../shared/protocol";
+import type { CameraDevice, MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
 import { SavedNotification } from "./recording/saved-notification";
@@ -71,7 +77,7 @@ import { preferencesUnlocked } from "./recording/recording-lock";
 import { effectiveQuality, type QualitySettings } from "../shared/quality";
 import { AppShortcuts } from "./shortcuts/shortcuts";
 import { physicalHotkeyFeatures } from "./shortcuts/hotkey";
-import type { RecordingState } from "../shared/state";
+import type { ErrorCode, RecordingState } from "../shared/state";
 import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
@@ -280,6 +286,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
       logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor, x: d.bounds.x, y: d.bounds.y,
+      // The work area starts below the menu bar on macOS, on each display that has one.
+      ...(process.platform === "darwin" ? { menuBar: Math.max(0, d.workArea.y - d.bounds.y) } : {}),
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
   const displayMedia = new DisplayMedia<DesktopCapturerSource>({
@@ -311,6 +319,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Windows adapters' hardware encoders passed their self-test or failed); the capture process inherits it.
   process.env["RECORDSTUFF_ENGINE_DATA"] = path.join(app.getPath("userData"), "engine");
   let captureAnchor: BaseWindow | undefined;
+  const cameraPreview = process.platform === "darwin" && cameraPreviewOn(process.env) ? new CameraPreview({
+    preloadPath: path.join(__dirname, "../preload/camera-preview.js"),
+    devUrl: !app.isPackaged && process.env["ELECTRON_RENDERER_URL"]
+      ? new URL("camera-preview.html", process.env["ELECTRON_RENDERER_URL"]).href : undefined,
+    htmlPath: path.join(__dirname, "../renderer/camera-preview.html"),
+    log,
+  }) : undefined;
+  // Access is asked when the Camera switch is turned on (plan 075 step 4), not at launch.
+  if (process.platform === "darwin" && cameraPrototypeOn(process.env)) {
+    log(`camera prototype: on (${process.env["RECORDSTUFF_CAMERA_PROTOTYPE"] ?? ""}), preview page ${cameraPreview ? "on" : "off"}, camera access ${cameraAccess() ?? "unknown"}`);
+  }
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     // Native code cannot load from inside the asar archive; packaging unpacks out/native.
@@ -330,6 +349,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
+    // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
+    // attempt's capture process joined to the preview page.
+    ...(cameraPreview ? { onLaunch: (child: Electron.UtilityProcess) => cameraPreview.connect(child) } : {}),
     ...(process.platform === "win32" ? {
       // The engine finds the display by the physical point at its centre: Electron's ids name no monitor there.
       displayPoint: (displayId: string) => {
@@ -378,6 +400,15 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         : microphones?.find((candidate) => candidate.default)?.name;
       return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
     },
+    // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 7, with
+    // the Camera group's controls, removes the development switch); autorecord never records it.
+    camera: () => {
+      if (autoRecord?.ok || !settings.camera || !cameraAvailable()) return undefined;
+      const device = settings.cameraDevice;
+      return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
+    },
+    // The volumes (D21): autorecord's are 0 dB, its sound as the inputs give it.
+    audioGain: () => autoRecord?.ok ? { ...DEFAULT_AUDIO_GAIN } : settings.audioGain,
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -461,14 +492,54 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
    */
   let microphones: readonly MicrophoneDevice[] | undefined;
   let listingMicrophones = false;
-  const refreshMicrophones = (): void => {
-    if (listingMicrophones || !preferencesUnlocked(recorder.state)) return;
+  /** The host lists one kind at a time and a newer listing ends the one in flight, so the kinds wait their turn. */
+  let listings: Promise<void> = Promise.resolve();
+  const inTurn = (list: () => Promise<void>): Promise<void> => (listings = listings.then(list));
+  const refreshMicrophones = (): Promise<void> => {
+    if (listingMicrophones || !preferencesUnlocked(recorder.state)) return Promise.resolve();
     listingMicrophones = true;
-    host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
+    return inTurn(() => host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
       (devices) => { microphones = devices; },
       (cause: unknown) => log(`microphone: the inputs could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
-    ).finally(() => { listingMicrophones = false; refreshUi(); });
+    )).finally(() => { listingMicrophones = false; refreshUi(); });
   };
+  /**
+   * The cameras the engine listed last (plan 075, D9), for the Camera device menu: listed as the inputs are, in turn
+   * with them.
+   */
+  let cameras: readonly CameraDevice[] | undefined;
+  /** Why the last Live preview could not start (plan 075, D20), until the next one begins. */
+  let previewFailure: ErrorCode | undefined;
+  /** Whether the Recording Studio is open in a window in sight, which a Live preview lasts as long as. */
+  let studioOpen = false;
+  /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
+  const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.hideSystemUi, settings.outputDir,
+    settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null]);
+  let previewPrepared: string | undefined;
+  /** Follows the Live preview: one prepared with settings since changed is prepared again, while the Studio is open. */
+  const followPreview = (): void => {
+    const preview = recorder.preview;
+    if (!preview) { previewPrepared = undefined; return; }
+    const inputs = previewInputs();
+    if (previewPrepared === undefined) { previewPrepared = inputs; return; }
+    if (inputs === previewPrepared) return;
+    log("studio: settings changed under the Live preview; preparing it again");
+    previewPrepared = undefined;
+    recorder.stopPreview();
+    if (studioOpen) setTimeout(() => { if (studioOpen && !recorder.preview) recorder.startPreview(); }, 0);
+  };
+  let listingCameras = false;
+  // The engine composes the camera on macOS and, since plan 075 step 6, on Windows.
+  const cameraAvailable = (): boolean => process.platform === "darwin" || process.platform === "win32";
+  const refreshCameras = (): Promise<void> => {
+    if (listingCameras || !cameraAvailable() || !preferencesUnlocked(recorder.state)) return Promise.resolve();
+    listingCameras = true;
+    return inTurn(() => host.listCameras(() => preferencesUnlocked(recorder.state)).then(
+      (devices) => { cameras = devices; },
+      (cause: unknown) => log(`camera: the cameras could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
+    )).finally(() => { listingCameras = false; refreshUi(); });
+  };
+  const refreshDevices = (): void => { void refreshMicrophones(); void refreshCameras(); };
   /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */
   const savingContext = (): Pick<AppContext, "saving" | "quitWithoutWaiting"> => {
     const saving = recorder.saving.map(({ recordingPath, slow }) => ({ file: path.basename(recordingPath).replace(/\.recording(\.[^.]+)$/i, "$1"), slow }));
@@ -485,6 +556,22 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
     })(),
+    camera: (() => {
+      // The engine records the camera on macOS and Windows (plan 075).
+      const access = cameraAccess(), session = recorder.camera, device = settings.cameraDevice;
+      return { enabled: settings.camera, available: cameraAvailable(), layout: settings.cameraLayout, ...(access ? { access } : {}),
+        ...(session ? { session } : {}), ...(device ? { device } : {}), ...(cameras ? { devices: cameras } : {}) };
+    })(),
+    studio: {
+      ...(recorder.preview ? { preview: { live: recorder.preview.live } } : {}),
+      showing: recorder.previewSessionId !== undefined,
+      ...(previewFailure ? { previewFailure } : {}),
+    },
+    ...(() => {
+      const audio = recorder.audio;
+      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
+    })(),
+    audioGain: settings.audioGain,
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: settings.outputDir,
@@ -510,14 +597,31 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ...savingContext(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
+  // Settings' preview of a recording's camera (plan 075 step 7): joined while the page shows it.
+  const cameraPreviewLink = new CameraPreviewLink<Electron.MessagePortMain>({
+    session: () => recorder.previewSessionId,
+    watch: (sessionId, watching, port) => host.watchPreview(sessionId, watching, port),
+    channel: () => new MessageChannelMain(),
+    log,
+  });
+  // The Recording Studio's meters (D19): the recording's levels while the page shows them.
+  const levelsLink = new LevelsLink({
+    session: () => recorder.audio?.sessionId,
+    watch: (sessionId, watching) => host.watchLevels(sessionId, watching),
+  });
+  host.onMessage((message) => levelsLink.deliver(message));
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
+    cameraPreview: (page) => cameraPreviewLink.watch(page),
+    levels: (page) => levelsLink.watch(page),
+    // A Live preview lasts while the Studio is open in sight (D20); a recording it became goes on.
+    studio: (open) => { studioOpen = open; if (!open) recorder.stopPreview(); },
     state: () => recorder.state,
     context: appContext,
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
-    activated: () => { library.watch(); void library.refresh(); refreshMicrophones(); },
+    activated: () => { library.watch(); void library.refresh(); refreshDevices(); },
     quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
@@ -606,9 +710,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     tray.render(state);
     settingsWindow.refresh();
     appMenu.refresh();
+    cameraPreviewLink.sync();
+    levelsLink.sync();
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {
+    followPreview();
     tray.refresh();
     settingsWindow.refresh();
     appMenu.refresh();
@@ -715,6 +822,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     failure: code => captureNotices.hold(`recording failure ${code}`, () => tray.notifyRecordingFailure(code)),
   });
   const actionHandler = createActionHandler({
+    studioOpen: () => studioOpen,
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog,
@@ -741,11 +849,18 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     openExternal: url => shell.openExternal(url),
     revealFile: file => shell.showItemInFolder(file),
     openScreenCaptureSettings, openNotificationSettings, openMicrophoneSettings, openOptionalFeatures,
+    openCameraSettings: () => openCameraSettings(),
+    askCameraAccess: async () => {
+      const allowed = await askCameraAccess();
+      // The default camera's name for the menu, now that the camera is on.
+      void refreshCameras();
+      return allowed;
+    },
     confirm: options => { focusApp(); return dialog.showMessageBox(options); },
     askMicrophoneAccess: async () => {
       const allowed = await askMicrophoneAccess();
       // The default input's name for the card, now that the microphone is on.
-      refreshMicrophones();
+      void refreshMicrophones();
       return allowed;
     },
     showInfo: async detail => {
@@ -763,7 +878,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         quit.clearDeferred(false);
         // No input is listed while a session runs (plan 074): a listing still in flight ends now.
         if (!preferencesUnlocked(event.state)) host.cancelListing();
-        if (preferencesUnlocked(event.state)) {
+        // A Live preview's session is held in an idle state (D20): its process stays until the preview is let go of.
+        if (preferencesUnlocked(event.state) && !recorder.preview) {
           displayMedia.settle();
           host.destroy();
           // The recorder closes the overlay on every path; this is the safety net.
@@ -803,8 +919,18 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         // Told once the recording ends: a banner now could be muted while the display is shared (plan 074).
         captureNotices.hold("microphone lost", () => tray.notifyMicrophoneLost());
         return;
+      case "cameraLost":
+        // The same for the camera (plan 075, D12).
+        captureNotices.hold("camera lost", () => tray.notifyCameraLost());
+        return;
       case "displayFailed":
         displayMedia.failure = event.detail;
+        refreshUi();
+        return;
+      case "preview":
+        // The Studio says why a Live preview could not start until the next one begins (plan 075, D20).
+        if (event.failure) previewFailure = event.failure.code;
+        else if (recorder.preview) previewFailure = undefined;
         refreshUi();
         return;
       case "captureStarted":

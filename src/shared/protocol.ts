@@ -5,6 +5,7 @@
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import type { ErrorCode } from "./state";
+import { isGainDb } from "./audio-gain";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
@@ -19,6 +20,7 @@ export const HOST_ERROR_CODES = [
   "no_display",
   "no_audio_track",
   "microphone_unavailable",
+  "camera_unavailable",
   "media_components_missing",
   "capture_start_failed",
   "capture_failed",
@@ -58,6 +60,9 @@ export interface MicrophoneDevice {
   default: boolean;
 }
 
+/** A camera the engine listed (plan 075, D9): AVCaptureDevice's unique ID, its name, and whether it is the default. */
+export type CameraDevice = MicrophoneDevice;
+
 /** What the native engine's host needs beyond the quality: the display main resolved, the file it opened and what to leave out. */
 export interface NativeStart {
   /** The display to record: its CGDirectDisplayID on macOS, Electron's display id elsewhere. */
@@ -72,6 +77,23 @@ export interface NativeStart {
   hideSystemUi: boolean;
   /** Mix the microphone in (plan 074); absent is off. */
   microphone?: MicrophoneChoice;
+  /** Compose the camera into the frames (plan 075); absent is off. */
+  camera?: CameraChoice;
+}
+
+/**
+ * The camera composed into a recording (plan 075): which one, and its bubble on the recorded display, in the
+ * fractions of src/shared/camera-layout.ts (the position the one kept for that display).
+ */
+export interface CameraChoice {
+  /** AVCaptureDevice's unique ID; absent is the system's default camera. */
+  deviceId?: string;
+  width: number;
+  height: number;
+  rounding: number;
+  x: number;
+  y: number;
+  mirror: boolean;
 }
 
 export type MainMessage =
@@ -85,6 +107,20 @@ export type MainMessage =
   | { type: "stop"; sessionId: string }
   /** List the audio inputs (plan 074); answered with `microphones`. Only to a host with no session. */
   | { type: "listMicrophones" }
+  /** List the cameras (plan 075); answered with `cameras`. Only to a host with no session. */
+  | { type: "listCameras" }
+  /**
+   * The camera's bubble and whether it is shown, for the session's next frames (plan 075, D7 and D13); answered with
+   * nothing. `camera.deviceId` is ignored: the camera is not switched while recording.
+   */
+  | { type: "cameraLayout"; sessionId: string; camera: CameraChoice; hidden: boolean }
+  /** Whether the session's preview is watched (plan 075 step 7): Settings shows it, so its frames are made. */
+  | { type: "cameraPreview"; sessionId: string; watching: boolean }
+  /** Whether the session's levels are watched, and which inputs are muted from their next sound on (plan 075, D19). */
+  | { type: "levels"; sessionId: string; watching: boolean }
+  | { type: "mute"; sessionId: string; system: boolean; microphone: boolean }
+  /** The inputs' volumes in dB from their next sound on (plan 075, D21), within the faders' range. */
+  | { type: "gain"; sessionId: string; system: number; microphone: number }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -119,9 +155,17 @@ export type HostMessage =
   | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The microphone told lost delivers sound again, which the track takes from then on (plan 074). */
   | { type: "microphoneResumed"; sessionId: string; detail: string }
+  /** The camera stopped delivering while recording, and the recording goes on without it (plan 075, D12). */
+  | { type: "cameraLost"; sessionId: string; detail: string }
+  /** The camera told lost delivers again and is composed again. */
+  | { type: "cameraResumed"; sessionId: string; detail: string }
+  /** The inputs' loudest samples since the last (plan 075, D19), linear, about 15 times a second while watched. */
+  | { type: "levels"; sessionId: string; system: number; microphone?: number }
   /** The answer to `listMicrophones`: the inputs, or why they could not be listed. */
   | { type: "microphones"; devices: MicrophoneDevice[] }
   | { type: "microphones"; error: string }
+  | { type: "cameras"; devices: CameraDevice[] }
+  | { type: "cameras"; error: string }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -134,6 +178,13 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isPoint(value: unknown): value is { x: number; y: number } {
   return isRecord(value) && Number.isInteger(value["x"]) && Number.isInteger(value["y"]);
+}
+
+function isCameraChoice(value: unknown): value is CameraChoice {
+  if (!isRecord(value) || typeof value["mirror"] !== "boolean" || (value["deviceId"] !== undefined && !isNonEmptyString(value["deviceId"]))) return false;
+  const inRange = (key: string, min: number, max: number): boolean =>
+    typeof value[key] === "number" && Number.isFinite(value[key]) && (value[key] as number) >= min && (value[key] as number) <= max;
+  return inRange("width", 0, 1) && inRange("height", 0, 1) && inRange("rounding", 0, 1) && inRange("x", 0, 1) && inRange("y", 0, 1);
 }
 
 function isMicrophoneChoice(value: unknown): value is MicrophoneChoice {
@@ -150,7 +201,8 @@ function isNativeStart(value: unknown): value is NativeStart {
     isNonEmptyString(value["recordingPath"]) &&
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
     typeof value["hideSystemUi"] === "boolean" &&
-    (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"]));
+    (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"])) &&
+    (value["camera"] === undefined || isCameraChoice(value["camera"]));
 }
 
 function isEngineFileReport(value: unknown): value is EngineFileReport {
@@ -168,13 +220,26 @@ export function isMainMessage(value: unknown): value is MainMessage {
     case "record":
     case "stop":
       return isNonEmptyString(value["sessionId"]);
+    case "cameraLayout":
+      return isNonEmptyString(value["sessionId"]) && isCameraChoice(value["camera"]) && typeof value["hidden"] === "boolean";
+    case "cameraPreview":
+    case "levels":
+      return isNonEmptyString(value["sessionId"]) && typeof value["watching"] === "boolean";
+    case "mute":
+      return isNonEmptyString(value["sessionId"]) && typeof value["system"] === "boolean" && typeof value["microphone"] === "boolean";
+    case "gain":
+      return isNonEmptyString(value["sessionId"]) && isGainDb(value["system"]) && isGainDb(value["microphone"]);
     case "listMicrophones":
+    case "listCameras":
     case "ping":
       return true;
     default:
       return false;
   }
 }
+
+/** A peak level: finite, from silence to well past full scale (a sum before the limiter). */
+const isLevel = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 16;
 
 export function isHostMessage(value: unknown): value is HostMessage {
   if (!isRecord(value)) return false;
@@ -204,8 +269,13 @@ export function isHostMessage(value: unknown): value is HostMessage {
         typeof value["detail"] === "string";
     case "microphoneLost":
     case "microphoneResumed":
+    case "cameraLost":
+    case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
+    case "levels":
+      return isNonEmptyString(value["sessionId"]) && isLevel(value["system"]) && (value["microphone"] === undefined || isLevel(value["microphone"]));
     case "microphones":
+    case "cameras":
       return Array.isArray(value["devices"]) ? value["devices"].every(isMicrophoneDevice) && value["error"] === undefined
         : typeof value["error"] === "string";
     case "error":

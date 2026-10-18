@@ -3,6 +3,7 @@
  * menu, notifications and the Settings shortcut all end here, so the quit gate and each preference's lock are
  * decided in one place. `index.ts` builds the collaborators and passes them in; this module creates none.
  */
+import { applyRatio } from "../../shared/camera-layout";
 import fs from "node:fs/promises";
 import type { MessageBoxOptions } from "electron";
 import type { AppAction } from "../app/ui-model";
@@ -22,6 +23,8 @@ import { translate } from "../../shared/i18n";
 export interface ActionDeps {
   /** A quit is running: every action but quit is refused until it exits or is declined. */
   quitRequested(): boolean;
+  /** Whether the Recording Studio is open in a window in sight (plan 075, D20), which a Live preview lasts as long as. */
+  studioOpen?(): boolean;
   /** Nothing is recording or quitting (`preferencesUnlocked`), so a session-touching change may apply. */
   settled(): boolean;
   platform: NodeJS.Platform;
@@ -31,13 +34,15 @@ export interface ActionDeps {
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
-    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending">;
+    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
+    | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
+    | "audioGain" | "setAudioGain">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "startPreview" | "stopPreview">;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
-    | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied">;
-  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording">;
+    | "notifyQualityWriteFailed" | "notifyAnswer" | "notifyMicrophoneDenied" | "notifyCameraDenied">;
+  settingsWindow: Pick<SettingsWindow, "show" | "showRecordingResult" | "showShortcut" | "showShortcutList" | "showRecording" | "showStudio">;
   shortcuts: Pick<AppShortcuts, "set" | "retry">;
   updates: Pick<UpdateChecker, "check" | "state">;
   captureNotices: Pick<CaptureNotices, "hold">;
@@ -65,12 +70,16 @@ export interface ActionDeps {
   openNotificationSettings(): Promise<void>;
   /** System Settings → Privacy & Security → Microphone (plan 074). */
   openMicrophoneSettings(): Promise<void>;
+  /** The camera's privacy page, on macOS and Windows (plan 075). */
+  openCameraSettings(): Promise<void>;
   openOptionalFeatures(): Promise<void>;
   /**
    * Asks macOS for the microphone when it never has (plan 074): the prompt then follows the user's own click. Answers
    * whether access is allowed now; Windows, which has no prompt, answers true.
    */
   askMicrophoneAccess(): Promise<boolean>;
+  /** The same for the camera (plan 075). */
+  askCameraAccess(): Promise<boolean>;
   /** A windowless informational box, brought forward first. */
   showInfo(detail: string): Promise<void>;
   /** A warning with Cancel first and the named action second, brought forward first; answers the button pressed. */
@@ -115,6 +124,69 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         log("settings: microphone access is not allowed");
         tray.notifyMicrophoneDenied();
       }
+      deps.refresh();
+    } else if ("setCamera" in action) {
+      const turningOn = action.setCamera && !settings.camera;
+      await deps.savePreference("camera", {
+        locked: true,
+        write: () => settings.setCamera(action.setCamera),
+        applied: () => log(`settings: camera ${settings.camera ? "on" : "off"}`),
+      });
+      // Saved even when refused, as the microphone: Settings shows the denial with the pane that changes it.
+      if (turningOn && settings.camera && !(await deps.askCameraAccess())) {
+        log("settings: camera access is not allowed");
+        tray.notifyCameraDenied();
+      }
+      deps.refresh();
+    } else if ("setCameraDevice" in action) {
+      await deps.savePreference("camera device", {
+        locked: true,
+        write: () => settings.setCameraDevice(action.setCameraDevice),
+        applied: () => log(`settings: camera device ${settings.cameraDevice ? settings.cameraDevice.id : "system default"}`),
+      });
+    } else if ("setCameraShape" in action || "setCameraRatio" in action) {
+      // Not locked while recording (D7): the recording takes the new bubble from its next frame on.
+      const current = settings.cameraLayout;
+      const next = "setCameraRatio" in action ? applyRatio(current, action.setCameraRatio) : { ...current, ...action.setCameraShape };
+      await deps.savePreference("camera shape", {
+        write: () => settings.setCameraLayout({ width: next.width, height: next.height, rounding: next.rounding, mirror: next.mirror }),
+        applied: () => {
+          const saved = settings.cameraLayout;
+          log(`settings: camera ${Math.round(saved.width * 100)}% × ${Math.round(saved.height * 100)}%, rounding ${Math.round(saved.rounding * 100)}%, mirror ${saved.mirror ? "on" : "off"}`);
+          recorder.updateCamera({ layout: saved });
+        },
+      });
+    } else if ("setCameraPosition" in action) {
+      // Not locked while recording (D7), as the shape: the recording takes it from its next frame on.
+      const { display, x, y } = action.setCameraPosition;
+      await deps.savePreference("camera position", {
+        write: () => settings.setCameraPosition(display, { x, y }),
+        applied: () => {
+          const saved = settings.cameraLayout;
+          log(`settings: camera at ${Math.round(x * 100)}%, ${Math.round(y * 100)}% on display ${display}`);
+          recorder.updateCamera({ layout: saved });
+        },
+      });
+    } else if ("setAudioMuted" in action) {
+      // The recording's own choice (D19), as hiding the camera: the next recording starts unmuted.
+      const { source, muted } = action.setAudioMuted;
+      // Judged as the switch is, by the muting now in force.
+      if (!recorder.updateAudio({ [source]: muted })) log(`audio: no recording to mute or unmute ${source === "system" ? "system audio" : "the microphone"} in`);
+      deps.refresh();
+    } else if ("setAudioGain" in action) {
+      // A setting, not locked while recording (D21), as the bubble's shape: taken from the input's next sound on.
+      const { source, db } = action.setAudioGain;
+      await deps.savePreference(source === "system" ? "system audio volume" : "microphone volume", {
+        write: () => settings.setAudioGain(source, db),
+        applied: () => {
+          const saved = settings.audioGain;
+          log(`settings: volume system ${saved.system} dB, microphone ${saved.microphone} dB`);
+          recorder.updateGains();
+        },
+      });
+    } else if ("setCameraHidden" in action) {
+      // The recording's own choice (D13), not a setting: the next recording shows the camera again.
+      if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");
       deps.refresh();
     } else if ("setMicrophoneDevice" in action) {
       await deps.savePreference("microphone device", {
@@ -219,6 +291,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openRecordingSettings":
         deps.settingsWindow.showRecording();
         return;
+      case "openStudio":
+        deps.settingsWindow.showStudio();
+        return true;
       case "openSettings":
         deps.settingsWindow.show();
         return;
@@ -249,16 +324,25 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
           await deps.openExternal(deps.updates.state.kind === "available" ? downloadPageUrl(deps.platform) : RELEASES_URL);
           return true;
         } catch (error) { log(`settings: update link failed: ${String(error)}`); return false; }
+      case "startPreview":
+        // Asked from a Studio that has since closed (a choice queued behind a save): nothing to show it in.
+        if (deps.studioOpen && !deps.studioOpen()) log("studio: Live preview not started: the Studio is no longer open");
+        else if (!recorder.startPreview()) log(`studio: Live preview not started in state ${recorder.state.type}`);
+        return true;
+      case "stopPreview":
+        recorder.stopPreview();
+        return true;
       case "start":
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
         if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
-        return;
+        // Done either way: the Recording Studio's button (D19) shows the state that follows, not a failure.
+        return true;
       case "stop":
         recorder.stop();
-        return;
+        return true;
       case "cancelCountdown":
         recorder.cancelCountdown("menu");
-        return;
+        return true;
       case "quitWithoutWaiting":
         deps.quitWithoutWaiting();
         return true;
@@ -312,6 +396,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         if (deps.platform !== "darwin") return false;
         try { await deps.openMicrophoneSettings(); return true; }
         catch (error) { log(`microphone: open settings failed: ${String(error)}`); return false; }
+      case "openCameraSettings":
+        if (deps.platform !== "darwin" && deps.platform !== "win32") return false;
+        try { await deps.openCameraSettings(); return true; }
+        catch (error) { log(`camera: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
         deps.relaunch();
         return;

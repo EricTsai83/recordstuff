@@ -46,8 +46,11 @@ interface RecordBase {
 
 export type SessionRecord =
   | (RecordBase & { kind: "capture"; session: string; requested: QualitySettings; capture: CaptureReport })
-  /** `microphoneLost`: the microphone stopped partway and the rest holds system audio only (plan 074). */
-  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true })
+  /**
+   * `microphoneLost`: the microphone stopped partway and the rest holds system audio only (plan 074); `cameraLost`:
+   * the camera did, and that part shows the screen alone (plan 075).
+   */
+  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true })
   | (RecordBase & SessionTiming & {
       kind: "failed";
       session: string;

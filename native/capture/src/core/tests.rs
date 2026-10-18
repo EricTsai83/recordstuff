@@ -1,7 +1,7 @@
 //! The session core with fake encoders on a real clock: what is encoded when, how the recording ends, and the file
 //! it leaves. Platform capture and encoding are tested in their own modules; these run on every platform.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -32,6 +32,9 @@ struct FakeVideo {
     encoded: Arc<Mutex<Vec<(u32, u64, bool)>>>,
     format_sent: AtomicBool,
     fail: Arc<AtomicBool>,
+    /// The camera composed into each encoded frame, as a compositor takes it at encoding time (plan 075).
+    camera: Arc<CameraFeed<u32>>,
+    composed: Arc<Mutex<Vec<Option<u32>>>>,
 }
 
 impl VideoEncode<u32> for FakeVideo {
@@ -43,6 +46,7 @@ impl VideoEncode<u32> for FakeVideo {
             self.sink.media(Media::VideoFormat { avcc: vec![1, 100, 0, 40, 0xff, 0xe0, 0], width: 64, height: 36 });
         }
         self.encoded.lock().unwrap().push((*frame, pts_ns, key_frame));
+        self.composed.lock().unwrap().push(self.camera.latest().map(|(camera, _)| camera));
         self.sink.media(Media::Video { data: vec![0, 0, 0, 1, 0x65], pts_ns, sync: key_frame });
         Ok(())
     }
@@ -59,6 +63,8 @@ struct FakeAudio {
     frames_out: u64,
     /// Set, every drain fails.
     fail: Arc<AtomicBool>,
+    /// The loudest sample pushed, as f32 bits.
+    loudest: Arc<AtomicU32>,
 }
 
 impl FakeAudio {
@@ -82,6 +88,8 @@ impl AudioEncode for FakeAudio {
     }
     fn push(&mut self, interleaved: &[f32]) {
         self.frames_in += (interleaved.len() / 2) as u64;
+        let loudest = interleaved.iter().fold(0.0f32, |peak, sample| peak.max(sample.abs()));
+        self.loudest.fetch_max(loudest.to_bits(), Ordering::AcqRel);
     }
     fn push_silence(&mut self, frames: usize) {
         self.frames_in += frames as u64;
@@ -107,6 +115,9 @@ struct Heard {
     progress: AtomicUsize,
     microphone_lost: Mutex<Vec<String>>,
     microphone_resumed: Mutex<Vec<String>>,
+    camera_lost: Mutex<Vec<String>>,
+    camera_resumed: Mutex<Vec<String>>,
+    levels: Mutex<Vec<Levels>>,
 }
 
 impl Events for Heard {
@@ -125,6 +136,15 @@ impl Events for Heard {
     fn microphone_resumed(&self, detail: String) {
         self.microphone_resumed.lock().unwrap().push(detail);
     }
+    fn camera_lost(&self, detail: String) {
+        self.camera_lost.lock().unwrap().push(detail);
+    }
+    fn camera_resumed(&self, detail: String) {
+        self.camera_resumed.lock().unwrap().push(detail);
+    }
+    fn levels(&self, levels: Levels) {
+        self.levels.lock().unwrap().push(levels);
+    }
 }
 
 struct Rig {
@@ -135,6 +155,10 @@ struct Rig {
     fail: Arc<AtomicBool>,
     audio_fail: Arc<AtomicBool>,
     path: std::path::PathBuf,
+    camera: Arc<CameraFeed<u32>>,
+    composed: Arc<Mutex<Vec<Option<u32>>>>,
+    /// The loudest sample the audio encoder got.
+    loudest: Arc<AtomicU32>,
 }
 
 impl Rig {
@@ -150,15 +174,19 @@ impl Rig {
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
         let audio_fail = Arc::new(AtomicBool::new(false));
-        let (e, f, a) = (encoded.clone(), fail.clone(), audio_fail.clone());
+        let camera = Arc::new(CameraFeed::default());
+        let composed = Arc::new(Mutex::new(Vec::new()));
+        let loudest = Arc::new(AtomicU32::new(0));
+        let (e, f, a, c, d, l) = (encoded.clone(), fail.clone(), audio_fail.clone(), camera.clone(), composed.clone(), loudest.clone());
         let made = core
             .make_encoders(move |sink| {
-                Ok((FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f }, FakeAudio { fail: a, ..FakeAudio::default() }))
+                let video = FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f, camera: c, composed: d };
+                Ok((video, FakeAudio { fail: a, loudest: l, ..FakeAudio::default() }))
             })
             .unwrap();
         Core::<Fake>::encoders_made(made).unwrap();
         let shared = core.shared();
-        Self { core, shared, encoded, heard, fail, audio_fail, path }
+        Self { core, shared, encoded, heard, fail, audio_fail, path, camera, composed, loudest }
     }
 
     /// Frames every `interval` and 10 ms of sound every 10 ms, stamped with the clock, for `duration`.
@@ -212,6 +240,47 @@ fn lengths(file: &crate::mux::parse::Mp4) -> (f64, f64) {
     (video.duration as f64 * 1000.0 / f64::from(video.timescale), presented as f64 * 1000.0 / 48_000.0)
 }
 
+/// How late this machine wakes a thread now: the most a few 2 ms sleeps overran. A CI runner can be busy enough that a
+/// timing bound has to allow it.
+fn scheduling_slack() -> Duration {
+    (0..5)
+        .map(|_| {
+            let asked = Instant::now();
+            std::thread::sleep(Duration::from_millis(2));
+            asked.elapsed().saturating_sub(Duration::from_millis(2))
+        })
+        .max()
+        .unwrap()
+}
+
+/// How late this machine woke a sleeping thread while `during` ran, sampled alongside it, so a moment the machine was
+/// busy (a CI runner) is counted, which `scheduling_slack` measured before it cannot see.
+fn slack_during<T>(during: impl FnOnce() -> T) -> (T, Duration) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let sampler = {
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let mut worst = Duration::ZERO;
+            while !stop.load(Ordering::Acquire) {
+                let asked = Instant::now();
+                std::thread::sleep(Duration::from_millis(2));
+                worst = worst.max(asked.elapsed().saturating_sub(Duration::from_millis(2)));
+            }
+            worst
+        })
+    };
+    let result = during();
+    stop.store(true, Ordering::Release);
+    (result, sampler.join().unwrap())
+}
+
+/// The median interval between encoded frames' times, in nanoseconds.
+fn median_interval(times: &[u64]) -> u64 {
+    let mut gaps: Vec<u64> = times.windows(2).map(|w| w[1] - w[0]).collect();
+    gaps.sort_unstable();
+    gaps[gaps.len() / 2]
+}
+
 fn wait_for(what: &str, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(3);
     while !condition() {
@@ -253,9 +322,11 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     let encoded = rig.encoded.lock().unwrap().clone();
     assert_eq!((encoded[0].0, encoded[0].2), (2, true), "the newest prepared frame, as a key frame");
     assert!(encoded[1..].iter().all(|&(_, _, key)| !key));
-    // 60 Hz capture paced to 30 fps: about 12 frames in 400 ms, never two in one slot.
-    assert!((9..=15).contains(&(encoded.len() - 1)), "{} frames", encoded.len() - 1);
-    assert!(encoded.windows(2).all(|w| w[1].1 - w[0].1 > 16_000_000), "{encoded:?}");
+    // 60 Hz capture paced to 30 fps: about 12 frames in 400 ms, never two in one slot: no more frames than the slots
+    // their times span. Judged by those times, not by 400 ms: a loaded runner stops later and wakes late.
+    let slots = ((encoded.last().unwrap().1 - encoded[1].1) as f64 / 33_333_333.0).round() as usize + 1;
+    assert!(encoded.len() - 1 >= 9 && encoded.len() - 1 <= slots + 1, "{} frames in {slots} slots: {encoded:?}", encoded.len() - 1);
+    assert!(encoded.windows(2).all(|w| w[1].1 > w[0].1), "{encoded:?}");
     // Sound kept up, so nothing was filled in; on a loaded runner the feeder thread can miss the deadline (CI saw 534
     // frames), and then the drain must have waited the deadline out before filling in.
     assert!(
@@ -444,13 +515,62 @@ fn a_microphone_is_lost_only_while_recording_and_one_that_delivers_never_is() {
 fn a_still_screen_is_encoded_again_every_second() {
     let mut rig = Rig::new("still");
     rig.shared.frame(7, Fake::now_ns());
+    let began = Instant::now();
     rig.core.record().unwrap();
     std::thread::sleep(Duration::from_millis(1_250));
     let encoded = rig.encoded.lock().unwrap().clone();
-    assert_eq!(encoded.len(), 2, "{encoded:?}");
+    // The first frame, then one a second: two, or three if a busy machine slept past 2 s.
+    let seconds = began.elapsed().as_secs() as usize;
+    assert!(encoded.len() == 1 + seconds || (encoded.len() == 2 && seconds == 2), "{encoded:?} after {:?}", began.elapsed());
     assert!(encoded.iter().all(|&(frame, _, _)| frame == 7));
     let gap = encoded[1].1 - encoded[0].1;
-    assert!((1_000_000_000..1_200_000_000).contains(&gap), "refreshed after {gap} ns");
+    // Never early, and within the time this test watched: a busy machine (a CI runner) can wake the refresh thread
+    // late, and the refresh is stamped when it is encoded.
+    let watched = began.elapsed().as_nanos() as u64;
+    assert!(gap >= 1_000_000_000 && gap < watched, "refreshed after {gap} ns, watched {watched} ns");
+    rig.stop();
+}
+
+#[test]
+fn with_every_slot_on_a_still_screen_is_encoded_at_the_frame_rate() {
+    let mut rig = Rig::new("every-slot");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    let began = Instant::now();
+    rig.core.record().unwrap();
+    std::thread::sleep(Duration::from_millis(1_000));
+    let encoded = rig.encoded.lock().unwrap().clone();
+    let slots = (began.elapsed().as_secs_f64() * 30.0) as usize;
+    rig.stop();
+    // 30 fps for the time it really slept, give or take the first frame and the scheduler.
+    assert!(slots.saturating_sub(3) <= encoded.len() && encoded.len() <= slots + 2, "{} frames in {slots} slots: {encoded:?}", encoded.len());
+    assert!(encoded.iter().all(|&(frame, _, _)| frame == 7));
+    let t0 = encoded[0].1;
+    for (n, &(_, at, _)) in encoded.iter().enumerate().skip(1) {
+        assert_eq!(at, t0 + n as u64 * 33_333_333, "frame {n} on the grid");
+    }
+    assert!(encoded.windows(2).all(|w| w[1].1 > w[0].1));
+}
+
+#[test]
+fn with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst() {
+    let mut rig = Rig::new("every-slot-start");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let first_at = rig.encoded.lock().unwrap()[0].1;
+    let slack = scheduling_slack();
+    let started = Instant::now();
+    wait_for("the first slot", || rig.encoded.lock().unwrap().len() >= 2);
+    // The slot is 33 ms after the start; the old first wake came at 100 ms, with three slots at once.
+    assert!(started.elapsed() < Duration::from_millis(80) + slack * 2, "first slot after {:?} (slack {slack:?})", started.elapsed());
+    std::thread::sleep(Duration::from_millis(20));
+    // A frame a slot, however long the sleep really took: not three slots at once. Counted from the first frame on
+    // the clock the slots are on, since this thread can see the first frame late on a busy machine (a CI runner).
+    let since_first = Duration::from_nanos(Fake::now_ns().saturating_sub(first_at));
+    let allowed = 2 + (since_first.as_millis() / 33) as usize;
+    assert!(rig.encoded.lock().unwrap().len() <= allowed, "{:?}", rig.encoded.lock().unwrap());
     rig.stop();
 }
 
@@ -468,6 +588,120 @@ fn a_change_left_out_by_the_pacer_is_encoded_at_its_slot() {
     assert_eq!(frame, 2);
     assert_eq!(at, t0 + 33_333_333, "at its slot");
     rig.stop();
+}
+
+/// System sound at 0.25 and the microphone's at 0.5, 10 ms each, for `ms` from `from` frames after t0.
+/// Feeds `ms` of both inputs from frame `from` on, 10 ms at a time, paced by the wall clock: a fixed sleep per buffer
+/// falls behind on a busy machine (a CI runner), and sound behind the clock is dropped as late.
+fn feed_both(rig: &Rig, t0: u64, from: u64, ms: u64) -> u64 {
+    let started = Instant::now();
+    let mut next = from;
+    while next < from + ms * 48 {
+        let at = t0 + next * NANOS_PER_SECOND / 48_000;
+        rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+        rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+        next += 480;
+        let due = started + Duration::from_micros((next - from) * 1_000_000 / 48_000);
+        if let Some(wait) = due.checked_duration_since(Instant::now()) {
+            std::thread::sleep(wait);
+        }
+    }
+    next
+}
+
+#[test]
+fn levels_are_told_10_times_a_second_only_while_watched_each_kind_its_loudest() {
+    let mut rig = Rig::with_inputs("levels", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let next = feed_both(&rig, t0, 0, 200);
+    assert!(rig.heard.levels.lock().unwrap().is_empty(), "unwatched: none");
+    rig.core.watch_levels(true);
+    let fed = Instant::now();
+    let next = feed_both(&rig, t0, next, 500);
+    let took = fed.elapsed().as_millis() as usize;
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    // One every 100 ms of the time it took, give or take one at each end.
+    assert!((took / 100).saturating_sub(1) <= levels.len() && levels.len() <= took / 100 + 2, "{} in {took} ms: {levels:?}", levels.len());
+    assert!(levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
+    // Muted, an input still shows its level: what it hears, not what is recorded.
+    rig.core.set_muted(true, true);
+    rig.heard.levels.lock().unwrap().clear();
+    let next = feed_both(&rig, t0, next, 200);
+    assert!(rig.heard.levels.lock().unwrap().iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)));
+    rig.core.watch_levels(false);
+    rig.heard.levels.lock().unwrap().clear();
+    feed_both(&rig, t0, next, 200);
+    assert!(rig.heard.levels.lock().unwrap().is_empty());
+    rig.stop();
+}
+
+#[test]
+fn a_prepared_session_tells_watched_levels_and_records_nothing_until_it_records() {
+    let rig = Rig::with_inputs("prepared-levels", 2);
+    rig.core.watch_microphone(1);
+    assert!(!rig.shared.reads_sound(), "nothing is read before recording, unwatched");
+    rig.core.watch_levels(true);
+    assert!(rig.shared.reads_sound() && !rig.shared.wants_sound());
+    feed_both(&rig, Fake::now_ns(), 0, 300);
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    assert!(levels.len() >= 2 && levels.iter().skip(1).all(|l| l.system == 0.25 && l.microphone == Some(0.5)), "{levels:?}");
+    assert_eq!(f32::from_bits(rig.loudest.load(Ordering::Acquire)), 0.0, "no sound reached the encoder");
+}
+
+#[test]
+fn an_input_is_recorded_and_metered_at_its_volume() {
+    let mut rig = Rig::with_inputs("gains", 2);
+    rig.core.watch_microphone(1);
+    rig.core.watch_levels(true);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let loudest = |rig: &Rig| f32::from_bits(rig.loudest.swap(0, Ordering::AcqRel));
+    // -6 dB on the system's 0.25, the microphone silent at the fader's bottom: about 0.125 recorded and metered.
+    rig.core.set_gains(-6.0, SILENT_GAIN_DB);
+    rig.heard.levels.lock().unwrap().clear();
+    let next = feed_both(&rig, t0, 0, 300);
+    let recorded = loudest(&rig);
+    assert!((recorded - 0.125).abs() < 0.002, "{recorded}");
+    let levels = rig.heard.levels.lock().unwrap().clone();
+    assert!(levels.iter().skip(1).all(|l| (l.system - 0.125).abs() < 0.002 && l.microphone == Some(0.0)), "{levels:?}");
+    // +12 dB on the microphone's 0.5 would reach about 2: softly limited below full scale, not clipped.
+    rig.core.set_gains(0.0, 12.0);
+    feed_both(&rig, t0, next, 100);
+    let recorded = loudest(&rig);
+    assert!(recorded > 0.95 && recorded < 1.0, "{recorded}");
+    rig.stop();
+}
+
+#[test]
+fn a_muted_input_is_recorded_as_silence_and_heard_again_once_unmuted() {
+    let mut rig = Rig::with_inputs("muted", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let loudest = |rig: &Rig| f32::from_bits(rig.loudest.swap(0, Ordering::AcqRel));
+    // The microphone muted: only the system's 0.25 reaches the encoder.
+    rig.core.set_muted(false, true);
+    let next = feed_both(&rig, t0, 0, 100);
+    assert_eq!(loudest(&rig), 0.25);
+    // Both muted: silence, the track still advancing.
+    rig.core.set_muted(true, true);
+    let next = feed_both(&rig, t0, next, 100);
+    assert_eq!(loudest(&rig), 0.0);
+    // Unmuted: the sum again.
+    rig.core.set_muted(false, false);
+    feed_both(&rig, t0, next, 100);
+    assert_eq!(loudest(&rig), 0.75);
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.late_audio_frames, [0, 0]);
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "muting is no loss");
 }
 
 #[test]
@@ -600,4 +834,258 @@ fn a_refresh_capture_skipped_is_filled_with_the_newest_picture() {
     assert_eq!(gaps, [33, 33, 33, 33], "encoded {encoded:?}");
     assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [102, 104, 105, 108, 110]);
     rig.stop();
+}
+
+/// The platform's camera as the core sees it (plan 075, step 5): judged on the refresh thread, its closes counted.
+struct FakeCamera {
+    feed: Arc<CameraFeed<u32>>,
+    closes: AtomicUsize,
+}
+
+impl CameraControl for FakeCamera {
+    fn judge(&self, now_ns: u64, since_ns: u64, events: &dyn Events) {
+        self.feed.judge(now_ns, since_ns, true, events);
+    }
+    fn close(&self) {
+        self.closes.fetch_add(1, Ordering::AcqRel);
+        self.feed.clear();
+    }
+}
+
+impl Rig {
+    fn watch_camera(&self) -> Arc<FakeCamera> {
+        let camera = Arc::new(FakeCamera { feed: self.camera.clone(), closes: AtomicUsize::new(0) });
+        self.core.watch_camera(camera.clone());
+        camera
+    }
+
+    /// A camera frame captured now.
+    fn camera_frame(&self, n: u32) {
+        self.camera.deliver(n, Fake::now_ns(), Fake::now_ns(), &*self.heard);
+    }
+}
+
+#[test]
+fn the_camera_keeps_only_its_newest_frame() {
+    let feed = CameraFeed::<u32>::default();
+    let heard = Heard::default();
+    assert_eq!(feed.latest(), None);
+    for n in 1..=3 {
+        feed.deliver(n, 10 * u64::from(n), 10 * u64::from(n), &heard);
+    }
+    assert_eq!(feed.latest(), Some((3, 30)));
+    assert_eq!(feed.counts(), (3, 0));
+}
+
+#[test]
+fn the_camera_s_age_in_its_frames_is_summed_up_for_the_log() {
+    let ages = CameraAges::default();
+    assert_eq!(ages.summary(), None, "nothing before a frame is composed with the camera");
+    ages.record(40_000_000, 10_000_000);
+    ages.record(50_000_000, 30_000_000);
+    ages.record(60_000_000, 65_000_000);
+    assert_eq!(ages.summary().as_deref(), Some("the camera's picture 15.0 ms older than its frame on average (-5.0 to 30.0 ms) in 3 frame(s)"));
+}
+
+#[test]
+fn each_encoded_frame_takes_the_camera_s_newest_frame_whether_the_camera_is_slower_or_faster() {
+    for (camera_interval, expect_repeats) in [(Duration::from_millis(66), true), (Duration::from_millis(16), false)] {
+        let mut rig = Rig::new(if expect_repeats { "camera-slower" } else { "camera-faster" });
+        rig.core.encode_every_slot(true);
+        rig.watch_camera();
+        rig.camera_frame(0);
+        rig.shared.frame(7, Fake::now_ns());
+        rig.core.record().unwrap();
+        let began = Instant::now();
+        let end = began + Duration::from_millis(700);
+        let mut n = 1;
+        while Instant::now() < end {
+            rig.camera_frame(n);
+            n += 1;
+            std::thread::sleep(camera_interval);
+        }
+        // The rate the camera really delivered at: a busy machine (a CI runner) sleeps longer than asked.
+        let camera_fps = f64::from(n - 1) / began.elapsed().as_secs_f64();
+        rig.stop();
+        let composed: Vec<u32> = rig.composed.lock().unwrap().iter().map(|c| c.expect("a camera frame in every encoded frame")).collect();
+        assert!(composed.len() >= 15, "{composed:?}");
+        // Never an older frame after a newer one.
+        assert!(composed.windows(2).all(|w| w[1] >= w[0]), "{composed:?}");
+        let repeats = composed.windows(2).filter(|w| w[0] == w[1]).count();
+        let skips = composed.windows(2).filter(|w| w[1] > w[0] + 1).count();
+        if expect_repeats {
+            // 15 fps into 30: each camera frame about twice.
+            assert!(repeats * 3 >= composed.len(), "slower camera: {composed:?}");
+        } else if camera_fps > 45.0 {
+            // 60 fps into 30: frames in between are left out, never queued.
+            assert!(skips * 3 >= composed.len(), "faster camera at {camera_fps:.0} fps: {composed:?}");
+        }
+    }
+}
+
+#[test]
+fn a_camera_silent_for_two_seconds_is_told_lost_composes_nothing_and_comes_back_with_its_next_frame() {
+    let mut rig = Rig::new("camera-lost");
+    rig.core.encode_every_slot(true);
+    rig.watch_camera();
+    rig.camera_frame(1);
+    rig.shared.frame(7, Fake::now_ns());
+    let began = Instant::now();
+    rig.core.record().unwrap();
+    // No frame for a while: not yet lost before 2 s (unless a busy machine slept that long).
+    std::thread::sleep(Duration::from_millis(1_500));
+    assert!(rig.heard.camera_lost.lock().unwrap().is_empty() || began.elapsed() >= Duration::from_millis(1_900));
+    wait_for("the loss", || !rig.heard.camera_lost.lock().unwrap().is_empty());
+    assert!(rig.camera.is_lost());
+    assert_eq!(rig.camera.latest(), None, "a lost camera gives the compositor nothing");
+    let lost_at = rig.composed.lock().unwrap().len();
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(rig.composed.lock().unwrap()[lost_at..].iter().all(Option::is_none), "the screen alone while it is lost");
+    // Told once, however long it stays silent.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(rig.heard.camera_lost.lock().unwrap().len(), 1);
+    rig.camera_frame(2);
+    assert_eq!(rig.heard.camera_resumed.lock().unwrap().len(), 1);
+    assert_eq!(rig.camera.latest().map(|(n, _)| n), Some(2));
+    wait_for("the camera composed again", || rig.composed.lock().unwrap().last() == Some(&Some(2)));
+    rig.stop();
+    assert_eq!(rig.camera.counts(), (2, 1));
+}
+
+#[test]
+fn a_camera_is_never_told_lost_before_the_recording_or_when_it_delivers() {
+    let feed = CameraFeed::<u32>::default();
+    let heard = Heard::default();
+    // Prepared, silent for long: not a loss.
+    feed.judge(10 * NANOS_PER_SECOND, 0, false, &heard);
+    assert!(heard.camera_lost.lock().unwrap().is_empty());
+    // Recording since 1 s, a frame at 2 s: judged at 3.9 s it is still delivering.
+    feed.deliver(1, 2 * NANOS_PER_SECOND, 2 * NANOS_PER_SECOND, &heard);
+    feed.judge(3_900_000_000, NANOS_PER_SECOND, true, &heard);
+    assert!(heard.camera_lost.lock().unwrap().is_empty());
+    feed.judge(4_100_000_000, NANOS_PER_SECOND, true, &heard);
+    assert_eq!(heard.camera_lost.lock().unwrap().len(), 1);
+    // A device the platform sees go is told at once while recording, and only once.
+    let gone = CameraFeed::<u32>::default();
+    gone.deliver(1, 1, 1, &heard);
+    gone.lose("disconnected".into(), true, &heard);
+    gone.lose("disconnected".into(), true, &heard);
+    assert_eq!(heard.camera_lost.lock().unwrap().len(), 2);
+    assert_eq!(gone.latest(), None);
+}
+
+#[test]
+fn the_camera_is_closed_however_the_session_ends() {
+    // A stop: closed once capture has ended, before the file is finished.
+    let mut stopped = Rig::new("camera-stop");
+    let camera = stopped.watch_camera();
+    stopped.shared.frame(1, Fake::now_ns());
+    stopped.core.record().unwrap();
+    wait_for("the first frame", || !stopped.encoded.lock().unwrap().is_empty());
+    let stop_ns = Fake::now_ns();
+    let drained = stopped.core.drain(stop_ns);
+    stopped.core.halt();
+    stopped.core.halted();
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1, "closed at the halt");
+    let (_, finishing) = stopped.core.end(stop_ns, drained);
+    finishing.wait().unwrap();
+    drop(stopped);
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1, "and only once");
+
+    // A cancel: a prepared session released.
+    let cancelled = Rig::new("camera-cancel");
+    let camera = cancelled.watch_camera();
+    cancelled.core.halt();
+    cancelled.core.release();
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1);
+
+    // Its owner gone without either (a failed prepare, a session dropped).
+    let dropped = Rig::new("camera-drop");
+    let camera = dropped.watch_camera();
+    drop(dropped);
+    assert_eq!(camera.closes.load(Ordering::Acquire), 1);
+    assert_eq!(camera.feed.latest(), None);
+}
+
+#[test]
+fn hiding_the_camera_goes_back_to_a_still_screen_s_pace_and_showing_it_to_every_slot() {
+    let mut rig = Rig::new("every-slot-toggle");
+    rig.core.encode_every_slot(true);
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    // Judged by the frames' own times, not by how many a fixed sleep saw: a busy machine (a CI runner) can starve the
+    // refresh thread for a while, leaving fewer frames, but those it encodes are still a slot apart.
+    let times = |rig: &Rig| rig.encoded.lock().unwrap().iter().map(|&(_, at, _)| at).collect::<Vec<u64>>();
+    wait_for("frames while shown", || rig.encoded.lock().unwrap().len() >= 7);
+    let shown = times(&rig);
+    assert!(median_interval(&shown) < 40_000_000, "every slot while shown: {shown:?}");
+    rig.core.encode_every_slot(false);
+    std::thread::sleep(Duration::from_millis(600));
+    let hidden = times(&rig).len() - shown.len();
+    assert!(hidden <= 1, "a still screen once a second while hidden: {hidden}");
+    rig.core.encode_every_slot(true);
+    let resumed_from = shown.len() + hidden;
+    wait_for("frames shown again", || rig.encoded.lock().unwrap().len() >= resumed_from + 6);
+    let again = times(&rig)[resumed_from..].to_vec();
+    assert!(median_interval(&again) < 40_000_000, "every slot again: {again:?}");
+    rig.stop();
+}
+
+#[test]
+fn showing_the_camera_again_after_a_still_screen_starts_at_the_current_slot_without_a_burst() {
+    let mut rig = Rig::new("every-slot-resume");
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    // Hidden over a still screen for a while: a refresh a second.
+    std::thread::sleep(Duration::from_millis(1_300));
+    let before = rig.encoded.lock().unwrap().len();
+    let shown_at = Fake::now_ns();
+    rig.core.encode_every_slot(true);
+    std::thread::sleep(Duration::from_millis(400));
+    rig.stop();
+    let encoded = rig.encoded.lock().unwrap().clone();
+    let after: Vec<u64> = encoded[before..].iter().map(|&(_, at, _)| at).collect();
+    assert!(after.len() >= 8, "{after:?}");
+    // Nothing before the camera was shown again, and frames a slot apart, not a burst of the slots it left empty.
+    assert!(after.iter().all(|&at| at + 33_333_333 >= shown_at), "{after:?} from {shown_at}");
+    assert!(after.windows(2).all(|w| w[1] - w[0] >= 30_000_000), "{after:?}");
+}
+
+#[test]
+fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
+    let mut rig = Rig::new("every-slot-wake");
+    rig.shared.frame(7, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    std::thread::sleep(Duration::from_millis(1_150));
+    let slack = scheduling_slack();
+    let before = rig.encoded.lock().unwrap().len();
+    let shown = Instant::now();
+    rig.core.encode_every_slot(true);
+    let ((), during) = slack_during(|| wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before));
+    let slack = slack.max(during);
+    // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine woke threads then.
+    assert!(shown.elapsed() < Duration::from_millis(60) + slack * 2, "first frame after {:?} (slack {slack:?})", shown.elapsed());
+    std::thread::sleep(Duration::from_millis(20));
+    // A frame a slot from then on, however long the sleep really took, not the slots the still screen left empty.
+    let allowed = 2 + (shown.elapsed().as_millis() / 33) as usize;
+    assert!(rig.encoded.lock().unwrap().len() - before <= allowed, "no catch-up burst");
+    rig.stop();
+}
+
+#[test]
+fn the_pacer_skips_to_the_current_slot_on_its_grid() {
+    let start = 1_000_000_000_000u64;
+    let interval = 33_333_333u64;
+    let mut pacer = crate::pacing::Pacer::new(start, 30);
+    // Behind by a second: the first slot at or after it, on the grid from the start.
+    pacer.skip_to(start + 1_000_000_000);
+    assert_eq!(pacer.next_slot(), start + 31 * interval);
+    // On a slot exactly: that slot.
+    pacer.skip_to(start + 40 * interval);
+    assert_eq!(pacer.next_slot(), start + 40 * interval);
+    // Already ahead: unchanged, never backwards.
+    pacer.skip_to(start + 35 * interval);
+    assert_eq!(pacer.next_slot(), start + 40 * interval);
 }

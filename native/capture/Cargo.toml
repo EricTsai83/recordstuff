@@ -21,7 +21,7 @@ objc2-foundation = "0.3"
 objc2-core-foundation = "0.3"
 objc2-screen-capture-kit = "0.3"
 objc2-core-media = "0.3"
-objc2-core-video = "0.3"
+objc2-core-video = { version = "0.3", features = ["objc2-metal"] }
 objc2-video-toolbox = "0.3"
 objc2-audio-toolbox = "0.3"
 objc2-core-audio-types = "0.3"
@@ -32,6 +32,32 @@ objc2-av-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "AVCaptureDevice",
     "AVMediaFormat",
+    # The camera (plan 075, mac/camera.rs).
+    "AVCaptureInput",
+    "AVCaptureOutputBase",
+    "AVCaptureSession",
+    "AVCaptureSessionPreset",
+    "AVCaptureVideoDataOutput",
+    "dispatch2",
+    "objc2-core-media",
+    "objc2-core-video",
+] }
+# Composing the camera into the recording's frames on the GPU with the shader build.rs translates (plan 075,
+# mac/compositor.rs).
+objc2-metal = { version = "0.3", default-features = false, features = [
+    "std",
+    "MTLAllocation",
+    "MTLCommandBuffer",
+    "MTLCommandEncoder",
+    "MTLCommandQueue",
+    "MTLComputeCommandEncoder",
+    "MTLComputePipeline",
+    "MTLDevice",
+    "MTLLibrary",
+    "MTLPixelFormat",
+    "MTLResource",
+    "MTLTexture",
+    "MTLTypes",
 ] }
 
 [target.'cfg(windows)'.dependencies]
@@ -45,6 +71,7 @@ windows = { version = "0.62", features = [
     "Graphics_DirectX_Direct3D11",
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D_Fxc",
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
@@ -68,8 +95,14 @@ windows = { version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[dev-dependencies]
+# The camera layout's cases shared with the TypeScript tests (src/shared/camera-layout.cases.json).
+serde_json = "1"
+
 [build-dependencies]
 napi-build = "2"
+# The camera compositor's one shader source, translated at build time (plan 075, D15; build.rs). Nothing of it ships.
+naga = { version = "30", default-features = false, features = ["wgsl-in", "msl-out", "hlsl-out"] }
 
 [profile.release]
 lto = true

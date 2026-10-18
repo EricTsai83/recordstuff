@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { withPosition } from "../../shared/camera-layout";
 import type { AppAction } from "../app/ui-model";
 import type { PreferenceSave } from "../settings/preferences";
 import { createActionHandler, type ActionDeps } from "./actions";
@@ -116,6 +117,133 @@ describe("createActionHandler", () => {
       display: true, "update checks": true, notifications: true, "tray click": false, "file name": true,
       "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, "hide system UI": true, quality: true,
       microphone: true, "microphone device": true,
+    });
+  });
+
+  describe("the camera (plan 075)", () => {
+    function cameraHarness(allowed: boolean, platform: NodeJS.Platform = "darwin") {
+      const settings = { language: "en", camera: false, setCamera: vi.fn(async (on: boolean) => { settings.camera = on; }) };
+      const tray = { notifyCameraDenied: vi.fn() };
+      const askCameraAccess = vi.fn(async () => allowed);
+      const ctx = harness({ platform, settings, tray, askCameraAccess,
+        openCameraSettings: vi.fn(async () => {}),
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+      return { ...ctx, settings, tray, askCameraAccess };
+    }
+
+    it("asks for access when turned on, after saving, and keeps it on when refused, saying so", async () => {
+      const allowed = cameraHarness(true);
+      await allowed.act({ setCamera: true });
+      expect(allowed.settings.camera).toBe(true);
+      expect(allowed.askCameraAccess).toHaveBeenCalledOnce();
+      expect(allowed.tray.notifyCameraDenied).not.toHaveBeenCalled();
+      expect(allowed.deps.refresh).toHaveBeenCalled();
+      const refused = cameraHarness(false);
+      await refused.act({ setCamera: true });
+      expect(refused.settings.camera).toBe(true);
+      expect(refused.tray.notifyCameraDenied).toHaveBeenCalledOnce();
+    });
+
+    it("does not ask when turned off or when already on", async () => {
+      const ctx = cameraHarness(false);
+      await ctx.act({ setCamera: false });
+      ctx.settings.camera = true;
+      await ctx.act({ setCamera: true });
+      expect(ctx.askCameraAccess).not.toHaveBeenCalled();
+      expect(ctx.tray.notifyCameraDenied).not.toHaveBeenCalled();
+    });
+
+    it("saves the camera, the shape and a ratio, and hands a new shape to the recording in progress", async () => {
+      const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [{ display: "primary", x: 0.1, y: 0.1 }] };
+      const settings = { language: "en", cameraLayout: layout, cameraDevice: undefined as { id: string; label: string } | undefined,
+        setCameraLayout: vi.fn(async (shape: Omit<typeof layout, "positions">) => { settings.cameraLayout = { ...settings.cameraLayout, ...shape }; }),
+        setCameraDevice: vi.fn(async (device: { id: string; label: string } | null) => { settings.cameraDevice = device ?? undefined; }),
+        setCameraPosition: vi.fn(async (display: string, position: { x: number; y: number }) => { settings.cameraLayout = withPosition(settings.cameraLayout, display, position); }) };
+      const updateCamera = vi.fn(() => true);
+      const ctx = harness({ settings, recorder: { updateCamera },
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setCameraShape: { width: 0.4 } });
+      expect(settings.setCameraLayout).toHaveBeenLastCalledWith({ width: 0.4, height: 0.2, rounding: 1, mirror: false });
+      expect(updateCamera).toHaveBeenLastCalledWith({ layout: expect.objectContaining({ width: 0.4, positions: layout.positions }) });
+      await ctx.act({ setCameraRatio: "16:9" });
+      expect(settings.cameraLayout.height).toBeCloseTo(0.4 * 9 / 16, 9);
+      await ctx.act({ setCameraShape: { mirror: true } });
+      expect(settings.cameraLayout.mirror).toBe(true);
+      await ctx.act({ setCameraPosition: { display: "9", x: 0.25, y: 0.5 } });
+      expect(settings.setCameraPosition).toHaveBeenLastCalledWith("9", { x: 0.25, y: 0.5 });
+      expect(updateCamera).toHaveBeenLastCalledWith({ layout: expect.objectContaining({ positions: expect.arrayContaining([{ display: "9", x: 0.25, y: 0.5 }]) }) });
+      await ctx.act({ setCameraDevice: { id: "iphone", label: "iPhone Camera" } });
+      expect(settings.cameraDevice).toEqual({ id: "iphone", label: "iPhone Camera" });
+      // The shape is saved unlocked (D7), the device locked as the microphone's.
+      const saves = vi.mocked(ctx.deps.savePreference).mock.calls;
+      expect(saves.filter(([what]) => what === "camera shape" || what === "camera position").every(([, save]) => !save.locked)).toBe(true);
+      expect(saves.find(([what]) => what === "camera device")?.[1].locked).toBe(true);
+    });
+
+    it("starts and lets go of a Live preview, reporting done to the Studio (D20)", async () => {
+      const startPreview = vi.fn(() => false), stopPreview = vi.fn();
+      const ctx = harness({ recorder: { startPreview, stopPreview, state: { type: "recording" } } } as unknown as Partial<ActionDeps>);
+      await expect(ctx.act("startPreview")).resolves.toBe(true);
+      expect(ctx.deps.log).toHaveBeenCalledWith("studio: Live preview not started in state recording");
+      await expect(ctx.act("stopPreview")).resolves.toBe(true);
+      expect(stopPreview).toHaveBeenCalledOnce();
+      // A choice queued behind a save, from a Studio since closed: no preview.
+      const closed = harness({ studioOpen: () => false, recorder: { startPreview, stopPreview, state: { type: "idle" } } } as unknown as Partial<ActionDeps>);
+      startPreview.mockClear();
+      await closed.act("startPreview");
+      expect(startPreview).not.toHaveBeenCalled();
+      expect(closed.deps.log).toHaveBeenCalledWith("studio: Live preview not started: the Studio is no longer open");
+    });
+
+    it("mutes an input of the recording in progress, and says so when there is none (D19)", async () => {
+      const updateAudio = vi.fn(() => true);
+      const ctx = harness({ recorder: { updateAudio } } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setAudioMuted: { source: "microphone", muted: true } });
+      expect(updateAudio).toHaveBeenLastCalledWith({ microphone: true });
+      updateAudio.mockReturnValue(false);
+      await ctx.act({ setAudioMuted: { source: "system", muted: false } });
+      expect(updateAudio).toHaveBeenLastCalledWith({ system: false });
+      expect(ctx.deps.log).toHaveBeenCalledWith("audio: no recording to mute or unmute system audio in");
+    });
+
+    it("saves an input's volume and gives it to the session in progress, also while recording (D21)", async () => {
+      const updateGains = vi.fn(() => true);
+      const settings = { audioGain: { system: 0, microphone: 0 },
+        setAudioGain: vi.fn(async (source: "system" | "microphone", db: number) => { settings.audioGain = { ...settings.audioGain, [source]: db }; }) };
+      const ctx = harness({ recorder: { updateGains, state: { type: "recording", startedAt: "2026-10-18T00:00:00Z" } }, settings,
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => {
+          expect(save.locked, "not locked while recording").toBeFalsy();
+          await save.write(); save.applied?.();
+        }) } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setAudioGain: { source: "microphone", db: 6 } });
+      expect(settings.setAudioGain).toHaveBeenCalledWith("microphone", 6);
+      expect(updateGains).toHaveBeenCalledTimes(1);
+      expect(ctx.deps.log).toHaveBeenCalledWith("settings: volume system 0 dB, microphone 6 dB");
+    });
+
+    it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {
+      const updateCamera = vi.fn((_change: { hidden?: boolean }) => true);
+      const ctx = harness({ recorder: { updateCamera } } as unknown as Partial<ActionDeps>);
+      await ctx.act({ setCameraHidden: true });
+      await ctx.act({ setCameraHidden: false });
+      expect(updateCamera.mock.calls).toEqual([[{ hidden: true }], [{ hidden: false }]]);
+      expect(ctx.deps.refresh).toHaveBeenCalledTimes(2);
+      updateCamera.mockReturnValueOnce(false);
+      await ctx.act({ setCameraHidden: true });
+      expect(vi.mocked(ctx.deps.log).mock.calls.map((call) => call[0])).toContainEqual(expect.stringContaining("no recording composes the camera"));
+    });
+
+    it("opens the camera's privacy page on macOS and Windows and reports whether it opened", async () => {
+      for (const platform of ["darwin", "win32"] as const) {
+        const ctx = cameraHarness(true, platform);
+        expect(await ctx.act("openCameraSettings")).toBe(true);
+        expect(ctx.deps.openCameraSettings).toHaveBeenCalledOnce();
+        vi.mocked(ctx.deps.openCameraSettings).mockRejectedValueOnce(new Error("refused"));
+        expect(await ctx.act("openCameraSettings")).toBe(false);
+      }
+      const linux = cameraHarness(true, "linux");
+      expect(await linux.act("openCameraSettings")).toBe(false);
+      expect(linux.deps.openCameraSettings).not.toHaveBeenCalled();
     });
   });
 

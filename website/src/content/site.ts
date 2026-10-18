@@ -14,14 +14,14 @@ import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release/release-ma
 export const SITE_NAME = "RecordStuff";
 
 export const meta = {
-  title: "RecordStuff — screen and sound, nothing else",
+  title: "RecordStuff — screen, sound and camera, nothing else",
   description:
-    "A free, open-source macOS menu bar app that records your screen and system audio to a plain MP4. No account, no editor; files stay on your Mac.",
+    "A free, open-source macOS menu bar app that records your screen and its sound, with your microphone and camera if you want them, to a plain MP4. No account, no editor; files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
 export const hero = {
-  title: "Screen and sound. Nothing else.",
+  title: "Screen, sound and camera. Nothing else.",
   primaryCta: "Download for macOS",
   /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
   windowsCta: "Download for Windows",
@@ -162,6 +162,8 @@ export const settings = [
   { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
   { tab: "Recording", setting: "Microphone", options: "On / Off, also in the menu bar menu; mixed with system audio (use headphones to avoid speaker echo)", fallback: "Off" },
   { tab: "Recording", setting: "Input device", options: "System default or a connected microphone", fallback: "System default" },
+  { tab: "Recording", setting: "Camera", options: "On / Off, also in the menu bar menu; arranged in the Recording Studio", fallback: "Off" },
+  { tab: "Recording", setting: "Camera device", options: "System default or a connected camera", fallback: "System default" },
   { tab: "Recording", setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { tab: "Recording", setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { tab: "Recording", setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },

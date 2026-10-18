@@ -7,7 +7,9 @@
 
 use std::fs::OpenOptions;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use block2::RcBlock;
@@ -25,16 +27,21 @@ use objc2_screen_capture_kit::{
 };
 
 use super::audio::AacEncoder;
+use super::camera::CameraCapture;
+use super::compositor::Compositor;
 use super::content::{self, describe};
 use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
 use super::microphone::MicrophoneCapture;
+use crate::camera_layout::PREVIEW_FPS;
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
 use crate::pacing::Pacer;
 
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
+/// The preview stream's average bit rate: enough for 640 pixels at 10 fps.
+const PREVIEW_BITRATE: u32 = 1_000_000;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, what VideoToolbox encodes without converting.
@@ -49,6 +56,7 @@ pub fn probe(display_id: u32, _display_point: Option<(i32, i32)>, source: &Sourc
     content::source_size(&content, &display, source)
 }
 
+#[derive(Clone)]
 pub struct Frame {
     image: CFRetained<CVImageBuffer>,
 }
@@ -58,7 +66,7 @@ pub struct Mac;
 
 impl Platform for Mac {
     type Frame = Frame;
-    type Video = VideoEncoder;
+    type Video = Video;
     type Audio = AacEncoder;
 
     fn now_ns() -> u64 {
@@ -66,13 +74,94 @@ impl Platform for Mac {
     }
 }
 
-impl VideoEncode<Frame> for VideoEncoder {
+/// The H.264 encoder, with the camera composed into each frame it encodes when one is on (plan 075): at encoding
+/// time, so a frame encoded again on a still screen holds the camera's newest picture.
+pub struct Video {
+    encoder: VideoEncoder,
+    compositor: Option<Arc<Compositor>>,
+}
+
+impl VideoEncode<Frame> for Video {
     fn encode(&self, frame: &Frame, pts_ns: u64, key_frame: bool) -> Result<(), String> {
-        VideoEncoder::encode(self, &frame.image, pts_ns, key_frame)
+        // Hidden (D13): the screen's own frame, exactly as with the camera off.
+        match self.compositor.as_ref().filter(|compositor| !compositor.hidden()) {
+            Some(compositor) => {
+                let composed = compositor.compose(&frame.image, pts_ns).map_err(|detail| format!("composing the camera failed: {detail}"))?;
+                self.encoder.encode(&composed, pts_ns, key_frame)
+            }
+            None => self.encoder.encode(&frame.image, pts_ns, key_frame),
+        }
     }
 
     fn flush(&self) {
-        VideoEncoder::flush(self)
+        self.encoder.flush()
+    }
+}
+
+/// The preview (D17's second option): the composed picture at preview size, `PREVIEW_FPS` times a second, encoded as
+/// a small H.264 stream and told to the session's events, from `prepare` until capture ends, while someone watches
+/// (Settings shows it, plan 075 step 7); unwatched it composes and encodes nothing, and it starts again at a key frame.
+struct Preview {
+    stopped: Arc<AtomicBool>,
+    watching: Arc<AtomicBool>,
+    /// Counts each start of watching, so one that comes between two of the thread's ticks still starts at a key frame.
+    watches: Arc<AtomicU64>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Preview {
+    fn start(shared: Arc<Shared>, compositor: Arc<Compositor>, watching: bool) -> Result<Self, CaptureError> {
+        let stopped = Arc::new(AtomicBool::new(false));
+        let stop = stopped.clone();
+        let watching = Arc::new(AtomicBool::new(watching));
+        let watched = watching.clone();
+        let watches = Arc::new(AtomicU64::new(0));
+        let started = watches.clone();
+        let (width, height) = compositor.preview_size();
+        let sink = Arc::new(core::PreviewSink::new(shared.events()));
+        let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
+        let thread = std::thread::Builder::new()
+            .name("recordstuff-preview".into())
+            .spawn(move || {
+                let interval = Duration::from_nanos(1_000_000_000 / u64::from(PREVIEW_FPS));
+                let mut next = Instant::now();
+                let mut first = true;
+                let mut seen = 0;
+                while !stop.load(Ordering::Acquire) && !shared.halted() {
+                    let now_started = started.load(Ordering::Acquire);
+                    if now_started != seen {
+                        seen = now_started;
+                        first = true;
+                    }
+                    if !watched.load(Ordering::Acquire) {
+                        first = true;
+                    } else if let Some(frame) = shared.newest() {
+                        // A preview is a convenience: one that fails ends, the recording does not.
+                        let Ok(picture) = compositor.preview(&frame.image) else { return };
+                        if encoder.encode(&picture, now_ns(), first).is_err() {
+                            return;
+                        }
+                        first = false;
+                    }
+                    next += interval;
+                    let now = Instant::now();
+                    if next > now {
+                        std::thread::sleep(next - now);
+                    } else {
+                        next = now;
+                    }
+                }
+                encoder.flush();
+            })
+            .map_err(|e| CaptureError::new("capture_start_failed", format!("preview thread: {e}")))?;
+        Ok(Self { stopped, watching, watches, thread: Some(thread) })
+    }
+
+    fn stop(mut self) {
+        self.stopped.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -117,7 +206,7 @@ fn deliver(shared: &Shared, sample: &CMSampleBuffer, kind: SCStreamOutputType, v
         }
         let Some(image) = (unsafe { sample.image_buffer() }) else { return };
         shared.frame(Frame { image }, host_ns(unsafe { sample.presentation_time_stamp() }));
-    } else if kind == SCStreamOutputType::Audio && shared.wants_sound() {
+    } else if kind == SCStreamOutputType::Audio && shared.reads_sound() {
         let Some(input) = sound_input else { return };
         if let Err(detail) = sound(shared, input, sample, host_ns(unsafe { sample.presentation_time_stamp() })) {
             shared.fail(detail);
@@ -275,6 +364,10 @@ pub struct Session {
     /// The picture's stream first, then the sound's when it has its own.
     streams: Vec<Stream>,
     microphone: Option<MicrophoneCapture>,
+    /// The camera composed into the frames (plan 075), which the core closes, its compositor and its preview.
+    camera: Option<Arc<CameraCapture>>,
+    compositor: Option<Arc<Compositor>>,
+    preview: Option<Preview>,
     core: Core<Mac>,
 }
 
@@ -330,13 +423,33 @@ impl Session {
         if let Some(input) = microphone_input {
             core.watch_microphone(input);
         }
+        // The camera (plan 075): only main's request, which comes only while the Camera switch is on, so a recording
+        // without it never opens the camera. Opened before the screen, so a camera that cannot open refuses the start
+        // (camera_unavailable, D11) before anything else runs.
+        let camera_request = request.camera.clone();
+        let mut camera = None;
+        let mut compositor = None;
+        let mut camera_note = None;
+        if let Some(wanted) = camera_request.as_ref() {
+            let shared = core.shared();
+            let opened = CameraCapture::start(wanted.device.as_deref(), shared.events(), move || shared.recording())?;
+            let made = Compositor::new(request.width, request.height, wanted.layout, opened.feed.clone())
+                .map_err(|detail| CaptureError::new("capture_start_failed", format!("camera compositor: {detail}")))?;
+            camera_note = Some(format!("camera: {}, {:?}, preview {}", opened.name, wanted.layout, wanted.preview));
+            compositor = Some(Arc::new(made));
+            core.watch_camera(opened.clone());
+            camera = Some(opened);
+            core.encode_every_slot(true);
+            mark("camera start");
+        }
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
+        let encoding_compositor = compositor.clone();
         let encoders = core.make_encoders(move |sink| {
-            let video = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
+            let encoder = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
             let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
-            Ok((video, audio))
+            Ok((Video { encoder, compositor: encoding_compositor }, audio))
         })?;
 
         // The picture's stream carries the sound too when its filter is the sound's.
@@ -364,7 +477,7 @@ impl Session {
         if let (Some(audio_filter), Some(input)) = (audio_filter.as_ref(), system_input) {
             streams.push(Stream::new(audio_filter, &audio_only_config(), core.shared(), false, Some(input), "sound")?);
         }
-        let mut session = Session { streams, microphone: None, core };
+        let mut session = Session { streams, microphone: None, camera, compositor: compositor.clone(), preview: None, core };
         for (index, stream) in session.streams.iter().enumerate() {
             let what = if index == 0 { "starting capture" } else { "starting the sound's capture" };
             if let Err(error) = stream.start(what) {
@@ -393,6 +506,32 @@ impl Session {
             return Err(error);
         }
         mark("first frame");
+        if let Some(camera) = session.camera.as_ref() {
+            eprintln!("camera: after preparing {}", camera.state());
+        }
+        // Every session has its preview (plan 075, D19/D20: the Recording Studio shows the screen with or without the
+        // camera), watched only when asked: the stream starts in the time Settings takes to show it. Without a camera
+        // it renders the screen alone through a compositor of its own, hidden, which the recording's frames never use.
+        let preview_compositor = compositor.or_else(|| {
+            let made = Compositor::new(request.width, request.height, crate::camera_layout::Layout::default(), Arc::new(super::camera::Feed::default()));
+            match made {
+                Ok(made) => {
+                    made.set_hidden(true);
+                    Some(Arc::new(made))
+                }
+                Err(detail) => {
+                    eprintln!("preview: no compositor ({detail})");
+                    None
+                }
+            }
+        });
+        if let Some(compositor) = preview_compositor {
+            // A preview is a convenience: without one Settings shows no picture, and the recording goes on.
+            match Preview::start(session.core.shared(), compositor, camera_request.as_ref().is_some_and(|wanted| wanted.preview)) {
+                Ok(preview) => session.preview = Some(preview),
+                Err(error) => eprintln!("camera: no preview ({}: {})", error.code, error.detail),
+            }
+        }
         let prepared = Prepared {
             width: request.width,
             height: request.height,
@@ -405,12 +544,56 @@ impl Session {
                 .warnings
                 .into_iter()
                 .chain(session.microphone.as_ref().and_then(|microphone| microphone.note.clone()))
+                .chain(camera_note)
                 .chain(frame_log.map(|path| format!("per-frame log: {}", path.display())))
                 .collect(),
             timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
             microphone: session.microphone.as_ref().map(|microphone| microphone.name.clone()),
         };
         Ok((session, prepared))
+    }
+
+    /// The camera's bubble and whether it is shown, from the next frame on (plan 075, D7 and D13); while it is hidden
+    /// the screen alone is encoded, at today's pace for a still screen. Answers false without a camera.
+    pub fn set_camera(&self, layout: crate::camera_layout::Layout, hidden: bool) -> bool {
+        let Some(compositor) = self.compositor.as_ref() else { return false };
+        compositor.set_layout(layout);
+        compositor.set_hidden(hidden);
+        self.core.encode_every_slot(!hidden);
+        eprintln!("camera: layout {:?}, {}", compositor.layout(), if hidden { "hidden" } else { "shown" });
+        true
+    }
+
+    /// Whether the preview is watched (plan 075 step 7): Settings shows it, or no longer does. Answers false without a
+    /// camera, whose session makes no preview.
+    pub fn set_preview(&self, watching: bool) -> bool {
+        let Some(preview) = self.preview.as_ref() else { return false };
+        if watching {
+            // A new watcher has a new decoder, which can start only at a key frame.
+            preview.watches.fetch_add(1, Ordering::AcqRel);
+        }
+        preview.watching.store(watching, Ordering::Release);
+        eprintln!("camera: preview {}", if watching { "watched" } else { "not watched" });
+        true
+    }
+
+    /// Whether the inputs' levels are told (plan 075, D19).
+    pub fn watch_levels(&self, watching: bool) -> bool {
+        self.core.watch_levels(watching);
+        true
+    }
+
+    /// Mutes system audio and the microphone, or not, from their next sound on (D19).
+    pub fn set_muted(&self, system: bool, microphone: bool) -> bool {
+        self.core.set_muted(system, microphone);
+        eprintln!("audio: system {}, microphone {}", if system { "muted" } else { "on" }, if microphone { "muted" } else { "on" });
+        true
+    }
+
+    /// The inputs' volumes in dB from their next sound on (plan 075, D21).
+    pub fn set_gains(&self, system_db: f64, microphone_db: f64) -> bool {
+        self.core.set_gains(system_db, microphone_db);
+        true
     }
 
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
@@ -435,7 +618,18 @@ impl Session {
         if let Some(microphone) = self.microphone.take() {
             microphone.stop();
         }
+        if let Some(preview) = self.preview.take() {
+            preview.stop();
+        }
+        if let Some(camera) = self.camera.take() {
+            // The capture host's stderr reaches main's log; the core closes the camera in `halted`, below.
+            eprintln!("camera: at the stop {}", camera.state());
+        }
         self.core.halted();
+        // Once `halted` has joined the threads that compose, so every frame is counted.
+        if let Some(ages) = self.compositor.as_ref().and_then(|compositor| compositor.camera_ages()) {
+            eprintln!("camera: {ages}");
+        }
     }
 
     /// Releases a prepared session that never recorded: the file stays empty and main removes it.
@@ -455,5 +649,56 @@ impl Drop for Session {
         if !self.core.stopping() {
             self.halt();
         }
+    }
+}
+
+#[cfg(test)]
+mod preview_test {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::writer::WriteFailure;
+
+    #[derive(Default)]
+    struct Chunks(Mutex<Vec<core::PreviewChunk>>);
+
+    impl Events for Chunks {
+        fn progress(&self, _bytes: u64) {}
+        fn write_failed(&self, _failure: WriteFailure) {}
+        fn capture_failed(&self, _code: &'static str, _detail: String) {}
+        fn microphone_lost(&self, _detail: String) {}
+        fn microphone_resumed(&self, _detail: String) {}
+        fn preview(&self, chunk: core::PreviewChunk) {
+            self.0.lock().unwrap().push(chunk);
+        }
+    }
+
+    #[test]
+    fn the_preview_is_an_h264_stream_whose_key_frames_carry_the_avcc_record() {
+        let camera = Arc::new(super::super::camera::Feed::default());
+        let compositor = Compositor::new(1280, 720, crate::camera_layout::Layout::default(), camera).unwrap();
+        let chunks = Arc::new(Chunks::default());
+        let sink = Arc::new(core::PreviewSink::new(chunks.clone()));
+        let (width, height) = compositor.preview_size();
+        let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink).unwrap();
+        let screen = super::super::compositor::test_frame(1280, 720);
+        for n in 0..5u64 {
+            let picture = compositor.preview(&screen).unwrap();
+            encoder.encode(&picture, 1_000_000_000 + n * 66_666_667, n == 0).unwrap();
+        }
+        encoder.flush();
+        let chunks = chunks.0.lock().unwrap();
+        assert_eq!(chunks.len(), 5, "{chunks:?}");
+        let first = &chunks[0];
+        assert!(first.key && (first.width, first.height) == (640, 360));
+        // An avcC record starts with version 1, then the profile the codec string is made of.
+        assert_eq!(first.description.as_ref().map(|d| d[0]), Some(1));
+        // Constrained Baseline (profile 66, constraint flag 1), which decoders show without holding frames back.
+        assert_eq!(first.description.as_ref().map(|d| (d[1], d[2] & 0x40)), Some((66, 0x40)));
+        assert!(chunks[1..].iter().all(|chunk| !chunk.key && chunk.description.is_none()));
+        assert_eq!(chunks[1].timestamp_us - first.timestamp_us, 66_666);
+        // AVCC: the first NAL unit's 4-byte length fits in the chunk.
+        let length = u32::from_be_bytes(first.data[..4].try_into().unwrap()) as usize;
+        assert!(length + 4 <= first.data.len());
     }
 }

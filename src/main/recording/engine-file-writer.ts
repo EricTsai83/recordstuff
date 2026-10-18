@@ -33,7 +33,7 @@ export class EngineFileWriter implements RecorderWriter {
 
   private constructor(
     readonly recordingPath: string,
-    readonly finalPath: string,
+    private target: string,
     private readonly io: FileWriterFs,
     private readonly size: (filePath: string) => Promise<number>,
     private readonly outcome: (recordingPath: string) => Promise<EngineFileReport | undefined>,
@@ -50,6 +50,16 @@ export class EngineFileWriter implements RecorderWriter {
     }
     return new EngineFileWriter(recordingPath, finalPath, io,
       options.size ?? (async (file) => (await fs.stat(file)).size), options.outcome ?? (() => Promise.resolve(undefined)));
+  }
+
+  /** The name the finished file is published under. */
+  get finalPath(): string {
+    return this.target;
+  }
+
+  /** Publishes under `finalPath` instead (plan 075, D20: a Live preview named when Start takes it); before finishing. */
+  retarget(finalPath: string): void {
+    if (!this.finished) this.target = finalPath;
   }
 
   get bytesWritten(): number {
@@ -78,7 +88,7 @@ export class EngineFileWriter implements RecorderWriter {
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
     const checked = performance.now();
-    const published = await publishRecording(this.io, this.recordingPath, this.finalPath);
+    const published = await publishRecording(this.io, this.recordingPath, this.target);
     this.finishTimings = { flushMs: 0, finalizeMs: report?.finalizeMs ?? 0, ...(report?.fragmented ? { fragmented: report.fragmented } : {}),
       closeMs: checked - began, ...published.timings };
     return published.target;

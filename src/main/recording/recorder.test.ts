@@ -1,3 +1,4 @@
+import type { AudioGain } from "../../shared/audio-gain";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,8 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostStartError, type EngineFileReport, type HostMessage } from "../../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import type { RecordingState } from "../../shared/state";
+import { DEFAULT_CAMERA_LAYOUT } from "../../shared/camera-layout";
 import type { RecordingFailure } from "../../shared/recording-result";
-import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCapture } from "./recorder";
+import { Recorder, formatTimestamp, type CountdownPresentation, type CountdownPresenter, type RecorderDeps, type RecorderEvent, type RecorderHost, type RecorderWriter, type SessionCamera, type SessionCapture } from "./recorder";
 import { COUNTDOWN_TIMING } from "../../shared/countdown";
 import { SessionSentinels, type SessionSentinel } from "./session-sentinel";
 
@@ -48,6 +50,19 @@ class FakeHost implements RecorderHost {
   stop(sessionId: string): void {
     this.stopped.push(sessionId);
   }
+  /** Each camera change sent (plan 075). */
+  cameraChanges: { sessionId: string; camera: SessionCamera; hidden: boolean }[] = [];
+  setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
+    this.cameraChanges.push({ sessionId, camera, hidden });
+  }
+  mutes: [string, boolean, boolean][] = [];
+  setMuted(sessionId: string, system: boolean, microphone: boolean): void {
+    this.mutes.push([sessionId, system, microphone]);
+  }
+  gains: [string, AudioGain][] = [];
+  setGains(sessionId: string, gain: AudioGain): void {
+    this.gains.push([sessionId, gain]);
+  }
   onMessage(listener: (m: HostMessage) => void): void {
     this.messageListener = listener;
   }
@@ -77,8 +92,11 @@ class FakeWriter implements RecorderWriter {
   finishError: Error | undefined;
   constructor(
     readonly recordingPath: string,
-    readonly finalPath: string,
+    public finalPath: string,
   ) {}
+  retarget(finalPath: string): void {
+    this.finalPath = finalPath;
+  }
   async finish(): Promise<string> {
     if (this.finishError) throw this.finishError;
     this.finished = true;
@@ -171,6 +189,161 @@ async function startRecording(ctx: ReturnType<typeof setup>): Promise<void> {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
+describe("Live preview (plan 075, D20)", () => {
+  it("prepares the recording's session and holds it, the state idle, nothing recorded", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout: DEFAULT_CAMERA_LAYOUT }) } });
+    expect(ctx.recorder.startPreview()).toBe(true);
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+    expect(ctx.recorder.preview).toEqual({ sessionId: "s1", live: false });
+    expect(ctx.host.started).toEqual(["s1"]);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.preview).toEqual({ sessionId: "s1", live: true });
+    expect(ctx.recorder.previewSessionId, "the Studio shows its picture").toBe("s1");
+    expect(ctx.recorder.camera, "its camera changes as a recording's").toEqual({ hidden: false });
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.states).toEqual([]);
+    expect(ctx.events.filter((e) => e.type === "preview")).toHaveLength(2);
+    expect(ctx.recorder.startPreview(), "one at a time").toBe(false);
+  });
+
+  it("is taken by Start into the countdown and the recording, named when Start came, with no new session", async () => {
+    let now = new Date(2026, 8, 11, 14, 30, 0);
+    const ctx = setup({ deps: { now: () => now, countdownSeconds: () => 3 } });
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    now = new Date(2026, 8, 11, 14, 35, 12);
+    expect(ctx.recorder.startIfIdle()).toBe(true);
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.recorder.state).toEqual({ type: "countdown", remaining: 3 });
+    expect(ctx.host.started, "the same session").toEqual(["s1"]);
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 14-35-12.mp4"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    expect(ctx.recorder.state.type).toBe("recording");
+  });
+
+  it("taken while it still prepares, records once prepared; let go of, is cancelled and leaves nothing", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.recorded).toEqual(["s1"]);
+    const other = setup();
+    other.recorder.startPreview();
+    await flush();
+    other.host.emit(prepared("s1"));
+    await flush();
+    other.recorder.stopPreview();
+    await flush();
+    expect(other.recorder.preview).toBeUndefined();
+    expect(other.host.stopped).toEqual(["s1"]);
+    expect(other.writers[0]!.abandoned).toBe(true);
+    expect(other.events).toContainEqual(expect.objectContaining({ type: "cancelled", reason: "preview" }));
+    expect(other.events.some((e) => e.type === "failed" || e.type === "failureStatus")).toBe(false);
+  });
+
+  it("that fails is no recording's failure: the Studio is told why, nothing is reported", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "camera_unavailable", detail: "no camera is connected" });
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.events).toContainEqual({ type: "preview", failure: { code: "camera_unavailable", detail: "no camera is connected" } });
+    expect(ctx.events.some((e) => e.type === "failed" || e.type === "failureStatus")).toBe(false);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("taken while it prepares, is a recording: preview teardown leaves it, and its name and time are Start's alone", async () => {
+    let now = new Date(2026, 8, 11, 9, 0, 0);
+    const ctx = setup({ deps: { now: () => now } });
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.preview, "no longer a preview").toBeUndefined();
+    ctx.recorder.stopPreview();
+    expect(ctx.recorder.state).toEqual({ type: "starting" });
+    now = new Date(2026, 8, 11, 9, 0, 10);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 09-00-00.mp4"));
+    expect(ctx.host.recorded).toEqual(["s1"]);
+  });
+
+  it("leaves no interruption evidence until Start takes it, and takes the bubble as it is once prepared", async () => {
+    const written: string[] = [];
+    let width = 0.2;
+    const ctx = setup({ deps: { sentinels: { write: async (entry) => { written.push(entry.sessionId); }, remove: async () => undefined },
+      camera: () => ({ layout: { ...DEFAULT_CAMERA_LAYOUT, width } }) } });
+    ctx.recorder.startPreview();
+    await flush();
+    expect(written, "a preview is no recording").toEqual([]);
+    width = 0.3;
+    expect(ctx.recorder.updateCamera({ layout: { ...DEFAULT_CAMERA_LAYOUT, width } }), "no live session yet to change").toBe(false);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.cameraChanges.map((change) => change.camera.layout.width), "changed while preparing: sent once prepared").toEqual([0.3]);
+    ctx.recorder.startIfIdle();
+    await flush();
+    expect(written).toEqual(["s1"]);
+  });
+
+  it("taken while its file still opens, takes Start's name and the recording's evidence once it is open", async () => {
+    let now = new Date(2026, 8, 11, 9, 0, 0);
+    const written: string[] = [];
+    let open!: () => void;
+    const ctx = setup({ deps: { now: () => now, sentinels: { write: async (entry) => { written.push(entry.recordingPath ?? ""); }, remove: async () => undefined } },
+      openWriter: async (recordingPath, finalPath) => { await new Promise<void>((resolve) => { open = resolve; }); const writer = new FakeWriter(recordingPath, finalPath); ctx.writers.push(writer); return writer; } });
+    ctx.recorder.startPreview();
+    await flush();
+    now = new Date(2026, 8, 11, 9, 5, 0);
+    ctx.recorder.startIfIdle();
+    open();
+    await flush();
+    expect(ctx.writers[0]!.finalPath).toBe(path.join("/out", "2026-09-11 09-05-00.mp4"));
+    expect(written).toEqual([path.join("/out", "2026-09-11 09-00-00.recording.mp4")]);
+  });
+
+  it("is let go of when screen recording's permission goes", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    ctx.recorder.setPermission({ granted: false, needsRelaunch: false });
+    expect(ctx.recorder.preview).toBeUndefined();
+    expect(ctx.host.stopped).toEqual(["s1"]);
+  });
+
+  it("is let go of by sleep and by quit", async () => {
+    const ctx = setup();
+    ctx.recorder.startPreview();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    ctx.recorder.systemWillSleep();
+    await flush();
+    expect(ctx.recorder.preview).toBeUndefined();
+    const quitting = setup();
+    quitting.recorder.startPreview();
+    await flush();
+    quitting.host.emit(prepared("s1"));
+    await flush();
+    await expect(quitting.recorder.shutdown()).resolves.toBe(true);
+    expect(quitting.recorder.preview).toBeUndefined();
+  });
+});
+
 describe("formatTimestamp", () => {
   it("uses the local time with dashes only", () => {
     expect(formatTimestamp(new Date(2026, 8, 11, 14, 30, 5))).toBe("2026-09-11 14-30-05");
@@ -182,6 +355,153 @@ describe("formatTimestamp", () => {
     expect(fileName).toHaveBeenCalledWith(new Date(2026, 8, 11, 14, 30, 0));
     expect([ctx.writers[0]!.recordingPath, ctx.writers[0]!.finalPath])
       .toEqual([path.join("/out", "Demo 2026-09-11 14-30-00.recording.mp4"), path.join("/out", "Demo 2026-09-11 14-30-00.mp4")]);
+  });
+});
+
+describe("the camera (plan 075)", () => {
+  const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+
+  it("snapshots the camera when the session begins and passes it to the host with the microphone", async () => {
+    let camera: { deviceId?: string; layout: typeof layout } | undefined = { deviceId: "cam", layout };
+    const ctx = setup({ deps: { microphone: () => ({ enabled: true }), camera: () => camera } });
+    ctx.recorder.toggle();
+    camera = undefined;
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.capturedWith).toEqual([{ microphone: { enabled: true }, camera: { deviceId: "cam", layout } }]);
+  });
+
+  it("passes no camera without the dependency or when it answers none", async () => {
+    for (const camera of [undefined, () => undefined]) {
+      const ctx = setup({ deps: camera ? { camera } : {} });
+      await startRecording(ctx);
+      expect(ctx.host.capturedWith).toEqual([undefined]);
+    }
+  });
+
+  it("refuses with camera_unavailable before any countdown", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit({ type: "error", sessionId: "s1", code: "camera_unavailable", detail: "camera: no camera is connected" });
+    await flush();
+    expect(ctx.events).toContainEqual(expect.objectContaining({ type: "failed", code: "camera_unavailable", outcome: "empty" }));
+    expect(ctx.host.recorded).toEqual([]);
+    expect(ctx.recorder.state).toEqual({ type: "idle" });
+  });
+
+  it("changes the recording's camera from its next frame on: a new layout, hidden and shown, logged", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    const moved = { ...layout, width: 0.3 };
+    expect(ctx.recorder.updateCamera({ layout: moved })).toBe(true);
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(true);
+    expect(ctx.recorder.camera).toEqual({ hidden: true });
+    expect(ctx.host.cameraChanges).toEqual([
+      { sessionId: "s1", camera: { layout: moved }, hidden: false },
+      { sessionId: "s1", camera: { layout: moved }, hidden: true }]);
+    expect(logs).toContainEqual(expect.stringContaining("session s1 camera hidden"));
+    ctx.recorder.stop();
+    expect(ctx.recorder.updateCamera({ hidden: false }), "not while stopping").toBe(false);
+    expect(ctx.recorder.camera, "nor offered to Settings or the tray then").toBeUndefined();
+  });
+
+  it("takes no camera change before the engine's session is prepared, and offers none there", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.recorder.toggle();
+    await flush();
+    expect(ctx.recorder.updateCamera({ hidden: true }), "preparing").toBe(false);
+    // Settings' shape rows and the tray's Hide camera follow `camera`: a change they took here would be lost.
+    expect(ctx.recorder.camera).toBeUndefined();
+    expect(ctx.host.cameraChanges).toEqual([]);
+  });
+
+  it("offers the camera from the state that redraws Settings: not while arming without a countdown, then once recording", async () => {
+    const ctx = setup({ deps: { camera: () => ({ layout }) } });
+    ctx.host.autoStart = false;
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.recorder.state.type, "arming keeps starting").toBe("starting");
+    expect(ctx.recorder.camera).toBeUndefined();
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    ctx.host.emit(chunk("s1", 0));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(ctx.recorder.cameraSessionId, "the session Settings' preview joins").toBe("s1");
+  });
+
+  it("sends the saved volumes once the session is prepared, and again on each change until it stops (D21)", async () => {
+    let gain: AudioGain = { system: 0, microphone: -6 };
+    const ctx = setup({ deps: { audioGain: () => gain } });
+    expect(ctx.recorder.updateGains(), "no session").toBe(false);
+    ctx.recorder.toggle();
+    await flush();
+    gain = { system: 3, microphone: -6 };
+    expect(ctx.recorder.updateGains(), "preparing: taken once prepared").toBe(false);
+    expect(ctx.host.gains).toEqual([]);
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.gains, "before any sound is taken").toEqual([["s1", { system: 3, microphone: -6 }]]);
+    ctx.host.emit({ type: "started", sessionId: "s1" });
+    await flush();
+    gain = { system: -60, microphone: 12 };
+    expect(ctx.recorder.updateGains()).toBe(true);
+    expect(ctx.host.gains.at(-1)).toEqual(["s1", { system: -60, microphone: 12 }]);
+    ctx.recorder.stop();
+    expect(ctx.recorder.updateGains(), "not while stopping").toBe(false);
+  });
+
+  it("mutes the recording's inputs for that recording, from the countdown or start until it stops (D19)", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => ({ enabled: true }) } });
+    expect(ctx.recorder.audio).toBeUndefined();
+    expect(ctx.recorder.updateAudio({ system: true })).toBe(false);
+    await startRecording(ctx);
+    expect(ctx.recorder.audio).toEqual({ sessionId: "s1", systemMuted: false, microphone: { muted: false } });
+    expect(ctx.recorder.updateAudio({ microphone: true })).toBe(true);
+    expect(ctx.recorder.updateAudio({ system: true })).toBe(true);
+    expect(ctx.recorder.audio).toEqual({ sessionId: "s1", systemMuted: true, microphone: { muted: true } });
+    expect(ctx.host.mutes).toEqual([["s1", false, true], ["s1", true, true]]);
+    expect(logs).toContainEqual(expect.stringContaining("session s1 system audio muted, microphone muted"));
+    ctx.recorder.stop();
+    expect(ctx.recorder.audio, "not while stopping").toBeUndefined();
+  });
+
+  it("has no camera to change without one, or between recordings", async () => {
+    const ctx = setup({});
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    await startRecording(ctx);
+    expect(ctx.recorder.camera).toBeUndefined();
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    expect(ctx.host.cameraChanges).toEqual([]);
+  });
+
+  it("keeps recording when the camera is lost, logs each dropout and its return, tells it once and marks the saved recording", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    ctx.host.emit({ type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" });
+    ctx.host.emit({ type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.1 s" });
+    ctx.host.emit({ type: "cameraLost", sessionId: "s1", detail: "again" });
+    ctx.host.emit({ type: "cameraLost", sessionId: "other", detail: "another session's" });
+    expect(ctx.events.filter((event) => event.type === "cameraLost")).toEqual([
+      { type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" }]);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logs.filter((line) => line.includes("camera lost; recording continues without it"))).toHaveLength(2);
+    expect(logs).toContainEqual(expect.stringContaining("camera resumed: the camera delivered frames again after 3.1 s"));
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const saved = ctx.events.find((event) => event.type === "saved");
+    expect(saved).toMatchObject({ cameraLost: true });
+    expect(saved).not.toHaveProperty("microphoneLost");
   });
 });
 

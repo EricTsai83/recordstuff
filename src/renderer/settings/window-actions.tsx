@@ -3,13 +3,16 @@ import { Ellipsis, EyeOff, Power } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../shared/settings-panel";
 import { Button } from "../components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../components/ui/dropdown-menu";
+import { ControlTooltip } from "../components/control-tooltip";
 import * as model from "./settings-controller";
 
-export function WindowActions({ group, quit, id = "setting-about-hide", sidebar = false }: {
+export function WindowActions({ group, quit, id = "setting-about-hide", sidebar = false, compact = false }: {
   group: SettingsGroup;
   quit: SettingsChoice;
   id?: string;
   sidebar?: boolean;
+  /** A collapsed sidebar's: icons only, one under the other, each named by its tooltip. */
+  compact?: boolean;
 }) {
   const hide = group.choices.find(choice => choice.id === "hide"),
     busy = Boolean(model.saving),
@@ -19,14 +22,18 @@ export function WindowActions({ group, quit, id = "setting-about-hide", sidebar 
   };
   return (
     <div role="group" aria-label={model.text("RecordStuff window actions")}
-      className={`inline-flex min-h-9 max-w-full items-stretch gap-1 text-muted-foreground ${sidebar ? "w-full" : ""}`}>
-      <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
-        disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
-        className="darwin:wide:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 wide:hover:bg-sidebar-accent wide:aria-expanded:bg-sidebar-accent px-3 py-1.5 text-left whitespace-normal"
-        onClick={() => { if (hide) choose(hide); }}>
-        <EyeOff aria-hidden="true" />
-        {model.text("Hide interface")}
-      </Button>
+      className={`inline-flex min-h-9 max-w-full items-stretch gap-1 text-muted-foreground ${sidebar ? "w-full" : ""} ${compact ? "flex-col" : ""}`}>
+      <ControlTooltip label={compact ? model.text("Hide interface") : undefined} side="right">
+        <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
+          disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
+          className={compact
+            ? "darwin:wide:window-no-drag h-auto min-h-[34px] w-9 justify-center rounded-lg border-0 px-0 wide:hover:bg-sidebar-accent"
+            : "darwin:wide:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 wide:hover:bg-sidebar-accent wide:aria-expanded:bg-sidebar-accent px-3 py-1.5 text-left whitespace-normal"}
+          onClick={() => { if (hide) choose(hide); }}>
+          <EyeOff aria-hidden="true" />
+          {!compact && model.text("Hide interface")}
+        </Button>
+      </ControlTooltip>
       <DropdownMenu>
         <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("More window actions")}
           disabled={!enabled(quit)}

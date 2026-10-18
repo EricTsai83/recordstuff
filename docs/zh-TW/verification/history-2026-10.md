@@ -4,6 +4,32 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 075 結案 — 2026-10-18
+
+Plan 075 把使用者的相機放進錄影。2026-10-17 依維護者要求改採 OBS 的做法重新設計：由引擎在編碼前於 GPU 上把相機合成進畫面，而不是錄下一個浮動視窗；新的「錄影工作室」分頁在即時預覽上安排相機，錄影前與錄影中都可以。設計見[錄影](../system-design/recording.md#相機)、[桌面](../system-design/desktop.md#錄影工作室)與[相機權限](../system-design/desktop.md#相機權限)，決策見[設計決策](../system-design/decisions.md)，CPU 預算見[工具](../system-design/tooling.md#cpu-預算)。
+
+- **行為（步驟 1，D1–D21）。** 寬、高（較短邊的 5–60%）與圓角可自由調整的泡泡，依螢幕記住位置，只有選擇時才鏡像；預設關閉，開啟時詢問權限；開始時無法使用即以 `camera_unavailable` 拒絕；錄影中變更從下一格生效；可從 tray 或工作室隱藏與顯示；2 秒沒有畫面即判定中斷，錄影不含相機繼續。依維護者選擇而改變最初建議的有：即時預覽按鈕（D5）、以小型 H.264 串流傳送預覽（D17）、錄影工作室（D19）、即時預覽與錄影共用同一個 session（D20），以及各輸入的音量推桿與 10 fps 的預覽（D21）。
+- **原型門檻（步驟 2）。** 以 Core Image 合成在 30 fps 約佔一個核心的 10 個百分點；Metal compute 在 30 fps 約 4、60 fps 約 7。預覽最初的形式（以 WebGL 繪製 NV12 畫面）佔 12.7 個百分點；改用 640 像素、以 WebCodecs 解碼的 H.264 串流後通過，預覽的份額由維護者接受。
+- **引擎（步驟 5–6）。** macOS 使用 AVFoundation，「跟隨系統」選擇 macOS 偏好的相機並略過暫停中的相機；Windows 使用 Media Foundation 的 source reader。同一個 WGSL kernel 由 naga 轉成 Metal 與 HLSL；Windows 上以 Direct3D 11 compute 寫入各平面的貼圖，再繪製到 NV12 render target，並有 WARP 路徑。沒有相機或隱藏時，畫面與螢幕逐位元相同。每次停止時記錄相機畫面在所在影格中的落後時間。
+- **工作室（步驟 7）。** 上方是預覽，下方是相機、音訊（音量表、靜音、推桿）與錄影控制；側邊欄可收合成圖示列。回合中發現並修正：「跟隨系統」在引擎與設定中開到不同的相機（兩者現在都詢問 `systemPreferredCamera` 並略過暫停中的相機），以及使用者允許後，執行中的 App 仍顯示未允許取用相機（卡片現在提供「已經允許了？重新啟動 RecordStuff」，麥克風的卡片也是）。
+- **量測（步驟 8）。** 見下方驗證。
+
+### 驗證
+
+2026-10-17 至 2026-10-18 的桌面回合，在參考機 MacBook Pro M1 Pro（macOS 26，Darwin 25.6）上進行，使用 `pnpm start:app` 產生的簽章 bundle、60 Hz 1920×1080 主螢幕、iPhone 的接續互通相機與 FaceTime HD 相機。Claude 執行 runner 與分析並操作 App；維護者重設相機權限、回應詢問、在系統設定中允許，並操作 iPhone。
+
+- **開啟相機錄影。** 每個回合讀回的影格中，泡泡都位於 log 記錄的版面；錄影中寬度、比例、鏡像與位置的變更在 4 ms 內落在 log 記錄之處；6.7 秒隱藏、10.8 秒顯示，依序得到泡泡、只有螢幕、再次出現的泡泡；開在被錄螢幕上的工作室不在影格中。開啟相機的 60 fps：20.77 秒 1,247 格，沒有超過 17.5 ms 的間隔。相機畫面平均比所在影格舊 113.9 ms（1,005 格中 87.7–138.7 ms，接續互通相機；Windows 以抵達時間標記，因此不含相機本身的延遲）。
+- **不開相機的時序。** `pnpm matrix -- fps`：30.03 fps、無掉格、閃光對嗶聲 −23 ms；59.35 fps、掉格 1.22%（最長間隔 33 ms）、−7 ms；兩者皆通過。
+- **CPU**（`pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2`）。待命 0.042%；開啟相機錄影在 30／60 fps 佔一個核心的 15.5%／19.4%；工作室顯示時 24.5%／30.7%；即時預覽 16.9%。所有絕對預算都通過；工作室的份額為 8.9 與 11.3 個百分點，超過 D18 的 8，由 D21 接受。工作室關閉後 Chromium 的 video capture 與 audio 服務仍在，但量不到 CPU 使用；維持現狀。
+- **音訊。** 系統聲音推桿拉到底後即無聲，音量表在 4.5 秒內降到無聲；麥克風推桿使麥克風無聲（檔案峰值 −23 dB，接著只剩麥克風的 −31 與 −41 dB，16 秒起無聲）。靜音、音量表與推桿都在 3 ms 內由設定與引擎記錄。
+- **即時預覽。** 783 ms 準備好一個 session；「開始」接手它進入倒數，相機只開啟一次（912 格，無掉格），檔名以按下開始的時間命名；切換分頁離開的預覽被取消，暫存檔刪除，沒有記錄失敗。
+- **權限**（執行 `tccutil reset Camera com.ericts.record` 後）。從 tray 的「錄製相機」跳出附使用說明的詢問；按「不允許」後顯示卡片，「開啟相機設定…」打開「隱私權與安全性 → 相機」（RecordStuff 為關閉），工作室預覽要求允許，開始錄影在倒數前以 `camera_unavailable` 拒絕並發出通知。允許後，執行中的 App 在重新啟動前仍顯示未允許，由上述修正處理（單元與 UI 測試；重新啟動按鈕本身未在簽章 bundle 上按過）。
+- **中斷。** 從 tray 取消倒數，相機指示在 2.5 秒內消失。錄影中在 iPhone 上按「中斷連線」，2 秒後判定中斷，錄影繼續，存檔時標記相機中斷，結束時才通知；引擎嘗試開啟同一台相機 9 次，因 iPhone 維持中斷而沒有接回，維護者判斷使用者自己中斷連線時這是正確的。拿起或解鎖 iPhone 不會暫停，其「暫停」送出黑畫面，因此兩者都不算中斷。
+- **自動化。** `pnpm check`（159 個檔案、1963 項測試；`cargo test --lib` 129）、`pnpm test:scope -- recording-settings`（29 個背景 UI 案例）、`pnpm acceptance:tray`（15 項通過，`stale-start` 未執行：macOS 先送出選單的開始）、依 pull request job 的步驟在本機執行網站檢查（24 項測試、`astro check`、離線建置與連結）。工作分支上的 `check.yml`：run 39062657993（`windows-2025` 上 Windows 合成器的六個 WARP 像素測試與預覽串流測試），以及結案 commit 的 run 39107006058，十二個 job 全部通過（macOS 與 Windows 的 check、八個 UI 分片、原生引擎與 Windows 安裝程式）。前一次 run 39106467749 在 macOS 上有一個依實際時間判斷的測試失敗（`with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst`）：影格都落在各自的格子上，但測試從它的執行緒看到第一格時才開始計時，在忙碌的 runner 上看得較晚；現在改從第一格本身的時間開始計算。之後 pull request #19 的檢查在忙碌的 macOS runner 上又有三個依實際時間判斷的測試失敗（靜止畫面的重新編碼相隔 1.2046 秒，超過 1.2 秒的上限；相機的節奏以固定的睡眠時間計數；078 的 host time 測試在兩次讀取時鐘之間被搶走 39 ms）；三者現在都依量到的時間判斷（觀察的時間、影格本身的間隔、等待期間取樣的延遲、在兩次讀取之間讀取），整組測試在參考機上與十二個忙碌迴圈並行時連續通過三次。合併的 commit 上，run 39109109091 的所有 job 都通過，網站的 pull request 檢查（run 39109109090）也在 GitHub 上通過。
+- **審查。** Codex GPT-6.1 Sol，唯讀，逐項審查：包括 Windows 相機的 stride、沒有畫面的來源重新開啟與其競態（已修正）、錄影前預覽卡住（記錄為已知限制）、在 refresh 執行緒 join 前讀取相機落後時間（已修正），以及 Windows 以抵達時間標記（已記錄）。
+
+未完成：Windows 上的實體相機（只有 CI）；裝置清單在沒有 run loop 時是否跟著相機變化（手邊沒有 USB 相機；中斷連線後 iPhone 仍在清單中）；錄影中相機在實機上接回（只有核心測試）；在簽章 bundle 上按下重新啟動按鈕。已知限制：即時預覽中卡住的相機，要到開始錄影才會判定中斷。macOS 上規劃中的零複製預覽是 [080](../../../plans/080-shared-texture-preview.zh-TW.md)。
+
 ## Plan 078 結案 — 2026-10-17
 
 076 與 074 留下了原生擷取引擎的幾個問題：相隔 50 ms 的影格、開發版 App 錄到自己的視窗、沒有逐影格的診斷、Chromium 路徑留下的決定、Windows UI shard 關閉 App 時逾時，以及 macOS 麥克風重新連上後從未被收回。Plan 078 把它們結案。設計見[錄影](../system-design/recording.md)、[音質第 19 節](../system-design/audio-quality.md#19-coreaudio-hal-上的麥克風結果2026-10-17)、[工具](../system-design/tooling.md)與[桌面](../system-design/desktop.md)。

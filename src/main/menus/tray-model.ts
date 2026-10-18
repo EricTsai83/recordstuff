@@ -83,6 +83,8 @@ function windowsGroup(ctx: AppContext): TrayMenuItem[] {
     : settingsShortcut?.kind === "failed" ? t("The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.", language) : undefined;
   return [
     item(t("Open RecordStuff", language), "openSettings", undefined, settingsShortcut?.kind === "registered" ? openShortcut(ctx.platform) : undefined),
+    // The window at its Recording Studio (plan 075, D19): the preview, the camera's place and the controls.
+    item(t("Open Recording Studio…", language), "openStudio"),
     // The window itself, on Recordings with the newest take focused: never the folder.
     item(t("Show last recording", language), "showLastRecording"),
     ...(explanation ? [disabled(explanation)] : []),
@@ -211,6 +213,11 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // recordings start. Idle's only, since a session locks it as Settings does.
       const microphone = ctx.microphone?.enabled ?? false;
       actions.push({ kind: "item", label: text("Record microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
+      // The camera's switch beside it (plan 075, D10), where the camera is available.
+      if (ctx.camera?.available) {
+        const camera = ctx.camera.enabled;
+        actions.push({ kind: "item", label: text("Record camera"), enabled: true, action: { setCamera: !camera }, checked: camera });
+      }
       return model("idle", "", status, actions, lines);
     }
     case "starting":
@@ -230,6 +237,9 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // `REC` beside the icon and Stop say it; the line is gone (2026-10-05).
       return model("recording", "REC", text("Recording"), [
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
+        // Hide and show the camera while recording (plan 075, D13); no global shortcut.
+        ...(ctx.camera?.session ? [{ kind: "item" as const, label: text(ctx.camera.session.hidden ? "Show camera" : "Hide camera"), enabled: true,
+          action: { setCameraHidden: !ctx.camera.session.hidden } }] : []),
       ]);
     case "stopping":
       return model("busy", "", text("Saving…"), [], [text("Saving…")]);
@@ -339,6 +349,14 @@ export function hotkeyWriteFailedNotification(language?: Language): Notification
 /** Turning the microphone on found it refused (plan 074); the click opens the pane that allows it. */
 export function microphoneDeniedNotification(language?: Language): NotificationText {
   return notice(t("RecordStuff cannot use the microphone. Click to open System Settings.", language));
+}
+/** Turning the camera on found access refused (plan 075); the click opens its privacy pane. */
+export function cameraDeniedNotification(language?: Language): NotificationText {
+  return notice(t("RecordStuff cannot use the camera. Click to open System Settings.", language));
+}
+/** The camera stopped while recording (plan 075), told once the recording ends as the microphone's. */
+export function cameraLostNotification(language?: Language): NotificationText {
+  return notice(t("The camera dropped out during the recording. The screen was recorded without it while it was out.", language));
 }
 /** Told once the recording ends, as the other capture notices are (plan 074). */
 export function microphoneLostNotification(language?: Language): NotificationText {

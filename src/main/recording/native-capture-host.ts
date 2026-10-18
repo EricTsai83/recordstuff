@@ -19,9 +19,12 @@
  * out of main, and an attempt's process is never asked.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice } from "../../shared/protocol";
+import { recordedPosition } from "../../shared/camera-layout";
+import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
+import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
-import type { RecorderHost, SessionCapture } from "./recorder";
+import type { AudioGain } from "../../shared/audio-gain";
+import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
 
 export interface NativeCaptureHostOptions {
@@ -54,6 +57,8 @@ export interface NativeCaptureHostOptions {
   log?: (message: string) => void;
   /** Forks the host; tests pass a fake. */
   fork?: (entryPath: string, args: string[]) => UtilityProcess;
+  /** Each recording attempt's process, once forked (plan 075's prototype hands it the preview page's port). */
+  onLaunch?: (child: UtilityProcess) => void;
   now?: () => number;
 }
 
@@ -76,6 +81,16 @@ interface FileOutcome {
 /** A process that stopped capturing and is finishing `recordingPath`. */
 interface Finishing { sessionId: string; recordingPath: string; bound: ReturnType<typeof setTimeout> }
 
+/**
+ * The camera's choice for a recording of `display` (plan 075): the bubble where it was placed on that display, else
+ * where it was placed for the primary display, else the default position.
+ */
+export function cameraChoice(camera: SessionCamera, display: string): CameraChoice {
+  const { width, height, rounding, mirror } = camera.layout;
+  const { x, y } = recordedPosition(camera.layout, display);
+  return { ...(camera.deviceId ? { deviceId: camera.deviceId } : {}), width, height, rounding, x, y, mirror };
+}
+
 export class NativeCaptureHost implements RecorderHost {
   private child: UtilityProcess | undefined;
   private generation = 0;
@@ -87,6 +102,8 @@ export class NativeCaptureHost implements RecorderHost {
   private readonly outcomes = new Map<string, FileOutcome>();
   private readonly finishing = new Map<UtilityProcess, Finishing>();
   private recordingPath: string | undefined;
+  /** The display the session records, for the camera's position on it (plan 075). */
+  private display: string | undefined;
   private excluding = false;
   /** Counts exclusions: a deferred release lets windows back in only if no exclusion came after its own. */
   private exclusions = 0;
@@ -154,6 +171,7 @@ export class NativeCaptureHost implements RecorderHost {
     await microphoneAsked;
     if (generation !== this.generation) throw new Error("capture host was invalidated while macOS asked for the microphone");
     const display = chosen.display;
+    this.display = display;
     this.log(`capture host: timing: process ready ${Math.round(readyAt - began)} ms, display chosen ${Math.round(chosenAt - began)} ms`);
     if (generation !== this.generation) throw new Error("capture host was invalidated while the display was chosen");
     if (!display || !/^\d+$/.test(display)) {
@@ -172,6 +190,7 @@ export class NativeCaptureHost implements RecorderHost {
       displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
       ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
+      ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
     } });
   }
 
@@ -183,6 +202,15 @@ export class NativeCaptureHost implements RecorderHost {
    * `cancelListing` is called. `allowed` is asked again once the process is ready, before it lists anything.
    */
   listMicrophones(allowed: () => boolean = () => true): Promise<MicrophoneDevice[]> {
+    return this.list("microphones", "the audio inputs", allowed);
+  }
+
+  /** The cameras, the same way (plan 075, D9); a listing in flight of either kind is replaced. */
+  listCameras(allowed: () => boolean = () => true): Promise<CameraDevice[]> {
+    return this.list("cameras", "the cameras", allowed);
+  }
+
+  private list(kind: "microphones" | "cameras", what: string, allowed: () => boolean): Promise<MicrophoneDevice[]> {
     const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
     const child = fork(this.options.entryPath, [this.options.addonPath]);
     return new Promise<MicrophoneDevice[]>((resolve, reject) => {
@@ -196,23 +224,23 @@ export class NativeCaptureHost implements RecorderHost {
         if (result instanceof Error) reject(result);
         else resolve(result);
       };
-      const bound = setTimeout(() => done(new Error(`the audio inputs were not listed within ${LIST_BOUND_MS} ms`)), LIST_BOUND_MS);
+      const bound = setTimeout(() => done(new Error(`${what} were not listed within ${LIST_BOUND_MS} ms`)), LIST_BOUND_MS);
       const cancel = (cause: Error): void => done(cause);
       this.listing?.(new Error("a newer listing replaced it"));
       this.listing = cancel;
       for (const stream of [child.stdout, child.stderr]) {
         stream?.on("data", (chunk: Buffer) => {
-          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (inputs): ${line.trim()}`);
+          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (${kind}): ${line.trim()}`);
         });
       }
-      child.on("exit", (code) => done(new Error(`the process listing the audio inputs exited with ${code}`)));
+      child.on("exit", (code) => done(new Error(`the process listing ${what} exited with ${code}`)));
       child.on("message", (data: unknown) => {
         if (!isHostMessage(data)) return;
         if (data.type === "ready") {
-          if (allowed()) child.postMessage({ type: "listMicrophones" } satisfies MainMessage);
-          else done(new Error("a recording started before the inputs were listed"));
+          if (allowed()) child.postMessage({ type: kind === "microphones" ? "listMicrophones" : "listCameras" } satisfies MainMessage);
+          else done(new Error(`a recording started before ${what} were listed`));
         }
-        else if (data.type === "microphones") done("devices" in data ? data.devices : new Error(data.error));
+        else if (data.type === kind) done("devices" in data ? data.devices : new Error(data.error));
       });
     });
   }
@@ -230,6 +258,42 @@ export class NativeCaptureHost implements RecorderHost {
   stop(sessionId: string): void {
     if (!this.child) return;
     this.post({ type: "stop", sessionId });
+  }
+
+  /** The session's camera from its next frame on (plan 075): the bubble at its position on the recorded display. */
+  setCamera(sessionId: string, camera: SessionCamera, hidden: boolean): void {
+    if (!this.child || this.watching !== sessionId || !this.display) return;
+    this.post({ type: "cameraLayout", sessionId, camera: cameraChoice(camera, this.display), hidden });
+  }
+
+  /**
+   * Whether the session's preview is watched (plan 075 step 7), with the port its frames go to when Settings joins:
+   * false, the port unused, when this host's process does not run the session.
+   */
+  watchPreview(sessionId: string, watching: boolean, port?: Electron.MessagePortMain): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
+    if (port) this.child.postMessage({ type: PREVIEW_PORT_MESSAGE }, [port]);
+    this.post({ type: "cameraPreview", sessionId, watching });
+    return true;
+  }
+
+  /** Mutes the session's system audio and microphone, or not (plan 075, D19). */
+  setMuted(sessionId: string, system: boolean, microphone: boolean): void {
+    if (!this.child || this.watching !== sessionId) return;
+    this.post({ type: "mute", sessionId, system, microphone });
+  }
+
+  /** The session's inputs' volumes in dB (plan 075, D21). */
+  setGains(sessionId: string, gain: AudioGain): void {
+    if (!this.child || this.watching !== sessionId) return;
+    this.post({ type: "gain", sessionId, system: gain.system, microphone: gain.microphone });
+  }
+
+  /** Whether the session's levels are watched (D19); false when this host's process does not run the session. */
+  watchLevels(sessionId: string, watching: boolean): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
+    this.post({ type: "levels", sessionId, watching });
+    return true;
   }
 
   destroy(): void {
@@ -264,6 +328,7 @@ export class NativeCaptureHost implements RecorderHost {
         for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host: ${line.trim()}`);
       });
     }
+    this.options.onLaunch?.(child);
     let resolveReady!: () => void;
     let rejectReady!: (cause: Error) => void;
     const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });

@@ -122,6 +122,15 @@ export interface SettingsWindowOptions {
    * itself, rather than through `act`, which refuses at once, asks this.
    */
   quitRequested?: () => boolean;
+  /**
+   * The page has the camera preview in sight, or `undefined`: no page has (plan 075 step 7). Also told when the
+   * window closes, its page dies or RecordStuff is hidden.
+   */
+  cameraPreview?: (page: WebContents | undefined) => void;
+  /** The page has the Recording Studio's meters in sight, or `undefined` (plan 075, D19); cleared as `cameraPreview` is. */
+  levels?: (page: WebContents | undefined) => void;
+  /** The Recording Studio is open in a window in sight, or not (plan 075, D20); told closed as `levels` is cleared. */
+  studio?: (open: boolean) => void;
   log?: (message: string) => void;
 }
 
@@ -162,6 +171,8 @@ export class SettingsWindow {
   private currentZoom: number | undefined;
   /** One save at a time, in request order: a queued request is never a failure. */
   private queue: Promise<unknown> = Promise.resolve();
+  /** What the current page asked to watch (plan 075), given again when its window is shown. */
+  private watched = { preview: false, levels: false, studio: false };
   /** The last view the page received by any route; an identical refresh is not pushed again. */
   private delivered: string | undefined;
 
@@ -202,6 +213,24 @@ export class SettingsWindow {
     ipcMain.handle(SETTINGS_CHANNELS.read, (event) => {
       authorize(event);
       return this.deliver(this.view());
+    });
+    ipcMain.handle(SETTINGS_CHANNELS.cameraPreview, (event, watching: unknown) => {
+      const window = authorize(event);
+      if (typeof watching !== "boolean") throw new Error("Invalid camera preview request");
+      this.watched.preview = watching;
+      this.options.cameraPreview?.(watching && window.isVisible() ? window.webContents : undefined);
+    });
+    ipcMain.handle(SETTINGS_CHANNELS.watchLevels, (event, watching: unknown) => {
+      const window = authorize(event);
+      if (typeof watching !== "boolean") throw new Error("Invalid levels request");
+      this.watched.levels = watching;
+      this.options.levels?.(watching && window.isVisible() ? window.webContents : undefined);
+    });
+    ipcMain.handle(SETTINGS_CHANNELS.watchStudio, (event, open: unknown) => {
+      const window = authorize(event);
+      if (typeof open !== "boolean") throw new Error("Invalid studio request");
+      this.watched.studio = open;
+      this.options.studio?.(open && window.isVisible());
     });
     ipcMain.handle(SETTINGS_CHANNELS.choose, (event, group: unknown, choice: unknown) => {
       const window = authorize(event);
@@ -255,6 +284,11 @@ export class SettingsWindow {
     this.showEntry("library");
   }
 
+  /** The Recording Studio (plan 075, D19), from the tray and the Camera section's link. */
+  showStudio(): void {
+    this.showEntry("studio");
+  }
+
   /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
   showRecording(): void {
     this.showEntry("recording");
@@ -279,6 +313,9 @@ export class SettingsWindow {
     if (!window || window.isDestroyed()) return Promise.resolve(true);
     this.hiddenByUser = true;
     this.release(this.leaseOf(window));
+    this.options.cameraPreview?.(undefined);
+    this.options.levels?.(undefined);
+    this.options.studio?.(false);
     // The player stops first: hidden, RecordStuff has no Dock icon, and a sound from nowhere would be hard to trace.
     window.webContents.send(SETTINGS_CHANNELS.hidden);
     if (!window.isFullScreen()) {
@@ -390,6 +427,14 @@ export class SettingsWindow {
     window.webContents.setZoomFactor(this.zoomFactor());
     window.webContents.on("did-finish-load", () => { if (!window.isDestroyed()) window.webContents.setZoomFactor(this.zoomFactor()); });
     window.on("focus", () => { if (this.window === window) this.options.activated?.(); });
+    // A page can ask to watch before its window is shown (a new window opened at the Recording Studio, or one shown
+    // again after Hide RecordStuff): what it asked for is given once it is in sight.
+    window.on("show", () => {
+      if (this.window !== window || window.isDestroyed()) return;
+      if (this.watched.preview) this.options.cameraPreview?.(window.webContents);
+      if (this.watched.levels) this.options.levels?.(window.webContents);
+      if (this.watched.studio) this.options.studio?.(true);
+    });
     // A dead page cannot be revived in place; the next show creates a fresh
     // window instead. No automatic reload, so a page that keeps crashing
     // cannot loop.
@@ -448,6 +493,9 @@ export class SettingsWindow {
     ipcMain.removeHandler(SETTINGS_CHANNELS.ready);
     ipcMain.removeHandler(SETTINGS_CHANNELS.choose);
     ipcMain.removeHandler(SETTINGS_CHANNELS.zoom);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.cameraPreview);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.watchLevels);
+    ipcMain.removeHandler(SETTINGS_CHANNELS.watchStudio);
     this.window?.destroy();
     this.window = undefined;
   }
@@ -519,6 +567,10 @@ export class SettingsWindow {
     // A video playing full screen for it has nothing left to return to.
     this.options.fullScreen?.close();
     this.window = undefined; this.reveal = undefined; this.captureTimedOut = false;
+    this.watched = { preview: false, levels: false, studio: false };
+    this.options.cameraPreview?.(undefined);
+    this.options.levels?.(undefined);
+    this.options.studio?.(false);
     this.options.closed?.();
   }
 

@@ -34,7 +34,7 @@ export interface DisplayFrame {
   pixels: string;
 }
 /** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
-export type SettingsTab = "library" | "recording" | "general" | "shortcuts" | "failures";
+export type SettingsTab = "library" | "studio" | "recording" | "general" | "shortcuts" | "failures";
 /** One row of the Keyboard Shortcuts tab (plan 073): read-only, from `shortcut-catalog.ts`. */
 export interface ShortcutRowView {
   id: string;
@@ -64,7 +64,21 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter";
+  /**
+   * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
+   * validates (plan 075's camera size and rounding, and D21's volumes in dB).
+   */
+  slider?: { min: number; max: number; step: number; value: number; unit: "percent" | "decibels" };
+  /**
+   * A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
+   * `mute` and `unmute`, one checked.
+   */
+  meter?: { source: "system" | "microphone" };
+  /** The Recording Studio's controls (plan 075, D19): when the recording in progress began, for the elapsed time. */
+  elapsedSince?: string;
+  /** A `cameraPreview`'s stage and bubble (plan 075 step 7); the page sends a new position as the choice `x,y`. */
+  cameraPreview?: CameraPreviewView;
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
   iconChoices?: boolean;
   /** Consecutive rows with this id share an inset list. */
@@ -93,6 +107,27 @@ export interface SettingsGroup {
    * one card: changing the switch and checking the OS are one decision.
    */
   actions?: SettingsChoice[];
+}
+/**
+ * Settings' camera preview (plan 075 step 7): the recorded display to scale, with its menu bar's band, and the bubble
+ * where the recording puts it. Before recording the page shows the camera itself in the bubble (`live`), while a
+ * recording composes the camera the engine's preview of the whole picture (`recording`); `off` shows the outline only.
+ */
+export interface CameraPreviewView {
+  mode: "live" | "recording" | "off";
+  /** The display's logical size and its menu bar's height, 0 when the recording hides it or it has none. */
+  display: { width: number; height: number; menuBar: number };
+  /** The bubble's shape (fractions of the display's shorter side), as the recording composes it. */
+  bubble: { width: number; height: number; rounding: number; mirror: boolean };
+  /** Whether the bubble is part of the picture: not in a session that composes no camera, which has nothing to place. */
+  composed: boolean;
+  /** Its position, a fraction of the free space on each axis. */
+  x: number;
+  y: number;
+  /** The chosen camera's name, which the page matches to its own list of cameras; absent is the default camera. */
+  camera?: string;
+  /** What the stage says without a picture. */
+  status?: string;
 }
 export interface RecordingResultView {
   id: string;
@@ -223,6 +258,14 @@ export const SETTINGS_CHANNELS = {
   ready: "settings:ready",
   /** RecordStuff was hidden (⌘H): the player stops, as nothing should sound from a window out of sight. */
   hidden: "settings:hidden",
+  /** Whether the camera preview is in sight (plan 075 step 7), and the port a recording's preview frames come on. */
+  cameraPreview: "settings:camera-preview",
+  cameraPreviewPort: "settings:camera-preview-port",
+  /** Whether the Recording Studio's meters are in sight, and the levels main passes them (plan 075, D19). */
+  watchLevels: "settings:watch-levels",
+  levels: "settings:levels",
+  /** Whether the Recording Studio is open and in sight (plan 075, D20): a Live preview lasts only while it is. */
+  watchStudio: "settings:watch-studio",
 } as const;
 /** A recording's new name, as typed in its card (group `recordingFile:<id>`); main checks it before renaming. */
 export interface RenameChoice { action: "rename"; name: string }
@@ -286,7 +329,20 @@ export interface SettingsBridge {
   onHidden?(callback: () => void): () => void;
   /** The page has painted its first content (or its failed read): a new window may be shown now. */
   ready(): Promise<void>;
+  /**
+   * The camera preview is in sight, or no longer is (plan 075 step 7): while a recording composes the camera, main
+   * joins the page to its preview frames, which arrive as a port posted to the page's window on
+   * `SETTINGS_CHANNELS.cameraPreviewPort`.
+   */
+  watchCameraPreview?(watching: boolean): Promise<void>;
+  /** The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come to `onLevels`. */
+  watchLevels?(watching: boolean): Promise<void>;
+  onLevels?(callback: (levels: StudioLevels) => void): () => void;
+  /** The Recording Studio is open and in sight, or no longer is (D20): main lets a Live preview go once it is not. */
+  watchStudio?(open: boolean): Promise<void>;
 }
+/** A recording's inputs' loudest samples since the last levels, linear (1 is full scale). */
+export interface StudioLevels { system: number; microphone?: number }
 
 export type SettingsZoomRequest = "in" | "out" | "reset";
 export interface SettingsZoom { factor: number; canZoomIn: boolean; canZoomOut: boolean }

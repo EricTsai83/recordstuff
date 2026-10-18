@@ -28,7 +28,7 @@ const settingsTabs = [...new Set(settings.map((row) => row.tab))];
 const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 ---
 
-<PlatformSwitch macIds={["open-anyway", "install", "use", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
+<PlatformSwitch macIds={["open-anyway", "install", "use", "camera", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
 <div class="prose help">
   <div data-only="mac">
     <H id="open-anyway">App blocked by macOS?</H>
@@ -64,6 +64,18 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
       </div>
     ))}
     <p>While recording, only Icon click, Language and Appearance can change.</p>
+
+    <H id="camera">Camera</H>
+    <p>RecordStuff can draw your camera into the recording as a bubble. It is part of the video only: nothing is shown on your screen, so it never covers or catches clicks meant for the app you record.</p>
+    <ul>
+      <li><strong>Turn it on:</strong> check <em>Record camera</em> in the menu bar menu, or turn on <em>Camera</em> in Recording settings, where <em>Camera device</em> picks the camera. macOS asks for camera access the first time.</li>
+      <li><strong>If access was refused:</strong> click <em>Open camera settings…</em> and allow RecordStuff in <strong>System Settings → Privacy &amp; Security → Camera</strong>, then click <em>Already allowed? Relaunch RecordStuff</em>; macOS shows a new permission to RecordStuff only after a relaunch. While access is off, a recording with Camera on does not start.</li>
+      <li><strong>Arrange it:</strong> choose <em>Open Recording Studio…</em> from the menu bar menu. Drag the bubble in the preview (or move it with the arrow keys), and set its width, height, shape, rounding and mirror. Its place is remembered for each display.</li>
+      <li><strong>Check before recording:</strong> click <em>Live preview</em> in the Studio to see the recording as it will look, with level meters for system audio and the microphone. <em>Start recording</em> continues from it without a gap.</li>
+      <li><strong>While recording:</strong> the bubble can still be moved and resized in the Studio. Choose <em>Hide camera</em> from the menu bar menu, or turn off <em>Show camera in recording</em> in the Studio, to take it out for a while; the next recording shows it again.</li>
+      <li><strong>Volume:</strong> the Studio's Audio panel has a mute and a volume fader for system audio and for the microphone, from silent to +12 dB. Mutes last for one recording; the faders are kept for the next ones.</li>
+    </ul>
+    <p class="dim">The camera is also offered on Windows, where desktop apps must be allowed in Settings → Privacy &amp; security → Camera; it has not been tested with a camera on Windows hardware.</p>
 
     <H id="update">Update</H>
     <p>By default RecordStuff checks for updates at launch and notifies you of a new version. To install it:</p>

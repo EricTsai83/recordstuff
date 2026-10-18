@@ -1,8 +1,9 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
-import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, CircleHelp, EyeOff, Sun, Moon, Monitor, Keyboard, Settings2, Folder, Globe, Power, Bell, Timer, Volume2, Mic, AudioLines, Gauge, FileText, Info, ScreenShare, Clapperboard, MousePointerClick, Palette, RefreshCw, AppWindow, Film, Play, Maximize } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
+import { gainText } from "../../../shared/audio-gain";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
@@ -10,6 +11,7 @@ import { ControlTooltip } from "../../components/control-tooltip";
 import { useTextSetting } from "../use-text-setting";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { Slider } from "../../components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card, CardContent } from "../../components/ui/card";
 import { Popover, PopoverTrigger, PopoverContent } from "../../components/ui/popover";
@@ -18,6 +20,8 @@ import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
 import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
+import { CameraPreview } from "./camera-preview";
+import { AudioMeter } from "./audio-meter";
 import { WindowActions } from "../window-actions";
 
 const icons = {
@@ -29,6 +33,19 @@ const icons = {
   countdownSound: Volume2,
   microphone: Mic,
   microphoneDevice: AudioLines,
+  camera: Camera,
+  cameraDevice: Webcam,
+  cameraWidth: MoveHorizontal,
+  cameraHeight: MoveVertical,
+  cameraRatio: Ratio,
+  cameraRounding: SquareRoundCorner,
+  cameraMirror: FlipHorizontal2,
+  cameraPreview: Move,
+  studioCamera: Camera,
+  cameraShown: Eye,
+  systemAudio: Volume2,
+  microphoneAudio: Mic,
+  studioControls: Circle,
   videoQuality: Gauge,
   resolutionCap: Monitor,
   frameRate: Gauge,
@@ -48,6 +65,10 @@ const sectionIcons = {
   source: ScreenShare,
   countdown: Timer,
   audio: Mic,
+  camera: Camera,
+  studioCamera: Camera,
+  studioControls: Circle,
+  studioAudio: AudioLines,
   video: Clapperboard,
   controls: MousePointerClick,
   display: Palette,
@@ -62,6 +83,55 @@ function SectionIcon({ id }: { id: string }) {
   const Icon = sectionIcons[id as keyof typeof sectionIcons];
   return Icon ? <Icon className="section-icon" aria-hidden="true" /> : null;
 }
+/**
+ * A slider row (plan 075's camera size and rounding): it moves with the pointer or the arrow keys and shows the value
+ * beside it, and the value let go of is the choice sent to main, so one drag is one save.
+ */
+export function SliderSetting({ id, group, slider, disabled, describedBy }: {
+  id: string; group: SettingsGroup; slider: NonNullable<SettingsGroup["slider"]>; disabled: boolean; describedBy?: string | undefined;
+}) {
+  const [moving, setMoving] = useState<number | undefined>(undefined);
+  const shown = moving ?? slider.value;
+  const text = slider.unit === "decibels" ? gainText(shown) : `${shown}%`;
+  return (
+    <div className="slider-setting">
+      <Slider
+        id={id}
+        className="slider-setting-track"
+        value={[shown]}
+        min={slider.min}
+        max={slider.max}
+        step={slider.step}
+        disabled={disabled}
+        thumbProps={{ "aria-label": group.label, "aria-valuetext": text, ...(describedBy ? { "aria-describedby": describedBy } : {}) }}
+        onValueChange={(value) => setMoving(Array.isArray(value) ? value[0] : value)}
+        onValueCommitted={(value) => {
+          const next = Array.isArray(value) ? value[0] : value;
+          if (next === undefined || next === slider.value) return setMoving(undefined);
+          // The value let go of stays shown while it saves, so a key held down goes on from it; the view then shows
+          // what was saved, or the old value after a failure.
+          setMoving(next);
+          void model.choose(group.id, String(next), id).finally(() => setMoving((shown) => (shown === next ? undefined : shown)));
+        }}
+      />
+      <span className="slider-setting-value" aria-hidden="true">{text}</span>
+    </div>
+  );
+}
+
+/** The recording's elapsed time beside the Recording Studio's Stop (plan 075, D19), counted here from its start. */
+export function Elapsed({ since }: { since: string }) {
+  const start = Date.parse(since);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : 0;
+  const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return <span className="studio-elapsed" role="timer" aria-label={translate("Elapsed {time}", model.view?.language, { time: text })}>{text}</span>;
+}
+
 export function GroupIcon({ id }: { id: string }) {
   const Icon = icons[id as keyof typeof icons] ?? Settings2;
   return <Icon className="row-icon" aria-hidden="true" />;
@@ -303,7 +373,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           </div>
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
-          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" ? (
+          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" || group.control === "meter" ? (
             <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
@@ -328,6 +398,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           role={group.kind === "actions" ? "group" : undefined}
           aria-labelledby={group.kind === "actions" ? `${id}-label` : undefined}
         >
+          {group.elapsedSince && <Elapsed since={group.elapsedSince} />}
           {group.kind === "actions" ? (
             actions.filter(choice => group.id !== "about" || choice.id !== "hide").map((choice) => group.id === "about" && choice.id === "quit" ? (
               <div key={choice.id} className="wide:hidden">
@@ -363,6 +434,12 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             <TextSetting group={group} description={description} />
           ) : group.control === "arrangement" ? (
             <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
+          ) : group.control === "meter" && group.meter ? (
+            <AudioMeter group={group} source={group.meter.source} muted={value === "mute"} disabled={!group.enabled || busy} describedBy={description || undefined} />
+          ) : group.control === "cameraPreview" && group.cameraPreview ? (
+            <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled || busy} describedBy={description || undefined} />
+          ) : group.control === "slider" && group.slider ? (
+            <SliderSetting id={id} group={group} slider={group.slider} disabled={!group.enabled || busy} describedBy={description || undefined} />
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}
