@@ -153,9 +153,9 @@
 
 ### 9. 文件
 
-- [ ] [錄影](../docs/zh-TW/system-design/recording.md)：鏡頭擷取、合成器與它在編碼器之前的位置、有鏡頭時的 pacer、版面訊息、失敗處理；[桌面](../docs/zh-TW/system-design/desktop.md)：預覽與權限；[設計決策](../docs/zh-TW/system-design/decisions.md)：在引擎中合成（OBS 的模式），而不是錄下視窗或獨立軌；[工具](../docs/zh-TW/system-design/tooling.md)：量到的成本。英文版同步更新。
-- [ ] README、README.zh-TW 與官網說明頁：提到鏡頭功能。
-- [ ] 學習文章：撰寫[索引清單](README.zh-TW.md#074076-的學習文章)中，所依據的計畫已隨本計畫全部結案的文章。
+- [x] [錄影](../docs/zh-TW/system-design/recording.md)：鏡頭擷取、合成器與它在編碼器之前的位置、有鏡頭時的 pacer、版面訊息、失敗處理；[桌面](../docs/zh-TW/system-design/desktop.md)：預覽與權限；[設計決策](../docs/zh-TW/system-design/decisions.md)：在引擎中合成（OBS 的模式），而不是錄下視窗或獨立軌；[工具](../docs/zh-TW/system-design/tooling.md)：量到的成本。英文版同步更新。
+- [x] README、README.zh-TW 與官網說明頁：提到鏡頭功能。
+- [x] 學習文章：撰寫[索引清單](README.zh-TW.md#074076-的學習文章)中，所依據的計畫已隨本計畫全部結案的文章。
 
 ## 完成與驗證邊界
 

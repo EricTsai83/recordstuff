@@ -153,9 +153,9 @@ Changed or new, decided by the maintainer on 2026-10-17:
 
 ### 9. Documentation
 
-- [ ] [Recording](../docs/system-design/recording.md): camera capture, the compositor and its place before the encoder, the pacer with the camera, the layout message, failures; [desktop](../docs/system-design/desktop.md): the preview and permission; [decisions](../docs/system-design/decisions.md): composed in the engine (OBS's model) rather than a recorded window or a separate track; [tooling](../docs/system-design/tooling.md): the measured costs. Mirror each in `docs/zh-TW/`.
-- [ ] README, README.zh-TW and the website's help page: mention the camera.
-- [ ] Learning articles: write those in [the index's list](README.md#learning-articles-from-074076) whose sources have all closed with this plan.
+- [x] [Recording](../docs/system-design/recording.md): camera capture, the compositor and its place before the encoder, the pacer with the camera, the layout message, failures; [desktop](../docs/system-design/desktop.md): the preview and permission; [decisions](../docs/system-design/decisions.md): composed in the engine (OBS's model) rather than a recorded window or a separate track; [tooling](../docs/system-design/tooling.md): the measured costs. Mirror each in `docs/zh-TW/`.
+- [x] README, README.zh-TW and the website's help page: mention the camera.
+- [x] Learning articles: write those in [the index's list](README.md#learning-articles-from-074076) whose sources have all closed with this plan.
 
 ## Completion and verification boundaries
 
