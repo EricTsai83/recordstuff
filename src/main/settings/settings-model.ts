@@ -277,12 +277,20 @@ function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
       reason: t("Recording will not start while Microphone is on.", language),
       guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.", language) }];
     result.actions = [{ id: "openSettings", label: t("Open microphone settings…", language), enabled: true, checked: false,
-      action: "openMicrophoneSettings" satisfies AppAction }];
+      action: "openMicrophoneSettings" satisfies AppAction }, relaunchChoice(language)];
   } else if (microphone.access === "not-determined") {
     result.note = t("macOS asks for microphone access when you next record.", language);
     result.noteKind = "status";
   }
   return result;
+}
+
+/**
+ * Beside a denial: macOS answers a running app's access question as it first did until the app restarts, so access
+ * allowed in System Settings shows only after a relaunch (075's permission round, 2026-10-18), as for screen recording.
+ */
+function relaunchChoice(language: AppContext["language"]): SettingsChoice & { action: AppAction } {
+  return { id: "relaunch", label: t("Already allowed? Relaunch RecordStuff", language), enabled: true, checked: false, action: "relaunch" satisfies AppAction };
 }
 
 /**
@@ -307,7 +315,7 @@ function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefined {
       reason: t("Recording will not start while Camera is on.", language),
       guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off.", language) }];
     result.actions = [{ id: "openSettings", label: t("Open camera settings…", language), enabled: true, checked: false,
-      action: "openCameraSettings" satisfies AppAction }];
+      action: "openCameraSettings" satisfies AppAction }, relaunchChoice(language)];
   } else if (ctx.platform === "darwin" && camera.access === "not-determined") {
     result.note = t("macOS asks for camera access when you next record.", language);
     result.noteKind = "status";

@@ -248,10 +248,14 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
   await clearCalls();
   await page.getByRole("button", { name: "Open camera settings…" }).click();
   await expect.poll(calls, { message: "S123 the pane is main's to open" }).toEqual([["camera", "openSettings"]]);
+  await clearCalls();
+  await page.getByRole("button", { name: "Already allowed? Relaunch RecordStuff" }).click();
+  await expect.poll(calls, { message: "S123 access allowed meanwhile shows after a relaunch, main's to do" }).toEqual([["camera", "relaunch"]]);
 
   await host.evaluate(h => h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "denied" } }));
   await expect(page.locator("#setting-camera-diagnostics"), "S123 zh-TW").toContainText("未允許取用相機");
   await expect(page.getByRole("button", { name: "開啟相機設定…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "已經允許了？重新啟動 RecordStuff" })).toBeVisible();
 });
 
 test("S124–S126 camera rows: a slider names its percent and commits once, a recording with the camera keeps the shape editable (plan 075, step 7)", { tag: "@recording-settings" }, async () => {

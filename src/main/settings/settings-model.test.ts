@@ -229,7 +229,12 @@ describe("camera (plan 075)", () => {
     const denied = group(idle, on({ access: "denied" }), "camera")!;
     expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Camera access is off",
       guidance: "Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off." })]);
-    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open camera settings…" })]);
+    // macOS shows access allowed meanwhile only after a relaunch (2026-10-18), so the card offers one.
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open camera settings…" }),
+      expect.objectContaining({ id: "relaunch", label: "Already allowed? Relaunch RecordStuff" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "camera", "relaunch")).toBe("relaunch");
+    expect(settingsAction(idle, on(), "camera", "relaunch"), "offered only beside a denial").toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, on({ access: "denied" }), "camera", "relaunch"), state.type).toBeUndefined();
     expect(settingsAction(idle, on({ access: "denied" }), "camera", "openSettings")).toBe("openCameraSettings");
     expect(group(idle, on({ access: "restricted" }), "camera")?.diagnostics).toHaveLength(1);
     expect(group(idle, on({ enabled: false, access: "denied" }), "camera")).not.toHaveProperty("diagnostics");
@@ -455,7 +460,12 @@ describe("microphone (plan 074)", () => {
   it("shows a macOS denial with the pane that changes it, only while the switch is on", () => {
     const denied = group(idle, on({ access: "denied" }), "microphone")!;
     expect(denied.diagnostics).toEqual([expect.objectContaining({ kind: "current", heading: "Microphone access is off" })]);
-    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open microphone settings…" })]);
+    // macOS shows access allowed meanwhile only after a relaunch (2026-10-18), so the card offers one.
+    expect(denied.actions).toEqual([expect.objectContaining({ id: "openSettings", label: "Open microphone settings…" }),
+      expect.objectContaining({ id: "relaunch", label: "Already allowed? Relaunch RecordStuff" })]);
+    expect(settingsAction(idle, on({ access: "denied" }), "microphone", "relaunch")).toBe("relaunch");
+    expect(settingsAction(idle, on(), "microphone", "relaunch"), "offered only beside a denial").toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, on({ access: "denied" }), "microphone", "relaunch"), state.type).toBeUndefined();
     expect(settingsAction(idle, on({ access: "denied" }), "microphone", "openSettings")).toBe("openMicrophoneSettings");
     expect(group(idle, on({ access: "restricted" }), "microphone")?.diagnostics).toHaveLength(1);
     expect(group(idle, { ...context, microphone: { enabled: false, access: "denied" } }, "microphone")).not.toHaveProperty("diagnostics");
