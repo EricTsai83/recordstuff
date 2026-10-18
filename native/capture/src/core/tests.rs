@@ -281,6 +281,20 @@ fn median_interval(times: &[u64]) -> u64 {
     gaps[gaps.len() / 2]
 }
 
+/// Runs a timing scenario up to three times and passes on the first attempt within its bound: one attempt on a busy
+/// machine (a CI runner, 2026-10-19: 84 and 126 ms where the bounds were 79 and 110) does not fail the test, while a
+/// regression that misses the bound every time still does. `attempt` gets its attempt's number for a fresh rig.
+fn within_one_of_three(what: &str, mut attempt: impl FnMut(usize) -> Result<(), String>) {
+    let mut misses = Vec::new();
+    for n in 0..3 {
+        match attempt(n) {
+            Ok(()) => return,
+            Err(miss) => misses.push(miss),
+        }
+    }
+    panic!("{what}: missed in every attempt: {misses:?}");
+}
+
 fn wait_for(what: &str, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(3);
     while !condition() {
@@ -554,24 +568,28 @@ fn with_every_slot_on_a_still_screen_is_encoded_at_the_frame_rate() {
 
 #[test]
 fn with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst() {
-    let mut rig = Rig::new("every-slot-start");
-    rig.core.encode_every_slot(true);
-    rig.shared.frame(7, Fake::now_ns());
-    rig.core.record().unwrap();
-    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
-    let first_at = rig.encoded.lock().unwrap()[0].1;
-    let slack = scheduling_slack();
-    let started = Instant::now();
-    wait_for("the first slot", || rig.encoded.lock().unwrap().len() >= 2);
-    // The slot is 33 ms after the start; the old first wake came at 100 ms, with three slots at once.
-    assert!(started.elapsed() < Duration::from_millis(80) + slack * 2, "first slot after {:?} (slack {slack:?})", started.elapsed());
-    std::thread::sleep(Duration::from_millis(20));
-    // A frame a slot, however long the sleep really took: not three slots at once. Counted from the first frame on
-    // the clock the slots are on, since this thread can see the first frame late on a busy machine (a CI runner).
-    let since_first = Duration::from_nanos(Fake::now_ns().saturating_sub(first_at));
-    let allowed = 2 + (since_first.as_millis() / 33) as usize;
-    assert!(rig.encoded.lock().unwrap().len() <= allowed, "{:?}", rig.encoded.lock().unwrap());
-    rig.stop();
+    within_one_of_three("the first slot on time", |n| {
+        let mut rig = Rig::new(&format!("every-slot-start-{n}"));
+        rig.core.encode_every_slot(true);
+        rig.shared.frame(7, Fake::now_ns());
+        rig.core.record().unwrap();
+        wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+        let first_at = rig.encoded.lock().unwrap()[0].1;
+        let slack = scheduling_slack();
+        let started = Instant::now();
+        wait_for("the first slot", || rig.encoded.lock().unwrap().len() >= 2);
+        // The slot is 33 ms after the start; the old first wake came at 100 ms, with three slots at once.
+        let elapsed = started.elapsed();
+        std::thread::sleep(Duration::from_millis(20));
+        // A frame a slot, however long the sleep really took: not three slots at once. Counted from the first frame
+        // on the clock the slots are on, since this thread can see the first frame late on a busy machine (a CI runner).
+        let since_first = Duration::from_nanos(Fake::now_ns().saturating_sub(first_at));
+        let allowed = 2 + (since_first.as_millis() / 33) as usize;
+        let encoded = rig.encoded.lock().unwrap().clone();
+        rig.stop();
+        assert!(encoded.len() <= allowed, "{encoded:?}");
+        if elapsed < Duration::from_millis(80) + slack * 2 { Ok(()) } else { Err(format!("first slot after {elapsed:?} (slack {slack:?})")) }
+    });
 }
 
 #[test]
@@ -1054,24 +1072,30 @@ fn showing_the_camera_again_after_a_still_screen_starts_at_the_current_slot_with
 
 #[test]
 fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
-    let mut rig = Rig::new("every-slot-wake");
-    rig.shared.frame(7, Fake::now_ns());
-    rig.core.record().unwrap();
-    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
-    std::thread::sleep(Duration::from_millis(1_150));
-    let slack = scheduling_slack();
-    let before = rig.encoded.lock().unwrap().len();
-    let shown = Instant::now();
-    rig.core.encode_every_slot(true);
-    let ((), during) = slack_during(|| wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before));
-    let slack = slack.max(during);
-    // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine woke threads then.
-    assert!(shown.elapsed() < Duration::from_millis(60) + slack * 2, "first frame after {:?} (slack {slack:?})", shown.elapsed());
-    std::thread::sleep(Duration::from_millis(20));
-    // A frame a slot from then on, however long the sleep really took, not the slots the still screen left empty.
-    let allowed = 2 + (shown.elapsed().as_millis() / 33) as usize;
-    assert!(rig.encoded.lock().unwrap().len() - before <= allowed, "no catch-up burst");
-    rig.stop();
+    within_one_of_three("the next slot after showing the camera", |n| {
+        let mut rig = Rig::new(&format!("every-slot-wake-{n}"));
+        rig.shared.frame(7, Fake::now_ns());
+        rig.core.record().unwrap();
+        wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+        let slack = scheduling_slack();
+        // Shown just after the still screen's refresh a second later, when the refresh thread has just begun a 100 ms
+        // wait: without being woken it would encode nothing for most of that wait, wherever the wait's phase falls.
+        wait_for("the refresh a second later", || rig.encoded.lock().unwrap().len() >= 2);
+        let before = rig.encoded.lock().unwrap().len();
+        let shown = Instant::now();
+        rig.core.encode_every_slot(true);
+        let ((), during) = slack_during(|| wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before));
+        let slack = slack.max(during);
+        let elapsed = shown.elapsed();
+        std::thread::sleep(Duration::from_millis(20));
+        // A frame a slot from then on, however long the sleep really took, not the slots the still screen left empty.
+        let allowed = 2 + (shown.elapsed().as_millis() / 33) as usize;
+        let count = rig.encoded.lock().unwrap().len() - before;
+        rig.stop();
+        assert!(count <= allowed, "no catch-up burst");
+        // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine woke threads then.
+        if elapsed < Duration::from_millis(60) + slack * 2 { Ok(()) } else { Err(format!("first frame after {elapsed:?} (slack {slack:?})")) }
+    });
 }
 
 #[test]
