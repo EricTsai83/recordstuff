@@ -235,10 +235,10 @@ impl AsyncTransform for HardwareTransform {
         if !matches!(captured.image, Image::Nv12) {
             return Err("the frame is not an NV12 texture (the video processor is missing)".into());
         }
-        if key_frame {
-            if let Some(codec) = self.codec.as_ref() {
-                set_codec(codec, &CODECAPI_AVEncVideoForceKeyFrame, 1);
-            }
+        if key_frame
+            && let Some(codec) = self.codec.as_ref()
+        {
+            set_codec(codec, &CODECAPI_AVEncVideoForceKeyFrame, 1);
         }
         unsafe {
             let buffer = MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, &captured.texture, 0, false).map_err(|e| format!("a surface buffer: {e}"))?;

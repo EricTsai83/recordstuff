@@ -95,7 +95,7 @@ fn synthetic_frames_and_tone_become_a_plain_mp4() {
         while at < sample.data.len() {
             let length = u32::from_be_bytes(sample.data[at..at + 4].try_into().unwrap()) as usize;
             assert!(length > 0 && at + 4 + length <= sample.data.len());
-            assert!(!matches!(sample.data[at + 4] & 0x1f, 7 | 8 | 9));
+            assert!(!matches!(sample.data[at + 4] & 0x1f, 7..=9));
             at += 4 + length;
         }
     }

@@ -76,6 +76,7 @@ impl BoxWriter {
         self.bytes[start..start + 4].copy_from_slice(&size.to_be_bytes());
     }
 
+    #[expect(clippy::len_without_is_empty, reason = "an offset into the boxes written, never asked whether any were")]
     pub fn len(&self) -> usize {
         self.bytes.len()
     }

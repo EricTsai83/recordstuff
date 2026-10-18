@@ -530,12 +530,12 @@ impl<P: Platform> Shared<P> {
         let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
         video.pending = eligible && !wanted && video.pacer.is_some();
         if wanted {
-            if let Some(encoder) = video.encoder.as_ref() {
-                if let Err(detail) = encoder.encode(&frame, pts, false) {
-                    drop(guard);
-                    self.fail(detail);
-                    return;
-                }
+            if let Some(encoder) = video.encoder.as_ref()
+                && let Err(detail) = encoder.encode(&frame, pts, false)
+            {
+                drop(guard);
+                self.fail(detail);
+                return;
             }
             video.last_encoded_ns = pts;
         }
@@ -594,12 +594,12 @@ impl<P: Platform> Shared<P> {
             self.log_frame(video, pts, "idle", false);
             return;
         }
-        if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
-            if let Err(detail) = encoder.encode(frame, pts, false) {
-                drop(guard);
-                self.fail(detail);
-                return;
-            }
+        if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref())
+            && let Err(detail) = encoder.encode(frame, pts, false)
+        {
+            drop(guard);
+            self.fail(detail);
+            return;
         }
         video.last_encoded_ns = pts;
         video.pending = false;
@@ -870,17 +870,17 @@ impl<P: Platform> Core<P> {
         // Shown again after a still screen: from the current slot on, not every slot the hiding left empty, and the
         // refresh thread woken for it rather than at the end of its 100 ms wait.
         let resumed = on && !self.shared.every_slot.load(Ordering::Acquire);
-        if resumed {
-            if let Some(pacer) = video.pacer.as_mut() {
-                pacer.skip_to(P::now_ns());
-            }
+        if resumed
+            && let Some(pacer) = video.pacer.as_mut()
+        {
+            pacer.skip_to(P::now_ns());
         }
         self.shared.every_slot.store(on, Ordering::Release);
         drop(video);
-        if resumed {
-            if let Some(refresher) = self.refresher.as_ref() {
-                refresher.thread().unpark();
-            }
+        if resumed
+            && let Some(refresher) = self.refresher.as_ref()
+        {
+            refresher.thread().unpark();
         }
     }
 
@@ -1018,11 +1018,11 @@ impl<P: Platform> Core<P> {
                 let at = video.last_pts.max(video.last_encoded_ns + 1);
                 if at >= stop_ns {
                     // No time left before the stop to show it.
-                } else if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
-                    if encoder.encode(frame, at, false).is_ok() {
-                        video.last_encoded_ns = at;
-                        self.shared.log_frame(video, at, "stop", true);
-                    }
+                } else if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref())
+                    && encoder.encode(frame, at, false).is_ok()
+                {
+                    video.last_encoded_ns = at;
+                    self.shared.log_frame(video, at, "stop", true);
                 }
             }
         }
@@ -1087,11 +1087,11 @@ impl<P: Platform> Core<P> {
         {
             let mut audio = self.shared.audio.lock().unwrap();
             let mixed = audio.mixed();
-            if let Some(mut encoder) = audio.encoder.take() {
-                if mixed > 0 {
-                    let _ = encoder.finish(&mut |packet| packets.push(packet));
-                    audio_frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
-                }
+            if let Some(mut encoder) = audio.encoder.take()
+                && mixed > 0
+            {
+                let _ = encoder.finish(&mut |packet| packets.push(packet));
+                audio_frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
             }
             late_audio_frames = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::late);
             audio_corrections = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::corrections);

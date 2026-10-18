@@ -204,10 +204,10 @@ fn run(
         let now = Instant::now();
         if now >= next_sync {
             next_sync = now + SYNC_INTERVAL;
-            if let Some(muxer) = state.muxer.as_mut() {
-                if let Err(error) = muxer.sync() {
-                    state.fail(failure(&error, "sync failed"), &events);
-                }
+            if let Some(muxer) = state.muxer.as_mut()
+                && let Err(error) = muxer.sync()
+            {
+                state.fail(failure(&error, "sync failed"), &events);
             }
         }
         if now >= next_progress {

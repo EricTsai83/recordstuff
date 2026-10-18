@@ -339,7 +339,7 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     // 60 Hz capture paced to 30 fps: about 12 frames in 400 ms, never two in one slot: no more frames than the slots
     // their times span. Judged by those times, not by 400 ms: a loaded runner stops later and wakes late.
     let slots = ((encoded.last().unwrap().1 - encoded[1].1) as f64 / 33_333_333.0).round() as usize + 1;
-    assert!(encoded.len() - 1 >= 9 && encoded.len() - 1 <= slots + 1, "{} frames in {slots} slots: {encoded:?}", encoded.len() - 1);
+    assert!(encoded.len() > 9 && encoded.len() - 1 <= slots + 1, "{} frames in {slots} slots: {encoded:?}", encoded.len() - 1);
     assert!(encoded.windows(2).all(|w| w[1].1 > w[0].1), "{encoded:?}");
     // Sound kept up, so nothing was filled in; on a loaded runner the feeder thread can miss the deadline (CI saw 534
     // frames), and then the drain must have waited the deadline out before filling in.
