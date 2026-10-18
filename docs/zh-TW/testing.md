@@ -92,7 +92,7 @@ Fixture 可以使用示範錄影、受控狀態與不同的版本文字，這些
 | Computer Use 觀察 | agent 檢視截圖或即時桌面並判讀 | 擷取到的畫面中，一般人會看到什麼 | 畫面沒有呈現的內容；輸入不是它送出時，也不能證明輸入已送達 |
 | 人工 | 維護者操作或判斷 | 主觀聽感、可讀性、需要密碼或 Touch ID 的步驟 | 維護者沒有執行的案例 |
 
-每個案例的證據都要標明種類，並在報告中分開呈現；一個案例有多種證據時逐一列出。腳本通過永遠不當作視覺或主觀證據；腳本通過但與畫面所見不符時，是 runner 失敗，不是產品通過。只有已提交的 runner 可以送出腳本輸入：執行者不臨時撰寫 AppleScript、System Events、IPC 或測試 hook 來代替操作。agent 如何操作 Computer Use 屬於[驗收 skill](../../.agents/skills/native-acceptance/SKILL.md)。
+每個案例的證據都要標明種類，並在報告中分開呈現；一個案例有多種證據時逐一列出。腳本通過永遠不當作視覺或主觀證據；腳本通過但與畫面所見不符時，是 runner 失敗，不是產品通過。沒有 runner 涵蓋的操作，執行者可以自行透過輔助使用動作或 CoreGraphics 事件操作受測的 RecordStuff bundle，並回應該 bundle 跳出的權限提示（維護者 2026-10-18 決定，[限制](acceptance.md#依影響追加案例)）；報告把它標為執行者輸入，與 runner 的腳本證據分開。IPC 與測試 hook 永遠不得代替操作。agent 如何操作 Computer Use 屬於[驗收 skill](../../.agents/skills/native-acceptance/SKILL.md)。
 
 ## 縮短錄影回合
 

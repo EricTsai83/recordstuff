@@ -13,7 +13,7 @@ description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原�
 
 - **不限定執行者。** 能在本機執行指令、看得到截圖的 agent（例如 Claude）直接執行本 skill：自己執行 `pnpm start:app` 或 `pnpm open:app` 與本次範圍的 runner，讀取報告與 log，並以 `screencapture -x` 保存截圖後親自判讀（選單、視窗或橫幅用 `-R x,y,w,h` 對準其 frame；只拍主螢幕的 `-x` 拍不到副螢幕上的選單）。plan 063 的驗收就是由 Claude 這樣完成的。
 - 截圖判讀屬於「Computer Use 觀察」這類證據（[測試指南](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use)：agent 檢視截圖或即時桌面並判讀）；報告寫明觀察者與方式，例如「Claude 以 screencapture 截圖判讀」或「Astra computer use」。
-- 只有本次範圍需要**即時** computer use 操作（沒有 runner 的操作：在設定面板內變更設定、手動錄影時點擊素材、點擊播放器控制項、VoiceOver、下方的權限提示例外），而目前的 agent 沒有原生 computer use 工具時，才委派 Codex GPT-6 Astra（見下方「委派 Codex GPT-6 Astra」）。無法委派時，只有那些案例記 blocked，其餘 runner 照常執行。
+- 只有本次範圍需要**即時** computer use 操作（沒有 runner 的操作：在設定面板內變更設定、手動錄影時點擊素材、點擊播放器控制項、VoiceOver、下方的權限提示），而目前的 agent 沒有原生 computer use 工具時，才委派 Codex GPT-6 Astra（見下方「委派 Codex GPT-6 Astra」）。無法委派時，只有那些案例記 blocked，其餘 runner 照常執行。
 - 任何執行者在第一個會使用桌面的指令（包括 `pnpm start:app`、`pnpm open:app` 與每個 runner）之前都要完成[桌面交接](../../../docs/zh-TW/testing.md#測試前確認桌面交接)，收到回覆後才開始；控制權交還使用者後，下一輪重新交接。runner 的狀態列點擊會移動真正的游標，回合中有人操作可能關掉選單或改變選取，目前不會被偵測。
 - 同一時間只由一個執行者操作桌面；長時間步驟每 60 秒內確認存活並更新進度；讀取報告與證據後再下結論，CLI 成功退出不代表驗收通過。委派用的 Codex、模型或 computer use 工具不可用時，回報具體原因及 blocked，不默默替換。
 
@@ -85,8 +85,8 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 - **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、以鍵盤選「開啟 RecordStuff」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；背景套件無法回答的設定視窗框與啟用、真正的註冊被拒與真實視窗狀態、在螢幕上的全螢幕與焦點交還，用 `pnpm acceptance:recipe -- native-ui`（`out/` 產物，一次建置；RecordStuff 執行中時播放器 runner 會拒絕執行）；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
 - **由執行者觀察**：判讀 runner 與自己保存的截圖（選單外觀、淺色／深色選單列、對齊與可讀性、倒數數字、通知橫幅是否可見與截斷、設定排版）。
-- **由 computer use 操作**（目前 agent 沒有工具時委派 Astra）：沒有 runner 的操作，包括在設定面板內變更設定、手動錄影時點擊素材的開始控制項、案例要求時點擊播放器自身的控制項、VoiceOver，與下方唯一的權限提示例外。
-- 除了執行已提交的 runner，不要自行用 AppleScript、System Events、CoreGraphics 事件、IPC、renderer evaluate、Playwright 或測試 hook 代按 UI。runner 的狀態列點擊會移動真正的游標，所以它的回合同樣需要桌面交接。
+- **由 computer use 操作**（目前 agent 沒有工具時委派 Astra）：沒有 runner 的操作，包括在設定面板內變更設定、手動錄影時點擊素材的開始控制項、案例要求時點擊播放器自身的控制項、VoiceOver，與下方的權限提示。
+- 沒有 runner 涵蓋的操作，執行者可以自行用輔助使用動作（AppleScript、System Events、JXA 的 AX API）或 CoreGraphics 事件操作受測的 RecordStuff bundle（以執行檔路徑與 pid 比對，維護者 2026-10-18 決定）；報告把這些步驟標為執行者輸入，與 runner 證據分開。IPC、renderer evaluate、Playwright 與測試 hook 仍不得代替原生 UI。runner 與執行者的點擊都會移動真正的游標，所以同樣需要桌面交接。
 - runner 的通過是腳本輸入證據，不能當作視覺或主觀判斷；runner 結果與畫面所見不符時，記為 runner 失敗，不是產品通過。
 
 以下是 computer use 本身的規則：
@@ -96,7 +96,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 - 僅使用工具文件實際提供的 API。依最新快照、可存取性節點或螢幕截圖定位，點擊後重新觀察狀態；不要猜固定座標，也不要沿用已失效的節點。
 - Shell 可用於建置啟動、唯讀檢查程序／產物身分、讀取本次 log、檢查錄影檔與保存報告。`pnpm matrix`、`pnpm audio:quality` 或直接呼叫錄影邏輯不能算作 computer use 驗收。
 - 若工具無法存取原生桌面或缺少必要權限，記錄具體阻礙，完成仍可做的獨立檢查；依賴該介面的案例標示 blocked，不用其他自動化冒充完成。
-- 唯一的權限例外（維護者 2026-09-26 授權，見[共用驗收指南](../../../docs/zh-TW/acceptance.md#依影響追加案例)）：受測的 RecordStuff build 開始擷取時，若 macOS 跳出「要求略過系統私密視窗選擇器並直接取用你的畫面和音訊」的提示，可透過 computer use 按「允許」，並記錄 macOS 是否接受。若被忽略，就讓提示保持開啟並回報。其他權限提示、「系統設定」的隱私權清單與 TCC 一律不碰。
+- 權限提示（維護者 2026-10-18 決定，取代 2026-09-26 的單一例外，見[共用驗收指南](../../../docs/zh-TW/acceptance.md#依影響追加案例)）：受測的 RecordStuff build 在本回合跳出的權限提示（螢幕、系統音訊、麥克風、相機、略過系統私密視窗選擇器），可透過 computer use 或輔助使用動作回應，並記錄回應了哪個提示、內容，以及 macOS 是否接受。若被忽略，就讓提示保持開啟並詢問維護者。其他 App 的提示、「系統設定」的隱私權清單與 TCC 一律不碰。
 
 - 每個 UI 狀態等待最多 30 秒，包含存檔完成、Finder 置前及播放器開啟；逾時記 fail，附當下截圖與已等待時間。截圖不可取得時明確註記原因。不要透過重啟等待計時無限重試；缺工具／權限則按 blocked 處理。建置與媒體分析另依程序進度監看，不套用此 UI 時限。
 
