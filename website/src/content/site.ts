@@ -162,6 +162,8 @@ export const settings = [
   { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
   { tab: "Recording", setting: "Microphone", options: "On / Off, also in the menu bar menu; mixed with system audio (use headphones to avoid speaker echo)", fallback: "Off" },
   { tab: "Recording", setting: "Input device", options: "System default or a connected microphone", fallback: "System default" },
+  { tab: "Recording", setting: "Camera", options: "On / Off, also in the menu bar menu; arranged in the Recording Studio", fallback: "Off" },
+  { tab: "Recording", setting: "Camera device", options: "System default or a connected camera", fallback: "System default" },
   { tab: "Recording", setting: "Video quality", options: "Economy / Standard / High", fallback: "Standard" },
   { tab: "Recording", setting: "Resolution cap", options: "1080p / 1440p / 4K / Source", fallback: "Source" },
   { tab: "Recording", setting: "Frame rate", options: "30 / 60 fps", fallback: "30 fps" },
