@@ -172,8 +172,8 @@ describe("recipes", () => {
   });
 
   it("cover the composites they replace", () => {
-    expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm test:native && pnpm lint:native && pnpm build && node scripts/native-load.mjs");
-    expect(findRecipe("check")!.phases.map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "lint:native", "build", "scripts/native-load.mjs"]);
+    expect(scripts.check).toBe("pnpm typecheck && pnpm test && pnpm test:native && pnpm lint:native && pnpm fmt:native:check && pnpm build && node scripts/native-load.mjs");
+    expect(findRecipe("check")!.phases.map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "lint:native", "fmt:native:check", "build", "scripts/native-load.mjs"]);
     // acceptance:regression = check and the background suite: no desktop runner (plan 066).
     expect(scripts["acceptance:regression"]).toBe("pnpm check && pnpm test:ui");
     expect(scripts["test:ui"]).toBe("playwright test --project=background");
@@ -189,9 +189,9 @@ describe("recipes", () => {
     expect(scripts.acceptance).toContain("scripts/acceptance-hotkey.mts");
     expect(runnerScripts("recording")).toEqual(["scripts/start-app.mjs", "scripts/acceptance-hotkey.mts"]);
     for (const name of ["settings", "shortcut-registration"]) {
-      expect(findRecipe(name)!.phases.slice(0, 7).map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "lint:native", "build", "scripts/native-load.mjs", "test:ui"]);
+      expect(findRecipe(name)!.phases.slice(0, 8).map(phase => phase.args.at(-1))).toEqual(["typecheck", "test", "test:native", "lint:native", "fmt:native:check", "build", "scripts/native-load.mjs", "test:ui"]);
       // A missing build or clip is blocked (exit 2), a failed case a failure.
-      expect(findRecipe(name)!.phases[6]!.blockedExit).toBe(true);
+      expect(findRecipe(name)!.phases[7]!.blockedExit).toBe(true);
     }
     expect(findRecipe("recording")!.phases.slice(0, 3).map(phase => phase.args[0])).toEqual(["typecheck", "test", "test:native"]);
   });

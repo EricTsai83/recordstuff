@@ -1,0 +1,5 @@
+# Formatting-only commits that `git blame` skips: GitHub reads this file, and locally
+# `git config blame.ignoreRevsFile .git-blame-ignore-revs` does the same.
+
+# style(capture): format the native engine with rustfmt
+c2bd16bbfbef3c9075a8d5179b1643438e25f1a8

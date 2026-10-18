@@ -60,7 +60,7 @@ const BUILD = pnpm("build", "build");
 /** The built native capture engine loaded in Node, as the capture host loads it (plan 076). */
 const NATIVE_LOAD: PhaseSpec = { name: "native engine load", executable: process.execPath, args: ["scripts/native-load.mjs"], timeoutMs: HOUR };
 /** `pnpm check`, phase by phase, as `package.json` chains it. */
-const CHECK = [pnpm("typecheck", "typecheck"), pnpm("test", "test"), pnpm("native tests", "test:native"), pnpm("native lint", "lint:native"), BUILD, NATIVE_LOAD];
+const CHECK = [pnpm("typecheck", "typecheck"), pnpm("test", "test"), pnpm("native tests", "test:native"), pnpm("native lint", "lint:native"), pnpm("native format", "fmt:native:check"), BUILD, NATIVE_LOAD];
 
 /**
  * The background Playwright suite (plan 066): no desktop. Its global setup exits 2 when `out/` or the test clips are
