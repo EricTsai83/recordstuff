@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-Screen and sound. Nothing else. A menu bar app that records one screen with its system audio to a plain MP4. No account required.
+Screen, sound and camera. Nothing else. A menu bar app that records one screen with its system audio, and your microphone and camera if you turn them on, to a plain MP4. No account required.
 
 [Website](https://record.ericts.com) · [Downloads](https://record.ericts.com/download) · [Help](https://record.ericts.com/help)
 
