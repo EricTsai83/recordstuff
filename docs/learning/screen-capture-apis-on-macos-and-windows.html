@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>macOS 與 Windows 的螢幕擷取：內容過濾、系統音訊、排除視窗與權限的取捨</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+pre.language-shell { background: #11110f; }
+pre code .sh-command { color: #ff946e; font-weight: 400; }
+pre code .sh-flag { color: #cfc6a2; font-weight: 400; }
+pre code .sh-string { color: #8fb86a; }
+pre code .sh-var { color: #cfc6a2; }
+pre code .sh-comment { color: #858177; font-style: italic; }
+pre code .sh-prompt { color: #ff946e; font-weight: 400; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+.flow-figure .flow-mobile { display: none; }
+.fig-exclude svg { max-width: 460px; }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 600px; }
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>macOS 與 Windows 的螢幕擷取：內容過濾、系統音訊、排除視窗與權限的取捨</h1>
+
+<p class="deck">「錄螢幕」聽起來只是把畫面存下來，實際上是在向作業系統要四樣東西：一張只含想要內容的畫面、一份不含自己聲音的系統音訊、一個不會把錄影工具本身錄進去的保證，以及使用者的同意。macOS 的 ScreenCaptureKit 和 Windows 的 Windows.Graphics.Capture、WASAPI 對這四件事給的答案很不一樣，而且答案還在隨版本改變：macOS 上「把視窗設成不可分享」這招，在 ScreenCaptureKit 之下已經不再有效。本文先建立「合成器、擷取 API、過濾在哪裡發生」的心智模型，再比較每個架構選擇依賴的條件、替代方案的代價、OBS、Cap、Loom 與 Chromium 怎麼選，以及什麼情況會讓結論翻轉。貫穿範例是 RecordStuff 這個選單列錄影 App 的原生擷取引擎，它只是一個例子，不是答案。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#problem">問題：錄影工具要向作業系統要什麼</a></li>
+    <li><a href="#model">心智模型：合成器、擷取 API 與過濾的位置</a></li>
+    <li><a href="#mac">macOS：ScreenCaptureKit 與內容過濾</a></li>
+    <li><a href="#windows">Windows：Windows.Graphics.Capture</a></li>
+    <li><a href="#audio">系統音訊與單一 App 的聲音</a></li>
+    <li><a href="#exclude">把視窗與系統介面留在錄影外</a></li>
+    <li><a href="#protection">視窗保護為什麼失效，以及什麼取代了它</a></li>
+    <li><a href="#permission">螢幕錄製權限：TCC 與重新啟動</a></li>
+    <li><a href="#choices">六個選擇與它們的取捨</a></li>
+    <li><a href="#example">實例：RecordStuff 錄一段畫面</a></li>
+    <li><a href="#table">決策總表</a></li>
+    <li><a href="#boundaries">不要這樣做的情況</a></li>
+    <li><a href="#criteria">可以帶走的判斷準則</a></li>
+  </ol>
+</nav>
+
+<h2 id="problem">問題：錄影工具要向作業系統要什麼</h2>
+
+<p>想像一個住在選單列的錄影 App。使用者按下快捷鍵，畫面右上角出現 3、2、1 的倒數，接著開始錄整個螢幕和電腦正在播放的聲音。錄影途中，他打開這個 App 的設定視窗確認麥克風有沒有開，再關掉。錄完的檔案裡，他期待：</p>
+
+<ul>
+  <li>看得到他錄的東西，看不到倒數數字、設定視窗或錄影 App 的任何介面。</li>
+  <li>聽得到示範影片的聲音，聽不到倒數的「滴」聲。</li>
+  <li>如果他在設定裡選了「隱藏選單列與 Dock」，錄影裡就沒有它們，但他自己的螢幕上還在。</li>
+  <li>第一次使用時，系統問一次權限；允許之後就能錄，不必猜為什麼還是錄不到。</li>
+</ul>
+
+<p>最直覺的做法各有一個會被使用者看到的失敗：</p>
+
+<ul>
+  <li><strong>用瀏覽器的 <code>getDisplayMedia</code>。</strong>它能錄一個螢幕、一個視窗或一個分頁，但螢幕上有什麼就錄什麼：它沒有「排除這幾個視窗」的參數，也不能拿掉選單列。錄影工具自己的設定視窗一打開，就被錄進去。</li>
+  <li><strong>把自己的視窗標成「不可分享」。</strong>在 macOS 上這是 <code>NSWindow.sharingType = .none</code>，Electron 的 <code>setContentProtection(true)</code> 就是設它。多年來它能讓視窗從截圖與錄影中消失；但新的 ScreenCaptureKit 不理它，視窗照樣被錄。</li>
+  <li><strong>錄整個輸出裝置的聲音。</strong>Windows 的 loopback 錄的是喇叭正在播的混音，倒數的滴聲也在裡面；而且沒有任何聲音時它完全不送資料，錄影的音訊軌會卡在原地等。</li>
+  <li><strong>啟動時檢查一次權限就算了。</strong>使用者在系統設定裡允許之後，已經在執行的 App 往往還是看不到任何螢幕；反過來，權限被撤銷後，系統可能還回報「已允許」。</li>
+</ul>
+
+<p>這些問題背後是幾股互相拉扯的力量：</p>
+
+<ul>
+  <li><strong>錄到的是使用者想要的：</strong>錄影工具本身、作業系統的介面，是否該出現在檔案裡，應該由錄影工具或使用者決定，而不是取決於畫面上剛好有什麼。</li>
+  <li><strong>隱私與同意：</strong>作業系統不希望任何 App 不經同意就能看到整個螢幕，所以擷取 API 一定綁著權限、指示燈或邊框。</li>
+  <li><strong>平台差異：</strong>兩個平台的 API 能力不對等，同一個功能在一邊是一行設定，在另一邊根本做不到。</li>
+  <li><strong>API 世代交替：</strong>舊 API 被棄用，舊的保護機制不再被新 API 尊重，你的設計要能撐過下一次作業系統更新。</li>
+</ul>
+
+<h2 id="model">心智模型：合成器、擷取 API 與過濾的位置</h2>
+
+<p>現代桌面作業系統上，每個 App 都只畫自己的視窗，畫在自己的緩衝區裡。把所有視窗疊成你看到的那一張畫面的，是系統的<strong>合成器（compositor）</strong>：macOS 是 WindowServer，Windows 是 Desktop Window Manager（DWM）。螢幕擷取 API 就是合成器開出來的一扇窗，讓某個 App 拿到合成的結果。</p>
+
+<p>這個模型帶出一個關鍵問題：<strong>「不要錄某個視窗」這個決定發生在哪裡？</strong>有三個可能的位置：</p>
+
+<ol>
+  <li><strong>在擷取 API 裡（合成時就過濾）。</strong>錄影程式告訴合成器「這個螢幕，但不要這幾個 App 或視窗」，合成器為這個擷取串流另外合成一張不含它們的畫面。被排除的視窗後面是什麼，就露出什麼。ScreenCaptureKit 的 <code>SCContentFilter</code> 就是這種。</li>
+  <li><strong>在視窗身上（視窗宣告自己不被擷取）。</strong>視窗設一個旗標，合成器在任何擷取裡都略過它。Windows 的 <code>WDA_EXCLUDEFROMCAPTURE</code> 是這種；macOS 的 <code>sharingType = .none</code> 原本也是。決定權在<em>視窗的擁有者</em>，不在錄影程式。</li>
+  <li><strong>在時間上（擷取時它不在畫面上）。</strong>倒數數字在擷取開始前消失、控制列在錄影時隱藏。不需要任何 API，代價是使用者在那段時間看不到它。</li>
+</ol>
+
+<p>第一種是錄影程式的能力，第二種是被錄的視窗的能力，第三種誰都能做。後面每一節的取捨，幾乎都可以歸結到「你的平台給了你哪一種」。</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>名詞</th><th>白話解釋</th></tr></thead>
+  <tbody>
+    <tr><td>合成器</td><td>把所有視窗疊成螢幕畫面的系統元件。擷取 API 拿到的是它的輸出。</td></tr>
+    <tr><td>內容過濾（content filter）</td><td>擷取時指定「要哪些、不要哪些」的描述。合成器依它為這個串流另外合成畫面。</td></tr>
+    <tr><td>擷取項目（capture item）</td><td>Windows.Graphics.Capture 的擷取對象：一個螢幕或一個視窗，沒有更細的選項。</td></tr>
+    <tr><td>Display affinity</td><td>Windows 視窗的一個屬性，決定它在擷取中顯示、變黑或消失。</td></tr>
+    <tr><td>Loopback</td><td>錄下「正在送往喇叭的聲音」，而不是麥克風的聲音。</td></tr>
+    <tr><td>Process loopback</td><td>只錄某個 process 樹的聲音，或除了它以外的所有聲音。</td></tr>
+    <tr><td>TCC</td><td>macOS 的隱私權限資料庫（Transparency, Consent, and Control）。螢幕錄製、麥克風、相機的同意都記在這裡，以 App 的身分（bundle identifier 與簽章）為鍵。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="mac">macOS：ScreenCaptureKit 與內容過濾</h2>
+
+<h3>API 的世代</h3>
+
+<p>macOS 上的螢幕擷取有過幾代。早期 App 用 CoreGraphics 的 <code>CGWindowListCreateImage</code> 反覆截圖，或用 <code>CGDisplayStream</code> 取得一個螢幕的連續畫面。macOS 12.3 推出 <strong>ScreenCaptureKit</strong>，之後每一版都在加東西：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>macOS</th><th>加入的能力</th></tr></thead>
+  <tbody>
+    <tr><td>12.3</td><td>ScreenCaptureKit：<code>SCShareableContent</code>、<code>SCContentFilter</code>、<code>SCStream</code>，可擷取螢幕、App 與單一視窗的畫面</td></tr>
+    <tr><td>13.0</td><td>系統音訊：<code>capturesAudio</code>，以及排除自己 process 聲音的 <code>excludesCurrentProcessAudio</code></td></tr>
+    <tr><td>14.0</td><td>系統提供的選擇器 <code>SCContentSharingPicker</code>；CoreGraphics 的串流與截圖 API 在 SDK 中被標為棄用</td></tr>
+    <tr><td>14.2</td><td>過濾器的 <code>includeMenuBar</code>；Core Audio 的 process tap（不經螢幕擷取取得 App 的聲音）</td></tr>
+    <tr><td>15.0</td><td>同一個串流擷取麥克風（<code>captureMicrophone</code>）、直接寫檔的 <code>SCRecordingOutput</code>；舊的 CoreGraphics 截圖函式從 SDK 移除</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>換句話說，在新版 macOS 上，ScreenCaptureKit 已經是唯一的正路。這也是後面「視窗保護」問題的根源：舊 API 遵守的規則，新 API 不一定遵守。</p>
+
+<h3>四個物件</h3>
+
+<p>ScreenCaptureKit 的流程固定是四步：</p>
+
+<ol>
+  <li><strong><code>SCShareableContent</code></strong>：向系統要「現在可以擷取什麼」，得到螢幕（<code>SCDisplay</code>）、正在執行的 App（<code>SCRunningApplication</code>）與視窗（<code>SCWindow</code>）的清單。這一步也是系統檢查螢幕錄製權限的地方：沒有權限時，它回傳錯誤 <code>-3801</code>（使用者拒絕）。</li>
+  <li><strong><code>SCContentFilter</code></strong>：用上一步的物件組出過濾器。</li>
+  <li><strong><code>SCStreamConfiguration</code></strong>：輸出尺寸、像素格式、最小畫格間隔、是否顯示游標、是否擷取聲音與它的取樣率。</li>
+  <li><strong><code>SCStream</code></strong>：開始擷取，畫面與聲音以 <code>CMSampleBuffer</code> 從回呼送來。</li>
+</ol>
+
+<p>過濾器有幾種建構方式，各自對應一種錄影模式：</p>
+
+<div class="table-scroll">
+<table class="compact-first">
+  <thead><tr><th>建構方式</th><th>錄到什麼</th><th>典型用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>display + excludingApplications + exceptingWindows</code></td><td>整個螢幕，但不含列出的 App 的所有視窗；「例外」視窗反過來：它的 App 沒被排除時，它被排除</td><td>錄整個螢幕，但不錄自己</td></tr>
+    <tr><td><code>display + includingApplications + exceptingWindows</code></td><td>只有列出的 App 的視窗，畫在螢幕的座標上</td><td>只錄簡報軟體和瀏覽器</td></tr>
+    <tr><td><code>desktopIndependentWindow</code></td><td>一個視窗本身，不管它被誰擋住、移到哪裡</td><td>錄單一視窗</td></tr>
+    <tr><td>螢幕過濾器加上 <code>sourceRect</code></td><td>螢幕的一塊區域</td><td>錄選取範圍</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>「排除 App」和「排除視窗」的差別很重要。排除一個 App，代表它<strong>之後才開的視窗</strong>也不會被錄，它的聲音也會從這個串流的系統音訊裡拿掉；只列出視窗，則只對開始擷取時存在的那幾個視窗有效。</p>
+
+<h3>畫格的節奏：最小間隔是下限，不是週期</h3>
+
+<p><code>minimumFrameInterval</code> 名字容易誤導。它是「兩張畫面之間至少隔多久」的下限，而系統只在螢幕更新時交畫面。在 60 Hz 的螢幕上要求 1/30 秒，結果是每張畫面落在上一張之後的第二或第三次更新，間隔 33 或 50 ms 交錯，平均就低於 30 fps。Chromium 把 <code>getDisplayMedia</code> 要求的畫格率直接換成這個下限，所以要求 30 或 60 fps，實際錄到約 29.4 與 57.5 fps。</p>
+
+<p>可行的做法是向擷取要得比錄的多，再自己挑。RecordStuff 要求畫格間隔的四分之一，讓系統交出每一次更新，再依顯示時間把畫面放進錄影畫格率的格子裡；這也是 OBS 用「畫格率除數」、Cap 用自己的 pacing 在做的事。它在 60 Hz、1920×1080 的螢幕上量到：要求兩倍畫格率時，30 fps 有 1.8% 的畫面落成 50 ms 的空隙（2026-10-14）；直接要求每次更新與要求四分之一，在 30 與 60 fps 都只有 0.17% 對 0.06%、0.11%，CPU 也相近（2026-10-15）。另外兩個細節：畫面沒變時，ScreenCaptureKit 送的是沒有影像的「idle」畫格（2026-10-16 量到每 15 秒 15–37 個），偶爾還會整個略過一次更新（2026-10-17 的逐格紀錄在 60 Hz 下約每 15 秒 5 次）。擷取 API 交出什麼、什麼時候交，本身就是要量的東西。</p>
+
+<h2 id="windows">Windows：Windows.Graphics.Capture</h2>
+
+<p>Windows 也有過幾代：GDI 的 <code>BitBlt</code> 截圖、Windows 8 起的 DXGI Desktop Duplication（以整個輸出為單位、交出變動區域），以及 Windows 10 1803 起的 <strong>Windows.Graphics.Capture</strong>（以下簡稱 WGC）。WGC 是 WinRT API，流程也是幾個物件：</p>
+
+<ol>
+  <li><strong><code>GraphicsCaptureItem</code></strong>：擷取對象。可以讓使用者用系統的 <code>GraphicsCapturePicker</code> 選；桌面程式也可以用 interop 介面的 <code>CreateForMonitor</code> 或 <code>CreateForWindow</code>，直接指定一個螢幕或一個視窗。</li>
+  <li><strong><code>Direct3D11CaptureFramePool</code></strong>：畫面以 Direct3D 11 貼圖送來，留在 GPU 上，縮放與色彩轉換可以在 GPU 上完成。</li>
+  <li><strong><code>GraphicsCaptureSession</code></strong>：開始擷取，並設定幾個屬性：是否包含游標（<code>IsCursorCaptureEnabled</code>，Windows 10 2004 起）、是否顯示擷取中的黃色邊框（<code>IsBorderRequired</code>，build 20348 起）、最小更新間隔（<code>MinUpdateInterval</code>），以及 Windows 11 24H2 起的 <code>IncludeSecondaryWindows</code>（擷取視窗時一併包含它的彈出視窗）。</li>
+</ol>
+
+<p>和 ScreenCaptureKit 最大的差別是：<strong>WGC 沒有內容過濾。</strong>擷取項目只能是一個螢幕或一個視窗；沒有「這個螢幕，但不要那幾個 App」，也沒有「只要這幾個 App 的視窗」，更沒有拿掉工作列的選項。區域錄影只能擷取整個螢幕後自己裁切。</p>
+
+<p>黃色邊框是 Windows 的「擷取中」指示，作用類似 macOS 選單列的錄影圖示。依文件，要關掉它，封裝的 App 必須先以 <code>GraphicsCaptureAccess.RequestAccessAsync(Borderless)</code> 取得使用者同意；被拒絕時，設定仍然「成功」但被忽略。另一個常被忽略的差異：WGC 只在畫面變動時交出新畫面，螢幕靜止時就沒有新畫格，錄影程式要自己重複最後一張。</p>
+
+<h2 id="audio">系統音訊與單一 App 的聲音</h2>
+
+<p>錄影工具要的「系統音訊」，精確地說是「送往喇叭的聲音，扣掉錄影工具自己的」。兩個平台給的路不同。</p>
+
+<h3>macOS：聲音跟著過濾器走</h3>
+
+<p>從 macOS 13 起，<code>SCStreamConfiguration.capturesAudio</code> 讓同一個 <code>SCStream</code> 交出系統音訊，而且<strong>聲音也受過濾器約束</strong>：過濾器排除的 App，它的聲音也不在串流裡；過濾器只包含某幾個 App，就只有它們的聲音。再加上 <code>excludesCurrentProcessAudio</code>，呼叫的 process 本身播的聲音也被拿掉。</p>
+
+<p>這帶來一個設計上的耦合：畫面的過濾器和聲音的過濾器是同一個。錄單一視窗時，如果還想要整個系統的聲音，畫面的串流給不了，就要再開一個只拿聲音的 <code>SCStream</code>，用另一個過濾器（例如「整個螢幕，排除自己」），畫面設成最小尺寸與最低頻率。RecordStuff 的引擎就是這樣：畫面的過濾器與聲音要的不同時（錄單一視窗、只錄指定 App，或只要指定 App 的聲音），聲音由第二個只有音訊的串流提供。</p>
+
+<p>另一條路是 macOS 14.2 起的 <strong>Core Audio process tap</strong>（<code>AudioHardwareCreateProcessTap</code>）：它直接在音訊系統裡「接」一個或一組 process 的輸出，不需要螢幕擷取。它要的是另一種較窄的權限：Info.plist 要有 <code>NSAudioCaptureUsageDescription</code>，系統第一次錄音時詢問「系統音訊錄製」的同意，使用者可以只允許錄音而不允許錄螢幕。只要聲音、不要畫面的工具（錄音軟體、會議逐字稿），用 tap 比為了聲音要求整個螢幕權限合理。在這兩者出現之前，macOS 上錄系統音訊只能靠使用者安裝虛擬音訊驅動（如 BlackHole、Soundflower），OBS 的文件至今仍提醒 macOS 13 以前要另外安裝這類軟體。</p>
+
+<h3>Windows：endpoint loopback 與 process loopback</h3>
+
+<p>WASAPI 的 <strong>loopback 模式</strong>把一個輸出裝置（endpoint）當成輸入打開，錄到的是音訊引擎送往它的混音。它有兩個錄影工具會撞到的特性：</p>
+
+<ul>
+  <li><strong>它錄所有東西，包括你自己。</strong>錄影工具的提示音、倒數的滴聲，都在那個混音裡。</li>
+  <li><strong>沒聲音時不送資料。</strong>沒有任何 App 在播放時，loopback 不會送出「靜音的封包」，而是什麼都不送。混音器若等每個來源都送到才前進，就會一直卡著。Cap 的解法是在同一個裝置上開一個持續播放靜音的串流，讓封包不斷流動，它的原始碼註解說 OBS 也這麼做；另一個解法是讓混音器跟著時鐘前進，把沒送到的部分當成靜音。</li>
+</ul>
+
+<p><strong>Process loopback</strong> 解決了第一點：用 <code>ActivateAudioInterfaceAsync</code> 搭配 <code>AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS</code>，可以只錄某個 process 樹的聲音（<code>INCLUDE_TARGET_PROCESS_TREE</code>），或錄除了它以外的一切（<code>EXCLUDE_TARGET_PROCESS_TREE</code>）。後者正是「系統音訊扣掉自己」。它的最低版本有一個文件與實務的落差：Microsoft 的文件寫 Windows 10 build 20348，但 OBS 28 的「應用程式音訊擷取」在 Windows 10 2004 以後就能用。依賴它的產品，最好在目標版本上實測，而不是只看文件。</p>
+
+<h3>瀏覽器：一個勾選框</h3>
+
+<p>網頁的 <code>getDisplayMedia</code> 把這些都藏在使用者的選擇裡：分享螢幕時，選擇器可能出現「同時分享系統音訊」的勾選框，<code>systemAudio</code> 與 <code>windowAudio</code> 這兩個選項只是對瀏覽器的<em>提示</em>，瀏覽器可以不理。長期以來 Chrome 只在 Windows 和 ChromeOS 提供整個系統的聲音；依 Addpipe 的實測，macOS 版 Chrome 直到 141 才出現這個選項。網頁無法選「哪幾個 App 的聲音」，也無法保證扣掉自己。</p>
+
+<div class="table-scroll">
+<table class="compact-first table-wide">
+  <thead><tr><th>需求</th><th>macOS</th><th>Windows</th><th>瀏覽器</th></tr></thead>
+  <tbody>
+    <tr><td>整個系統的聲音</td><td><code>SCStream</code> 的音訊（13+）</td><td>endpoint loopback</td><td>依瀏覽器與平台，使用者勾選</td></tr>
+    <tr><td>扣掉自己</td><td><code>excludesCurrentProcessAudio</code>，或過濾器排除自己的 App</td><td>process loopback 排除自己的 process 樹</td><td>無保證</td></tr>
+    <tr><td>只要某幾個 App</td><td>過濾器只包含它們；或 Core Audio tap（14.2+）</td><td>process loopback 包含目標 process 樹（每個 App 一條）</td><td>只有「這個分頁」或「這個視窗」的聲音（<code>windowAudio</code>），依實作</td></tr>
+    <tr><td>沒聲音時</td><td>依實作，不能假設會送靜音</td><td>不送封包</td><td>由瀏覽器處理</td></tr>
+    <tr><td>權限</td><td>螢幕錄製權限；tap 則是較窄的系統音訊權限</td><td>沒有額外同意</td><td>每次分享時的選擇器</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="exclude">把視窗與系統介面留在錄影外</h2>
+
+<p>回到心智模型的三個位置。哪一個可用，取決於擷取 API 有沒有過濾：</p>
+
+<figure class="flow-figure fig-exclude">
+<svg id="fig-exclude-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 521.21484375 688" aria-roledescription="flowchart-v2" role="img" aria-labelledby="fig-exclude-title fig-exclude-desc"><title id="fig-exclude-title">要把一個視窗排除在錄影外，由誰決定</title><desc id="fig-exclude-desc">如果擷取 API 有內容過濾（ScreenCaptureKit），錄影程式在過濾器裡排除自己的 App 或指定視窗。如果沒有（Windows.Graphics.Capture、瀏覽器 getDisplayMedia），只能由視窗自己宣告不被擷取（WDA_EXCLUDEFROMCAPTURE），或在擷取開始前讓視窗離開畫面。</desc><style>#fig-exclude-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#fig-exclude-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#fig-exclude-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#fig-exclude-my-svg .error-icon{fill:#FAF9F5;}#fig-exclude-my-svg .error-text{fill:#05060a;stroke:#05060a;}#fig-exclude-my-svg .edge-thickness-normal{stroke-width:1px;}#fig-exclude-my-svg .edge-thickness-thick{stroke-width:3.5px;}#fig-exclude-my-svg .edge-pattern-solid{stroke-dasharray:0;}#fig-exclude-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#fig-exclude-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#fig-exclude-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#fig-exclude-my-svg .marker{fill:#D97757;stroke:#D97757;}#fig-exclude-my-svg .marker.cross{stroke:#D97757;}#fig-exclude-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#fig-exclude-my-svg p{margin:0;}#fig-exclude-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#fig-exclude-my-svg .cluster-label text{fill:#05060a;}#fig-exclude-my-svg .cluster-label span{color:#05060a;}#fig-exclude-my-svg .cluster-label span p{background-color:transparent;}#fig-exclude-my-svg .label text,#fig-exclude-my-svg span{fill:#141413;color:#141413;}#fig-exclude-my-svg .node rect,#fig-exclude-my-svg .node circle,#fig-exclude-my-svg .node ellipse,#fig-exclude-my-svg .node polygon,#fig-exclude-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#fig-exclude-my-svg .rough-node .label text,#fig-exclude-my-svg .node .label text,#fig-exclude-my-svg .image-shape .label,#fig-exclude-my-svg .icon-shape .label{text-anchor:middle;}#fig-exclude-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#fig-exclude-my-svg .rough-node .label,#fig-exclude-my-svg .node .label,#fig-exclude-my-svg .image-shape .label,#fig-exclude-my-svg .icon-shape .label{text-align:center;}#fig-exclude-my-svg .node.clickable{cursor:pointer;}#fig-exclude-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#fig-exclude-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#fig-exclude-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#fig-exclude-my-svg .flowchart-link{stroke:#D97757;fill:none;}#fig-exclude-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#fig-exclude-my-svg .edgeLabel p{background-color:#F0EEE6;}#fig-exclude-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#fig-exclude-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#fig-exclude-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#fig-exclude-my-svg .cluster text{fill:#05060a;}#fig-exclude-my-svg .cluster span{color:#05060a;}#fig-exclude-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#fig-exclude-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#fig-exclude-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#fig-exclude-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#fig-exclude-my-svg rect.text{fill:none;stroke-width:0;}#fig-exclude-my-svg .icon-shape,#fig-exclude-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#fig-exclude-my-svg .icon-shape p,#fig-exclude-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#fig-exclude-my-svg .icon-shape .label rect,#fig-exclude-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#fig-exclude-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#fig-exclude-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#fig-exclude-my-svg .node .neo-node{stroke:#E3DACC;}#fig-exclude-my-svg [data-look="neo"].node rect,#fig-exclude-my-svg [data-look="neo"].cluster rect,#fig-exclude-my-svg [data-look="neo"].node polygon{stroke:url(#fig-exclude-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fig-exclude-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#fig-exclude-my-svg [data-look="neo"].node path{stroke:url(#fig-exclude-my-svg-gradient);stroke-width:1px;}#fig-exclude-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fig-exclude-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#fig-exclude-my-svg [data-look="neo"].node circle{stroke:url(#fig-exclude-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fig-exclude-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#fig-exclude-my-svg [data-look="neo"].icon-shape .icon{fill:url(#fig-exclude-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fig-exclude-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#fig-exclude-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#fig-exclude-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="fig-exclude-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="fig-exclude-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M179.83333333333331,180.33330917358398L179.83333333333331,210L179.83333333333331,222.92893218813452Q179.83333333333331,230 172.76226552146784,230L109.07106781186548,230Q102,230 102,237.07106781186548L102,308" id="fig-exclude-my-svg-L_Q_F_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 196.1717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="fig-exclude-L_Q_F_0" data-points="W3sieCI6MTc5LjgzMzMzMzMzMzMzMzMxLCJ5IjoxODAuMzMzMzA5MTczNTgzOTh9LHsieCI6MTc5LjgzMzMzMzMzMzMzMzMxLCJ5IjoyMTB9LHsieCI6MTc5LjgzMzMzMzMzMzMzMzMxLCJ5IjoyMzB9LHsieCI6MTAyLCJ5IjoyMzB9LHsieCI6MTAyLCJ5IjozMTJ9XQ==" data-look="neo" marker-end="url(#fig-exclude-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M239.16666666666669,180.33330917358398L239.16666666666669,210L239.16666666666669,222.92893218813452Q239.16666666666669,230 246.23773447853216,230L309.9289321881345,230Q317,230 317,237.07106781186548L317,308" id="fig-exclude-my-svg-L_Q_Q2_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 196.17173767089844 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="fig-exclude-L_Q_Q2_0" data-points="W3sieCI6MjM5LjE2NjY2NjY2NjY2NjY5LCJ5IjoxODAuMzMzMzA5MTczNTgzOTh9LHsieCI6MjM5LjE2NjY2NjY2NjY2NjY5LCJ5IjoyMTB9LHsieCI6MjM5LjE2NjY2NjY2NjY2NjY5LCJ5IjoyMzB9LHsieCI6MzE3LCJ5IjoyMzB9LHsieCI6MzE3LCJ5IjozMTJ9XQ==" data-look="neo" marker-end="url(#fig-exclude-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M287.33333333333337,480.333309173584L287.33333333333337,510L287.33333333333337,522.9289321881345Q287.33333333333337,530 280.2622655214679,530L199.85622406186548,530Q192.78515625,530 192.78515625,537.0710678118654L192.78515625000003,608" id="fig-exclude-my-svg-L_Q2_W_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 212.8865966796875 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="fig-exclude-L_Q2_W_0" data-points="W3sieCI6Mjg3LjMzMzMzMzMzMzMzMzM3LCJ5Ijo0ODAuMzMzMzA5MTczNTg0fSx7IngiOjI4Ny4zMzMzMzMzMzMzMzMzNywieSI6NTEwfSx7IngiOjI4Ny4zMzMzMzMzMzMzMzMzNywieSI6NTMwfSx7IngiOjE5Mi43ODUxNTYyNSwieSI6NTMwfSx7IngiOjE5Mi43ODUxNTYyNTAwMDAwMywieSI6NjEyfV0=" data-look="neo" marker-end="url(#fig-exclude-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M346.6666666666667,480.333309173584L346.6666666666667,510L346.6666666666667,522.9289321881345Q346.6666666666667,530 353.73773447853216,530L434.1437759381345,530Q441.21484375,530 441.21484375,537.0710678118655L441.21484375,608" id="fig-exclude-my-svg-L_Q2_T_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 212.88656616210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="fig-exclude-L_Q2_T_0" data-points="W3sieCI6MzQ2LjY2NjY2NjY2NjY2NjcsInkiOjQ4MC4zMzMzMDkxNzM1ODR9LHsieCI6MzQ2LjY2NjY2NjY2NjY2NjcsInkiOjUxMH0seyJ4IjozNDYuNjY2NjY2NjY2NjY2NywieSI6NTMwfSx7IngiOjQ0MS4yMTQ4NDM3NSwieSI6NTMwfSx7IngiOjQ0MS4yMTQ4NDM3NSwieSI6NjEyfV0=" data-look="neo" marker-end="url(#fig-exclude-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(101.8828125, 261)"><g class="label" data-id="fig-exclude-L_Q_F_0" transform="translate(0, -10)"><g><rect class="background" x="-89.8828125" y="-1" width="179.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">有（ScreenCaptureKit）</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(316.8828125, 261)"><g class="label" data-id="fig-exclude-L_Q_Q2_0" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">沒有</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(192.55859375, 561)"><g class="label" data-id="fig-exclude-L_Q2_W_0" transform="translate(0, -10)"><g><rect class="background" x="-85.2734375" y="-1" width="170.546875" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">是（Windows</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 2004+）</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(441.16015625, 561)"><g class="label" data-id="fig-exclude-L_Q2_T_0" transform="translate(0, -10)"><g><rect class="background" x="-9.9453125" y="-1" width="19.890625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">否</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="fig-exclude-my-svg-flowchart-Q-0" data-look="neo" transform="translate(209.5, 111)"><polygon points="99,0 198,-99 99,-198 0,-99" class="label-container" transform="translate(-98.5, 99)"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>擷取 API 有<br />內容過濾嗎？</p></span></div></foreignObject></g></g><g class="node default" id="fig-exclude-my-svg-flowchart-F-2" data-look="neo" transform="translate(102, 360)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>錄影程式<br />用過濾器排除<br />App 或視窗</p></span></div></foreignObject></g></g><g class="node default" id="fig-exclude-my-svg-flowchart-Q2-4" data-look="neo" transform="translate(317, 411)"><polygon points="99,0 198,-99 99,-198 0,-99" class="label-container" transform="translate(-98.5, 99)"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>是自己的視窗？<br />平台支援旗標？</p></span></div></foreignObject></g></g><g class="node default" id="fig-exclude-my-svg-flowchart-W-6" data-look="neo" transform="translate(192.78515625000003, 648)"><rect class="basic label-container" x="-132.4296875" y="-36" width="264.859375" height="72"/><g class="label" transform="translate(-116.4296875, -24)"><rect/><foreignObject width="232.859375" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>視窗設<br />WDA_EXCLUDEFROMCAPTURE</p></span></div></foreignObject></g></g><g class="node default" id="fig-exclude-my-svg-flowchart-T-8" data-look="neo" transform="translate(441.21484375, 648)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>擷取開始前<br />讓視窗離開畫面</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="fig-exclude-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="fig-exclude-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="fig-exclude-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+<figcaption>先問擷取 API 能不能過濾；能，就由錄影程式決定；不能，才退回視窗自己的旗標或時間上的錯開。</figcaption>
+</figure>
+
+<h3>錄影工具自己的視窗</h3>
+
+<p><strong>在 macOS 上，由錄影程式在過濾器裡排除。</strong>這裡又有兩種寫法，差別在「之後才開的視窗」：</p>
+
+<ul>
+  <li><strong>排除整個 App。</strong>把自己的 <code>SCRunningApplication</code> 放進 <code>excludingApplications</code>。開始錄影後才打開的設定視窗、倒數視窗，也都不會被錄，連同 App 的選單列選單與它播的聲音。缺點是它是全有全無：如果你<em>想</em>錄自己的某個視窗（例如一個畫在螢幕上的相機泡泡），就要把它列成例外，或乾脆不讓它是一個視窗。</li>
+  <li><strong>列出視窗。</strong>開始時列出自己的視窗 ID，放進排除清單。可以挑哪些要錄、哪些不要，但開始錄影後才開的視窗不在清單裡。Cap 用這種做法：它維護一份可由使用者修改的「排除視窗」清單，預設列入自己的各個視窗標題，開始錄影時把符合的視窗解析成 ScreenCaptureKit 的視窗 ID。</li>
+</ul>
+
+<p>排除 App 還有一個不明顯的前提：<strong>App 必須出現在 <code>SCShareableContent</code> 的清單裡</strong>，而 ScreenCaptureKit 只列出擁有至少一個視窗的 App。一個什麼都沒打開的選單列 App 不擁有任何視窗（在 macOS 26 上，它的狀態列圖示是控制中心的視窗），於是找不到自己、排除清單是空的，之後打開的設定視窗就被錄進去。這類錯誤在測試時很容易被掩蓋：只要測試流程剛好有一個視窗開著（例如倒數），排除就「正常」。</p>
+
+<p><strong>在 Windows 上，只能由視窗自己宣告。</strong>WGC 錄整個螢幕，無法排除別的 process 的視窗，所以錄影工具要在自己的每個視窗上呼叫 <code>SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)</code>。Windows 10 2004 起，這樣的視窗在所有擷取中完全消失；更舊的版本則當成 <code>WDA_MONITOR</code>，視窗在擷取中變成一塊黑色。它有幾個實務細節：</p>
+
+<ul>
+  <li>旗標是每個頂層視窗各自設的，新開的視窗要記得補上；選單、下拉清單這類系統畫的子視窗不一定跟著消失。OBS 在 2022 年加入「隱藏 OBS 視窗」時就註明，右鍵選單與下拉清單仍會出現。</li>
+  <li>變更在下一次桌面合成才生效，不是呼叫返回時；擷取緊接著開始，可能還有一兩張畫面含有那個視窗。</li>
+  <li>旗標對所有擷取都有效，包括使用者自己按的截圖。長期開著，使用者就無法截圖錄影工具的設定畫面來回報問題；所以合理的做法是只在錄影期間開啟。Cap 的原始碼也記下一個副作用：對一個隱藏的視窗套用這個旗標後，錄影結束時它會以「幽靈」般的覆蓋層重新出現，所以那個視窗被刻意排除在預設清單外。</li>
+</ul>
+
+<p><strong>OBS 的兩個平台剛好示範了兩種位置。</strong>在 Windows 上，「隱藏 OBS 視窗」是 OBS 設定 → 一般裡的全域選項，背後是 <code>SetWindowDisplayAffinity</code>；在 macOS 上，它是 macOS 螢幕擷取來源裡「顯示器擷取」模式的「Hide OBS from capture」勾選框，需要 macOS 13 以上，也就是過濾器的一部分。同一個產品，同一個需求，決定權在不同的地方。</p>
+
+<p><strong>時間上的錯開</strong>是最後的手段，也是不需要任何 API 的手段。Loom 的 Chrome 擴充功能只能透過瀏覽器擷取，所以它的選項是「錄影時隱藏控制列」，用鍵盤快捷鍵操作；它的 Windows 桌面版則多了「只在最終影片中隱藏」，而 macOS 桌面版的控制列自動不出現在影片裡。倒數數字也是：在擷取開始前離開畫面，就不需要任何排除機制。</p>
+
+<h3>選單列、Dock 與工作列</h3>
+
+<p>使用者有時希望錄影裡沒有選單列、Dock、桌面圖示，但自己的螢幕上照常顯示。在 macOS 上這也是過濾器的工作：</p>
+
+<ul>
+  <li>macOS 14.2 起，<code>SCContentFilter.includeMenuBar = false</code> 直接拿掉選單列。</li>
+  <li>更早的版本，或要拿掉更多東西時，可以把系統介面的視窗列為例外：選單列與狀態列圖示在主選單與狀態列的視窗層級，Dock 在 Dock 層級，桌面圖示與小工具是 Finder 與通知中心在一般層級以下的視窗。</li>
+  <li>一個 App 打開的選單是那個 App 在這些層級之上的視窗，所以仍會被錄到。這種「看起來屬於選單列，其實屬於 App」的細節，最好直接寫在設定的說明裡。</li>
+</ul>
+
+<p>Windows 上沒有對應的做法：工作列屬於 Explorer，WGC 無法排除它，也不能對別人的視窗設 display affinity。剩下的選擇是裁掉工作列所在的那一條，但工作列可能在任何一邊、可能自動隱藏、可能在多個螢幕上，裁切會改變錄影的尺寸與比例。至於要不要預設隱藏：RecordStuff 的設計紀錄提到 Loom 與 CleanShot X 都把它做成選項，而不是預設。</p>
+
+<h2 id="protection">視窗保護為什麼失效，以及什麼取代了它</h2>
+
+<p>這一節回答一個實際上很多團隊撞到的問題：「我們的 App 一直設了 <code>setContentProtection(true)</code>，為什麼現在會議軟體分享螢幕時，還是看得到它？」</p>
+
+<h3>舊規則：視窗說了算</h3>
+
+<p>macOS 從 10.5 起就有 <code>NSWindow.sharingType</code>。設成 <code>.none</code>，視窗內容就不提供給其他 process：CoreGraphics 的截圖與串流 API 會跳過它。Electron 的 <code>setContentProtection(true)</code> 在 macOS 上就是設這個值；在 Windows 上則是 <code>WDA_EXCLUDEFROMCAPTURE</code>。密碼管理器、會議軟體的私人筆記、錄影工具的控制列，多年來都靠它。</p>
+
+<h3>新規則：錄影程式說了算</h3>
+
+<p>ScreenCaptureKit 不理 <code>sharingType</code>。開發者在 macOS 15 期間陸續回報：用 ScreenCaptureKit 的 App（包括新版的會議軟體）會錄到設了 <code>.none</code> 的視窗。這不是錯誤，而是設計：</p>
+
+<ul>
+  <li>Apple 的文件現在把 <code>NSWindow.SharingType.none</code> 描述為「macOS 不再使用的舊常數」，並明確說不要用它來隱藏內容或讓內容不被擷取；需要保護內容時，應改用 FairPlay Streaming 這類 DRM。</li>
+  <li>在開發者論壇一則標題為「macOS 15.4 以後，設了 sharing none 的視窗仍被 ScreenCaptureKit 擷取」的討論裡，Apple DTS 在 2025 年 7 月的回覆是：目前沒有防止螢幕擷取的公開 API，需要的話請提出功能需求。</li>
+  <li>Electron 的文件也改寫了：<code>setContentProtection</code> 在 macOS 上設 <code>NSWindowSharingNone</code>，但因為 macOS 刻意的改變，使用 ScreenCaptureKit 的新 App 仍會擷取到你的視窗。相關的 Electron issue 在 2025 年 9 月被維護者以「Apple 刻意的改變，不在我們控制內」結案。</li>
+</ul>
+
+<p>背後的理由不難理解：如果任何視窗都能宣告「不讓你錄」，錄影工具就無法保證錄到使用者看到的東西，惡意程式也能藏在錄影之外。ScreenCaptureKit 把決定權移給了<strong>擷取的一方</strong>：錄影程式可以排除任何 App 或視窗，被錄的 App 則無權拒絕。</p>
+
+<h3>什麼取代了它</h3>
+
+<p>這個改變對兩種 App 的意義完全不同：</p>
+
+<ul>
+  <li><strong>錄影工具要把自己留在錄影外：</strong>用過濾器排除自己的 App 或視窗。這比舊做法更可靠，因為它是擷取的一方在決定。OBS 在 macOS 上的「Hide OBS from capture」、Cap 解析視窗 ID 放進排除清單，都是這種。Electron 也走同一條路：2022 年它為 Chromium 的 ScreenCaptureKit 擷取打了補丁（PR #34362），在擷取時把 App 自己設了保護的視窗放進排除清單，讓 <code>getDisplayMedia</code> 不錄到它們。注意這只對<em>同一個 App 內</em>的擷取有效，別的錄影軟體不受它影響。</li>
+  <li><strong>一般 App 要防止被別人錄：</strong>在 macOS 上沒有公開的替代品。<code>sharingType</code> 只對還在用舊 CoreGraphics API 的擷取程式有效，而那些 API 已經被棄用與移除。真正需要的是播放受保護的影片內容（DRM），而不是一個視窗旗標。</li>
+</ul>
+
+<p>Windows 的 <code>WDA_EXCLUDEFROMCAPTURE</code> 目前仍然有效，WGC 會尊重它。但 Microsoft 的文件同樣提醒：這個功能「不是安全功能，也不是 DRM 的實作」，只保護經由特定一組公開 API 的擷取，而且只在 DWM 合成桌面時才有作用。兩個平台的共同結論是：<strong>視窗旗標是一種禮貌，不是保證。</strong>錄影工具要排除自己，就靠自己能控制的那一邊。</p>
+
+<div class="callout warning">
+  <p>如果你維護的 App 依賴 <code>setContentProtection</code> 或 <code>sharingType = .none</code> 來保護敏感畫面，請把它當成「降低意外分享的機率」，而不是「不會被錄」。在 macOS 上，任何使用 ScreenCaptureKit 的錄影或會議軟體都看得到它。</p>
+</div>
+
+<h2 id="permission">螢幕錄製權限：TCC 與重新啟動</h2>
+
+<h3>macOS：同意記在 App 的身分上</h3>
+
+<p>在 macOS 上，螢幕擷取需要使用者在「系統設定 → 隱私權與安全性 → 螢幕與系統錄音」裡允許。這份同意記在 TCC 裡，鍵是 App 的身分：bundle identifier 加上程式碼簽章。幾個由此而來的性質：</p>
+
+<ul>
+  <li><strong>身分變了，同意就不算數。</strong>換 bundle identifier、換簽章身分，系統都視為另一個 App，使用者要重新允許。OBS 論壇上「已經勾選了卻還是要權限」的案例，常常是電腦上有多份簽章不同的 OBS；RecordStuff 也因此把 bundle identifier 定為維護者擁有的網域反寫，定了就不改。</li>
+  <li><strong>被檢查的是發出呼叫的那個程式。</strong>從終端機執行的工具，檢查的是終端機；Electron App 的輔助 process，檢查的可能是它自己的身分。RecordStuff 的擷取引擎跑在 Electron 的 <code>utilityProcess</code> 裡：開發用的未簽章 Electron 會被拒絕（<code>-3801</code>），所以錄影與量測都要用簽章過的 App。</li>
+  <li><strong>有便宜的檢查，也有昂貴的檢查。</strong><code>CGPreflightScreenCaptureAccess</code>（10.15 起）只查狀態、不跳提示；<code>CGRequestScreenCaptureAccess</code> 在需要時跳出系統提示。真正確認「能擷取」的是向 ScreenCaptureKit 要 <code>SCShareableContent</code>，但它會把所有螢幕、App 與視窗都具體化，很貴。Cap 曾在整個 process 生命週期內輪詢它來判斷權限，閒置時每分鐘洩漏約 15 MB，直到系統用光 swap（Cap issue #2023，在 0.5.9 修正）。</li>
+</ul>
+
+<h3>為什麼常常要重新啟動</h3>
+
+<p>使用者在系統設定裡打開權限時，macOS 會提供「結束並重新打開」這個 App 的選項。實務上，執行中的 process 不一定會看到新的狀態，而且不一定每次都一樣，這才是麻煩所在。RecordStuff 在 2026-09-28 的兩次手動測試（當時錄影仍走 Chromium）把這種不一致記了下來：</p>
+
+<ul>
+  <li>錄影途中撤銷權限、在系統詢問時選「稍後」：錄影照常存檔，但執行中的 App 仍被告知「已允許」，下一次開始時卻一個螢幕都列不出來。</li>
+  <li>重新允許之後，第一輪不重新啟動就能正常錄影；同一晚的複測，不重新啟動則一直看不到任何螢幕，直到經由系統的「結束並重新打開」重新啟動，紀錄才出現 <code>permission: granted and capture sees 2 screen(s)</code>。</li>
+</ul>
+
+<p>同樣的操作，有時要重新啟動，有時不用。App 無法從內部可靠地分辨是哪一種，所以設計要假設最壞的情況。</p>
+
+<p>由此得出的設計很樸素，也很可靠：</p>
+
+<ul>
+  <li>便宜的狀態檢查可以常做（RecordStuff 每 5 秒一次，以及 App 被啟用時），因為選單列 App 沒有視窗可以「回到前景」。</li>
+  <li>昂貴的「真的能擷取嗎」只在需要時做一次，成功就快取；同一時間只允許一個在跑，失敗後退避重試（5、10、20、40 秒，之後每 60 秒）。</li>
+  <li>任何時候都提供「重新啟動 App」的動作。權限選單一律提供它，因為執行中的 process 可能永遠看不到新的允許。</li>
+  <li>「有螢幕卻列不出任何可擷取的來源」要歸類為權限問題，而不是「找不到螢幕」，使用者才會被導向正確的修正。</li>
+</ul>
+
+<p>macOS 15 又加了一層：仍使用螢幕擷取權限的 App，系統會定期再次詢問使用者是否繼續允許。這個週期在測試版期間從每週改成每月，macOS 15.1 的發行說明再補充：使用已棄用擷取技術的 App 會受到更嚴格的提醒，而使用者常用且已確認過的 App 會看到較少的對話框。系統提供的 <code>SCContentSharingPicker</code> 則讓使用者每次自己挑要分享的內容，App 不需要長期取得整個螢幕。對每次都錄同一個螢幕、靠快捷鍵開始的錄影工具，它多了一步操作；對偶爾分享一個視窗的 App，它是更好的預設。</p>
+
+<h3>Windows：邊框與隱私設定</h3>
+
+<p>Windows 對傳統桌面程式的螢幕擷取沒有對應 TCC 的逐一同意：WGC 與 loopback 都不需要使用者事先允許，取而代之的是擷取時的黃色邊框。新版 Windows 11 的隱私設定裡有一頁控制 App 能否以程式方式擷取螢幕，對應封裝 App 宣告的 <code>graphicsCaptureProgrammatic</code> 能力；它對未封裝的桌面程式有什麼影響，公開文件沒有說清楚，需要在目標版本上實測。麥克風則不同：Windows 的隱私設定要允許「桌面 App」使用麥克風，否則打開裝置時會得到 <code>E_ACCESSDENIED</code>，錯誤訊息要指向那個設定。</p>
+
+<h2 id="choices">六個選擇與它們的取捨</h2>
+
+<h3>1. 透過瀏覽器擷取，或直接呼叫作業系統</h3>
+
+<p><strong>瀏覽器的 <code>getDisplayMedia</code></strong>（在 Electron 裡也一樣）不需要原生程式碼，跨平台，硬體編碼與平台擷取都由 Chromium 處理。它成立的條件是：錄一個螢幕或一個視窗就夠，App 自己的介面不會出現在畫面上（或可以用時間錯開），聲音是「整個系統」或「這個分頁」就好。</p>
+
+<p><strong>原生 API</strong> 的代價是要為每個平台寫一次擷取，要有原生工具鏈、要簽章原生模組，還要自己處理畫格節奏與時鐘。換到的是：過濾器、區域、指定 App、單一 App 的聲音、隱藏選單列，以及不經語音處理的系統音訊。成熟的錄影工具（OBS、Cap、Screen Studio、CleanShot X）都直接擷取。</p>
+
+<p>會翻轉這個選擇的條件：如果你的產品只在網頁上錄，或只需要「分享一個分頁」，瀏覽器是對的；如果作業系統未來把過濾能力開放給瀏覽器（例如 <code>getDisplayMedia</code> 有了排除清單），往下走的理由就少了一大半。</p>
+
+<h3>2. 怎麼把自己留在錄影外</h3>
+
+<p>有過濾器時，<strong>排除整個 App</strong> 是錄影工具最穩的預設：之後才開的視窗、選單、聲音都一起處理，不需要逐一追蹤。<strong>列出視窗</strong>的好處是可以讓使用者決定哪些要錄（Cap 讓使用者編輯清單），代價是新視窗要補進清單，否則會漏。沒有過濾器時，<strong>視窗旗標</strong>是唯一能讓視窗「在螢幕上但不在錄影裡」的辦法，但它只對自己的視窗有效，要逐一設定、要在錄影結束後取消。<strong>時間錯開</strong>永遠可用，代價是那段時間使用者看不到它。</p>
+
+<p>翻轉條件：如果使用者需要錄下 App 自己的某個介面（例如畫在螢幕上的相機泡泡、提詞器），「排除整個 App」就要加例外，或改成「列出視窗」。另一個辦法是讓那個東西不再是視窗：把相機直接合成進錄影的畫格裡，排除規則就不需要任何例外。</p>
+
+<h3>3. 系統介面：預設錄，或預設不錄</h3>
+
+<p>隱藏選單列與 Dock 會讓錄影更乾淨，但「錄到的和螢幕上看到的一樣」是使用者最基本的期待；已經在用的使用者，也不該在更新後發現錄影變了。所以合理的預設是關閉，做成一個開關。只在一個平台能做（Windows 無法拿掉工作列）時，另一個平台的開關應該顯示為不可用並說明原因，而不是偷偷裁切。</p>
+
+<h3>4. 系統音訊從哪裡來</h3>
+
+<div class="table-scroll">
+<table class="compact-first table-wide">
+  <thead><tr><th>做法</th><th>成立的條件</th><th>代價</th><th>誰這樣做</th></tr></thead>
+  <tbody>
+    <tr><td>macOS：畫面的串流順便帶聲音</td><td>畫面與聲音的過濾規則相同（錄整個螢幕、要整個系統的聲音）</td><td>錄單一視窗或指定 App 時，要再開一個只有聲音的串流</td><td>OBS 的 macOS 螢幕擷取來源（預設錄擷取內容的聲音、排除 OBS 自己）</td></tr>
+    <tr><td>macOS：Core Audio tap</td><td>只要聲音；目標 macOS 14.2 以上</td><td>與畫面分屬不同 API，時鐘與起點要自己對齊</td><td>只錄音的工具</td></tr>
+    <tr><td>Windows：endpoint loopback</td><td>可以接受錄到自己的聲音；只錄一個輸出裝置</td><td>沒聲音時沒有封包，要用靜音串流或時鐘補上</td><td>Cap（經由 cpal，加上靜音的保持串流）</td></tr>
+    <tr><td>Windows：process loopback</td><td>要扣掉自己，或只要指定 App；目標 Windows 版本支援</td><td>文件寫的最低版本比實際能用的高；每個指定 App 一條串流</td><td>OBS 的應用程式音訊擷取</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>5. 權限怎麼檢查、失敗時怎麼引導</h3>
+
+<p>最簡單的做法是啟動時檢查一次，或每次錄影前呼叫昂貴的擷取來源查詢。前者在使用者事後允許時失效，後者常駐輪詢時會吃掉記憶體與 CPU（Cap 的事故就是這樣）。分兩層：便宜的狀態可以常查，昂貴的驗證成功就快取、一次只跑一個、失敗退避，並永遠提供「重新啟動」。代價是邏輯變多，而且仍然有一個抓不到的情況：撤銷與重新允許都發生在兩次輪詢之間。</p>
+
+<p>翻轉條件：如果 App 改用系統的 <code>SCContentSharingPicker</code>，每次錄影由使用者在系統介面裡挑內容，長期的螢幕權限與它的檢查就大多不需要了；代價是每次多一步。</p>
+
+<h3>6. 畫格率：照字面要求，或要多再挑</h3>
+
+<p>照字面把錄影畫格率交給擷取 API，程式最簡單，但如前所述，ScreenCaptureKit 的最小間隔是下限，結果會系統性地低於要求。要求比錄影畫格率更高的頻率，再依顯示時間放進固定的格子，CPU 幾乎不變，畫格卻準確得多。代價是要自己寫並測試這個 pacing 邏輯，包括 idle 畫格與被略過的更新。Windows 的 WGC 只在畫面變動時送畫面，同一套 pacing 在那裡主要用來補上靜止的時段。</p>
+
+<h2 id="example">實例：RecordStuff 錄一段畫面</h2>
+
+<p>RecordStuff 是一個開源（MIT）的選單列錄影 App，用 Electron 做介面，錄影則交給一個 Rust 寫的原生引擎，跑在每次錄影各開一個的 Electron <code>utilityProcess</code> 裡。2026 年 10 月以前，它透過隱藏的 Chromium renderer 呼叫 <code>getDisplayMedia</code> 錄影；促成改寫的，正是本文前面那些「瀏覽器給不了」的需求：隱藏選單列與 Dock、區域、指定 App、單一 App 的聲音，以及可靠地不錄到自己。下面沿著一次錄影，看前面的選擇如何落地。</p>
+
+<h3>開始之前：找到自己</h3>
+
+<p>在 macOS 上，主程序把自己所有 process 的 ID 交給引擎，引擎向 ScreenCaptureKit 要可擷取的內容（包括不在螢幕上的視窗），再排除這些 process 以及 bundle identifier 以主程式為字首的所有 App（涵蓋 Electron 的各個輔助程式）。這正撞上前面提到的前提：沒開任何視窗的選單列 App 不在清單上。開發版因此一直記錄「在可分享的 App 中找不到 RecordStuff 自己」，而簽章版之所以回報「排除 1 個 App」，只是因為每次測試都有倒數，倒數的視窗剛好存在。修正方式是主程序在讀取可擷取內容之前，先建立一個隱藏、1 像素、沒有網頁的視窗，讓 App 永遠「擁有一個視窗」；仍然找不到時，警告會附上證據：要求排除的 process ID、列出的 App 與視窗數量，以及相關的 App。</p>
+
+<h3>倒數與相機</h3>
+
+<p>倒數數字在擷取開始前 300 ms 離開畫面，這是瀏覽器時代沒有排除能力時定下的時間錯開，原生引擎排除了整個 App 之後仍保留。倒數的滴聲在擷取開始前 860 ms 結束，同樣用時間隔開；至於排除自己的 process 是否也能讓一個「開始錄影」的提示音不被錄到，目前沒有驗證，所以沒有加這個聲音。開發中的相機功能把相機畫面直接合成進錄影的畫格，而不是在螢幕上放一個相機視窗；因為它不是視窗，「排除自己的整個 App」不需要任何例外。</p>
+
+<h3>畫面與聲音</h3>
+
+<p>過濾器是「這個螢幕，排除 RecordStuff 的 App」；開啟「隱藏選單列與 Dock」時，再把選單列、狀態列、Dock 層級的視窗，以及 Finder 與通知中心在一般層級以下的視窗列為例外，並在 macOS 14.2 以上關閉 <code>includeMenuBar</code>，更舊的系統則在警告中說明做不到。系統音訊來自同一個串流（48 kHz 立體聲浮點數，<code>excludesCurrentProcessAudio</code>），因為過濾器已經排除了 RecordStuff 的 App，它的聲音也一起不在了。</p>
+
+<p>Windows 上，WGC 擷取包含主程序指定座標的那個螢幕，含游標，在系統允許時不畫黃色邊框。主程序從錄影開始到這次嘗試結束，把自己的每個視窗設成 <code>WDA_EXCLUDEFROMCAPTURE</code>，期間新開的視窗一出現就補上；擷取 process 結束後（最多等 5 秒）才放回來，所以錄影之間仍能截圖設定視窗，而且前一次的解除不會蓋掉下一次的排除。聲音是排除 RecordStuff 整個 process 樹的 process loopback；它在沒聲音時不送封包，混音器就跟著時鐘、在落後 500 ms 處前進，把沒送到的部分當成靜音。「只錄指定 App 的視窗」在 Windows 上會被拒絕並說明原因，「隱藏工作列」顯示為不可用，畫面不做任何裁切。</p>
+
+<h3>量到了什麼，還沒量到什麼</h3>
+
+<ul>
+  <li><strong>排除自己（macOS）：</strong>2026-10-16，錄影開始一秒後打開設定視窗，它出現在螢幕截圖上，但錄影同一時刻的畫格裡沒有它，露出的是它後面的視窗；RecordStuff 的選單列選單也被排除，狀態列圖示則仍在（RecordStuff 調查過的產品都不隱藏自己的狀態列圖示）。</li>
+  <li><strong>隱藏系統介面（macOS）：</strong>2026-10-15，引擎回報隱藏 35 個系統視窗，選單列的位置在畫格中露出桌布。那一輪螢幕上沒有 Dock，所以 Dock 是否消失還要另一輪手動測試。</li>
+  <li><strong>系統音訊：</strong>2026-10-15，音質測試在原生引擎與 Chromium 兩條路徑都通過所有檢查，時鐘偏差分別是 −0.07 ppm 與 −1.45 ppm。</li>
+  <li><strong>與 Chromium 路徑對照</strong>（M1 Pro、60 Hz 1920×1080、簽章版，2026-10-14 至 16）：錄影 CPU 在 30／60 fps 是單核心的 10.4%／14.0%，Chromium 是 15.3%／23.3%；閃光與嗶聲的偏移 −25 ms，Chromium 是 +68 至 +74 ms；從快捷鍵到準備完成慢了約 0.1 秒（457–535 ms 對 347–369 ms），落在倒數之內。</li>
+  <li><strong>未驗證：</strong>Windows 只由 CI 驗證（在沒有 GPU 的 runner 上錄螢幕、區域、視窗與單一 process 的聲音並解碼），自己的視窗是否真的不在畫格裡、系統音訊的內容、實際畫質與畫格時間，都還沒在 Windows 實機上看過。macOS 上，原生引擎遇到權限被拒、Dock 在畫面上時的隱藏，也還在等手動測試。</li>
+</ul>
+
+<h2 id="table">決策總表</h2>
+
+<div class="table-scroll">
+<table class="compact-first table-wide">
+  <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
+  <tbody>
+    <tr><td>擷取 API</td><td>原生：ScreenCaptureKit、WGC、WASAPI</td><td>需要過濾、區域、指定 App、單一 App 的聲音</td><td>兩個平台各寫一次；Rust 工具鏈；簽章原生模組</td><td>瀏覽器開放等同的過濾能力；產品只需要錄一個分頁</td></tr>
+    <tr><td>排除自己（macOS）</td><td>過濾器排除整個 App，加一個隱藏視窗確保被列出</td><td>App 的任何視窗都不該被錄</td><td>想錄自己的某個介面時要加例外</td><td>需要錄下自己的介面（例如畫在螢幕上的相機視窗）</td></tr>
+    <tr><td>排除自己（Windows）</td><td><code>WDA_EXCLUDEFROMCAPTURE</code>，只在錄影期間</td><td>Windows 10 2004 以上；只有自己的視窗要排除</td><td>每個視窗逐一設定；錄影期間無法截圖自己的視窗</td><td>WGC 加入內容過濾</td></tr>
+    <tr><td>系統介面</td><td>隱藏選單列與 Dock 為開關，預設關閉，只在 macOS</td><td>使用者預期錄到的就是看到的</td><td>Windows 無法隱藏工作列</td><td>WGC 能排除工作列；使用者普遍想要乾淨的畫面</td></tr>
+    <tr><td>系統音訊</td><td>macOS：串流的聲音，必要時另開只有聲音的串流；Windows：排除自己的 process loopback</td><td>要扣掉自己的提示音；不經語音處理</td><td>Windows 沒聲音時要靠時鐘補靜音</td><td>process loopback 在目標版本上不可用；只需要錄音（改用 Core Audio tap）</td></tr>
+    <tr><td>權限</td><td>便宜的狀態每 5 秒查一次，昂貴的驗證快取並退避，永遠提供重新啟動</td><td>選單列 App、使用者可能事後才允許</td><td>兩次輪詢之間的撤銷與重新允許看不到</td><td>改用 <code>SCContentSharingPicker</code></td></tr>
+    <tr><td>畫格率</td><td>要求四分之一的間隔，依顯示時間放進格子</td><td>最小間隔是下限；螢幕更新率高於錄影畫格率</td><td>要自己維護 pacing 與 idle、略過的更新</td><td>擷取 API 提供固定週期的輸出</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="boundaries">不要這樣做的情況</h2>
+
+<ul>
+  <li><strong>不要用 <code>sharingType = .none</code> 或 <code>setContentProtection</code> 來保護敏感內容。</strong>在 macOS 上，ScreenCaptureKit 不理它；在 Windows 上，文件也說它不是安全功能。</li>
+  <li><strong>不要在 macOS 上用視窗旗標讓錄影工具自己消失。</strong>你有過濾器，用它；決定權在擷取的一方。</li>
+  <li><strong>不要假設 ScreenCaptureKit 列得出你的 App。</strong>沒有視窗的 App 不在清單上；排除清單是空的時，要警告，而不是安靜地繼續。</li>
+  <li><strong>不要只列出開始時的視窗，如果錄影期間還會開新視窗。</strong>要嘛排除整個 App，要嘛在視窗出現時補進去。</li>
+  <li><strong>不要在 Windows 上一直開著 <code>WDA_EXCLUDEFROMCAPTURE</code>。</strong>使用者會無法截圖你的 App 回報問題；只在錄影期間開，結束後放回。</li>
+  <li><strong>不要等 loopback 送來靜音。</strong>它不會；混音要跟著時鐘前進，或保持一個靜音的播放串流。</li>
+  <li><strong>不要常駐輪詢 <code>SCShareableContent</code> 來判斷權限。</strong>用便宜的狀態檢查，昂貴的查詢只在需要時做並快取。</li>
+  <li><strong>不要把「列不出任何螢幕」一律報成「沒有螢幕」。</strong>有接螢幕卻列不出來，多半是權限，使用者需要的是「去允許，然後重新啟動」。</li>
+  <li><strong>不要偷偷裁切來模擬平台做不到的隱藏。</strong>改變錄影尺寸是使用者看得到的副作用；做不到就說做不到。</li>
+  <li><strong>不要只為了錄聲音就要求螢幕錄製權限。</strong>在 macOS 14.2 以上，Core Audio tap 要的權限較窄。</li>
+</ul>
+
+<h2 id="criteria">可以帶走的判斷準則</h2>
+
+<ul>
+  <li><strong>你的擷取 API 有沒有內容過濾？</strong>有，排除的決定就在你手上；沒有，你只能管自己的視窗，或在時間上錯開。</li>
+  <li><strong>你要排除的是「一個 App」還是「幾個視窗」？</strong>錄影期間會不會出現新視窗？會的話，排除 App。</li>
+  <li><strong>你的 App 會不會沒有任何視窗？</strong>選單列 App、背景工具要特別確認它出現在可擷取內容的清單上。</li>
+  <li><strong>你的保護是對誰？</strong>錄影工具隱藏自己，和一般 App 防止被錄，是兩個問題；後者在 macOS 上沒有公開 API。</li>
+  <li><strong>聲音要扣掉誰、只要誰？</strong>這決定了 macOS 上要不要第二個串流或 tap，Windows 上要 endpoint 還是 process loopback。</li>
+  <li><strong>每個 API 的最低版本，文件和實際是否一致？</strong>process loopback 就是反例；在目標版本上實測。</li>
+  <li><strong>權限改變時，執行中的 App 看得到嗎？</strong>假設看不到，提供重新啟動，並把「列不出來源」歸類為權限問題。</li>
+  <li><strong>哪些行為你真的驗證過？</strong>「排除自己」要用畫格對照螢幕截圖來證明，「不錄自己的聲音」要有自己的測試；在沒有實機的平台上，把它們列為未驗證。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>Apple：<a href="https://developer.apple.com/documentation/screencapturekit/sccontentfilter"><code>SCContentFilter</code></a>、<a href="https://developer.apple.com/documentation/screencapturekit/sccontentfilter/includemenubar"><code>includeMenuBar</code></a>（14.2）、<a href="https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/excludescurrentprocessaudio"><code>excludesCurrentProcessAudio</code></a>（13.0）、<a href="https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker"><code>SCContentSharingPicker</code></a>（14.0）、<a href="https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/capturemicrophone"><code>captureMicrophone</code></a>（15.0）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none"><code>NSWindow.SharingType.none</code></a>（「macOS 不再使用的舊常數」，不要用來隱藏內容，改用 FairPlay Streaming）。</li>
+  <li>Apple Developer Forums：<a href="https://developer.apple.com/forums/thread/792152">On macOS 15.4+, NSWindow with kCGWindowSharingStateSharingNone still captured by ScreenCaptureKit</a>（DTS，2025 年 7 月：目前沒有防止螢幕擷取的公開 API）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps">Capturing system audio with Core Audio taps</a> 與 <a href="https://developer.apple.com/documentation/bundleresources/information-property-list/nsaudiocaptureusagedescription"><code>NSAudioCaptureUsageDescription</code></a>（14.2）；<a href="https://developer.apple.com/documentation/coregraphics/cgpreflightscreencaptureaccess()"><code>CGPreflightScreenCaptureAccess</code></a>。</li>
+  <li>Apple 支援：<a href="https://support.apple.com/guide/mac-help/control-access-to-screen-and-system-audio-recording-mchld6aa7d23/mac">控制螢幕與系統錄音的取用權</a>（可只允許錄音）。</li>
+  <li>TidBITS：<a href="https://tidbits.com/2024/08/19/apple-reduces-excessive-sequoia-permission-requests-shifts-to-monthly">Apple Reduces Excessive Sequoia Permission Requests, Shifts to Monthly</a>；9to5Mac：<a href="https://9to5mac.com/2024/10/07/macos-sequoia-screen-recording-popups/">macOS 15.1 的螢幕錄製提示變更</a>。</li>
+  <li>Electron：<a href="https://www.electronjs.org/docs/latest/api/browser-window"><code>win.setContentProtection</code></a>、<a href="https://github.com/electron/electron/issues/48258">issue #48258</a>（ScreenCaptureKit 不理 <code>NSWindowSharingNone</code>）、<a href="https://github.com/electron/electron/pull/34362">PR #34362</a>（在 ScreenCaptureKit 擷取中排除受保護的視窗）。</li>
+  <li>Microsoft：<a href="https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/screen-capture">Screen capture（Windows.Graphics.Capture）</a>、<a href="https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession"><code>GraphicsCaptureSession</code></a>、<a href="https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired"><code>IsBorderRequired</code></a>。</li>
+  <li>Microsoft：<a href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity"><code>SetWindowDisplayAffinity</code></a>（<code>WDA_EXCLUDEFROMCAPTURE</code>，「不是安全功能或 DRM」）。</li>
+  <li>Microsoft：<a href="https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording">Loopback Recording</a>、<a href="https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params"><code>AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS</code></a>（最低 build 20348）。</li>
+  <li>OBS：<a href="https://obsproject.com/kb/macos-screen-capture-source">macOS Screen Capture Source</a>、<a href="https://obsproject.com/kb/video-feedback-effect-troubleshooting">Video Feedback Effect Troubleshooting</a>（兩個平台排除 OBS 視窗的位置）、<a href="https://obsproject.com/kb/application-audio-capture-guide">Application Audio Capture Guide</a>（Windows 10 2004 起）。</li>
+  <li>Cap（revision <code>346561b</code>）：<a href="https://github.com/CapSoftware/Cap/blob/346561b837aaa2cd27eea01b90b858d6596848b5/apps/desktop/src-tauri/src/window_exclusion.rs"><code>window_exclusion.rs</code></a>、<a href="https://github.com/CapSoftware/Cap/blob/346561b837aaa2cd27eea01b90b858d6596848b5/apps/desktop/src-tauri/src/general_settings.rs"><code>general_settings.rs</code></a>（預設排除的視窗與 Windows 的幽靈覆蓋層註解）、<a href="https://github.com/CapSoftware/Cap/blob/346561b837aaa2cd27eea01b90b858d6596848b5/crates/scap-cpal/src/lib.rs"><code>scap-cpal</code></a>（loopback 的靜音保持串流）、<a href="https://github.com/CapSoftware/Cap/issues/2023">issue #2023</a>（輪詢 <code>SCShareableContent</code> 的記憶體成長）。</li>
+  <li>Loom：<a href="https://support.atlassian.com/loom/docs/hide-the-recording-controls/">Hide the recording controls</a>。</li>
+  <li>MDN：<a href="https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia"><code>getDisplayMedia()</code></a>；Addpipe：<a href="https://blog.addpipe.com/getdisplaymedia-allows-capturing-the-screen-with-system-sounds-on-chrome-on-macos/">macOS 版 Chrome 的系統音訊分享</a>。</li>
+  <li>相關文章：<a href="native-apis-and-tech-stack-choices.html">從瀏覽器 API 到作業系統 API</a>（為什麼錄影離開 Chromium）、<a href="audio-clocks-mixing-and-av-sync.html">音訊時脈、混音與影音同步</a>（loopback 沒聲音時的混音）、<a href="codecs-containers-and-crash-safe-recording.html">編解碼器、容器與不怕當機的錄影</a>。</li>
+  <li>專案文件：<a href="../system-design/recording.md#own-windows-and-system-ui">錄影設計：自己的視窗與系統介面</a>、<a href="../system-design/recording.md#frame-rate-request">畫格率要求</a>、<a href="../system-design/recording.md#audio">音訊</a>、<a href="../system-design/recording.md#windows-specifics">Windows 細節</a>、<a href="../system-design/desktop.md#screen-permission">螢幕權限</a>、<a href="../system-design/webrtc.md">為什麼錄影離開 Chromium</a>、<a href="../system-design/decisions.md">設計決策</a>、<a href="../verification/history-2026-10.md#plan-076-closure--2026-10-16">計畫 076 結案紀錄</a>。</li>
+  <li>原始碼：<code>native/capture/src/mac/content.rs</code>（過濾器、找到自己、系統介面的視窗層級）、<code>mac/session.rs</code>（串流設定與只有聲音的串流）、<code>win/capture.rs</code>（WGC）、<code>win/audio.rs</code>（process loopback）、<code>src/main/recording/capture-exclusion.ts</code>（Windows 的視窗排除）。</li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>媒體權限與隱私：桌面 App 何時、如何取用螢幕、麥克風與相機</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-lg); }
+h2 { font-size: 1.22rem; line-height: 1.3; margin: var(--space-3xl) 0 var(--space-md); padding-top: var(--space-lg); border-top: 1px solid var(--oat); }
+h3 { font-size: 1rem; line-height: 1.4; margin: var(--space-2xl) 0 var(--space-sm); color: var(--gray-700); }
+p, ul, ol, .deck, .callout, table, pre, figure { max-width: var(--content-width); }
+p { margin: 0 0 var(--space-lg); }
+ul, ol { margin: 0 0 var(--space-lg); padding-left: 1.4em; }
+li { margin-bottom: var(--space-sm); }
+li p { margin-bottom: var(--space-sm); }
+.deck { font-size: 1.05rem; color: var(--gray-700); margin-bottom: var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code, th code, figcaption code {
+  background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em; overflow-wrap: anywhere;
+}
+table, pre { width: 100%; }
+.table-scroll { max-width: var(--content-width); overflow-x: auto; margin: var(--space-lg) 0 var(--space-xl); }
+table { border-collapse: collapse; margin: 0; font-size: 0.95rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 650; }
+.compact-first th:first-child, .compact-first td:first-child { white-space: nowrap; }
+.callout {
+  background: var(--gray-100); border: 1px solid var(--oat); border-left: 4px solid var(--clay);
+  border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl);
+}
+.callout.warning { border-left-color: var(--warning); }
+.callout p:last-child { margin-bottom: 0; }
+.sources { border-top: 1px solid var(--oat); padding-top: var(--space-lg); font-size: 0.9rem; color: var(--gray-700); }
+.sources ul { padding-left: 1.2em; }
+.sources h2 { border-top: 0; margin-top: 0; padding-top: 0; }
+
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; box-sizing: border-box; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code {
+  position: absolute; top: 9px; right: 9px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm);
+  background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer;
+}
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+pre.language-shell { background: #11110f; }
+pre code .sh-command { color: #ff946e; font-weight: 400; }
+pre code .sh-flag { color: #cfc6a2; font-weight: 400; }
+pre code .sh-string { color: #8fb86a; }
+pre code .sh-var { color: #cfc6a2; }
+pre code .sh-comment { color: #858177; font-style: italic; }
+pre code .sh-prompt { color: #ff946e; font-weight: 400; }
+
+.flow-figure { margin: var(--space-xl) 0 var(--space-2xl); }
+.flow-figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.flow-figure figcaption { font-size: 0.9rem; color: var(--gray-700); margin-top: var(--space-sm); }
+.flow-figure .flow-mobile { display: none; }
+.fig-node rect { fill: var(--white); stroke: var(--oat); stroke-width: 1.5; }
+.fig-label { fill: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 15px; font-weight: 650; }
+.fig-note { fill: var(--gray-700); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; font-size: 13px; font-weight: 500; }
+.fig-arrow { stroke: var(--clay); stroke-width: 2; fill: none; }
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  th, td { padding: 6px 8px; }
+  .table-wide { min-width: 600px; }
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+.toc { max-width: var(--content-width); background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg); margin: 0 0 var(--space-2xl); box-sizing: border-box; }
+.toc-title { font-weight: 650; margin: 0 0 var(--space-sm); }
+.toc ol { margin: 0; padding-left: 1.4em; }
+.toc li { margin-bottom: 4px; }
+.fig-fail { stroke: var(--gray-500); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+.fig-fail-box rect { fill: var(--gray-100); stroke: var(--gray-300); stroke-width: 1.2; }
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>媒體權限與隱私：桌面 App 何時、如何取用螢幕、麥克風與相機</h1>
+
+<p class="deck">錄影、會議、直播這類 App 要的，正是作業系統最想替使用者守住的東西：螢幕上的內容、電腦播出的聲音、房間裡的聲音，以及使用者的臉。macOS 用 TCC 隱私權限、用途說明與 hardened runtime 的 entitlement 把關，Windows 則用「隱私權與安全性」裡的開關。本文先建立這些機制的心智模型：誰被授權、授權記在哪裡、什麼時候問、被拒絕之後怎麼辦、系統指示器在保護什麼；再逐一比較幾個設計選擇：啟動時一次問完或在情境中詢問、敏感輸入預設開或關、拒絕時要不要讓錄影照常開始、怎麼引導使用者回到正確的設定面板，以及執行中的程式看不到新授權時怎麼辦。每個選擇都會講它依賴的條件、替代方案的代價、OBS、Cap、Loom、Chromium 與 Electron 等怎麼做，以及什麼情況會讓結論翻轉。貫穿範例是 RecordStuff 這個選單列錄影工具加上麥克風與相機的過程。</p>
+
+<nav class="toc" aria-label="目錄">
+  <p class="toc-title">目錄</p>
+  <ol>
+    <li><a href="#problem">問題：錄影工具要的，正是作業系統最想守住的</a></li>
+    <li><a href="#model">心智模型：macOS 的 TCC 與開啟裝置前的關卡</a></li>
+    <li><a href="#identity">誰被授權：bundle identifier 與程式簽章</a></li>
+    <li><a href="#when">什麼時候問：啟動時，還是使用者開啟功能時</a></li>
+    <li><a href="#default-off">敏感輸入預設關閉</a></li>
+    <li><a href="#denied">被拒絕之後：拒絕開始、指到正確的面板</a></li>
+    <li><a href="#relaunch">執行中的程式看不到新授權</a></li>
+    <li><a href="#indicators">系統指示器，以及為什麼要及早關掉裝置</a></li>
+    <li><a href="#windows">Windows：另一種隱私模型</a></li>
+    <li><a href="#others">其他產品怎麼做</a></li>
+    <li><a href="#example">實例：RecordStuff 加上麥克風與相機</a></li>
+    <li><a href="#table">決策總表</a></li>
+    <li><a href="#boundaries">不要這樣做的情況</a></li>
+    <li><a href="#criteria">可以帶走的判斷準則</a></li>
+  </ol>
+</nav>
+
+<h2 id="problem">問題：錄影工具要的，正是作業系統最想守住的</h2>
+
+<p>想像一個螢幕錄影工具，原本只錄畫面和電腦播出的聲音。現在要加兩個功能：錄使用者的旁白（麥克風），以及在畫面角落放一個使用者自己的鏡頭畫面（相機）。從程式的角度看，這只是多開兩個裝置；從使用者的角度看，這個 App 從「錄我的螢幕」變成了「也能聽到我的房間、看到我的臉」。</p>
+
+<p>使用者的期待很直觀：</p>
+
+<ul>
+  <li>沒打開麥克風或相機，App 就不會碰它們；更新之後也不會自己打開。</li>
+  <li>系統跳出詢問時，看得懂為什麼要問，而且問的時機合理。</li>
+  <li>拒絕了之後，App 會說清楚「現在不能做什麼、去哪裡改」，而不是默默錄出一段沒有聲音或沒有臉的影片。</li>
+  <li>在系統設定裡改成允許之後，回到 App 就能用。</li>
+  <li>選單列上的麥克風、相機指示，或相機旁的燈，只在真的在錄的時候亮，錄完就熄。</li>
+</ul>
+
+<p>最直覺的寫法是：App 一啟動就把螢幕錄影、麥克風、相機全部問一遍，省得之後麻煩；麥克風和相機既然是新功能，就預設打開讓使用者看到；權限被拒絕時照樣開始錄，反正其他部分還能錄；裝置開了就一直開著，下次錄影比較快。每一項都會出問題：</p>
+
+<ul>
+  <li><strong>啟動時全部問一遍。</strong>使用者還不知道 App 為什麼需要相機，很可能直接拒絕。而 macOS 對同一個 App 的同一項權限只會跳出一次系統詢問，之後就只能請使用者自己去系統設定改。一次不合時機的詢問，用掉的是唯一的一次機會。</li>
+  <li><strong>新的敏感輸入預設開啟。</strong>使用者更新之後按下錄影，就開始錄自己的房間。即使這段影片沒有外流，信任也已經受損。</li>
+  <li><strong>被拒絕時照樣開始。</strong>錄影結束才發現沒有旁白或沒有鏡頭畫面，這段錄影已經無法重來。</li>
+  <li><strong>裝置一直開著。</strong>相機燈和選單列的指示一直亮著，使用者會合理地懷疑 App 在偷錄。</li>
+  <li><strong>以為「讀得到的狀態」就是真相。</strong>本文後面會看到一個實際觀察：使用者在系統設定改成允許之後，執行中的 App 仍然讀到「拒絕」。只相信狀態的 App 會一直顯示錯誤的提示。</li>
+</ul>
+
+<p>這些問題背後有幾股互相拉扯的力量：</p>
+
+<ul>
+  <li><strong>使用者控制：</strong>使用者要能決定、也能看到哪個 App 在什麼時候用了哪個裝置。</li>
+  <li><strong>可用性：</strong>功能要能在合理的步驟內開始運作，被拒絕後也要有清楚的路可以回頭。</li>
+  <li><strong>正確性：</strong>錄影開始時就要確定每個要求的來源都真的拿得到，不能錄到一半或錄完才發現。</li>
+  <li><strong>身分連續性：</strong>使用者授權的是「這個 App」。App 更新之後，作業系統要認得它還是同一個 App，否則授權就得重來。</li>
+  <li><strong>平台差異：</strong>macOS 和 Windows 的權限模型不一樣，能讀到的狀態也不一樣。</li>
+</ul>
+
+<p>所以本文要回答的是：<strong>一個需要螢幕、麥克風與相機的桌面 App，該在什麼時候、用什麼身分向作業系統要權限；拿不到時該怎麼處理；拿到之後，又該怎麼讓使用者隨時看得到、關得掉？</strong>先從 macOS 怎麼把關開始。</p>
+
+<h2 id="model">心智模型：macOS 的 TCC 與開啟裝置前的關卡</h2>
+
+<p>macOS 的隱私權限由 <strong>TCC</strong>（Transparency, Consent, and Control）管理。它的規則可以濃縮成三句話：</p>
+
+<ul>
+  <li><strong>使用者決定，作業系統執行。</strong>App 不能自己給自己權限，只能請系統代為詢問；使用者的回答由系統記住，之後只能在「系統設定 → 隱私權與安全性」裡改。</li>
+  <li><strong>授權記在 App 的身分上。</strong>系統記的不是檔案路徑，而是程式簽章裡描述「這是誰的程式」的那段要求（下一節詳述）。</li>
+  <li><strong>系統只問一次。</strong>Apple 的說明是：系統會記住使用者對每個存取詢問的回答，之後使用同一個擷取裝置不會再跳出詢問。</li>
+</ul>
+
+<p>對相機和麥克風而言，一個 App 要真正開啟裝置，得通過四道關卡。前兩道是開發者在打包時決定的，第三道是使用者決定的，第四道是開啟之後系統一定會做的事：</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-gate-d-title fig-gate-d-desc" viewBox="0 0 680 214" style="max-width: 680px"><title id="fig-gate-d-title">macOS 開啟相機或麥克風前的四道關卡</title><desc id="fig-gate-d-desc">依序是 Info.plist 的用途說明、hardened runtime 的 entitlement、使用者在 TCC 的授權，最後是開啟裝置。前兩道缺了，系統會結束 App；第三道被拒絕，裝置打不開；裝置開啟時，系統一定會亮起指示器。</desc><defs><marker id="fig-gate-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <g class="fig-node"><rect x="10" y="20" width="148" height="80" rx="8"></rect><text class="fig-label" x="84" y="48" text-anchor="middle">① 用途說明</text><text class="fig-note" x="84" y="69" text-anchor="middle">Info.plist</text><text class="fig-note" x="84" y="86" text-anchor="middle">打包時決定</text></g>
+    <g class="fig-node"><rect x="184" y="20" width="148" height="80" rx="8"></rect><text class="fig-label" x="258" y="48" text-anchor="middle">② Entitlement</text><text class="fig-note" x="258" y="69" text-anchor="middle">hardened runtime</text><text class="fig-note" x="258" y="86" text-anchor="middle">簽章時決定</text></g>
+    <g class="fig-node"><rect x="358" y="20" width="148" height="80" rx="8"></rect><text class="fig-label" x="432" y="48" text-anchor="middle">③ 使用者授權</text><text class="fig-note" x="432" y="69" text-anchor="middle">TCC 依身分記錄</text><text class="fig-note" x="432" y="86" text-anchor="middle">只詢問一次</text></g>
+    <g class="fig-node"><rect x="532" y="20" width="138" height="80" rx="8"></rect><text class="fig-label" x="601" y="48" text-anchor="middle">④ 開啟裝置</text><text class="fig-note" x="601" y="69" text-anchor="middle">系統亮起指示器</text><text class="fig-note" x="601" y="86" text-anchor="middle">App 無法關掉</text></g>
+    <path class="fig-arrow" d="M 158 60 H 180" marker-end="url(#fig-gate-d-head)"></path>
+    <path class="fig-arrow" d="M 332 60 H 354" marker-end="url(#fig-gate-d-head)"></path>
+    <path class="fig-arrow" d="M 506 60 H 528" marker-end="url(#fig-gate-d-head)"></path>
+    <path class="fig-fail" d="M 84 100 V 130"></path>
+    <path class="fig-fail" d="M 258 100 V 130"></path>
+    <path class="fig-fail" d="M 432 100 V 130"></path>
+    <g class="fig-fail-box"><rect x="10" y="134" width="322" height="64" rx="8"></rect><text class="fig-note" x="171" y="160" text-anchor="middle">缺了任何一個：存取裝置時</text><text class="fig-note" x="171" y="180" text-anchor="middle">系統直接結束 App</text></g>
+    <g class="fig-fail-box"><rect x="358" y="134" width="148" height="64" rx="8"></rect><text class="fig-note" x="432" y="160" text-anchor="middle">被拒絕：裝置</text><text class="fig-note" x="432" y="180" text-anchor="middle">打不開或沒有資料</text></g>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-gate-m-title fig-gate-m-desc" viewBox="0 0 360 400" style="max-width: 360px"><title id="fig-gate-m-title">macOS 開啟相機或麥克風前的四道關卡</title><desc id="fig-gate-m-desc">依序是用途說明、entitlement、使用者授權與開啟裝置；前兩道缺了系統會結束 App，第三道被拒絕裝置打不開，開啟時系統一定亮起指示器。</desc><defs><marker id="fig-gate-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <g class="fig-node"><rect x="10" y="10" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="38" text-anchor="middle">① 用途說明（Info.plist）</text><text class="fig-note" x="180" y="62" text-anchor="middle">缺了：存取時系統結束 App</text></g>
+    <g class="fig-node"><rect x="10" y="108" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="136" text-anchor="middle">② Entitlement（hardened runtime）</text><text class="fig-note" x="180" y="160" text-anchor="middle">缺了：存取時系統結束 App</text></g>
+    <g class="fig-node"><rect x="10" y="206" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="234" text-anchor="middle">③ 使用者授權（TCC，只問一次）</text><text class="fig-note" x="180" y="258" text-anchor="middle">被拒絕：裝置打不開或沒有資料</text></g>
+    <g class="fig-node"><rect x="10" y="304" width="340" height="70" rx="8"></rect><text class="fig-label" x="180" y="332" text-anchor="middle">④ 開啟裝置</text><text class="fig-note" x="180" y="356" text-anchor="middle">系統亮起指示器，App 無法關掉</text></g>
+    <path class="fig-arrow" d="M 180 80 V 104" marker-end="url(#fig-gate-m-head)"></path>
+    <path class="fig-arrow" d="M 180 178 V 202" marker-end="url(#fig-gate-m-head)"></path>
+    <path class="fig-arrow" d="M 180 276 V 300" marker-end="url(#fig-gate-m-head)"></path>
+  </svg>
+  <figcaption>前兩道是打包與簽章時的設定，缺了不是「被拒絕」，而是 App 被結束；第三道才是使用者的選擇；第四道是系統替使用者做的稽核，App 無法跳過。</figcaption>
+</figure>
+
+<h3>① 用途說明（usage description）</h3>
+
+<p>用途說明是 App 的 <code>Info.plist</code> 裡的一段文字，相機用 <code>NSCameraUsageDescription</code>，麥克風用 <code>NSMicrophoneUsageDescription</code>。系統跳出詢問時，會把這段文字放在 App 名稱之後、按鈕之前。Apple 的說明很直接：使用相機或麥克風的 App 必須提供這個鍵。Apple 的人機介面指南也建議這段文字用主動語態寫成一句完整、具體的句子，說清楚 App 如何、為什麼使用它；像「需要麥克風以提供更好的體驗」這種模糊理由，正是它舉的反例。</p>
+
+<p>有一個容易忽略的細節：用途說明寫的是「為什麼」，而「為什麼」最好跟詢問的時機對得上。如果詢問發生在使用者剛打開相機開關的那一刻，寫「當你開啟相機時，會把你的鏡頭畫面放進錄影」就恰好回答了使用者當下的疑問。</p>
+
+<h3>② Hardened runtime 的 entitlement</h3>
+
+<p>在 App Store 以外發佈的 macOS App，通常會啟用 <strong>hardened runtime</strong>：一組防止程式碼注入、動態函式庫劫持等攻擊的執行期保護，也是送交 Apple 公證（notarization）的前提。Hardened runtime 預設不允許存取相機和麥克風；App 要在簽章時宣告 <code>com.apple.security.device.camera</code> 或 <code>com.apple.security.device.audio-input</code> 這兩個 entitlement，才「有資格」存取。Entitlement 不等於授權：它只是讓 App 能走到第三道關卡，使用者仍然要答應。</p>
+
+<p>Apple 的文件把前兩道關卡寫在同一句話裡：App 必須在 <code>Info.plist</code> 裡有對應的鍵，並在 macOS 上啟用對應的 entitlement，然後才能請求授權或嘗試使用擷取裝置；否則系統會結束 App。注意這裡的用詞是「結束」：缺了用途說明或 entitlement，不會得到一個可以處理的錯誤，而是整個行程被終止。</p>
+
+<h3>③ 使用者授權</h3>
+
+<p>授權有四種狀態：尚未決定、已允許、已拒絕，以及受限（例如被管理裝置的設定檔禁止，使用者自己也改不了）。只有在「尚未決定」時請求，系統才會跳出詢問；其他狀態下請求，系統直接回傳既有的答案。在 Electron 裡，這兩個動作分別是 <code>systemPreferences.getMediaAccessStatus()</code>（讀狀態，不會跳出詢問）與 <code>systemPreferences.askForMediaAccess()</code>（只支援 <code>camera</code> 與 <code>microphone</code>）。Electron 的文件也寫明：如果請求已被拒絕，就<em>必須</em>到系統設定改，不會再跳出提示，promise 會直接以既有的狀態結束。</p>
+
+<h3>④ 開啟裝置與指示器</h3>
+
+<p>授權之後，App 真正開啟裝置時，系統會在選單列顯示指示器（麥克風是橘色圓點，相機是綠色圓點），有相機燈的 Mac 還會亮燈。這一步 App 無法關掉，它是系統替使用者做的即時稽核。本文在<a href="#indicators">後面</a>會回到它。</p>
+
+<h3>四種媒體，四種規則</h3>
+
+<p>錄影工具通常會碰到四種受保護的媒體。它們的規則並不一致，特別是螢幕錄影：</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>媒體</th><th>怎麼觸發系統詢問</th><th>需要宣告的東西</th><th>選單列指示</th><th>系統設定面板</th></tr></thead>
+  <tbody>
+    <tr><td>螢幕錄影</td><td>第一次嘗試擷取螢幕（例如 ScreenCaptureKit，或 Electron 的 <code>desktopCapturer</code>）；使用者要到系統設定自己打開開關</td><td>沒有對應的 entitlement</td><td>螢幕錄影的選單列項目（macOS Sonoma 起為紫色，點開可看到是哪個 App）</td><td><code>Privacy_ScreenCapture</code></td></tr>
+    <tr><td>系統音訊</td><td>透過 ScreenCaptureKit 擷取時，算在螢幕錄影內；透過 Core Audio tap（macOS 14.2 起）擷取時，第一次開始錄音會詢問「系統音訊錄製」權限</td><td>Core Audio tap 需要 <code>NSAudioCaptureUsageDescription</code></td><td>紫色圓點：「正在錄製系統音訊」</td><td>螢幕與系統音訊錄製</td></tr>
+    <tr><td>麥克風</td><td>請求存取（AVFoundation 的 <code>requestAccess</code>，Electron 的 <code>askForMediaAccess</code>）或第一次使用裝置</td><td><code>NSMicrophoneUsageDescription</code> 與 <code>com.apple.security.device.audio-input</code></td><td>橘色圓點</td><td><code>Privacy_Microphone</code></td></tr>
+    <tr><td>相機</td><td>同上</td><td><code>NSCameraUsageDescription</code> 與 <code>com.apple.security.device.camera</code></td><td>綠色圓點；有相機燈的機型同時亮燈</td><td><code>Privacy_Camera</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>表中的面板代號可以組成 <code>x-apple.systempreferences:com.apple.preference.security?Privacy_Camera</code> 這樣的網址，讓 App 直接打開系統設定的對應頁面。選單列一次只顯示一個圓點：麥克風與相機同時使用時，只會看到綠色。</p>
+
+<p>螢幕錄影有兩個特別之處。第一，它沒有「App 自己請求」的標準流程可以像相機那樣在 App 內完成：使用者要到系統設定裡把 App 的開關打開，macOS 通常會接著提示結束並重新開啟該 App。第二，它被重新確認的頻率較高：macOS Sequoia 測試版期間的報導指出，系統會定期（後來定為每月）再次請使用者確認是否繼續允許某個 App 錄製螢幕，使用 ScreenCaptureKit 的 App 也不例外。另一條路是系統提供的內容分享選擇器（<code>SCContentSharingPicker</code>，macOS 14 起）：使用者每次在系統的介面裡選要分享什麼。Chromium 的原始碼在 macOS 15 以上、啟用這個選擇器時，判定螢幕擷取不需要系統層級的權限。代價是 App 不能自己決定錄哪一個畫面，每次都要使用者經過系統介面挑選；對「按一下就開始錄」的工具，這通常不划算。</p>
+
+<h2 id="identity">誰被授權：bundle identifier 與程式簽章</h2>
+
+<p>使用者在系統設定裡看到的是一個 App 名稱，但 TCC 記下的不是名稱，也不是路徑。Apple 的技術文件 TN3127 用一個例子說明：App 第一次存取麥克風時，系統請使用者授權；幾天後 App 自動更新，從 1.2 版換成 1.3 版，又存取麥克風。系統怎麼知道 1.3 版和 1.2 版是「同一個程式」？答案是 <strong>designated requirement</strong>（DR，指定要求）：簽章裡的一段條件式，描述「什麼樣的程式算是我」。系統在授權資料庫裡記下 App 的 DR；之後每次存取，都檢查這一版的程式是否滿足當初記下的 DR。</p>
+
+<p>DR 通常由兩部分組成：</p>
+
+<ul>
+  <li><strong>識別碼。</strong>對 App 而言，通常就是 <strong>bundle identifier</strong>（<code>CFBundleIdentifier</code>，例如 <code>com.example.recorder</code>）。</li>
+  <li><strong>簽署者。</strong>由誰的憑證簽的。用 Apple 核發的 Developer ID 簽章時，DR 會指向 Apple 的憑證鏈與開發者的 Team ID；用自簽憑證時，DR 會直接指向那張憑證（例如 <code>certificate leaf = H"…"</code>，也就是憑證的雜湊值）。</li>
+</ul>
+
+<p>這解釋了開發時常見的怪現象。TN3127 寫道：沒有簽章的程式沒有 DR；ad hoc 簽章（Xcode 的「Sign to Run Locally」）雖然有 DR，但綁死在那一版程式上。兩種情況下系統都無法可靠地追蹤程式的身分，所以每改一次程式碼重新執行，系統就再問一次。</p>
+
+<h3>三種簽章方式，對 TCC 有什麼不同</h3>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>簽章方式</th><th>DR 指向什麼</th><th>更新後授權是否延續</th><th>第一次開啟</th><th>什麼會讓授權失效</th></tr></thead>
+  <tbody>
+    <tr><td>Ad hoc 或未簽章</td><td>這一版程式的雜湊值，或沒有 DR</td><td>不延續，每個版本都要重新授權</td><td>Gatekeeper 阻擋</td><td>任何一次重新建置</td></tr>
+    <tr><td>固定的自簽憑證</td><td>識別碼加上那張憑證</td><td>延續，只要識別碼和憑證都不變</td><td>Gatekeeper 阻擋，使用者要手動放行</td><td>換識別碼；換憑證（包括憑證到期後換新）</td></tr>
+    <tr><td>Developer ID（加上公證）</td><td>識別碼加上 Apple 憑證鏈與 Team ID</td><td>延續；憑證續約後 Team ID 不變</td><td>公證過的 App 可直接開啟</td><td>換識別碼；換開發者帳號</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>兩個常見的誤解值得分開說：</p>
+
+<ul>
+  <li><strong>公證不是 TCC 的前提。</strong>公證是 Apple 對軟體的自動檢查，影響的是 Gatekeeper 第一次開啟時的體驗；TCC 看的是 DR。自簽、沒有公證的 App 只要每次都用同一張憑證、同一個識別碼簽章，授權一樣能跨版本延續。</li>
+  <li><strong>自簽的代價藏在憑證上。</strong>Developer ID 的 DR 指向 Team ID，憑證續約不影響；自簽的 DR 指向那張憑證本身，換憑證就等於換了一個 App，所有使用者都要重新授權。所以自簽憑證要一開始就設長效期，並當成長期資產保管。</li>
+</ul>
+
+<h3>Bundle identifier 是 App 的身分</h3>
+
+<p>識別碼沒有任何註冊機構分配，系統和工具只是假設它是唯一的。慣例是把一個你擁有的網域倒過來寫，再加上產品名稱，因為網域本身就是全球唯一的。更重要的是，它一旦發佈就不該再改：TCC 的授權、通知的歸屬、簽章的 DR 都以它為準，改了之後系統會把新版當成另一個 App，使用者要重新授權螢幕錄影、麥克風與相機。</p>
+
+<p>這也影響開發與測試。用 <code>electron .</code> 之類的方式在開發時執行，實際跑的是 Electron 本身的 bundle（識別碼為 <code>com.github.Electron</code>），沒有你的用途說明，也不是你的身分；權限行為和打包後的 App 不同。要驗證權限，必須用正式簽章的打包版本。要重來一次「第一次詢問」，可以用 <code>tccutil reset Camera &lt;識別碼&gt;</code> 清掉某個 App 的某項授權；Loom 的支援文件就教使用者用 <code>tccutil reset All com.loom.desktop</code> 重設 Loom 的所有授權。這是開發者與使用者的工具，App 自己不應該替使用者重設。</p>
+
+<h2 id="when">什麼時候問：啟動時，還是使用者開啟功能時</h2>
+
+<p>系統詢問只有一次，所以「什麼時候問」是這個領域最重要的設計決定。Apple 的人機介面指南給的原則是：只在 App 明顯需要時才請求；理想上等到使用者真的使用需要它的功能時才問；除非 App 沒有這項權限就無法運作，否則避免在啟動時請求。指南舉的例子是導航 App：使用者理解它一開始就需要位置。</p>
+
+<p>對錄影工具來說，這條原則把權限分成兩類：</p>
+
+<ul>
+  <li><strong>核心權限。</strong>螢幕錄影工具沒有螢幕錄影權限，就什麼都不能做。這類權限在第一次啟動時處理是合理的，使用者也能理解。</li>
+  <li><strong>選用權限。</strong>麥克風和相機是錄影工具的附加功能，很多使用者永遠不會打開。在啟動時問，等於要使用者為一個還沒想用的功能做決定；在使用者打開開關時問，詢問就成了他自己動作的直接結果。</li>
+</ul>
+
+<h3>三種做法的取捨</h3>
+
+<p><strong>啟動時逐一詢問。</strong>最簡單，也最容易被拒絕。它的優點是之後不會在使用者忙著錄影時跳出詢問；缺點是用掉了唯一一次詢問，而且使用者還沒有理由答應。</p>
+
+<p><strong>啟動時顯示一份權限清單，讓使用者逐項按下。</strong>這是 OBS Studio 和 Cap 的做法。OBS 在 macOS 上第一次啟動（或權限對話框改版後）會顯示一個對話框，列出螢幕錄影、相機、麥克風與輸入監控等權限，每一項是一個按鈕：尚未決定時按下就當場請求，已被拒絕時按下就打開系統設定對應的面板。Cap 的新手引導把螢幕錄影和輔助使用列為必要，麥克風和相機標成選用。這類清單的好處是使用者一次看到全貌，每個詢問仍然由使用者自己按下觸發；代價是在使用者還沒用到某個功能前就請他決定。Apple 指南對這類「預先說明畫面」另有規定：只放一個會帶出系統詢問的按鈕，用「繼續」之類的字眼，不要用看起來像「允許」的按鈕誘導使用者。</p>
+
+<p><strong>在情境中詢問。</strong>使用者打開麥克風或相機開關的那一刻請求；如果開關是在別處打開的（例如另一個選單），就在第一次真正用到時（例如開始錄影前）請求。Cap 的主視窗也是這樣：使用者選擇相機或麥克風時，才呼叫請求；已經被拒絕的，直接打開系統設定。這種做法的詢問時機最好，代價是要處理「詢問出現在錄影流程中間」的情況：開始錄影前要先等使用者回答，倒數計時不能在詢問還沒答覆時就開始。</p>
+
+<p>結論是有條件的：<strong>當功能是選用的、使用者能清楚地「打開」它時，在情境中詢問是較好的預設。</strong>如果你的 App 本來就有新手引導，而且大多數使用者都會用到這些功能（例如視訊會議 App 的相機和麥克風），清單也很合理。</p>
+
+<h2 id="default-off">敏感輸入預設關閉</h2>
+
+<p>「什麼時候問」的前提是：功能本身預設是關的。這不只是為了延後詢問，還有三個獨立的理由：</p>
+
+<ul>
+  <li><strong>更新不應改變錄到的內容。</strong>已經在用的使用者，更新後按下同一個錄影快捷鍵，應該錄到和以前一樣的東西。新功能預設開啟，就會在他沒注意時開始錄他的房間或臉。</li>
+  <li><strong>開啟是一個明確的同意。</strong>使用者自己打開開關，等於在 App 內先同意了一次；之後系統的詢問只是確認。</li>
+  <li><strong>關閉時什麼都不碰。</strong>預設關閉時，App 不開裝置、不列出裝置清單、不讀取權限狀態以外的任何東西。這讓「沒打開就不碰」成為一個可以驗證的性質，而不只是承諾。</li>
+</ul>
+
+<p>開關要存在使用者的設定裡，而且即使系統拒絕了，開關也應該保持「開」。理由是：開關代表使用者想要這個功能，拒絕代表系統目前不讓；兩者不同。保持開啟，App 才能顯示「你想用相機，但系統目前不允許」這種精確的提示；如果自動關回去，使用者會以為開關壞了。</p>
+
+<p>什麼時候不必這樣做？當這個輸入就是 App 的核心時，例如語音備忘錄 App 的麥克風、會議 App 的鏡頭。這時「預設關閉」只會讓使用者多一步，系統的詢問本身已經足以保護他。</p>
+
+<h2 id="denied">被拒絕之後：拒絕開始、指到正確的面板</h2>
+
+<p>使用者拒絕了，或之後在系統設定把權限關掉。App 有三個選擇：</p>
+
+<ol>
+  <li><strong>照樣開始，少錄那一部分。</strong>使用者錄完才發現沒有旁白或鏡頭畫面。錄影是一次性的事件，這種「部分成功」往往等於失敗。</li>
+  <li><strong>照樣開始，但事後提醒。</strong>比第一種好一點，但結果一樣無法挽回。</li>
+  <li><strong>拒絕開始，並說明原因。</strong>在倒數計時之前就停下，說清楚「麥克風是開的，但系統不允許；去哪裡改，或把麥克風關掉」。</li>
+</ol>
+
+<p>當使用者明確打開了某個輸入，第三種是較好的預設：他要的是有旁白的錄影，不是任何一段錄影。代價是多一次中斷；但這個中斷發生在錄影開始之前，使用者可以選擇改權限或關掉那個輸入，兩條路都在一步之內。</p>
+
+<p>注意這只適用於「使用者打開的輸入不能用」。錄影中途裝置不見（例如藍牙耳機沒電、手機相機斷線）是另一回事：已經在錄的東西更重要，比較好的做法是繼續錄、事後告知並在紀錄上標註。</p>
+
+<h3>一個好的拒絕提示包含什麼</h3>
+
+<ul>
+  <li><strong>現在的狀態：</strong>「未允許取用相機」，而不是籠統的「發生錯誤」。</li>
+  <li><strong>後果：</strong>「相機開啟時，錄影不會開始」。</li>
+  <li><strong>兩條出路：</strong>到「系統設定 → 隱私權與安全性 → 相機」允許這個 App，或把相機關掉。</li>
+  <li><strong>直達的按鈕：</strong>用前面提到的網址直接打開正確的面板，不要只寫「請到系統設定」。</li>
+  <li><strong>出現在對的地方：</strong>放在那個開關旁邊，而不是一個獨立的錯誤視窗；開關關掉時，提示也跟著消失。</li>
+</ul>
+
+<p>還有一個時機問題：使用者在 App 內打開開關、在系統詢問中按了「不允許」，這個拒絕是他自己剛做的動作的結果。這時用一則通知或就地提示告訴他「已記下你的選擇，之後要改請到這裡」，比等到下次按下錄影才說要好。</p>
+
+<h2 id="relaunch">執行中的程式看不到新授權</h2>
+
+<p>上面的提示有一個前提：使用者在系統設定改成允許之後，App 能看到。實際上不一定。</p>
+
+<h3>螢幕錄影：狀態說允許，擷取卻什麼都看不到</h3>
+
+<p>螢幕錄影的這個問題由來已久。剛授權、App 還沒重新啟動時，讀狀態的函式已經回報允許，但實際嘗試擷取時卻列不出任何螢幕；反過來，使用者在系統設定撤銷授權並選擇「稍後」時，執行中的行程可能仍讀到允許，但擷取已經失敗。所以實務上：</p>
+
+<ul>
+  <li>狀態只是提示；真正的證據是「擷取能不能看到東西」。</li>
+  <li>macOS 在使用者改動螢幕錄影開關時，通常會提示結束並重新開啟 App。Cap 的新手引導直接寫著：允許螢幕錄影後請重新啟動 App。</li>
+</ul>
+
+<h3>相機與麥克風：一個實際觀察</h3>
+
+<p>相機與麥克風也有類似的情況，而且 Electron 的文件寫得很明白：如果存取請求被拒絕，之後在系統設定改了，<strong>App 需要重新啟動，新的權限才會生效</strong>。Zoom 的使用者說明（多家大學 IT 部門轉述）也提醒，修改權限後可能要重新啟動 Zoom。Apple 自己的文件則沒有說明執行中的行程何時會看到新的答案。</p>
+
+<p>RecordStuff 在 2026 年 10 月 18 日的一次實機測試（macOS、正式簽章的打包版本）中觀察到了具體的樣子：</p>
+
+<ol>
+  <li>測試者先用 <code>tccutil reset Camera</code> 清掉 App 的相機授權，從選單列打開相機，系統跳出詢問，測試者選「不允許」。</li>
+  <li>App 的相機設定顯示「未允許取用相機」的提示卡，「開啟相機設定…」打開了「隱私權與安全性 → 相機」，App 列在其中、開關是關的；按下錄影，在倒數之前就被拒絕。</li>
+  <li>測試者在系統設定把 App 的相機開關打開。</li>
+  <li><strong>執行中的 App 仍然說「未允許」</strong>：主行程透過 Electron 的 <code>systemPreferences.getMediaAccessStatus("camera")</code> 讀到的，一直是第一次的答案。</li>
+  <li><strong>但這時開始的一段錄影能開啟相機。</strong>RecordStuff 的錄影由每次新產生的擷取行程負責，那個新行程看到的是允許。</li>
+  <li>重新啟動 App 後，設定與預覽都顯示了相機。</li>
+</ol>
+
+<p>這是觀察到的行為，不是 Apple 文件化的機制。從 Electron 與 Chromium 的原始碼看，Electron 在 macOS 上讀相機狀態時，最後呼叫的是 AVFoundation 的 <code>authorizationStatusForMediaType</code>，中間沒有 Electron 自己的快取；所以「舊答案」比較可能來自作業系統在這個行程裡的狀態，而不是 Electron。但這只是推論，沒有在其他 macOS 版本或其他框架上驗證過。</p>
+
+<figure class="flow-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="fig-relaunch-d-title fig-relaunch-d-desc" viewBox="0 0 680 262" style="max-width: 680px"><title id="fig-relaunch-d-title">相機權限從拒絕到允許的狀態流程</title><desc id="fig-relaunch-d-desc">尚未決定時，使用者開啟功能，系統詢問；允許就可以使用。拒絕後，使用者到系統設定改成允許，但執行中的主行程仍讀到拒絕，新產生的擷取行程則已能開啟相機；重新啟動 App 後，狀態才顯示允許。</desc><defs><marker id="fig-relaunch-d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <g class="fig-node"><rect x="10" y="20" width="140" height="60" rx="8"></rect><text class="fig-label" x="80" y="46" text-anchor="middle">尚未決定</text><text class="fig-note" x="80" y="66" text-anchor="middle">開關關閉</text></g>
+    <g class="fig-node"><rect x="200" y="20" width="150" height="60" rx="8"></rect><text class="fig-label" x="275" y="46" text-anchor="middle">系統詢問</text><text class="fig-note" x="275" y="66" text-anchor="middle">使用者打開開關</text></g>
+    <g class="fig-node"><rect x="530" y="20" width="140" height="60" rx="8"></rect><text class="fig-label" x="600" y="46" text-anchor="middle">允許</text><text class="fig-note" x="600" y="66" text-anchor="middle">可以錄影</text></g>
+    <g class="fig-node"><rect x="10" y="176" width="140" height="70" rx="8"></rect><text class="fig-label" x="80" y="204" text-anchor="middle">拒絕</text><text class="fig-note" x="80" y="225" text-anchor="middle">提示卡，拒絕開始</text></g>
+    <g class="fig-node"><rect x="180" y="176" width="150" height="70" rx="8"></rect><text class="fig-label" x="255" y="204" text-anchor="middle">在系統設定</text><text class="fig-note" x="255" y="225" text-anchor="middle">改成允許</text></g>
+    <g class="fig-node"><rect x="360" y="176" width="150" height="70" rx="8"></rect><text class="fig-label" x="435" y="204" text-anchor="middle">主行程仍讀到拒絕</text><text class="fig-note" x="435" y="225" text-anchor="middle">新擷取行程可開啟</text></g>
+    <g class="fig-node"><rect x="540" y="176" width="130" height="70" rx="8"></rect><text class="fig-label" x="605" y="204" text-anchor="middle">重新啟動</text><text class="fig-note" x="605" y="225" text-anchor="middle">使用者按下</text></g>
+    <path class="fig-arrow" d="M 150 50 H 196" marker-end="url(#fig-relaunch-d-head)"></path>
+    <path class="fig-arrow" d="M 350 50 H 526" marker-end="url(#fig-relaunch-d-head)"></path>
+    <text class="fig-note" x="438" y="40" text-anchor="middle">允許</text>
+    <path class="fig-arrow" d="M 275 80 V 128 H 80 V 172" marker-end="url(#fig-relaunch-d-head)"></path>
+    <text class="fig-note" x="178" y="120" text-anchor="middle">不允許</text>
+    <path class="fig-arrow" d="M 150 211 H 176" marker-end="url(#fig-relaunch-d-head)"></path>
+    <path class="fig-arrow" d="M 330 211 H 356" marker-end="url(#fig-relaunch-d-head)"></path>
+    <path class="fig-arrow" d="M 510 211 H 536" marker-end="url(#fig-relaunch-d-head)"></path>
+    <path class="fig-arrow" d="M 605 176 V 84" marker-end="url(#fig-relaunch-d-head)"></path>
+    <text class="fig-note" x="596" y="134" text-anchor="end">讀到允許</text>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="fig-relaunch-m-title fig-relaunch-m-desc" viewBox="0 0 360 540" style="max-width: 360px"><title id="fig-relaunch-m-title">相機權限從拒絕到允許的狀態流程</title><desc id="fig-relaunch-m-desc">系統詢問後允許就能使用；拒絕後到系統設定改成允許，執行中的主行程仍讀到拒絕，重新啟動後才讀到允許。</desc><defs><marker id="fig-relaunch-m-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97757"></path></marker></defs>
+    <g class="fig-node"><rect x="10" y="10" width="340" height="56" rx="8"></rect><text class="fig-label" x="180" y="34" text-anchor="middle">尚未決定</text><text class="fig-note" x="180" y="54" text-anchor="middle">開關關閉</text></g>
+    <g class="fig-node"><rect x="10" y="94" width="340" height="56" rx="8"></rect><text class="fig-label" x="180" y="118" text-anchor="middle">系統詢問</text><text class="fig-note" x="180" y="138" text-anchor="middle">使用者打開開關</text></g>
+    <g class="fig-node"><rect x="10" y="186" width="160" height="60" rx="8"></rect><text class="fig-label" x="90" y="212" text-anchor="middle">拒絕</text><text class="fig-note" x="90" y="232" text-anchor="middle">提示卡，拒絕開始</text></g>
+    <g class="fig-node"><rect x="190" y="186" width="160" height="60" rx="8"></rect><text class="fig-label" x="270" y="212" text-anchor="middle">允許</text><text class="fig-note" x="270" y="232" text-anchor="middle">可以錄影</text></g>
+    <g class="fig-node"><rect x="10" y="274" width="160" height="60" rx="8"></rect><text class="fig-label" x="90" y="300" text-anchor="middle">在系統設定</text><text class="fig-note" x="90" y="320" text-anchor="middle">改成允許</text></g>
+    <g class="fig-node"><rect x="10" y="362" width="160" height="60" rx="8"></rect><text class="fig-label" x="90" y="388" text-anchor="middle">主行程仍讀到拒絕</text><text class="fig-note" x="90" y="408" text-anchor="middle">新擷取行程可開啟</text></g>
+    <g class="fig-node"><rect x="10" y="450" width="160" height="60" rx="8"></rect><text class="fig-label" x="90" y="476" text-anchor="middle">重新啟動</text><text class="fig-note" x="90" y="496" text-anchor="middle">使用者按下</text></g>
+    <path class="fig-arrow" d="M 180 66 V 90" marker-end="url(#fig-relaunch-m-head)"></path>
+    <path class="fig-arrow" d="M 90 150 V 182" marker-end="url(#fig-relaunch-m-head)"></path>
+    <text class="fig-note" x="98" y="172" text-anchor="start">不允許</text>
+    <path class="fig-arrow" d="M 270 150 V 182" marker-end="url(#fig-relaunch-m-head)"></path>
+    <text class="fig-note" x="278" y="172" text-anchor="start">允許</text>
+    <path class="fig-arrow" d="M 90 246 V 270" marker-end="url(#fig-relaunch-m-head)"></path>
+    <path class="fig-arrow" d="M 90 334 V 358" marker-end="url(#fig-relaunch-m-head)"></path>
+    <path class="fig-arrow" d="M 90 422 V 446" marker-end="url(#fig-relaunch-m-head)"></path>
+    <path class="fig-arrow" d="M 170 480 H 270 V 250" marker-end="url(#fig-relaunch-m-head)"></path>
+    <text class="fig-note" x="278" y="380" text-anchor="start">讀到允許</text>
+  </svg>
+  <figcaption>使用者改了系統設定，不代表執行中的主行程會看到；在這次觀察中，只有重新啟動能讓主行程讀到新的答案。</figcaption>
+</figure>
+
+<h3>四個可行的回應</h3>
+
+<p><strong>1. 定時重讀狀態。</strong>螢幕錄影的狀態適合便宜地定時讀，但在這個情況下沒有用：讀到的一直是舊答案。</p>
+
+<p><strong>2. 開一次裝置試試看。</strong>這是螢幕錄影常用的「以實際擷取為準」。用在相機上卻有明顯的代價：嘗試開啟相機會讓指示器和相機燈亮起，使用者會看到 App 在他沒有錄影時開了相機。這正是指示器要防的事。</p>
+
+<p><strong>3. 在新的短命行程裡讀狀態。</strong>既然新的擷取行程看到了允許，讓一個短命的子行程只讀狀態、不開裝置，也許能得到新的答案，而且不會亮燈。這是一個可信的替代方案，但它依賴一個沒有被直接驗證過的假設（觀察到的是新行程「能開啟相機」，不是「讀到允許」），也要為每次檢查付出產生行程的成本。</p>
+
+<p><strong>4. 在拒絕提示旁邊提供「已經允許了？重新啟動」。</strong>便宜、誠實，而且由使用者觸發：使用者剛在系統設定改完，回到 App 看到仍是拒絕，下一步就在眼前。代價是多按一次、App 重啟；如果 App 正在錄影或有未存的工作，就不能這樣做。</p>
+
+<p>在「App 閒置時、使用者剛從系統設定回來」這個前提下，第 4 種是最小也最可靠的答案，而且它和螢幕錄影的處理方式一致。如果哪天確認了第 3 種的假設，或作業系統開始即時通知權限變更，就值得改成自動偵測。</p>
+
+<h2 id="indicators">系統指示器，以及為什麼要及早關掉裝置</h2>
+
+<p>授權回答的是「這個 App 可不可以」，指示器回答的是「現在有沒有」。授權往往是很久以前給的，使用者早就忘了；指示器是他唯一能即時看到的證據。</p>
+
+<h3>macOS 的指示器</h3>
+
+<ul>
+  <li><strong>選單列的圓點。</strong>位於控制中心右邊：橘色是麥克風、綠色是相機、紫色是正在錄製系統音訊；一次只顯示一個圓點，相機與麥克風同時使用時只看到綠色。打開控制中心，頂端會列出正在使用這些資源的 App（macOS 13.3 起可再點開隱私權視窗）。</li>
+  <li><strong>螢幕錄影的選單列項目。</strong>macOS Sonoma 起，有 App 在擷取螢幕時，選單列會出現一個紫色的項目，點開可看到是哪個 App。選單列管理工具的開發者表示，這個項目無法被隱藏。</li>
+  <li><strong>相機燈。</strong>多數有內建相機的 Mac 在相機旁有一顆燈。早年的 iSight 相機曾被研究者證明可以改寫相機控制晶片的韌體，讓相機運作而燈不亮（影響 2008 年以前的機型），這也是硬體連動的燈被重視的原因。Apple 平台安全性指南描述，沒有實體相機燈的 MacBook Neo 改用螢幕上的相機指示燈，由系統軟體與 A18 Pro 中的專用硬體元件共同保護，目標是讓任何不受信任的軟體（即使有 root 或核心權限）都無法在不亮起指示燈的情況下啟用相機。</li>
+</ul>
+
+<p>這些指示器是作業系統畫的，App 無法關掉，也不該試圖讓它們不出現。App 能做的，是讓它們準確：只在真的需要時亮，用完立刻熄。</p>
+
+<h3>及早關掉裝置</h3>
+
+<p>「用完立刻熄」說起來簡單，實作上要涵蓋所有結束的路徑：</p>
+
+<ul>
+  <li>正常停止。</li>
+  <li>倒數計時中取消。這是最容易漏掉的一條：裝置往往在倒數前就為了「準時開始」而先開好，取消時如果沒有一起關，燈會繼續亮。</li>
+  <li>開始失敗、錄影中發生錯誤。</li>
+  <li>電腦睡眠、App 結束。</li>
+  <li>預覽畫面離開視野、切換分頁、關閉視窗。</li>
+</ul>
+
+<p>有兩個常見的誘惑會違反這條規則。一是為了下次開始得快一點，讓相機一直開著；代價是指示器一直亮，使用者無法分辨「待命」和「正在錄」。二是為了讀狀態或列裝置清單而短暫開啟裝置；列清單通常不需要開啟裝置，讀狀態更不需要。</p>
+
+<p>什麼時候可以讓裝置保持開啟？當使用者明確在看它的時候。例如錄影前的預覽：使用者打開預覽就是想看相機畫面，此時指示器亮著是正確的；但預覽一離開畫面就應該關掉。</p>
+
+<h2 id="windows">Windows：另一種隱私模型</h2>
+
+<p>Windows 的相機與麥克風權限在「設定 → 隱私權與安全性 → 相機」（或「麥克風」）。它和 macOS 有幾個根本差異：</p>
+
+<ul>
+  <li><strong>三層開關。</strong>Microsoft 的開發者文件說明，相機存取可以對整台裝置、對所有未封裝（unpackaged）的 App，或對個別已封裝（packaged）的 App 關閉。</li>
+  <li><strong>桌面 App 不能個別控制。</strong>一般安裝的桌面 App（未封裝、非 Microsoft Store 的 App）共用一個開關：「讓桌面應用程式存取您的相機」。Microsoft 的支援文件說，桌面 App 無法個別切換，清單裡只列出 Windows 偵測到曾與相機或麥克風互動的桌面 App，而且不一定都會出現在清單中。</li>
+  <li><strong>沒有給桌面 App 的系統詢問。</strong>macOS 會替每個 App 跳出詢問；Windows 的桌面 App 沒有這一步，開關是開的就能用。</li>
+  <li><strong>官方建議以錯誤為準。</strong>Microsoft 的指引是：已封裝的 App 可以在開啟相機前用 <code>AppCapability</code> 檢查存取權；無論哪種 App，使用者在隱私設定關掉相機時，擷取 API 會回傳 <code>E_ACCESSDENIED</code>，App 應該檢查這個錯誤，並用 <code>ms-settings:privacy-webcam</code> 打開相機隱私設定頁面；使用者從設定回來後，可以再試一次初始化。</li>
+  <li><strong>指示器。</strong>有相機燈的裝置在相機啟用時亮燈；沒有燈的裝置，Windows 會在相機開啟或關閉時顯示通知。有 App 使用麥克風時，工作列的通知區域會出現麥克風圖示。</li>
+</ul>
+
+<p>框架層的實作也各不相同。Electron 的 <code>getMediaAccessStatus</code> 在 Windows 上讀的是 <code>DeviceAccessInformation</code> 依裝置類別回報的狀態，文件把它描述為「控制所有 Win32 App 的全域設定」，螢幕一律回報允許；<code>askForMediaAccess</code> 只存在於 macOS。Chromium 則在 Windows 上呼叫 <code>AppCapability</code> 檢查「webcam」與「microphone」，並在被拒絕時打開對應的 <code>ms-settings:</code> 頁面。</p>
+
+<p>對跨平台 App 的實際意義是：<strong>macOS 的「讀狀態、在情境中詢問、顯示拒絕提示卡」那一套，在 Windows 上沒有完整的對應。</strong>比較穩健的做法是在 Windows 上以開啟裝置的結果為準：開關打開時，就地說明 Windows 的哪個設定會擋住它，提供直達按鈕；開始錄影時打不開，就在倒數前拒絕開始，並指向正確的頁面。Windows 也沒有 macOS 那種以程式簽章為準的授權紀錄，所以簽不簽章不影響這些權限。</p>
+
+<h2 id="others">其他產品怎麼做</h2>
+
+<p>以下依各專案的原始碼與支援文件整理；原始碼的部分註明了讀取的範圍，它們是靜態閱讀，不代表各產品在所有情況下的行為。</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>產品</th><th>什麼時候問</th><th>被拒絕時</th><th>授權改變後</th></tr></thead>
+  <tbody>
+    <tr><td>OBS Studio（macOS）</td><td>第一次啟動（或權限對話框改版後）顯示權限清單：螢幕錄影、相機、麥克風、輸入監控，必要時加上輔助使用；每項由使用者按下才請求</td><td>按鈕變成打開系統設定的對應面板</td><td>清單裡的狀態在對話框開啟時讀取</td></tr>
+    <tr><td>Cap（桌面版）</td><td>新手引導列出四項，螢幕錄影與輔助使用為必要，麥克風與相機為選用；主視窗選擇相機或麥克風時也會請求</td><td>已被拒絕時直接打開系統設定；從設定回來後重新整理裝置清單</td><td>新手引導寫明：允許螢幕錄影後請重新啟動 App</td></tr>
+    <tr><td>Loom（macOS）</td><td>安裝後的新手引導</td><td>支援文件建議重新啟動 Mac 與 Loom，必要時用 <code>tccutil reset</code> 加上 <code>com.loom.desktop</code> 重設授權後重來</td><td>同左，以重新啟動為主</td></tr>
+    <tr><td>Zoom（macOS）</td><td>使用到功能時跳出系統詢問</td><td>使用者說明（大學 IT 部門轉述）教使用者到「隱私權與安全性」手動打開</td><td>同一份說明提醒：修改權限後可能要重新啟動 Zoom</td></tr>
+    <tr><td>Chromium</td><td>網站要求相機或麥克風時：除了瀏覽器自己對每個網站的權限，也會向作業系統請求 App 層級的授權</td><td>引導到 macOS 的對應面板或 Windows 的 <code>ms-settings:</code> 頁面</td><td>macOS 上，相機與麥克風的系統狀態有一層快取，在瀏覽器視窗被啟用時重新整理</td></tr>
+    <tr><td>Electron</td><td>提供 <code>askForMediaAccess</code>（macOS，相機與麥克風），由 App 決定何時呼叫</td><td>已拒絕時不再跳出詢問，直接回傳既有狀態</td><td>文件寫明：被拒絕後在系統設定改動，App 需要重新啟動才會生效</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>從表中可以看出兩個共識。第一，即使在啟動時就列出所有權限，大家也讓每個詢問由使用者自己按下觸發。第二，「改完權限要重新啟動」幾乎是每個產品的說明裡都有的一句話；差別只在 App 是否把這一步做成一個按鈕。</p>
+
+<h2 id="example">實例：RecordStuff 加上麥克風與相機</h2>
+
+<p>RecordStuff 是一個 macOS 與 Windows 的選單列錄影工具，以 Electron 撰寫：主行程管理選單列、設定與錄影狀態，實際的擷取、合成與編碼由一個 Rust 原生引擎負責，每次錄影都在一個新產生的擷取行程中執行。它原本只錄螢幕與系統音訊；2026 年 10 月的計畫 074 加上了麥克風，計畫 075 加上了合成在錄影裡的相機畫面，076 則是把錄影搬到原生引擎的那次改寫。</p>
+
+<h3>身分：固定的識別碼與自簽憑證</h3>
+
+<p>RecordStuff 的 bundle identifier 是 <code>com.ericts.record</code>：維護者擁有的網域倒過來寫，再加上產品名稱。它選定後就不再改，因為改了之後 macOS 會把新版當成另一個 App，使用者要重新允許螢幕錄影。它用一張固定的自簽憑證簽章，沒有 Apple 公證；簽章後的 DR 是：</p>
+
+<pre><span class="label">Plain text</span><code>identifier "com.ericts.record" and certificate leaf = H"01b373511530bbf287ca35e54c10a5f017aad637"</code></pre>
+
+<p>這正是上一節「自簽」那一列：識別碼與憑證都不變，授權就能跨版本延續；專案的驗證紀錄中，同一身分、同一路徑的更新保留了螢幕錄影權限。代價也一樣：第一次開啟要使用者手動放行，而換憑證就等於換一個 App。專案也明確寫下，用 <code>pnpm dev</code> 執行時跑的是 Electron 自己的 bundle（<code>com.github.Electron</code>），沒有 RecordStuff 的麥克風用途說明，macOS 會不經詢問就拒絕它使用麥克風；所以權限一律用正式簽章的打包版本測試。</p>
+
+<h3>打包：用途說明與 entitlement</h3>
+
+<p>用途說明寫在 electron-builder 設定的 <code>mac.extendInfo</code> 中。注意麥克風與相機的句子都寫出了「當你開啟它時」，因為詢問正是在那一刻發生：</p>
+
+<pre class="language-shell"><span class="label">YAML</span><code><span class="sh-command">mac:</span>
+  <span class="sh-command">hardenedRuntime:</span> true
+  <span class="sh-command">entitlements:</span> resources/entitlements.mac.plist
+  <span class="sh-command">entitlementsInherit:</span> resources/entitlements.mac.plist
+  <span class="sh-command">extendInfo:</span>
+    <span class="sh-command">NSScreenCaptureUsageDescription:</span> RecordStuff needs screen recording access to capture the primary display and system audio.
+    <span class="sh-command">NSAudioCaptureUsageDescription:</span> RecordStuff records audio played by your computer.
+<span class="sh-comment">    # 計畫 074：只在使用者打開麥克風時詢問；少了它，macOS 會結束開啟麥克風的 App。</span>
+    <span class="sh-command">NSMicrophoneUsageDescription:</span> RecordStuff records your microphone with the screen when you turn Microphone on.
+<span class="sh-comment">    # 計畫 075：只在打開相機時詢問；少了它，macOS 會結束開啟相機的 App。</span>
+    <span class="sh-command">NSCameraUsageDescription:</span> RecordStuff shows your camera in the recording when you turn Camera on.</code></pre>
+
+<p>Entitlement 檔除了 Electron 的 JIT 需要的例外，就是這兩項（註解為原檔所有）。<code>entitlementsInherit</code> 讓 App 內的輔助程式也帶上同一組 entitlement：</p>
+
+<pre><span class="label">XML</span><code>&lt;!-- The hardened runtime opens no microphone without it (plan 074); macOS still asks the user. --&gt;
+&lt;key&gt;com.apple.security.device.audio-input&lt;/key&gt;
+&lt;true/&gt;
+&lt;!-- The same for the camera (plan 075); macOS still asks the user. --&gt;
+&lt;key&gt;com.apple.security.device.camera&lt;/key&gt;
+&lt;true/&gt;</code></pre>
+
+<h3>預設關閉，在情境中詢問</h3>
+
+<p>麥克風與相機都是預設關閉的設定。各有兩個開關，設定同一個值：設定視窗裡的開關，以及選單列閒置選單裡的「錄製麥克風」「錄製相機」勾選項目。打開時才請求，且只在 macOS 還沒問過時請求：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">/** The same for the camera (plan 075): asked when the Camera switch is turned on. */</span>
+<span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">askCameraAccess</span><span class="o">(</span>platform<span class="o">:</span> <span class="t">NodeJS</span><span class="o">.</span><span class="p">Platform</span> <span class="o">=</span> process<span class="o">.</span><span class="p">platform</span><span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>boolean<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">if</span> <span class="o">(</span>platform <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="s">"darwin"</span><span class="o">)</span> <span class="k">return</span> <span class="n">true</span><span class="o">;</span> <span class="c">// Windows 沒有詢問：由開啟裝置的結果決定</span>
+  <span class="k">const</span> status <span class="o">=</span> systemPreferences<span class="o">.</span><span class="p">getMediaAccessStatus</span><span class="o">(</span><span class="s">"camera"</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">if</span> <span class="o">(</span>status <span class="o">=</span><span class="o">=</span><span class="o">=</span> <span class="s">"granted"</span><span class="o">)</span> <span class="k">return</span> <span class="n">true</span><span class="o">;</span>
+  <span class="k">if</span> <span class="o">(</span>status <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="s">"not-determined"</span><span class="o">)</span> <span class="k">return</span> <span class="n">false</span><span class="o">;</span> <span class="c">// 已拒絕或受限：不會再跳出詢問</span>
+  <span class="k">return</span> systemPreferences<span class="o">.</span><span class="p">askForMediaAccess</span><span class="o">(</span><span class="s">"camera"</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>麥克風的版本相同。另外，如果開關是在系統還沒問過時從別處打開的，開始錄影時會先請求；這時選單列停在「開始中」，等使用者回答之後才開始倒數。系統拒絕時，開關保持開啟，App 發出一則通知告訴使用者去哪裡改，點一下就打開對應的面板。麥克風的這則通知即使使用者關掉了 App 的通知也會顯示，因為它回應的是使用者自己剛做的動作。</p>
+
+<p>啟動時不問麥克風與相機。螢幕錄影是核心權限，缺少時 App 一啟動就會讓 macOS 把它列進螢幕錄影清單並顯示系統提示；麥克風與相機則一律等使用者打開。計畫 075 的第一次實機測試發現原型還留著一個啟動時的相機詢問，隨即移除；之後的測試確認啟動時沒有任何相機詢問。</p>
+
+<h3>拒絕時：提示卡、直達按鈕、拒絕開始</h3>
+
+<p>開關打開、而 macOS 回報拒絕或受限時，開關下方顯示一張提示卡：「未允許取用相機」，說明「開啟『相機』時無法開始錄影。」，以及「請在『系統設定 → 隱私權與安全性 → 相機』中允許 RecordStuff，或關閉『相機』。」。卡上有兩個按鈕：「開啟相機設定…」直接打開相機面板，以及「已經允許了？重新啟動 RecordStuff」。尚未詢問時，則只顯示一行狀態：「下次錄影時，macOS 會詢問是否允許取用相機。」</p>
+
+<p>按下錄影時，主行程會讓擷取行程先準備所有來源；相機打不開，就以 <code>camera_unavailable</code> 拒絕開始，發生在任何倒數之前，並有自己的失敗紀錄與指引。麥克風同理，錯誤碼是 <code>microphone_unavailable</code>；它不和螢幕錄影權限的失敗混在一起，因為修法不同。</p>
+
+<h3>重新啟動的按鈕從哪裡來</h3>
+
+<p>那個重新啟動的按鈕，就是<a href="#relaunch">前面</a>那次觀察的直接結果。螢幕錄影的提示原本就一直提供「已經允許了？重新啟動 RecordStuff」，因為執行中的行程可能看不到新的螢幕錄影授權；相機的提示卡一開始沒有。2026 年 10 月 18 日的測試發現主行程一直讀到舊答案之後，當天就把同一個按鈕加到相機的提示卡上；麥克風的提示卡讀的是同一種狀態，也一起加上：</p>
+
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">/**
+ * Beside a denial: macOS answers a running app's access question as it first did until the app restarts, so access
+ * allowed in System Settings shows only after a relaunch (075's permission round, 2026-10-18), as for screen recording.
+ */</span>
+<span class="k">function</span> <span class="f">relaunchChoice</span><span class="o">(</span>language<span class="o">:</span> <span class="t">AppContext</span><span class="o">[</span><span class="s">"language"</span><span class="o">]</span><span class="o">)</span><span class="o">:</span> <span class="t">SettingsChoice</span> <span class="o">&amp;</span> <span class="o">{</span> action<span class="o">:</span> <span class="t">AppAction</span> <span class="o">}</span> <span class="o">{</span>
+  <span class="k">return</span> <span class="o">{</span> id<span class="o">:</span> <span class="s">"relaunch"</span><span class="o">,</span> label<span class="o">:</span> <span class="f">t</span><span class="o">(</span><span class="s">"Already allowed? Relaunch RecordStuff"</span><span class="o">,</span> language<span class="o">)</span><span class="o">,</span> enabled<span class="o">:</span> <span class="n">true</span><span class="o">,</span> checked<span class="o">:</span> <span class="n">false</span><span class="o">,</span> action<span class="o">:</span> <span class="s">"relaunch"</span> <span class="k">satisfies</span> <span class="t">AppAction</span> <span class="o">}</span><span class="o">;</span>
+<span class="o">}</span></code></pre>
+
+<p>它只出現在拒絕提示卡上，而提示卡只在 App 閒置、開關打開且狀態為拒絕時出現；錄影期間這些設定是鎖住的，所以不會有人在錄影中按到重新啟動。</p>
+
+<h3>Windows</h3>
+
+<p>Windows 上沒有提示卡，因為沒有可靠的每個 App 狀態可讀。相機開關打開時，下方有一行說明：「只有在『設定 → 隱私權與安全性 → 相機』允許桌面應用程式使用相機時，Windows 才會錄到相機畫面。」，並附上打開 <code>ms-settings:privacy-webcam</code> 的按鈕。麥克風的失敗指引則指向「設定 → 隱私權與安全性 → 麥克風」，同樣必須允許桌面應用程式。開不起來的裝置在倒數之前就以同樣的錯誤碼拒絕開始。</p>
+
+<h3>指示器：在什麼時候熄滅</h3>
+
+<p>引擎在錄影結束、取消、失敗、睡眠與結束 App 時都會關閉相機；設定與錄影工作室裡的預覽只在畫面可見時開啟相機。實機測試記錄了這些路徑實際的樣子：</p>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>日期</th><th>情境</th><th>觀察到的結果</th></tr></thead>
+  <tbody>
+    <tr><td>2026-10-16</td><td>開啟麥克風後在倒數中取消</td><td>選單列的橘色麥克風指示在 3 秒後消失</td></tr>
+    <tr><td>2026-10-17</td><td>以 iPhone 的接續互通相機錄影後停止，以及倒數到 2 時取消</td><td>測試者目視：相機燈在停止與取消時都立刻熄滅</td></tr>
+    <tr><td>2026-10-17</td><td>在設定中把相機預覽捲出視野，再捲回來</td><td>選單列的相機指示隨之熄滅、再亮起；結束 App 後熄滅</td></tr>
+    <tr><td>2026-10-18</td><td>工作室關閉時，從選單列開始倒數再取消</td><td>選單列的相機指示在 2.5 秒後消失，暫存檔已移除</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>驗證到什麼，沒驗證到什麼</h3>
+
+<p>在 macOS 上，以正式簽章的版本、在 <code>tccutil reset</code> 之後實際測過的有：打開開關時跳出含用途說明的系統詢問；允許與不允許；拒絕後的通知與提示卡；「開啟相機設定…」打開的面板中列出 RecordStuff 且開關為關；錄影在倒數前以 <code>camera_unavailable</code> 被拒絕；以及上面的觀察與重新啟動後恢復。沒有驗證的同樣重要：Windows 上的相機與麥克風只有 CI 與單元測試，沒有在有真實相機的 Windows 機器上測過，所以 Windows 的指示器、隱私開關與拒絕路徑都還沒有實機證據；關閉 App 通知時的麥克風拒絕通知沒有測過；主行程看不到新授權的原因，以及新行程是否能讀到新的狀態，都沒有直接驗證。</p>
+
+<h2 id="table">決策總表</h2>
+
+<div class="table-scroll">
+<table class="table-wide compact-first">
+  <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
+  <tbody>
+    <tr><td>身分</td><td>固定的 reverse-DNS 識別碼與固定的自簽憑證，不公證</td><td>不付費的發佈管道；使用者願意手動放行一次</td><td>第一次開啟要手動放行；換憑證等於換 App</td><td>改用 Developer ID 與公證（DR 改為指向 Team ID，使用者要重新授權一次）</td></tr>
+    <tr><td>詢問時機</td><td>啟動時不問麥克風與相機；打開開關時問，否則在開始錄影時問</td><td>這兩個輸入是選用功能；有明確的開關</td><td>詢問可能出現在錄影流程中，倒數要等使用者回答</td><td>它們成為大多數使用者都會用的核心功能</td></tr>
+    <tr><td>預設</td><td>麥克風與相機預設關閉；被拒絕時開關仍保持開啟</td><td>既有使用者更新後，錄到的內容不能改變</td><td>想用的人要多打開一次</td><td>App 的主要用途就是錄這個輸入</td></tr>
+    <tr><td>被拒絕時</td><td>倒數前拒絕開始，提示卡附上直達面板的按鈕</td><td>使用者明確打開了這個輸入；錄影無法重來</td><td>多一次中斷</td><td>使用者偏好「先錄再說」，且能在事後補錄</td></tr>
+    <tr><td>看不到新授權</td><td>拒絕提示卡旁提供「已經允許了？重新啟動」</td><td>主行程讀到舊答案；App 閒置</td><td>使用者要多按一次，App 會重啟</td><td>作業系統即時反映授權變更；或驗證了短命行程能讀到新狀態</td></tr>
+    <tr><td>裝置生命週期</td><td>只在錄影與可見的預覽期間開啟；所有結束路徑都關閉</td><td>指示器是使用者唯一的即時證據</td><td>每次開始都要重新開啟裝置</td><td>開啟延遲大到影響開始時間，且使用者明確要求待命</td></tr>
+    <tr><td>Windows</td><td>不讀狀態；開關旁說明隱私設定並附按鈕；以開啟結果為準</td><td>桌面 App 沒有個別狀態，也沒有系統詢問</td><td>錄影前才知道打不打得開</td><td>改以封裝形式發佈，能用 <code>AppCapability</code> 讀取個別狀態</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="boundaries">不要這樣做的情況</h2>
+
+<ul>
+  <li><strong>不要在啟動時詢問選用的輸入。</strong>系統詢問只有一次；使用者還沒有理由答應時用掉它，之後只能請他自己去系統設定。</li>
+  <li><strong>不要讓新的敏感輸入在更新後預設開啟。</strong>即使你在更新說明裡寫了，使用者按下熟悉的快捷鍵時也不會想到。</li>
+  <li><strong>不要在被拒絕時默默開始錄影。</strong>錄完才發現少了旁白或鏡頭，比一開始就停下來代價高得多。但也不要因為錄影中途裝置消失就中止整段錄影。</li>
+  <li><strong>不要為了確認權限而開啟相機或麥克風。</strong>指示器會亮，使用者看到的就是 App 在沒錄影時開了相機。</li>
+  <li><strong>不要只寫「請到系統設定」。</strong>提供直達正確面板的按鈕；在 Windows 上也要說清楚是「讓桌面應用程式存取」那個開關。</li>
+  <li><strong>不要以為讀到的狀態就是真相。</strong>螢幕錄影的狀態與實際擷取可能不一致；相機與麥克風的狀態在執行中的行程裡可能是舊的。</li>
+  <li><strong>不要在開發版本上驗證權限行為。</strong>開發時跑的是框架本身的 bundle，身分與用途說明都不是你的。</li>
+  <li><strong>不要更改已發佈 App 的 bundle identifier，也不要輕易換簽章憑證。</strong>對 TCC 而言，兩者都等於發佈了另一個 App。</li>
+  <li><strong>不要在 App 裡替使用者執行 <code>tccutil reset</code>。</strong>那會清掉使用者的選擇；它是開發與支援用的工具。</li>
+  <li><strong>不要在錄影中提供重新啟動。</strong>「已經允許了？重新啟動」只適合閒置時；錄影中重啟會失去正在錄的內容。</li>
+</ul>
+
+<h2 id="criteria">可以帶走的判斷準則</h2>
+
+<ul>
+  <li><strong>這個輸入是核心還是選用？</strong>核心的可以在第一次啟動時處理；選用的應該預設關閉，在使用者打開時才問。</li>
+  <li><strong>詢問發生時，使用者剛做了什麼？</strong>如果答案是「什麼都沒做」，時機就不對。用途說明應該正好回答使用者那一刻的疑問。</li>
+  <li><strong>作業系統怎麼認得你的 App？</strong>寫下你的 bundle identifier 與 DR，確認哪些操作會改變它們：換識別碼、換憑證、從開發版本執行。</li>
+  <li><strong>被拒絕時，使用者在幾步之內能回到可用的狀態？</strong>理想是兩條路都在一步之內：直達面板的按鈕，或關掉那個輸入。</li>
+  <li><strong>你讀到的狀態有多可信？</strong>它在授權改變後多久會更新？有沒有比狀態更直接、又不會亮起指示器的證據？如果沒有，就讓使用者有一個明確的下一步（例如重新啟動）。</li>
+  <li><strong>每一條結束路徑都會關掉裝置嗎？</strong>列出停止、取消、失敗、睡眠、結束 App、預覽離開視野，逐一確認指示器會熄滅，並實際看過一次。</li>
+  <li><strong>在另一個平台上，同一個概念對應到什麼？</strong>macOS 的個別 App 狀態與系統詢問，在 Windows 的桌面 App 上沒有對應；不要把一個平台的 UI 原樣搬到另一個平台。</li>
+  <li><strong>什麼證據會翻轉你的選擇？</strong>先寫下來：作業系統開始即時通知授權變更、改用 Developer ID 發佈、某個選用輸入變成多數人都用的功能。出現時，就知道該重新評估哪一個決定。</li>
+</ul>
+
+<section class="sources">
+<h2>參考</h2>
+<ul>
+  <li>Apple：<a href="https://developer.apple.com/documentation/avfoundation/requesting-authorization-to-capture-and-save-media">Requesting authorization to capture and save media</a>（系統只詢問一次並記住回答；用途說明與 entitlement 缺一時系統會結束 App；只在使用者使用相關功能時請求）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/bundleresources/information-property-list/nscamerausagedescription"><code>NSCameraUsageDescription</code></a>、<a href="https://developer.apple.com/documentation/bundleresources/information-property-list/nsmicrophoneusagedescription"><code>NSMicrophoneUsageDescription</code></a>、<a href="https://developer.apple.com/documentation/bundleresources/information-property-list/nsaudiocaptureusagedescription"><code>NSAudioCaptureUsageDescription</code></a>。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.camera"><code>com.apple.security.device.camera</code></a>、<a href="https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input"><code>com.apple.security.device.audio-input</code></a>、<a href="https://developer.apple.com/documentation/security/hardened-runtime">Hardened Runtime</a>（公證需要 hardened runtime）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements">TN3127: Inside Code Signing: Requirements</a>（designated requirement 如何讓 macOS 在更新後認得同一個 App；ad hoc 簽章與未簽章的程式無法被可靠追蹤）。</li>
+  <li>Apple：<a href="https://developer.apple.com/design/human-interface-guidelines/privacy">Human Interface Guidelines: Privacy</a>（請求時機、用途說明的寫法、預先說明畫面的規則）。</li>
+  <li>Apple：<a href="https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps">Capturing system audio with Core Audio taps</a>（macOS 14.2 起；系統音訊錄製權限）、<a href="https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker"><code>SCContentSharingPicker</code></a>（系統提供的內容分享選擇器）。</li>
+  <li>Apple 支援：<a href="https://support.apple.com/guide/mac-help/mchlp1446/mac">What’s in the menu bar on Mac?</a>（橘色、綠色、紫色指示與控制中心中的使用清單）、<a href="https://support.apple.com/guide/security/mac-on-screen-camera-indicator-light-sec75a2d237d/web">Apple Platform Security：Mac on-screen camera indicator light</a>（MacBook Neo 的螢幕相機指示燈）。</li>
+  <li>關於早期 iSight 相機燈可被繞過與 MacBook Neo 的討論：<a href="https://www.schneier.com/blog/archives/2026/03/apples-came=">Bruce Schneier, Apple’s Camera Indicator Lights</a>、<a href="https://tidbits.com/2026/03/18/whats-new-in-apples-platform-security-guide/">TidBITS, What’s New in Apple’s Platform Security Guide</a>。</li>
+  <li>macOS Sequoia 螢幕錄影的定期重新確認：<a href="https://9to5mac.com/2024/08/14/macos-sequoia-screen-recording-prompt-monthly/">9to5Mac（2024-08-14）</a>、<a href="https://tidbits.com/2024/08/19/apple-reduces-excessive-sequoia-permission-requests-shifts-to-monthly">TidBITS（2024-08-19）</a>；Sonoma 的螢幕錄影選單列項目：<a href="https://www.creativetechs.com/2023/11/17/sonomas-new-privacy-awareness-icons/">Creative Technology, Sonoma’s New Privacy Awareness Icons</a>、<a href="https://www.macbartender.com/Bartender5/ScreenCaptureMenuBarItem/">Bartender：macOS purple menu bar item</a>。</li>
+  <li>Microsoft：<a href="https://learn.microsoft.com/en-us/windows/apps/develop/camera/camera-privacy-setting">Handle the Windows camera privacy setting</a>（三層開關、<code>AppCapability</code>、<code>E_ACCESSDENIED</code> 與 <code>ms-settings:privacy-webcam</code>）、<a href="https://support.microsoft.com/en-us/windows/windows-camera-microphone-and-privacy-a83257bc-e990-d54a-d212-b5e41beba857">Windows camera, microphone, and privacy</a>（桌面 App 無法個別切換、相機燈與麥克風圖示）。</li>
+  <li>Electron：<a href="https://www.electronjs.org/docs/latest/api/system-preferences"><code>systemPreferences</code></a>（<code>getMediaAccessStatus</code>、<code>askForMediaAccess</code>，以及被拒絕後改設定需要重新啟動）；實作：<a href="https://github.com/electron/electron/blob/bcc5c510df7abedb85fd11843e3607e9115c0566/shell/browser/api/electron_api_system_preferences_mac.mm"><code>electron_api_system_preferences_mac.mm</code></a>、<a href="https://github.com/electron/electron/blob/bcc5c510df7abedb85fd11843e3607e9115c0566/shell/browser/api/electron_api_system_preferences_win.cc"><code>electron_api_system_preferences_win.cc</code></a>（於 <code>bcc5c51</code> 讀取）。</li>
+  <li>Chromium（GitHub 鏡像，於 <code>6a9c9f3</code> 讀取）：<a href="https://github.com/chromium/chromium/blob/6a9c9f37ffeca64c36754d3264da34fecc436ea0/chrome/browser/permissions/system/system_media_capture_permissions_mac.mm"><code>system_media_capture_permissions_mac.mm</code></a>（AVFoundation 的狀態與請求）、<a href="https://github.com/chromium/chromium/blob/6a9c9f37ffeca64c36754d3264da34fecc436ea0/chrome/browser/permissions/system/system_media_permission_cache.h"><code>system_media_permission_cache.h</code></a>（視窗啟用時重新整理的快取）、<a href="https://github.com/chromium/chromium/blob/6a9c9f37ffeca64c36754d3264da34fecc436ea0/chrome/browser/permissions/system/system_media_source_win.cc"><code>system_media_source_win.cc</code></a>（Windows 的 <code>AppCapability</code>）。</li>
+  <li>OBS Studio：<a href="https://github.com/obsproject/obs-studio/blob/f1c0a116441bdb7a1de7896f810009ea487b8508/frontend/dialogs/OBSPermissions.cpp"><code>frontend/dialogs/OBSPermissions.cpp</code></a>、<a href="https://github.com/obsproject/obs-studio/blob/f1c0a116441bdb7a1de7896f810009ea487b8508/frontend/obs-main.cpp"><code>frontend/obs-main.cpp</code></a>（啟動時的 macOS 權限對話框，於 <code>f1c0a11</code> 讀取）。</li>
+  <li>Cap：<a href="https://github.com/CapSoftware/Cap/blob/346561b837aaa2cd27eea01b90b858d6596848b5/apps/desktop/src/routes/(window-chrome)/onboarding.tsx"><code>onboarding.tsx</code></a>（必要與選用權限、重新啟動的提醒）、<a href="https://github.com/CapSoftware/Cap/blob/346561b837aaa2cd27eea01b90b858d6596848b5/apps/desktop/src/utils/os-permissions.ts"><code>os-permissions.ts</code></a>（已拒絕時打開系統設定），於 <code>346561b</code> 讀取。</li>
+  <li>Loom：<a href="https://support.atlassian.com/loom/kb/mac-app-installation-reset-accessibility-permission/">Mac app installation: reset accessibility permission</a>（重新啟動與以 bundle identifier 執行 <code>tccutil reset</code>）。</li>
+  <li>Zoom：<a href="https://td.wku.edu/TDClient/34/Portal/KB/ArticleDet?ID=3469">Allow Permissions for Zoom Desktop Client for Mac</a>（西肯塔基大學 IT 說明，非 Zoom 官方文件）。</li>
+  <li>相關文章：<a href="native-apis-and-tech-stack-choices.html">從瀏覽器 API 到作業系統 API</a>（為什麼錄影在另一個行程的原生引擎裡）、<a href="audio-clocks-mixing-and-av-sync.html">音訊時脈、混音與影音同步</a>（麥克風如何混入錄影、中途消失時怎麼辦）。</li>
+  <li>專案文件：<a href="../system-design/desktop.md#screen-permission">螢幕錄影權限</a>與<a href="../system-design/desktop.md#microphone-permission">麥克風權限</a>、<a href="../system-design/signing.md#bundle-identifier">簽章與 bundle identifier</a>、<a href="../system-design/decisions.md">設計決策</a>、<a href="../../plans/075-camera-bubble.md">計畫 075</a>（相機權限與 2026-10-18 的實機測試）。</li>
+  <li>原始碼：<code>src/main/permission/permission.ts</code>（讀狀態、詢問與系統設定網址）、<code>src/main/settings/settings-model.ts</code>（<code>microphoneGroup</code>、<code>cameraGroup</code>、<code>relaunchChoice</code>）、<code>resources/entitlements.mac.plist</code>、<code>electron-builder.yml</code>。</li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(function () {
+  var copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>';
+  var checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy") ? resolve() : reject(new Error("copy failed")); } catch (error) { reject(error); }
+      document.body.removeChild(area);
+    });
+  }
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var code = pre.querySelector("code");
+    if (!code) return;
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", function () {
+      copyText(code.textContent || "").then(function () {
+        button.classList.add("copied"); button.innerHTML = checkIcon;
+        setTimeout(function () { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+      }).catch(function () {});
+    });
+    pre.appendChild(button);
+    var bar = document.createElement("div"); bar.className = "code-scrollbar";
+    var thumb = document.createElement("div"); thumb.className = "code-scrollbar-thumb";
+    bar.appendChild(thumb); pre.appendChild(bar);
+    function sync() {
+      var max = code.scrollWidth - code.clientWidth;
+      if (max <= 1) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      var ratio = code.clientWidth / code.scrollWidth;
+      var width = Math.max(24, bar.clientWidth * ratio);
+      thumb.style.width = width + "px";
+      thumb.style.transform = "translateX(" + ((bar.clientWidth - width) * (code.scrollLeft / max)) + "px)";
+    }
+    var dragging = null;
+    thumb.addEventListener("pointerdown", function (event) {
+      dragging = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); event.preventDefault();
+    });
+    thumb.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var max = code.scrollWidth - code.clientWidth; var track = bar.clientWidth - thumb.clientWidth;
+      if (track > 0) code.scrollLeft = dragging.left + (event.clientX - dragging.x) * (max / track);
+    });
+    thumb.addEventListener("pointerup", function () { dragging = null; });
+    bar.addEventListener("click", function (event) {
+      if (event.target === thumb) return;
+      var rect = bar.getBoundingClientRect(); var max = code.scrollWidth - code.clientWidth;
+      code.scrollLeft = ((event.clientX - rect.left) / rect.width) * max;
+    });
+    code.addEventListener("scroll", sync); window.addEventListener("resize", sync); sync();
+  });
+})();
+</script>
+</body>
+</html>
