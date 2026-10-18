@@ -528,14 +528,17 @@ fn with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst() {
     rig.shared.frame(7, Fake::now_ns());
     rig.core.record().unwrap();
     wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let first_at = rig.encoded.lock().unwrap()[0].1;
     let slack = scheduling_slack();
     let started = Instant::now();
     wait_for("the first slot", || rig.encoded.lock().unwrap().len() >= 2);
     // The slot is 33 ms after the start; the old first wake came at 100 ms, with three slots at once.
     assert!(started.elapsed() < Duration::from_millis(80) + slack * 2, "first slot after {:?} (slack {slack:?})", started.elapsed());
     std::thread::sleep(Duration::from_millis(20));
-    // A frame a slot, however long the sleep really took: not three slots at once.
-    let allowed = 2 + (started.elapsed().as_millis() / 33) as usize;
+    // A frame a slot, however long the sleep really took: not three slots at once. Counted from the first frame on
+    // the clock the slots are on, since this thread can see the first frame late on a busy machine (a CI runner).
+    let since_first = Duration::from_nanos(Fake::now_ns().saturating_sub(first_at));
+    let allowed = 2 + (since_first.as_millis() / 33) as usize;
     assert!(rig.encoded.lock().unwrap().len() <= allowed, "{:?}", rig.encoded.lock().unwrap());
     rig.stop();
 }
