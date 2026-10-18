@@ -2,7 +2,7 @@
 
 [English](080-shared-texture-preview.md) | [繁體中文](080-shared-texture-preview.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-18, from 075's step 8 measurements; the design below was accepted by the maintainer on 2026-10-18 ("接受這個設計"), to be executed later. Priority: the maintainer orders it; after 075, one plan at a time. Hard dependencies: 075's preview and Recording Studio (in progress), and 076's D2, which this plan amends ([decisions](../docs/system-design/decisions.md)). Execute the steps in order under [the plan index](README.md).
+Status: planned; not started. Created: 2026-10-18, from 075's step 8 measurements; the design below was accepted by the maintainer on 2026-10-18 ("接受這個設計"), to be executed later. Priority: the maintainer orders it; one plan at a time. Hard dependencies: 075's preview and Recording Studio (closed, [record](../docs/verification/history-2026-10.md#plan-075-closure--2026-10-18)), and 076's D2, which this plan amends ([decisions](../docs/system-design/decisions.md)). Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
@@ -12,7 +12,7 @@ Out of scope: Windows, which keeps the encoded preview (a Direct3D 11 shared han
 
 ## Current state
 
-- **The preview's cost.** On the reference M1 Pro with D21's 10 fps, a recording with the Studio showing it (S) used 24.5% at 30 fps against 15.5% without (R), 8.9 points over, and 30.7% against 19.4% at 60 fps, 11.3 points over; D18 allowed 8, and D21 accepted the excess ([075 step 8](075-camera-bubble.md#8-measurement)). The share covers the preview's encoder, its messages, WebCodecs' decoder and the Studio's drawing; how it divides is not measured.
+- **The preview's cost.** On the reference M1 Pro with D21's 10 fps, a recording with the Studio showing it (S) used 24.5% at 30 fps against 15.5% without (R), 8.9 points over, and 30.7% against 19.4% at 60 fps, 11.3 points over; D18 allowed 8, and D21 accepted the excess ([075's record](../docs/verification/history-2026-10.md#plan-075-closure--2026-10-18)). The share covers the preview's encoder, its messages, WebCodecs' decoder and the Studio's drawing; how it divides is not measured.
 - **Where native code runs.** Only in the capture `utilityProcess` (076's D2): a native crash ends that child, and main keeps the partial file and reports the failure. Electron's `sharedTexture.importSharedTexture` exists only in main and takes an IOSurface pointer of main's own, so on macOS main must call native code to obtain it. This is the exception D2 has to make.
 - **Two paths to the screen.** The recording is composed natively and the preview goes through Chromium's codecs; the second path is what this plan removes on macOS.
 
