@@ -253,6 +253,34 @@ fn scheduling_slack() -> Duration {
         .unwrap()
 }
 
+/// How late this machine woke a sleeping thread while `during` ran, sampled alongside it, so a moment the machine was
+/// busy (a CI runner) is counted, which `scheduling_slack` measured before it cannot see.
+fn slack_during<T>(during: impl FnOnce() -> T) -> (T, Duration) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let sampler = {
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let mut worst = Duration::ZERO;
+            while !stop.load(Ordering::Acquire) {
+                let asked = Instant::now();
+                std::thread::sleep(Duration::from_millis(2));
+                worst = worst.max(asked.elapsed().saturating_sub(Duration::from_millis(2)));
+            }
+            worst
+        })
+    };
+    let result = during();
+    stop.store(true, Ordering::Release);
+    (result, sampler.join().unwrap())
+}
+
+/// The median interval between encoded frames' times, in nanoseconds.
+fn median_interval(times: &[u64]) -> u64 {
+    let mut gaps: Vec<u64> = times.windows(2).map(|w| w[1] - w[0]).collect();
+    gaps.sort_unstable();
+    gaps[gaps.len() / 2]
+}
+
 fn wait_for(what: &str, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(3);
     while !condition() {
@@ -985,16 +1013,21 @@ fn hiding_the_camera_goes_back_to_a_still_screen_s_pace_and_showing_it_to_every_
     rig.core.encode_every_slot(true);
     rig.shared.frame(7, Fake::now_ns());
     rig.core.record().unwrap();
-    std::thread::sleep(Duration::from_millis(300));
-    let shown = rig.encoded.lock().unwrap().len();
-    assert!(shown >= 7, "every slot while shown: {shown}");
+    // Judged by the frames' own times, not by how many a fixed sleep saw: a busy machine (a CI runner) can starve the
+    // refresh thread for a while, leaving fewer frames, but those it encodes are still a slot apart.
+    let times = |rig: &Rig| rig.encoded.lock().unwrap().iter().map(|&(_, at, _)| at).collect::<Vec<u64>>();
+    wait_for("frames while shown", || rig.encoded.lock().unwrap().len() >= 7);
+    let shown = times(&rig);
+    assert!(median_interval(&shown) < 40_000_000, "every slot while shown: {shown:?}");
     rig.core.encode_every_slot(false);
     std::thread::sleep(Duration::from_millis(600));
-    let hidden = rig.encoded.lock().unwrap().len() - shown;
+    let hidden = times(&rig).len() - shown.len();
     assert!(hidden <= 1, "a still screen once a second while hidden: {hidden}");
     rig.core.encode_every_slot(true);
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(rig.encoded.lock().unwrap().len() - shown - hidden >= 6, "every slot again");
+    let resumed_from = shown.len() + hidden;
+    wait_for("frames shown again", || rig.encoded.lock().unwrap().len() >= resumed_from + 6);
+    let again = times(&rig)[resumed_from..].to_vec();
+    assert!(median_interval(&again) < 40_000_000, "every slot again: {again:?}");
     rig.stop();
 }
 
@@ -1030,8 +1063,9 @@ fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
     let before = rig.encoded.lock().unwrap().len();
     let shown = Instant::now();
     rig.core.encode_every_slot(true);
-    wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before);
-    // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine wakes threads now.
+    let ((), during) = slack_during(|| wait_for("the next slot", || rig.encoded.lock().unwrap().len() > before));
+    let slack = slack.max(during);
+    // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine woke threads then.
     assert!(shown.elapsed() < Duration::from_millis(60) + slack * 2, "first frame after {:?} (slack {slack:?})", shown.elapsed());
     std::thread::sleep(Duration::from_millis(20));
     // A frame a slot from then on, however long the sleep really took, not the slots the still screen left empty.
