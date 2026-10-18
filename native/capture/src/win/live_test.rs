@@ -16,8 +16,8 @@ use super::capture::{self, DisplayCapture, Gpu};
 use super::com;
 use super::session::{Session, Win};
 use crate::core::{AudioRequest, CaptureError, Core, Events, PrepareRequest, Prepared, Source, Stopped, SystemAudio};
-use crate::pacing::Pacer;
 use crate::mux::parse::parse;
+use crate::pacing::Pacer;
 use crate::writer::WriteFailure;
 
 #[derive(Default)]
@@ -233,8 +233,7 @@ fn record(name: &str, source: Source, audio: AudioRequest, (width, height): (u32
 #[test]
 #[ignore = "records the display and system audio; CI's Windows job runs it"]
 fn live_capture_records_the_primary_display_and_system_audio() {
-    let (width, height) =
-        super::session::probe(0, None, &Source::Display).map(|(w, h)| (w.min(1920) & !1, h.min(1080) & !1)).unwrap_or((1280, 720));
+    let (width, height) = super::session::probe(0, None, &Source::Display).map(|(w, h)| (w.min(1920) & !1, h.min(1080) & !1)).unwrap_or((1280, 720));
     record("capture", Source::Display, AudioRequest::default(), (width, height));
 }
 

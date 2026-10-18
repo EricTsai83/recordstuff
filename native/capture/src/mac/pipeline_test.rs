@@ -7,9 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use objc2_core_foundation::{CFDictionary, CFRetained, CFString, CFType};
 use objc2_core_video::{
-    CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane,
-    CVPixelBufferGetHeightOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
-    kCVPixelBufferIOSurfacePropertiesKey,
+    CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferGetHeightOfPlane,
+    CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress, kCVPixelBufferIOSurfacePropertiesKey,
 };
 
 use super::audio::AacEncoder;
@@ -34,9 +33,7 @@ fn frame(width: usize, height: usize, n: usize) -> CFRetained<CVPixelBuffer> {
     let key: &CFString = unsafe { kCVPixelBufferIOSurfacePropertiesKey };
     let attributes = CFDictionary::<CFString, CFType>::from_slices(&[key], &[surface.as_ref()]);
     let mut buffer: *mut CVPixelBuffer = null_mut();
-    let status = unsafe {
-        CVPixelBufferCreate(None, width, height, u32::from_be_bytes(*b"420v"), Some(attributes.as_opaque()), NonNull::from(&mut buffer))
-    };
+    let status = unsafe { CVPixelBufferCreate(None, width, height, u32::from_be_bytes(*b"420v"), Some(attributes.as_opaque()), NonNull::from(&mut buffer)) };
     assert_eq!(status, 0);
     let buffer = unsafe { CFRetained::from_raw(NonNull::new(buffer).unwrap()) };
     unsafe { CVPixelBufferLockBaseAddress(&buffer, CVPixelBufferLockFlags(0)) };
@@ -48,7 +45,13 @@ fn frame(width: usize, height: usize, n: usize) -> CFRetained<CVPixelBuffer> {
             let line = unsafe { std::slice::from_raw_parts_mut(base.add(row * stride), stride) };
             for (x, value) in line.iter_mut().enumerate() {
                 // A bar moving across a grey field, so consecutive frames differ.
-                *value = if plane == 1 { 128 } else if (x + n * 8) % width < 40 { 235 } else { 64 };
+                *value = if plane == 1 {
+                    128
+                } else if (x + n * 8) % width < 40 {
+                    235
+                } else {
+                    64
+                };
             }
         }
     }

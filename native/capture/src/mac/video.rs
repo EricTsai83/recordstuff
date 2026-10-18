@@ -14,15 +14,14 @@ use objc2_core_media::{
     kCMSampleAttachmentKey_NotSync, kCMTimeInvalid, kCMVideoCodecType_H264,
 };
 use objc2_core_video::{
-    CVImageBuffer, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVImageBufferTransferFunction_ITU_R_709_2,
-    kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+    CVImageBuffer, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVImageBufferTransferFunction_ITU_R_709_2, kCVImageBufferYCbCrMatrix_ITU_R_709_2,
 };
 use objc2_video_toolbox::{
-    VTCompressionSession, VTEncodeInfoFlags, VTSessionSetProperty, kVTCompressionPropertyKey_AllowFrameReordering,
-    kVTCompressionPropertyKey_AverageBitRate, kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ExpectedFrameRate,
-    kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime,
-    kVTCompressionPropertyKey_TransferFunction, kVTCompressionPropertyKey_YCbCrMatrix, kVTEncodeFrameOptionKey_ForceKeyFrame,
-    kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel, kVTProfileLevel_H264_High_AutoLevel,
+    VTCompressionSession, VTEncodeInfoFlags, VTSessionSetProperty, kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_AverageBitRate,
+    kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ExpectedFrameRate, kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+    kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime, kVTCompressionPropertyKey_TransferFunction,
+    kVTCompressionPropertyKey_YCbCrMatrix, kVTEncodeFrameOptionKey_ForceKeyFrame, kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel,
+    kVTProfileLevel_H264_High_AutoLevel,
 };
 
 use super::{CaptureError, host_ns};
@@ -109,16 +108,7 @@ impl VideoEncoder {
             let key: &CFString = unsafe { kVTEncodeFrameOptionKey_ForceKeyFrame };
             CFDictionary::<CFString, CFBoolean>::from_slices(&[key], &[CFBoolean::new(true)])
         });
-        let status = unsafe {
-            self.session.encode_frame(
-                image,
-                pts,
-                kCMTimeInvalid,
-                options.as_deref().map(|d| d.as_opaque()),
-                null_mut(),
-                null_mut(),
-            )
-        };
+        let status = unsafe { self.session.encode_frame(image, pts, kCMTimeInvalid, options.as_deref().map(|d| d.as_opaque()), null_mut(), null_mut()) };
         if status == 0 { Ok(()) } else { Err(format!("frame encode failed: {status}")) }
     }
 
@@ -135,13 +125,7 @@ impl Drop for VideoEncoder {
     }
 }
 
-unsafe extern "C-unwind" fn output(
-    refcon: *mut c_void,
-    _frame: *mut c_void,
-    status: i32,
-    _flags: VTEncodeInfoFlags,
-    sample: *mut CMSampleBuffer,
-) {
+unsafe extern "C-unwind" fn output(refcon: *mut c_void, _frame: *mut c_void, status: i32, _flags: VTEncodeInfoFlags, sample: *mut CMSampleBuffer) {
     let callback = unsafe { &*(refcon as *const Callback) };
     if status != 0 {
         callback.sink.failed(format!("H.264 encoding failed: {status}"));

@@ -26,9 +26,9 @@ use std::time::{Duration, Instant};
 
 use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 
+use super::CaptureError;
 use super::hal::{self, Chunk, InputUnit, Resampler};
 use super::session::Shared;
-use super::CaptureError;
 use crate::core::{Microphone, SAMPLE_RATE};
 
 /// How long without sound before the device is checked and opened again.
@@ -47,10 +47,7 @@ fn unavailable(detail: impl Into<String>) -> CaptureError {
 /// The audio input devices, the system's default marked.
 pub fn list() -> Result<Vec<Microphone>, CaptureError> {
     let default = hal::default_input().map(|input| input.uid);
-    Ok(hal::inputs()
-        .into_iter()
-        .map(|input| Microphone { default: default.as_deref() == Some(input.uid.as_str()), name: input.name, id: input.uid })
-        .collect())
+    Ok(hal::inputs().into_iter().map(|input| Microphone { default: default.as_deref() == Some(input.uid.as_str()), name: input.name, id: input.uid }).collect())
 }
 
 /// AVFoundation's microphone authorization for this process: 0 not determined, 1 restricted, 2 denied, 3 authorized.

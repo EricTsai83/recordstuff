@@ -3,8 +3,8 @@
 
 use std::mem::ManuallyDrop;
 
-use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::Foundation::{VARIANT_FALSE, VARIANT_TRUE};
+use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Variant::{VARENUM, VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_BOOL, VT_UI4};
 use windows::core::GUID;
 
@@ -77,11 +77,7 @@ pub fn outputs(transform: &IMFTransform, fallback_size: u32) -> windows::core::R
 }
 
 fn variant(vt: VARENUM, value: VARIANT_0_0_0) -> VARIANT {
-    VARIANT {
-        Anonymous: VARIANT_0 {
-            Anonymous: ManuallyDrop::new(VARIANT_0_0 { vt, wReserved1: 0, wReserved2: 0, wReserved3: 0, Anonymous: value }),
-        },
-    }
+    VARIANT { Anonymous: VARIANT_0 { Anonymous: ManuallyDrop::new(VARIANT_0_0 { vt, wReserved1: 0, wReserved2: 0, wReserved3: 0, Anonymous: value }) } }
 }
 
 /// Sets an encoder property of type VT_UI4 through ICodecAPI; false when the encoder does not take it.

@@ -25,10 +25,10 @@ mod mixer;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
+use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 pub use camera::{CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
 pub use frame_log::FrameLog;
 use mixer::Mixer;
-use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 
 const PREPARED: u8 = 0;
 const RECORDING: u8 = 1;
@@ -723,8 +723,7 @@ impl<P: Platform> Shared<P> {
     /// Tells the levels gathered since the last ones, once `LEVELS_INTERVAL_NS` has passed; one input's thread does.
     fn tell_levels(&self, now_ns: u64) {
         let told = self.meters.told_ns.load(Ordering::Acquire);
-        if now_ns.saturating_sub(told) < LEVELS_INTERVAL_NS
-            || self.meters.told_ns.compare_exchange(told, now_ns, Ordering::AcqRel, Ordering::Acquire).is_err()
+        if now_ns.saturating_sub(told) < LEVELS_INTERVAL_NS || self.meters.told_ns.compare_exchange(told, now_ns, Ordering::AcqRel, Ordering::Acquire).is_err()
         {
             return;
         }
@@ -870,16 +869,12 @@ impl<P: Platform> Core<P> {
         // Shown again after a still screen: from the current slot on, not every slot the hiding left empty, and the
         // refresh thread woken for it rather than at the end of its 100 ms wait.
         let resumed = on && !self.shared.every_slot.load(Ordering::Acquire);
-        if resumed
-            && let Some(pacer) = video.pacer.as_mut()
-        {
+        if resumed && let Some(pacer) = video.pacer.as_mut() {
             pacer.skip_to(P::now_ns());
         }
         self.shared.every_slot.store(on, Ordering::Release);
         drop(video);
-        if resumed
-            && let Some(refresher) = self.refresher.as_ref()
-        {
+        if resumed && let Some(refresher) = self.refresher.as_ref() {
             refresher.thread().unpark();
         }
     }
@@ -936,10 +931,7 @@ impl<P: Platform> Core<P> {
                 return Err(CaptureError::new("capture_start_failed", detail));
             }
             if Instant::now() > deadline {
-                return Err(CaptureError::new(
-                    "capture_start_failed",
-                    format!("the display delivered no frame within {} s", timeout.as_secs()),
-                ));
+                return Err(CaptureError::new("capture_start_failed", format!("the display delivered no frame within {} s", timeout.as_secs())));
             }
             std::thread::sleep(Duration::from_millis(2));
         }
@@ -995,8 +987,7 @@ impl<P: Platform> Core<P> {
             return (0.0, 0);
         }
         let t0 = self.shared.t0_ns.load(Ordering::Acquire);
-        let target = u64::try_from(u128::from(stop_ns.saturating_sub(t0)) * u128::from(SAMPLE_RATE) / u128::from(NANOS_PER_SECOND))
-            .unwrap_or(u64::MAX);
+        let target = u64::try_from(u128::from(stop_ns.saturating_sub(t0)) * u128::from(SAMPLE_RATE) / u128::from(NANOS_PER_SECOND)).unwrap_or(u64::MAX);
         // The cutoff first, under the audio lock that placement holds: no sound after the stop is taken from here on.
         self.shared.audio.lock().unwrap().audio_target_set(&self.shared.audio_target, target);
         {
@@ -1005,9 +996,8 @@ impl<P: Platform> Core<P> {
             let mut guard = self.shared.video.lock().unwrap();
             let video = &mut *guard;
             self.shared.stop_ns.store(stop_ns, Ordering::Release);
-            let moved = [RECORDING, PREPARED]
-                .iter()
-                .any(|&from| self.shared.phase.compare_exchange(from, DRAINING, Ordering::AcqRel, Ordering::Acquire).is_ok());
+            let moved =
+                [RECORDING, PREPARED].iter().any(|&from| self.shared.phase.compare_exchange(from, DRAINING, Ordering::AcqRel, Ordering::Acquire).is_ok());
             if !moved {
                 return (0.0, 0);
             }

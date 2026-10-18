@@ -216,8 +216,7 @@ impl HardwareTransform {
         let opened = Self { activate: activate.clone(), transform, codec, _manager: manager, stopped: Arc::new(AtomicBool::new(false)) };
         activated.0 = None;
         let generator: IMFMediaEventGenerator = opened.transform.cast().map_err(fail("its events"))?;
-        let events: IMFAsyncCallback =
-            Events { generator: Mta(generator.clone()), messages: Mutex::new(messages), stopped: opened.stopped.clone() }.into();
+        let events: IMFAsyncCallback = Events { generator: Mta(generator.clone()), messages: Mutex::new(messages), stopped: opened.stopped.clone() }.into();
         unsafe { generator.BeginGetEvent(&events, None) }.map_err(fail("listening to its events"))?;
         unsafe {
             opened.transform.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0).map_err(fail("starting it"))?;
@@ -235,9 +234,7 @@ impl AsyncTransform for HardwareTransform {
         if !matches!(captured.image, Image::Nv12) {
             return Err("the frame is not an NV12 texture (the video processor is missing)".into());
         }
-        if key_frame
-            && let Some(codec) = self.codec.as_ref()
-        {
+        if key_frame && let Some(codec) = self.codec.as_ref() {
             set_codec(codec, &CODECAPI_AVEncVideoForceKeyFrame, 1);
         }
         unsafe {
@@ -263,12 +260,8 @@ impl AsyncTransform for HardwareTransform {
                 Some(sample)
             }
         };
-        let mut buffers = [MFT_OUTPUT_DATA_BUFFER {
-            dwStreamID: 0,
-            pSample: std::mem::ManuallyDrop::new(own),
-            dwStatus: 0,
-            pEvents: std::mem::ManuallyDrop::new(None),
-        }];
+        let mut buffers =
+            [MFT_OUTPUT_DATA_BUFFER { dwStreamID: 0, pSample: std::mem::ManuallyDrop::new(own), dwStatus: 0, pEvents: std::mem::ManuallyDrop::new(None) }];
         let mut status = 0u32;
         let result = unsafe { self.transform.ProcessOutput(0, &mut buffers, &mut status) };
         let [mut buffer] = buffers;
@@ -383,10 +376,8 @@ fn grey_texture(gpu: &Gpu, width: u32, height: u32) -> windows::core::Result<ID3
 /// encoded samples back to NV12. A grey picture is nearly all of them; a black one keeps only its chroma (a third), a
 /// green one none.
 pub fn grey_share(media: &[Media], width: u32, height: u32) -> Result<f64, String> {
-    let avcc = media
-        .iter()
-        .find_map(|m| if let Media::VideoFormat { avcc, .. } = m { Some(avcc.clone()) } else { None })
-        .ok_or("the encoder produced no format")?;
+    let avcc =
+        media.iter().find_map(|m| if let Media::VideoFormat { avcc, .. } = m { Some(avcc.clone()) } else { None }).ok_or("the encoder produced no format")?;
     let samples: Vec<&Vec<u8>> = media.iter().filter_map(|m| if let Media::Video { data, .. } = m { Some(data) } else { None }).collect();
     if samples.is_empty() {
         return Err("the encoder produced no sample".into());

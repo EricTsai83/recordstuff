@@ -231,9 +231,7 @@ impl H264Encoder {
 impl VideoEncode<Frame> for H264Encoder {
     fn encode(&self, frame: &Frame, pts_ns: u64, key_frame: bool) -> Result<(), String> {
         if let Some(hardware) = self.hardware.lock().unwrap().as_ref() {
-            return hardware
-                .send(Message::Frame { frame: frame.clone(), pts_ns, key_frame })
-                .map_err(|_| "the H.264 encoder has stopped".to_string());
+            return hardware.send(Message::Frame { frame: frame.clone(), pts_ns, key_frame }).map_err(|_| "the H.264 encoder has stopped".to_string());
         }
         let data = {
             let mut guard = self.readback.lock().unwrap();
@@ -279,8 +277,8 @@ impl Transform {
     fn new(width: u32, height: u32, frame_rate: u32, bitrate: u32) -> Result<Self, CaptureError> {
         super::media_foundation()?;
         let fail = super::failing;
-        let transform: IMFTransform =
-            unsafe { CoCreateInstance(&CLSID_MSH264EncoderMFT, None, CLSCTX_INPROC_SERVER) }.map_err(super::encoder_missing("the H.264 encoder is not available"))?;
+        let transform: IMFTransform = unsafe { CoCreateInstance(&CLSID_MSH264EncoderMFT, None, CLSCTX_INPROC_SERVER) }
+            .map_err(super::encoder_missing("the H.264 encoder is not available"))?;
         let codec = transform.cast::<ICodecAPI>().map_err(fail("the H.264 encoder has no settings interface"))?;
         // Set before the media types, which some settings are read with. Low latency means no reordering and every
         // frame out as it goes in, which the timestamps rely on: the encoder must take it.

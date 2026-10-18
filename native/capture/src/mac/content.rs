@@ -93,14 +93,10 @@ fn bundle_id(app: &SCRunningApplication) -> String {
 /// first one (main), which covers its helpers.
 fn own_apps(content: &SCShareableContent, pids: &[i32]) -> Vec<Retained<SCRunningApplication>> {
     let apps = unsafe { content.applications() };
-    let main_bundle = pids.first().and_then(|main| {
-        apps.iter().find(|app| unsafe { app.processID() } == *main).map(|app| bundle_id(&app)).filter(|id| !id.is_empty())
-    });
+    let main_bundle =
+        pids.first().and_then(|main| apps.iter().find(|app| unsafe { app.processID() } == *main).map(|app| bundle_id(&app)).filter(|id| !id.is_empty()));
     apps.iter()
-        .filter(|app| {
-            pids.contains(&unsafe { app.processID() })
-                || main_bundle.as_ref().is_some_and(|prefix| bundle_id(app).starts_with(prefix.as_str()))
-        })
+        .filter(|app| pids.contains(&unsafe { app.processID() }) || main_bundle.as_ref().is_some_and(|prefix| bundle_id(app).starts_with(prefix.as_str())))
         .collect()
 }
 
@@ -110,10 +106,7 @@ fn own_apps(content: &SCShareableContent, pids: &[i32]) -> Vec<Retained<SCRunnin
 fn own_app_evidence(content: &SCShareableContent, pids: &[i32]) -> String {
     let apps = unsafe { content.applications() };
     let windows = unsafe { content.windows() };
-    let owned = windows
-        .iter()
-        .filter(|window| unsafe { window.owningApplication() }.is_some_and(|app| pids.contains(&unsafe { app.processID() })))
-        .count();
+    let owned = windows.iter().filter(|window| unsafe { window.owningApplication() }.is_some_and(|app| pids.contains(&unsafe { app.processID() }))).count();
     let related: Vec<String> = apps
         .iter()
         .filter(|app| pids.contains(&unsafe { app.processID() }) || bundle_id(app).to_lowercase().contains("electron"))
@@ -165,9 +158,7 @@ pub fn filter(content: &SCShareableContent, display: &SCDisplay, own_pids: &[i32
     let hidden = if hide_system_ui { system_ui_windows(content, &own) } else { Vec::new() };
     let apps = NSArray::from_retained_slice(&own);
     let windows = NSArray::from_retained_slice(&hidden);
-    let filter = unsafe {
-        SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(SCContentFilter::alloc(), display, &apps, &windows)
-    };
+    let filter = unsafe { SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(SCContentFilter::alloc(), display, &apps, &windows) };
     let mut warnings = Vec::new();
     if hide_system_ui {
         // macOS 14.2 and later; status items and the menu bar's own window are excepted above in any case.
@@ -298,10 +289,7 @@ pub fn area_rect(display: &SCDisplay, scale: f64, (x, y, width, height): (u32, u
             format!("the area {width}x{height} at {x},{y} does not lie on the {display_width:.0}x{display_height:.0} display"),
         ));
     }
-    Ok(CGRect::new(
-        CGPoint::new(f64::from(x) / scale, f64::from(y) / scale),
-        CGSize::new(f64::from(width) / scale, f64::from(height) / scale),
-    ))
+    Ok(CGRect::new(CGPoint::new(f64::from(x) / scale, f64::from(y) / scale), CGSize::new(f64::from(width) / scale, f64::from(height) / scale)))
 }
 
 /// The source's size in pixels.

@@ -24,8 +24,8 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_av_foundation::{
-    AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput, AVCaptureOutput, AVCaptureSession,
-    AVCaptureSessionPreset1280x720, AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaType, AVMediaTypeVideo,
+    AVAuthorizationStatus, AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceInput, AVCaptureOutput, AVCaptureSession, AVCaptureSessionPreset1280x720,
+    AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaType, AVMediaTypeVideo,
 };
 use objc2_core_foundation::{CFRetained, CFString};
 use objc2_core_media::CMSampleBuffer;
@@ -105,7 +105,9 @@ fn system_default(media: &AVMediaType) -> Option<Retained<AVCaptureDevice>> {
     // The discovery session's replacement needs a device type per kind of camera; this one lists them all.
     #[allow(deprecated)]
     let devices = unsafe { AVCaptureDevice::devicesWithMediaType(media) };
-    devices.iter().find(|device| usable(device))
+    devices
+        .iter()
+        .find(|device| usable(device))
         // Nothing usable: the default as before, which the session reports as delivering nothing.
         .or_else(|| unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media) })
 }

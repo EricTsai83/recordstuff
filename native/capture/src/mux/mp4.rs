@@ -605,8 +605,7 @@ pub(crate) mod tests {
         let video = frames(90, 30);
         let durations = [3000u32, 3003, 2997];
         for (index, chunk) in video.chunks(30).enumerate() {
-            let samples: Vec<Sample> =
-                chunk.iter().map(|(d, s)| Sample { data: d, duration: durations[index], sync: *s }).collect();
+            let samples: Vec<Sample> = chunk.iter().map(|(d, s)| Sample { data: d, duration: durations[index], sync: *s }).collect();
             mp4.write_fragment(0, &samples).unwrap();
             let audio = vec![vec![7u8; 6]; 47];
             let samples: Vec<Sample> = audio.iter().map(|d| Sample { data: d, duration: 1024, sync: true }).collect();

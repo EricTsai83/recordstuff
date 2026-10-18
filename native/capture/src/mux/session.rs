@@ -43,14 +43,7 @@ impl<O: Output> SessionMuxer<O> {
         let video_timescale = video.timescale;
         let audio_timescale = audio.as_ref().map(|a| a.timescale);
         let tracks = std::iter::once(video).chain(audio).collect();
-        Ok(Self {
-            mp4: HybridMp4::create(out, tracks)?,
-            video_timescale,
-            audio_timescale,
-            held: None,
-            video: Pending::default(),
-            audio: Pending::default(),
-        })
+        Ok(Self { mp4: HybridMp4::create(out, tracks)?, video_timescale, audio_timescale, held: None, video: Pending::default(), audio: Pending::default() })
     }
 
     pub fn bytes_written(&self) -> u64 {
@@ -123,8 +116,7 @@ impl<O: Output> SessionMuxer<O> {
 
     fn flush(&mut self, track: usize) -> io::Result<()> {
         let pending = std::mem::take(if track == VIDEO_TRACK { &mut self.video } else { &mut self.audio });
-        let samples: Vec<Sample> =
-            pending.samples.iter().map(|s| Sample { data: &s.data, duration: s.duration, sync: s.sync }).collect();
+        let samples: Vec<Sample> = pending.samples.iter().map(|s| Sample { data: &s.data, duration: s.duration, sync: s.sync }).collect();
         self.mp4.write_fragment(track, &samples)
     }
 }

@@ -397,12 +397,7 @@ impl NativeCapture {
     #[napi(constructor)]
     pub fn new(on_event: Function<EngineEvent, ()>) -> Result<Self> {
         let events = on_event.build_threadsafe_function().callee_handled::<false>().build()?;
-        Ok(Self {
-            session: Arc::new(Mutex::new(None)),
-            finishing: Arc::new(Mutex::new(None)),
-            events: Arc::new(events),
-            preview: Arc::new(Mutex::new(None)),
-        })
+        Ok(Self { session: Arc::new(Mutex::new(None)), finishing: Arc::new(Mutex::new(None)), events: Arc::new(events), preview: Arc::new(Mutex::new(None)) })
     }
 
     /// Sends preview frames of the composed picture to `on_frame` while a session with the camera prototype runs.
@@ -699,9 +694,19 @@ pub struct StopTask {
 }
 
 fn nothing_stopped() -> StopReport {
-    StopReport { drain_ms: 0.0, drain_padded_frames: 0.0, frame_lead_avg_ms: 0.0, frame_lead_max_ms: 0.0, late_audio_frames: Vec::new(),
-      inserted_audio_frames: Vec::new(), dropped_audio_frames: Vec::new(), limited_audio_samples: 0.0,
-      captured_pictures: 0.0, captured_without_picture: 0.0, captured_longest_gap_ms: 0.0 }
+    StopReport {
+        drain_ms: 0.0,
+        drain_padded_frames: 0.0,
+        frame_lead_avg_ms: 0.0,
+        frame_lead_max_ms: 0.0,
+        late_audio_frames: Vec::new(),
+        inserted_audio_frames: Vec::new(),
+        dropped_audio_frames: Vec::new(),
+        limited_audio_samples: 0.0,
+        captured_pictures: 0.0,
+        captured_without_picture: 0.0,
+        captured_longest_gap_ms: 0.0,
+    }
 }
 
 impl Task for StopTask {

@@ -9,8 +9,8 @@ use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::core::GUID;
 
-use super::mft::{bytes, outputs, sample};
 use super::CaptureError;
+use super::mft::{bytes, outputs, sample};
 use crate::aac::audio_specific_config;
 use crate::core::AudioEncode;
 use crate::writer::AAC_FRAMES;
@@ -84,16 +84,7 @@ impl AacEncoder {
             }
         })()
         .map_err(fail("the AAC encoder refused the format"))?;
-        Ok(Self {
-            transform,
-            sample_rate,
-            channels: channels as usize,
-            pending: Vec::new(),
-            frames_encoded: 0,
-            frames_in: 0,
-            priming: 0,
-            bitrate,
-        })
+        Ok(Self { transform, sample_rate, channels: channels as usize, pending: Vec::new(), frames_encoded: 0, frames_in: 0, priming: 0, bitrate })
     }
 
     /// Packets of silence in, every packet out: the extra ones are the encoder's priming.
@@ -104,10 +95,7 @@ impl AacEncoder {
         self.finish(&mut |_| packets += 1).map_err(|detail| CaptureError::new("capture_start_failed", detail))?;
         let out = packets * u64::from(AAC_FRAMES);
         if out < frames {
-            return Err(CaptureError::new(
-                "capture_start_failed",
-                format!("the AAC encoder returned {out} frames for {frames}: its priming cannot be known"),
-            ));
+            return Err(CaptureError::new("capture_start_failed", format!("the AAC encoder returned {out} frames for {frames}: its priming cannot be known")));
         }
         Ok((out - frames) as u32)
     }

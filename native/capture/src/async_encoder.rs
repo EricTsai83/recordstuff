@@ -51,7 +51,11 @@ pub trait AsyncTransform {
 }
 
 pub enum Message<F> {
-    Frame { frame: F, pts_ns: u64, key_frame: bool },
+    Frame {
+        frame: F,
+        pts_ns: u64,
+        key_frame: bool,
+    },
     /// Answered once every queued frame's sample has reached the sink.
     Flush(Sender<()>),
     Event(EncoderEvent),
@@ -122,13 +126,12 @@ pub fn drive<T: AsyncTransform>(
     let mut flush: Option<Sender<()>> = None;
     let mut draining = false;
 
-    let failed = |detail: String, format_sent: bool, taken: VecDeque<(i64, Queued<T::Frame>)>, waiting: VecDeque<Queued<T::Frame>>, flush: Option<Sender<()>>| {
-        let fallback = (!format_sent).then(|| Fallback {
-            frames: taken.into_iter().map(|(_, q)| q).chain(waiting).map(|q| (q.frame, q.pts_ns, q.key_frame)).collect(),
-            flush,
-        });
-        Ended::Failed { detail, fallback }
-    };
+    let failed =
+        |detail: String, format_sent: bool, taken: VecDeque<(i64, Queued<T::Frame>)>, waiting: VecDeque<Queued<T::Frame>>, flush: Option<Sender<()>>| {
+            let fallback = (!format_sent)
+                .then(|| Fallback { frames: taken.into_iter().map(|(_, q)| q).chain(waiting).map(|q| (q.frame, q.pts_ns, q.key_frame)).collect(), flush });
+            Ended::Failed { detail, fallback }
+        };
 
     loop {
         // Feed what the encoder asked for.
@@ -196,36 +199,38 @@ pub fn drive<T: AsyncTransform>(
             },
             Some(Message::Event(EncoderEvent::NeedInput)) => asked += 1,
             // A format change leaves the announced output where it was: it is asked for again at once (a few times).
-            Some(Message::Event(EncoderEvent::HaveOutput)) => match (0..4).map(|_| transform.output()).find(|output| !matches!(output, Ok(Output::StreamChanged))).unwrap_or(Ok(Output::Nothing)) {
-                Ok(Output::Sample { data, time }) => {
-                    // Checked before any frame is let go, so a fallback still has them all.
-                    let format = if format_sent {
-                        None
-                    } else {
-                        let Some((sps, pps)) = avc::parameter_sets(&data) else {
-                            return failed("the first H.264 sample has no parameter sets".into(), format_sent, taken, waiting, flush);
+            Some(Message::Event(EncoderEvent::HaveOutput)) => {
+                match (0..4).map(|_| transform.output()).find(|output| !matches!(output, Ok(Output::StreamChanged))).unwrap_or(Ok(Output::Nothing)) {
+                    Ok(Output::Sample { data, time }) => {
+                        // Checked before any frame is let go, so a fallback still has them all.
+                        let format = if format_sent {
+                            None
+                        } else {
+                            let Some((sps, pps)) = avc::parameter_sets(&data) else {
+                                return failed("the first H.264 sample has no parameter sets".into(), format_sent, taken, waiting, flush);
+                            };
+                            Some(avc::decoder_config(sps, pps))
                         };
-                        Some(avc::decoder_config(sps, pps))
-                    };
-                    while taken.front().is_some_and(|(queued, _)| *queued < time) {
-                        taken.pop_front();
+                        while taken.front().is_some_and(|(queued, _)| *queued < time) {
+                            taken.pop_front();
+                        }
+                        let pts_ns = match taken.front() {
+                            Some((queued, _)) if *queued == time => taken.pop_front().map(|(_, q)| q.pts_ns).unwrap_or_default(),
+                            _ => origin.unwrap_or(0) + time.max(0) as u64 * 100,
+                        };
+                        if let Some(avcc) = format {
+                            sink.media(Media::VideoFormat { avcc, width: width as u16, height: height as u16 });
+                            format_sent = true;
+                        }
+                        let (data, sync) = avc::sample(&data);
+                        sink.media(Media::Video { data, pts_ns, sync });
+                        since_output = 0;
+                        silent_since = (!taken.is_empty() || !waiting.is_empty() || draining).then(Instant::now);
                     }
-                    let pts_ns = match taken.front() {
-                        Some((queued, _)) if *queued == time => taken.pop_front().map(|(_, q)| q.pts_ns).unwrap_or_default(),
-                        _ => origin.unwrap_or(0) + time.max(0) as u64 * 100,
-                    };
-                    if let Some(avcc) = format {
-                        sink.media(Media::VideoFormat { avcc, width: width as u16, height: height as u16 });
-                        format_sent = true;
-                    }
-                    let (data, sync) = avc::sample(&data);
-                    sink.media(Media::Video { data, pts_ns, sync });
-                    since_output = 0;
-                    silent_since = (!taken.is_empty() || !waiting.is_empty() || draining).then(Instant::now);
+                    Ok(Output::StreamChanged | Output::Nothing) => {}
+                    Err(detail) => return failed(format!("reading the encoder's output failed: {detail}"), format_sent, taken, waiting, flush),
                 }
-                Ok(Output::StreamChanged | Output::Nothing) => {}
-                Err(detail) => return failed(format!("reading the encoder's output failed: {detail}"), format_sent, taken, waiting, flush),
-            },
+            }
             Some(Message::Event(EncoderEvent::DrainComplete)) => {
                 if let Some(done) = flush.take() {
                     let _ = done.send(());

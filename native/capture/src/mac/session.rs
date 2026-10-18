@@ -30,9 +30,9 @@ use super::audio::AacEncoder;
 use super::camera::CameraCapture;
 use super::compositor::Compositor;
 use super::content::{self, describe};
+use super::microphone::MicrophoneCapture;
 use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
-use super::microphone::MicrophoneCapture;
 use crate::camera_layout::PREVIEW_FPS;
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
 use crate::pacing::Pacer;
@@ -309,11 +309,16 @@ struct Stream {
 
 impl Stream {
     /// A stream of `filter` with `config`, its frames the picture when `video`, its sound `sound`'s input if any.
-    fn new(filter: &SCContentFilter, config: &SCStreamConfiguration, shared: Arc<Shared>, video: bool, sound: Option<usize>, name: &str) -> Result<Self, CaptureError> {
+    fn new(
+        filter: &SCContentFilter,
+        config: &SCStreamConfiguration,
+        shared: Arc<Shared>,
+        video: bool,
+        sound: Option<usize>,
+        name: &str,
+    ) -> Result<Self, CaptureError> {
         let delegate = Delegate::new(shared, video, sound);
-        let stream = unsafe {
-            SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), filter, config, Some(ProtocolObject::from_ref(&*delegate)))
-        };
+        let stream = unsafe { SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), filter, config, Some(ProtocolObject::from_ref(&*delegate))) };
         let screen_queue = DispatchQueue::new(&format!("com.ericts.record.capture.{name}.screen"), None);
         let audio_queue = DispatchQueue::new(&format!("com.ericts.record.capture.{name}.audio"), None);
         let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);

@@ -46,7 +46,11 @@ enum Command {
     Media(Media),
     /// Write what is pending and make the file plain; video lasts until `video_end_ns`, and the audio track presents
     /// `audio_frames` frames after the encoder's priming.
-    Finish { video_end_ns: u64, audio_frames: Option<u64>, reply: Sender<Result<FinishReport, WriteFailure>> },
+    Finish {
+        video_end_ns: u64,
+        audio_frames: Option<u64>,
+        reply: Sender<Result<FinishReport, WriteFailure>>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -142,9 +146,7 @@ pub fn spawn(config: WriterConfig, events: impl Fn(WriterEvent) + Send + Sync + 
     let events: Events = Arc::new(events);
     let sender = MediaSender { commands, backlog: Arc::new(AtomicU64::new(0)), refused: Arc::new(Mutex::new(None)), events: events.clone() };
     let (backlog, refused) = (sender.backlog.clone(), sender.refused.clone());
-    let thread = std::thread::Builder::new()
-        .name("recordstuff-writer".into())
-        .spawn(move || run(config, receiver, &*events, &backlog, &refused))?;
+    let thread = std::thread::Builder::new().name("recordstuff-writer".into()).spawn(move || run(config, receiver, &*events, &backlog, &refused))?;
     Ok(Writer { sender, thread })
 }
 
@@ -159,13 +161,7 @@ struct State {
     media_since_progress: bool,
 }
 
-fn run(
-    config: WriterConfig,
-    receiver: Receiver<Command>,
-    events: &dyn Fn(WriterEvent),
-    backlog: &AtomicU64,
-    refused: &Mutex<Option<WriteFailure>>,
-) {
+fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(WriterEvent), backlog: &AtomicU64, refused: &Mutex<Option<WriteFailure>>) {
     let mut state = State {
         file: Some(config.file),
         t0_ns: config.t0_ns,

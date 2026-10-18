@@ -66,11 +66,7 @@ impl Record {
     /// A missing or unreadable file is an empty record: the worst that costs is a self-test.
     pub fn load(path: &Path) -> Self {
         let text = std::fs::read_to_string(path).unwrap_or_default();
-        let entries = text
-            .lines()
-            .filter_map(|line| line.split_once(" = "))
-            .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
-            .collect();
+        let entries = text.lines().filter_map(|line| line.split_once(" = ")).map(|(key, value)| (key.trim().to_string(), value.trim().to_string())).collect();
         Self { entries, path: Some(path.to_path_buf()) }
     }
 

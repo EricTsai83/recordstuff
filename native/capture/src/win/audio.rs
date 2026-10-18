@@ -17,8 +17,8 @@ use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{CloseHandle, E_ACCESSDENIED, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::*;
 use windows::Win32::Media::Multimedia::WAVE_FORMAT_IEEE_FLOAT;
-use windows::Win32::System::Com::{BLOB, CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, STGM_READ};
 use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
+use windows::Win32::System::Com::{BLOB, CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, STGM_READ};
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows::Win32::System::Variant::VT_BLOB;
 use windows::core::{HSTRING, IUnknown, Interface, implement};
@@ -71,22 +71,15 @@ fn loopback_client(pid: u32, include: bool) -> Result<IAudioClient, CaptureError
                 wReserved1: 0,
                 wReserved2: 0,
                 wReserved3: 0,
-                Anonymous: PROPVARIANT_0_0_0 {
-                    blob: BLOB {
-                        cbSize: size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>() as u32,
-                        pBlobData: (&raw mut params).cast(),
-                    },
-                },
+                Anonymous: PROPVARIANT_0_0_0 { blob: BLOB { cbSize: size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>() as u32, pBlobData: (&raw mut params).cast() } },
             }),
         },
     });
     let (sender, done) = channel();
     let handler: IActivateAudioInterfaceCompletionHandler = Activated(Mutex::new(Some(sender))).into();
-    let operation =
-        unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&*blob), &handler) }
-            .map_err(|e| start_failed("system audio capture is not available (Windows 10 2004 or later is needed)", e))?;
-    done.recv_timeout(ACTIVATE_TIMEOUT)
-        .map_err(|_| CaptureError::new("capture_start_failed", "system audio capture did not open within 5 s"))?;
+    let operation = unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&*blob), &handler) }
+        .map_err(|e| start_failed("system audio capture is not available (Windows 10 2004 or later is needed)", e))?;
+    done.recv_timeout(ACTIVATE_TIMEOUT).map_err(|_| CaptureError::new("capture_start_failed", "system audio capture did not open within 5 s"))?;
     let mut result = windows::core::HRESULT(0);
     let mut client: Option<IUnknown> = None;
     unsafe { operation.GetActivateResult(&mut result, &mut client) }.map_err(|e| start_failed("system audio capture", e))?;
@@ -158,7 +151,8 @@ pub fn microphones() -> Result<Vec<crate::core::Microphone>, CaptureError> {
     super::com();
     let devices = enumerator()?;
     let default = unsafe { devices.GetDefaultAudioEndpoint(eCapture, eConsole) }.ok().and_then(|device| unsafe { device.GetId() }.ok().map(take_id));
-    let collection = unsafe { devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) }.map_err(|e| start_failed("the audio inputs could not be listed", e))?;
+    let collection =
+        unsafe { devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) }.map_err(|e| start_failed("the audio inputs could not be listed", e))?;
     let count = unsafe { collection.GetCount() }.map_err(|e| start_failed("the audio inputs could not be counted", e))?;
     let mut found = Vec::new();
     for index in 0..count {
@@ -374,14 +368,15 @@ fn pump(
             }
             if shared.reads_sound() && frames > 0 {
                 let silent = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null();
-                let samples = if silent {
-                    &[][..]
-                } else {
-                    unsafe { std::slice::from_raw_parts(data.cast::<f32>(), frames as usize * channels) }
-                };
-                let result = shared.sound(input, pts, frames as usize, |frame, channel| {
-                    if silent { 0.0 } else { samples[frame * channels + channel.min(channels - 1)] }
-                });
+                let samples = if silent { &[][..] } else { unsafe { std::slice::from_raw_parts(data.cast::<f32>(), frames as usize * channels) } };
+                let result = shared.sound(
+                    input,
+                    pts,
+                    frames as usize,
+                    |frame, channel| {
+                        if silent { 0.0 } else { samples[frame * channels + channel.min(channels - 1)] }
+                    },
+                );
                 if let Err(detail) = result {
                     let _ = unsafe { capture.ReleaseBuffer(frames) };
                     return Err(detail);

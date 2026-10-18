@@ -7,13 +7,12 @@ use std::ffi::c_void;
 use std::ptr::{NonNull, null_mut};
 
 use objc2_audio_toolbox::{
-    AudioConverterDispose, AudioConverterFillComplexBuffer, AudioConverterGetProperty, AudioConverterNew, AudioConverterPrimeInfo,
-    AudioConverterRef, AudioConverterSetProperty, kAudioConverterEncodeBitRate, kAudioConverterPrimeInfo,
-    kAudioConverterPropertyMaximumOutputPacketSize,
+    AudioConverterDispose, AudioConverterFillComplexBuffer, AudioConverterGetProperty, AudioConverterNew, AudioConverterPrimeInfo, AudioConverterRef,
+    AudioConverterSetProperty, kAudioConverterEncodeBitRate, kAudioConverterPrimeInfo, kAudioConverterPropertyMaximumOutputPacketSize,
 };
 use objc2_core_audio_types::{
-    AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioStreamPacketDescription, kAudioFormatFlagIsFloat,
-    kAudioFormatFlagIsPacked, kAudioFormatLinearPCM, kAudioFormatMPEG4AAC,
+    AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioStreamPacketDescription, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked,
+    kAudioFormatLinearPCM, kAudioFormatMPEG4AAC,
 };
 
 use super::CaptureError;
@@ -86,9 +85,7 @@ impl AacEncoder {
             priming: 0,
         };
         let mut rate = bitrate;
-        let status = unsafe {
-            AudioConverterSetProperty(converter, kAudioConverterEncodeBitRate, 4, NonNull::from(&mut rate).cast())
-        };
+        let status = unsafe { AudioConverterSetProperty(converter, kAudioConverterEncodeBitRate, 4, NonNull::from(&mut rate).cast()) };
         if status != 0 {
             return Err(fail("refused the bit rate", status));
         }
@@ -106,9 +103,7 @@ impl AacEncoder {
         }
         let mut prime = AudioConverterPrimeInfo { leadingFrames: 0, trailingFrames: 0 };
         let mut size = std::mem::size_of::<AudioConverterPrimeInfo>() as u32;
-        let status = unsafe {
-            AudioConverterGetProperty(converter, kAudioConverterPrimeInfo, NonNull::from(&mut size), NonNull::from(&mut prime).cast())
-        };
+        let status = unsafe { AudioConverterGetProperty(converter, kAudioConverterPrimeInfo, NonNull::from(&mut size), NonNull::from(&mut prime).cast()) };
         encoder.priming = if status == 0 { prime.leadingFrames } else { 0 };
         Ok(encoder)
     }

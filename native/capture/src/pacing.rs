@@ -111,9 +111,7 @@ mod tests {
     /// Frames on a display refreshing at `hz`, starting `phase_ns` after the start, with alternating jitter.
     fn refreshes(hz: f64, phase_ns: f64, seconds: f64, jitter_ns: f64) -> Vec<u64> {
         let period = 1e9 / hz;
-        (0..(seconds * hz) as usize)
-            .map(|n| (1e12 + phase_ns + n as f64 * period + if n % 2 == 0 { jitter_ns } else { -jitter_ns }) as u64)
-            .collect()
+        (0..(seconds * hz) as usize).map(|n| (1e12 + phase_ns + n as f64 * period + if n % 2 == 0 { jitter_ns } else { -jitter_ns }) as u64).collect()
     }
 
     fn kept_gaps(frames: &[u64], frame_rate: u32) -> (usize, u64) {

@@ -43,11 +43,7 @@ fn unavailable(detail: impl Into<String>) -> CaptureError {
 
 /// Media Foundation's refusal, worded: E_ACCESSDENIED is Settings > Privacy & security > Camera refusing desktop apps.
 fn refused(what: &str, e: &windows::core::Error) -> String {
-    if e.code() == E_ACCESSDENIED {
-        "access is not allowed (Settings > Privacy & security > Camera)".into()
-    } else {
-        format!("{what} ({e})")
-    }
+    if e.code() == E_ACCESSDENIED { "access is not allowed (Settings > Privacy & security > Camera)".into() } else { format!("{what} ({e})") }
 }
 
 /// A camera as Media Foundation lists it.
@@ -119,7 +115,13 @@ fn choose_native(reader: &IMFSourceReader) -> Option<IMFMediaType> {
         let Some((width, height)) = pair(&media_type, &MF_MT_FRAME_SIZE) else { continue };
         let rate = pair(&media_type, &MF_MT_FRAME_RATE).map_or(0.0, |(n, d)| f64::from(n) / f64::from(d.max(1)));
         let size_miss = u64::from(width.abs_diff(WANTED.0)) + u64::from(height.abs_diff(WANTED.1));
-        let rate_miss = if rate < 15.0 { 10_000 } else if rate > 30.5 { 100 } else { ((30.0 - rate) * 10.0) as u64 };
+        let rate_miss = if rate < 15.0 {
+            10_000
+        } else if rate > 30.5 {
+            100
+        } else {
+            ((30.0 - rate) * 10.0) as u64
+        };
         let score = size_miss * 10 + rate_miss;
         if best.as_ref().is_none_or(|(least, _)| score < *least) {
             best = Some((score, media_type));
@@ -147,7 +149,8 @@ fn stride_of(media_type: Option<&IMFMediaType>, width: u32) -> usize {
 fn open(link: &str) -> Result<Opened, String> {
     let attributes = video_capture_attributes().map_err(|e| format!("attributes ({e})"))?;
     let wide: Vec<u16> = link.encode_utf16().chain([0]).collect();
-    unsafe { attributes.SetString(&MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, PCWSTR(wide.as_ptr())) }.map_err(|e| format!("attributes ({e})"))?;
+    unsafe { attributes.SetString(&MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, PCWSTR(wide.as_ptr())) }
+        .map_err(|e| format!("attributes ({e})"))?;
     let source = unsafe { MFCreateDeviceSource(&attributes) }.map_err(|e| refused("it could not be opened", &e))?;
     let shut = |detail: String| {
         let _ = unsafe { source.Shutdown() };

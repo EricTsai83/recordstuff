@@ -194,10 +194,10 @@ fn live_display_with_only_the_microphone() {
 #[test]
 #[ignore = "a probe for someone to unplug and plug back a camera while it runs"]
 fn probe_cameras_coming_and_going() {
-    use std::ffi::c_void;
-    use std::ptr::{NonNull, null};
     use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeVideo};
     use objc2_core_foundation::{CFRetained, CFString};
+    use std::ffi::c_void;
+    use std::ptr::{NonNull, null};
 
     #[repr(C)]
     struct Address {
@@ -208,7 +208,15 @@ fn probe_cameras_coming_and_going() {
     #[link(name = "CoreMediaIO", kind = "framework")]
     unsafe extern "C" {
         fn CMIOObjectGetPropertyDataSize(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const c_void, size: *mut u32) -> i32;
-        fn CMIOObjectGetPropertyData(object: u32, address: *const Address, qualifier_size: u32, qualifier: *const c_void, size: u32, used: *mut u32, data: *mut c_void) -> i32;
+        fn CMIOObjectGetPropertyData(
+            object: u32,
+            address: *const Address,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: u32,
+            used: *mut u32,
+            data: *mut c_void,
+        ) -> i32;
     }
     let code = |text: &[u8; 4]| u32::from_be_bytes(*text);
     let address = |selector: &[u8; 4]| Address { selector: code(selector), scope: code(b"glob"), element: 0 };
@@ -269,7 +277,9 @@ fn camera_delivers_without_a_run_loop() {
             let _ = sender.send(granted.as_bool());
         });
         let media = unsafe { objc2_av_foundation::AVMediaTypeVideo }.unwrap();
-        let _: () = unsafe { objc2::msg_send![<objc2_av_foundation::AVCaptureDevice as objc2::ClassType>::class(), requestAccessForMediaType: media, completionHandler: &*block] };
+        let _: () = unsafe {
+            objc2::msg_send![<objc2_av_foundation::AVCaptureDevice as objc2::ClassType>::class(), requestAccessForMediaType: media, completionHandler: &*block]
+        };
         println!("camera access asked: {:?}", receiver.recv_timeout(Duration::from_secs(60)));
     }
     let camera = match CameraCapture::start(std::env::var("RECORDSTUFF_CAMERA_DEVICE").ok().as_deref(), Arc::new(Heard::default()), || true) {
@@ -281,9 +291,7 @@ fn camera_delivers_without_a_run_loop() {
     };
     std::thread::sleep(Duration::from_secs(seconds));
     let delivered = camera.feed.counts().0;
-    let size = camera.feed.latest().map(|(image, _)| {
-        (objc2_core_video::CVPixelBufferGetWidth(&image.0), objc2_core_video::CVPixelBufferGetHeight(&image.0))
-    });
+    let size = camera.feed.latest().map(|(image, _)| (objc2_core_video::CVPixelBufferGetWidth(&image.0), objc2_core_video::CVPixelBufferGetHeight(&image.0)));
     println!("camera {}: {delivered} frames in {seconds} s ({:.1} fps), size {size:?}; {}", camera.name, delivered as f64 / seconds as f64, camera.state());
     crate::core::CameraControl::close(&*camera);
     assert!(delivered as f64 >= seconds as f64 * 10.0, "the camera delivered {delivered} frames in {seconds} s");

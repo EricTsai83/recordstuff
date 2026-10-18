@@ -149,10 +149,7 @@ fn capture_item(source: &Source, display_point: Option<(i32, i32)>) -> Result<(w
             }
             Ok((item, Some(Area { x: *x, y: *y, width: *width, height: *height })))
         }
-        Source::Apps(_) => Err(CaptureError::new(
-            "capture_start_failed",
-            "Windows cannot record only chosen apps' windows: record one window or the display",
-        )),
+        Source::Apps(_) => Err(CaptureError::new("capture_start_failed", "Windows cannot record only chosen apps' windows: record one window or the display")),
     }
 }
 
@@ -278,16 +275,17 @@ impl Session {
         }
         // Every session has its preview (plan 075, D19/D20), watched only when asked; without a camera it renders the
         // screen alone through a compositor of its own, hidden, which the recording's frames never use.
-        let preview_compositor = compositor.or_else(|| match Compositor::new(gpu.clone(), width, height, crate::camera_layout::Layout::default(), Arc::new(Feed::default())) {
-            Ok(made) => {
-                made.set_hidden(true);
-                Some(Arc::new(made))
-            }
-            Err(detail) => {
-                eprintln!("preview: no compositor ({detail})");
-                None
-            }
-        });
+        let preview_compositor =
+            compositor.or_else(|| match Compositor::new(gpu.clone(), width, height, crate::camera_layout::Layout::default(), Arc::new(Feed::default())) {
+                Ok(made) => {
+                    made.set_hidden(true);
+                    Some(Arc::new(made))
+                }
+                Err(detail) => {
+                    eprintln!("preview: no compositor ({detail})");
+                    None
+                }
+            });
         if let Some(compositor) = preview_compositor {
             // A preview is a convenience: without one Settings shows no picture, and the recording goes on.
             match Preview::start(gpu.clone(), session.core.shared(), compositor, camera_request.as_ref().is_some_and(|wanted| wanted.preview)) {
@@ -299,10 +297,7 @@ impl Session {
         let mut warnings = Vec::new();
         let audio_bitrate_used = supported_bitrate(request.audio_bitrate);
         if audio_bitrate_used != request.audio_bitrate {
-            warnings.push(format!(
-                "system audio is encoded at {} kbps: Windows's AAC encoder takes at most 192 kbps",
-                audio_bitrate_used / 1000
-            ));
+            warnings.push(format!("system audio is encoded at {} kbps: Windows's AAC encoder takes at most 192 kbps", audio_bitrate_used / 1000));
         }
         if !borderless {
             warnings.push("Windows draws a border around the recorded display (Windows 10 cannot turn it off)".into());
@@ -457,7 +452,8 @@ mod tests {
         let compositor = Compositor::new(gpu.clone(), 1280, 720, crate::camera_layout::Layout::default(), Arc::new(Feed::default())).unwrap();
         let chunks = Arc::new(Chunks::default());
         let (width, height) = compositor.preview_size();
-        let encoder = H264Encoder::for_preview(gpu.clone(), width, height, PREVIEW_FPS, PREVIEW_BITRATE, Arc::new(core::PreviewSink::new(chunks.clone()))).unwrap();
+        let encoder =
+            H264Encoder::for_preview(gpu.clone(), width, height, PREVIEW_FPS, PREVIEW_BITRATE, Arc::new(core::PreviewSink::new(chunks.clone()))).unwrap();
         // A grey screen as capture makes it.
         let data = vec![128u8; 1280 * 720 * 3 / 2];
         let initial = windows::Win32::Graphics::Direct3D11::D3D11_SUBRESOURCE_DATA { pSysMem: data.as_ptr().cast(), SysMemPitch: 1280, SysMemSlicePitch: 0 };

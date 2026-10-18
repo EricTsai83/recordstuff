@@ -69,12 +69,7 @@ pub(crate) fn limit(sum: f32) -> f32 {
 impl Mixer {
     /// `inputs` inputs for a track starting at host time `t0_ns`; see `AudioAligner` for `tolerance_frames`.
     pub fn new(rate: u32, t0_ns: u64, inputs: usize, tolerance_frames: u64, latency_frames: u64) -> Self {
-        let input = || Input {
-            aligner: AudioAligner::new(rate, t0_ns, tolerance_frames),
-            pending: VecDeque::new(),
-            start: 0,
-            late: 0,
-        };
+        let input = || Input { aligner: AudioAligner::new(rate, t0_ns, tolerance_frames), pending: VecDeque::new(), start: 0, late: 0 };
         Self { rate, t0_ns, latency_frames, inputs: (0..inputs).map(|_| input()).collect(), mixed: 0, limited: 0 }
     }
 

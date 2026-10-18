@@ -1,0 +1,4 @@
+# The engine's lines were written wide before rustfmt: these settings keep them so (plan of 2026-10-19), so the
+# formatter changed about 560 lines of 15,000 rather than about 8,400 at the default 100 columns.
+max_width = 160
+use_small_heuristics = "Max"

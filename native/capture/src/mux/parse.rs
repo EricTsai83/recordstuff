@@ -190,11 +190,7 @@ fn read_fragment(data: &[u8], moof: &Box_, tracks: &mut BTreeMap<u32, Track>) ->
             if position + size > data.len() {
                 return Err("sample past the end of the file".into());
             }
-            track.samples.push(ParsedSample {
-                data: data[position..position + size].to_vec(),
-                decode_time: time,
-                sync: sample_flags & 0x1_0000 == 0,
-            });
+            track.samples.push(ParsedSample { data: data[position..position + size].to_vec(), decode_time: time, sync: sample_flags & 0x1_0000 == 0 });
             position += size;
             time += u64::from(duration);
         }

@@ -223,10 +223,9 @@ impl Processor {
             OutputHeight: height,
             Usage: D3D11_VIDEO_USAGE_OPTIMAL_SPEED,
         };
-        let enumerator = unsafe { video_device.CreateVideoProcessorEnumerator(&content) }
-            .map_err(|e| start_failed("the video processor is not available", e))?;
-        let processor = unsafe { video_device.CreateVideoProcessor(&enumerator, 0) }
-            .map_err(|e| start_failed("the video processor could not be made", e))?;
+        let enumerator =
+            unsafe { video_device.CreateVideoProcessorEnumerator(&content) }.map_err(|e| start_failed("the video processor is not available", e))?;
+        let processor = unsafe { video_device.CreateVideoProcessor(&enumerator, 0) }.map_err(|e| start_failed("the video processor could not be made", e))?;
         unsafe {
             video_context.VideoProcessorSetStreamFrameFormat(&processor, 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
             video_context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
@@ -270,14 +269,7 @@ impl Converter {
         }
         let (width, height, format, usage, bind, cpu) = match self.processor {
             Some(_) => (self.width, self.height, DXGI_FORMAT_NV12, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET.0 as u32, 0),
-            None => (
-                self.area.width,
-                self.area.height,
-                DXGI_FORMAT_B8G8R8A8_UNORM,
-                D3D11_USAGE_STAGING,
-                0,
-                D3D11_CPU_ACCESS_READ.0 as u32,
-            ),
+            None => (self.area.width, self.area.height, DXGI_FORMAT_B8G8R8A8_UNORM, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ.0 as u32),
         };
         let desc = D3D11_TEXTURE2D_DESC {
             Width: width,
@@ -311,8 +303,8 @@ impl Converter {
             // are made at the area's.
             self.area = Area::within(self.asked, size);
             if let Some(processor) = &mut self.processor {
-                let (enumerator, made) = Processor::make(&processor.video_device, &processor.video_context, size, self.area, self.width, self.height)
-                    .map_err(|e| e.detail)?;
+                let (enumerator, made) =
+                    Processor::make(&processor.video_device, &processor.video_context, size, self.area, self.width, self.height).map_err(|e| e.detail)?;
                 (processor.enumerator, processor.processor) = (enumerator, made);
             }
             self.source = size;
@@ -337,11 +329,7 @@ impl Converter {
         let mut input = None;
         unsafe { processor.video_device.CreateVideoProcessorInputView(bgra, &processor.enumerator, &input_desc, Some(&mut input)) }
             .map_err(|e| format!("a captured frame could not be read: {e}"))?;
-        let stream = D3D11_VIDEO_PROCESSOR_STREAM {
-            Enable: true.into(),
-            pInputSurface: std::mem::ManuallyDrop::new(input),
-            ..Default::default()
-        };
+        let stream = D3D11_VIDEO_PROCESSOR_STREAM { Enable: true.into(), pInputSurface: std::mem::ManuallyDrop::new(input), ..Default::default() };
         let streams = [stream];
         let result = {
             let _context = self.gpu.0.context.lock().unwrap();

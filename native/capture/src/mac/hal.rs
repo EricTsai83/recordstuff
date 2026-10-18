@@ -9,7 +9,9 @@
 use std::ffi::c_void;
 use std::ptr::{NonNull, null, null_mut};
 
-use objc2_core_audio_types::{AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked, kAudioFormatLinearPCM};
+use objc2_core_audio_types::{
+    AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked, kAudioFormatLinearPCM,
+};
 use objc2_core_foundation::{CFRetained, CFString};
 
 pub type ObjectId = u32;
@@ -412,7 +414,13 @@ impl Drop for Resampler {
     }
 }
 
-unsafe extern "C" fn supply(_converter: AudioConverterRef, packets: *mut u32, data: *mut AudioBufferList, _descriptions: *mut *mut c_void, user: *mut c_void) -> OsStatus {
+unsafe extern "C" fn supply(
+    _converter: AudioConverterRef,
+    packets: *mut u32,
+    data: *mut AudioBufferList,
+    _descriptions: *mut *mut c_void,
+    user: *mut c_void,
+) -> OsStatus {
     let resampler = unsafe { &mut *(user as *mut Resampler) };
     let data = unsafe { &mut *data };
     if resampler.given || resampler.pending.is_empty() {

@@ -19,9 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCompile};
-use windows::Win32::Graphics::Direct3D::{
-    D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, D3D_SRV_DIMENSION_TEXTURE2D, ID3DBlob,
-};
+use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, D3D_SRV_DIMENSION_TEXTURE2D, ID3DBlob};
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT, DXGI_FORMAT_NV12, DXGI_FORMAT_R8_UNORM, DXGI_FORMAT_R8G8_UNORM, DXGI_SAMPLE_DESC};
 use windows::core::PCSTR;
@@ -362,10 +360,9 @@ impl Compositor {
             context.CSSetConstantBuffers(0, Some(&[Some(self.kernels.params.clone())]));
             context.CSSetShaderResources(1, Some(&[Some(source.0.clone()), Some(source.1.clone()), Some(camera_luma), Some(camera_chroma)]));
             let (width, height) = target.size;
-            for (shader, slot, view, (w, h)) in [
-                (&self.kernels.luma, 5, &target.luma.0, (width, height)),
-                (&self.kernels.chroma, 6, &target.chroma.0, (width / 2, height / 2)),
-            ] {
+            for (shader, slot, view, (w, h)) in
+                [(&self.kernels.luma, 5, &target.luma.0, (width, height)), (&self.kernels.chroma, 6, &target.chroma.0, (width / 2, height / 2))]
+            {
                 context.CSSetShader(shader, None);
                 context.CSSetUnorderedAccessViews(slot, 1, Some(&Some(view.clone())), None);
                 context.Dispatch(w.div_ceil(16), h.div_ceil(16), 1);
@@ -380,7 +377,14 @@ impl Compositor {
             context.PSSetShader(&self.kernels.pixel, None);
             for (view, plane, (w, h)) in [(&output_luma, &target.luma.1, (width, height)), (&output_chroma, &target.chroma.1, (width / 2, height / 2))] {
                 context.OMSetRenderTargets(Some(&[Some(view.clone())]), None);
-                context.RSSetViewports(Some(&[D3D11_VIEWPORT { TopLeftX: 0.0, TopLeftY: 0.0, Width: w as f32, Height: h as f32, MinDepth: 0.0, MaxDepth: 1.0 }]));
+                context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+                    TopLeftX: 0.0,
+                    TopLeftY: 0.0,
+                    Width: w as f32,
+                    Height: h as f32,
+                    MinDepth: 0.0,
+                    MaxDepth: 1.0,
+                }]));
                 context.PSSetShaderResources(0, Some(&[Some(plane.clone())]));
                 context.Draw(3, 0);
             }

@@ -17,10 +17,10 @@ use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
 use objc2_core_foundation::{CFDictionary, CFNumber, CFRetained, CFString, CFType};
 use objc2_core_video::{
-    CVImageBuffer, CVMetalTexture, CVMetalTextureCache, CVMetalTextureGetTexture, CVPixelBuffer, CVPixelBufferGetHeight,
-    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetWidth, CVPixelBufferGetWidthOfPlane, CVPixelBufferPool,
-    kCVImageBufferYCbCrMatrix_ITU_R_601_4, kCVImageBufferYCbCrMatrixKey, kCVMetalTextureUsage, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferPixelFormatTypeKey,
-    kCVPixelBufferWidthKey, kCVPixelBufferBytesPerRowAlignmentKey, kCVPixelBufferExtendedPixelsBottomKey, kCVPixelBufferExtendedPixelsRightKey,
+    CVImageBuffer, CVMetalTexture, CVMetalTextureCache, CVMetalTextureGetTexture, CVPixelBuffer, CVPixelBufferGetHeight, CVPixelBufferGetHeightOfPlane,
+    CVPixelBufferGetWidth, CVPixelBufferGetWidthOfPlane, CVPixelBufferPool, kCVImageBufferYCbCrMatrix_ITU_R_601_4, kCVImageBufferYCbCrMatrixKey,
+    kCVMetalTextureUsage, kCVPixelBufferBytesPerRowAlignmentKey, kCVPixelBufferExtendedPixelsBottomKey, kCVPixelBufferExtendedPixelsRightKey,
+    kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,
 };
 use objc2_foundation::NSString;
 use objc2_metal::{
@@ -49,8 +49,13 @@ impl Pool {
         let surface = CFDictionary::<CFString, CFType>::from_slices(&[], &[]);
         let keys: [&CFString; 7] = unsafe {
             [
-                kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey,
-                kCVPixelBufferExtendedPixelsRightKey, kCVPixelBufferExtendedPixelsBottomKey, kCVPixelBufferBytesPerRowAlignmentKey,
+                kCVPixelBufferPixelFormatTypeKey,
+                kCVPixelBufferWidthKey,
+                kCVPixelBufferHeightKey,
+                kCVPixelBufferIOSurfacePropertiesKey,
+                kCVPixelBufferExtendedPixelsRightKey,
+                kCVPixelBufferExtendedPixelsBottomKey,
+                kCVPixelBufferBytesPerRowAlignmentKey,
             ]
         };
         let (format, w, h) = (CFNumber::new_i64(i64::from(PIXEL_FORMAT_420V)), CFNumber::new_i64(i64::from(width)), CFNumber::new_i64(i64::from(height)));
@@ -101,9 +106,7 @@ impl Gpu {
             .map_err(|e| format!("the compositor's shader did not compile: {}", super::content::describe(&e)))?;
         let pipeline = |name: &str| {
             let function = library.newFunctionWithName(&NSString::from_str(name)).ok_or_else(|| format!("the shader has no {name}"))?;
-            device
-                .newComputePipelineStateWithFunction_error(&function)
-                .map_err(|e| format!("{name} could not be prepared: {}", super::content::describe(&e)))
+            device.newComputePipelineStateWithFunction_error(&function).map_err(|e| format!("{name} could not be prepared: {}", super::content::describe(&e)))
         };
         let (luma, chroma) = (pipeline(names::MSL_LUMA)?, pipeline(names::MSL_CHROMA)?);
         // The output's planes are written, the inputs' read.
@@ -277,9 +280,12 @@ pub(super) fn test_frame(width: u32, height: u32) -> CFRetained<CVPixelBuffer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use objc2_core_video::{CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress};
+    use objc2_core_video::{
+        CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
+        CVPixelBufferUnlockBaseAddress,
+    };
 
-/// Reads a 4:2:0 buffer's planes into contiguous NV12 bytes.
+    /// Reads a 4:2:0 buffer's planes into contiguous NV12 bytes.
     fn nv12_bytes(buffer: &CVPixelBuffer, width: usize, height: usize) -> Result<Vec<u8>, String> {
         let read_only = CVPixelBufferLockFlags(1);
         let status = unsafe { CVPixelBufferLockBaseAddress(buffer, read_only) };
@@ -486,7 +492,10 @@ mod tests {
 #[cfg(test)]
 mod layout_test {
     use super::*;
-    use objc2_core_video::{CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress};
+    use objc2_core_video::{
+        CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
+        CVPixelBufferUnlockBaseAddress,
+    };
 
     struct Quiet;
     impl crate::core::Events for Quiet {
