@@ -25,7 +25,7 @@ mod mixer;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
-pub use camera::{CAMERA_SILENT_NS, CameraControl, CameraFeed};
+pub use camera::{CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
 pub use frame_log::FrameLog;
 use mixer::Mixer;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};

@@ -844,6 +844,16 @@ fn the_camera_keeps_only_its_newest_frame() {
 }
 
 #[test]
+fn the_camera_s_age_in_its_frames_is_summed_up_for_the_log() {
+    let ages = CameraAges::default();
+    assert_eq!(ages.summary(), None, "nothing before a frame is composed with the camera");
+    ages.record(40_000_000, 10_000_000);
+    ages.record(50_000_000, 30_000_000);
+    ages.record(60_000_000, 65_000_000);
+    assert_eq!(ages.summary().as_deref(), Some("the camera's picture 15.0 ms older than its frame on average (-5.0 to 30.0 ms) in 3 frame(s)"));
+}
+
+#[test]
 fn each_encoded_frame_takes_the_camera_s_newest_frame_whether_the_camera_is_slower_or_faster() {
     for (camera_interval, expect_repeats) in [(Duration::from_millis(66), true), (Duration::from_millis(16), false)] {
         let mut rig = Rig::new(if expect_repeats { "camera-slower" } else { "camera-faster" });

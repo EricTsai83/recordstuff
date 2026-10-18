@@ -86,7 +86,7 @@ impl VideoEncode<Frame> for Video {
         // Hidden (D13): the screen's own frame, exactly as with the camera off.
         match self.compositor.as_ref().filter(|compositor| !compositor.hidden()) {
             Some(compositor) => {
-                let composed = compositor.compose(&frame.image).map_err(|detail| format!("composing the camera failed: {detail}"))?;
+                let composed = compositor.compose(&frame.image, pts_ns).map_err(|detail| format!("composing the camera failed: {detail}"))?;
                 self.encoder.encode(&composed, pts_ns, key_frame)
             }
             None => self.encoder.encode(&frame.image, pts_ns, key_frame),
@@ -626,6 +626,10 @@ impl Session {
             eprintln!("camera: at the stop {}", camera.state());
         }
         self.core.halted();
+        // Once `halted` has joined the threads that compose, so every frame is counted.
+        if let Some(ages) = self.compositor.as_ref().and_then(|compositor| compositor.camera_ages()) {
+            eprintln!("camera: {ages}");
+        }
     }
 
     /// Releases a prepared session that never recorded: the file stays empty and main removes it.

@@ -30,6 +30,7 @@ use objc2_metal::{
 
 use super::camera;
 use crate::camera_layout::{self, CameraImage, ComposeParams, Layout};
+use crate::core::CameraAges;
 
 mod names {
     include!(concat!(env!("OUT_DIR"), "/compose_names.rs"));
@@ -167,6 +168,8 @@ pub struct Compositor {
     /// Hidden from the tray (D13): the camera stays open and nothing of it is composed.
     hidden: std::sync::atomic::AtomicBool,
     camera: Arc<camera::Feed>,
+    /// The camera's picture's age in the recording's frames, for the log.
+    ages: CameraAges,
 }
 
 // Metal's device, queue and pipeline states are thread-safe; command buffers are made per call.
@@ -186,6 +189,7 @@ impl Compositor {
             layout: Mutex::new(layout.clamped()),
             hidden: std::sync::atomic::AtomicBool::new(false),
             camera,
+            ages: CameraAges::default(),
         })
     }
 
@@ -221,10 +225,15 @@ impl Compositor {
         camera_layout::compose_params(&self.layout(), self.size, out, camera)
     }
 
-    fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32)) -> Result<CFRetained<CVPixelBuffer>, String> {
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview.
+    fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32), at_ns: Option<u64>) -> Result<CFRetained<CVPixelBuffer>, String> {
         autoreleasepool(|_| {
             // Nothing while the camera is lost (D12) or hidden (D13): the screen alone.
-            let camera = if self.hidden() { None } else { self.camera.latest().map(|(image, _)| image.0) };
+            let camera = if self.hidden() { None } else { self.camera.latest() };
+            if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
+                self.ages.record(at_ns, *captured_ns);
+            }
+            let camera = camera.map(|(image, _)| image.0);
             let output = pool.buffer()?;
             screen.propagate_attachments(&output);
             self.gpu.compose(screen, camera.as_deref(), &output, &self.params(out, camera.as_deref()))?;
@@ -232,15 +241,20 @@ impl Compositor {
         })
     }
 
-    /// The frame to encode in place of `screen`. Each call drains its own autorelease pool: it runs on the engine's
-    /// threads, which have none.
-    pub fn compose(&self, screen: &CVImageBuffer) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.pool, self.size)
+    /// The frame to encode in place of `screen`, at `at_ns` host time. Each call drains its own autorelease pool: it
+    /// runs on the engine's threads, which have none.
+    pub fn compose(&self, screen: &CVImageBuffer, at_ns: u64) -> Result<CFRetained<CVPixelBuffer>, String> {
+        self.render(screen, &self.pool, self.size, Some(at_ns))
     }
 
     /// The composed picture of `screen` at preview size, for the preview's encoder.
     pub fn preview(&self, screen: &CVImageBuffer) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.preview_pool, self.preview_size)
+        self.render(screen, &self.preview_pool, self.preview_size, None)
+    }
+
+    /// The camera's age in the frames composed so far, for the log.
+    pub fn camera_ages(&self) -> Option<String> {
+        self.ages.summary()
     }
 }
 
@@ -345,7 +359,7 @@ mod tests {
     fn without_a_camera_frame_the_screen_is_unchanged() {
         let (compositor, _) = compositor(Layout::default());
         let screen = buffer(W, H, |x, _| if x < 160 { DARK } else { BRIGHT });
-        let out = compositor.compose(&screen).unwrap();
+        let out = compositor.compose(&screen, 0).unwrap();
         assert!(near(luma(&out, 10, 10), DARK) && near(luma(&out, 300, 170), BRIGHT));
     }
 
@@ -355,7 +369,7 @@ mod tests {
         let (compositor, camera) = compositor(layout);
         deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let screen = buffer(W, H, |_, _| DARK);
-        let out = compositor.compose(&screen).unwrap();
+        let out = compositor.compose(&screen, 0).unwrap();
         let bubble = layout.bubble(W, H);
         let (cx, cy) = ((bubble.x + bubble.width / 2.0) as usize, (bubble.y + bubble.height / 2.0) as usize);
         assert!(near(luma(&out, cx, cy), BRIGHT), "centre {}", luma(&out, cx, cy));
@@ -372,7 +386,7 @@ mod tests {
         let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 0.0, y: 0.0, mirror: false };
         let (compositor, camera) = compositor(layout);
         deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
-        let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
+        let out = compositor.compose(&buffer(W, H, |_, _| DARK), 0).unwrap();
         assert!(near(luma(&out, 1, 1), BRIGHT), "{}", luma(&out, 1, 1));
         assert!(near(luma(&out, 1, 178), DARK));
         assert!(near(luma(&out, 318, 1), DARK));
@@ -387,7 +401,7 @@ mod tests {
         for mirror in [false, true] {
             let (compositor, camera) = compositor(Layout { mirror, ..layout });
             deliver(&camera, camera_picture());
-            let out = compositor.compose(&buffer(W, H, |_, _| 128)).unwrap();
+            let out = compositor.compose(&buffer(W, H, |_, _| 128), 0).unwrap();
             let (l, r) = (luma(&out, left, y), luma(&out, right, y));
             if mirror {
                 assert!(near(l, DARK) && near(r, BRIGHT), "mirrored: {l} {r}");
@@ -417,7 +431,7 @@ mod tests {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 0.0, x: 0.5, y: 0.5, mirror: false };
         let (compositor, camera) = compositor(layout);
         deliver(&camera, coloured(128, 72, |_, _| BRIGHT, (200, 60)));
-        let out = compositor.compose(&coloured(W, H, |_, _| DARK, (90, 170))).unwrap();
+        let out = compositor.compose(&coloured(W, H, |_, _| DARK, (90, 170)), 0).unwrap();
         let bubble = layout.bubble(W, H);
         let (cx, cy) = ((bubble.x + bubble.width / 2.0) as usize / 2, (bubble.y + bubble.height / 2.0) as usize / 2);
         let inside = chroma(&out, cx, cy);
@@ -434,7 +448,7 @@ mod tests {
         let key: &CFString = unsafe { kCVImageBufferYCbCrMatrixKey };
         unsafe { frame.set_attachment(key, kCVImageBufferYCbCrMatrix_ITU_R_601_4, objc2_core_video::CVAttachmentMode::ShouldPropagate) };
         deliver(&camera, frame);
-        let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
+        let out = compositor.compose(&buffer(W, H, |_, _| DARK), 0).unwrap();
         let bubble = layout.bubble(W, H);
         let (x, y) = ((bubble.x + bubble.width / 2.0) as usize, (bubble.y + bubble.height / 2.0) as usize);
         // BT.601 (Y 220, Cb 200, Cr 60) is BT.709 (Y 225.8, Cb 193.5, Cr 63.7).
@@ -450,7 +464,7 @@ mod tests {
         assert_eq!((layout.bubble(W, H).x, layout.bubble(W, H).y), (31.0, 31.0));
         let (compositor, camera) = compositor(layout);
         deliver(&camera, coloured(128, 72, |_, _| BRIGHT, (200, 128)));
-        let out = compositor.compose(&buffer(W, H, |_, _| DARK)).unwrap();
+        let out = compositor.compose(&buffer(W, H, |_, _| DARK), 0).unwrap();
         // A quarter of the way from the screen's 128 to the camera's 200.
         let (cb, _) = chroma(&out, 15, 15);
         assert!(cb.abs_diff(146) <= 3, "edge chroma {cb}");
@@ -530,13 +544,13 @@ mod layout_test {
         let feed = Arc::new(camera::Feed::default());
         let compositor = Compositor::new(320, 180, Layout::default(), feed.clone()).unwrap();
         let screen = patterned(320, 180, 3);
-        assert_eq!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "no camera frame yet");
+        assert_eq!(bytes(&compositor.compose(&screen, 0).unwrap()), bytes(&screen), "no camera frame yet");
         feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
-        assert_ne!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "the camera shown");
+        assert_ne!(bytes(&compositor.compose(&screen, 0).unwrap()), bytes(&screen), "the camera shown");
         compositor.set_hidden(true);
-        assert_eq!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "hidden");
+        assert_eq!(bytes(&compositor.compose(&screen, 0).unwrap()), bytes(&screen), "hidden");
         compositor.set_hidden(false);
-        assert_ne!(bytes(&compositor.compose(&screen).unwrap()), bytes(&screen), "shown again");
+        assert_ne!(bytes(&compositor.compose(&screen, 0).unwrap()), bytes(&screen), "shown again");
     }
 
     #[test]
@@ -546,10 +560,10 @@ mod layout_test {
         let compositor = Compositor::new(320, 180, left, feed.clone()).unwrap();
         feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
         let screen = solid(320, 180, 40);
-        let before = compositor.compose(&screen).unwrap();
+        let before = compositor.compose(&screen, 0).unwrap();
         assert!(luma_at(&before, 5, 90) > 200 && luma_at(&before, 314, 90) < 60);
         compositor.set_layout(Layout { x: 1.0, ..left });
-        let after = compositor.compose(&screen).unwrap();
+        let after = compositor.compose(&screen, 0).unwrap();
         assert!(luma_at(&after, 5, 90) < 60 && luma_at(&after, 314, 90) > 200);
     }
 
@@ -560,7 +574,7 @@ mod layout_test {
             let feed = Arc::new(camera::Feed::default());
             let compositor = Compositor::new(width, height, layout, feed.clone()).unwrap();
             feed.deliver(camera::Image(solid(128, 72, 230)), 1, 1, &Quiet);
-            let out = compositor.compose(&solid(width, height, 40)).unwrap();
+            let out = compositor.compose(&solid(width, height, 40), 0).unwrap();
             let rect = layout.bubble(width, height);
             let (x0, y0) = (rect.x as usize, rect.y as usize);
             let (x1, y1) = ((rect.x + rect.width) as usize - 1, (rect.y + rect.height) as usize - 1);
@@ -597,6 +611,6 @@ mod lost_test {
         feed.lose("gone".into(), true, &Quiet);
         assert!(feed.latest().is_none());
         // Composing goes on with the screen alone.
-        compositor.compose(&screen).unwrap();
+        compositor.compose(&screen, 0).unwrap();
     }
 }

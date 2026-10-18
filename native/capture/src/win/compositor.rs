@@ -29,7 +29,7 @@ use windows::core::PCSTR;
 use super::Mta;
 use super::capture::{Captured, Frame, Gpu, Image, Pool, Readback};
 use crate::camera_layout::{self, CameraImage, ComposeParams, Layout};
-use crate::core::CameraFeed;
+use crate::core::{CameraAges, CameraFeed};
 
 mod names {
     include!(concat!(env!("OUT_DIR"), "/compose_names.rs"));
@@ -257,6 +257,8 @@ pub struct Compositor {
     /// Hidden from the tray (D13): the camera stays open and nothing of it is composed.
     hidden: AtomicBool,
     camera: Arc<Feed>,
+    /// The camera's picture's age in the recording's frames, for the log.
+    ages: CameraAges,
 }
 
 impl Compositor {
@@ -274,6 +276,7 @@ impl Compositor {
             layout: Mutex::new(layout.clamped()),
             hidden: AtomicBool::new(false),
             camera,
+            ages: CameraAges::default(),
             gpu,
         })
     }
@@ -300,21 +303,31 @@ impl Compositor {
         self.preview_size
     }
 
-    /// The frame to encode in place of `screen`.
-    pub fn compose(&self, screen: &Frame) -> Result<Frame, String> {
-        self.render(screen, &self.full)
+    /// The frame to encode in place of `screen`, at `at_ns` host time.
+    pub fn compose(&self, screen: &Frame, at_ns: u64) -> Result<Frame, String> {
+        self.render(screen, &self.full, Some(at_ns))
     }
 
     /// The composed picture of `screen` at preview size, for the preview's encoder.
     pub fn preview(&self, screen: &Frame) -> Result<Frame, String> {
-        self.render(screen, &self.preview)
+        self.render(screen, &self.preview, None)
     }
 
-    fn render(&self, screen: &Frame, target: &Mutex<Target>) -> Result<Frame, String> {
+    /// The camera's age in the frames composed so far, for the log.
+    pub fn camera_ages(&self) -> Option<String> {
+        self.ages.summary()
+    }
+
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview.
+    fn render(&self, screen: &Frame, target: &Mutex<Target>, at_ns: Option<u64>) -> Result<Frame, String> {
         let mut target = target.lock().unwrap();
         let gpu = &self.gpu.0;
         // Nothing while the camera is lost (D12) or hidden (D13): the screen alone.
-        let camera = if self.hidden() { None } else { self.camera.latest().map(|(frame, _)| frame) };
+        let camera = if self.hidden() { None } else { self.camera.latest() };
+        if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
+            self.ages.record(at_ns, *captured_ns);
+        }
+        let camera = camera.map(|(frame, _)| frame);
         let params = camera_layout::compose_params(&self.layout(), self.size, target.size, camera.as_ref().map(|frame| frame.0.image));
         let output = target.output(&gpu.device)?;
         let output_luma = target_view(&gpu.device, &output, DXGI_FORMAT_R8_UNORM).map_err(|e| format!("the output's luma: {e}"))?;
@@ -490,7 +503,7 @@ mod tests {
         let gpu = gpu();
         let (compositor, _) = compositor(&gpu, Layout::default(), W, H);
         let data = nv12(W, H, |x, y| (x * 7 + y * 3) as u8, (90, 170));
-        let out = compositor.compose(&screen(&gpu.0, &data, W, H)).unwrap();
+        let out = compositor.compose(&screen(&gpu.0, &data, W, H), 0).unwrap();
         assert!(read(&gpu.0, &out, W, H) == data, "the composed frame differs from the screen's");
     }
 
@@ -500,7 +513,7 @@ mod tests {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 1.0, x: 0.5, y: 0.5, mirror: false };
         let (compositor, feed) = compositor(&gpu, layout, W, H);
         deliver(&gpu.0, &feed, |_, _| BRIGHT, (200, 60));
-        let out = compositor.compose(&screen(&gpu.0, &nv12(W, H, |_, _| DARK, (90, 170)), W, H)).unwrap();
+        let out = compositor.compose(&screen(&gpu.0, &nv12(W, H, |_, _| DARK, (90, 170)), W, H), 0).unwrap();
         let data = read(&gpu.0, &out, W, H);
         let luma = |x: usize, y: usize| data[y * W as usize + x];
         let chroma = |x: usize, y: usize| {
@@ -525,13 +538,13 @@ mod tests {
         let (compositor, feed) = compositor(&gpu, corner, W, H);
         deliver(&gpu.0, &feed, |_, _| BRIGHT, (128, 128));
         let data = nv12(W, H, |_, _| DARK, (128, 128));
-        let first = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H)).unwrap(), W, H);
+        let first = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H), 0).unwrap(), W, H);
         assert!(near(first[W as usize + 1], BRIGHT), "top-left {}", first[W as usize + 1]);
         compositor.set_hidden(true);
-        assert!(read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H)).unwrap(), W, H) == data, "hidden: the screen alone");
+        assert!(read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H), 0).unwrap(), W, H) == data, "hidden: the screen alone");
         compositor.set_hidden(false);
         compositor.set_layout(Layout { x: 1.0, y: 1.0, ..corner });
-        let moved = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H)).unwrap(), W, H);
+        let moved = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, W, H), 0).unwrap(), W, H);
         assert!(near(moved[W as usize + 1], DARK) && near(moved[(H as usize - 2) * W as usize + W as usize - 2], BRIGHT));
     }
 
@@ -544,7 +557,7 @@ mod tests {
         for mirror in [false, true] {
             let (compositor, feed) = compositor(&gpu, Layout { mirror, ..layout }, W, H);
             deliver(&gpu.0, &feed, |x, _| if x < 64 { BRIGHT } else { DARK }, (128, 128));
-            let data = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &nv12(W, H, |_, _| 128, (128, 128)), W, H)).unwrap(), W, H);
+            let data = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &nv12(W, H, |_, _| 128, (128, 128)), W, H), 0).unwrap(), W, H);
             let (l, r) = (data[y * W as usize + left], data[y * W as usize + right]);
             assert!(if mirror { near(l, DARK) && near(r, BRIGHT) } else { near(l, BRIGHT) && near(r, DARK) }, "mirror {mirror}: {l} {r}");
         }
@@ -587,6 +600,6 @@ mod tests {
         let frame: Frame = Arc::new(Mta(Captured::detached(staging.unwrap(), Image::Bgra { width: W, height: H })));
         let expected = read(&gpu.0, &frame, W, H);
         let (compositor, _) = compositor(&gpu, Layout::default(), W, H);
-        assert!(read(&gpu.0, &compositor.compose(&frame).unwrap(), W, H) == expected, "the uploaded screen differs");
+        assert!(read(&gpu.0, &compositor.compose(&frame, 0).unwrap(), W, H) == expected, "the uploaded screen differs");
     }
 }

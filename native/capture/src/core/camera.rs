@@ -106,6 +106,51 @@ impl<F: Clone> CameraFeed<F> {
     }
 }
 
+/// How far the camera's picture is from the frames it is composed into (plan 075, step 8): each composed frame's host
+/// time less the capture time of the camera frame in it. Positive when the camera's picture is older than its frame,
+/// negative when it was captured after the screen's. On Windows the camera's frames are stamped when they arrive, so
+/// the time the camera and Media Foundation hold a picture is not counted there.
+#[derive(Default)]
+pub struct CameraAges(Mutex<Ages>);
+
+#[derive(Default)]
+struct Ages {
+    count: u64,
+    sum_ns: i128,
+    min_ns: i64,
+    max_ns: i64,
+}
+
+impl CameraAges {
+    /// A frame at `frame_ns` composed with the camera frame captured at `camera_ns`.
+    pub fn record(&self, frame_ns: u64, camera_ns: u64) {
+        let age = frame_ns as i64 - camera_ns as i64;
+        let mut ages = self.0.lock().unwrap();
+        if ages.count == 0 {
+            (ages.min_ns, ages.max_ns) = (age, age);
+        }
+        ages.count += 1;
+        ages.sum_ns += age as i128;
+        ages.min_ns = ages.min_ns.min(age);
+        ages.max_ns = ages.max_ns.max(age);
+    }
+
+    /// For the log, in milliseconds; nothing before a frame was composed with the camera.
+    pub fn summary(&self) -> Option<String> {
+        let ages = self.0.lock().unwrap();
+        let ms = |ns: f64| ns / 1e6;
+        (ages.count > 0).then(|| {
+            format!(
+                "the camera's picture {:.1} ms older than its frame on average ({:.1} to {:.1} ms) in {} frame(s)",
+                ms(ages.sum_ns as f64 / ages.count as f64),
+                ms(ages.min_ns as f64),
+                ms(ages.max_ns as f64),
+                ages.count
+            )
+        })
+    }
+}
+
 /// What the core asks of the platform's camera: to judge it on the refresh thread's clock and to close it, which turns
 /// its light off. The core closes it when capture ends (`Core::halted`), when a prepared session is released and when
 /// the core is dropped, so every way a session ends closes the camera.
