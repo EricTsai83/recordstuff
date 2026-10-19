@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
+  BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, afterStudio, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
   processRole, roleTreeFromPs, rolesFromPs, summarize, type Sample, type Summary,
 } from "./cpu-sampler.mts";
 
@@ -186,6 +186,15 @@ describe("process roles and the idle contract (plan 049)", () => {
     expect(judgeRoles(base, IDLE_ROLES.launch).verdict).toBe("pass");
     expect(judgeRoles({ ...base, renderer: 1 }, IDLE_ROLES.launch).actual).toContain("unexpected renderer ×1");
     expect(judgeRoles(base, IDLE_ROLES.afterRecording).verdict).toBe("pass");
+    // Plan 082, D2: after the Recording Studio, its two services are allowed once each, and nothing else more.
+    const studio = { ...base, "utility:video_capture": 1, "utility:audio": 1 };
+    expect(judgeRoles(studio, IDLE_ROLES.afterRecording).verdict).toBe("fail");
+    expect(judgeRoles(studio, afterStudio(IDLE_ROLES.afterRecording)).verdict).toBe("pass");
+    expect(judgeRoles(base, afterStudio(IDLE_ROLES.afterRecording)).verdict, "they may also be gone").toBe("pass");
+    expect(judgeRoles({ ...studio, "utility:audio": 2 }, afterStudio(IDLE_ROLES.afterRecording)).verdict).toBe("fail");
+    expect(judgeRoles({ ...studio, renderer: 1 }, afterStudio(IDLE_ROLES.afterRecording)).verdict).toBe("fail");
+    const { main: _main, ...noMain } = studio;
+    expect(judgeRoles(noMain, afterStudio(IDLE_ROLES.afterRecording)).verdict, "a required role stays required").toBe("fail");
     expect(judgeRoles({ ...base, "utility:audio": 1 }, IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:audio ×1");
     expect(judgeRoles({ ...base, "utility:node": 1 }, IDLE_ROLES.afterRecording).actual).toContain("unexpected utility:node ×1");
     // An overlay left behind after a recording.

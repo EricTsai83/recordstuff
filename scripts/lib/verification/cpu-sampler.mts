@@ -367,6 +367,17 @@ export const IDLE_ROLES = {
   settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1, renderer: 2, "utility:node": 1 } },
 } as const satisfies Record<string, { required: readonly string[]; allowed: Readonly<Record<string, number>> }>;
 
+/**
+ * A contract that also allows what the Recording Studio leaves once it has been open (plan 082, D2): Chromium's
+ * `utility:video_capture` and `utility:audio`, started by the page's `getUserMedia` and kept for the next use at no
+ * measured cost ([desktop](../../../docs/system-design/desktop.md#recording-studio)); every required role stays required.
+ */
+export function afterStudio<C extends { required: readonly string[]; allowed: Readonly<Record<string, number>> }>(contract: C): { required: readonly string[]; allowed: Readonly<Record<string, number>> } {
+  const allowed = { ...contract.allowed };
+  for (const role of ["utility:video_capture", "utility:audio"]) allowed[role] = Math.max(allowed[role] ?? 0, 1);
+  return { required: contract.required, allowed };
+}
+
 export function judgeRoles(roles: RoleCounts, contract: { required: readonly string[]; allowed: Readonly<Record<string, number>> }): Verdict {
   const problems: string[] = [];
   // A required role is there once, or up to the number `allowed` names for it.

@@ -67,7 +67,7 @@ import { fileURLToPath } from "node:url";
 import { confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, afterStudio, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
   judgeSettingsOpen, judgeSteadyState, machineModel, readRoleTree, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/verification/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
@@ -382,6 +382,9 @@ async function main(): Promise<number> {
     recordings.push({ fps, ...(file ? { file } : {}), summary, roles, residentBytes, samplerFailure: sampler!.failure, ...(withStudio ? { studio: true } : {}) });
     note(`recording at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%, 95th ${summary.cpuPercent.p95.toFixed(1)}%, encoder ${summary.followed.cpuPercent.average.toFixed(1)}%; ${file ?? "no file"}; then ${roleText(roles)}`);
   };
+  // After the Studio its two Chromium services stay (plan 082, D2): R's contract allows them, and its check says so.
+  const recordingRoles = cameraPreview ? withPreviewPage(roles.afterRecording) : roles.afterRecording;
+  const afterRecordingRoles = studio ? afterStudio(recordingRoles) : recordingRoles;
   const medianRecording = (fps: 30 | 60): void => {
     const set = recordings.filter((r) => r.fps === fps && !r.studio);
     if (!set.length) return;
@@ -392,7 +395,7 @@ async function main(): Promise<number> {
     scenarios.push({ name: `R. Recording at ${fps} fps (median of ${set.length})`, key: `recording${fps}`, summary: chosen.summary,
       verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(`measure:cpu recording ${fps}`, model)),
         ...set.map((r, i) => ({ ...judgeCoverage(r.summary, RECORDING_SECONDS - 10, r.samplerFailure), check: `Sampled coverage, run ${i + 1}` })),
-        { ...judgeRoles(set.at(-1)!.roles, cameraPreview ? withPreviewPage(roles.afterRecording) : roles.afterRecording), check: "Process roles 5 s after the last save" },
+        { ...judgeRoles(set.at(-1)!.roles, afterRecordingRoles), check: `Process roles 5 s after the last save${studio ? " (the Studio's utility:video_capture and utility:audio allowed)" : ""}` },
         judgeSteadyState(set.map((r) => r.roles))],
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
   };
@@ -489,7 +492,11 @@ async function main(): Promise<number> {
   /** L: a Live preview held for 50 s (D20), judged as a recording with the camera at the launch's rate (D18). */
   const livePreview = async (fps: 30 | 60): Promise<void> => {
     const from = log.end();
-    // A click that reached no button (2026-10-18: a run aborted with none logged) is tried again, each step named.
+    // RecordStuff in front first: a click on an inactive window only activates it on macOS, which plan 082's D1 keeps,
+    // so the material in front had cost every round a first press that did nothing. A click that still reaches no
+    // button (2026-10-18: a run aborted with none logged) is tried again, each step named.
+    await step("L: bringing RecordStuff to the front", () => command("osascript", ["-e", `tell application id ${JSON.stringify(BUNDLE_ID())} to activate`], AbortSignal.timeout(10_000)));
+    await sleep(800);
     for (let attempt = 1; ; attempt += 1) {
       const clickFrom = log.end();
       await step(`L: pressing Live preview (attempt ${attempt})`, () => clickNamed(["Live preview", "即時預覽"], "Live preview"));
