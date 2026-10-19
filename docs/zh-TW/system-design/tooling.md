@@ -32,6 +32,7 @@
 | `pnpm acceptance:settings-native` | 需要桌面的設定案例：App 自己的視窗與 macOS 畫的視窗框，顯示並啟用，用來檢查視窗框本身，以及另一個視窗在前時的焦點框與跨日；沿用 plan 057 對被其他 App 取消啟用視窗的 blocked 規則。報告寫到 docs/verification/measurements。屬桌面回合 |
 | `pnpm acceptance:regression` | `pnpm check`（含建置），再執行背景套件（`pnpm test:ui`）：設定、正式 main 的快捷鍵與視窗整合、播放器與倒數。沒有桌面回合、不錄影，也不啟動或關閉使用者的 RecordStuff。原生案例用 `pnpm acceptance:recipe -- native-ui` |
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
+| `pnpm acceptance:studio` | 啟動 bundle，錄影工作室放在測試素材旁：在其他 App 在前景時以三種方式各按一次「即時預覽」，並只移動游標、不點擊地移到錄影工作室上再移開，以 App 的 log 判定（plan 082；[說明](#錄影工作室驗收)） |
 | `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、左鍵開啟選單、三種取消、以鍵盤到「開啟 RecordStuff」與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 RecordStuff 是否在最前面、設定視窗聚焦並開在該檔的「錄影檔」（2026-10-04；之前為 Finder），每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
@@ -179,9 +180,9 @@ baseline 存在 [cpu-baselines.json](../../../scripts/lib/verification/cpu-basel
 **相機與錄影工作室**（plan 075）。`--camera <value>` 以 `RECORDSTUFF_CAMERA_PROTOTYPE=<value>`（第 2 步的開發開關；`1`，或 `width=…,height=…,rounding=…,x=…,y=…,mirror=…,device=…,preview=0`）啟動 bundle，並在 settings.json 中把「相機」開關設為開啟，值中有 `device=<id>` 時一併寫入 `cameraDevice`，因此每段錄影都依保存的版面合成相機；`camera` 與 `cameraDevice` 會和其他預先寫入的鍵一起還原。它需要 `--skip-settings --skip-playback`，並省略 B，因為原型的預覽頁面（值中沒有 `preview=0` 時會開啟）是待機契約不允許的 renderer。`--studio`（搭配 `--camera`，不可搭配 `--skip-recording`）在每種幀率、R 之前、同樣的移動素材上加兩個情境：
 
 - **S. 錄影工作室顯示著錄影時的錄影：**在素材的全螢幕把選單列蓋住之前，從 tray 的「開啟錄影工作室…」開啟錄影工作室，然後在它顯示引擎預覽與音量表的情況下錄同樣的錄影。對照同幀率 R 的中位數判定（D18：最多多 8 點；錄影工作室視窗不在素材以外的螢幕時只回報不判定，報告會註明位置），並對照相機的錄影預算加 8（30 fps 28%、60 fps 33%）。
-- **L. 即時預覽：**以游標按下「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，找到後立即關閉輔助使用樹（Chromium 可能留下部分成本，所以 L 排在 S 之後），穩定 5 秒後保持 50 秒，再按「停止預覽」。依有相機的錄影判定，因為它就是不寫檔的錄影：30 fps 最多 20%、60 fps 最多 25%。按下後沒有開始任何東西（15 秒內沒有記錄 `recorder: session … prepared after`）時最多重試三次，失敗訊息會指出每一步；2026-10-18 兩種幀率的第一次按下各落空一次，重試後開始預覽。
+- **L. 即時預覽：**以游標按下「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，找到後立即關閉輔助使用樹（Chromium 可能留下部分成本，所以 L 排在 S 之後），穩定 5 秒後保持 50 秒，再按「停止預覽」。依有相機的錄影判定，因為它就是不寫檔的錄影：30 fps 最多 20%、60 fps 最多 25%。按下前先把 RecordStuff 帶到前景（plan 082）：在 macOS 上點擊不在前景的視窗只會啟用它，所以素材在前景時，080 與 081 幾乎每次第一次按下都沒有開始任何東西。按下後仍沒有開始任何東西（15 秒內沒有記錄 `recorder: session … prepared after`）時最多重試三次，失敗訊息會指出每一步。
 
-執行時用 `--camera preview=0`，讓 R 沒有原型頁面，並把錄影工作室放在第二個螢幕上。在 `--studio` 的執行中，程序角色檢查不成立：開過錄影工作室後，Chromium 的 `utility:video_capture` 與 `utility:audio`（由錄影工作室的 `getUserMedia` 啟動）在最後一段錄影後仍會留著，所以這時 R 的角色和沒開過錄影工作室的啟動不同；另一次檢查顯示它們沒有可量測的 CPU（見[桌面功能](desktop.md#錄影工作室)）。
+執行時用 `--camera preview=0`，讓 R 沒有原型頁面，並把錄影工作室放在第二個螢幕上。開過錄影工作室後，Chromium 的 `utility:video_capture` 與 `utility:audio`（由錄影工作室的 `getUserMedia` 啟動）在最後一段錄影後仍會留著；另一次檢查顯示它們沒有可量測的 CPU（見[桌面功能](desktop.md#錄影工作室)）。自 plan 082 的 D2 起，`--studio` 執行的角色檢查在 R 之後各允許一個（`afterStudio`），並在檢查名稱中註明；其他角色照舊判定。第一份整份判 PASS 的 `--studio` 報告是 plan 082 的（2026-10-19）：單次量測 30 fps 時 S 比 R 多 8.0 點，L 15.4%，沒有重試。
 
 2026-10-18 實測（M1 Pro 參考機，錄影工作室在第二個螢幕，素材在主螢幕全螢幕，`pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2`，報告在 `docs/verification/measurements/` 下）：A 0.042%；30 fps 時 R 15.5%、S 24.5%（比 R 多 8.9 點）、L 16.9%；60 fps 時 R 19.4%、S 30.7%（多 11.3 點）、L 16.9%。所有絕對預算都通過；S 相對 R 的額外成本超出 D18 的 8 點 0.9 與 3.3 點，plan 075 的 D21 已接受（見[設計決策](decisions.md)）。在 D21 改為每秒 10 格之前，錄影工作室的成本更高：30 fps 的 S 一開始 35.7%，音量表改為不經 React 繪製後 31.1%，改用單一重繪時脈後 28.9%（比 R 的 14.7–15.2% 多約 14 點），L 從 29.8% 降到 26.3%。第 2 步的原型在 2026-10-17 以開發用預覽頁面（而非錄影工作室）量測，有相機、無預覽時 30／60 fps 為 14.7%／21.2%（以 Core Image 合成時 30 fps 為 20.9%）。
 
@@ -371,6 +372,15 @@ pnpm acceptance:tray -- --long-start <run> # 對執行中的受控 build 跑 pla
 結束碼依共用順序：收尾不完整為 1；中斷且收尾沒有留下任何東西時為 130／143；鎖定為 2 受阻，即使同時有案例失敗；其次任一案例失敗為 1、沒有輔助使用權限為 2；否則 0 通過；無法到達該狀態的案例是 **not run**，絕不算通過。收尾只作用於 preflight 已接受的 App：在那之前就被拒絕的回合（鎖定、另一個 bundle、沒有輔助使用權限）不碰任何東西。它會關閉選單，用狀態列項目結束倒數或錄影（無法點擊時改用已註冊的錄影快捷鍵），只在設定視窗有焦點時關閉本輪的設定，結束 App，之後再還原語言與圖示的點擊動作，不依賴已中止的 signal。只有 RecordStuff 在前景且設定有焦點時才送 ⌘W。2026-10-02 分別在 zh-TW 與 en 的錄影中中斷，runner 都存好錄影、結束 App、語言維持繁體中文，結束碼 130。
 
 留在 runner 外的項目與理由：needsPermission 選單需要撤銷螢幕錄影權限，那是 runner 不得做的 TCC 修改（由單元測試與 035 的維護者回合涵蓋）；在狀態改變後才選的「開始錄影」，runner 會在 idle 選單開啟時把錄影快捷鍵排進佇列，但每次 macOS 都先處理選單的「開始錄影」，所以回報 not run（`Recorder.startIfIdle` 有單元測試，035 也觀察過 `ignored` 那一行）。只有 App 的歷史中有未讀失敗時才觀察得到未讀失敗群組；或使用以 `v1` 植入資料的[受控 build](#受控驗收-build)，並把 `--bundle`、`--log` 與 `--settings` 指向它的執行目錄。淺色與深色選單列、對齊與可讀性，由 Computer Use 觀察或維護者根據截圖判斷。2026-10-18（plan 075 第 8 步，待命選單含「錄製相機」）的一個回合通過 15 個案例，`stale-start` 因上述原因 not run。
+
+### 錄影工作室驗收
+
+```bash
+pnpm acceptance:studio                       # 第一次點擊與 hover
+pnpm acceptance:studio -- --skip-first-click # 只做 hover；另有 --skip-hover、--out <dir>
+```
+
+Plan 082。先建置並結束 bundle；RecordStuff 執行中時 runner 拒絕開始，之後啟動它，從狀態列開啟錄影工作室，把視窗移到另一個螢幕（需要第二個螢幕），並在主螢幕全螢幕開啟測試素材，讓其他 App 在前景，如同在那裡錄影時。**第一次點擊：**以 CoreGraphics 點擊按一次「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，點擊前先關閉輔助使用樹，(a) 立即按、(b) 2 秒後按、(c) 先讓 RecordStuff 到前景再按；各以 8 秒內是否出現 `recorder: session … prepared after` 判定，並回報點擊前在前景的 App。(a) 與 (b) 只回報，因為點擊不在前景的視窗只會啟用它（D1 維持 macOS 的慣例）；(c) 必須啟動預覽。**Hover：**即時預覽進行中、素材在前景時，把游標（`NativeAx.move`）移到錄影工作室的預覽上，5 秒內必須出現 `studio: preview at 10 a second`，移開後 3 秒內必須出現 `at 5`。每次預覽都以「停止預覽」結束。runner 不改任何設定，正常結束 App 並確認已退出，關閉素材；報告寫在 `docs/verification/measurements/<time>-studio-acceptance/`。結束代碼依共用的順序。2026-10-19（簽署 bundle，錄影工作室在第二個螢幕）：(a) 與 (b) 沒有啟動任何東西，(c) 有，兩行 hover 的 log 都有出現。
 
 ## 設定快捷鍵驗收
 

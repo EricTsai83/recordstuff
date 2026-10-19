@@ -4,6 +4,18 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 082 結案 — 2026-10-19
+
+Plan 082（錄影工作室的第一次點擊與它的量測 runner）從 081 的結案而來，2026-10-19 在簽署的 bundle 上執行，不需要相機。維護者在第 1 步後決定 D1：維持 macOS 對不在前景的視窗第一次點擊的慣例，改修 runner；D2 依建議。
+
+- **第一次點擊（第 1 步）。**`pnpm acceptance:studio`（新增；報告 `2026-10-19T13-54-59-134Z-studio-acceptance`），素材全螢幕在前景、錄影工作室在第二個螢幕：讀完輔助使用樹後立即按一次「即時預覽」沒有啟動任何東西（a），2 秒後按也沒有（b），先讓 RecordStuff 到前景再按則啟動了即時預覽（c）。(a) 與 (b) 在 App 的 log 中沒有任何紀錄：在 macOS 上點擊不在前景的視窗只會啟用它，除非 view 接受第一次滑鼠事件，Electron 以視窗為單位設定（`acceptFirstMouse`），所以其他 App 在前景時，錄影工作室的控制項要第二下才作用。D1 維持現狀，因為大多數 Mac 視窗都是如此，而且整個設定視窗都會接受第一下點擊，包括錄影卡片的「丟到垃圾桶」；`measure:cpu` 的 L 改為按下前先把 RecordStuff 帶到前景。
+- **角色規則（D2）。**`cpu-sampler.mts` 的 `afterStudio` 在 `--studio` 執行中，於 R 之後允許一個 `utility:video_capture` 與一個 `utility:audio`，其他必要角色仍然必要（單元測試：兩者都在、任一不在、第二個音訊服務或 renderer 被拒、缺少 main 被拒）；檢查名稱會註明這項允許。
+- **Hover。**`NativeAx.move` 只移動游標不點擊。即時預覽進行中、素材在前景時，把游標移到錄影工作室的預覽上，log 記下 `studio: preview at 10 a second`，移開後記下 `at 5`，runner 兩次執行都是如此：Chromium 在 macOS 上會把 `pointerenter` 送給不在前景的視窗，plan 081 只以單元測試檢查過這點。
+- **閘門（第 3 步）。**`pnpm measure:cpu -- --minutes 1 --camera preview=0 --skip-settings --skip-playback --studio`（`2026-10-19-p082-measure`）：整份判 PASS，是第一份如此的 `--studio` 報告；L 第一次按下就啟動（log 沒有重試），角色檢查依 D2 通過，S 19.1% 對 R 11.1%（8.0 點，單次），L 15.4%。重新建置的 bundle 上的 `pnpm acceptance:studio`（`2026-10-19-p082-studio-acceptance`）：PASS，與第 1 步相同。
+- **檢查。**typecheck；每次修改後 `pnpm test:scope -- tooling`（54 個單元測試檔）；錄影工作室的 3 秒移到 `studio-port.ts` 供 runner 共用後，`src/renderer/settings/tabs` 與 `src/shared` 的 13 個檔案、89 個測試。
+- **Review。**Codex GPT-6.1 Sol 的兩次唯讀 review 在新 runner 的失敗路徑找到五個問題，都在原生回合之後修正，並在 bundle 上再跑一次 `pnpm acceptance:studio` 確認（`2026-10-19-p082-studio-acceptance-after-review`：PASS，結果相同，清理完成）：中斷時清理會用已失效的 signal 按「停止預覽」（現在由結束 App 釋放預覽）；素材清理時 `pgrep` 失敗會跳過結束 App 與報告；素材沒有開啟或沒有到前景時，RecordStuff 在前景也可能通過（現在判 blocked）；缺少第二個螢幕或 bundle 時以 1 而非 2 結束；中斷時素材仍在啟動，可能留下 Chrome（現在會等啟動結束，和 `measure:cpu` 相同）。
+- **清理。**每個 runner 都正常結束 App、確認已退出並關閉素材；`measure:cpu` 還原了它預設的設定，`acceptance:studio` 沒有改任何設定。閘門量測的兩段錄影已移到垃圾桶。
+
 ## Plan 081 結案 — 2026-10-19
 
 Plan 081（錄影工作室顯示錄影時頁面本身的成本）於 2026-10-19 歸因錄影工作室的額外成本，並把 30 fps 時的成本降到 D18 的 8 點之內。維護者在歸因後決定 D1：有人在錄影工作室操作時每秒顯示 10 格，只是看著時 5 格，並把音量移到預覽的 port；D2 改為沒有人操作時的這個閘門，以及有人操作時預覽的頻率與延遲不變。歸因與第一次閘門量測中相機都沒有送出影格（參考機的上蓋闔著，也沒有接其他相機）；之後以經 Continuity Camera 出畫面的 iPhone 重新量測閘門，兩種幀率都通過。
