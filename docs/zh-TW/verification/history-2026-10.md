@@ -4,6 +4,16 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 080 結案 — 2026-10-19
+
+Plan 080（macOS 上以共用 GPU 貼圖顯示錄影工作室的預覽）於 2026-10-19 依維護者採納建議的決定執行第 2 步原型：D1，獨立的 Rust napi-rs 模組（`native/preview-receiver`）；D2，只有 30 fps 時錄影工作室的額外成本至少降 2 點、且 main 事件迴圈延遲的 p99 不比現在多超過 2 ms 才保留；D3，只有保留時才修訂 076 的 D2。閘門未通過；依維護者要求，計畫結案，保留編碼後的預覽，076 的 D2 不變，原型從程式碼中移除。量測顯示錄影工作室的額外成本大多來自頁面本身，這部分移到 [081](../../../plans/081-studio-page-cost.zh-TW.md)。
+
+- **做了什麼。**在開發開關（`RECORDSTUFF_SHARED_PREVIEW=surface|encoded`）之後：main 以接收模組向 launchd check in 一個名稱（`bootstrap_check_in`，含 bundle id、程序 id 與隨機部分），模組只在第一次觀看預覽時載入；擷取程序把每張 640 像素 NV12 預覽畫面的 IOSurface 以 Mach send right 送出，再送該格的 JavaScript 訊息，並持有到 main 釋放為止（同時一格，最多 1 秒）；main 以零逾時與 audit trailer 接收，丟棄不是該 session 擷取程序送來的訊息，以 `sharedTexture.importSharedTexture` 匯入、`sendSharedTexture` 送到錄影工作室，沙箱化的 preload 再把 `VideoFrame` 交給頁面的 canvas；任何失敗都讓該 session 的預覽退回編碼串流。檢查：管道的 6 個 Rust 測試（沒有訊息時立即返回、其他程序的訊息被丟棄且 surface 被釋放、佇列滿時立即失敗且不留下 right）、133 個引擎測試、2,001 個 Vitest 測試、模組已簽署並通過驗證的簽署 bundle。Codex GPT-6.1 Sol 一輪唯讀 review 找出四個問題，皆在量測前修正：接收模組的測試相依在 Windows 上無法建置、傳送失敗不會退回、每次觀看都重新編號而 main 以 id 持有 surface、逾時的傳送會漏掉 kernel 退回的 right。原型以本機 patch 保存在 surface 報告旁（`plan-080-prototype.patch`，連同下述 benchmark），不進 repository。
+- **簽署 bundle 上。**以動態名稱 `bootstrap_check_in` 成功，擷取程序也找得到；錄影工作室畫出共用影格並持續更新，素材顏色正確（BT.709 video range 的 NV12）；沒有被跳過、送不到或持有超過 1 秒的影格，也沒有被拒絕的訊息。
+- **CPU（D2 閘門：未通過）。**`pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2`，分別加 `--shared-preview encoded` 與 `surface` 各跑一次（報告 `2026-10-19T03-39-22-185Z-cpu` 與 `2026-10-19T03-28-06-172Z-cpu`），各錄一次。兩次相機都沒有送出影格（`0 frame(s) delivered`），因此 R 在編碼路徑那次是 10.7%／15.9%，共用貼圖那次是 10.3%／15.9%，不是 075 的 15.5%／19.4%；兩次條件相同，每個 S 都和同一次的 R 比較。30 fps 的 S 在編碼路徑是 24.4%，共用貼圖是 24.3%，比 R 多 13.6 與 13.9 點：沒有省到。60 fps 是 10.0 與 11.0 點；L 在編碼路徑 16.5%／16.1%，共用貼圖 17.8%／17.7%。main 的事件迴圈延遲（10 ms 解析度，各 26 個 10 秒區間）沒有變差：p99 中位數編碼路徑 17.4 ms、共用貼圖 16.4 ms。兩份報告都因 D18 的 8 點顯示 FAIL，該超出已由 D21 接受；兩次的 L 都要按第二次「即時預覽」，是 runner 的時序問題，與路徑無關。
+- **原因。**30 fps 時，共用貼圖讓擷取程序省 1.1 點（不用預覽編碼器）、VTEncoder 省 0.9、renderer 省 2.1（不用解碼），但 main 多 1.5、Chromium 的 GPU 程序多 1.6。App 外的 benchmark（Electron 44，每秒 10 張 640×368 NV12 IOSurface，同時一張，透明的視窗）拆開了成本：只匯入是 main 0.6、GPU 程序 0.7 點；匯入加傳送、不繪製比閒置多 3.3 點；繪製影格時 GPU 程序 5.9–6.9 點，不論用 2D canvas 的 `drawImage`、WebGL、WebGPU 的 `importExternalTexture` 或 `bitmaprenderer`；收到影格但不繪製是 1.0 點，影格照樣送達但不畫、改由 CPU 像素重畫 canvas（`putImageData`）是 4.5 點：單是重畫約 3.5 點，畫共用影格再多 1.5–2.5 點；subtle API 沒有比較省；每個池中 surface 只匯入一次、之後重複傳送，約省 1 點（main 2.0 降到 1.1，GPU 程序約 0.6），還不到閘門，而且還沒確認 Chromium 看得到合成器寫進已匯入 surface 的內容。30 fps 時錄影工作室的 13.6 點大多是頁面本身：canvas 每秒重畫 10 次，以及 main 比沒有錄影工作室的錄影多 2.2 點（2.36% 對 0.13%），雖然編碼後的影格根本不經過 main。
+- **清理。**每個 runner 都正常結束 App 並確認退出、還原種入的設定並關閉素材；原型程式碼已還原。兩次量測的八段錄影留在輸出資料夾。
+
 ## Plan 079 結案 — 2026-10-19
 
 Plan 079（麥克風控制）於 2026-10-19 依維護者採納建議的 D1–D3 實作：設定中的「輸入音量」、跟著連接變化並有「搜尋裝置」的裝置清單，以及錄影中切換麥克風（[錄影](../system-design/recording.md#音訊)、[桌面](../system-design/desktop.md)）。這裡記錄簽署 bundle 上的回合與計畫結案：維護者同日要求，下列兩項需要動手的案例移到 [077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)，由它集中所有需要動手的案例，079 隨之結案。
@@ -41,7 +51,7 @@ Plan 075 把使用者的相機放進錄影。2026-10-17 依維護者要求改採
 - **自動化。** `pnpm check`（159 個檔案、1963 項測試；`cargo test --lib` 129）、`pnpm test:scope -- recording-settings`（29 個背景 UI 案例）、`pnpm acceptance:tray`（15 項通過，`stale-start` 未執行：macOS 先送出選單的開始）、依 pull request job 的步驟在本機執行網站檢查（24 項測試、`astro check`、離線建置與連結）。工作分支上的 `check.yml`：run 39062657993（`windows-2025` 上 Windows 合成器的六個 WARP 像素測試與預覽串流測試），以及結案 commit 的 run 39107006058，十二個 job 全部通過（macOS 與 Windows 的 check、八個 UI 分片、原生引擎與 Windows 安裝程式）。前一次 run 39106467749 在 macOS 上有一個依實際時間判斷的測試失敗（`with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst`）：影格都落在各自的格子上，但測試從它的執行緒看到第一格時才開始計時，在忙碌的 runner 上看得較晚；現在改從第一格本身的時間開始計算。之後 pull request #19 的檢查在忙碌的 macOS runner 上又有三個依實際時間判斷的測試失敗（靜止畫面的重新編碼相隔 1.2046 秒，超過 1.2 秒的上限；相機的節奏以固定的睡眠時間計數；078 的 host time 測試在兩次讀取時鐘之間被搶走 39 ms）；三者現在都依量到的時間判斷（觀察的時間、影格本身的間隔、等待期間取樣的延遲、在兩次讀取之間讀取），整組測試在參考機上與十二個忙碌迴圈並行時連續通過三次。合併的 commit 上，run 39109109091 的所有 job 都通過，網站的 pull request 檢查（run 39109109090）也在 GitHub 上通過。
 - **審查。** Codex GPT-6.1 Sol，唯讀，逐項審查：包括 Windows 相機的 stride、沒有畫面的來源重新開啟與其競態（已修正）、錄影前預覽卡住（記錄為已知限制）、在 refresh 執行緒 join 前讀取相機落後時間（已修正），以及 Windows 以抵達時間標記（已記錄）。
 
-未完成：Windows 上的實體相機（只有 CI）；裝置清單在沒有 run loop 時是否跟著相機變化（手邊沒有 USB 相機；中斷連線後 iPhone 仍在清單中）；錄影中相機在實機上接回（只有核心測試）；在簽章 bundle 上按下重新啟動按鈕。已知限制：即時預覽中卡住的相機，要到開始錄影才會判定中斷。macOS 上規劃中的零複製預覽是 [080](../../../plans/080-shared-texture-preview.zh-TW.md)。
+未完成：Windows 上的實體相機（只有 CI）；裝置清單在沒有 run loop 時是否跟著相機變化（手邊沒有 USB 相機；中斷連線後 iPhone 仍在清單中）；錄影中相機在實機上接回（只有核心測試）；在簽章 bundle 上按下重新啟動按鈕。已知限制：即時預覽中卡住的相機，要到開始錄影才會判定中斷。macOS 上規劃的零複製預覽是 [080](#plan-080-結案--2026-10-19)，量測後沒有保留。
 
 ## Plan 078 結案 — 2026-10-17
 
