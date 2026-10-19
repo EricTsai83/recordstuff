@@ -7,7 +7,7 @@
 
 use std::fs::OpenOptions;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::channel;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -33,7 +33,7 @@ use super::content::{self, describe};
 use super::microphone::MicrophoneCapture;
 use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
-use crate::camera_layout::PREVIEW_FPS;
+use crate::camera_layout::{PREVIEW_FPS, preview_tick_shows};
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
 use crate::pacing::Pacer;
 
@@ -106,6 +106,8 @@ struct Preview {
     watching: Arc<AtomicBool>,
     /// Counts each start of watching, so one that comes between two of the thread's ticks still starts at a key frame.
     watches: Arc<AtomicU64>,
+    /// Frames a second the watcher asks for (plan 081, D1): `PREVIEW_FPS`, or `PREVIEW_RESTING_FPS` while it rests.
+    fps: Arc<AtomicU32>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -117,6 +119,8 @@ impl Preview {
         let watched = watching.clone();
         let watches = Arc::new(AtomicU64::new(0));
         let started = watches.clone();
+        let fps = Arc::new(AtomicU32::new(PREVIEW_FPS));
+        let rate = fps.clone();
         let (width, height) = compositor.preview_size();
         let sink = Arc::new(core::PreviewSink::new(shared.events()));
         let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
@@ -127,7 +131,9 @@ impl Preview {
                 let mut next = Instant::now();
                 let mut first = true;
                 let mut seen = 0;
+                let mut tick: u64 = 0;
                 while !stop.load(Ordering::Acquire) && !shared.halted() {
+                    tick = tick.wrapping_add(1);
                     let now_started = started.load(Ordering::Acquire);
                     if now_started != seen {
                         seen = now_started;
@@ -135,6 +141,8 @@ impl Preview {
                     }
                     if !watched.load(Ordering::Acquire) {
                         first = true;
+                    } else if !first && !preview_tick_shows(tick, rate.load(Ordering::Acquire)) {
+                        // Resting: this tick shows nothing. A first frame never waits, the key frame a new watcher needs.
                     } else if let Some(frame) = shared.newest() {
                         // A preview is a convenience: one that fails ends, the recording does not.
                         let Ok(picture) = compositor.preview(&frame.image) else { return };
@@ -154,7 +162,7 @@ impl Preview {
                 encoder.flush();
             })
             .map_err(|e| CaptureError::new("capture_start_failed", format!("preview thread: {e}")))?;
-        Ok(Self { stopped, watching, watches, thread: Some(thread) })
+        Ok(Self { stopped, watching, watches, fps, thread: Some(thread) })
     }
 
     fn stop(mut self) {
@@ -579,6 +587,13 @@ impl Session {
         }
         preview.watching.store(watching, Ordering::Release);
         eprintln!("camera: preview {}", if watching { "watched" } else { "not watched" });
+        true
+    }
+
+    /// The preview's frames a second (plan 081, D1); false without a preview.
+    pub fn set_preview_rate(&self, fps: u32) -> bool {
+        let Some(preview) = self.preview.as_ref() else { return false };
+        preview.fps.store(fps, Ordering::Release);
         true
     }
 

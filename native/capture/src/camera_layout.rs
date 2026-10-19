@@ -166,6 +166,16 @@ pub const PREVIEW_WIDTH: u32 = 640;
 /// 10 a second since 2026-10-18 (D21): the Recording Studio's page decoding and drawing it cost more than the recording
 /// it shows at 15; the recording keeps its own rate.
 pub const PREVIEW_FPS: u32 = 10;
+/// The preview's rate while no one works in the Recording Studio (plan 081, D1): each frame Chromium composes costs the
+/// Studio's processes about half a point of a core per frame a second, so a Studio only looked at shows half as many.
+pub const PREVIEW_RESTING_FPS: u32 = 5;
+
+/// Whether the preview thread's `tick`th tick, at `PREVIEW_FPS`, makes a frame at `fps`: every tick at the full rate,
+/// every other at half; the ticks stay `PREVIEW_FPS` apart, so a change of rate takes effect at the next one.
+pub fn preview_tick_shows(tick: u64, fps: u32) -> bool {
+    let every = u64::from(PREVIEW_FPS / fps.clamp(1, PREVIEW_FPS));
+    tick.is_multiple_of(every)
+}
 
 /// Step 2's development switch: whether the camera is composed, and how.
 #[derive(Clone, Debug, PartialEq)]
@@ -275,6 +285,16 @@ mod tests {
         assert_eq!((tall.width, tall.height), (360.0, 720.0));
         let wide = camera_crop(1280, 720, 400.0, 100.0);
         assert_eq!((wide.x, wide.width, wide.height), (0.0, 1280.0, 320.0));
+    }
+
+    #[test]
+    fn the_preview_shows_every_tick_at_its_rate_and_every_other_resting() {
+        let shown = |fps| (0..10).filter(|&tick| preview_tick_shows(tick, fps)).count();
+        assert_eq!(shown(PREVIEW_FPS), 10);
+        assert_eq!(shown(PREVIEW_RESTING_FPS), 5);
+        // Out of range: never faster than the ticks, and at least once a second.
+        assert_eq!(shown(60), 10);
+        assert_eq!(shown(0), 1);
     }
 
     #[test]

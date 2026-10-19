@@ -556,6 +556,21 @@ impl NativeCapture {
         }
     }
 
+    /// The preview's frames a second (plan 081, D1): 10, or 5 while no one works in the Recording Studio; the next
+    /// tick follows it. Answers false without a preview.
+    #[napi]
+    pub fn set_preview_rate(&self, fps: u32) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_preview_rate(fps)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = fps;
+            Ok(false)
+        }
+    }
+
     /// Whether the inputs' levels are told (plan 075, D19): `levels` events 10 times a second while sound is read.
     #[napi]
     pub fn watch_levels(&self, watching: bool) -> Result<bool> {
