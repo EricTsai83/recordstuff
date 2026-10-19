@@ -194,6 +194,9 @@ describe("process roles and the idle contract (plan 049)", () => {
     expect(judgeRoles({ ...base, "utility:audio": 1, renderer: 1 }, IDLE_ROLES.settingsOpen).verdict).toBe("pass");
     // With the full-screen page waiting beside Settings, but no third.
     expect(judgeRoles({ ...base, renderer: 2 }, IDLE_ROLES.settingsOpen).verdict).toBe("pass");
+    // Settings' microphone monitor (plan 079), one at most.
+    expect(judgeRoles({ ...base, renderer: 1, "utility:node": 1 }, IDLE_ROLES.settingsOpen).verdict).toBe("pass");
+    expect(judgeRoles({ ...base, renderer: 1, "utility:node": 2 }, IDLE_ROLES.settingsOpen).verdict).toBe("fail");
     expect(judgeRoles({ ...base, renderer: 3 }, IDLE_ROLES.settingsOpen).actual).toContain("renderer ×3, expected ×1 to ×2");
     // Settings that never opened measured closed idle: its renderer is required (review).
     expect(judgeRoles({ ...base, "utility:audio": 1 }, IDLE_ROLES.settingsOpen).actual).toContain("renderer ×0, expected ×1");

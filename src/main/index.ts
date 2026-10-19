@@ -41,6 +41,7 @@ import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-proc
 import { CameraPreview } from "./recording/camera-preview";
 import { CameraPreviewLink } from "./settings/camera-preview-link";
 import { LevelsLink } from "./settings/levels-link";
+import { MicrophoneMonitor } from "./settings/microphone-monitor";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
@@ -491,17 +492,28 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
    * forward and when the microphone is turned on, never while a session runs, and at most one listing at a time.
    */
   let microphones: readonly MicrophoneDevice[] | undefined;
-  let listingMicrophones = false;
+  /** The listing in flight, which Search for devices waits for rather than starting another (plan 079, D2). */
+  let listingMicrophones: Promise<void> | undefined;
+  let searchingMicrophones = false;
   /** The host lists one kind at a time and a newer listing ends the one in flight, so the kinds wait their turn. */
   let listings: Promise<void> = Promise.resolve();
   const inTurn = (list: () => Promise<void>): Promise<void> => (listings = listings.then(list));
   const refreshMicrophones = (): Promise<void> => {
-    if (listingMicrophones || !preferencesUnlocked(recorder.state)) return Promise.resolve();
-    listingMicrophones = true;
-    return inTurn(() => host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
+    if (listingMicrophones) return listingMicrophones;
+    if (!preferencesUnlocked(recorder.state)) return Promise.resolve();
+    return listingMicrophones = inTurn(() => host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
       (devices) => { microphones = devices; },
       (cause: unknown) => log(`microphone: the inputs could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
-    )).finally(() => { listingMicrophones = false; refreshUi(); });
+    )).finally(() => { listingMicrophones = undefined; refreshUi(); });
+  };
+  /** Settings' Search for devices (plan 079, D2): lists the inputs at once, its button busy meanwhile. */
+  const searchMicrophones = async (): Promise<void> => {
+    if (searchingMicrophones || !preferencesUnlocked(recorder.state)) return;
+    searchingMicrophones = true;
+    log("microphone: searching for devices");
+    refreshUi();
+    try { await refreshMicrophones(); }
+    finally { searchingMicrophones = false; refreshUi(); }
   };
   /**
    * The cameras the engine listed last (plan 075, D9), for the Camera device menu: listed as the inputs are, in turn
@@ -554,7 +566,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
-      return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}) };
+      return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}),
+        ...(searchingMicrophones ? { searching: true as const } : {}) };
     })(),
     camera: (() => {
       // The engine records the camera on macOS and Windows (plan 075).
@@ -610,10 +623,31 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     watch: (sessionId, watching) => host.watchLevels(sessionId, watching),
   });
   host.onMessage((message) => levelsLink.deliver(message));
+  // Settings' microphone monitor (plan 079): the device list followed, and the Input level read, between recordings.
+  const microphoneMonitor = new MicrophoneMonitor({
+    open: (onMessage, onExit) => host.openMonitor(onMessage, onExit),
+    // While the microphone is on, whose input device it follows, and while recording too, where that device switches
+    // the microphone (D3); with it off the picker waits, and no process runs for it.
+    allowed: () => settings.microphone && !quitInProgress(),
+    meterDevice: () => {
+      const access = microphoneAccess();
+      // The meter reads only between recordings: a recording's own levels are the Studio's.
+      if (!preferencesUnlocked(recorder.state) || !settings.microphone || (access !== undefined && access !== "granted")) return undefined;
+      const device = settings.microphoneDevice;
+      return device ? { deviceId: device.id } : {};
+    },
+    devices: (devices) => {
+      microphones = devices;
+      refreshUi();
+    },
+    log,
+  });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
     cameraPreview: (page) => cameraPreviewLink.watch(page),
     levels: (page) => levelsLink.watch(page),
+    microphoneLevel: (page) => microphoneMonitor.watch(page),
+    monitor: (open) => microphoneMonitor.window(open),
     // A Live preview lasts while the Studio is open in sight (D20); a recording it became goes on.
     studio: (open) => { studioOpen = open; if (!open) recorder.stopPreview(); },
     state: () => recorder.state,
@@ -712,6 +746,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     appMenu.refresh();
     cameraPreviewLink.sync();
     levelsLink.sync();
+    microphoneMonitor.sync();
   }
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {
@@ -719,6 +754,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     tray.refresh();
     settingsWindow.refresh();
     appMenu.refresh();
+    // The microphone switched on or off, or its input changed, between recordings (plan 079, D1).
+    microphoneMonitor.sync();
   }
   renderUi(recorder.state);
   faultWiring.recorder = recorder;
@@ -825,7 +862,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     studioOpen: () => studioOpen,
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
-    savePreference, changeOutputDir, openOutputDir, revealLog,
+    savePreference, changeOutputDir, openOutputDir, revealLog, searchMicrophones,
     showLastRecording: () => showRecording(), hideSettings,
     displayPreferenceChanged: () => { displayMedia.failure = undefined; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },

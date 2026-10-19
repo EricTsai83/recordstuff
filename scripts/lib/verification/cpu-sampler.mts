@@ -361,9 +361,10 @@ export const IDLE_ROLES = {
   /**
    * The Settings page's renderer must exist: without it the scenario measured closed idle. A second is the full-screen
    * page waiting loaded and hidden while Settings is open (video-fullscreen.ts); Chromium's audio service may follow a
-   * preview or the player's sound.
+   * preview or the player's sound. With the microphone on, Settings' microphone monitor (plan 079) follows the device
+   * list in a capture process of its own while the window is in sight.
    */
-  settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1, renderer: 2 } },
+  settingsOpen: { required: ["main", "gpu", "utility:network", "renderer"], allowed: { "utility:audio": 1, renderer: 2, "utility:node": 1 } },
 } as const satisfies Record<string, { required: readonly string[]; allowed: Readonly<Record<string, number>> }>;
 
 export function judgeRoles(roles: RoleCounts, contract: { required: readonly string[]; allowed: Readonly<Record<string, number>> }): Verdict {

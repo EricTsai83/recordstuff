@@ -29,6 +29,8 @@ it("settings preload uses exactly the settings channels main handles and sends",
   await bridge.watchLevels(true);
   await bridge.watchStudio(true);
   bridge.onLevels(() => {})();
+  await bridge.watchMicrophoneLevel(true);
+  bridge.onMicrophoneLevel(() => {})();
   expect([...electron.used].sort()).toEqual(Object.values(SETTINGS_CHANNELS).sort());
 });
 

@@ -197,6 +197,8 @@ const state = {
   soundContext: undefined as AppContext | undefined,
   /** The Microphone rows' context (plan 074); a choice commits as main would and pushes the view. */
   microphoneContext: undefined as AppContext | undefined,
+  /** The recording state the Microphone rows are judged in (plan 079, D3: the input device while recording). */
+  microphoneState: undefined as RecordingState | undefined,
   /** The Camera row's context (plan 075), as the microphone's. */
   cameraContext: undefined as AppContext | undefined,
   cameraState: undefined as RecordingState | undefined,
@@ -217,6 +219,8 @@ const previewWatches: boolean[] = [];
 const levelWatches: boolean[] = [];
 /** What the page said about the Recording Studio being open in sight (plan 075, D20), in order. */
 const studioWatches: boolean[] = [];
+/** The Input level's watch requests (plan 079, D1). */
+const microphoneLevelWatches: boolean[] = [];
 let panel: ElectronModule.BrowserWindow | undefined;
 let library: RecordingsLibrary | undefined;
 
@@ -243,6 +247,7 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
   ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); });
   ipcMain.handle("settings:watch-studio", (_event, open: boolean) => { studioWatches.push(open); });
+  ipcMain.handle("settings:watch-microphone-level", (_event, watching: boolean) => { microphoneLevelWatches.push(watching); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
     if (!state.captureView) return fixtureView(state.language, state.notifications);
     state.captureView = structuredClone(state.captureView);
@@ -267,14 +272,15 @@ function installPanelHandlers(): void {
     }
     if ((group === "microphone" || group === "microphoneDevice") && state.microphoneContext) {
       const context = state.microphoneContext;
-      const action = settingsAction({ type: "idle" }, context, group, choice);
+      const sessionState: RecordingState = state.microphoneState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
       const microphone = context.microphone ?? { enabled: false };
       if (typeof action === "object" && "setMicrophone" in action) state.microphoneContext = { ...context, microphone: { ...microphone, enabled: action.setMicrophone } };
       if (typeof action === "object" && "setMicrophoneDevice" in action) {
         const { device: _device, ...rest } = microphone;
         state.microphoneContext = { ...context, microphone: action.setMicrophoneDevice ? { ...rest, device: action.setMicrophoneDevice } : rest };
       }
-      return { view: settingsView({ type: "idle" }, state.microphoneContext), applied: action !== undefined };
+      return { view: settingsView(sessionState, state.microphoneContext), applied: action !== undefined };
     }
     // The Recording Studio's Start, Cancel and Stop (plan 075, D19): main's to act on; the view follows the state pushed.
     if (group === "studioControls" && state.cameraContext) {
@@ -430,6 +436,9 @@ const hostControls: Record<string, unknown> = {
   previewWatches,
   levelWatches,
   studioWatches,
+  microphoneLevelWatches,
+  /** The chosen input's level as main passes it to a page showing the Input level (plan 079, D1). */
+  pushMicrophoneLevel: (level: { peak: number; rms: number }): void => { panel!.webContents.send("settings:microphone-level", level); },
   /** Levels as main passes them to a watching page. */
   pushLevels: (levels: { system: number; microphone?: number }): void => { panel!.webContents.send("settings:levels", levels); },
   results: recordingResults,

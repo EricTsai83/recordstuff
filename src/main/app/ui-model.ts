@@ -46,6 +46,8 @@ export type AppAction =
   | "openNotificationSettings"
   /** System Settings → Privacy & Security → Microphone (plan 074), macOS only. */
   | "openMicrophoneSettings"
+  /** Settings' Search for devices (plan 079, D2): the audio inputs listed again at once. */
+  | "searchMicrophones"
   /** System Settings → Privacy & Security → Camera on macOS, Settings → Privacy & security → Camera on Windows (plan 075). */
   | "openCameraSettings"
   /** Windows Settings → Optional features (plan 078), where the Media Feature Pack is installed; Windows only. */
@@ -114,6 +116,8 @@ export interface MicrophoneContext {
   device?: { id: string; label: string };
   /** The inputs the engine listed last; absent until they are listed, or when listing failed. */
   devices?: readonly MicrophoneDevice[];
+  /** The inputs are being listed again (plan 079, D2): Search for devices is busy. */
+  searching?: true;
   /** macOS's answer for the microphone (`getMediaAccessStatus`); absent on Windows, which has no status to read. */
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
 }

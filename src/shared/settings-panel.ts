@@ -64,14 +64,15 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter" | "inputMeter";
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
    * validates (plan 075's camera size and rounding, and D21's volumes in dB).
    */
   slider?: { min: number; max: number; step: number; value: number; unit: "percent" | "decibels" };
   /**
-   * A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
+   * `inputMeter` (plan 079, D1) is the chosen input's level between recordings, which the page gets apart from the
+   * view while it shows it. A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
    * `mute` and `unmute`, one checked.
    */
   meter?: { source: "system" | "microphone" };
@@ -264,6 +265,9 @@ export const SETTINGS_CHANNELS = {
   /** Whether the Recording Studio's meters are in sight, and the levels main passes them (plan 075, D19). */
   watchLevels: "settings:watch-levels",
   levels: "settings:levels",
+  /** Whether the Recording tab's Input level is in sight in a focused window, and its levels (plan 079, D1). */
+  watchMicrophoneLevel: "settings:watch-microphone-level",
+  microphoneLevel: "settings:microphone-level",
   /** Whether the Recording Studio is open and in sight (plan 075, D20): a Live preview lasts only while it is. */
   watchStudio: "settings:watch-studio",
 } as const;
@@ -338,11 +342,16 @@ export interface SettingsBridge {
   /** The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come to `onLevels`. */
   watchLevels?(watching: boolean): Promise<void>;
   onLevels?(callback: (levels: StudioLevels) => void): () => void;
+  /** The Input level is in sight, or no longer is (plan 079, D1); the chosen input's levels then come to `onMicrophoneLevel`. */
+  watchMicrophoneLevel?(watching: boolean): Promise<void>;
+  onMicrophoneLevel?(callback: (level: MicrophoneLevel) => void): () => void;
   /** The Recording Studio is open and in sight, or no longer is (D20): main lets a Live preview go once it is not. */
   watchStudio?(open: boolean): Promise<void>;
 }
 /** A recording's inputs' loudest samples since the last levels, linear (1 is full scale). */
 export interface StudioLevels { system: number; microphone?: number }
+/** The chosen input's peak and RMS over the last 50 ms between recordings (plan 079, D1), linear. */
+export interface MicrophoneLevel { peak: number; rms: number }
 
 export type SettingsZoomRequest = "in" | "out" | "reset";
 export interface SettingsZoom { factor: number; canZoomIn: boolean; canZoomOut: boolean }

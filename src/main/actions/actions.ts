@@ -37,7 +37,10 @@ export interface ActionDeps {
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
     | "audioGain" | "setAudioGain">;
-  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "startPreview" | "stopPreview">;
+  recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "updateMicrophone"
+    | "audio" | "startPreview" | "stopPreview">;
+  /** Lists the audio inputs again at once (plan 079, D2); resolves once they are listed or could not be. */
+  searchMicrophones?(): Promise<void>;
   library: Pick<RecordingsLibrary, "act" | "undoTrash">;
   recordingResults: Pick<RecordingResults, "act" | "historyFailed" | "resetHistory">;
   tray: Pick<AppTray, "notifyDisplayWriteFailed" | "notifyNotificationsEnabled" | "notifyLanguageWriteFailed"
@@ -189,10 +192,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       if (!recorder.updateCamera({ hidden: action.setCameraHidden })) log("camera: no recording composes the camera to hide or show");
       deps.refresh();
     } else if ("setMicrophoneDevice" in action) {
+      // Not locked while a recording records the microphone (plan 079, D3): it switches to the device chosen.
       await deps.savePreference("microphone device", {
-        locked: true,
+        locked: recorder.audio?.microphone === undefined,
         write: () => settings.setMicrophoneDevice(action.setMicrophoneDevice),
-        applied: () => log(`settings: microphone device ${settings.microphoneDevice ? JSON.stringify(settings.microphoneDevice) : "system default"}`),
+        applied: () => {
+          log(`settings: microphone device ${settings.microphoneDevice ? JSON.stringify(settings.microphoneDevice) : "system default"}`);
+          recorder.updateMicrophone();
+        },
       });
     } else if ("setUpdateChecks" in action) {
       await deps.savePreference("update checks", { locked: true, write: () => settings.setUpdates({ enabled: action.setUpdateChecks }) });
@@ -396,6 +403,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         if (deps.platform !== "darwin") return false;
         try { await deps.openMicrophoneSettings(); return true; }
         catch (error) { log(`microphone: open settings failed: ${String(error)}`); return false; }
+      case "searchMicrophones":
+        await deps.searchMicrophones?.();
+        return;
       case "openCameraSettings":
         if (deps.platform !== "darwin" && deps.platform !== "win32") return false;
         try { await deps.openCameraSettings(); return true; }

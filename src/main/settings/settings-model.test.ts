@@ -508,6 +508,49 @@ describe("microphone (plan 074)", () => {
     expect(unlisted.choices.map(c => [c.id, c.label, c.checked])).toEqual([["systemDefault", "System default", false], ["headset", "AirPods", true]]);
     expect(unlisted).not.toHaveProperty("note");
   });
+
+  it("stays open while a recording records the microphone and switches it then (plan 079, D3)", () => {
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    const live = on({ device: { id: "usb-mic", label: "USB Microphone" } });
+    const withMicrophone = { ...live, audioSession: { systemMuted: false, microphone: { muted: false } } };
+    const row = group(recording, withMicrophone, "microphoneDevice")!;
+    expect(row).toMatchObject({ enabled: true, noteKind: "status", note: "Switches this recording's microphone at once." });
+    expect(settingsAction(recording, withMicrophone, "microphoneDevice", "systemDefault")).toEqual({ setMicrophoneDevice: null });
+    // A recording without the microphone, or a session that does not take changes, keeps it locked.
+    expect(group(recording, { ...live, audioSession: { systemMuted: false } }, "microphoneDevice")?.enabled).toBe(false);
+    expect(settingsAction(recording, live, "microphoneDevice", "systemDefault")).toBeUndefined();
+    expect(group(recording, { ...withMicrophone, language: "zh-TW" }, "microphoneDevice")?.note).toBe("會立即切換這次錄影的麥克風。");
+  });
+
+  it("offers Search for devices beside the picker between recordings, busy while it searches (plan 079, D2)", () => {
+    const row = group(idle, on(), "microphoneDevice")!;
+    expect(row.actions).toEqual([expect.objectContaining({ id: "search", label: "Search for devices", enabled: true })]);
+    expect(settingsAction(idle, on(), "microphoneDevice", "search")).toBe("searchMicrophones");
+    const searching = group(idle, on({ searching: true }), "microphoneDevice")!;
+    expect(searching.actions).toEqual([expect.objectContaining({ id: "search", label: "Searching…", enabled: false })]);
+    expect(settingsAction(idle, on({ searching: true }), "microphoneDevice", "search")).toBeUndefined();
+    for (const state of busy) expect(settingsAction(state, on(), "microphoneDevice", "search"), state.type).toBeUndefined();
+    expect(group(idle, { ...on(), microphone: { enabled: false, devices } }, "microphoneDevice")).not.toHaveProperty("actions");
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneDevice")?.actions?.[0]?.label).toBe("搜尋裝置");
+  });
+
+  it("shows the Input level under the picker while the microphone is on and allowed (plan 079, D1)", () => {
+    const row = group(idle, on(), "microphoneLevel")!;
+    expect(row).toMatchObject({ label: "Input level", control: "inputMeter", tab: "recording", section: "audio", enabled: true, choices: [] });
+    expect(row.info).toContain("Nothing is recorded");
+    const ids = settingsView(idle, on()).groups.map((entry) => entry.id);
+    expect(ids.indexOf("microphoneLevel")).toBe(ids.indexOf("microphoneDevice") + 1);
+    // Off, denied or not yet asked: no meter, the card's guidance instead.
+    for (const microphone of [{ enabled: false }, { access: "denied" as const }, { access: "not-determined" as const }, { access: "restricted" as const }]) {
+      expect(group(idle, on(microphone), "microphoneLevel"), JSON.stringify(microphone)).toBeUndefined();
+    }
+    // Windows has no status to read: shown while the microphone is on.
+    expect(group(idle, { ...on(), platform: "win32", microphone: { enabled: true, devices } }, "microphoneLevel")).toBeDefined();
+    for (const state of busy) {
+      expect(group(state, on(), "microphoneLevel"), state.type).toMatchObject({ enabled: false, note: "While recording, the Recording Studio shows the level." });
+    }
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneLevel")?.label).toBe("輸入音量");
+  });
 });
 
 describe("recording locks every preference except the language", () => {

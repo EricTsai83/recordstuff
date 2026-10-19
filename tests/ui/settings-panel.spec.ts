@@ -41,7 +41,7 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
-  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom, camera preview, level and Studio APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onLevels", "onZoomChanged", "read", "ready", "watchCameraPreview", "watchLevels", "watchStudio", "zoom"]);
+  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom, camera preview, level, Studio and input level APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onLevels", "onMicrophoneLevel", "onZoomChanged", "read", "ready", "watchCameraPreview", "watchLevels", "watchMicrophoneLevel", "watchStudio", "zoom"]);
   expect.soft(rendered.exposed, "S005 no Node API reaches the sandboxed page").toEqual(["undefined", "undefined", "undefined"]);
   expect.soft([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.find(control => control.id === "setting-hotkey")?.label],
     "S006 the URL language localizes the first render").toEqual(["RecordStuff", "RecordStuff", "zh-Hant", "快捷鍵"]);
@@ -217,6 +217,52 @@ test("S117–S120 microphone: the switch asks main, the input device follows it,
   await host.evaluate((h, list) => h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true, devices: list, access: "denied" } }), devices);
   await expect(page.locator("#setting-microphone-diagnostics"), "S120 zh-TW").toContainText("未允許取用麥克風");
   await expect(page.getByRole("button", { name: "開啟麥克風設定…" })).toBeVisible();
+});
+
+test("S139–S141 the Input level, Search for devices and the input device while recording (plan 079)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); h.microphoneLevelWatches.length = 0; });
+  await page.locator("#tab-recording").click();
+  const devices = [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }];
+  const show = (recording: boolean, more: Record<string, unknown> = {}): Promise<void> => host.evaluate((h, [list, recording, more]) => {
+    h.state.microphoneState = recording ? { type: "recording", startedAt: "2026-10-19T00:00:00Z" } : undefined;
+    h.state.microphoneContext = { ...h.baseContext(), microphone: { enabled: true, devices: list, access: "granted" },
+      ...(recording ? { audioSession: { systemMuted: false, microphone: { muted: false } } } : {}), ...more };
+    h.push(h.settingsView(h.state.microphoneState ?? { type: "idle" }, h.state.microphoneContext));
+  }, [devices, recording, more] as const);
+  await show(false);
+  const meter = page.getByRole("meter", { name: "Input level" });
+  await meter.scrollIntoViewIfNeeded();
+  await expect(meter, "S139 the Input level under the input device while the microphone is on").toBeVisible();
+  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 the meter in sight asks for the input's level" }).toEqual([true]);
+  await host.evaluate(h => h.pushMicrophoneLevel({ peak: 0.1, rms: 0.05 }));
+  await expect(meter, "S139 its level in dB below full scale").toHaveAttribute("aria-valuetext", "-20 dB");
+  await keep("input-level.png");
+  await expect.poll(async () => Number(await meter.getAttribute("aria-valuenow")),
+    { message: "S139 it falls back when the input is silent", timeout: 3000 }).toBeLessThan(-30);
+
+  await clearCalls();
+  await page.getByRole("button", { name: "Search for devices" }).click();
+  await expect.poll(calls, { message: "S140 Search for devices asks main" }).toEqual([["microphoneDevice", "search"]]);
+  await show(false, { microphone: { enabled: true, devices, access: "granted", searching: true } });
+  await expect(page.getByRole("button", { name: "Searching…" }), "S140 busy while it searches").toBeDisabled();
+
+  await show(true);
+  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 a recording lets the input's level go" }).toEqual([true, false]);
+  await expect(meter, "S139 and the meter rests").toHaveAttribute("aria-valuenow", "-60");
+  const device = page.locator("#setting-microphoneDevice");
+  await expect(device, "S141 the input device stays open while the recording records the microphone").toBeEnabled();
+  await expect(page.locator("#setting-microphoneDevice-note")).toHaveText("Switches this recording's microphone at once.");
+  await expect(page.getByRole("button", { name: "Search for devices" }), "S140 no search while recording").toBeDisabled();
+  await clearCalls();
+  await pickMenu(page, "setting-microphoneDevice", "usb-mic");
+  expect(await calls(), "S141 choosing an input while recording asks main to switch").toEqual([["microphoneDevice", "usb-mic"]]);
+  await expect(device).toContainText("USB Microphone");
+  await keep("input-device-while-recording.png");
+  await host.evaluate(h => { h.state.microphoneState = undefined; });
+
+  await show(false, { language: "zh-TW" });
+  await expect(page.getByRole("meter", { name: "輸入音量" }), "S139 zh-TW").toBeVisible();
+  await expect(page.getByRole("button", { name: "搜尋裝置" })).toBeEnabled();
 });
 
 test("S121–S123 camera: the switch asks main, a session locks it, and a denial offers its pane (plan 075)", { tag: "@recording-settings" }, async () => {

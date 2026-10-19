@@ -13,7 +13,8 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     log: vi.fn(),
     refresh: vi.fn(),
     settings: { language: "en", display: { kind: "primary" }, notifications: true, quality: { resolutionCap: "source" } },
-    recorder: { state: { type: "idle" }, startIfIdle: vi.fn(() => true), stop: vi.fn(), cancelCountdown: vi.fn(), mediaPending: false },
+    recorder: { state: { type: "idle" }, startIfIdle: vi.fn(() => true), stop: vi.fn(), cancelCountdown: vi.fn(), mediaPending: false,
+      updateMicrophone: vi.fn(() => false), audio: undefined },
     library: { act: vi.fn(async () => true), undoTrash: vi.fn(async () => true) },
     recordingResults: { act: vi.fn(async () => true) },
     tray: {},
@@ -289,6 +290,26 @@ describe("createActionHandler", () => {
       expect(ctx.settings.microphoneDevice).toEqual({ id: "usb", label: "USB Microphone" });
       await ctx.act({ setMicrophoneDevice: null });
       expect(ctx.settings.microphoneDevice).toBeUndefined();
+    });
+
+    it("switches the recording's microphone, unlocked only while a recording records one (plan 079, D3)", async () => {
+      const saves: Array<[string, boolean]> = [];
+      const recording = microphoneHarness(true);
+      const recorder = recording.deps.recorder as unknown as { audio: unknown; updateMicrophone: ReturnType<typeof vi.fn> };
+      vi.mocked(recording.deps.savePreference).mockImplementation(async (what, save) => { saves.push([what, save.locked === true]); await save.write(); save.applied?.(); });
+      recorder.audio = { sessionId: "s1", systemMuted: false, microphone: { muted: false } };
+      await recording.act({ setMicrophoneDevice: { id: "usb", label: "USB Microphone" } });
+      expect(recorder.updateMicrophone).toHaveBeenCalledOnce();
+      recorder.audio = { sessionId: "s1", systemMuted: false };
+      await recording.act({ setMicrophoneDevice: null });
+      expect(saves).toEqual([["microphone device", false], ["microphone device", true]]);
+    });
+
+    it("searches for devices at the user's request (plan 079, D2)", async () => {
+      const searchMicrophones = vi.fn(async () => {});
+      const { act } = harness({ searchMicrophones });
+      await act("searchMicrophones");
+      expect(searchMicrophones).toHaveBeenCalledOnce();
     });
 
     it("opens the Microphone pane on macOS only and reports whether it opened", async () => {

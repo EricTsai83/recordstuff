@@ -57,22 +57,33 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  * About links and read-only shortcut lists stay usable; the output folder keeps Show in Finder and locks only Change…. A group missing
  * from this table, or a listed group the panel no longer offers, fails until someone classifies it here.
  */
-/** `session`: usable while a recording in progress offers it, whatever the lock (the Recording Studio's mutes, plan 075 D19). */
-export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[] };
+/**
+ * `session`: usable while a recording in progress offers it, whatever the lock (the Recording Studio's mutes, plan 075
+ * D19). `{ session: true, lockedChoices }`: the same while busy, its listed choices locked then, and judged as any
+ * preference between recordings (the input device, switched while recording, plan 079 D3).
+ */
+export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", microphone: "locked", microphoneDevice: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
   studioControls: { lockedChoices: ["saving"] },
   systemAudio: "session", microphoneAudio: "session",
+  // Switches the microphone of a recording that records one (plan 079, D3); Search for devices waits for the end.
+  microphoneDevice: { session: true, lockedChoices: ["search"] },
+  // The input's level between recordings (plan 079, D1): at rest while busy.
+  microphoneLevel: "locked",
   // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
   systemGain: "available", microphoneGain: "available",
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
   "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
-/** Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19). */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain"]);
+/**
+ * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), and its
+ * input level while it is on and allowed (plan 079, D1).
+ */
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel"]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 
 /**
@@ -110,7 +121,8 @@ export function assertLockContract(s: LockSnapshot): void {
     // The input device follows the microphone's switch even when idle (plan 074).
     const microphoneOff = s.settings.groups.find(g => g.id === "microphone")?.choices.some(c => c.checked && c.id === "off");
     const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !(group.id === "microphoneDevice" && microphoneOff) && !unavailable;
-    if (policy !== "session") assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
+    const session = policy === "session" || (typeof policy === "object" && policy.session === true);
+    if (!session || (typeof policy === "object" && !busy)) assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group; a partly locked one locks exactly its listed choices.
     // The Recording Studio's Start (plan 075, D19) is usable exactly when the tray's is.
     const trayStarts = s.model.menu.some(item => item.kind === "item" && item.action === "start" && item.enabled);

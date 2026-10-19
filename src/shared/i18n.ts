@@ -502,6 +502,13 @@ export const ZH_TW = {
   "System default ({name})": "跟隨系統（{name}）",
   "{label} — Not connected": "{label}（未連接）",
   "Recordings use the system default input until {label} is connected.": "{label} 連接前，錄影會使用系統預設的輸入裝置。",
+  // Microphone controls (plan 079).
+  "Search for devices": "搜尋裝置",
+  "Searching…": "正在搜尋…",
+  "Switches this recording's microphone at once.": "會立即切換這次錄影的麥克風。",
+  "Input level": "輸入音量",
+  "Speak to check that the microphone hears you. Nothing is recorded.": "說話時音量條會跳動，可確認麥克風收得到聲音，不會錄下任何內容。",
+  "While recording, the Recording Studio shows the level.": "錄影中的音量請在錄影工作室查看。",
   "The microphone was unavailable, so recording did not start.": "麥克風無法使用，因此沒有開始錄影",
   "Connect a microphone and allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off in Recording settings.":
     "請連接麥克風，並在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff；或在錄影設定中關閉「麥克風」。",

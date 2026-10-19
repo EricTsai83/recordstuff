@@ -90,7 +90,7 @@ const STUDIO_SECTIONS = new Set(["studioPreview", "studioCamera", "studioAudio",
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source",
   countdown: "countdown", countdownSound: "countdown",
-  microphone: "audio", microphoneDevice: "audio",
+  microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
   camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
   studioControls: "studioControls", cameraPreview: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
   systemGain: "studioAudio", microphoneGain: "studioAudio",
@@ -551,10 +551,13 @@ const DEFAULT_MICROPHONE = "systemDefault";
 /**
  * Which input (plan 074): the system default, named after the device it is now, or one the engine listed. A chosen
  * input that is not connected stays selected and says so: the engine records the default input until it is back.
+ * While a recording records the microphone it stays open and switches it (plan 079, D3); Search for devices lists the
+ * inputs again at once (D2), between recordings.
  */
-function microphoneDeviceGroup(ctx: AppContext, enabled: boolean): Group {
+function microphoneDeviceGroup(ctx: AppContext, unlocked: boolean): Group {
   const language = ctx.language;
   const microphone = ctx.microphone ?? { enabled: false };
+  const switching = !unlocked && ctx.audioSession?.microphone !== undefined;
   const devices = (microphone.devices ?? []).filter((device) => device.id !== DEFAULT_MICROPHONE);
   const current = devices.find((device) => device.default);
   const stored = microphone.device;
@@ -570,9 +573,33 @@ function microphoneDeviceGroup(ctx: AppContext, enabled: boolean): Group {
   if (missing) choices.push({ id: stored.id,
     label: microphone.devices ? t("{label} — Not connected", language, { label: stored.label }) : stored.label,
     enabled: !microphone.devices, checked: true, action: { setMicrophoneDevice: stored } });
-  const result = group("microphoneDevice", t("Input device", language), enabled && microphone.enabled, choices);
+  const result = group("microphoneDevice", t("Input device", language), (unlocked && microphone.enabled) || switching, choices);
   if (missing && microphone.devices) {
     result.note = t("Recordings use the system default input until {label} is connected.", language, { label: stored.label });
+    result.noteKind = "status";
+  } else if (switching) {
+    result.note = t("Switches this recording's microphone at once.", language);
+    result.noteKind = "status";
+  }
+  if (microphone.enabled) {
+    result.actions = [{ id: "search", label: t(microphone.searching ? "Searching…" : "Search for devices", language),
+      enabled: unlocked && !microphone.searching, checked: false, action: "searchMicrophones" satisfies AppAction }];
+  }
+  return result;
+}
+
+/**
+ * The input level (plan 079, D1): the chosen input's level between recordings, read by the engine as a recording would,
+ * while the microphone is on and macOS allows it; while recording the Recording Studio shows the recording's own.
+ */
+function microphoneLevelGroup(ctx: AppContext, unlocked: boolean): Group | undefined {
+  const language = ctx.language;
+  const microphone = ctx.microphone;
+  if (!microphone?.enabled || (microphone.access !== undefined && microphone.access !== "granted")) return undefined;
+  const result: Group = { ...group("microphoneLevel", t("Input level", language), unlocked, []), control: "inputMeter",
+    info: t("Speak to check that the microphone hears you. Nothing is recorded.", language) };
+  if (!unlocked) {
+    result.note = t("While recording, the Recording Studio shows the level.", language);
     result.noteKind = "status";
   }
   return result;
@@ -832,6 +859,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownSoundGroup(ctx, unlocked),
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
+    ...(() => { const level = microphoneLevelGroup(ctx, unlocked); return level ? [level] : []; })(),
     ...studioGroups(state, ctx, unlocked),
     ...(() => { const camera = cameraGroup(ctx, unlocked); return camera ? [camera] : []; })(),
     ...cameraGroups(ctx, unlocked),

@@ -93,6 +93,23 @@ describe('recording lock contract', () => {
     }
   });
 
+  it('accepts the input device open while a recording records the microphone, its search locked, and the input level at rest (plan 079)', () => {
+    const on = { ...context, microphone: { enabled: true, devices: [{ id: 'mic', name: 'Mic', default: true }] } };
+    const live = { ...on, audioSession: { systemMuted: false, microphone: { muted: false } } };
+    for (const [state, ctx] of [[{ type: 'idle' }, on], [recording, on], [recording, live]] as Array<[RecordingState, AppContext]>) {
+      const s = snap(state, ctx);
+      expect(s.settings.groups.some(g => g.id === 'microphoneLevel')).toBe(true);
+      expect(() => assertLockContract(s), state.type).not.toThrow();
+    }
+    expect(group(snap(recording, live), 'microphoneDevice').enabled).toBe(true);
+    const s = snap(recording, live);
+    group(s, 'microphoneDevice').actions![0]!.enabled = true;
+    expect(() => assertLockContract(s)).toThrow('settings choice microphoneDevice/search while recording');
+    const idle = snap({ type: 'idle' }, on);
+    group(idle, 'microphoneDevice').enabled = false;
+    expect(() => assertLockContract(idle)).toThrow('settings group microphoneDevice while idle');
+  });
+
   it('accepts real recording snapshots in both languages for every update state', () => {
     const states: UpdateState[] = [{ kind: 'idle' }, { kind: 'checking' }, { kind: 'checking', previous: offered }, offered, { kind: 'failed' }, { kind: 'current', checkedAt: 0 }];
     for (const language of ['en', 'zh-TW'] as const) for (const state of states) {

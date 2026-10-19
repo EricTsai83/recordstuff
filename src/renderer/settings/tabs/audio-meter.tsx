@@ -1,11 +1,12 @@
 /**
  * The Recording Studio's level meters (plan 075, D19): each input's level as it arrives, before muting, from about
  * 60 dB below full scale to full scale, and its mute. The page asks main for levels only while a meter is shown and
- * the window is in sight; one subscription serves every meter.
+ * the window is in sight; one subscription serves every meter. The Recording tab's Input level (plan 079, D1) is drawn
+ * the same way from the chosen input's levels between recordings, which main gives only to a focused window.
  */
 import { useEffect, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
-import type { SettingsGroup, StudioLevels } from "../../../shared/settings-panel";
+import type { MicrophoneLevel, SettingsGroup, StudioLevels } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import * as model from "../settings-controller";
@@ -46,6 +47,36 @@ function subscribe(listener: (levels: StudioLevels) => void): () => void {
   };
 }
 
+const inputListeners = new Set<(level: MicrophoneLevel) => void>();
+let inputUnsubscribe: (() => void) | undefined;
+let inputWatching = false;
+
+/** Watches the chosen input while an Input level is shown and the window is in sight (plan 079, D1). */
+function rewatchInput(): void {
+  const wanted = inputListeners.size > 0 && document.visibilityState === "visible";
+  if (wanted === inputWatching) return;
+  inputWatching = wanted;
+  void window.settings.watchMicrophoneLevel?.(wanted).catch(() => undefined);
+}
+
+function subscribeInput(listener: (level: MicrophoneLevel) => void): () => void {
+  inputListeners.add(listener);
+  if (!inputUnsubscribe) {
+    inputUnsubscribe = window.settings.onMicrophoneLevel?.((level) => { for (const each of inputListeners) each(level); });
+    document.addEventListener("visibilitychange", rewatchInput);
+  }
+  rewatchInput();
+  return () => {
+    inputListeners.delete(listener);
+    rewatchInput();
+    if (inputListeners.size === 0) {
+      inputUnsubscribe?.();
+      inputUnsubscribe = undefined;
+      document.removeEventListener("visibilitychange", rewatchInput);
+    }
+  };
+}
+
 /** A linear peak in dB below full scale, from the floor for silence to 0 for full scale and past it (a loud sum). */
 export function decibels(peak: number): number {
   return peak > 0 ? Math.min(0, Math.max(FLOOR_DB, 20 * Math.log10(peak))) : FLOOR_DB;
@@ -60,7 +91,7 @@ const SPOKEN_MS = 250;
  * recording starts from silence. The elements are written directly, a transform for the bar, and React renders
  * nothing per level: at 15 levels and 15 steps a second, a render each cost the page more than the preview it shows.
  */
-function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, source: "system" | "microphone", off: boolean): void {
+function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, source: "system" | "microphone" | "input", off: boolean): void {
   useEffect(() => {
     if (!track || !cover) return;
     let shown = FLOOR_DB, drawn = Number.NaN, spoken = Number.NaN, spokenAt = 0;
@@ -80,9 +111,11 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
     if (off) return;
     // Levels only raise what the next frame shows; frames fall back and paint, on the Studio's one clock.
     let heard = FLOOR_DB;
-    const stop = subscribe((levels) => {
-      heard = Math.max(heard, decibels(source === "system" ? levels.system : levels.microphone ?? 0));
-    });
+    const stop = source === "input"
+      ? subscribeInput((level) => { heard = Math.max(heard, decibels(level.peak)); })
+      : subscribe((levels) => {
+        heard = Math.max(heard, decibels(source === "system" ? levels.system : levels.microphone ?? 0));
+      });
     const stopFrames = onFrame(() => {
       const fallen = Math.max(FLOOR_DB, shown - FALL_DB);
       // A level rising is said at once; only its falling back is held to SPOKEN_MS, which a later frame says.
@@ -132,6 +165,37 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
       >
         <Icon />
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The Recording tab's Input level (plan 079, D1): the chosen input's peak between recordings, so the user can check
+ * that it hears them without recording; at the floor while disabled (a recording runs, whose own levels the Recording
+ * Studio shows).
+ */
+export function InputMeter({ group, disabled, describedBy }: { group: SettingsGroup; disabled: boolean; describedBy: string | undefined }) {
+  const id = `setting-${group.id}`;
+  const [track, setTrack] = useState<HTMLDivElement | null>(null);
+  const [cover, setCover] = useState<HTMLDivElement | null>(null);
+  useMeter(track, cover, "input", disabled);
+  return (
+    <div className="audio-meter">
+      {/* The value is written by useMeter as levels come, never by a render. */}
+      <div
+        ref={setTrack}
+        id={id}
+        className="audio-meter-track"
+        role="meter"
+        aria-labelledby={`${id}-label`}
+        aria-describedby={describedBy}
+        aria-valuemin={FLOOR_DB}
+        aria-valuemax={0}
+        aria-valuenow={FLOOR_DB}
+      >
+        <div className="audio-meter-fill" />
+        <div ref={setCover} className="audio-meter-cover" />
+      </div>
     </div>
   );
 }
