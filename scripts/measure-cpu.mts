@@ -1,5 +1,5 @@
 /**
- * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--out <dir>]`
+ * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--studio] [--profile] [--out <dir>]`
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
@@ -26,6 +26,11 @@
  * the camera composed into every recording at the stored layout, and its preview page open unless the value has
  * `preview=0`. It measures A and R only: B, C and P need `--skip-settings --skip-playback`, and B is left
  * out, since the preview page is a renderer the idle contract does not allow after a recording.
+ *
+ * `--profile` (plan 081) also writes 10 s of `sample` of main, the GPU process, every renderer and the capture process
+ * beside the report, from 25 s into each recording and 20 s into each Live preview: native stacks to attribute a
+ * process's share by thread (Electron's own frames are stripped, so its symbols are only approximate). It perturbs the
+ * window it falls in, which the report's figures then include.
  *
  * `--studio` (plan 075 step 8, with `--camera`) adds, before the recordings with Settings closed and over the same
  * moving material, the Recording Studio (D19, D20), opened from the tray's Open Recording Studio… before the material's
@@ -94,11 +99,13 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio (with --camera)] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio (with --camera)] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
 let studio = false;
+/** Plan 081 step 1: `sample` each of the app's processes for 10 s inside every recording and Live preview. */
+let profileProcesses = false;
 /** Whether `--camera` opens the preview page, which `cameraPreviewOn` decides as the app does. */
 let cameraPreview = false;
 /** A role contract that also allows the camera prototype's preview page, one renderer, and nothing else more. */
@@ -117,6 +124,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--hover-card") hoverCard = true;
   else if (arg === "--camera" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) camera = argv[++i];
   else if (arg === "--studio") studio = true;
+  else if (arg === "--profile") profileProcesses = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
@@ -292,6 +300,28 @@ async function main(): Promise<number> {
   let appPid = 0;
   const model = machineModel();
   const window = (fromMs: number, toMs: number, expectChanges = false): Summary => summarize(intervals(sampler!.samples), fromMs, toMs, expectChanges);
+  /**
+   * `--profile`: 10 s of `sample` on main, the GPU process, every renderer and the capture process, at once, written
+   * beside the report; it perturbs the window it falls in, which the report's figures then include.
+   */
+  let profiled = 0;
+  const profileAfter = (label: string, afterMs: number): Promise<void> | undefined => {
+    if (!profileProcesses) return undefined;
+    const run = async (): Promise<void> => {
+      await sleep(afterMs);
+      profiled += 1;
+      const wanted = [...readRoleTree(appPid)].filter(([, role]) => ["main", "gpu", "renderer", "utility:node"].includes(role));
+      await Promise.all(wanted.map(([pid, role]) => command("sample", [String(pid), "10", "-mayDie", "-file",
+        path.join(dir, `profile-${String(profiled).padStart(2, "0")}-${label}-${role.replace(":", "-")}-${pid}.txt`)], AbortSignal.timeout(60_000), 60_000)
+        .catch((cause: unknown) => note(`profile ${label} ${role} ${pid}: ${cause instanceof Error ? cause.message : String(cause)}`))));
+      note(`profiled ${label}: ${wanted.map(([pid, role]) => `${role} ${pid}`).join(", ")}`);
+    };
+    // Never rejects: an interrupt during its delay is the caller's to handle, and a rejection nothing awaits yet would
+    // end Node before the runner's cleanup.
+    return run().catch((cause: unknown) => {
+      if (!controller.signal.aborted) note(`profile ${label}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    });
+  };
 
   const openMaterial = async (): Promise<void> => {
     if (material) return;
@@ -326,7 +356,9 @@ async function main(): Promise<number> {
     await sendKeys(recordingKey);
     await waitForLog(log, from, /\] state → recording/, "`state → recording`", AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]));
     const started = Date.now();
+    const profiling = profileAfter(`${withStudio ? "S" : "R"}${fps}`, 25_000);
     await sleep(RECORDING_SECONDS * 1000);
+    await profiling;
     // A session that already ended must not get the key: on an idle app it starts a new recording.
     const ended = recordingOutcome(log.since(from).lines.map((line) => line.text));
     if (ended.settled) {
@@ -472,7 +504,9 @@ async function main(): Promise<number> {
     note(`L. Live preview at ${fps} fps prepared; settling 5 s`);
     await sleep(5000);
     const lFrom = Date.now();
+    const profiling = profileAfter(`L${fps}`, 20_000);
     await sleep(50_000);
+    await profiling;
     const summary = window(lFrom, Date.now());
     const wrote = log.since(from).lines.some((line) => /\] state → recording|record sent/.test(line.text));
     scenarios.push({ name: `L. Live preview at ${fps} fps in the Recording Studio`, key: `livePreview${fps}`, summary, note: `The Studio window at ${studioDisplay}.`,
@@ -739,7 +773,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
