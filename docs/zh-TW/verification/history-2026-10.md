@@ -4,6 +4,19 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 079 結案 — 2026-10-19
+
+Plan 079（麥克風控制）於 2026-10-19 依維護者採納建議的 D1–D3 實作：設定中的「輸入音量」、跟著連接變化並有「搜尋裝置」的裝置清單，以及錄影中切換麥克風（[錄影](../system-design/recording.md#音訊)、[桌面](../system-design/desktop.md)）。這裡記錄簽署 bundle 上的回合與計畫結案：維護者同日要求，下列兩項需要動手的案例移到 [077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)，由它集中所有需要動手的案例，079 隨之結案。
+
+- **自動化。**`pnpm acceptance:regression`：check（1,985 個 Vitest 測試、133 個原生測試、建置）與 168 個背景案例，其中包括 S139–S141（輸入音量、搜尋裝置、錄影中的選擇器）。引擎以 `cargo check` 編譯 `x86_64-pc-windows-msvc`；未觸發 CI。Codex GPT-6.1 Sol 兩輪唯讀 review 找出五個問題，皆已修正：一次只送一個切換，回覆不會被當成之後的選擇；倒數中的回覆也會接受；錄影中仍跟著裝置清單；切換到正在錄的裝置時回報為保留；開始監看時先送一次清單。
+- **桌面回合（依維護者要求無人值守）。**維護者回覆「好了」後要求 agent 代為進行；設定由 Codex GPT-6 Astra 的 computer use 操作，聲音由喇叭播放、經 BenQ 螢幕的麥克風收音。證據為 Computer Use 觀察、App log 與 agent 的截圖。
+  - **輸入音量（D1）：通過。**開啟麥克風後 log 記下 `microphone monitor: reading BenQ Monitor`；音量條的綠色長度安靜時 0 px，播放系統 Submarine 音效時 101 與 134 px，停止 4 秒後 0 px。
+  - **清單跟著連接變化（D2）：以替代方式通過。**沒有人能插耳機，因此建立並移除一個以螢幕麥克風組成的公開 aggregate 輸入裝置（`AudioHardwareCreateAggregateDevice`，儲存庫外的一次性工具）。每次變化約 1 秒後就重新列出（`devices: listing the inputs`），不需啟用視窗，「輸入裝置」選單隨後列出「RecordStuff Test Input」。第一次誤把螢幕的輸出裝置組進 aggregate，它沒有輸入，正確地沒被列出。
+  - **開著麥克風的錄影 smoke：通過。**`pnpm acceptance -- --seconds 12`（報告 `2026-10-19T01-17-24-349Z-hotkey-acceptance`）：12.4 秒、60 fps，音訊與影像等長，兩聲道約 −42 dB，可解碼；`mic on (BenQ Monitor)`；倒數取消案例通過。
+  - **CPU：通過。**開著麥克風執行 `pnpm measure:cpu -- --skip-recording --skip-playback`（報告 `2026-10-19T01-23-02-288Z-cpu`）：A 0.044%；C（設定開在 Finder 後面）0.229%，上限 0.5%，角色包括監看程序（`utility:node ×1`）。視窗有焦點、音量表讀取中時，以 `ps` 量 60 秒：監看程序 1.4%、main 1.05%、設定 renderer 1.05%、GPU 程序 0.25%（粗略，非 runner）。
+  - **移到 077（此處未驗證）。**藍牙耳機的連接與斷開（需要人手）；錄影中的實際切換：Astra 無法操作選單列（`Computer Use was not approved to use SystemUIServer`），之後連續三次存取 RecordStuff 逾時（`-10005`；每次都啟動了第二個實例，因 userData 鎖而結束），因此切換只靠引擎的 core 測試、Recorder 測試與 S141。Windows 未在實機上測試。
+- **清理。**aggregate 裝置已移除，App 正常結束且程序都已退出，`microphone` 還原為關閉、未選裝置，與回合前相同。錄影檔 `2026-10-19 09-17-31.mp4` 留在輸出資料夾。
+
 ## Plan 075 結案 — 2026-10-18
 
 Plan 075 把使用者的相機放進錄影。2026-10-17 依維護者要求改採 OBS 的做法重新設計：由引擎在編碼前於 GPU 上把相機合成進畫面，而不是錄下一個浮動視窗；新的「錄影工作室」分頁在即時預覽上安排相機，錄影前與錄影中都可以。設計見[錄影](../system-design/recording.md#相機)、[桌面](../system-design/desktop.md#錄影工作室)與[相機權限](../system-design/desktop.md#相機權限)，決策見[設計決策](../system-design/decisions.md)，CPU 預算見[工具](../system-design/tooling.md#cpu-預算)。
@@ -41,7 +54,7 @@ Plan 075 把使用者的相機放進錄影。2026-10-17 依維護者要求改採
 - **步驟 5，Windows 的關閉。**fixture 關閉的每個階段都計時寫入 `test-results/ui-close-timings.jsonl`，並由 CI 的「Slowest closes」步驟彙整。在 Windows 上，main 在關閉開始後 70–100 ms 就已結束，而 Playwright 自己的關閉要等 helper 程序，最長等了 7.7 s。正常關閉現在以 main 的結束為準，與 Playwright 的關閉競速，Windows 上 helper 的等待為 15 s。Run 38953840602：兩個平台都沒有任何關閉被砍掉，Windows 最慢 3.5 s（每個 shard 的中位數 215–394 ms）。
 - **步驟 6，麥克風（維護者的決定，2026-10-17：只收回同一個裝置）。**macOS 改以 AUHAL 單元（CoreAudio 的 HAL）擷取，取代 `AVCaptureSession`；即時執行緒上的緩衝區來自預先配置的 pool，以 AudioConverter 轉成 48 kHz。桌面回合發現，離開的裝置不會讓它的單元停止：HAL 會把單元移到另一個輸入，繼續送出聲音（iPhone 麥克風與 FreeClip 2 耳機之後接著錄到的都是另一支麥克風收到的房間聲音，因取樣率錯誤丟了 290 萬個 frame），所以從未回報中斷。讀取執行緒現在每 250 ms 檢查單元是否仍在錄它的裝置，不是就立即關閉，等 HAL 列出同一個 UID 時重新開啟，退避從 2 秒到 30 秒。Windows 在 `AUDCLNT_E_DEVICE_INVALIDATED` 之後重新開啟同一個 endpoint ID（只經過 CI 編譯）。維護者也在 2026-10-17 決定，錄影中中斷的麥克風絕不會被另一支取代。
 - **攝影機，供 075 參考。**`probe_cameras_coming_and_going`（不用 run loop，每秒讀一次 CoreMediaIO 與 AVFoundation 的清單）在兩份清單中都看到 iPhone 的接續互通相機，但在它從 iPhone 端斷線並再次選取的 180 秒內都沒有看到任何變化，因此清單能否在沒有 run loop 的情況下追蹤攝影機仍未確定；075 的步驟 2 會用 USB 攝影機再做一次。
-- **新計畫。**這個回合帶出維護者想之後再做的麥克風控制：設定中的輸入音量表、「搜尋裝置」按鈕、跟著連接變化的裝置清單，以及使用者能否在錄影中切換麥克風（[079](../../../plans/079-microphone-controls.zh-TW.md)）。
+- **新計畫。**這個回合帶出維護者想之後再做的麥克風控制：設定中的輸入音量表、「搜尋裝置」按鈕、跟著連接變化的裝置清單，以及使用者能否在錄影中切換麥克風（[079](#plan-079-結案--2026-10-19)）。
 
 ### 驗證
 

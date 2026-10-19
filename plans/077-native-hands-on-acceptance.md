@@ -1,12 +1,12 @@
-# 077 — Hands-on acceptance of the native capture engine
+# 077 — Hands-on acceptance: the native capture engine and the microphone controls
 
 [English](077-native-hands-on-acceptance.md) | [繁體中文](077-native-hands-on-acceptance.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("記下來，之後做"). Priority: proposed right after 076; the maintainer orders it. Hard dependencies: 076, whose native engine these cases exercise. Execute the steps in order under [the plan index](README.md).
+Status: planned; not started. Created: 2026-10-16, from 076's step 7 at the maintainer's request ("記下來，之後做"). Priority: proposed right after 076; the maintainer orders it. Hard dependencies: 076, whose native engine these cases exercise, and 079, whose two hands-on cases moved here when it closed on 2026-10-19 at the maintainer's request, so every case that needs the maintainer's hands is in one plan. Execute the steps in order under [the plan index](README.md).
 
 ## Goal and boundaries
 
-Finish the macOS acceptance of the native capture engine (076) for the cases a runner cannot stage alone, because each needs the maintainer's hands or a change to the machine that agents may not make: putting the Mac to sleep, unplugging a display, revoking the screen-recording permission, and showing the Dock. Success is: each case is run on the signed bundle through the native engine, its outcome recorded against what [recording](../docs/system-design/recording.md) promises (a saved file and the right notice for sleep and a removed display, the permission card for a denial, a recording without the Dock with D6 on), and each settings or permission change put back.
+Finish the macOS acceptance of the native capture engine (076) for the cases a runner cannot stage alone, because each needs the maintainer's hands or a change to the machine that agents may not make: putting the Mac to sleep, unplugging a display, revoking the screen-recording permission, and showing the Dock; and 079's microphone controls where an agent cannot stand in for a person: a Bluetooth headset connected and disconnected, and the input device switched during a real recording. Success is: each case is run on the signed bundle through the native engine, its outcome recorded against what [recording](../docs/system-design/recording.md) promises (a saved file and the right notice for sleep and a removed display, the permission card for a denial, a recording without the Dock with D6 on, a list that follows the headset without the window being activated, and a switch whose seam and record are as recording.md describes), and each settings or permission change put back.
 
 Out of scope: Windows (CI only, as 076's D8 says), any engine change (a defect found here becomes its own plan or a fix the maintainer approves), and the cases 076's runners already cover (recording quality, CPU, tray, lifecycle fixtures, quit while recording and own windows, which 076 adds to `pnpm acceptance`).
 
@@ -15,6 +15,7 @@ Out of scope: Windows (CI only, as 076's D8 says), any engine change (a defect f
 - 076 recorded the native engine's recording quality, CPU baseline and tray cases on 2026-10-15 and 2026-10-16 ([076's closure record](../docs/verification/history-2026-10.md#plan-076-closure--2026-10-16)); these four cases were left for later at the maintainer's word.
 - The Chromium path handled sleep (plan 050), display removal and permission denial; the native engine maps its failures to the same `HostErrorCode`s, but none of these four has run through it on hardware.
 - The maintainer's Dock appears to be hidden automatically, so 076's D6 round showed no Dock in either recording.
+- 079 was built and checked on 2026-10-19 ([round record](../docs/verification/history-2026-10.md#plan-079-closure--2026-10-19)): the meter, the list following a temporary aggregate input, CPU and a microphone-on recording passed unattended. A Bluetooth headset could not be plugged without the maintainer, and Codex GPT-6 Astra could not reach the menu bar or RecordStuff to switch the microphone while recording, so those two cases rest on unit tests and S141.
 
 ## Steps
 
@@ -34,9 +35,17 @@ Out of scope: Windows (CI only, as 076's D8 says), any engine change (a defect f
 
 - [ ] With the Dock shown (the maintainer turns off automatic hiding for the round, or the round runs on a machine that shows it), record once with Hide menu bar and Dock off and once on. Expected: the Dock in the first recording's frames, absent from the second's; the maintainer puts the Dock setting back.
 
-### 5. Record
+### 5. A Bluetooth headset coming and going (079's D2)
 
-- [ ] Write the results, with the evidence paths and what each case's setting change was and how it was undone, into the verification record and 076's or its successor's closure; list any case left unrun as untested.
+- [ ] With the Microphone switch on and Settings → Recording in front, the maintainer connects a Bluetooth headset (for example the FreeClip 2) without clicking the window, then puts it back in its case. Expected: it appears in the Input device menu and leaves it, each within a few seconds, with `devices: listing the inputs` in the log and no window activation; Search for devices also lists it at once. Note how long macOS took to list its microphone.
+
+### 6. Switching the microphone during a recording (079's D3)
+
+- [ ] With the Microphone switch on, the maintainer starts a recording, speaks, chooses another input in Settings → Recording → Input device (for example MacBook Pro Microphone, or the headset), speaks again and stops. Expected: the note "Switches this recording's microphone at once." while recording; `microphone switched from {a} to {b}` in the log; the saved line and record naming both devices (`microphones`); the file's audio and video equally long, the voice from each device on its side of the seam, with at most a short silence between; choosing the device already recorded (System default and that device) is logged as kept and a later choice still switches. Put the Microphone switch and Input device back afterwards.
+
+### 7. Record
+
+- [ ] Write the results, with the evidence paths and what each case's setting change was and how it was undone, into the verification record and this plan's closure; list any case left unrun as untested.
 
 ## Completion and verification boundaries
 
