@@ -30,10 +30,15 @@ interface StopReport {
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent {
-  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed" | "levels";
+  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed" | "levels"
+    | "microphoneSwitched" | "microphoneSwitchFailed" | "meter" | "meterLost" | "devices";
   bytes?: number; code?: string; detail?: string;
   /** With `levels` (plan 075, D19). */
   system?: number | null; microphone?: number | null;
+  /** With `meter` (plan 079, D1): linear peak and RMS over 50 ms. */
+  peak?: number | null; rms?: number | null;
+  /** With `microphoneSwitched` (plan 079, D3): the devices' names. */
+  from?: string | null; to?: string | null;
 }
 /**
  * A preview chunk of the composed picture (plan 075's prototype, D17's second option): H.264 in AVCC form for WebCodecs,
@@ -76,6 +81,13 @@ interface NativeCapture {
   setMuted?(system: boolean, microphone: boolean): boolean;
   /** Plan 075, D21: the inputs' volumes in dB. */
   setGains?(system: number, microphone: number): boolean;
+  /** Plan 079, D3: records another microphone from now on; false when the session records none. */
+  setMicrophone?(deviceId?: string): boolean;
+  /** Plan 079, D2: `devices` events while the device list is followed. */
+  watchDevices?(watching: boolean): void;
+  /** Plan 079, D1: Settings' input level meter, `meter` events until stopped; resolves with the device's name. */
+  startMeter?(deviceId?: string): Promise<string>;
+  stopMeter?(): void;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -138,10 +150,18 @@ export function engineFailure(cause: unknown): { code: string; detail: string } 
 
 type Phase = "preparing" | "prepared" | "recording" | "stopping";
 
+/** How long the device list settles before it is listed again (plan 079, D2): one change is told several times. */
+export const DEVICES_SETTLE_MS = 300;
+
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
   private previewPort: PreviewPort | undefined;
   private previewFrames = 0;
+  /** Settings' meter (plan 079, D1): the latest request, and the requests applied one after another. */
+  private meterWanted: { deviceId?: string } | undefined;
+  private meterRunning = false;
+  private meterQueue: Promise<void> = Promise.resolve();
+  private devicesTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly port: ParentPort,
@@ -226,6 +246,106 @@ export class NativeHost {
         if (this.session?.id !== message.sessionId) return;
         this.log(`camera preview: ${message.watching ? "watched" : "not watched"}${this.capture.setCameraPreview?.(message.watching) ? "" : " (no camera in this session)"}`);
         return;
+      case "microphone":
+        this.switchMicrophone(message.sessionId, message.deviceId);
+        return;
+      case "watchDevices":
+        this.watchDevices(message.watching);
+        return;
+      case "meter":
+        this.meter(message.watching ? { ...(message.deviceId ? { deviceId: message.deviceId } : {}) } : undefined);
+        return;
+    }
+  }
+
+  /** The user switched the recording's microphone (plan 079, D3): the engine tells the outcome. */
+  private switchMicrophone(sessionId: string, deviceId: string | undefined): void {
+    const session = this.session;
+    if (session?.id !== sessionId || session.phase === "preparing" || session.phase === "stopping") return;
+    this.log(`microphone: switching to ${deviceId ?? "the system default input"}`);
+    if (!this.capture.setMicrophone?.(deviceId)) this.send({ type: "microphoneSwitchFailed", sessionId, detail: "this recording records no microphone" });
+  }
+
+  /** Follows the device list while Settings is open (plan 079, D2); each change is answered with `microphones`. */
+  private watchDevices(watching: boolean): void {
+    if (this.session) return;
+    try {
+      this.capture.watchDevices?.(watching);
+      this.log(`devices: ${watching ? "followed" : "no longer followed"}`);
+    } catch (cause) {
+      this.log(`devices: the device list cannot be followed: ${engineFailure(cause).detail}`);
+    }
+    if (!watching) {
+      clearTimeout(this.devicesTimer);
+      this.devicesTimer = undefined;
+      return;
+    }
+    // What is connected now, which may have changed while nothing followed it, and which Settings cannot otherwise
+    // list again during a recording (review of plan 079).
+    this.devicesChanged();
+  }
+
+  /** Settings' meter (plan 079, D1), started, started again on another device or stopped, one request at a time. */
+  private meter(wanted: { deviceId?: string } | undefined): void {
+    if (this.session) return;
+    this.meterWanted = wanted;
+    this.meterQueue = this.meterQueue.then(() => this.applyMeter(wanted));
+  }
+
+  private async applyMeter(wanted: { deviceId?: string } | undefined): Promise<void> {
+    // A later request is queued behind this one and settles it.
+    if (this.meterWanted !== wanted) return;
+    if (!wanted) {
+      if (this.meterRunning) {
+        this.capture.stopMeter?.();
+        this.meterRunning = false;
+        this.log("meter: stopped");
+      }
+      return;
+    }
+    try {
+      const device = await (this.capture.startMeter?.(wanted.deviceId) ?? Promise.reject(new Error("microphone_unavailable|this engine has no meter")));
+      this.meterRunning = true;
+      // Stopped or replaced while it opened: the request queued behind settles it.
+      if (this.meterWanted !== wanted) return;
+      this.log(`meter: reading ${device}`);
+      this.send({ type: "meterStarted", device });
+    } catch (cause) {
+      const { detail } = engineFailure(cause);
+      this.log(`meter: not started: ${detail}`);
+      if (this.meterWanted === wanted) this.send({ type: "meterStopped", error: detail });
+    }
+  }
+
+  /**
+   * Lists the inputs once the device list settles: one connection is told several times, and the HAL lists a Bluetooth
+   * microphone a moment after its device.
+   */
+  private devicesChanged(): void {
+    clearTimeout(this.devicesTimer);
+    this.devicesTimer = setTimeout(() => {
+      this.devicesTimer = undefined;
+      this.log("devices: listing the inputs");
+      void this.listMicrophones();
+    }, DEVICES_SETTLE_MS);
+  }
+
+  /** Engine events of Settings' monitor process (plan 079), which runs no session. */
+  private monitorEvent(event: EngineEvent): boolean {
+    switch (event.kind) {
+      case "meter":
+        if (this.meterRunning && typeof event.peak === "number" && typeof event.rms === "number") this.send({ type: "meterLevel", peak: event.peak, rms: event.rms });
+        return true;
+      case "meterLost":
+        this.meterRunning = false;
+        this.log(`meter: ${event.detail ?? "stopped"}`);
+        this.send({ type: "meterStopped", error: event.detail ?? "the device stopped" });
+        return true;
+      case "devices":
+        this.devicesChanged();
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -404,6 +524,7 @@ export class NativeHost {
   }
 
   private event(event: EngineEvent): void {
+    if (this.monitorEvent(event)) return;
     const session = this.session;
     if (!session) return;
     if (event.kind === "progress") {
@@ -414,6 +535,10 @@ export class NativeHost {
       this.send({ type: "microphoneLost", sessionId: session.id, detail: event.detail ?? "the microphone stopped" });
     } else if (event.kind === "microphoneResumed") {
       this.send({ type: "microphoneResumed", sessionId: session.id, detail: event.detail ?? "the microphone delivered sound again" });
+    } else if (event.kind === "microphoneSwitched") {
+      this.send({ type: "microphoneSwitched", sessionId: session.id, from: event.from ?? "", to: event.to ?? "" });
+    } else if (event.kind === "microphoneSwitchFailed") {
+      this.send({ type: "microphoneSwitchFailed", sessionId: session.id, detail: event.detail ?? "the microphone could not be switched" });
     } else if (event.kind === "cameraLost") {
       this.send({ type: "cameraLost", sessionId: session.id, detail: event.detail ?? "the camera stopped" });
     } else if (event.kind === "cameraResumed") {

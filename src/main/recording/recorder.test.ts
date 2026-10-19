@@ -63,6 +63,13 @@ class FakeHost implements RecorderHost {
   setGains(sessionId: string, gain: AudioGain): void {
     this.gains.push([sessionId, gain]);
   }
+  /** Each microphone switch sent (plan 079, D3); `accepts` false is a host that does not run the session. */
+  switches: [string, string | undefined][] = [];
+  accepts = true;
+  setMicrophone(sessionId: string, deviceId: string | undefined): boolean {
+    if (this.accepts) this.switches.push([sessionId, deviceId]);
+    return this.accepts;
+  }
   onMessage(listener: (m: HostMessage) => void): void {
     this.messageListener = listener;
   }
@@ -584,6 +591,96 @@ describe("the microphone (plan 074)", () => {
     await flush();
     expect(ctx.events.some((event) => event.type === "microphoneLost")).toBe(false);
     expect(ctx.events.find((event) => event.type === "saved")).not.toHaveProperty("microphoneLost");
+  });
+});
+
+describe("switching the microphone while recording (plan 079, D3)", () => {
+  it("sends the chosen input to the recording only, then logs the switch and names both devices in the saved recording", async () => {
+    const logs: string[] = [];
+    let choice: { enabled: boolean; deviceId?: string; label?: string } = { enabled: true };
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => choice } });
+    expect(ctx.recorder.updateMicrophone(), "no session").toBe(false);
+    ctx.recorder.toggle();
+    await flush();
+    choice = { enabled: true, deviceId: "usb", label: "USB Microphone" };
+    expect(ctx.recorder.updateMicrophone(), "preparing: it opens the device chosen when it began").toBe(false);
+    ctx.host.emit(prepared("s1", { ...CAPTURE, microphone: "MacBook Pro Microphone" }));
+    ctx.host.emit(chunk("s1", 0));
+    await flush();
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    // The same choice again is no switch, until it is answered.
+    expect(ctx.recorder.updateMicrophone()).toBe(false);
+    expect(ctx.host.switches).toEqual([["s1", "usb"]]);
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "s1", from: "MacBook Pro Microphone", to: "USB Microphone" });
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "other", from: "x", to: "y" });
+    expect(logs).toContainEqual(expect.stringContaining("microphone switched from MacBook Pro Microphone to USB Microphone"));
+    // Back to the system default: a switch too.
+    choice = { enabled: true };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    ctx.host.emit({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "microphone: there is no default input; USB Microphone goes on being recorded" });
+    expect(logs).toContainEqual(expect.stringContaining("microphone not switched: microphone: there is no default input"));
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.find((event) => event.type === "saved")).toMatchObject({ microphones: ["MacBook Pro Microphone", "USB Microphone"] });
+  });
+
+  it("sends one switch at a time, so an answer is never taken for a later choice, and takes answers from the countdown on", async () => {
+    const logs: string[] = [];
+    let choice: { enabled: boolean; deviceId?: string; label?: string } = { enabled: true };
+    const ctx = setup({ log: (line) => logs.push(line), deps: { microphone: () => choice, countdownSeconds: () => 3 } });
+    ctx.recorder.toggle();
+    await flush();
+    ctx.host.emit(prepared("s1", { ...CAPTURE, microphone: "MacBook Pro Microphone" }));
+    await flush();
+    expect(ctx.recorder.state.type).toBe("countdown");
+    choice = { enabled: true, deviceId: "b", label: "B" };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    // C while B opens waits for B's answer, and D replaces it.
+    choice = { enabled: true, deviceId: "c", label: "C" };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    choice = { enabled: true, deviceId: "d", label: "D" };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    expect(ctx.host.switches).toEqual([["s1", "b"]]);
+    // Answered during the countdown: taken, and D sent.
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "s1", from: "MacBook Pro Microphone", to: "B" });
+    expect(ctx.host.switches).toEqual([["s1", "b"], ["s1", "d"]]);
+    ctx.host.emit({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "microphone: d is not connected; B goes on being recorded" });
+    // D failed: B is recorded, so choosing D again is a switch, and B is none.
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    expect(ctx.host.switches.at(-1)).toEqual(["s1", "d"]);
+    ctx.host.emit({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "again" });
+    choice = { enabled: true, deviceId: "b", label: "B" };
+    expect(ctx.recorder.updateMicrophone()).toBe(false);
+    // An answer nothing asked for is ignored.
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "s1", from: "B", to: "E" });
+    expect(logs.filter((line) => line.includes("microphone switched from"))).toHaveLength(1);
+    // System default when B is the default: the same device, answered as kept, which lets the next choice go.
+    choice = { enabled: true };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    choice = { enabled: true, deviceId: "f", label: "F" };
+    expect(ctx.recorder.updateMicrophone()).toBe(true);
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "s1", from: "B", to: "B" });
+    expect(logs).toContainEqual(expect.stringContaining("microphone B kept: it is the one chosen"));
+    expect(ctx.host.switches.slice(-2)).toEqual([["s1", undefined], ["s1", "f"]]);
+    ctx.host.emit({ type: "microphoneSwitched", sessionId: "s1", from: "B", to: "F" });
+    expect(logs).toContainEqual(expect.stringContaining("microphone switched from B to F"));
+  });
+
+  it("leaves a recording without the microphone alone, and saves one never switched without the list", async () => {
+    const ctx = setup({ deps: { microphone: () => ({ enabled: true, deviceId: "usb" }) } });
+    await startRecording(ctx);
+    expect(ctx.recorder.updateMicrophone(), "the device it records").toBe(false);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.find((event) => event.type === "saved")).not.toHaveProperty("microphones");
+    let enabled = false;
+    const off = setup({ deps: { microphone: () => ({ enabled, deviceId: "usb" }) } });
+    await startRecording(off);
+    enabled = true;
+    expect(off.recorder.updateMicrophone()).toBe(false);
+    expect(off.host.switches).toEqual([]);
   });
 });
 

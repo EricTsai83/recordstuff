@@ -512,3 +512,104 @@ describe("NativeHost", () => {
     expect(port.sent.at(-1)).toMatchObject({ type: "error", sessionId: "s3", code: "capture_start_failed" });
   });
 });
+
+describe("Settings' microphone monitor and switching while recording (plan 079)", () => {
+  type MonitorEvent = { kind: string; peak?: number; rms?: number; detail?: string; from?: string; to?: string };
+
+  function monitor() {
+    const port = new Port();
+    let emit: (event: MonitorEvent) => void = () => undefined;
+    let resolveStart: ((name: string) => void) | undefined;
+    const engine = {
+      ...fakeEngine().engine,
+      watchDevices: vi.fn(),
+      startMeter: vi.fn((_device?: string) => new Promise<string>((resolve) => { resolveStart = resolve; })),
+      stopMeter: vi.fn(),
+      setMicrophone: vi.fn((_device?: string) => true),
+    };
+    const logs: string[] = [];
+    new NativeHost(port, (onEvent) => { emit = onEvent as (event: MonitorEvent) => void; return engine; }, (line) => logs.push(line));
+    return { port, engine, logs, emit: (event: MonitorEvent) => emit(event), started: (name: string) => resolveStart?.(name) };
+  }
+
+  it("follows the device list and lists the inputs once a burst of changes settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const { port, engine, emit } = monitor();
+      port.deliver({ type: "watchDevices", watching: true });
+      expect(engine.watchDevices).toHaveBeenCalledWith(true);
+      // What is connected when the watch begins.
+      await vi.advanceTimersByTimeAsync(300);
+      expect(engine.microphones).toHaveBeenCalledTimes(1);
+      engine.microphones.mockClear();
+      emit({ kind: "devices" });
+      emit({ kind: "devices" });
+      await vi.advanceTimersByTimeAsync(299);
+      expect(engine.microphones).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(engine.microphones).toHaveBeenCalledTimes(1);
+      expect(port.sent.at(-1)).toEqual({ type: "microphones", devices: [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts the meter on the device asked for, passes its levels, and stops it", async () => {
+    const { port, engine, emit, started } = monitor();
+    port.deliver({ type: "meter", watching: true, deviceId: "usb" });
+    await flush();
+    expect(engine.startMeter).toHaveBeenCalledWith("usb");
+    // Levels before the meter answers are not this meter's.
+    emit({ kind: "meter", peak: 0.5, rms: 0.3 });
+    started("USB Microphone");
+    await flush();
+    emit({ kind: "meter", peak: 0.5, rms: 0.3 });
+    expect(port.sent).toEqual([{ type: "ready" }, { type: "meterStarted", device: "USB Microphone" }, { type: "meterLevel", peak: 0.5, rms: 0.3 }]);
+    port.deliver({ type: "meter", watching: false });
+    await flush();
+    expect(engine.stopMeter).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a meter that a stop overtook while it opened", async () => {
+    const { port, engine, started } = monitor();
+    port.deliver({ type: "meter", watching: true });
+    await flush();
+    port.deliver({ type: "meter", watching: false });
+    started("MacBook Pro Microphone");
+    await flush();
+    await flush();
+    expect(engine.stopMeter).toHaveBeenCalledTimes(1);
+    expect(port.sent.some((message) => message.type === "meterStarted")).toBe(false);
+  });
+
+  it("tells main a meter that could not start or lost its device", async () => {
+    const { port, engine, emit } = monitor();
+    engine.startMeter.mockRejectedValueOnce(new Error("microphone_unavailable|microphone: access is not allowed"));
+    port.deliver({ type: "meter", watching: true });
+    await flush();
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "meterStopped", error: "microphone: access is not allowed" });
+    emit({ kind: "meterLost", detail: "FreeClip 2 stopped being read (the device is gone)" });
+    expect(port.sent.at(-1)).toEqual({ type: "meterStopped", error: "FreeClip 2 stopped being read (the device is gone)" });
+  });
+
+  it("switches the recording's microphone and reports the engine's outcome for the session", async () => {
+    const { port, engine, emit } = monitor();
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, microphone: { enabled: true } } });
+    await flush();
+    port.deliver({ type: "microphone", sessionId: "other", deviceId: "usb" });
+    expect(engine.setMicrophone).not.toHaveBeenCalled();
+    port.deliver({ type: "microphone", sessionId: "s1", deviceId: "usb" });
+    expect(engine.setMicrophone).toHaveBeenCalledWith("usb");
+    emit({ kind: "microphoneSwitched", from: "MacBook Pro Microphone", to: "USB Microphone" });
+    emit({ kind: "microphoneSwitchFailed", detail: "microphone: usb is not connected; USB Microphone goes on being recorded" });
+    expect(port.sent.slice(-2)).toEqual([
+      { type: "microphoneSwitched", sessionId: "s1", from: "MacBook Pro Microphone", to: "USB Microphone" },
+      { type: "microphoneSwitchFailed", sessionId: "s1", detail: "microphone: usb is not connected; USB Microphone goes on being recorded" },
+    ]);
+    // A session without a microphone says so rather than staying silent.
+    engine.setMicrophone.mockReturnValueOnce(false);
+    port.deliver({ type: "microphone", sessionId: "s1" });
+    expect(port.sent.at(-1)).toEqual({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "this recording records no microphone" });
+  });
+});

@@ -75,6 +75,8 @@ export interface RecorderHost {
   setMuted?(sessionId: string, system: boolean, microphone: boolean): void;
   /** The session's inputs' volumes in dB from their next sound on (plan 075, D21). */
   setGains?(sessionId: string, gain: AudioGain): void;
+  /** Records another microphone from now on (plan 079, D3); false when the host does not run the session. */
+  setMicrophone?(sessionId: string, deviceId: string | undefined): boolean;
   onMessage(listener: (message: HostMessage) => void): void;
   onFailure(
     listener: (code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void,
@@ -177,9 +179,10 @@ export type RecorderEvent =
   | { type: "state"; state: RecordingState }
   /**
    * `microphoneLost`: the microphone dropped out partway, and that part has system audio only (plan 074);
-   * `cameraLost`: the camera did, and that part shows the screen alone (plan 075).
+   * `cameraLost`: the camera did, and that part shows the screen alone (plan 075). `microphones`: the devices recorded
+   * in turn, when the user switched while recording (plan 079, D3).
    */
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; session: SessionTrace }
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; microphones?: string[]; session: SessionTrace }
   /** The microphone stopped while recording; the recording goes on without it. Told once per session (plan 074). */
   | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The camera stopped while recording; the recording goes on without it. Told once per session (plan 075). */
@@ -257,6 +260,12 @@ interface Session {
   microphone: SessionMicrophone;
   /** The engine told that the microphone stopped while recording. */
   microphoneLost?: boolean;
+  /** The microphones recorded in turn, by name (plan 079, D3): the one prepared, then each one switched to. */
+  microphones?: string[];
+  /** A switch sent and not yet answered: the choice the session takes when it is. */
+  microphoneSwitch?: SessionMicrophone | undefined;
+  /** A choice made while a switch was being made, sent once that one is answered: one switch in flight at a time. */
+  microphoneNext?: SessionMicrophone | undefined;
   /** Camera snapshot taken when the session was created (plan 075); absent is off. */
   camera?: SessionCamera;
   /** The engine told that the camera stopped while recording. */
@@ -574,6 +583,47 @@ export class Recorder {
     const session = this.session;
     const prepared = session && ["previewing", "countdown", "arming", "recording"].includes(session.phase);
     return prepared ? this.sendGains(session) : false;
+  }
+
+  /**
+   * Sends the saved Input device to the recording in progress that records a microphone (plan 079, D3), from its
+   * countdown until it stops; the engine opens it and tells whether it switched. False without one. A Live preview is
+   * prepared again instead (index.ts).
+   */
+  updateMicrophone(): boolean {
+    const session = this.session;
+    if (!session || !session.microphone.enabled || !["countdown", "arming", "recording"].includes(session.phase)) return false;
+    const chosen = this.deps.microphone?.();
+    if (!chosen?.enabled || !this.deps.host.setMicrophone) return false;
+    // One switch in flight at a time, so each answer is the request it answers (review of plan 079): a choice made
+    // meanwhile waits for it, the latest replacing an earlier one that waits.
+    if (session.microphoneSwitch) {
+      if (chosen.deviceId === (session.microphoneNext ?? session.microphoneSwitch).deviceId) return false;
+      session.microphoneNext = chosen;
+      return true;
+    }
+    return this.sendMicrophone(session, chosen);
+  }
+
+  private sendMicrophone(session: Session, chosen: SessionMicrophone): boolean {
+    if (chosen.deviceId === session.microphone.deviceId) return false;
+    try {
+      if (!this.deps.host.setMicrophone?.(session.id, chosen.deviceId)) return false;
+    } catch (cause) {
+      this.deps.log(`recorder: session ${session.id} microphone switch not sent: ${messageOf(cause)}`);
+      return false;
+    }
+    session.microphoneSwitch = chosen;
+    this.deps.log(`recorder: session ${session.id} switching the microphone to ${chosen.label ?? chosen.deviceId ?? "the system default input"}`);
+    return true;
+  }
+
+  /** The switch in flight was answered: the choice that waited for it, if any, is sent now. */
+  private microphoneAnswered(session: Session): void {
+    session.microphoneSwitch = undefined;
+    const next = session.microphoneNext;
+    session.microphoneNext = undefined;
+    if (next && ["countdown", "arming", "recording"].includes(session.phase)) this.sendMicrophone(session, next);
   }
 
   private sendGains(session: Session): boolean {
@@ -1009,6 +1059,8 @@ export class Recorder {
     // `microphones` and `cameras` answer a listing process, never an attempt's.
     // `levels` go to the Recording Studio, which main joins to them, not to the session's state.
     if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras" || message.type === "levels") return;
+    // Settings' monitor process answers these (plan 079), never an attempt's.
+    if (message.type === "meterStarted" || message.type === "meterLevel" || message.type === "meterStopped") return;
     const session = this.session;
     if (message.type === "error") {
       if (session && !session.finalizing && message.sessionId === session.id) {
@@ -1040,6 +1092,7 @@ export class Recorder {
         if (session.phase !== "preparing") return;
         this.clearTimer(session);
         session.capture = message.capture;
+        if (message.capture.microphone) session.microphones = [message.capture.microphone];
         this.deps.log(`recorder: session ${session.id} prepared after ${this.elapsed(session.requestedAt)} ms; countdown ${session.countdownSeconds} s; sound ${session.countdownSound ? "on" : "off"}; mime ${message.mimeType}; ${describeMicrophone(session.microphone, message.capture.microphone)}`);
         if (session.cancelOnPrepared) {
           this.cancel(session, session.cancelOnPrepared);
@@ -1103,6 +1156,24 @@ export class Recorder {
         return;
       case "microphoneResumed":
         if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} microphone resumed: ${message.detail}`);
+        return;
+      case "microphoneSwitched":
+        // The user's choice while recording (plan 079, D3), from the countdown on: the log and the saved record name
+        // every device.
+        if (session.finalizing || !session.microphoneSwitch) return;
+        session.microphone = session.microphoneSwitch;
+        // The device recorded already (System default and that device by name): the choice is taken, nothing switched.
+        if (message.from === message.to) this.deps.log(`recorder: session ${session.id} microphone ${message.to} kept: it is the one chosen`);
+        else {
+          this.deps.log(`recorder: session ${session.id} microphone switched from ${message.from} to ${message.to}`);
+          session.microphones = [...(session.microphones ?? [message.from]), message.to];
+        }
+        this.microphoneAnswered(session);
+        return;
+      case "microphoneSwitchFailed":
+        if (session.finalizing || !session.microphoneSwitch) return;
+        this.deps.log(`recorder: session ${session.id} microphone not switched: ${message.detail}`);
+        this.microphoneAnswered(session);
         return;
       case "cameraLost":
         // The recording goes on with the screen alone, and composes the camera again if it comes back (plan 075, D12).
@@ -1395,6 +1466,7 @@ export class Recorder {
     this.endSaving(session);
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}),
       ...(session.microphoneLost ? { microphoneLost: true as const } : {}), ...(session.cameraLost ? { cameraLost: true as const } : {}),
+      ...((session.microphones?.length ?? 0) > 1 ? { microphones: session.microphones } : {}),
       session: this.trace(session) });
     await session.sentinel.clear();
   }

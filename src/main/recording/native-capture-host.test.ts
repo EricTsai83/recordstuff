@@ -109,6 +109,21 @@ describe("cameraChoice (plan 075)", () => {
       { type: "gain", sessionId: "s1", system: -6, microphone: 0 }]);
   });
 
+  it("sends a microphone switch to the session's process only (plan 079, D3)", async () => {
+    const ctx = setup();
+    expect(ctx.host.setMicrophone("s1", "usb"), "no process yet").toBe(false);
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { microphone: { enabled: true } });
+    await vi.advanceTimersByTimeAsync(0);
+    const child = ctx.children.at(-1)!;
+    child.deliver({ type: "ready" });
+    await start;
+    expect(ctx.host.setMicrophone("other", "usb")).toBe(false);
+    expect(ctx.host.setMicrophone("s1", "usb")).toBe(true);
+    expect(ctx.host.setMicrophone("s1", undefined)).toBe(true);
+    expect(child.sent.filter((m) => m.type === "microphone")).toEqual([
+      { type: "microphone", sessionId: "s1", deviceId: "usb" }, { type: "microphone", sessionId: "s1" }]);
+  });
+
   it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {
     const ctx = setup();
     const port = { close: () => undefined } as unknown as Electron.MessagePortMain;
@@ -196,6 +211,37 @@ describe("NativeCaptureHost", () => {
     const crashed = ctx.host.listMicrophones();
     ctx.children.at(-1)!.emit("exit", 3);
     await expect(crashed).rejects.toThrow("exited with 3");
+  });
+
+  it("runs Settings' monitor in a process of its own: messages wait for ready, its answers and its end are heard (plan 079)", async () => {
+    const ctx = setup();
+    const heard: unknown[] = [], ends: string[] = [];
+    const monitor = ctx.host.openMonitor((message) => heard.push(message), (detail) => ends.push(detail));
+    const child = ctx.children.at(-1)!;
+    monitor.post({ type: "watchDevices", watching: true });
+    expect(child.sent).toEqual([]);
+    child.deliver({ type: "ready" });
+    monitor.post({ type: "meter", watching: true });
+    expect(child.sent).toEqual([{ type: "watchDevices", watching: true }, { type: "meter", watching: true }]);
+    child.deliver({ type: "meterLevel", peak: 0.5, rms: 0.2 });
+    child.deliver({ type: "bogus" });
+    expect(heard).toEqual([{ type: "meterLevel", peak: 0.5, rms: 0.2 }]);
+    child.emit("exit", 3);
+    expect(ends).toEqual(["it exited with 3"]);
+    expect(child.killed).toBe(true);
+    // Closed by main: no end is told, and nothing is sent after.
+    const closed = ctx.host.openMonitor(() => undefined, (detail) => ends.push(detail));
+    const second = ctx.children.at(-1)!;
+    closed.close();
+    expect(second.killed).toBe(true);
+    second.emit("exit", 0);
+    closed.post({ type: "meter", watching: false });
+    expect(second.sent).toEqual([]);
+    // One that never starts is ended after the listing's bound.
+    ctx.host.openMonitor(() => undefined, (detail) => ends.push(detail));
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(ends.at(-1)).toBe("it did not start within 8000 ms");
+    expect(ctx.children.at(-1)!.killed).toBe(true);
   });
 
   it("lists the cameras the same way, one listing at a time (plan 075)", async () => {

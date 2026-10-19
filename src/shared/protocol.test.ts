@@ -49,6 +49,26 @@ describe("isMainMessage", () => {
     expect(isHostMessage({ type: "cameras", error: "a recording is in progress" })).toBe(true);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "", name: "x", default: false }] })).toBe(false);
   });
+  it("switches the microphone while recording and runs Settings' meter and device watch (plan 079)", () => {
+    expect(isMainMessage({ type: "microphone", sessionId: "s1", deviceId: "BuiltInMicrophoneDevice" })).toBe(true);
+    expect(isMainMessage({ type: "microphone", sessionId: "s1" })).toBe(true);
+    expect(isMainMessage({ type: "microphone", sessionId: "s1", deviceId: "" })).toBe(false);
+    expect(isMainMessage({ type: "microphone", sessionId: "" })).toBe(false);
+    expect(isMainMessage({ type: "watchDevices", watching: true })).toBe(true);
+    expect(isMainMessage({ type: "watchDevices" })).toBe(false);
+    expect(isMainMessage({ type: "meter", watching: true, deviceId: "usb" })).toBe(true);
+    expect(isMainMessage({ type: "meter", watching: false })).toBe(true);
+    expect(isMainMessage({ type: "meter", watching: "yes" })).toBe(false);
+    expect(isHostMessage({ type: "microphoneSwitched", sessionId: "s1", from: "MacBook Pro Microphone", to: "FreeClip 2" })).toBe(true);
+    expect(isHostMessage({ type: "microphoneSwitched", sessionId: "s1", from: "a" })).toBe(false);
+    expect(isHostMessage({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "microphone: usb is not connected" })).toBe(true);
+    expect(isHostMessage({ type: "microphoneSwitchFailed", sessionId: "", detail: "x" })).toBe(false);
+    expect(isHostMessage({ type: "meterStarted", device: "MacBook Pro Microphone" })).toBe(true);
+    expect(isHostMessage({ type: "meterLevel", peak: 0.5, rms: 0.35 })).toBe(true);
+    for (const bad of [-1, Number.NaN, 17, "0.1"]) expect(isHostMessage({ type: "meterLevel", peak: bad, rms: 0 }), String(bad)).toBe(false);
+    expect(isHostMessage({ type: "meterStopped", error: "microphone: access is not allowed" })).toBe(true);
+    expect(isHostMessage({ type: "meterStopped" })).toBe(false);
+  });
   it("carries the camera's changes for a session (plan 075)", () => {
     const camera = { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false };
     expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera, hidden: false })).toBe(true);

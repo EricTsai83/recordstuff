@@ -48,9 +48,10 @@ export type SessionRecord =
   | (RecordBase & { kind: "capture"; session: string; requested: QualitySettings; capture: CaptureReport })
   /**
    * `microphoneLost`: the microphone stopped partway and the rest holds system audio only (plan 074); `cameraLost`:
-   * the camera did, and that part shows the screen alone (plan 075).
+   * the camera did, and that part shows the screen alone (plan 075); `microphones`: the devices recorded in turn, by
+   * name, when the user switched while recording (plan 079, D3).
    */
-  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true })
+  | (RecordBase & SessionTiming & { kind: "saved"; session: string; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; microphones?: string[] })
   | (RecordBase & SessionTiming & {
       kind: "failed";
       session: string;

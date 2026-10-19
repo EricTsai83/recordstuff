@@ -57,6 +57,15 @@ describe("session log lines", () => {
     expect(record).not.toHaveProperty("microphoneLost");
   });
 
+  it("names each microphone a recording switched between in the human line and the record (plan 079, D3)", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/g.mp4",
+      microphones: ["MacBook Pro Microphone", "HUAWEI FreeClip 2"], session: { id: "s7" } });
+    expect(lines[0]).toBe("saved /m/g.mp4 (microphones in turn: MacBook Pro Microphone, HUAWEI FreeClip 2)");
+    expect(JSON.parse(lines[1]!.slice("session-record: ".length))).toMatchObject({ kind: "saved", session: "s7",
+      microphones: ["MacBook Pro Microphone", "HUAWEI FreeClip 2"] });
+  });
+
   it("writes a cancel as one plain line with no session record for analyzers to pair", () => {
     const lines: string[] = [];
     logSessionEvent((message) => lines.push(message), "r1", { type: "cancelled", reason: "toggle",

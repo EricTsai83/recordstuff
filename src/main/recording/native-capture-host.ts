@@ -16,7 +16,8 @@
  * file from being finished (`fileOutcome` hands either to the writer), exits, or outlives `FINISH_BOUND_MS`.
  *
  * `listMicrophones` (plan 074) forks a process of its own, which lists the audio inputs and is ended: the engine stays
- * out of main, and an attempt's process is never asked.
+ * out of main, and an attempt's process is never asked. `openMonitor` (plan 079) forks one that lives while Settings is
+ * open, following the device list and reading the input level meter's device.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
 import { recordedPosition } from "../../shared/camera-layout";
@@ -70,6 +71,12 @@ const RELEASE_BOUND_MS = 5000;
 const FINISH_BOUND_MS = 150_000;
 /** Listing the audio inputs: the process's start and AVFoundation's or WASAPI's answer. */
 const LIST_BOUND_MS = 8000;
+
+/** Settings' monitor process (plan 079): what main posts to it, and its end. */
+export interface MonitorProcess {
+  post(message: MainMessage): void;
+  close(): void;
+}
 
 interface FileOutcome {
   promise: Promise<EngineFileReport>;
@@ -245,6 +252,55 @@ export class NativeCaptureHost implements RecorderHost {
     });
   }
 
+  /**
+   * Settings' monitor process (plan 079), never an attempt's: it follows the device list (`watchDevices`, answered with
+   * `microphones` on each change) and reads the input level meter's device (`meter`) until `close`. `onExit` hears it
+   * end on its own, or fail to start within the listing's bound.
+   */
+  openMonitor(onMessage: (message: HostMessage) => void, onExit: (detail: string) => void): MonitorProcess {
+    const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
+    const child = fork(this.options.entryPath, [this.options.addonPath]);
+    let ready = false, closed = false;
+    const queued: MainMessage[] = [];
+    const end = (detail: string): void => {
+      if (closed) return;
+      closed = true;
+      clearTimeout(bound);
+      child.kill();
+      onExit(detail);
+    };
+    const bound = setTimeout(() => { if (!ready) end(`it did not start within ${LIST_BOUND_MS} ms`); }, LIST_BOUND_MS);
+    for (const stream of [child.stdout, child.stderr]) {
+      stream?.on("data", (chunk: Buffer) => {
+        for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (monitor): ${line.trim()}`);
+      });
+    }
+    child.on("exit", (code) => end(`it exited with ${code}`));
+    child.on("message", (data: unknown) => {
+      if (closed || !isHostMessage(data)) return;
+      if (data.type === "ready") {
+        ready = true;
+        clearTimeout(bound);
+        for (const message of queued.splice(0)) child.postMessage(message);
+        return;
+      }
+      onMessage(data);
+    });
+    return {
+      post: (message) => {
+        if (closed) return;
+        if (ready) child.postMessage(message);
+        else queued.push(message);
+      },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(bound);
+        child.kill();
+      },
+    };
+  }
+
   /** Ends a listing in flight: a session is starting, and no input is listed while one runs (plan 074). */
   cancelListing(): void {
     this.listing?.(new Error("a recording started before the inputs were listed"));
@@ -287,6 +343,13 @@ export class NativeCaptureHost implements RecorderHost {
   setGains(sessionId: string, gain: AudioGain): void {
     if (!this.child || this.watching !== sessionId) return;
     this.post({ type: "gain", sessionId, system: gain.system, microphone: gain.microphone });
+  }
+
+  /** Records another microphone from now on (plan 079, D3); false when this host's process does not run the session. */
+  setMicrophone(sessionId: string, deviceId: string | undefined): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
+    this.post({ type: "microphone", sessionId, ...(deviceId ? { deviceId } : {}) });
+    return true;
   }
 
   /** Whether the session's levels are watched (D19); false when this host's process does not run the session. */

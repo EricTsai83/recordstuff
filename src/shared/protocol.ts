@@ -121,6 +121,18 @@ export type MainMessage =
   | { type: "mute"; sessionId: string; system: boolean; microphone: boolean }
   /** The inputs' volumes in dB from their next sound on (plan 075, D21), within the faders' range. */
   | { type: "gain"; sessionId: string; system: number; microphone: number }
+  /**
+   * Record another microphone from now on (plan 079, D3): absent `deviceId` is the system default input. Answered with
+   * `microphoneSwitched`, or `microphoneSwitchFailed` while the one recorded before goes on.
+   */
+  | { type: "microphone"; sessionId: string; deviceId?: string }
+  /**
+   * Settings' monitor process (plan 079): follow the device list, answered with `microphones` whenever it changes (D2),
+   * and read the input level meter's device, absent `deviceId` the system default (D1), or stop reading it. Only to a
+   * host with no session.
+   */
+  | { type: "watchDevices"; watching: boolean }
+  | { type: "meter"; watching: boolean; deviceId?: string }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -161,6 +173,15 @@ export type HostMessage =
   | { type: "cameraResumed"; sessionId: string; detail: string }
   /** The inputs' loudest samples since the last (plan 075, D19), linear, about 15 times a second while watched. */
   | { type: "levels"; sessionId: string; system: number; microphone?: number }
+  /** The microphone switched to while recording (plan 079, D3), by the names of the device before and the one now. */
+  | { type: "microphoneSwitched"; sessionId: string; from: string; to: string }
+  /** A switch the device refused; the microphone recorded before goes on. */
+  | { type: "microphoneSwitchFailed"; sessionId: string; detail: string }
+  /** The input level meter's device (plan 079, D1), once it reads it; its peak and RMS 20 times a second, linear. */
+  | { type: "meterStarted"; device: string }
+  | { type: "meterLevel"; peak: number; rms: number }
+  /** The meter could not read its device, or stopped reading it (it left, or the system moved it). */
+  | { type: "meterStopped"; error: string }
   /** The answer to `listMicrophones`: the inputs, or why they could not be listed. */
   | { type: "microphones"; devices: MicrophoneDevice[] }
   | { type: "microphones"; error: string }
@@ -229,6 +250,12 @@ export function isMainMessage(value: unknown): value is MainMessage {
       return isNonEmptyString(value["sessionId"]) && typeof value["system"] === "boolean" && typeof value["microphone"] === "boolean";
     case "gain":
       return isNonEmptyString(value["sessionId"]) && isGainDb(value["system"]) && isGainDb(value["microphone"]);
+    case "microphone":
+      return isNonEmptyString(value["sessionId"]) && (value["deviceId"] === undefined || isNonEmptyString(value["deviceId"]));
+    case "watchDevices":
+      return typeof value["watching"] === "boolean";
+    case "meter":
+      return typeof value["watching"] === "boolean" && (value["deviceId"] === undefined || isNonEmptyString(value["deviceId"]));
     case "listMicrophones":
     case "listCameras":
     case "ping":
@@ -274,6 +301,16 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
     case "levels":
       return isNonEmptyString(value["sessionId"]) && isLevel(value["system"]) && (value["microphone"] === undefined || isLevel(value["microphone"]));
+    case "microphoneSwitched":
+      return isNonEmptyString(value["sessionId"]) && typeof value["from"] === "string" && typeof value["to"] === "string";
+    case "microphoneSwitchFailed":
+      return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
+    case "meterStarted":
+      return typeof value["device"] === "string";
+    case "meterLevel":
+      return isLevel(value["peak"]) && isLevel(value["rms"]);
+    case "meterStopped":
+      return typeof value["error"] === "string";
     case "microphones":
     case "cameras":
       return Array.isArray(value["devices"]) ? value["devices"].every(isMicrophoneDevice) && value["error"] === undefined
