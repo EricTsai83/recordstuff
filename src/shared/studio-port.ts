@@ -8,6 +8,8 @@
 /** How often the Studio shows its preview and meters while someone works in it (D21), and while it is only looked at (plan 081, D1). */
 export const STUDIO_FPS = 10;
 export const STUDIO_RESTING_FPS = 5;
+/** How long the full rate lasts after a key, click or scroll in the Studio with the pointer outside it (studio-pace.ts). */
+export const STUDIO_ACTIVE_MS = 3000;
 
 /** The inputs' loudest samples since the last, linear, before muting (plan 075, D19): from the capture process. */
 export interface StudioLevelsMessage { type: "levels"; system: number; microphone?: number }

@@ -4,12 +4,12 @@
  * mute answers as before; at half the rate while it is only looked at, as during most of a recording made in another
  * app. Each frame Chromium composes costs the Studio's processes about half a point of a core per frame a second.
  */
-import { STUDIO_FPS, STUDIO_RESTING_FPS } from "../../../shared/studio-port";
+import { STUDIO_ACTIVE_MS, STUDIO_FPS, STUDIO_RESTING_FPS } from "../../../shared/studio-port";
 import { setFrameRate } from "./frame-clock";
 import { setPreviewRate } from "./studio-feed";
 
 /** How long the full rate lasts after the last key, click or scroll with the pointer outside the window. */
-export const ACTIVE_MS = 3000;
+export const ACTIVE_MS = STUDIO_ACTIVE_MS;
 
 const INPUTS = ["pointerdown", "keydown", "wheel"] as const;
 

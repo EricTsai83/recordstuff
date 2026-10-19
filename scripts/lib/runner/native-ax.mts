@@ -396,6 +396,8 @@ export interface NativeAx {
   status(pid: number): Promise<StatusSnapshot>;
   press(pid: number, index: number): Promise<void>;
   mouse(button: "left" | "right", x: number, y: number): Promise<void>;
+  /** Moves the pointer without a click, as a person does (plan 082: what hovering a window does). */
+  move(x: number, y: number): Promise<void>;
   key(code: number, flags?: number): Promise<void>;
   windows(pid: number): Promise<WindowSnapshot>;
   /** The titled window's corner as `judgeWindowLayout` needs it; read with web accessibility enabled. */
@@ -425,6 +427,7 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     status: pid => run<StatusSnapshot>("status item", "status", pid),
     press: async (pid, index) => { await run("menu item press", "press", pid, index); },
     mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
+    move: async (x, y) => { await run("pointer move", "move-mouse", x, y); },
     key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
     windows: pid => run<WindowSnapshot>("windows", "windows", pid),
     // Every element of the page is read, a few AX calls each: a long Recordings tab needs longer than one menu.
