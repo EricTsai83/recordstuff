@@ -459,6 +459,18 @@ decoder<span class="o">.</span><span class="p">configure</span><span class="o">(
 
 <p>原型在簽署過的 App 上一切照設計運作：動態名稱的 <code>bootstrap_check_in</code> 成功，畫面持續更新、NV12 的顏色正確，main 的事件迴圈也沒有變慢。但 CPU 沒有降：30 fps 時 Studio 的額外成本是 13.9 點，編碼路徑是 13.6 點。拆開來看，省下的部分（擷取行程不用編碼約 1.1 點、VideoToolbox 0.9 點、頁面不用解碼 2.1 點）幾乎全被新的成本吃掉：main 每格匯入與傳送多 1.5 點，GPU 行程多 1.6 點。在 App 外另做的量測說明了原因：每次 <code>importSharedTexture</code> 都會在 GPU 行程建立一個新的 SharedImage；而網頁上一個每秒變化 10 次的 canvas，不論用 2D canvas、WebGL、WebGPU 還是 <code>bitmaprenderer</code> 來畫，GPU 行程都要花約 6 點；同樣收到影格但只是用 CPU 像素重畫 canvas，也比不畫多約 3.5 點。換句話說，<strong>「把畫面送進網頁」的大宗不是編解碼，而是網頁合成本身</strong>；在這個規模（640 像素、10 fps），編碼與解碼本來就便宜，零複製能省的不多。這個結論會在幾個條件下翻轉：預覽更大或更快，讓編解碼變得昂貴；Electron 能便宜地重用已匯入的 surface（RecordStuff 估計約可再省 1 點）；或改用原生視圖直接顯示，不再經過網頁合成。</p>
 
+<h3>代價其實在每一格的合成</h3>
+
+<p>計畫 081 接著拆開「網頁的代價」到底花在哪裡，做法是同一套量測跑好幾次，每次用開發開關藏起一部分頁面。30 fps 時 Studio 比錄影多 10.8 點：藏起預覽剩 8.8 點，藏起音量表剩 11.3 點，兩者都藏起來只剩 2.4 點。也就是說，<strong>不論是預覽還是音量表在動，成本都差不多</strong>；兩者共用同一個重繪時鐘，一起動也不比單獨一個貴。</p>
+
+<p>原因在 Chromium 的算繪模型：網頁只要有任何東西改變，renderer 就要產生一個新的合成影格，GPU 行程再把整個視窗合成一次交給系統。這筆固定開銷和改了多少像素關係不大。在 M1 Pro 上量到的是每秒每格約半個百分點的單核 CPU：每秒 10 格，光是合成就約 5 點；預覽另外再加上軟體解碼（約 1.8 點）與擷取行程的編碼（約 1 點）。原本以為 main 行程花了 2.2 點，拆開後只有 0.4 點，幾乎都是在轉送音量。</p>
+
+<p>試過的替代顯示方式也印證了這點。在只有預覽的基準測試裡，以 <code>MediaStreamTrackGenerator</code> 餵 <code>&lt;video&gt;</code> 比 canvas 便宜 2.7 點，因為影片影格走 Chromium 的影片圖層，不必重畫頁面；但放回 App、旁邊有音量表時，影片影格和頁面的影格各自觸發合成，反而多了 2.2 點，所以沒有採用。</p>
+
+<p>既然成本跟著幀率走，能調的就是幀率。RecordStuff 依「有沒有人在用」決定：游標在 Studio 視窗上，或 3 秒內在裡面按鍵、點擊或捲動時，每秒 10 格，拖曳泡泡、調推桿的回饋不變；否則每秒 5 格，這是錄影大部分時間的情況（使用者在別的 App 裡錄東西，Studio 擺在旁邊）。頁面在預覽的 port 上告訴擷取行程，引擎的預覽執行緒就改成每兩個 tick 產生一格，所以編碼、解碼和合成一起減半；音量也改走同一個 port，不再經過 main。結果是有攝影機出畫面時，Studio 的額外成本在 30 fps 降到 7.4 點、60 fps 降到 7.7 點，回到 8 點的預算以內；有人操作、每秒 10 格時則是 9.9 點。</p>
+
+<p>被否決的做法也值得記下：用視窗焦點當訊號（在前景的視窗不一定有人在看）、一律每秒 5 格（操作時回饋變差，成本卻沒更低），以及在網頁上蓋一層原生圖層來畫預覽與音量表。最後這個能省最多（頁面幾乎不再合成），但會讓同一個畫面變成兩套 UI，還要處理捲動、縮放時的位置同步，以及另一個平台的實作，為了幾點 CPU 並不值得。「畫面沒變就不送」這種依內容跳格的做法方向正確，但只對靜止畫面有幫助，又沒有量過，所以留作日後有數據時再評估的候選。</p>
+
 <h3>錄影前的預覽</h3>
 
 <p>還沒錄影時，引擎沒有在跑，預覽可以有兩種：一種只用網頁自己的 <code>getUserMedia</code> 打開攝影機，螢幕則只畫出顯示器的輪廓與選單列的位置，完全不擷取螢幕；另一種是按下「即時預覽」，讓引擎準備好錄影本身的工作階段（同樣的螢幕過濾條件、攝影機合成、系統音訊與麥克風），只是不寫檔。RecordStuff 兩者都有，第二種只在使用者要求時開始，離開分頁或關閉視窗就停止，所以設定頁不會一打開就擷取螢幕。按下開始錄影時，引擎直接把這個預覽的工作階段帶進倒數與錄影：畫面不中斷，攝影機也不重開（另開一個新工作階段會留下約 0.5 到 1.5 秒的空檔）。這也是 OBS 的模型：一條管線，預覽顯示它，錄影只是多掛一個編碼器。</p>
@@ -557,7 +569,7 @@ decoder<span class="o">.</span><span class="p">configure</span><span class="o">(
   <li><strong>合成：</strong><code>compose.wgsl</code> 一份，建置時由 naga 翻成 MSL 與 HLSL；macOS 經 <code>CVMetalTextureCache</code> 把 IOSurface 的兩個平面當成 Metal 貼圖原地讀寫，Windows 在 Direct3D 11 上做；沒有硬體影像處理器的 Windows 裝置（WARP）則把螢幕讀回 CPU 再上傳。</li>
   <li><strong>錄影中修改：</strong>位置、大小、圓角與鏡像從 Studio 的預覽送出一則版面訊息，下一格生效，每次修改都記進該次錄影的記錄；系統匣（選單列）可以隱藏與顯示攝影機，隱藏時攝影機仍開著。</li>
   <li><strong>遺失：</strong>2 秒沒有畫面，或裝置斷線，就判定遺失；錄影只剩螢幕，結束時告知並標記；以同一個唯一 ID 重新開啟，退避 2 到 30 秒。</li>
-  <li><strong>預覽：</strong>640 像素寬、10 fps 的 H.264，經 <code>MessagePort</code> 送到 Studio 頁面，以 WebCodecs 軟體解碼。</li>
+  <li><strong>預覽：</strong>640 像素寬、有人操作時 10 fps、只是看著時 5 fps 的 H.264，經 <code>MessagePort</code> 送到 Studio 頁面，以 WebCodecs 軟體解碼。</li>
 </ul>
 
 <p>以下是在參考機（M1 Pro，外接 1920×1080 顯示器，iPhone 的 Continuity Camera）上量到的數字，全部是 RecordStuff 所有行程合計的單核 CPU 百分比。沒有攝影機的基準是 30 fps 10.4%、60 fps 14.0%。</p>
@@ -573,6 +585,11 @@ decoder<span class="o">.</span><span class="p">configure</span><span class="o">(
     <tr><td>R：10 fps 預覽版，Studio 關著（10-18）</td><td>15.5%</td><td>19.4%</td><td></td></tr>
     <tr><td>S：同上，Studio 開著（10-18）</td><td>24.5%</td><td>30.7%</td><td>比 R 多 8.9 與 11.3 點</td></tr>
     <tr><td>L：即時預覽（10-18）</td><td>16.9%</td><td>16.9%</td><td>錄影的管線，不寫檔</td></tr>
+    <tr><td>R：依互動調頻後，沒有攝影機畫面（10-19，三次中位數）</td><td>10.7%</td><td>13.5%</td><td>參考機上蓋闔著，攝影機沒有出畫面</td></tr>
+    <tr><td>S：同上，Studio 開著、沒有人操作（10-19）</td><td>18.3%</td><td>23.1%</td><td>比 R 多 7.6 與 9.6 點；60 fps 的差距主要是擷取行程本身的波動</td></tr>
+    <tr><td>R：依互動調頻後，iPhone 攝影機出畫面（10-19）</td><td>11.6%</td><td>16.1%</td><td>Continuity Camera，沒有掉格</td></tr>
+    <tr><td>S：同上，Studio 開著、沒有人操作（每秒 5 格）</td><td>18.9%</td><td>23.8%</td><td>比 R 多 7.4 與 7.7 點，回到預算內</td></tr>
+    <tr><td>S：同上，有人操作（每秒 10 格，30 fps）</td><td>21.6%</td><td>未量</td><td>比 R 多 9.9 點</td></tr>
   </tbody>
 </table>
 </div>
@@ -592,7 +609,7 @@ decoder<span class="o">.</span><span class="p">configure</span><span class="o">(
     <tr><td>跨平台方式</td><td>一份 WGSL，naga 翻成 MSL／HLSL，各平台原生 API</td><td>只有一兩層、一兩個 pass 的合成</td><td>不用取樣器；各平台仍要自己綁貼圖</td><td>多層、多 pass 的編輯器或特效（改 wgpu）</td></tr>
     <tr><td>攝影機畫面選擇</td><td>只留最新一張，主機時脈</td><td>泡泡的時間精度要求低</td><td>約 0.1 秒的落後（Continuity Camera）</td><td>手部示範、指著螢幕講解成為主要用途</td></tr>
     <tr><td>遺失</td><td>2 秒或斷線即遺失；只剩螢幕；同一台退避重開</td><td>錄影比攝影機重要</td><td>遺失期間沒有臉；換一台攝影機不會自動接上</td><td>使用者要求自動換到另一台</td></tr>
-    <tr><td>預覽路徑</td><td>640 px、10 fps H.264＋WebCodecs 軟體解碼</td><td>介面是網頁；行程隔離</td><td>Studio 開著時多約 9 到 11 點</td><td>網頁合成變便宜，或預覽變大到編解碼昂貴（計畫 080 量過 sharedTexture：沒有省到）</td></tr>
+    <tr><td>預覽路徑</td><td>640 px、10 fps H.264＋WebCodecs 軟體解碼</td><td>介面是網頁；行程隔離</td><td>Studio 開著時多約 7.4 到 7.7 點（有攝影機、沒有人操作時每秒 5 格）</td><td>網頁合成變便宜，或預覽變大到編解碼昂貴（計畫 080 量過 sharedTexture：沒有省到；計畫 081 量過 &lt;video&gt;：在音量表旁更貴）</td></tr>
     <tr><td>尺寸與位置</td><td>短邊比例；剩餘空間比例，依顯示器記</td><td>多台、多解析度的顯示器</td><td>使用者看不到像素值</td><td>需要精確像素的專業用途</td></tr>
     <tr><td>圓角</td><td>圓弧，0 到 100%</td><td>預覽與合成要逐像素相符</td><td>沒有 squircle 的柔和感</td><td>兩邊都有同一份 squircle 公式</td></tr>
     <tr><td>鏡像</td><td>「錄影時鏡像」，預設關；預覽與錄影一致</td><td>預覽是確認錄影的依據</td><td>預覽裡的自己像別人看到的</td><td>有一層只給自己看的預覽（例如 A 或 C 的浮動視窗）</td></tr>
