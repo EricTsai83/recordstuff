@@ -18,6 +18,12 @@ pub mod microphone {
     pub use super::audio::microphones as list;
 }
 
+/// Settings' input level meter and the device list it follows (plan 079, D1 and D2).
+pub mod meter {
+    pub use super::audio::{DeviceWatch, Meter};
+    pub use crate::core::meter::MeterEvent;
+}
+
 use std::sync::OnceLock;
 
 use windows::Win32::Media::MediaFoundation::{MF_VERSION, MFSTARTUP_NOSOCKET, MFStartup};

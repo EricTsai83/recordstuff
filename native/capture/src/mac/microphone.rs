@@ -14,13 +14,16 @@
 //! not (074's probe, hal.rs). The device taken back is always the one opened at the start, the default input's
 //! included: a new default does not replace it (the maintainer's decision, 2026-10-17).
 //!
+//! The user may switch the device while recording (plan 079, D3): the new one is opened before the old is closed, and
+//! is the one taken back from then on.
+//!
 //! The usage description and the hardened runtime's audio-input entitlement, which a signed RecordStuff needs before
 //! macOS lets it open a microphone, are in electron-builder.yml and resources/entitlements.mac.plist; the
 //! authorization is still read from AVFoundation, which answers it without a run loop.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -62,41 +65,61 @@ pub struct MicrophoneCapture {
     /// The device opened.
     pub name: String,
     stopped: Arc<AtomicBool>,
+    /// A device the user switched to while recording (plan 079, D3): `Some(None)` is the system's default input.
+    switch: Arc<Mutex<Option<Option<String>>>>,
     thread: Option<JoinHandle<()>>,
+}
+
+/// Recording or metering a microphone needs macOS's permission: denied or restricted is told with its guidance, and
+/// never asked is refused too, since the HAL would deliver silence without a prompt and a narration would be lost
+/// unnoticed. Main asks before recording (074) and shows the meter only once access is allowed (079).
+pub fn allowed() -> Result<(), CaptureError> {
+    let status = AVAuthorizationStatus(authorization()?);
+    if status == AVAuthorizationStatus::Denied || status == AVAuthorizationStatus::Restricted {
+        return Err(unavailable("access is not allowed (System Settings > Privacy & Security > Microphone)"));
+    }
+    if status == AVAuthorizationStatus::NotDetermined {
+        return Err(unavailable("access is not allowed yet: macOS has not asked for it"));
+    }
+    Ok(())
+}
+
+/// The input a recording opens for `device`: the chosen one while it is connected, else the system's default input,
+/// with a note saying so (074).
+pub fn resolve(device: Option<&str>) -> Result<(hal::Input, Option<String>), CaptureError> {
+    let chosen = device.and_then(|uid| hal::device_for_uid(uid).and_then(|id| hal::inputs().into_iter().find(|input| input.id == id)));
+    let note = match (device, &chosen) {
+        (Some(uid), None) => Some(format!("microphone: {uid} is not connected; the default input is used")),
+        _ => None,
+    };
+    let opened = match chosen {
+        Some(input) => input,
+        None => hal::default_input().ok_or_else(|| unavailable("there is no audio input"))?,
+    };
+    Ok((opened, note))
 }
 
 impl MicrophoneCapture {
     /// Opens `device` (the system's default input when `None`) and hands its sound to `shared` as `input`.
     pub fn start(device: Option<&str>, shared: Arc<Shared>, input: usize) -> Result<Self, CaptureError> {
-        let status = AVAuthorizationStatus(authorization()?);
-        if status == AVAuthorizationStatus::Denied || status == AVAuthorizationStatus::Restricted {
-            return Err(unavailable("access is not allowed (System Settings > Privacy & Security > Microphone)"));
-        }
-        // Never asked: the HAL would deliver silence without a prompt, and a narration would be lost unnoticed. Main
-        // asks before recording (074).
-        if status == AVAuthorizationStatus::NotDetermined {
-            return Err(unavailable("access is not allowed yet: macOS has not asked for it"));
-        }
-        // A chosen device that is not connected falls back to the default input, and the note says so.
-        let chosen = device.and_then(|uid| hal::device_for_uid(uid).and_then(|id| hal::inputs().into_iter().find(|input| input.id == id)));
-        let note = match (device, &chosen) {
-            (Some(uid), None) => Some(format!("microphone: {uid} is not connected; the default input is used")),
-            _ => None,
-        };
-        let opened = match chosen {
-            Some(input) => input,
-            None => hal::default_input().ok_or_else(|| unavailable("there is no audio input"))?,
-        };
-        let (chunks, received) = sync_channel(QUEUE);
-        let unit = InputUnit::open(opened.id, chunks.clone()).map_err(|why| unavailable(format!("{} could not be opened: {why}", opened.name)))?;
-        let resampler = converter(unit.rate).map_err(unavailable)?;
+        allowed()?;
+        let (opened, note) = resolve(device)?;
+        let unit = Open::new(opened.id).map_err(|why| unavailable(format!("{} could not be opened: {why}", opened.name)))?;
         let stopped = Arc::new(AtomicBool::new(false));
-        let reader = Reader { shared, input, uid: opened.uid.clone(), name: opened.name.clone(), chunks, received, stopped: stopped.clone() };
+        let switch = Arc::new(Mutex::new(None));
+        let reader = Reader { shared, input, uid: opened.uid.clone(), name: opened.name.clone(), stopped: stopped.clone(), switch: switch.clone() };
         let thread = std::thread::Builder::new()
             .name("recordstuff-microphone".into())
-            .spawn(move || reader.run(unit, resampler))
+            .spawn(move || reader.run(unit))
             .map_err(|e| unavailable(format!("its thread: {e}")))?;
-        Ok(Self { note, name: opened.name, stopped, thread: Some(thread) })
+        Ok(Self { note, name: opened.name, stopped, switch, thread: Some(thread) })
+    }
+
+    /// Records `device` from now on instead (plan 079, D3; `None` is the system's default input): it is opened before
+    /// the one recording now is closed, and one that cannot be opened leaves that one recording. The outcome is told as
+    /// `microphone_switched` or `microphone_switch_failed`.
+    pub fn switch(&self, device: Option<String>) {
+        *self.switch.lock().unwrap() = Some(device);
     }
 
     pub fn stop(&self) {
@@ -113,6 +136,23 @@ impl Drop for MicrophoneCapture {
     }
 }
 
+/// An open device: its unit, the converter to 48 kHz when it runs at another rate, and the queue of its buffers, its
+/// own so a device closed or switched from cannot mix its sound with the next one's.
+struct Open {
+    unit: InputUnit,
+    resampler: Option<Resampler>,
+    received: Receiver<Chunk>,
+}
+
+impl Open {
+    fn new(device: hal::ObjectId) -> Result<Self, String> {
+        let (chunks, received) = sync_channel(QUEUE);
+        let unit = InputUnit::open(device, chunks)?;
+        let resampler = converter(unit.rate)?;
+        Ok(Self { unit, resampler, received })
+    }
+}
+
 /// A converter when the device does not run at 48 kHz.
 fn converter(rate: f64) -> Result<Option<Resampler>, String> {
     if (rate - f64::from(SAMPLE_RATE)).abs() < 0.5 { Ok(None) } else { Resampler::new(rate, f64::from(SAMPLE_RATE)).map(Some) }
@@ -124,9 +164,8 @@ struct Reader {
     input: usize,
     uid: String,
     name: String,
-    chunks: std::sync::mpsc::SyncSender<Chunk>,
-    received: Receiver<Chunk>,
     stopped: Arc<AtomicBool>,
+    switch: Arc<Mutex<Option<Option<String>>>>,
 }
 
 impl Reader {
@@ -149,8 +188,60 @@ impl Reader {
         }
     }
 
-    fn run(self, unit: InputUnit, resampler: Option<Resampler>) {
-        let mut open = Some((unit, resampler));
+    /// Takes a buffer and gives it back to its unit's pool.
+    fn read(&self, chunk: Chunk, open: &mut Open, converted: &mut Vec<f32>) {
+        if self.shared.reads_sound() {
+            self.take(&chunk, open.resampler.as_mut(), converted);
+        }
+        // Back to the pool of the unit it came from, on every path (review of plan 078).
+        let _ = open.unit.recycle.try_send(chunk.samples);
+    }
+
+    /// The device the user switched to (plan 079, D3), opened before the one recording now is closed: the sound the
+    /// old one queued goes into the recording first, and the new one's from then on, its first buffers overlapping
+    /// the old one's last dropped by the aligner and a gap between them left as silence. One that is not connected or
+    /// does not open leaves the old one recording. From then on it is the device taken back after a loss.
+    fn switch_to(&mut self, device: Option<String>, open: &mut Option<Open>, converted: &mut Vec<f32>) -> bool {
+        let events = self.shared.events();
+        let wanted = match device.as_deref() {
+            Some(uid) => hal::device_for_uid(uid).and_then(|id| hal::inputs().into_iter().find(|input| input.id == id)),
+            None => hal::default_input(),
+        };
+        let Some(input) = wanted else {
+            let what = device.map_or_else(|| "there is no default input".to_string(), |uid| format!("{uid} is not connected"));
+            events.microphone_switch_failed(format!("microphone: {what}; {} goes on being recorded", self.name));
+            return false;
+        };
+        // The device recorded already (System default and that device by name are one): answered all the same, so the
+        // one waiting to ask next is not held back (review of plan 079).
+        if input.uid == self.uid {
+            eprintln!("microphone: {} is already the one recorded", self.name);
+            events.microphone_switched(self.name.clone(), self.name.clone());
+            return false;
+        }
+        let new = match Open::new(input.id) {
+            Ok(new) => new,
+            Err(why) => {
+                events.microphone_switch_failed(format!("microphone: {} could not be opened ({why}); {} goes on being recorded", input.name, self.name));
+                return false;
+            }
+        };
+        if let Some(mut old) = open.take() {
+            while let Ok(chunk) = old.received.try_recv() {
+                self.read(chunk, &mut old, converted);
+            }
+        }
+        *open = Some(new);
+        self.uid = input.uid;
+        let from = std::mem::replace(&mut self.name, input.name.clone());
+        self.shared.microphone_switched();
+        eprintln!("microphone: switched from {from} to {} at {} Hz", self.name, open.as_ref().map_or(0.0, |open| open.unit.rate));
+        events.microphone_switched(from, input.name);
+        true
+    }
+
+    fn run(mut self, first: Open) {
+        let mut open = Some(first);
         let mut heard = Instant::now();
         // When the device may next be opened again, and how many times that has failed.
         let mut retry_at = Instant::now();
@@ -158,29 +249,33 @@ impl Reader {
         let mut converted = Vec::new();
         let mut checked = Instant::now();
         while !self.stopped.load(Ordering::Acquire) {
-            match self.received.recv_timeout(Duration::from_millis(250)) {
-                Ok(chunk) => {
-                    heard = Instant::now();
-                    attempts = 0;
-                    if self.shared.reads_sound() {
-                        self.take(&chunk, open.as_mut().and_then(|(_, resampler)| resampler.as_mut()), &mut converted);
-                    }
-                    // Back to the pool of the unit now open, on every path (review of plan 078); one from a unit since
-                    // closed is simply let go.
-                    if let Some((unit, _)) = open.as_ref() {
-                        let _ = unit.recycle.try_send(chunk.samples);
-                    }
+            let request = self.switch.lock().unwrap().take();
+            if let Some(device) = request
+                && self.switch_to(device, &mut open, &mut converted)
+            {
+                heard = Instant::now();
+                retry_at = Instant::now();
+                attempts = 0;
+            }
+            let received = match open.as_ref() {
+                Some(open) => open.received.recv_timeout(Duration::from_millis(250)),
+                None => {
+                    std::thread::sleep(Duration::from_millis(100));
+                    Err(RecvTimeoutError::Timeout)
                 }
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => return,
+            };
+            // Disconnected cannot happen while the unit, which holds the sender, is open; it waits as a timeout does.
+            if let (Ok(chunk), Some(unit)) = (received, open.as_mut()) {
+                heard = Instant::now();
+                attempts = 0;
+                self.read(chunk, unit, &mut converted);
             }
             if checked.elapsed() >= CHECK {
                 checked = Instant::now();
-                if let Some(why) = open.as_ref().and_then(|(unit, _)| unit.moved()) {
+                if let Some(why) = open.as_ref().and_then(|open| open.unit.moved()) {
                     eprintln!("microphone: {} stopped being recorded ({why}); reopening it when it is there", self.name);
+                    // What it queued may be the other input's sound: let it go with its queue.
                     open = None;
-                    // What it queued may be the other input's sound: let it go.
-                    while self.received.try_recv().is_ok() {}
                     // Opened again as soon as the HAL lists it, without first waiting out the silence.
                     heard = Instant::now().checked_sub(SILENT).unwrap_or(heard);
                 }
@@ -189,17 +284,16 @@ impl Reader {
                 continue;
             }
             // Silent for 2 s: the device left, or it stalled. Either way it is opened again by its UID once listed.
-            if let Some((unit, _)) = open.take() {
+            if open.take().is_some() {
                 eprintln!("microphone: {} delivered nothing for {} s; reopening it when it is there", self.name, SILENT.as_secs());
-                drop(unit);
             }
             let Some(device) = hal::device_for_uid(&self.uid) else {
                 retry_at = Instant::now() + Duration::from_secs(1);
                 continue;
             };
-            match InputUnit::open(device, self.chunks.clone()).and_then(|unit| converter(unit.rate).map(|resampler| (unit, resampler))) {
+            match Open::new(device) {
                 Ok(reopened) => {
-                    eprintln!("microphone: {} opened again at {} Hz", self.name, reopened.0.rate);
+                    eprintln!("microphone: {} opened again at {} Hz", self.name, reopened.unit.rate);
                     open = Some(reopened);
                     heard = Instant::now();
                     retry_at = Instant::now();

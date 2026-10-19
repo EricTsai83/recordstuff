@@ -223,7 +223,8 @@ pub struct FinishReport {
 #[derive(Clone, Default)]
 pub struct EngineEvent {
     /// `progress`, `writeError`, `captureError`, `microphoneLost` (074: the recording goes on without it), `cameraLost`
-    /// and `cameraResumed` (plan 075, the same for the camera), and `levels` (plan 075, D19: the inputs' peaks).
+    /// and `cameraResumed` (plan 075, the same for the camera), `levels` (plan 075, D19: the inputs' peaks), and plan
+    /// 079's `microphoneSwitched`, `microphoneSwitchFailed`, `meter`, `meterLost` and `devices` (the list changed).
     pub kind: String,
     pub bytes: Option<f64>,
     pub code: Option<String>,
@@ -231,6 +232,12 @@ pub struct EngineEvent {
     /// With `levels`: system audio's and the microphone's loudest sample since the last, linear, 1 full scale.
     pub system: Option<f64>,
     pub microphone: Option<f64>,
+    /// With `meter` (plan 079, D1): Settings' meter's peak and RMS over the last 50 ms, linear.
+    pub peak: Option<f64>,
+    pub rms: Option<f64>,
+    /// With `microphoneSwitched` (plan 079, D3): the device recorded before and the one recorded now.
+    pub from: Option<String>,
+    pub to: Option<String>,
 }
 
 type EventCallback = ThreadsafeFunction<EngineEvent, (), EngineEvent, Status, false>;
@@ -327,6 +334,12 @@ impl core::Events for Emitter {
     fn microphone_resumed(&self, detail: String) {
         self.emit(EngineEvent { kind: "microphoneResumed".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
     }
+    fn microphone_switched(&self, from: String, to: String) {
+        self.emit(EngineEvent { kind: "microphoneSwitched".into(), from: Some(from), to: Some(to), ..Default::default() });
+    }
+    fn microphone_switch_failed(&self, detail: String) {
+        self.emit(EngineEvent { kind: "microphoneSwitchFailed".into(), detail: Some(detail), ..Default::default() });
+    }
 
     fn camera_lost(&self, detail: String) {
         self.emit(EngineEvent { kind: "cameraLost".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
@@ -375,6 +388,14 @@ impl core::Events for Emitter {
 
 #[cfg(any(target_os = "macos", windows))]
 type Session = platform::session::Session;
+#[cfg(any(target_os = "macos", windows))]
+type Meter = platform::meter::Meter;
+#[cfg(not(any(target_os = "macos", windows)))]
+type Meter = ();
+#[cfg(any(target_os = "macos", windows))]
+type DeviceWatch = platform::meter::DeviceWatch;
+#[cfg(not(any(target_os = "macos", windows)))]
+type DeviceWatch = ();
 #[cfg(not(any(target_os = "macos", windows)))]
 type Session = ();
 #[cfg(any(target_os = "macos", windows))]
@@ -390,6 +411,10 @@ pub struct NativeCapture {
     events: Arc<EventCallback>,
     /// Where preview frames go, when a preview is wanted (plan 075's prototype).
     preview: Arc<Mutex<Option<PreviewSink>>>,
+    /// Settings' input level meter (plan 079, D1), in the process that lists the inputs, never a recording's.
+    meter: Arc<Mutex<Option<Meter>>>,
+    /// The device list followed while Settings is open (D2).
+    devices: Mutex<Option<DeviceWatch>>,
 }
 
 #[napi]
@@ -397,7 +422,14 @@ impl NativeCapture {
     #[napi(constructor)]
     pub fn new(on_event: Function<EngineEvent, ()>) -> Result<Self> {
         let events = on_event.build_threadsafe_function().callee_handled::<false>().build()?;
-        Ok(Self { session: Arc::new(Mutex::new(None)), finishing: Arc::new(Mutex::new(None)), events: Arc::new(events), preview: Arc::new(Mutex::new(None)) })
+        Ok(Self {
+            session: Arc::new(Mutex::new(None)),
+            finishing: Arc::new(Mutex::new(None)),
+            events: Arc::new(events),
+            preview: Arc::new(Mutex::new(None)),
+            meter: Arc::new(Mutex::new(None)),
+            devices: Mutex::new(None),
+        })
     }
 
     /// Sends preview frames of the composed picture to `on_frame` while a session with the camera prototype runs.
@@ -426,6 +458,59 @@ impl NativeCapture {
     #[napi(ts_return_type = "Promise<MicrophoneInfo[]>")]
     pub fn microphones(&self) -> AsyncTask<MicrophonesTask> {
         AsyncTask::new(MicrophonesTask)
+    }
+
+    /// Follows the device list, or stops following it (plan 079, D2): a `devices` event whenever an input is connected
+    /// or leaves, or the default input changes. Rejects when the system will not tell.
+    #[napi]
+    pub fn watch_devices(&self, watching: bool) -> Result<()> {
+        let mut devices = self.devices.lock().unwrap();
+        if !watching {
+            *devices = None;
+            return Ok(());
+        }
+        if devices.is_some() {
+            return Ok(());
+        }
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let events = self.events.clone();
+            let changed = move || {
+                events.call(EngineEvent { kind: "devices".into(), ..Default::default() }, ThreadsafeFunctionCallMode::NonBlocking);
+            };
+            *devices = Some(platform::meter::DeviceWatch::start(changed).map_err(|detail| failure("capture_start_failed", detail))?);
+        }
+        Ok(())
+    }
+
+    /// Settings' input level meter (plan 079, D1): reads `device_id`, or the system's default input, as a recording
+    /// would, and tells `meter` events 20 times a second until `stop_meter`; a meter already running is replaced.
+    /// Answers the name of the device read; rejects with `microphone_unavailable` when it cannot be read.
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn start_meter(&self, device_id: Option<String>) -> AsyncTask<MeterTask> {
+        AsyncTask::new(MeterTask { device: device_id.filter(|id| !id.is_empty()), meter: self.meter.clone(), events: self.events.clone() })
+    }
+
+    #[napi]
+    pub fn stop_meter(&self) {
+        let stopped = self.meter.lock().unwrap().take();
+        drop(stopped);
+    }
+
+    /// Records another microphone from now on (plan 079, D3; absent is the system's default input); the outcome is told
+    /// as `microphoneSwitched` or `microphoneSwitchFailed`. False when no session records a microphone.
+    #[napi]
+    pub fn set_microphone(&self, device_id: Option<String>) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let device = device_id.filter(|id| !id.is_empty());
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.switch_microphone(device)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = device_id;
+            Ok(false)
+        }
     }
 
     #[napi(ts_return_type = "Promise<PreparedInfo>")]
@@ -608,6 +693,50 @@ impl Task for MicrophonesTask {
         }
         #[cfg(not(any(target_os = "macos", windows)))]
         Ok(Vec::new())
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub struct MeterTask {
+    device: Option<String>,
+    meter: Arc<Mutex<Option<Meter>>>,
+    events: Arc<EventCallback>,
+}
+
+impl Task for MeterTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        // The one running first: two units on one device are no use, and its levels must not follow the new one's.
+        let previous = self.meter.lock().unwrap().take();
+        drop(previous);
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            use platform::meter::MeterEvent;
+            let events = self.events.clone();
+            let tell = move |event: MeterEvent| {
+                let event = match event {
+                    MeterEvent::Level(level) => {
+                        EngineEvent { kind: "meter".into(), peak: Some(f64::from(level.peak)), rms: Some(f64::from(level.rms)), ..Default::default() }
+                    }
+                    MeterEvent::Lost(detail) => EngineEvent { kind: "meterLost".into(), detail: Some(detail), ..Default::default() },
+                };
+                events.call(event, ThreadsafeFunctionCallMode::NonBlocking);
+            };
+            let meter = Meter::start(self.device.as_deref(), tell).map_err(|e| failure(e.code, e.detail))?;
+            let name = meter.name.clone();
+            *self.meter.lock().unwrap() = Some(meter);
+            Ok(name)
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = (&self.device, &self.events);
+            Err(failure("microphone_unavailable", "there is no meter on this platform"))
+        }
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {

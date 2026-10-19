@@ -601,6 +601,14 @@ impl Session {
         true
     }
 
+    /// Records `device` from now on (plan 079, D3; `None` the system's default input); the outcome is told as an event.
+    /// Answers false when the session records no microphone.
+    pub fn switch_microphone(&self, device: Option<String>) -> bool {
+        let Some(microphone) = self.microphone.as_ref() else { return false };
+        microphone.switch(device);
+        true
+    }
+
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
     pub fn record(&mut self) -> Result<(), CaptureError> {
         self.core.record()

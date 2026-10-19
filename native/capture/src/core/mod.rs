@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 
 mod camera;
 mod frame_log;
+pub mod meter;
 mod mixer;
 
 use crate::pacing::Pacer;
@@ -77,6 +78,10 @@ pub trait Events: Send + Sync {
     fn microphone_lost(&self, detail: String);
     /// The microphone told lost delivers sound again, which the track takes from then on.
     fn microphone_resumed(&self, detail: String);
+    /// The user switched the recording's microphone (plan 079, D3): `to` delivers from now on, `from` is closed.
+    fn microphone_switched(&self, _from: String, _to: String) {}
+    /// A switch the device refused: the microphone recorded before goes on.
+    fn microphone_switch_failed(&self, _detail: String) {}
     /// A preview chunk of the composed picture (plan 075, step 2's prototype; D17's second option).
     fn preview(&self, _chunk: PreviewChunk) {}
     /// The camera stopped delivering while recording (plan 075, D12): the recording goes on without it. Told once per
@@ -617,6 +622,12 @@ impl<P: Platform> Shared<P> {
         microphone.lost = true;
         // Told under the lock: a return the microphone's thread notices next is told after this.
         self.events.microphone_lost(detail);
+    }
+
+    /// Another microphone was opened in its place (plan 079, D3): its time without sound counts from now, so the moment
+    /// the switch took is not told as a loss. One told lost is told back by its first sound, as a return is.
+    pub fn microphone_switched(&self) {
+        self.microphone.lock().unwrap().heard_ns = P::now_ns();
     }
 
     /// Whether `input` is the microphone.

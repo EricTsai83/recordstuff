@@ -33,6 +33,7 @@ const NAME: u32 = code(b"lnam");
 const STREAMS: u32 = code(b"stm#");
 const ALIVE: u32 = code(b"livn");
 const NOMINAL_RATE: u32 = code(b"nsrt");
+const RUN_LOOP: u32 = code(b"rnlp");
 const SCOPE_GLOBAL: u32 = code(b"glob");
 const SCOPE_INPUT: u32 = code(b"inpt");
 const ELEMENT_MAIN: u32 = 0;
@@ -53,6 +54,7 @@ struct ComponentDescription {
     flags_mask: u32,
 }
 
+type PropertyListener = unsafe extern "C" fn(ObjectId, u32, *const Address, *mut c_void) -> OsStatus;
 type RenderCallback = unsafe extern "C" fn(*mut c_void, *mut u32, *const AudioTimeStamp, u32, u32, *mut AudioBufferList) -> OsStatus;
 type ConverterInput = unsafe extern "C" fn(AudioConverterRef, *mut u32, *mut AudioBufferList, *mut *mut c_void, *mut c_void) -> OsStatus;
 
@@ -79,6 +81,16 @@ unsafe extern "C" {
         size: *mut u32,
         data: *mut c_void,
     ) -> OsStatus;
+    fn AudioObjectSetPropertyData(
+        object: ObjectId,
+        address: *const Address,
+        qualifier_size: u32,
+        qualifier: *const c_void,
+        size: u32,
+        data: *const c_void,
+    ) -> OsStatus;
+    fn AudioObjectAddPropertyListener(object: ObjectId, address: *const Address, listener: PropertyListener, client: *mut c_void) -> OsStatus;
+    fn AudioObjectRemovePropertyListener(object: ObjectId, address: *const Address, listener: PropertyListener, client: *mut c_void) -> OsStatus;
 }
 
 #[link(name = "AudioToolbox", kind = "framework")]
@@ -192,6 +204,65 @@ pub fn device_for_uid(uid: &str) -> Option<ObjectId> {
 /// Whether the device is still there (a disconnected one stops being alive before it leaves the list).
 pub fn alive(device: ObjectId) -> bool {
     value::<u32>(device, ALIVE, SCOPE_GLOBAL, None).is_some_and(|alive| alive != 0)
+}
+
+/// Follows the device list while Settings is open (plan 079, D2): `changed` is called on the HAL's notification thread
+/// whenever a device is connected or leaves, or the default input changes. The HAL is told to notify on its own
+/// thread, as the capture process runs no main run loop (by default it would use the main thread's).
+pub struct DeviceWatch {
+    client: *mut WatchClient,
+}
+
+struct WatchClient {
+    changed: Box<dyn Fn() + Send + Sync>,
+}
+
+unsafe impl Send for DeviceWatch {}
+
+/// What the watch listens to: the device list and the default input.
+const WATCHED: [u32; 2] = [DEVICES, DEFAULT_INPUT];
+
+impl DeviceWatch {
+    pub fn start(changed: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
+        let run_loop: *const c_void = null();
+        let status = unsafe {
+            AudioObjectSetPropertyData(
+                SYSTEM_OBJECT,
+                &address(RUN_LOOP, SCOPE_GLOBAL),
+                0,
+                null(),
+                size_of::<*const c_void>() as u32,
+                (&raw const run_loop).cast(),
+            )
+        };
+        if status != 0 {
+            return Err(format!("the HAL's notification thread could not be chosen: {status}"));
+        }
+        let watch = Self { client: Box::into_raw(Box::new(WatchClient { changed: Box::new(changed) })) };
+        for selector in WATCHED {
+            let status = unsafe { AudioObjectAddPropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, watch.client.cast()) };
+            if status != 0 {
+                // Dropping it removes what was added and frees the client.
+                return Err(format!("the device list could not be followed: {status}"));
+            }
+        }
+        Ok(watch)
+    }
+}
+
+impl Drop for DeviceWatch {
+    fn drop(&mut self) {
+        for selector in WATCHED {
+            unsafe { AudioObjectRemovePropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, self.client.cast()) };
+        }
+        drop(unsafe { Box::from_raw(self.client) });
+    }
+}
+
+unsafe extern "C" fn heard(_object: ObjectId, _count: u32, _addresses: *const Address, client: *mut c_void) -> OsStatus {
+    let client = unsafe { &*(client as *const WatchClient) };
+    (client.changed)();
+    0
 }
 
 /// Mono 32-bit float at `rate`.

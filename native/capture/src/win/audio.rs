@@ -24,6 +24,7 @@ use windows::Win32::System::Variant::VT_BLOB;
 use windows::core::{HSTRING, IUnknown, Interface, implement};
 
 use super::{CaptureError, com, hundreds_to_ns, now_ns, start_failed};
+use crate::core::meter::{LevelMeter, MeterEvent};
 use crate::core::{CHANNELS, SAMPLE_RATE, Shared};
 use crate::timing::PacketTimes;
 
@@ -170,6 +171,8 @@ pub struct SoundCapture {
     /// The microphone's name, for the recording's report; None for system or apps' sound.
     pub name: Option<String>,
     running: Arc<AtomicBool>,
+    /// A device the user switched the microphone to while recording (plan 079, D3): `Some(None)` is the default input.
+    switch: Arc<Mutex<Option<Option<String>>>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -253,6 +256,32 @@ fn reopen_microphone(id: &str) -> Result<Option<Stream>, String> {
     open_stream(client, true).map(Some).map_err(|e| e.detail)
 }
 
+/// The microphone the user switched to while recording (plan 079, D3), opened strictly: a device that is not connected
+/// is refused rather than replaced by the default input. Its stream, name and endpoint ID.
+fn switched_microphone(id: Option<&str>, current: Option<&str>) -> Result<Option<(Stream, String, String)>, String> {
+    let devices = enumerator().map_err(|e| e.detail)?;
+    let device = match id {
+        Some(id) => active_device(&devices, id).ok_or_else(|| format!("{id} is not connected"))?,
+        None => unsafe { devices.GetDefaultAudioEndpoint(eCapture, eConsole) }.map_err(|e| format!("there is no default input ({e})"))?,
+    };
+    let opened = unsafe { device.GetId() }.ok().map(take_id).unwrap_or_default();
+    if current == Some(opened.as_str()) {
+        return Ok(None);
+    }
+    let name = device_name(&device).unwrap_or_else(|| "an audio input".into());
+    let client = unsafe { device.Activate::<IAudioClient>(CLSCTX_ALL, None) }.map_err(|e| e.to_string())?;
+    let stream = open_stream(client, true).map_err(|e| e.detail)?;
+    Ok(Some((stream, name, opened)))
+}
+
+/// Waits up to `wait` while capture runs and no switch is asked for.
+fn pause(wait: Duration, running: &AtomicBool, switch: &Mutex<Option<Option<String>>>) {
+    let until = std::time::Instant::now() + wait;
+    while running.load(Ordering::Acquire) && std::time::Instant::now() < until && switch.lock().unwrap().is_none() {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 impl SoundCapture {
     /// Opens `sound` and hands it to `shared` as `input`.
     pub fn start(sound: &Sound, input: usize, shared: Arc<Shared<super::session::Win>>) -> Result<Self, CaptureError> {
@@ -268,9 +297,12 @@ impl SoundCapture {
         let channels = if microphone { 1 } else { CHANNELS as usize };
         let stream = open_stream(client, microphone)?;
         let running = Arc::new(AtomicBool::new(true));
+        let switch = Arc::new(Mutex::new(None::<Option<String>>));
         let thread = {
             let running = running.clone();
-            let label = name.clone().unwrap_or_default();
+            let switch = switch.clone();
+            let mut label = name.clone().unwrap_or_default();
+            let mut device = device;
             std::thread::Builder::new()
                 .name("recordstuff-sound".into())
                 .spawn(move || {
@@ -278,22 +310,34 @@ impl SoundCapture {
                     let mut stream = Some(stream);
                     let mut attempts = 0usize;
                     while running.load(Ordering::Acquire) {
-                        let Some(open) = stream.as_ref() else { break };
-                        let Err(detail) = pump(&open.capture, open.event, &running, &shared, input, microphone, channels) else { break };
-                        if !running.load(Ordering::Acquire) {
-                            break;
+                        // The user switched the microphone (plan 079, D3): the new one opened before the old is
+                        // closed, and the old one kept when it cannot be. From then on it is the one taken back.
+                        let request = switch.lock().unwrap().take();
+                        if let Some(request) = request {
+                            let events = shared.events();
+                            match switched_microphone(request.as_deref(), device.as_deref()) {
+                                Ok(Some((opened, name, id))) => {
+                                    // Dropping the old stream stops it.
+                                    stream = Some(opened);
+                                    device = Some(id);
+                                    attempts = 0;
+                                    let from = std::mem::replace(&mut label, name.clone());
+                                    shared.microphone_switched();
+                                    eprintln!("microphone: switched from {from} to {label}");
+                                    events.microphone_switched(from, name);
+                                }
+                                // Answered all the same, so the switch waiting next is not held back (review of plan 079).
+                                Ok(None) => {
+                                    eprintln!("microphone: {label} is already the one recorded");
+                                    events.microphone_switched(label.clone(), label.clone());
+                                }
+                                Err(why) => events.microphone_switch_failed(format!("microphone: {why}; {label} goes on being recorded")),
+                            }
                         }
-                        if !microphone {
-                            shared.fail(detail);
-                            break;
-                        }
-                        // An unplugged microphone (AUDCLNT_E_DEVICE_INVALIDATED) loses the microphone, not the
-                        // recording, and is opened again by its endpoint ID once it is connected (plan 078 step 6): the
-                        // device opened at the start, the default input's included, never a new default.
-                        shared.lose_microphone(detail.replacen("system audio", "microphone", 1));
-                        stream = None;
-                        let Some(id) = device.as_deref().filter(|id| !id.is_empty()) else { break };
-                        while running.load(Ordering::Acquire) && stream.is_none() {
+                        let Some(open) = stream.as_ref() else {
+                            // Lost (plan 078 step 6): the device opened at the start, or switched to, the default input's
+                            // included, never a new default, opened again once it is connected.
+                            let Some(id) = device.as_deref().filter(|id| !id.is_empty()) else { break };
                             let wait = match reopen_microphone(id) {
                                 Ok(Some(reopened)) => {
                                     eprintln!("microphone: {label} opened again");
@@ -310,16 +354,35 @@ impl SoundCapture {
                                     wait
                                 }
                             };
-                            let until = std::time::Instant::now() + wait;
-                            while running.load(Ordering::Acquire) && std::time::Instant::now() < until {
-                                std::thread::sleep(Duration::from_millis(100));
-                            }
+                            pause(wait, &running, &switch);
+                            continue;
+                        };
+                        let switching = || switch.lock().unwrap().is_some();
+                        let reading = || running.load(Ordering::Acquire) && !switching();
+                        let result = pump(&open.capture, open.event, &reading, &shared, input, microphone, channels);
+                        if !running.load(Ordering::Acquire) {
+                            break;
                         }
+                        let Err(detail) = result else { continue };
+                        if !microphone {
+                            shared.fail(detail);
+                            break;
+                        }
+                        // An unplugged microphone (AUDCLNT_E_DEVICE_INVALIDATED) loses the microphone, not the
+                        // recording, and is opened again by its endpoint ID once it is connected, above.
+                        shared.lose_microphone(detail.replacen("system audio", "microphone", 1));
+                        stream = None;
                     }
                 })
                 .map_err(|e| CaptureError::new("capture_start_failed", format!("audio thread: {e}")))?
         };
-        Ok(Self { note, name, running, thread: Some(thread) })
+        Ok(Self { note, name, running, switch, thread: Some(thread) })
+    }
+
+    /// Records the microphone `device` from now on (plan 079, D3; `None` the default input); told as an event. Only a
+    /// microphone's stream is asked.
+    pub fn switch(&self, device: Option<String>) {
+        *self.switch.lock().unwrap() = Some(device);
     }
 
     pub fn stop(&mut self) {
@@ -337,12 +400,13 @@ impl Drop for SoundCapture {
     }
 }
 
-/// Hands every packet to the core until stopped. Packets are read even while the core takes no sound, so the engine's
-/// buffer never fills.
+/// Hands every packet to the core until stopped or, for the microphone, a switch is asked for. Packets are read even
+/// while the core takes no sound, so the engine's buffer never fills.
 fn pump(
     capture: &IAudioCaptureClient,
     event: HANDLE,
-    running: &AtomicBool,
+    // While capture runs and, for the microphone, no switch is asked for (plan 079, D3).
+    reading: &dyn Fn() -> bool,
     shared: &Shared<super::session::Win>,
     input: usize,
     microphone: bool,
@@ -350,7 +414,8 @@ fn pump(
 ) -> Result<(), String> {
     // Only a microphone's positions are checked: loopback's come from the render clock the recording is timed by.
     let mut times = microphone.then(PacketTimes::default);
-    while running.load(Ordering::Acquire) {
+    // Returns, its stream still open, when a switch is asked for (plan 079, D3).
+    while reading() {
         if unsafe { WaitForSingleObject(event, 100) } != WAIT_OBJECT_0 {
             continue;
         }
@@ -386,4 +451,125 @@ fn pump(
         }
     }
     Ok(())
+}
+
+/// Settings' input level meter (plan 079, D1): the microphone a recording would open, the chosen one or else the
+/// default input, read as the recording reads it (48 kHz mono float), its levels told 20 times a second. A read that
+/// fails (an unplugged device) ends it with `Lost`; main starts it again when the device list changes.
+pub struct Meter {
+    pub name: String,
+    running: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Meter {
+    pub fn start(device: Option<&str>, tell: impl Fn(MeterEvent) + Send + 'static) -> Result<Self, CaptureError> {
+        com();
+        let (client, _note, name, _id) = microphone_client(device)?;
+        let stream = open_stream(client, true)?;
+        let running = Arc::new(AtomicBool::new(true));
+        let thread = {
+            let running = running.clone();
+            let label = name.clone();
+            std::thread::Builder::new()
+                .name("recordstuff-meter".into())
+                .spawn(move || {
+                    com();
+                    let mut meter = LevelMeter::new(f64::from(SAMPLE_RATE));
+                    if let Err(why) = meter_pump(&stream, &running, &mut meter, &tell) {
+                        tell(MeterEvent::Lost(format!("{label} stopped being read ({why})")));
+                    }
+                })
+                .map_err(|e| microphone_unavailable(format!("the meter's thread: {e}")))?
+        };
+        Ok(Self { name, running, thread: Some(thread) })
+    }
+}
+
+impl Drop for Meter {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn meter_pump(stream: &Stream, running: &AtomicBool, meter: &mut LevelMeter, tell: &dyn Fn(MeterEvent)) -> Result<(), String> {
+    let mut silence = Vec::new();
+    while running.load(Ordering::Acquire) {
+        if unsafe { WaitForSingleObject(stream.event, 100) } != WAIT_OBJECT_0 {
+            continue;
+        }
+        loop {
+            let size = unsafe { stream.capture.GetNextPacketSize() }.map_err(|e| e.to_string())?;
+            if size == 0 {
+                break;
+            }
+            let (mut data, mut frames, mut flags) = (std::ptr::null_mut(), 0u32, 0u32);
+            unsafe { stream.capture.GetBuffer(&mut data, &mut frames, &mut flags, None, None) }.map_err(|e| e.to_string())?;
+            let samples = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || data.is_null() {
+                silence.resize(frames as usize, 0.0f32);
+                &silence[..]
+            } else {
+                unsafe { std::slice::from_raw_parts(data.cast::<f32>(), frames as usize) }
+            };
+            meter.push(samples, |level| tell(MeterEvent::Level(level)));
+            unsafe { stream.capture.ReleaseBuffer(frames) }.map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[implement(IMMNotificationClient)]
+struct DeviceNotices(Box<dyn Fn() + Send + Sync>);
+
+impl IMMNotificationClient_Impl for DeviceNotices_Impl {
+    fn OnDeviceStateChanged(&self, _id: &windows::core::PCWSTR, _state: DEVICE_STATE) -> windows::core::Result<()> {
+        (self.0)();
+        Ok(())
+    }
+    fn OnDeviceAdded(&self, _id: &windows::core::PCWSTR) -> windows::core::Result<()> {
+        (self.0)();
+        Ok(())
+    }
+    fn OnDeviceRemoved(&self, _id: &windows::core::PCWSTR) -> windows::core::Result<()> {
+        (self.0)();
+        Ok(())
+    }
+    fn OnDefaultDeviceChanged(&self, flow: EDataFlow, _role: ERole, _id: &windows::core::PCWSTR) -> windows::core::Result<()> {
+        if flow == eCapture {
+            (self.0)();
+        }
+        Ok(())
+    }
+    fn OnPropertyValueChanged(&self, _id: &windows::core::PCWSTR, _key: &windows::Win32::Foundation::PROPERTYKEY) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+/// Follows the audio devices while Settings is open (plan 079, D2): `changed` is called on a system thread when an
+/// endpoint is added, removed or changes state, or the default input changes.
+pub struct DeviceWatch {
+    devices: IMMDeviceEnumerator,
+    client: IMMNotificationClient,
+}
+
+// Created in the multithreaded apartment, as `Mta`'s objects are.
+unsafe impl Send for DeviceWatch {}
+
+impl DeviceWatch {
+    pub fn start(changed: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
+        com();
+        let devices = enumerator().map_err(|e| e.detail)?;
+        let client: IMMNotificationClient = DeviceNotices(Box::new(changed)).into();
+        unsafe { devices.RegisterEndpointNotificationCallback(&client) }.map_err(|e| format!("the device list could not be followed ({e})"))?;
+        Ok(Self { devices, client })
+    }
+}
+
+impl Drop for DeviceWatch {
+    fn drop(&mut self) {
+        let _ = unsafe { self.devices.UnregisterEndpointNotificationCallback(&self.client) };
+    }
 }

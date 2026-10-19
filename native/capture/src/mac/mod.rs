@@ -5,6 +5,7 @@ pub mod camera;
 pub mod compositor;
 pub mod content;
 pub mod hal;
+pub mod meter;
 pub mod microphone;
 pub mod session;
 pub mod video;

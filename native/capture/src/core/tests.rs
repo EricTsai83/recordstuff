@@ -506,6 +506,45 @@ fn a_microphone_that_stops_delivering_is_told_and_taken_again_when_its_sound_com
 }
 
 #[test]
+fn switching_the_microphone_counts_its_silence_from_the_switch() {
+    // Plan 079, D3: opening the device switched to can take a Bluetooth headset a second or two, which is no loss.
+    let mut rig = Rig::with_inputs("microphone-switched", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // The old microphone for 300 ms, nothing for 1.5 s while the new one opens, then the switch, then 1.5 s more of
+    // nothing: 2.7 s without sound in all, but only 1.5 s since the switch.
+    let mut next = 0u64;
+    let began = Instant::now();
+    let mut switched = false;
+    while began.elapsed() < Duration::from_millis(3_300) {
+        if !switched && began.elapsed() >= Duration::from_millis(1_800) {
+            rig.shared.microphone_switched();
+            switched = true;
+        }
+        while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+            let at = t0 + next * NANOS_PER_SECOND / 48_000;
+            rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+            if began.elapsed() < Duration::from_millis(300) {
+                rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+            }
+            next += 480;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "{:?}", rig.heard.microphone_lost.lock().unwrap());
+    // The new one's sound is taken from where it is, the gap silence.
+    let delivered = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap();
+    rig.shared.sound(1, t0 + next * NANOS_PER_SECOND / 48_000, 480, |_, _| 0.5).unwrap();
+    assert!(rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap() > delivered);
+    assert!(rig.heard.microphone_resumed.lock().unwrap().is_empty());
+    let (_, _, _) = rig.stop();
+    assert!(rig.heard.failures.lock().unwrap().is_empty(), "{:?}", rig.heard.failures.lock().unwrap());
+}
+
+#[test]
 fn a_microphone_is_lost_only_while_recording_and_one_that_delivers_never_is() {
     let mut rig = Rig::with_inputs("microphone-kept", 2);
     rig.core.watch_microphone(1);
