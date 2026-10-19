@@ -116,7 +116,10 @@ export type MainMessage =
   | { type: "cameraLayout"; sessionId: string; camera: CameraChoice; hidden: boolean }
   /** Whether the session's preview is watched (plan 075 step 7): Settings shows it, so its frames are made. */
   | { type: "cameraPreview"; sessionId: string; watching: boolean }
-  /** Whether the session's levels are watched, and which inputs are muted from their next sound on (plan 075, D19). */
+  /**
+   * Whether the session's levels are watched, told on the Studio's port (studio-port.ts), and which inputs are muted
+   * from their next sound on (plan 075, D19).
+   */
   | { type: "levels"; sessionId: string; watching: boolean }
   | { type: "mute"; sessionId: string; system: boolean; microphone: boolean }
   /** The inputs' volumes in dB from their next sound on (plan 075, D21), within the faders' range. */
@@ -171,8 +174,6 @@ export type HostMessage =
   | { type: "cameraLost"; sessionId: string; detail: string }
   /** The camera told lost delivers again and is composed again. */
   | { type: "cameraResumed"; sessionId: string; detail: string }
-  /** The inputs' loudest samples since the last (plan 075, D19), linear, about 15 times a second while watched. */
-  | { type: "levels"; sessionId: string; system: number; microphone?: number }
   /** The microphone switched to while recording (plan 079, D3), by the names of the device before and the one now. */
   | { type: "microphoneSwitched"; sessionId: string; from: string; to: string }
   /** A switch the device refused; the microphone recorded before goes on. */
@@ -299,8 +300,6 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "cameraLost":
     case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
-    case "levels":
-      return isNonEmptyString(value["sessionId"]) && isLevel(value["system"]) && (value["microphone"] === undefined || isLevel(value["microphone"]));
     case "microphoneSwitched":
       return isNonEmptyString(value["sessionId"]) && typeof value["from"] === "string" && typeof value["to"] === "string";
     case "microphoneSwitchFailed":

@@ -10,13 +10,12 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
-import { SETTINGS_CHANNELS } from "../../../shared/settings-panel";
 import { bubbleRadius, bubbleRect, positionFromRect, snapPosition, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
-import { isPreviewMessage } from "../../lib/preview-stream";
 import { previewDecoder } from "../../lib/preview-decoder";
 import { translate } from "../../../shared/i18n";
 import * as model from "../settings-controller";
 import { frameDrawn } from "./frame-clock";
+import { onPreview } from "./studio-feed";
 
 /** A key's step, as a fraction of the free space: 1%, or 10% with Shift. */
 const STEP = 0.01, BIG_STEP = 0.1;
@@ -101,7 +100,7 @@ function useLiveCamera(video: HTMLVideoElement | null, on: boolean, name: string
   return failed;
 }
 
-/** The recording's preview drawn into `canvas` while `on`: main joins the page to it, on a port posted to the window. */
+/** The recording's preview drawn into `canvas` while `on`: main joins the page to it, on the Studio's port (studio-feed.ts). */
 function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boolean {
   const [drawing, setDrawing] = useState(false);
   useEffect(() => {
@@ -111,21 +110,12 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
     let seen = false;
     const decoder = previewDecoder(canvas, { drawn: () => { frameDrawn(); if (!seen) { seen = true; setDrawing(true); } } });
     if (!decoder) return;
-    let port: MessagePort | undefined;
-    const joined = (event: MessageEvent): void => {
-      if (event.data !== SETTINGS_CHANNELS.cameraPreviewPort || !event.ports[0]) return;
-      port?.close();
-      decoder.reset();
-      port = event.ports[0];
-      port.onmessage = (chunk) => { if (isPreviewMessage(chunk.data)) decoder.decode(chunk.data); };
-      port.start();
-    };
-    window.addEventListener("message", joined);
+    // On the Studio's port, which the meters' levels share (plan 081).
+    const stop = onPreview({ chunk: (message) => decoder.decode(message), joined: () => decoder.reset() });
     void window.settings.watchCameraPreview?.(true).catch(() => undefined);
     return () => {
-      window.removeEventListener("message", joined);
       void window.settings.watchCameraPreview?.(false).catch(() => undefined);
-      port?.close();
+      stop();
       decoder.close();
     };
   }, [canvas, on]);

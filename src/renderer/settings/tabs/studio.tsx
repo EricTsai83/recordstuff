@@ -14,6 +14,7 @@ import * as model from "../settings-controller";
 import { CameraPreview } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
 import { SliderSetting, Action, Elapsed, Explanation } from "./preferences";
+import { paceStudio } from "./studio-pace";
 
 const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.find((group) => group.id === id && group.tab === "studio");
 /** A group's control holds still while another setting saves, as Preferences' rows do. */
@@ -156,6 +157,8 @@ function useStudioOpen(): void {
 
 export function Studio() {
   useStudioOpen();
+  // Its preview and meters at the full rate while someone works in it, at half while it is only looked at (plan 081).
+  useEffect(() => paceStudio(), []);
   const preview = groupOf("cameraPreview");
   return (
     <div className="studio">

@@ -6,7 +6,7 @@
  * No Node API and no generic IPC reaches the page.
  */
 import { contextBridge, ipcRenderer } from "electron";
-import type { MicrophoneLevel, SettingsBridge, SettingsView, SettingsZoom, StudioLevels } from "../shared/settings-panel";
+import type { MicrophoneLevel, SettingsBridge, SettingsView, SettingsZoom } from "../shared/settings-panel";
 
 // Literal copies of `SETTINGS_CHANNELS` (channels.test.ts): a sandboxed preload imports nothing at runtime.
 
@@ -34,11 +34,6 @@ const bridge: SettingsBridge = {
   watchCameraPreview: (watching) => ipcRenderer.invoke("settings:camera-preview", watching),
   watchLevels: (watching) => ipcRenderer.invoke("settings:watch-levels", watching),
   watchStudio: (open) => ipcRenderer.invoke("settings:watch-studio", open),
-  onLevels: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, levels: StudioLevels): void => callback(levels);
-    ipcRenderer.on("settings:levels", listener);
-    return () => ipcRenderer.removeListener("settings:levels", listener);
-  },
   watchMicrophoneLevel: (watching) => ipcRenderer.invoke("settings:watch-microphone-level", watching),
   onMicrophoneLevel: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, level: MicrophoneLevel): void => callback(level);

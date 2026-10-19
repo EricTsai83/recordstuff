@@ -323,12 +323,18 @@ export class NativeCaptureHost implements RecorderHost {
   }
 
   /**
-   * Whether the session's preview is watched (plan 075 step 7), with the port its frames go to when Settings joins:
-   * false, the port unused, when this host's process does not run the session.
+   * Hands the session's process its end of the Recording Studio's port (plan 081), for the preview's frames and the
+   * levels: false, the port unused, when this host's process does not run the session.
    */
-  watchPreview(sessionId: string, watching: boolean, port?: Electron.MessagePortMain): boolean {
+  joinStudio(sessionId: string, port: Electron.MessagePortMain): boolean {
     if (!this.child || this.watching !== sessionId) return false;
-    if (port) this.child.postMessage({ type: PREVIEW_PORT_MESSAGE }, [port]);
+    this.child.postMessage({ type: PREVIEW_PORT_MESSAGE }, [port]);
+    return true;
+  }
+
+  /** Whether the session's preview is watched (plan 075 step 7); false when this host's process does not run the session. */
+  watchPreview(sessionId: string, watching: boolean): boolean {
+    if (!this.child || this.watching !== sessionId) return false;
     this.post({ type: "cameraPreview", sessionId, watching });
     return true;
   }

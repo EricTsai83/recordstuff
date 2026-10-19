@@ -10,6 +10,7 @@
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
+import { isStudioRate } from "../../shared/studio-port";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -76,6 +77,8 @@ interface NativeCapture {
   onPreview?(onFrame: (frame: PreviewFrame) => void): void;
   /** Plan 075 step 7: whether the session's preview is watched; false without a camera. */
   setCameraPreview?(watching: boolean): boolean;
+  /** Plan 081, D1: the preview's frames a second; false without a preview. */
+  setPreviewRate?(fps: number): boolean;
   /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
   watchLevels?(watching: boolean): boolean;
   setMuted?(system: boolean, microphone: boolean): boolean;
@@ -91,10 +94,15 @@ interface NativeCapture {
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
-/** Where preview frames go: a `MessagePortMain` main hands over to Settings or the prototype's page (plan 075). */
+/**
+ * The Recording Studio's port (studio-port.ts): a `MessagePortMain` main hands over to Settings or the prototype's
+ * page (plan 075); preview chunks and levels go out on it, the page's rate comes back.
+ */
 export interface PreviewPort {
   postMessage(message: unknown): void;
   close(): void;
+  on?(event: "message", listener: (message: { data: unknown }) => void): void;
+  start?(): void;
 }
 
 /** The subset of Electron's `process.parentPort` the host uses; lets tests pass a fake. */
@@ -179,7 +187,15 @@ export class NativeHost {
     port.on("message", ({ data, ports }) => {
       if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === PREVIEW_PORT_MESSAGE) {
         this.previewPort?.close();
-        this.previewPort = ports?.[0];
+        const studio = ports?.[0];
+        this.previewPort = studio;
+        // The page's rate for the preview (plan 081, D1); a port given over again starts at the full rate, as the
+        // engine does for a new watcher.
+        studio?.on?.("message", ({ data }) => {
+          if (studio !== this.previewPort || !isStudioRate(data)) return;
+          this.log(`studio: preview at ${data.fps} a second${this.capture.setPreviewRate?.(data.fps) ? "" : " (no preview in this session)"}`);
+        });
+        studio?.start?.();
         return;
       }
       this.handle(data);
@@ -544,7 +560,8 @@ export class NativeHost {
     } else if (event.kind === "cameraResumed") {
       this.send({ type: "cameraResumed", sessionId: session.id, detail: event.detail ?? "the camera delivered frames again" });
     } else if (event.kind === "levels" && typeof event.system === "number") {
-      this.send({ type: "levels", sessionId: session.id, system: event.system,
+      // To the Studio's page directly (plan 081): main does not pass them on.
+      this.previewPort?.postMessage({ type: "levels", system: event.system,
         ...(typeof event.microphone === "number" ? { microphone: event.microphone } : {}) });
     } else if (event.kind === "captureError") {
       const code = HOST_CODES.includes(event.code ?? "") ? event.code as HostErrorCode : "capture_failed";

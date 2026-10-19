@@ -259,12 +259,14 @@ export const SETTINGS_CHANNELS = {
   ready: "settings:ready",
   /** RecordStuff was hidden (⌘H): the player stops, as nothing should sound from a window out of sight. */
   hidden: "settings:hidden",
-  /** Whether the camera preview is in sight (plan 075 step 7), and the port a recording's preview frames come on. */
+  /**
+   * Whether the camera preview is in sight (plan 075 step 7), and the Recording Studio's port, which a recording's
+   * preview frames and levels come on (plan 081, studio-port.ts).
+   */
   cameraPreview: "settings:camera-preview",
   cameraPreviewPort: "settings:camera-preview-port",
-  /** Whether the Recording Studio's meters are in sight, and the levels main passes them (plan 075, D19). */
+  /** Whether the Recording Studio's meters are in sight (plan 075, D19); their levels come on the Studio's port. */
   watchLevels: "settings:watch-levels",
-  levels: "settings:levels",
   /** Whether the Recording tab's Input level is in sight in a focused window, and its levels (plan 079, D1). */
   watchMicrophoneLevel: "settings:watch-microphone-level",
   microphoneLevel: "settings:microphone-level",
@@ -339,9 +341,11 @@ export interface SettingsBridge {
    * `SETTINGS_CHANNELS.cameraPreviewPort`.
    */
   watchCameraPreview?(watching: boolean): Promise<void>;
-  /** The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come to `onLevels`. */
+  /**
+   * The Recording Studio's meters are in sight, or no longer are (plan 075, D19); levels then come on the Studio's
+   * port, the camera preview's (plan 081).
+   */
   watchLevels?(watching: boolean): Promise<void>;
-  onLevels?(callback: (levels: StudioLevels) => void): () => void;
   /** The Input level is in sight, or no longer is (plan 079, D1); the chosen input's levels then come to `onMicrophoneLevel`. */
   watchMicrophoneLevel?(watching: boolean): Promise<void>;
   onMicrophoneLevel?(callback: (level: MicrophoneLevel) => void): () => void;

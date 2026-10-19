@@ -40,9 +40,8 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "mute", sessionId: "s1", system: true })).toBe(false);
     expect(isMainMessage({ type: "gain", sessionId: "s1", system: -60, microphone: 12 })).toBe(true);
     for (const system of [13, -61, 0.5, "0"]) expect(isMainMessage({ type: "gain", sessionId: "s1", system, microphone: 0 }), String(system)).toBe(false);
-    expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5, microphone: 0 })).toBe(true);
-    expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5 })).toBe(true);
-    for (const bad of [-0.1, Number.NaN, 17, "0.5"]) expect(isHostMessage({ type: "levels", sessionId: "s1", system: bad }), String(bad)).toBe(false);
+    // Levels go to the Studio's page on its port (plan 081), not to main.
+    expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5, microphone: 0 })).toBe(false);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: "yes" })).toBe(false);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "", watching: false })).toBe(false);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "iphone", name: "iPhone Camera", default: false }] })).toBe(true);

@@ -11,11 +11,12 @@ import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import * as model from "../settings-controller";
 import { onFrame } from "./frame-clock";
+import { onLevels } from "./studio-feed";
 
 /** The meter's floor: quieter is shown as nothing. */
 const FLOOR_DB = -60;
-/** How fast a shown level falls back: 20 dB a second, a step each frame of the Studio's clock (10 a second). */
-const FALL_DB = 2;
+/** How fast a shown level falls back: 20 dB a second, a step each frame of the Studio's clock, however far apart. */
+const FALL_DB_PER_SECOND = 20;
 
 const listeners = new Set<(levels: StudioLevels) => void>();
 let unsubscribe: (() => void) | undefined;
@@ -32,7 +33,8 @@ function rewatch(): void {
 function subscribe(listener: (levels: StudioLevels) => void): () => void {
   listeners.add(listener);
   if (!unsubscribe) {
-    unsubscribe = window.settings.onLevels?.((levels) => { for (const each of listeners) each(levels); });
+    // On the Studio's port, which the preview's frames share (plan 081): main does not pass them on.
+    unsubscribe = onLevels((levels) => { for (const each of listeners) each(levels); });
     document.addEventListener("visibilitychange", rewatch);
   }
   rewatch();
@@ -95,8 +97,10 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
   useEffect(() => {
     if (!track || !cover) return;
     let shown = FLOOR_DB, drawn = Number.NaN, spoken = Number.NaN, spokenAt = 0;
+    // To the track's pixel: a change the eye cannot see composes no frame (plan 081).
+    const pixels = Math.max(1, track.clientWidth);
     const paint = (force = false): void => {
-      const covered = 1 - (shown - FLOOR_DB) / -FLOOR_DB;
+      const covered = Math.round((1 - (shown - FLOOR_DB) / -FLOOR_DB) * pixels) / pixels;
       if (covered !== drawn) { cover.style.transform = `scaleX(${covered})`; drawn = covered; }
       const rounded = Math.round(shown), now = performance.now();
       if (rounded !== spoken && (force || now - spokenAt >= SPOKEN_MS)) {
@@ -110,14 +114,16 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
     paint(true);
     if (off) return;
     // Levels only raise what the next frame shows; frames fall back and paint, on the Studio's one clock.
-    let heard = FLOOR_DB;
+    let heard = FLOOR_DB, frameAt = performance.now();
     const stop = source === "input"
       ? subscribeInput((level) => { heard = Math.max(heard, decibels(level.peak)); })
       : subscribe((levels) => {
         heard = Math.max(heard, decibels(source === "system" ? levels.system : levels.microphone ?? 0));
       });
     const stopFrames = onFrame(() => {
-      const fallen = Math.max(FLOOR_DB, shown - FALL_DB);
+      const now = performance.now();
+      const fallen = Math.max(FLOOR_DB, shown - FALL_DB_PER_SECOND * (now - frameAt) / 1000);
+      frameAt = now;
       // A level rising is said at once; only its falling back is held to SPOKEN_MS, which a later frame says.
       const rose = heard > fallen;
       shown = Math.max(heard, fallen);

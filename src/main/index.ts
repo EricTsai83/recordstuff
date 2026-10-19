@@ -39,8 +39,7 @@ import path from "node:path";
 import { NativeCaptureHost } from "./recording/native-capture-host";
 import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
 import { CameraPreview } from "./recording/camera-preview";
-import { CameraPreviewLink } from "./settings/camera-preview-link";
-import { LevelsLink } from "./settings/levels-link";
+import { StudioLink } from "./settings/studio-link";
 import { MicrophoneMonitor } from "./settings/microphone-monitor";
 import { captureExclusion } from "./recording/capture-exclusion";
 import { EngineFileWriter } from "./recording/engine-file-writer";
@@ -610,19 +609,15 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ...savingContext(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
   });
-  // Settings' preview of a recording's camera (plan 075 step 7): joined while the page shows it.
-  const cameraPreviewLink = new CameraPreviewLink<Electron.MessagePortMain>({
+  // The Recording Studio's preview and meters (plan 075 step 7 and D19): joined to the session while the page shows
+  // either, on a port of their own that main does not read (plan 081).
+  const studioLink = new StudioLink<Electron.MessagePortMain>({
     session: () => recorder.previewSessionId,
-    watch: (sessionId, watching, port) => host.watchPreview(sessionId, watching, port),
+    join: (sessionId, port) => host.joinStudio(sessionId, port),
+    watch: (sessionId, feed, watching) => feed === "preview" ? host.watchPreview(sessionId, watching) : host.watchLevels(sessionId, watching),
     channel: () => new MessageChannelMain(),
     log,
   });
-  // The Recording Studio's meters (D19): the recording's levels while the page shows them.
-  const levelsLink = new LevelsLink({
-    session: () => recorder.audio?.sessionId,
-    watch: (sessionId, watching) => host.watchLevels(sessionId, watching),
-  });
-  host.onMessage((message) => levelsLink.deliver(message));
   // Settings' microphone monitor (plan 079): the device list followed, and the Input level read, between recordings.
   const microphoneMonitor = new MicrophoneMonitor({
     open: (onMessage, onExit) => host.openMonitor(onMessage, onExit),
@@ -644,8 +639,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   const settingsWindow = new SettingsWindow({
     geometry: new SettingsWindowState(path.join(app.getPath("userData"), "settings-window.json"), log),
-    cameraPreview: (page) => cameraPreviewLink.watch(page),
-    levels: (page) => levelsLink.watch(page),
+    cameraPreview: (page) => studioLink.watch("preview", page),
+    levels: (page) => studioLink.watch("levels", page),
     microphoneLevel: (page) => microphoneMonitor.watch(page),
     monitor: (open) => microphoneMonitor.window(open),
     // A Live preview lasts while the Studio is open in sight (D20); a recording it became goes on.
@@ -744,8 +739,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     tray.render(state);
     settingsWindow.refresh();
     appMenu.refresh();
-    cameraPreviewLink.sync();
-    levelsLink.sync();
+    studioLink.sync();
     microphoneMonitor.sync();
   }
   /** Context changed while the state did not (output folder, language, quality). */

@@ -217,6 +217,24 @@ const chooseCalls: Array<[string, unknown]> = [];
 const previewWatches: boolean[] = [];
 /** What the page said about the Recording Studio's meters being in sight (plan 075, D19), in order. */
 const levelWatches: boolean[] = [];
+/**
+ * The Studio's port as main joins it (plan 081, studio-link.ts): a new channel when the page starts watching the preview
+ * or the meters with neither watched, our end kept to send levels on, let go once it watches neither.
+ */
+const studioPort = { watching: { preview: false, levels: false }, end: undefined as ElectronModule.MessagePortMain | undefined };
+function watchStudioFeed(feed: "preview" | "levels", watching: boolean): void {
+  const before = studioPort.watching.preview || studioPort.watching.levels;
+  studioPort.watching[feed] = watching;
+  const now = studioPort.watching.preview || studioPort.watching.levels;
+  if (now && !before && panel && !panel.isDestroyed()) {
+    const { port1, port2 } = new electron.MessageChannelMain();
+    studioPort.end = port1;
+    panel.webContents.postMessage("settings:camera-preview-port", null, [port2]);
+  } else if (!now && before) {
+    studioPort.end?.close();
+    studioPort.end = undefined;
+  }
+}
 /** What the page said about the Recording Studio being open in sight (plan 075, D20), in order. */
 const studioWatches: boolean[] = [];
 /** The Input level's watch requests (plan 079, D1). */
@@ -244,8 +262,8 @@ function installPanelHandlers(): void {
   ipcMain.handle("settings:read", () => fixtureView(state.language, state.notifications));
   ipcMain.handle("settings:ready", () => {});
   ipcMain.handle("settings:zoom", () => {});
-  ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); });
-  ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); });
+  ipcMain.handle("settings:camera-preview", (_event, watching: boolean) => { previewWatches.push(watching); watchStudioFeed("preview", watching); });
+  ipcMain.handle("settings:watch-levels", (_event, watching: boolean) => { levelWatches.push(watching); watchStudioFeed("levels", watching); });
   ipcMain.handle("settings:watch-studio", (_event, open: boolean) => { studioWatches.push(open); });
   ipcMain.handle("settings:watch-microphone-level", (_event, watching: boolean) => { microphoneLevelWatches.push(watching); });
   ipcMain.handle("settings:capture", (_event, armed: boolean) => {
@@ -439,8 +457,8 @@ const hostControls: Record<string, unknown> = {
   microphoneLevelWatches,
   /** The chosen input's level as main passes it to a page showing the Input level (plan 079, D1). */
   pushMicrophoneLevel: (level: { peak: number; rms: number }): void => { panel!.webContents.send("settings:microphone-level", level); },
-  /** Levels as main passes them to a watching page. */
-  pushLevels: (levels: { system: number; microphone?: number }): void => { panel!.webContents.send("settings:levels", levels); },
+  /** Levels as the capture process tells them to a watching page, on the Studio's port (plan 081). */
+  pushLevels: (levels: { system: number; microphone?: number }): void => { studioPort.end?.postMessage({ type: "levels", ...levels }); },
   results: recordingResults,
   translate,
   settingsView,

@@ -123,8 +123,9 @@ describe("the camera (plan 075)", () => {
     expect(port.sent.at(-1)).toEqual({ type: "cameras", error: "a recording is in progress" });
   });
 
-  it("passes the session's level watching and mutes to the engine, and its levels to main (D19)", async () => {
+  it("passes the session's level watching and mutes to the engine, and its levels to the Studio's port, not main (D19, plan 081)", async () => {
     const { port, emit, engine, logs } = await prepared();
+    const studio = { posted: [] as unknown[], postMessage(m: unknown) { this.posted.push(m); }, close() {} };
     const watchLevels = vi.fn(() => true), setMuted = vi.fn(() => true), setGains = vi.fn(() => true);
     Object.assign(engine, { watchLevels, setMuted, setGains });
     port.deliver({ type: "levels", sessionId: "s1", watching: true });
@@ -137,9 +138,37 @@ describe("the camera (plan 075)", () => {
     port.deliver({ type: "gain", sessionId: "other", system: 0, microphone: 0 });
     expect(setGains.mock.calls).toEqual([[-6, 12]]);
     expect(logs).toContainEqual("audio: system -6 dB, microphone 12 dB");
+    const toMain = port.sent.length;
+    // Before the page is joined they have nowhere to go.
+    emit({ kind: "levels", system: 0.1, microphone: null } as never);
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
     emit({ kind: "levels", system: 0.5, microphone: null } as never);
     emit({ kind: "levels", system: 0.25, microphone: 0.75 } as never);
-    expect(port.sent.slice(-2)).toEqual([{ type: "levels", sessionId: "s1", system: 0.5 }, { type: "levels", sessionId: "s1", system: 0.25, microphone: 0.75 }]);
+    expect(studio.posted).toEqual([{ type: "levels", system: 0.5 }, { type: "levels", system: 0.25, microphone: 0.75 }]);
+    expect(port.sent.length).toBe(toMain);
+  });
+
+  it("passes the page's rate on the Studio's port to the engine, from the port given last only (plan 081, D1)", () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const setPreviewRate = vi.fn(() => true);
+    new NativeHost(port, { ...fake.engine, setPreviewRate }, () => undefined);
+    const studioPort = () => {
+      let listener: ((message: { data: unknown }) => void) | undefined;
+      return { started: false, postMessage() {}, close() {}, start() { this.started = true; },
+        on(_event: "message", next: (message: { data: unknown }) => void) { listener = next; },
+        say(data: unknown) { listener?.({ data }); } };
+    };
+    const first = studioPort(), second = studioPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [first]);
+    expect(first.started).toBe(true);
+    first.say({ type: "rate", fps: 5 });
+    first.say({ type: "rate", fps: 7 });
+    first.say("rate");
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
+    first.say({ type: "rate", fps: 10 });
+    second.say({ type: "rate", fps: 10 });
+    expect(setPreviewRate.mock.calls).toEqual([[5], [10]]);
   });
 
   it("forwards the engine's camera loss and return for the session", async () => {

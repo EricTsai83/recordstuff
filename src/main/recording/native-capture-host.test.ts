@@ -124,17 +124,20 @@ describe("cameraChoice (plan 075)", () => {
       { type: "microphone", sessionId: "s1", deviceId: "usb" }, { type: "microphone", sessionId: "s1" }]);
   });
 
-  it("hands Settings' port to the session's process and says whether its preview is watched (step 7)", async () => {
+  it("hands Settings' port to the session's process and says whether its preview is watched (step 7, plan 081)", async () => {
     const ctx = setup();
     const port = { close: () => undefined } as unknown as Electron.MessagePortMain;
-    expect(ctx.host.watchPreview("s1", true, port), "no process yet").toBe(false);
+    expect(ctx.host.joinStudio("s1", port), "no process yet").toBe(false);
+    expect(ctx.host.watchPreview("s1", true), "no process yet").toBe(false);
     const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { camera: { layout } });
     await vi.advanceTimersByTimeAsync(0);
     const child = ctx.children.at(-1)!;
     child.deliver({ type: "ready" });
     await start;
-    expect(ctx.host.watchPreview("other", true, port)).toBe(false);
-    expect(ctx.host.watchPreview("s1", true, port)).toBe(true);
+    expect(ctx.host.joinStudio("other", port)).toBe(false);
+    expect(ctx.host.watchPreview("other", true)).toBe(false);
+    expect(ctx.host.joinStudio("s1", port)).toBe(true);
+    expect(ctx.host.watchPreview("s1", true)).toBe(true);
     expect(ctx.host.watchPreview("s1", false)).toBe(true);
     expect(child.transferred).toEqual([[port]]);
     expect(child.sent.filter((m) => m.type === "cameraPreview" || (m as { type: string }).type === "cameraPreviewPort")).toEqual([
