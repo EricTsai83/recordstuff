@@ -27,6 +27,8 @@ describe("resolveSelection", () => {
 
   it("takes test files by path and refuses what names nothing, never widening to a full suite", () => {
     expect(resolveSelection(["src/x.test.ts"], scopes)).toEqual({ scopes: [], unit: [...ALWAYS_UNIT, "src/x.test.ts"].sort(), ui: [] });
+    expect(resolveSelection(["d", "d"], [...scopes, { name: "d", covers: "", unit: [], ui: [], native: ["mux::", "core::"] }]).native).toEqual(["core::", "mux::"]);
+    expect(resolveSelection(["a"], scopes).native).toBeUndefined();
     expect(() => resolveSelection([], scopes)).toThrow(/at least one/);
     expect(() => resolveSelection(["genral"], scopes)).toThrow(/Unknown scope or test file "genral"; known scopes: a, b, c/);
     expect(() => resolveSelection(["src/gone.test.ts"], scopes, () => false)).toThrow(/does not exist/);
@@ -66,6 +68,29 @@ describe("the scope catalog", () => {
   it("leaves no unit test file outside every scope, so an edit to any module has a scope that runs its tests", () => {
     const filters = [...TEST_SCOPES.flatMap(scope => scope.unit), ...ALWAYS_UNIT];
     expect(units.filter(file => !filters.some(filter => file.startsWith(filter)))).toEqual([]);
+  });
+
+  // The native engine's modules that hold tests, by their path from src/ ("mux/mp4.rs") and their top-level module.
+  const engine = path.join(root, "native/capture/src");
+  const rustFiles = (dir: string): string[] => fs.readdirSync(path.join(engine, dir), { withFileTypes: true }).flatMap(entry =>
+    entry.isDirectory() ? rustFiles(path.join(dir, entry.name)) : entry.name.endsWith(".rs") ? [path.join(dir, entry.name)] : []);
+  const tested = rustFiles("").filter(file => fs.readFileSync(path.join(engine, file), "utf8").includes("#[test]"));
+  const natives = TEST_SCOPES.flatMap(scope => scope.native ?? []);
+
+  it("names native filters that are module paths of the engine", () => {
+    for (const filter of natives) {
+      expect(filter, filter).toMatch(/^[a-z0-9_]+::$/);
+      const name = filter.slice(0, -2);
+      const exists = fs.existsSync(path.join(engine, `${name}.rs`)) || fs.existsSync(path.join(engine, name, "mod.rs"))
+        || fs.readFileSync(path.join(engine, "lib.rs"), "utf8").includes(`mod ${name} {`);
+      expect(exists, `${filter} names no module of native/capture/src`).toBe(true);
+    }
+  });
+
+  it("leaves no tested engine module outside every scope", () => {
+    const lib = fs.readFileSync(path.join(engine, "lib.rs"), "utf8");
+    const modules = tested.map(file => file === "lib.rs" ? /mod (\w+) \{\s*use super::/.exec(lib)?.[1] : file.split(path.sep)[0]!.replace(/\.rs$/, ""));
+    expect(modules.filter(module => !module || !natives.includes(`${module}::`))).toEqual([]);
   });
 
   it("leaves no background spec outside every scope, so a full suite's files are all reachable by name", () => {

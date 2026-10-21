@@ -19,6 +19,11 @@ export interface TestScope {
   /** Vitest filters: repository paths of test files or of folders and name prefixes that hold them. */
   unit: readonly string[];
   ui: readonly UiSelection[];
+  /**
+   * The native engine's Rust tests (native/capture), as `cargo test --lib` filters: module paths ending in `::`, which
+   * libtest matches as substrings of each test's path. Selecting any adds Clippy and rustfmt's check.
+   */
+  native?: readonly string[];
 }
 
 const PAGE = "src/renderer/settings/page-tests/";
@@ -92,6 +97,7 @@ export const TEST_SCOPES: readonly TestScope[] = [
     covers: "the Studio: the camera bubble's layout (its cases are shared with the native engine), input volumes, the Studio port and the preview stream",
     unit: ["src/renderer/settings/tabs/studio-", "src/renderer/settings/tabs/frame-clock.test.ts", "src/shared/camera-layout.test.ts", "src/shared/audio-volume.test.ts", "src/shared/studio-port.test.ts", "src/renderer/lib/preview-stream.test.ts", "src/renderer/lib/use-pending-value.test.ts"],
     ui: [{ file: "settings-panel.spec.ts", tags: ["@recording-settings"] }],
+    native: ["camera_layout::", "preview_gate_tests::"],
   },
   {
     name: "tray",
@@ -124,6 +130,27 @@ export const TEST_SCOPES: readonly TestScope[] = [
     ui: [],
   },
   {
+    name: "engine-file",
+    covers: "the native engine's file: the MP4 muxer, the writer and the AVC and AAC bitstreams. Rust only: a change to what a recording writes also takes the recording row of docs/testing.md",
+    unit: [],
+    ui: [],
+    native: ["mux::", "writer::", "avc::", "aac::"],
+  },
+  {
+    name: "engine-core",
+    covers: "the native engine's session: frame pacing and timing, the mixer and meters, the camera, the encoder thread and its choice, NV12. Rust only",
+    unit: [],
+    ui: [],
+    native: ["core::", "pacing::", "timing::", "async_encoder::", "encoder_choice::", "nv12::"],
+  },
+  {
+    name: "engine-platform",
+    covers: "the native engine's macOS and Windows capture and encoding; each platform runs its own. Rust only",
+    unit: [],
+    ui: [],
+    native: ["mac::", "win::"],
+  },
+  {
     name: "tooling",
     covers: "runners, analyzers and release tools under scripts/, and the background suite's process helpers",
     unit: ["scripts/", "tests/ui/process-"],
@@ -145,6 +172,8 @@ export interface Selection {
   ui: UiSelection[];
   /** For `playwright test --grep`: each whole file, or a file's tagged cases. Undefined without UI. */
   grep?: string;
+  /** `cargo test --lib` filters for the native engine. Undefined without any. */
+  native?: string[];
 }
 
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -156,7 +185,7 @@ const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\
  */
 export function resolveSelection(args: readonly string[], scopes: readonly TestScope[] = TEST_SCOPES, exists: (file: string) => boolean = () => true): Selection {
   if (!args.length) throw new Error("Name at least one scope or test file (pnpm test:scope -- --list shows the scopes).");
-  const unit = new Set<string>(), named: string[] = [];
+  const unit = new Set<string>(), native = new Set<string>(), named: string[] = [];
   const ui = new Map<string, Set<string> | undefined>();
   const addUi = (selection: UiSelection): void => {
     if (ui.has(selection.file) && ui.get(selection.file) === undefined) return;
@@ -171,6 +200,7 @@ export function resolveSelection(args: readonly string[], scopes: readonly TestS
       named.push(scope.name);
       for (const filter of scope.unit) unit.add(filter);
       for (const selection of scope.ui) addUi(selection);
+      for (const filter of scope.native ?? []) native.add(filter);
       continue;
     }
     const spec = /^(?:\.\/)?tests\/ui\/([^/]+\.spec\.ts)$/.exec(arg);
@@ -188,5 +218,5 @@ export function resolveSelection(args: readonly string[], scopes: readonly TestS
     ? uiList.map(({ file, tags }) => tags ? `${escape(file)}.*(?:${tags.map(escape).join("|")})(?:\\s|$)` : escape(file)).join("|")
     : undefined;
   for (const file of ALWAYS_UNIT) unit.add(file);
-  return { scopes: named, unit: [...unit].sort(), ui: uiList, ...(grep ? { grep } : {}) };
+  return { scopes: named, unit: [...unit].sort(), ui: uiList, ...(grep ? { grep } : {}), ...(native.size ? { native: [...native].sort() } : {}) };
 }

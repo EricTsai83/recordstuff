@@ -4,9 +4,10 @@
  * The focused local check (plan 070, docs/testing.md#select-tests-from-behavior): the unit files and background UI cases
  * of the named scopes (scripts/lib/runner/test-scopes.mts) and of any test files named directly, deduplicated, in one
  * pass each. Phases, stopping at the first that does not pass: `pnpm typecheck` (all three projects, since a file's
- * imports reach past it; `--no-typecheck` leaves it out and says so), Vitest on the selected files, a production
- * build only when UI cases are selected and `out/` is not the current sources' build, then the background suite on
- * the selected files and tags. Prints each phase's time and the wall time.
+ * imports reach past it; `--no-typecheck` leaves it out and says so), Vitest on the selected files, the native
+ * engine's Rust tests with Clippy and rustfmt's check when a scope names any, a production build only when UI cases
+ * are selected and `out/` is not the current sources' build, then the background suite on the selected files and
+ * tags. Prints each phase's time and the wall time.
  *
  * `--dry-run` lists the exact files and cases, the checks and whether a build would run, and runs nothing: Vitest and
  * Playwright only list, no build, no Electron. Unknown scopes, missing files and selections that match nothing exit 2
@@ -46,7 +47,8 @@ function usageError(message: string): never {
 if (list) {
   for (const scope of TEST_SCOPES) {
     const ui = scope.ui.map(({ file, tags }) => tags ? `${file} ${tags.join(" ")}` : file);
-    console.log(`${scope.name}: ${scope.covers}\n  unit: ${scope.unit.join(", ")}\n  ui: ${ui.length ? ui.join(", ") : "none"}`);
+    console.log(`${scope.name}: ${scope.covers}\n  unit: ${scope.unit.length ? scope.unit.join(", ") : "none"}\n  ui: ${ui.length ? ui.join(", ") : "none"}` +
+      (scope.native?.length ? `\n  native: ${scope.native.join(", ")}` : ""));
   }
   process.exit(0);
 }
@@ -77,6 +79,11 @@ const stale = selection.ui.length ? staleOutReason(root) : undefined;
 const phases: PhaseSpec[] = [
   ...(typecheck ? [{ name: "typecheck", executable: "pnpm", args: ["typecheck"] }] : []),
   ...(files.length ? [{ name: `unit (${files.length} files)`, executable: "pnpm", args: ["exec", "vitest", "run", ...selection.unit] }] : []),
+  ...(selection.native ? [
+    { name: `native (${selection.native.join(" ")})`, executable: "cargo", args: ["test", "--manifest-path", "native/capture/Cargo.toml", "--lib", "--", ...selection.native] },
+    { name: "native lint", executable: "pnpm", args: ["lint:native"] },
+    { name: "native format", executable: "pnpm", args: ["fmt:native:check"] },
+  ] : []),
   ...(stale ? [{ name: "build", executable: "pnpm", args: ["build"] }] : []),
   // Its global setup exits 2 when `out/` or the clips are missing: blocked, not failed.
   ...(cases.length ? [{ name: `background UI (${cases.length} cases)`, executable: "pnpm", args: [...PLAYWRIGHT, ...uiArgs], blockedExit: true }] : []),
@@ -84,6 +91,7 @@ const phases: PhaseSpec[] = [
 
 console.log(`Scopes: ${selection.scopes.length ? selection.scopes.join(", ") : "none"}${names.length > selection.scopes.length ? `; files: ${names.filter(name => !selection.scopes.includes(name)).join(", ")}` : ""}`);
 console.log(`Unit files (${files.length}):${files.length ? `\n${files.map(file => `  ${file}`).join("\n")}` : " none"}`);
+console.log(`Native engine filters: ${selection.native ? selection.native.join(", ") : "none"}`);
 console.log(`Background UI cases (${cases.length}):${cases.length ? `\n${cases.map(line => `  ${line}`).join("\n")}` : " none"}`);
 console.log(`Build: ${!selection.ui.length ? "not needed (no UI case)" : stale ? `yes: ${stale}` : "no: out/ is the current sources' build"}`);
 if (!typecheck) console.log("Typecheck: left out (--no-typecheck); say so in the result.");

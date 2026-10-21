@@ -944,7 +944,7 @@ impl Task for CancelTask {
 }
 
 #[cfg(test)]
-mod tests {
+mod preview_gate_tests {
     use super::PreviewGate;
 
     #[test]
