@@ -1101,10 +1101,10 @@ impl<P: Platform> Core<P> {
         for data in packets {
             self.shared.send(Media::Audio { data });
         }
-        let count = self.shared.lead_count.load(Ordering::Relaxed).max(1) as f64;
-        let frame_lead_ms = (
-            self.shared.lead_sum_us.load(Ordering::Relaxed) as f64 / count / 1000.0,
-            self.shared.lead_max_us.load(Ordering::Relaxed).max(i64::MIN / 2) as f64 / 1000.0,
+        let frame_lead_ms = frame_lead_ms(
+            self.shared.lead_sum_us.load(Ordering::Relaxed),
+            self.shared.lead_count.load(Ordering::Relaxed),
+            self.shared.lead_max_us.load(Ordering::Relaxed),
         );
         let captured = Captured {
             pictures: self.shared.captured_pictures.load(Ordering::Relaxed),
@@ -1225,6 +1225,15 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
             shared.fail(detail);
         }
     }
+}
+
+/// How far ahead of the clock the recording's frames were stamped, on average and at most, in ms. No frame while
+/// recording (a still screen, a stop right after record) is 0 for both: the maximum's `i64::MIN` start is no lead.
+fn frame_lead_ms(sum_us: i64, count: u64, max_us: i64) -> (f64, f64) {
+    if count == 0 {
+        return (0.0, 0.0);
+    }
+    (sum_us as f64 / count as f64 / 1000.0, max_us as f64 / 1000.0)
 }
 
 #[cfg(test)]

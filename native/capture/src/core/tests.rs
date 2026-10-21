@@ -1159,3 +1159,10 @@ fn the_pacer_skips_to_the_current_slot_on_its_grid() {
     pacer.skip_to(start + 35 * interval);
     assert_eq!(pacer.next_slot(), start + 40 * interval);
 }
+
+#[test]
+fn frame_lead_without_a_frame_is_zero_not_the_maximums_start() {
+    assert_eq!(frame_lead_ms(0, 0, i64::MIN), (0.0, 0.0));
+    assert_eq!(frame_lead_ms(3_000, 2, 2_500), (1.5, 2.5));
+    assert_eq!(frame_lead_ms(-4_000, 2, -1_000), (-2.0, -1.0));
+}
