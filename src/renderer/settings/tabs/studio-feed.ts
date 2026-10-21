@@ -20,7 +20,8 @@ let listening = false;
 const said = (): void => port?.postMessage({ type: "rate", fps } satisfies StudioRateMessage);
 
 function joined(event: MessageEvent): void {
-  if (event.data !== SETTINGS_CHANNELS.cameraPreviewPort || !event.ports[0]) return;
+  // Only the preload's own post, which comes from this window (Electron's MessagePort pattern): never another frame's.
+  if (event.source !== window || event.data !== SETTINGS_CHANNELS.cameraPreviewPort || !event.ports[0]) return;
   port?.close();
   port = event.ports[0];
   port.onmessage = (message) => {

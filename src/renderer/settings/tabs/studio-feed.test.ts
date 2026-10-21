@@ -9,8 +9,8 @@ function fakePort() {
     say(data: unknown) { this.onmessage?.({ data }); } };
 }
 type Port = ReturnType<typeof fakePort>;
-const give = (port: Port, data: unknown = SETTINGS_CHANNELS.cameraPreviewPort): void => {
-  window.dispatchEvent(new MessageEvent("message", { data, ports: [port as unknown as MessagePort] }));
+const give = (port: Port, data: unknown = SETTINGS_CHANNELS.cameraPreviewPort, source: MessageEventSource | null = window): void => {
+  window.dispatchEvent(new MessageEvent("message", { data, source, ports: [port as unknown as MessagePort] }));
 };
 const chunk = { width: 640, height: 360, data: new Uint8Array([1]), key: true, timestamp: 1, sent: 2, n: 1 };
 
@@ -25,6 +25,10 @@ it("gives each listener its own part of the Studio's port: chunks to the preview
   const stopLevels = feed.onLevels(levels);
   const port = fakePort();
   give(fakePort(), "something else");
+  // A port another window or frame posts is not the preload's.
+  const stranger = fakePort();
+  give(stranger, SETTINGS_CHANNELS.cameraPreviewPort, null);
+  expect([stranger.started, preview.joined.mock.calls.length]).toEqual([false, 0]);
   give(port);
   expect(port.started).toBe(true);
   expect(preview.joined).toHaveBeenCalledTimes(1);

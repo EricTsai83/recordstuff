@@ -16,9 +16,12 @@ function start(canvas: HTMLCanvasElement, status: HTMLElement): void {
     status.textContent = "WebCodecs is not available";
     return;
   }
+  let port: MessagePort | undefined;
   window.addEventListener("message", (event) => {
-    if (event.data !== CHANNEL || !event.ports[0]) return;
-    const port = event.ports[0];
+    // Only the preload's own post, from this window; a new port replaces the last one.
+    if (event.source !== window || event.data !== CHANNEL || !event.ports[0]) return;
+    port?.close();
+    port = event.ports[0];
     stats.reset();
     decoder.reset();
     status.textContent = "Joined to the capture process; waiting for a key frame…";
