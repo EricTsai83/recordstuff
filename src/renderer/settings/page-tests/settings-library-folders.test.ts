@@ -199,6 +199,8 @@ it("opens on the remembered category, selects, favorites, makes, renames and del
   await settingsItem("library-category-delete");
   await vi.waitFor(() => expect([toast()?.querySelector(".toast-title")?.textContent, toast()?.querySelector(".toast-description")?.textContent])
     .toEqual(["Could not delete “Final”", "“Final” still holds 2 recordings. Move them to another category or to the Trash first."]));
+  // Read as two sentences, not run together.
+  expect(document.getElementById("feedback")!.textContent).toBe("Could not delete “Final”. “Final” still holds 2 recordings. Move them to another category or to the Trash first.");
   expect([toast()!.querySelector(".toast-action"), picker().textContent, cards().length, document.querySelector<HTMLElement>(".library-error")!.hidden]).toEqual([null, "Final", 2, true]);
   // An empty one goes to the Trash, says so the same way, and every recording is shown.
   await pick("Talks");

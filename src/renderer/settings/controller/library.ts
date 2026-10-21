@@ -2,7 +2,7 @@
  * The Recordings tab: its layout, a card's menu, renaming, file actions and undoing a move to the Trash, and its
  * folders and search (plan 071): which folder is shown and what is searched live in the page only.
  */
-import { translate } from "../../../shared/i18n";
+import { sentences, translate } from "../../../shared/i18n";
 import type { LibraryLayout } from "../../../shared/appearance";
 import type { FolderChoice, LibraryItemView, LibraryView } from "../../../shared/settings-panel";
 import { fileNameProblem, fileNameProblemText, folderNameProblem, folderProblemText } from "../../../shared/file-name";
@@ -511,7 +511,7 @@ export async function removeFolder(folder: string): Promise<void> {
           view?.language, { name: folder, count: left })
         : (result.failure ?? text("Could not complete this action. Try again."));
       const title = translate("Could not delete “{name}”", view?.language, { name: folder });
-      announce(`${title} ${why}`);
+      announce(sentences([title, why], view?.language));
       showToast("notice", title, why, 6000);
     }
   } finally {
@@ -535,6 +535,6 @@ export async function favorite(folder: string, on: boolean): Promise<void> {
 }
 function failFavorite(failure: string | undefined): void {
   const title = text("Could not update favorites"), why = failure ?? text("Could not complete this action. Try again.");
-  announce(`${title} ${why}`);
+  announce(sentences([title, why], view?.language));
   showToast("notice", title, why, 6000);
 }
