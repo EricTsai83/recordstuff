@@ -13,7 +13,8 @@ import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { CameraPreview } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
-import { SliderSetting, Elapsed } from "./preferences";
+import { SliderSetting } from "./row-parts/slider";
+import { Elapsed } from "./row-parts/elapsed";
 import { paceStudio } from "./studio-pace";
 
 const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.find((group) => group.id === id && group.tab === "studio");

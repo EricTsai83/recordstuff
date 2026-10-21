@@ -312,7 +312,7 @@ Rust tests live beside the code (`core/tests.rs`, `#[cfg(test)]` modules, `pipel
 
 ## Settings window
 
-[main/settings/settings-window.ts](../../src/main/settings/settings-window.ts) and [renderer/settings/settings.ts](../../src/renderer/settings/settings.ts). The page's shell is `settings-app.tsx`; its tabs are `tabs/library.tsx` (its card, category selector, head and dialogs under `tabs/library/`), `tabs/preferences.tsx` (with `tabs/shortcut-editor.tsx`) and `tabs/failures.tsx`. `settings-controller.ts` is the one surface the page reads, kept by concern in `controller/`: the projection and its requests (`core.ts`), the shortcut editor, the Failures rows, the Recordings tab, the embedded player, the explanation popovers and the toast.
+[main/settings/settings-window.ts](../../src/main/settings/settings-window.ts) and [renderer/settings/settings.ts](../../src/renderer/settings/settings.ts). The page's shell is `settings-app.tsx`; its tabs are `tabs/library.tsx` (its card, category selector, head and dialogs under `tabs/library/`), `tabs/preferences.tsx` (with `tabs/shortcut-editor.tsx`, and the parts its rows and the Studio's share under `tabs/row-parts/`) and `tabs/failures.tsx`. `settings-controller.ts` is the one surface the page reads, kept by concern in `controller/`: the projection and its requests (`core.ts`), the shortcut editor, the Failures rows, the Recordings tab, the embedded player, the explanation popovers and the toast.
 
 | Function/method | Contract |
 | --- | --- |
