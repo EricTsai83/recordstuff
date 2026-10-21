@@ -152,8 +152,32 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "tooling",
-    covers: "runners, analyzers and release tools under scripts/, and the background suite's process helpers",
+    covers: "everything under scripts/ and the background suite's process helpers; the four tooling-* scopes split it by folder",
     unit: ["scripts/", "tests/ui/process-"],
+    ui: [],
+  },
+  {
+    name: "tooling-runner",
+    covers: "the runners' shared machinery: process groups and cleanup, desktop sessions, recipes and timing, test scopes, the app launcher and interrupts",
+    unit: ["scripts/lib/runner/", "scripts/start-app.test.ts", "scripts/runner-interrupt.test.ts", "tests/ui/process-"],
+    ui: [],
+  },
+  {
+    name: "tooling-acceptance",
+    covers: "the acceptance rounds' own logic and judgements, and their controlled fixtures",
+    unit: ["scripts/lib/acceptance/", "scripts/fixtures/"],
+    ui: [],
+  },
+  {
+    name: "tooling-analysis",
+    covers: "the analyzers: media verification, audio quality, CPU sampling, the matrix, frame logs and finalization timing",
+    unit: ["scripts/lib/verification/", "scripts/lib/audio/"],
+    ui: [],
+  },
+  {
+    name: "tooling-release",
+    covers: "release, packaging and signing tools: the release script and its record, after-pack, the signing identity, icons, the built engine's load check",
+    unit: ["scripts/lib/release/", "scripts/release", "scripts/after-pack.test.ts", "scripts/create-signing-identity.test.ts", "scripts/make-icons.test.ts", "scripts/native-load.test.ts"],
     ui: [],
   },
 ];

@@ -65,6 +65,13 @@ describe("the scope catalog", () => {
     }
   });
 
+  it("splits tooling into its four tooling-* scopes without leaving a file out", () => {
+    const filters = (name: string) => TEST_SCOPES.find(scope => scope.name === name)!.unit;
+    const split = TEST_SCOPES.filter(scope => scope.name.startsWith("tooling-")).flatMap(scope => scope.unit);
+    const inTooling = units.filter(file => filters("tooling").some(filter => file.startsWith(filter)));
+    expect(inTooling.filter(file => !split.some(filter => file.startsWith(filter)))).toEqual([]);
+  });
+
   it("leaves no unit test file outside every scope, so an edit to any module has a scope that runs its tests", () => {
     const filters = [...TEST_SCOPES.flatMap(scope => scope.unit), ...ALWAYS_UNIT];
     expect(units.filter(file => !filters.some(filter => file.startsWith(filter)))).toEqual([]);
