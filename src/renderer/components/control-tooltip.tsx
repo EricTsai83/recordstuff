@@ -12,8 +12,8 @@ export function ControlTooltip({
   label?: string | undefined;
   enabled?: boolean;
   delay?: number;
-  /** Where it opens; above by default. A collapsed sidebar's open beside it. */
-  side?: "top" | "right";
+  /** Where it opens; above by default. A collapsed sidebar's open beside it, the sidebar toggle's below it. */
+  side?: "top" | "right" | "bottom";
   children: ReactElement;
 }) {
   return (

@@ -14,13 +14,8 @@ export const CAMERA_MAX_SIZE = 0.6;
 export const CAMERA_PREVIEW_WIDTH = 640;
 /** The positions' key for the primary display (DisplayPreference `primary`). */
 export const PRIMARY_DISPLAY_KEY = "primary";
-/** How close to an edge or the centre, as a fraction of the free space, a dragged bubble snaps to it. */
-export const SNAP_DISTANCE = 0.03;
 /** At most this many displays' positions are kept; the oldest beyond it are dropped. */
 export const MAX_POSITIONS = 16;
-
-export const CAMERA_RATIOS = ["1:1", "4:3", "3:4", "16:9"] as const;
-export type CameraRatio = (typeof CAMERA_RATIOS)[number];
 
 export interface CameraPosition {
   /** 0 is the left edge, 1 the right one. */
@@ -50,9 +45,12 @@ export interface CameraLayout {
   positions: CameraDisplayPosition[];
 }
 
-/** A circle a fifth of the shorter side across, near the bottom-right corner, not mirrored (D1, D3, D8). */
-export const DEFAULT_CAMERA_POSITION: CameraPosition = { x: 0.97, y: 0.95 };
-export const DEFAULT_CAMERA_LAYOUT: CameraLayout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+/**
+ * A portrait 3:4 rectangle with slightly rounded corners, 21% by 28% of the shorter side, near the top-right corner,
+ * not mirrored (D3, D8; since 2026-10-21 at the maintainer's request, where it was a circle near the bottom-right).
+ */
+export const DEFAULT_CAMERA_POSITION: CameraPosition = { x: 0.97, y: 0.05 };
+export const DEFAULT_CAMERA_LAYOUT: CameraLayout = { width: 0.21, height: 0.28, rounding: 0.15, mirror: false, positions: [] };
 
 /** A rectangle in pixels from the frame's top-left corner. */
 export interface Rect { x: number; y: number; width: number; height: number }
@@ -173,24 +171,4 @@ export function previewSize(width: number, height: number): { width: number; hei
 export function positionFromRect(x: number, y: number, width: number, height: number, frameWidth: number, frameHeight: number): CameraPosition {
   const free = (frame: number, size: number, at: number): number => (frame - size > 0 ? clamp(at / (frame - size), 0, 1) : 0.5);
   return { x: free(frameWidth, width, x), y: free(frameHeight, height, y) };
-}
-
-/** A position near an edge or the centre, within SNAP_DISTANCE of it, moved onto it; each axis on its own. */
-export function snapPosition(position: CameraPosition, distance = SNAP_DISTANCE): CameraPosition {
-  const snap = (value: number): number => [0, 0.5, 1].find((target) => Math.abs(value - target) <= distance) ?? value;
-  return { x: snap(position.x), y: snap(position.y) };
-}
-
-/**
- * The layout with the bubble's shape `ratio` (width:height): the width kept and the height made to match, or, where
- * that height is out of range, the height at its bound and the width made to match. Both sizes are fractions of the
- * same shorter side, so the shape is the same on every display.
- */
-export function applyRatio(layout: CameraLayout, ratio: CameraRatio): CameraLayout {
-  const [w, h] = ratio.split(":").map(Number) as [number, number];
-  let width = clamp(layout.width, CAMERA_MIN_SIZE, CAMERA_MAX_SIZE);
-  let height = width * h / w;
-  if (height > CAMERA_MAX_SIZE) { height = CAMERA_MAX_SIZE; width = height * w / h; }
-  if (height < CAMERA_MIN_SIZE) { height = CAMERA_MIN_SIZE; width = height * w / h; }
-  return { ...copyCameraLayout(layout), width: clamp(width, CAMERA_MIN_SIZE, CAMERA_MAX_SIZE), height: clamp(height, CAMERA_MIN_SIZE, CAMERA_MAX_SIZE) };
 }

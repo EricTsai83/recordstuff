@@ -93,8 +93,9 @@ test("each failure shows its outcome label, and the rows and tab fit, in both la
       await host.evaluate((h, value) => h.setSize(value.width, value.height), { width, height });
       await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
       expect(await read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth && [...document.querySelectorAll(".result-heading")].every(el => el.scrollWidth <= el.clientWidth)`)).toBe(true);
-      const tab = await read<{ inside: boolean; fullName: boolean }>(page, `(() => { const tab = document.getElementById("tab-failures"), badge = tab.querySelector(".tab-badge"), name = tab.querySelector(".tab-name"), r = tab.getBoundingClientRect(), b = badge.getBoundingClientRect(); return { inside: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, fullName: name.scrollWidth <= name.clientWidth }; })()`);
-      expect(tab.inside, `${lang}/${scheme}/${size}: the unread count stays inside its tab tile`).toBe(true);
+      const tab = await read<{ inside: boolean; fullName: boolean }>(page, `(() => { const tab = document.getElementById("tab-failures"), shown = [...tab.querySelectorAll(".tab-badge, .tab-dot")].find(el => el.getClientRects().length), name = tab.querySelector(".tab-name"), r = tab.getBoundingClientRect(), b = shown.getBoundingClientRect(); return { inside: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, fullName: name.scrollWidth <= name.clientWidth }; })()`);
+      // The full sidebar shows the count, a collapsed one (a narrow window's) its dot.
+      expect(tab.inside, `${lang}/${scheme}/${size}: the unread count or its dot stays inside its tab tile`).toBe(true);
       if (size === "default") expect(tab.fullName, `${lang}/${scheme}: the sidebar shows the full tab name beside the unread count`).toBe(true);
       await shot(testInfo, `failure-outcomes-${lang}-${scheme}-${size}.png`);
     }

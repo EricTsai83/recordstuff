@@ -15,10 +15,16 @@ for (const language of ["en", "zh-TW"] as const) for (const size of ["default", 
     await pickMenu(page, "setting-hotkey", "custom");
     await expect(page.locator("#shortcut-capture")).toBeVisible();
     const windowId = await app.evaluate(h => h.settingsWindow().id);
-    // Whichever place this window size shows the window actions in, use the visible ones.
-    const actions = page.getByRole("group", { name: language === "en" ? "RecordStuff window actions" : "RecordStuff 視窗操作", exact: true })
-      .filter({ visible: true }).first();
-    await actions.getByRole("button", { name: language === "en" ? "Hide interface" : "隱藏介面", exact: true }).click();
+    // The full sidebar shows Hide interface and a more-actions menu; a minimum window's collapsed sidebar one button whose
+    // menu holds Hide interface and Quit.
+    const group = language === "en" ? "RecordStuff window actions" : "RecordStuff 視窗操作";
+    const actions = page.getByRole("group", { name: group, exact: true }).filter({ visible: true }).first();
+    const hide = language === "en" ? "Hide interface" : "隱藏介面";
+    if (size === "default") await actions.getByRole("button", { name: hide, exact: true }).click();
+    else {
+      await actions.getByRole("button", { name: group, exact: true }).click();
+      await page.getByRole("menuitem", { name: hide, exact: true }).click();
+    }
     await expect.poll(() => app.evaluate(h => h.settingsState().visible)).toBe(false);
     expect(await app.evaluate((h, windowId) => h.settingsWindow().id === windowId && !h.settingsWindow().isDestroyed(), windowId)).toBe(true);
     expect(app.child.exitCode).toBeNull();
@@ -27,7 +33,7 @@ for (const language of ["en", "zh-TW"] as const) for (const size of ["default", 
     await expect.poll(() => app.evaluate(h => h.settingsState().visible)).toBe(true);
     await expect(page.locator("#tab-general")).toHaveAttribute("aria-selected", "true");
     expect(await app.evaluate(h => h.settingsWindow().id)).toBe(windowId);
-    const more = actions.getByRole("button", { name: language === "en" ? "More window actions" : "更多視窗操作", exact: true });
+    const more = actions.getByRole("button", { name: size === "default" ? language === "en" ? "More window actions" : "更多視窗操作" : group, exact: true });
     await expect(more).toHaveAttribute("aria-expanded", "false");
     // The last request uses the quit coordinator, rather than the hide path.
     const exited = new Promise<number | null>(resolve => app.child.once("exit", code => resolve(code)));

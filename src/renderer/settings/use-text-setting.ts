@@ -11,9 +11,6 @@ import * as model from "./settings-controller";
 
 export function useTextSetting(group: SettingsGroup) {
   const value = model.committed(group),
-    held = Boolean(
-      group.enabled && model.saving && model.saving.group !== group.id,
-    ),
     [draft, setDraft] = useState(value),
     // The example's time is read once, when the field appears: redrawn with the clock it changed under the reader's
     // eyes on every update of the page (2026-10-07).
@@ -32,9 +29,8 @@ export function useTextSetting(group: SettingsGroup) {
     const name = (field.current?.value ?? draft).trim();
     // Main already refused this very value: leaving the field or Enter again would only repeat its answer.
     const refusedAlready =
-      model.failure?.group === group.id &&
-      model.failure.refused &&
-      model.failure.choice === name;
+      model.failureOf(group.id)?.refused &&
+      model.failureOf(group.id)?.choice === name;
     if (
       !group.enabled ||
       name === model.committed(group) ||
@@ -65,5 +61,5 @@ export function useTextSetting(group: SettingsGroup) {
     setDraft(value);
     model.clearFailure(group.id);
   };
-  return { value, held, draft, field, submit, refused, note, edit, reset };
+  return { value, draft, field, submit, refused, note, edit, reset };
 }

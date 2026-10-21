@@ -26,6 +26,8 @@ import { SETTINGS_CHANNELS } from "../../src/shared/settings-panel";
 import { MEASURE_UI, type UiMeasurement } from "./ui-measure";
 import { VIDEO_CHANNELS, VIDEO_QUERY } from "../../src/shared/video-player";
 import type { Language } from "../../src/shared/i18n";
+import { DEFAULT_CAMERA_LAYOUT } from "../../src/shared/camera-layout";
+import { DEFAULT_AUDIO_VOLUME } from "../../src/shared/audio-volume";
 
 const [outDir, root, clips] = (() => {
   const [output, repository, folder] = process.argv.slice(-3);
@@ -84,6 +86,8 @@ async function run(): Promise<void> {
   let recordingResults: RecordingResult[] = [];
   /** A folder state drawn in place of the real one: empty, or unreadable (plan 067). */
   let libraryOverride: LibraryState | undefined;
+  /** The Recording Studio's picture (2026-10-22): between recordings none, during one shown or hidden by Live preview. */
+  let studio: NonNullable<AppContext["studio"]> = { showing: false };
   // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
   const PREVIEW_DISPLAYS: AppContext["displays"] = [
     { id: "1", label: "BenQ BL2480T", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false, x: -1080, y: -620 },
@@ -91,7 +95,12 @@ async function run(): Promise<void> {
   ];
   const context = (): AppContext => ({ platform: process.platform, language, outputDir: clips, homeDir: os.homedir(), version: "1.5.0",
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
-    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults });
+    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults,
+    // The camera as a Mac has it (available since plan 075 step 7), on with its default bubble, for the Studio's tab.
+    camera: { enabled: true, available: true, access: "granted", layout: DEFAULT_CAMERA_LAYOUT, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }],
+      ...(state.type === "recording" ? { session: { hidden: false } } : {}) },
+    audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio,
+    ...(state.type === "recording" ? { audioSession: { systemMuted: false } } : {}) });
   let entry = 0;
   let tab: SettingsTab = "library";
   const view = () => ({ ...settingsView(state, context()), resultFocus: entry, entryTab: tab });
@@ -109,6 +118,8 @@ async function run(): Promise<void> {
     if (group === "library" && choice === "undoTrash") { const applied = await library.undoTrash(); return { view: view(), applied }; }
     return { view: view(), applied: false };
   });
+  // The Studio's watches: no engine here, so no preview frames or levels; the page draws its stage without them.
+  for (const channel of ["settings:watch-studio", "settings:camera-preview", "settings:watch-levels", "settings:watch-microphone-level"]) ipcMain.handle(channel, () => {});
   ipcMain.handle(VIDEO_CHANNELS.ready, () => {});
   ipcMain.handle(VIDEO_CHANNELS.exit, () => {});
 
@@ -153,12 +164,12 @@ async function run(): Promise<void> {
   const toBottom = (window: BrowserWindow): Promise<unknown> => run(window, `(p => { p.scrollTop = p.scrollHeight; })(document.getElementById("settings-panel"))`);
   const toTop = (window: BrowserWindow): Promise<unknown> => run(window, `document.getElementById("settings-panel").scrollTop = 0`);
   const begin = async (group: string, lang: Language, scheme: "light" | "dark", sizeName: string, size: { width: number; height: number }): Promise<BrowserWindow> => {
-    language = lang; state = { type: "idle" }; libraryOverride = undefined;
+    language = lang; state = { type: "idle" }; libraryOverride = undefined; studio = { showing: false };
     nativeTheme.themeSource = scheme;
     current = { group, lang, scheme, size: sizeName, width: size.width, height: size.height };
     return open(size);
   };
-  const TABS = ["library", "recording", "general", "shortcuts", "failures"] as const;
+  const TABS = ["library", "studio", "recording", "general", "shortcuts", "failures"] as const;
 
   // 1. The baseline matrix: every tab, both languages and themes, the default, narrow and minimum sizes, and the
   //    bottom of every page that scrolls (plan 067 step 2).
@@ -179,6 +190,28 @@ async function run(): Promise<void> {
       state = { type: "recording", startedAt: new Date().toISOString() };
       await show(window, "recording");
       await shoot(window, `recording-state-${lang}-${scheme}.png`, `recording in progress · ${lang} · ${scheme}`, { state: "recording" });
+      // The Studio during a recording: its picture shown, then hidden by Live preview (2026-10-21).
+      studio = { showing: true };
+      await show(window, "studio");
+      await shoot(window, `studio-recording-${lang}-${scheme}.png`, `the Studio while recording · ${lang} · ${scheme}`, { state: "recording" });
+      studio = { showing: false, pictureHidden: true };
+      await show(window, "studio");
+      await shoot(window, `studio-picture-hidden-${lang}-${scheme}.png`, `the Studio while recording, its picture hidden · ${lang} · ${scheme}`, { state: "picture-hidden" });
+      studio = { showing: false };
+      // Live preview as the pointer finds it (2026-10-22): off, in the picture's middle; on, in its corner. With the pointer over the picture, as
+      // it shows only then.
+      state = { type: "idle" };
+      for (const [name, next] of [["off", { showing: false }], ["on", { preview: { live: true }, showing: true }]] as const) {
+        studio = next;
+        await show(window, "studio");
+        // The pointer over the picture, as a hover shows the switch; then away again for the next pictures.
+        const at = await run(window, `(r => ({ x: r.left + r.width / 2, y: r.top + r.height / 4 }))(document.querySelector(".camera-preview-stage").getBoundingClientRect())`) as { x: number; y: number };
+        window.webContents.sendInputEvent({ type: "mouseMove", x: Math.round(at.x), y: Math.round(at.y) });
+        await settle(300);
+        await shoot(window, `studio-live-${name}-${lang}-${scheme}.png`, `the Studio's Live preview ${name}, the pointer over the picture · ${lang} · ${scheme}`, { state: `live-${name}` });
+        window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+      }
+      studio = { showing: false };
       state = { type: "needsPermission", needsRelaunch: false };
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`, { state: "needsPermission" });

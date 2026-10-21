@@ -28,7 +28,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
     }
     event.preventDefault();
     event.stopPropagation();
-    if (model.saving || event.repeat) return;
+    if (model.anySaving() || event.repeat) return;
     if (event.key === "Escape") {
       void model.capture(false, true);
       return;
@@ -74,7 +74,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
       return;
     }
     model.setCandidate(result.accelerator);
-    model.setFailure(undefined);
+    model.clearFailure(group.id);
     model.announce(
       sentences(
         [model.preview, model.text("Confirm to save")],
@@ -94,7 +94,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
           queueMicrotask(() => {
             if (
               model.shortcutGroup()?.capturing &&
-              !model.saving &&
+              !model.anySaving() &&
               !area.contains(next ?? document.activeElement)
             )
               void model.capture(false);
@@ -114,7 +114,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
           onKeyUp={(event) => {
             if (
               group.capturing &&
-              !model.saving &&
+              !model.anySaving() &&
               !model.candidateToConfirm &&
               ["Meta", "Control", "Alt", "Shift"].includes(event.key)
             ) {
@@ -141,7 +141,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
           id="shortcut-confirm"
           disabled={!group.enabled || !model.candidateToConfirm}
           aria-disabled={
-            Boolean(model.saving) || !group.enabled || !model.candidateToConfirm
+            model.anySaving() || !group.enabled || !model.candidateToConfirm
           }
           tabIndex={model.candidateToConfirm ? 0 : -1}
           onMouseDown={(event) => {
@@ -151,7 +151,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
             if (
               model.candidateToConfirm &&
               model.shortcutGroup()?.capturing &&
-              !model.saving
+              !model.anySaving()
             )
               void model.choose(
                 group.id,
@@ -165,7 +165,7 @@ export function ShortcutEditor({ group }: { group: SettingsGroup }) {
         <Button
           variant="outline"
           id="shortcut-cancel"
-          disabled={Boolean(model.saving)}
+          disabled={model.anySaving()}
           onClick={() => void model.capture(false, true)}
         >
           {model.text("Cancel")}

@@ -270,12 +270,15 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
-    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRatio", "cameraRounding", "cameraMirror", "systemAudio", "systemGain", "studioControls"]);
+    expect(studio(on())).toEqual(["studioCamera", "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror", "studioLive", "systemAudio", "systemGain", "studioControls"]);
     expect(ids(context)).toEqual([]);
     expect(studio(context), "no camera: the Studio keeps its audio and controls").toEqual(["systemAudio", "systemGain", "studioControls"]);
-    expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "slider", slider: { min: 5, max: 60, step: 1, value: 20, unit: "percent" } });
-    expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "slider", slider: { min: 0, max: 100, value: 100 } });
-    expect(group(idle, on(), "cameraRatio")?.choices.map((c) => [c.id, c.checked])).toEqual([["1:1", true], ["4:3", false], ["3:4", false], ["16:9", false]]);
+    // The size in pixels of the recording's shorter side, 1080 with no display known: a fifth of it.
+    expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "number", number: { min: 54, max: 648, step: 1, value: 216, unit: "px", short: "W" } });
+    expect(group(idle, on({ layout: { ...layout, height: 0.28 } }), "cameraHeight")?.number).toMatchObject({ value: 302, short: "H" });
+    expect(group(idle, on(), "cameraWidth")?.note, "no display: nothing to say it is counted on").toBeUndefined();
+    expect(group(idle, on(), "cameraRounding")).toMatchObject({ control: "number", number: { min: 0, max: 100, step: 1, value: 100, unit: "percent", short: "Round" } });
+    expect(group(idle, { ...on(), language: "zh-TW" }, "cameraRounding")?.number?.short).toBe("圓角");
     expect(checked(idle, on(), "cameraMirror")).toBe("off");
     expect(group(idle, { ...on(), language: "zh-TW" }, "cameraMirror")).toMatchObject({ label: "錄影時鏡像" });
   });
@@ -289,15 +292,33 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(missing.note).toBe("Recordings use the system default camera until USB Camera is connected.");
   });
 
-  it("send a slider's whole percent within range as the shape, and a ratio button or the mirror", () => {
-    expect(settingsAction(idle, on(), "cameraWidth", "35")).toEqual({ setCameraShape: { width: 0.35 } });
+  it("count the size in the pixels of the recording the display and quality make, and say so (2026-10-21)", () => {
+    const display = { id: "7", label: "Studio", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true };
+    const retina = { ...on(), displays: [display] };
+    // 3024 × 1964 recorded: a fifth of 1964.
+    expect(group(idle, retina, "cameraWidth")).toMatchObject({ number: { min: 99, max: 1178, value: 393 }, note: "Pixels in a 3024 × 1964 recording." });
+    // At 1080p the same bubble is fewer pixels, the same share of the picture.
+    const capped = { ...retina, quality: { ...retina.quality, resolutionCap: "1080p" as const } };
+    expect(group(idle, capped, "cameraWidth")).toMatchObject({ number: { value: 216 }, note: "Pixels in a 1662 × 1080 recording." });
+    expect(group(idle, { ...capped, language: "zh-TW" }, "cameraWidth")?.note).toBe("以 1662 × 1080 的錄影計算像素。");
+    // Pixels entered are their share of the shorter side, which gives the same pixels back.
+    const sent = settingsAction(idle, retina, "cameraWidth", "300");
+    expect(sent).toEqual({ setCameraShape: { width: 300 / 1964 } });
+    const width = (sent as { setCameraShape: { width: number } }).setCameraShape.width;
+    expect(group(idle, { ...retina, camera: { ...retina.camera!, layout: { ...retina.camera!.layout!, width } } }, "cameraWidth")?.number?.value).toBe(300);
+  });
+
+  it("send a field's whole pixels or percent within range as the shape, and the mirror", () => {
+    expect(settingsAction(idle, on(), "cameraWidth", "378")).toEqual({ setCameraShape: { width: 378 / 1080 } });
     expect(settingsAction(idle, on(), "cameraRounding", "0")).toEqual({ setCameraShape: { rounding: 0 } });
-    for (const bad of ["4", "61", "3.5", "-1", "", "abc"]) expect(settingsAction(idle, on(), "cameraHeight", bad), bad).toBeUndefined();
-    expect(settingsAction(idle, on(), "cameraRatio", "16:9")).toEqual({ setCameraRatio: "16:9" });
+    expect(settingsAction(idle, on(), "cameraRounding", "37")).toEqual({ setCameraShape: { rounding: 0.37 } });
+    for (const bad of ["53", "649", "3.5", "-1", "", "abc"]) expect(settingsAction(idle, on(), "cameraHeight", bad), bad).toBeUndefined();
+    expect(settingsAction(idle, on(), "cameraRounding", "101")).toBeUndefined();
     expect(settingsAction(idle, on(), "cameraMirror", "on")).toEqual({ setCameraShape: { mirror: true } });
-    // Off: the rows wait for the switch.
-    expect(settingsAction(idle, on({ enabled: false }), "cameraWidth", "30")).toBeUndefined();
-    expect(group(idle, on({ enabled: false }), "cameraRatio")?.enabled).toBe(false);
+    // Off, the bubble is shaped all the same, ready for when the camera is on (2026-10-22).
+    expect(settingsAction(idle, on({ enabled: false }), "cameraWidth", "300")).toEqual({ setCameraShape: { width: 300 / 1080 } });
+    expect(group(idle, on({ enabled: false }), "cameraRounding")?.enabled).toBe(true);
+    expect(settingsAction(idle, on({ enabled: false }), "cameraMirror", "on")).toEqual({ setCameraShape: { mirror: true } });
   });
 
   it("keep the shape usable while a recording composes the camera, and lock the device", () => {
@@ -305,11 +326,13 @@ describe("the camera's rows (plan 075, step 7)", () => {
     const live = on({ session: { hidden: false } });
     expect(group(recording, live, "cameraWidth")?.enabled).toBe(true);
     expect(group(recording, live, "cameraMirror")?.enabled).toBe(true);
-    expect(settingsAction(recording, live, "cameraWidth", "30")).toEqual({ setCameraShape: { width: 0.3 } });
+    expect(settingsAction(recording, live, "cameraWidth", "324")).toEqual({ setCameraShape: { width: 0.3 } });
     expect(group(recording, live, "cameraDevice")?.enabled).toBe(false);
     expect(group(recording, live, "camera")?.enabled).toBe(false);
-    // A recording without the camera keeps the rows locked with the others.
-    expect(settingsAction(recording, on(), "cameraWidth", "30")).toBeUndefined();
+    // A recording that is to compose the camera but cannot take a change yet keeps the rows locked with the others.
+    expect(settingsAction(recording, on(), "cameraWidth", "324")).toBeUndefined();
+    // One recorded without the camera leaves the bubble to shape, as its place, for the next recording.
+    expect(settingsAction(recording, on({ enabled: false }), "cameraWidth", "324")).toEqual({ setCameraShape: { width: 0.3 } });
   });
 });
 
@@ -325,19 +348,33 @@ describe("the Recording Studio's controls (plan 075, D19)", () => {
     expect(controls({ type: "stopping" })).toMatchObject({ label: "Saving…", choices: [{ id: "saving", enabled: false }] });
     expect(controls(idle).elapsedSince).toBeUndefined();
   });
-  it("offer Live preview between recordings where the engine makes one, Stop preview while there is one, and say why one could not start (D20)", () => {
+  it("offer Live preview as a switch of the preview's own, apart from Start: the session between recordings, the picture during one (D20, 2026-10-21)", () => {
     const mac = { ...context, camera: { enabled: false, available: true } };
-    expect(controls(idle, mac).choices.map((c) => [c.id, c.enabled])).toEqual([["preview", true], ["start", true]]);
-    expect(settingsAction(idle, mac, "studioControls", "preview")).toBe("startPreview");
-    expect(controls(idle, context).choices.map((c) => c.id), "none without the engine's preview (Windows)").toEqual(["start"]);
+    const live = (state: RecordingState, ctx: AppContext) => group(state, ctx, "studioLive");
+    expect(controls(idle, mac).choices.map((c) => [c.id, c.enabled]), "Start alone").toEqual([["start", true]]);
+    expect(controls(idle, mac)).toMatchObject({ label: "Ready", phase: "idle" });
+    expect(live(idle, mac)).toMatchObject({ tab: "studio", control: "switch", enabled: true, label: "Live preview" });
+    expect(settingsChecked(idle, mac, "studioLive", "off")).toBe(true);
+    expect(settingsAction(idle, mac, "studioLive", "on")).toBe("startPreview");
+    expect(live(idle, context), "none without the engine's preview (Windows)").toBeUndefined();
     const starting = { ...mac, studio: { preview: { live: false }, showing: false } };
-    expect(controls(idle, starting)).toMatchObject({ label: "Starting preview…", choices: [{ id: "stopPreview" }, { id: "start", enabled: true }] });
-    const live = { ...mac, studio: { preview: { live: true }, showing: true } };
-    expect(controls(idle, live).label).toBe("Previewing");
-    expect(settingsAction(idle, live, "studioControls", "stopPreview")).toBe("stopPreview");
-    expect(settingsAction(idle, live, "studioControls", "start"), "Start takes it").toBe("start");
-    expect(controls(idle, { ...mac, studio: { showing: false, previewFailure: "camera_unavailable" } }).note).toMatch(/^Live preview could not start: /);
-    expect(controls({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, live).choices.map((c) => c.id), "a recording has no preview to start").toEqual(["stop"]);
+    expect(live(idle, starting)).toMatchObject({ note: "Starting preview…" });
+    expect(settingsChecked(idle, starting, "studioLive", "on")).toBe(true);
+    const previewing = { ...mac, studio: { preview: { live: true }, showing: true } };
+    expect(controls(idle, previewing).label, "the recording's state, not the preview's").toBe("Ready");
+    expect(settingsAction(idle, previewing, "studioLive", "off")).toBe("stopPreview");
+    expect(settingsAction(idle, previewing, "studioControls", "start"), "Start takes it").toBe("start");
+    expect(live(idle, { ...mac, studio: { showing: false, previewFailure: "camera_unavailable" } })?.note).toMatch(/^Live preview could not start: /);
+    const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
+    const showing = { ...mac, studio: { showing: true } };
+    expect(controls(recording, showing)).toMatchObject({ label: "Recording", phase: "recording", choices: [{ id: "stop" }] });
+    expect(settingsChecked(recording, showing, "studioLive", "on"), "a recording's picture shows").toBe(true);
+    expect(settingsAction(recording, showing, "studioLive", "off")).toBe("hideStudioPicture");
+    const hidden = { ...mac, studio: { showing: false, pictureHidden: true } };
+    expect(settingsChecked(recording, hidden, "studioLive", "off")).toBe(true);
+    expect(settingsAction(recording, hidden, "studioLive", "on")).toBe("showStudioPicture");
+    expect(live({ type: "stopping" } as RecordingState, showing)?.enabled, "nothing to show while saving").toBe(false);
+    expect(controls({ type: "countdown", remaining: 3 } as RecordingState, mac).phase).toBe("countdown");
   });
   it("wait for screen recording's permission, whose fix the status card offers, in either of its steps", () => {
     for (const needsRelaunch of [false, true]) {
@@ -351,8 +388,8 @@ describe("the Recording Studio's controls (plan 075, D19)", () => {
 describe("the Recording Studio's audio (plan 075, D19)", () => {
   const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
   it("shows each input's meter and mute for the recording in progress, the microphone's while it records one", () => {
-    expect(group(idle, context, "systemAudio")).toMatchObject({ tab: "studio", control: "meter", meter: { source: "system" }, enabled: false,
-      note: "Its level shows, and it can be muted, while recording." });
+    expect(group(idle, context, "systemAudio")).toMatchObject({ tab: "studio", control: "meter", meter: { source: "system" }, enabled: false });
+    expect(group(idle, context, "systemAudio")?.note, "nothing to explain: the meter shows only while recording").toBeUndefined();
     expect(group(idle, context, "microphoneAudio")).toBeUndefined();
     expect(group(idle, { ...context, microphone: { enabled: true } }, "microphoneAudio")).toMatchObject({ enabled: false, meter: { source: "microphone" } });
     const live = { ...context, audioSession: { systemMuted: true, microphone: { muted: false } } };
@@ -365,17 +402,17 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
     expect(group(recording, { ...live, microphone: { enabled: true }, audioSession: { systemMuted: false } }, "microphoneAudio")).toBeUndefined();
     expect(settingsAction(idle, context, "systemAudio", "mute"), "nothing to mute between recordings").toBeUndefined();
     // Each input's fader (D21): saved, offered between and during recordings, the microphone's only with its meter.
-    expect(group(idle, { ...context, audioGain: { system: -6, microphone: 3 } }, "systemGain")).toMatchObject({ tab: "studio", control: "slider", enabled: true,
-      label: "System audio volume", slider: { min: -60, max: 12, step: 1, value: -6, unit: "decibels" }, choices: [{ id: "-6", label: "−6 dB", checked: true }] });
-    expect(group(idle, context, "systemGain")?.slider?.value, "absent is 0 dB").toBe(0);
-    expect(group(idle, { ...context, audioGain: { system: -60, microphone: 0 } }, "systemGain")?.choices[0]?.label).toBe("−∞ dB");
+    expect(group(idle, { ...context, audioVolume: { system: 50, microphone: 140 } }, "systemGain")).toMatchObject({ tab: "studio", control: "slider", enabled: true,
+      label: "System audio volume", slider: { min: 0, max: 600, step: 5, value: 50, unit: "percent" }, choices: [{ id: "50", label: "50%", checked: true }] });
+    expect(group(idle, context, "systemGain")?.slider?.value, "absent is 100%").toBe(100);
+    expect(group(idle, { ...context, audioVolume: { system: 0, microphone: 100 } }, "systemGain")?.choices[0]?.label).toBe("0%");
     expect(group(idle, { ...context, microphone: { enabled: true }, language: "zh-TW" }, "microphoneGain")).toMatchObject({ label: "麥克風音量", enabled: true });
     expect(group(idle, context, "microphoneGain")).toBeUndefined();
-    expect(settingsAction(recording, live, "systemGain", "12")).toEqual({ setAudioGain: { source: "system", db: 12 } });
-    expect(settingsAction(recording, live, "microphoneGain", "-60")).toEqual({ setAudioGain: { source: "microphone", db: -60 } });
-    expect(settingsAction(idle, context, "systemGain", "-7")).toEqual({ setAudioGain: { source: "system", db: -7 } });
-    for (const choice of ["13", "-61", "1.5", "loud"]) expect(settingsAction(idle, context, "systemGain", choice), choice).toBeUndefined();
-    expect(settingsAction(idle, context, "microphoneGain", "0"), "no microphone: no fader").toBeUndefined();
+    expect(settingsAction(recording, live, "systemGain", "600")).toEqual({ setAudioVolume: { source: "system", volume: 600 } });
+    expect(settingsAction(recording, live, "microphoneGain", "0")).toEqual({ setAudioVolume: { source: "microphone", volume: 0 } });
+    expect(settingsAction(idle, context, "systemGain", "71")).toEqual({ setAudioVolume: { source: "system", volume: 71 } });
+    for (const choice of ["601", "-5", "1.5", "loud"]) expect(settingsAction(idle, context, "systemGain", choice), choice).toBeUndefined();
+    expect(settingsAction(idle, context, "microphoneGain", "100"), "no microphone: no fader").toBeUndefined();
     expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "音訊" });
   });
 });
@@ -383,7 +420,7 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
 describe("the camera's preview (plan 075, step 7)", () => {
   const layout = { width: 0.2, height: 0.3, rounding: 0.5, mirror: true, positions: [{ display: "primary", x: 0.1, y: 0.2 }, { display: "9", x: 0.4, y: 0.6 }] };
   const displays = [
-    { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true, menuBar: 33 },
+    { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true },
     { id: "9", label: "Studio", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false },
   ];
   const devices = [{ id: "iphone", name: "iPhone Camera", default: true }];
@@ -392,14 +429,14 @@ describe("the camera's preview (plan 075, step 7)", () => {
   const preview = (state: RecordingState, ctx: AppContext) => group(state, ctx, "cameraPreview");
   const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
 
-  it("shows the display the recording captures, its menu bar, and the bubble where the recording puts it", () => {
+  it("shows the display the recording captures and the bubble where the recording puts it", () => {
     expect(settingsView(idle, on()).groups.filter((g) => g.tab === "studio").map((g) => g.id).slice(0, 2), "the Studio's first row").toEqual(["cameraPreview", "studioCamera"]);
     expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
-      mode: "live", display: { width: 1512, height: 982, menuBar: 33 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
+      mode: "live", display: { width: 1512, height: 982 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
       x: 0.1, y: 0.2, camera: "iPhone Camera" } });
-    // Another display: its own position; hiding the menu bar takes the band away.
-    const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" }, hideSystemUi: true });
-    expect(preview(idle, studio)?.cameraPreview).toMatchObject({ display: { width: 1080, height: 1920, menuBar: 0 }, x: 0.4, y: 0.6 });
+    // Another display: its own position.
+    const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" } });
+    expect(preview(idle, studio)?.cameraPreview).toMatchObject({ display: { width: 1080, height: 1920 }, x: 0.4, y: 0.6 });
     expect(preview(idle, { ...on(), displays: [] }), "no display to show").toBeUndefined();
     // The chosen camera by the name it has now, which the page matches; a renamed one keeps its stored label meanwhile.
     expect(preview(idle, on({ device: { id: "iphone", label: "Old iPhone name" } }))?.cameraPreview?.camera).toBe("iPhone Camera");
@@ -411,6 +448,8 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(preview({ type: "starting" }, on())?.cameraPreview).toMatchObject({ mode: "off", status: "Shown here once the recording starts." });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(recording, on({ session: { hidden: false } }, { studio: { showing: false, pictureHidden: true } }))?.cameraPreview,
+      "Live preview switched off during the recording: the bubble's place, to drag (2026-10-21)").toMatchObject({ mode: "off", composed: true, status: "Live preview is off." });
     expect(preview(idle, { ...on(), language: "zh-TW" })).toMatchObject({ label: "預覽" });
     // A Live preview's picture, with the camera off: the engine's, with no bubble to place (D20).
     expect(preview(idle, on({ enabled: false }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview)
@@ -420,12 +459,16 @@ describe("the camera's preview (plan 075, step 7)", () => {
       .toMatchObject({ mode: "recording", composed: true });
   });
 
-  it("sends where the bubble was let go of on the display shown, also while recording, and nothing out of range", () => {
+  it("sends where the bubble was let go of on the display shown at any time, and nothing out of range", () => {
     expect(settingsAction(idle, on(), "cameraPreview", "0.25,1")).toEqual({ setCameraPosition: { display: "1", x: 0.25, y: 1 } });
     expect(settingsAction(recording, on({ session: { hidden: false } }), "cameraPreview", "0,0.5")).toEqual({ setCameraPosition: { display: "1", x: 0, y: 0.5 } });
     for (const bad of ["1.5,0", "-0.1,0", "0.5", "0.5,0.5,0", "NaN,0", "0.1234567,0", "", "x,y"]) expect(settingsAction(idle, on(), "cameraPreview", bad), bad).toBeUndefined();
-    expect(settingsAction(idle, on({ enabled: false }), "cameraPreview", "0.5,0.5")).toBeUndefined();
-    expect(settingsAction(recording, on(), "cameraPreview", "0.5,0.5"), "a recording without the camera").toBeUndefined();
+    expect(settingsAction(idle, on({ enabled: false }), "cameraPreview", "0.5,0.5"), "the camera off").toEqual({ setCameraPosition: { display: "1", x: 0.5, y: 0.5 } });
+    expect(settingsAction({ type: "starting" }, on(), "cameraPreview", "0.5,0.5"), "a recording starting").toEqual({ setCameraPosition: { display: "1", x: 0.5, y: 0.5 } });
+    expect(settingsAction(recording, on(), "cameraPreview", "0.5,0.5"), "a recording without the camera").toEqual({ setCameraPosition: { display: "1", x: 0.5, y: 0.5 } });
+    for (const state of [idle, { type: "starting" } as RecordingState, recording]) {
+      expect(preview(state, on({ enabled: false }))?.enabled, `placed at any time: ${state.type}`).toBe(true);
+    }
   });
 });
 

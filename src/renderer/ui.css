@@ -18,24 +18,20 @@
   src: url("./assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
 }
 @custom-variant dark (&:is(.dark *));
-/* The window states the pages set on <html>, and the width breakpoints the Settings layout switches at, as variants a
-   call site can use beside the primitives' own utilities (plan 069). The breakpoints keep their exact queries: 600 px
-   and up is the sidebar layout, 599 px and down the tab strip, 420 px and down the stacked rows. */
+/* The window states the pages set on <html>, and the width breakpoint the Settings rows stack at, as variants a call
+   site can use beside the primitives' own utilities (plan 069). The breakpoint keeps its exact query: 420 px and down
+   stacks the rows. Under 600 px the sidebar stays collapsed (settings-app). */
 @custom-variant darwin (&:where([data-platform="darwin"] *));
 /* The last input was the pointer (the page sets data-input): a focus ring is for the keyboard only. */
 @custom-variant pointer (&:where([data-input="pointer"] *));
-@custom-variant wide {
-  @media (min-width: 600px) {
-    @slot;
-  }
-}
-@custom-variant narrow {
-  @media (max-width: 599px) {
-    @slot;
-  }
-}
 @custom-variant compact {
   @media (max-width: 420px) {
+    @slot;
+  }
+}
+/* A window too short for the collapsed sidebar's two toolbars at their full size (2026-10-21). */
+@custom-variant short {
+  @media (max-height: 420px) {
     @slot;
   }
 }
@@ -252,7 +248,16 @@
      picture arrives, and the outline that is dragged over a recording's picture, the same in both themes. */
   /* The Recording Studio's panels, raised as Settings' section cards are. */
   --studio-panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 2px 10px rgb(0 0 0 / 0.035);
-  --camera-preview-menubar: rgb(255 255 255 / 0.55);
+  /* Live preview's glass pill over the picture, the same in both themes: its edge, glass and ink, white once on, and
+     its signal's green, not the recording's red. */
+  --studio-live-edge: rgb(255 255 255 / 0.18);
+  --studio-live-glass: rgb(0 0 0 / 0.45);
+  --studio-live-ink: rgb(255 255 255 / 0.72);
+  --studio-live-ink-on: #fff;
+  --studio-live-signal: oklch(0.77 0.15 163);
+  /* A collapsed sidebar's floating toolbars, and the note that opens beside them (2026-10-20). */
+  --sidebar-toolbar-shadow: 0 0 0 1px var(--sidebar-border), 0 4px 14px rgb(0 0 0 / 0.08);
+  --sidebar-note-shadow: 0 0 0 1px var(--border), 0 6px 18px rgb(0 0 0 / 0.12);
   /* A level meter's bar: green to amber to red over its last 12 dB below full scale. */
   --meter-level: linear-gradient(90deg, oklch(0.72 0.17 150) 0% 80%, oklch(0.8 0.16 85) 80% 95%, oklch(0.63 0.22 27) 95%);
   --camera-preview-bubble: oklch(0.32 0.01 260);
@@ -471,7 +476,7 @@
   [data-variant="sidebar"] [role="tab"][aria-selected="true"]::before {
     content: "";
     position: absolute;
-    inset: -2px auto -2px -3.5px;
+    inset: -2px auto -2px -3px;
     width: 20px;
     border-left: 8px solid var(--sidebar-primary);
     border-radius: 18px 0 0 18px / 50% 0 0 50%;
@@ -513,7 +518,7 @@
     box-shadow: inset 0 0 0 1px var(--brand-edge);
     position: relative;
   }
-  /* Sized from the name's font size, so the wide sidebar and the narrow title strip keep one proportion. */
+  /* Sized from the name's font size. */
   .brand-mark {
     --m: calc(28em / 18);
   }
@@ -873,12 +878,6 @@
     height: 100%;
     background: var(--display-bezel);
   }
-  .camera-preview-menubar {
-    position: absolute;
-    inset: 0 0 auto;
-    background: var(--camera-preview-menubar);
-    backdrop-filter: blur(6px);
-  }
   .camera-preview-bubble {
     position: absolute;
     overflow: hidden;
@@ -987,13 +986,66 @@
     gap: 2px;
     min-width: 0;
   }
-  /* The shape's four segments take the panel's whole width under their label, however narrow the panel. */
-  .studio-shape-row.studio-ratio {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+  /* The bubble's width, height and rounding side by side (2026-10-21): three number fields on one line, wrapping in a
+     narrow panel rather than cutting a value off. */
+  .studio-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
-  .studio-shape-row .slider-setting {
-    width: 100%;
+  /* A number field with its short name inside it, as a design tool's: the name is dragged sideways to change it. */
+  .number-setting {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    min-width: max-content;
+    height: 30px;
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    background: color-mix(in oklch, var(--input) 20%, transparent);
+    font-size: 12px;
+    transition: border-color 150ms ease-out;
+  }
+  .dark .number-setting {
+    background: color-mix(in oklch, var(--input) 30%, transparent);
+  }
+  .number-setting:focus-within {
+    border-color: color-mix(in oklch, var(--ring) 80%, transparent);
+    box-shadow: 0 0 0 0.5px color-mix(in oklch, var(--ring) 80%, transparent);
+  }
+  .number-setting[data-disabled] {
+    opacity: 0.5;
+  }
+  .number-setting-name {
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    padding-left: 8px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+    cursor: ew-resize;
+    user-select: none;
+    touch-action: none;
+  }
+  .number-setting[data-disabled] .number-setting-name {
+    cursor: default;
+  }
+  .number-setting input {
+    field-sizing: content;
+    min-width: 2ch;
+    padding: 0 1px 0 5px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .number-setting-unit {
+    padding-right: 8px;
+    color: var(--muted-foreground);
   }
   .studio-toggles {
     display: flex;
@@ -1013,7 +1065,29 @@
     gap: 2px;
     font-size: 12px;
   }
-  .studio-channel .audio-meter,
+  /* The input's name, and while recording its level and mute beside it, on one line over its fader. */
+  .studio-channel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+  }
+  .studio-channel-head > span {
+    flex: 1;
+    min-width: 0;
+  }
+  /* The level beside the name: short and in segments, a reading of the sound, unlike the fader's long track. */
+  .studio-channel .audio-meter {
+    width: auto;
+    gap: 4px;
+  }
+  .studio-channel .audio-meter-track {
+    flex: none;
+    width: 64px;
+    height: 8px;
+    border-radius: 0;
+    mask: repeating-linear-gradient(90deg, var(--mask-opaque) 0 5px, transparent 5px 7px);
+  }
   .studio-channel .slider-setting {
     width: 100%;
   }
@@ -1021,17 +1095,86 @@
   .studio-channel .slider-setting-value {
     min-width: 6ch;
   }
-  .studio-state {
-    margin: 0;
-    font-size: 12px;
-    color: var(--muted-foreground);
-  }
-  .studio-buttons {
+  /* One line over the preview (2026-10-21): the recording's phase on the left, Live preview and its action on the right. */
+  .studio-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
+    gap: 6px 12px;
+  }
+  .studio-controls > .studio-note,
+  .studio-controls > .studio-failure {
+    flex-basis: 100%;
+  }
+  .studio-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+  /* Live preview over the picture's corner, as a video player's control: glass on any picture, in either theme. It
+     shows while the pointer is over the picture or it has the focus; on, its signal is green, not the recording's red. */
+  .studio-live {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid var(--studio-live-edge);
+    border-radius: 999px;
+    background: var(--studio-live-glass);
+    backdrop-filter: blur(8px);
+    color: var(--studio-live-ink);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+  }
+  .studio-live svg {
+    width: 14px;
+    height: 14px;
+  }
+  /* Off, in the picture's middle and larger, the one thing to press there. */
+  .studio-live[data-place="centre"] {
+    top: 50%;
+    right: auto;
+    left: 50%;
+    height: 36px;
+    padding: 0 16px;
     gap: 8px;
+    font-size: 13px;
+    transform: translate(-50%, -50%);
+  }
+  .studio-live[data-place="centre"] svg {
+    width: 18px;
+    height: 18px;
+  }
+  .studio-live[aria-checked="true"] {
+    color: var(--studio-live-ink-on);
+  }
+  .studio-live[aria-checked="true"] svg {
+    color: var(--studio-live-signal);
+  }
+  .studio-live:disabled {
+    cursor: default;
+  }
+  .camera-preview-stage:hover > .studio-live,
+  .studio-live:focus-visible {
+    opacity: 1;
+  }
+  .studio-live:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .studio-live {
+      transition: none;
+    }
   }
   .studio-note {
     margin: 0;
@@ -1076,9 +1219,10 @@
     opacity: 0.5;
   }
   /* The Recording Studio's elapsed time, before its Stop (plan 075, D19). */
+  /* The elapsed time inside Stop, set off from its label. */
   .studio-elapsed {
-    margin-right: 4px;
-    color: var(--muted-foreground);
+    padding-left: 6px;
+    border-left: 1px solid color-mix(in oklch, currentColor 40%, transparent);
     font-variant-numeric: tabular-nums;
   }
   .slider-setting {
@@ -1215,7 +1359,7 @@
   .display-tile:disabled {
     cursor: default;
   }
-  .arrangement:not([data-held]) .display-tile:disabled {
+  .arrangement .display-tile:disabled {
     opacity: 0.5;
   }
   /* A screen: a thin dark bezel around a dusk wallpaper. Its name and size are written outside it (below, above or, when boxed in, inside), so a small screen cuts neither. */
@@ -1360,8 +1504,8 @@
   .arrangement-option:has(:disabled) label {
     cursor: default;
   }
-  .arrangement:not([data-held]) .arrangement-option:disabled,
-  .arrangement:not([data-held]) .arrangement-option:has(:disabled) label {
+  .arrangement .arrangement-option:disabled,
+  .arrangement .arrangement-option:has(:disabled) label {
     opacity: 0.5;
   }
   .arrangement-option:focus-visible {
@@ -1533,22 +1677,47 @@
     margin-top: auto;
     padding: 12px 0;
   }
+  /* The sidebar toggle (2026-10-20): one place in either mode, at the top of the sidebar's corner. macOS draws its window
+     controls at their own size at any zoom, so there it keeps level with them and clear of their corner by the page's
+     zoom (--page-zoom, set by the page). */
   .sidebar-toggle {
-    display: flex;
-    margin-bottom: 2px;
+    position: fixed;
+    z-index: 2;
+    top: 12px;
+    left: 20px;
   }
-  /* A collapsed sidebar's status light, in the status card's tone. */
-  .status-light-dot {
-    width: 9px;
-    height: 9px;
+  :root[data-platform="darwin"] .sidebar-toggle {
+    top: calc(25px / var(--page-zoom, 1) - 14px);
+    left: calc(94px / var(--page-zoom, 1));
+  }
+  /* Something to look at on a collapsed sidebar: Troubleshooting's unread items and the status bell, a dot on the
+     icon's top-right corner, wherever the icon sits in its tile. It takes no room: the icons keep one spacing. */
+  .notice-icon {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+  }
+  .notice-dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
+    background: var(--sidebar-primary);
+    box-shadow: 0 0 0 2px var(--sidebar);
+    pointer-events: none;
+  }
+  /* Something under way (a countdown, a start) is news, not a problem. */
+  .status-bell[data-tone="busy"] .notice-dot {
     background: var(--muted-foreground);
   }
-  .status-light[data-tone="attention"] .status-light-dot {
-    background: var(--destructive);
+  /* On the selected tab's raised tile the dot's ring is the tile's colour. */
+  [role="tab"][aria-selected="true"] .notice-dot {
+    box-shadow: 0 0 0 2px var(--card);
   }
-  .status-light[data-tone="busy"] .status-light-dot {
-    background: var(--primary);
+  .tab-dot {
+    display: none;
   }
   .titlebar {
     /* The empty top strip drags across both the sidebar and the content. */
@@ -1557,19 +1726,10 @@
     height: var(--window-titlebar-height);
     z-index: 1;
   }
-  .sidebar-background {
-    display: none;
-  }
   /* Only macOS draws the page under its title bar (hiddenInset); elsewhere the native frame drags the window, and a
-     strip here would lie over the page's first 40 px, the tabs of a narrow window among them. */
+     strip here would lie over the page's first 40 px. */
   :root:not([data-platform="darwin"]) .titlebar {
     display: none;
-  }
-  /* A narrow window on macOS leaves the strip beside the window controls to the title (below). */
-  @media (max-width: 599px) {
-    :root[data-platform="darwin"] main {
-      --main-top: calc(var(--window-titlebar-height) + 12px);
-    }
   }
   /* Hide the scroll chrome while retaining wheel, touchpad and keyboard scrolling. */
   .settings-panel::-webkit-scrollbar {
@@ -1799,6 +1959,26 @@
     }
     .library-head > .library-category {
       justify-self: start;
+    }
+  }
+  /* The narrowest (a minimum window at the last zoom step, beside the collapsed sidebar): the selector gives way to
+     the layout switch on its line, its name cut; Show in Finder and the search take a line each. */
+  @container library-controls (max-width: 220px) {
+    .library-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "picker layout"
+        "reveal reveal"
+        "search search";
+    }
+    .library-head > .library-category {
+      max-width: 100%;
+    }
+    .library-head > #library-reveal {
+      justify-self: start;
+    }
+    .library-head > .library-search {
+      min-width: 0;
     }
   }
   .library-summary {
@@ -2502,163 +2682,192 @@
       opacity: 1;
     }
   }
-  @media (min-width: 600px) {
-    #setting-about-hide {
-      display: none;
-    }
-    main {
-      display: grid;
-      grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
-      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-      column-gap: 12px;
-    }
-    /* The existing drag surface shares the window's plane; a hairline is all that divides it from the page. */
-    .sidebar-background {
-      display: block;
-      grid-column: 1;
-      grid-row: 1 / -1;
-      margin: calc(-1 * var(--main-top)) -12px 0 -20px;
-      background: var(--sidebar) var(--surface-grain) 0 0 / 256px 256px;
-      border-right: 1px solid var(--sidebar-border);
-    }
-    /* The brand is already above, so the card says its state with a light before the title instead of the mark. */
-    .status-mark {
-      display: none;
-    }
+  main {
+    display: grid;
+    grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+    /* The tabs take what they need, and in a window too short for them, what there is: they scroll (settings-app). */
+    grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto;
+    column-gap: 12px;
+  }
+  /* The existing drag surface shares the window's plane; a hairline is all that divides it from the page. */
+  .sidebar-background {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    margin: calc(-1 * var(--main-top)) -12px 0 -20px;
+    background: var(--sidebar) var(--surface-grain) 0 0 / 256px 256px;
+    border-right: 1px solid var(--sidebar-border);
+  }
+  /* The brand is already above, so the card says its state with a light before the title instead of the mark. */
+  .status-mark {
+    display: none;
+  }
 
-    .brand {
-      grid-column: 1;
-      grid-row: 1;
-    }
-    /* On macOS the sidebar takes the window controls' corner: the brand sits under them, and the content starts
-       below the full-width drag strip. */
-    :root[data-platform="darwin"] .brand {
-      margin-top: 30px;
-    }
-    /* The form and the tabs lay their parts straight into this grid: the brand, the tabs, the status card and Quit down the
-       sidebar, and the content beside them from the window's top to its foot. */
-    #settings {
-      display: contents;
-    }
-    .status {
-      grid-column: 1;
-      grid-row: 4;
-      flex-wrap: wrap;
-      margin-bottom: 6px;
-    }
-    .settings-content {
-      grid-column: 2;
-      grid-row: 1 / -1;
-      margin-right: calc(-1 * var(--main-right));
-    }
-    .sidebar-about {
-      grid-column: 1;
-      grid-row: 5;
-      position: relative;
-    }
-    /* A collapsed sidebar (2026-10-17): a rail of icons, each named by its tooltip, giving its width to the page. */
-    main[data-sidebar="collapsed"] {
-      --settings-sidebar-width: 36px;
-    }
+  .brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  /* On macOS the sidebar takes the window controls' corner: the brand sits under them, and the content starts
+     below the full-width drag strip. Elsewhere it sits under the sidebar toggle. */
+  :root[data-platform="darwin"] .brand {
+    margin-top: 30px;
+  }
+  :root:not([data-platform="darwin"]) .brand {
+    margin-top: 32px;
+  }
+  /* The form and the tabs lay their parts straight into this grid: the brand, the tabs, the status card and Quit down the
+     sidebar, and the content beside them from the window's top to its foot. */
+  #settings {
+    display: contents;
+  }
+  .status {
+    grid-column: 1;
+    grid-row: 4;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .settings-content {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    margin-right: calc(-1 * var(--main-right));
+  }
+  .sidebar-about {
+    grid-column: 1;
+    grid-row: 5;
+    position: relative;
+  }
+  /* A collapsed sidebar (2026-10-20), and a narrow window's, too narrow for the full one: its plane gives way to
+     floating toolbars of icons, each named by its tooltip, the tabs above and the window's own actions below. Every
+     icon stays where it was in the full sidebar, and the page takes the width. */
+  main[data-sidebar="collapsed"] {
+    --settings-sidebar-width: 44px;
+  }
+  main[data-sidebar="collapsed"] .sidebar-background {
+    background: none;
+    border-right-color: transparent;
+  }
+  main[data-sidebar="collapsed"] .brand {
+    visibility: hidden;
+  }
+  /* The tabs' toolbar takes the same look in its classes (settings-app), over the tab list's own. */
+  main[data-sidebar="collapsed"] .sidebar-about {
+    padding: 4px;
+    border-radius: 14px;
+    background: var(--sidebar);
+    box-shadow: var(--sidebar-toolbar-shadow);
+  }
+  main[data-sidebar="collapsed"] .tab-name {
+    display: none;
+  }
+  main[data-sidebar="collapsed"] .tab-dot {
+    display: block;
+  }
+  /* The selected tab is the raised tile alone; the red cap belongs to the full sidebar. */
+  main[data-sidebar="collapsed"] [role="tab"][aria-selected="true"]::before {
+    display: none;
+  }
+  main[data-sidebar="collapsed"] .sidebar-about {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  /* A short window keeps both toolbars whole: the tabs rise past the brand's room, on macOS to just under the window
+     controls, and the icons take a smaller tile (settings-app). */
+  @media (max-height: 420px) {
     main[data-sidebar="collapsed"] .brand {
-      justify-content: center;
-    }
-    main[data-sidebar="collapsed"] .brand-name,
-    main[data-sidebar="collapsed"] .tab-name {
       display: none;
     }
-    main[data-sidebar="collapsed"] [role="tab"] {
-      position: relative;
-      justify-content: center;
-      padding-inline: 0;
+    /* The page keeps its lines for itself: the selected tab's tile names it. */
+    main[data-sidebar="collapsed"] .page-title {
+      display: none;
     }
-    /* Troubleshooting's unread count stays, small at its icon's corner. */
-    main[data-sidebar="collapsed"] .tab-badge {
-      position: absolute;
-      top: -2px;
-      right: -6px;
+    :root[data-platform="darwin"] main[data-sidebar="collapsed"] .brand {
+      display: block;
+      height: calc(var(--window-titlebar-height) - var(--main-top));
+      margin: 0;
+      overflow: hidden;
     }
-    main[data-sidebar="collapsed"] .sidebar-about {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
+  }
+  /* A failed Hide or Quit reads beside the toolbar it came from. */
+  main[data-sidebar="collapsed"] .sidebar-error {
+    position: absolute;
+    left: calc(100% + 8px);
+    bottom: 0;
+    width: 200px;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--popover);
+    box-shadow: var(--sidebar-note-shadow);
+  }
+  /* The bell's card opens beside the collapsed sidebar's foot, level with the bell's bottom. */
+  .status-bell {
+    anchor-name: --status-bell;
+  }
+  .status[data-popover] {
+    position: fixed;
+    z-index: 40;
+    position-anchor: --status-bell;
+    left: calc(anchor(right) + 12px);
+    bottom: anchor(bottom);
+    width: 240px;
+    /* A small window keeps the card inside it: no wider than the window less the sidebar's column and a margin. */
+    max-width: calc(100vw - var(--settings-sidebar-width) - 44px);
+    margin: 0;
+  }
+  /* The card rises to the window's top, inset as at its right; its head is the toolbar, the page title level with
+     the window controls. */
+  main {
+    --settings-content-top-gap: calc(8px - var(--main-top));
+  }
+  .settings-head,
+  .settings-card {
+    --content-x: 40px;
+  }
+  /* A narrow window gives the page what the collapsed sidebar leaves; the smallest (a minimum window zoomed in) keeps
+     only the toolbar's own room. */
+  @media (max-width: 599px) {
+    .settings-head,
+    .settings-card {
+      --content-x: 20px;
     }
-    /* The card rises to the window's top, inset as at its right; its head is the toolbar, the page title level with
-       the window controls. */
+  }
+  @media (max-width: 420px) {
     main {
-      --settings-content-top-gap: calc(8px - var(--main-top));
+      padding-left: 8px;
+      column-gap: 8px;
     }
     .settings-head,
     .settings-card {
-      --content-x: 40px;
-    }
-    /* The title sits below the window controls' strip, with the page's air above it. */
-    .settings-head {
-      padding-top: 34px;
-    }
-    .page-title {
-      font-size: 30px;
-      line-height: 1.1;
-      margin-bottom: 18px;
-    }
-    .settings-head-controls .library-head {
-      margin-bottom: 14px;
-    }
-    /* The scroll viewport stays below the drag strip, even after content scrolls. */
-    :root[data-platform="darwin"] main {
-      /* A short window can overflow the sidebar's grid rows; never scroll the whole page under the drag strip. */
-      overflow: clip;
-    }
-    :root[data-platform="darwin"] .settings-viewport {
-      /* Unlike hidden, clip cannot scroll this outer viewport when a child is focused or scrolled into view. */
-      overflow: clip;
-    }
-    .page-title {
-      margin-top: 0;
+      --content-x: 12px;
     }
   }
+  /* The title sits below the window controls' strip, with the page's air above it. */
+  .settings-head {
+    padding-top: 34px;
+  }
+  .page-title {
+    font-size: 30px;
+    line-height: 1.1;
+    margin-bottom: 18px;
+  }
+  .settings-head-controls .library-head {
+    margin-bottom: 14px;
+  }
+  /* The scroll viewport stays below the drag strip, even after content scrolls. */
+  :root[data-platform="darwin"] main {
+    /* A short window can overflow the sidebar's grid rows; never scroll the whole page under the drag strip. */
+    overflow: clip;
+  }
+  :root[data-platform="darwin"] .settings-viewport {
+    /* Unlike hidden, clip cannot scroll this outer viewport when a child is focused or scrolled into view. */
+    overflow: clip;
+  }
+  .page-title {
+    margin-top: 0;
+  }
   @media (max-width: 599px) {
-    /* Keep navigation and card spacing explicit instead of stacking the flex gap and card margins. */
-    .tabs {
-      margin-bottom: 40px;
-    }
-    .status {
-      margin-bottom: 24px;
-    }
-    .settings-content {
-      margin-top: 0;
-    }
-    main {
-      --main-right: 12px;
-      padding-left: 12px;
-    }
-    .brand {
-      display: none;
-    }
-    /* A narrow window on macOS: the strip beside the window controls names the app, centred as a native title is and
-       level with the controls. It stays a drag region: the brand takes no pointer events. */
-    :root[data-platform="darwin"] .brand {
-      position: fixed;
-      inset: 0 0 auto;
-      z-index: 2;
-      height: var(--window-titlebar-height);
-      display: flex;
-      justify-content: center;
-      margin: 0;
-      font-size: 15px;
-      pointer-events: none;
-    }
-    .tabs [role="tab"][aria-selected="false"] .tab-name {
-      display: none;
-    }
-    .tab-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .page-title {
-      display: none;
-    }
     .row-line {
       gap: 8px;
     }
@@ -2667,9 +2876,6 @@
     }
     .library-summary {
       flex-basis: 100%;
-    }
-    .sidebar-about {
-      display: none;
     }
   }
   @media (max-width: 480px) {
@@ -2686,12 +2892,6 @@
     @media (max-width: 599px) {
       .library-summary {
         display: none;
-      }
-    }
-    @media (max-width: 599px) {
-      /* Status/recovery cards retain their breathing room; compact only an ordinary settings page. */
-      main:not(:has(.status:not([hidden]))) .tabs {
-        margin-bottom: 20px;
       }
     }
   }

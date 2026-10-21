@@ -399,7 +399,7 @@ function CategoryPicker() {
         render={<Button variant="outline" />}
         id="library-category"
         // At most 200px; on a short line it gives way first, down to 96px, its name cut by an ellipsis (ui.css .library-head).
-        className="library-category min-w-0 max-w-[200px] darwin:wide:window-no-drag"
+        className="library-category min-w-0 max-w-[200px] darwin:window-no-drag"
         disabled={!library || Boolean(library.status)}
         aria-label={translate("Category: {name}", language, { name: label })}
       >
@@ -547,7 +547,7 @@ export function LibraryHead() {
     <div className="library-head">
       <CategoryPicker />
       {/* At least 160px wide beside the others; a narrow line gives it a line of its own (ui.css .library-head). */}
-      <InputGroup className="library-search darwin:wide:window-no-drag">
+      <InputGroup className="library-search darwin:window-no-drag">
         <InputGroupAddon>
           <Search />
         </InputGroupAddon>
@@ -585,7 +585,7 @@ export function LibraryHead() {
         )}
       </InputGroup>
       <ToggleGroup
-        className="library-layout segments darwin:wide:window-no-drag"
+        className="library-layout segments darwin:window-no-drag"
         variant="segmented"
         size="segment"
         spacing={0.5}
@@ -619,13 +619,13 @@ export function LibraryHead() {
       <Button
         id="library-reveal"
         variant="outline"
-        className="darwin:wide:window-no-drag"
+        className="darwin:window-no-drag"
         disabled={!folder?.enabled || !reveal?.enabled}
         aria-disabled={
-          Boolean(model.saving) || !folder?.enabled || !reveal?.enabled
+          Boolean(model.savingOf("outputFolder")) || !folder?.enabled || !reveal?.enabled
         }
         onClick={() => {
-          if (!model.saving && folder?.enabled && reveal?.enabled)
+          if (!model.savingOf("outputFolder") && folder?.enabled && reveal?.enabled)
             void model.revealFolder();
         }}
       >

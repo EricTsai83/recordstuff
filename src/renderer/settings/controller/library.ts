@@ -10,7 +10,7 @@ import {
   announce,
   choose,
   draw,
-  failure,
+  failureOf,
   focus,
   platform,
   render,
@@ -175,7 +175,8 @@ export async function choosePreviewSound(on: boolean): Promise<void> {
 }
 export async function revealFolder(): Promise<void> {
   await choose("outputFolder", "reveal", "library-reveal");
-  if (failure?.group === "outputFolder") {
+  const failure = failureOf("outputFolder");
+  if (failure) {
     libraryError = failure.text;
     draw();
   }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import cases from "./camera-layout.cases.json";
 import {
-  CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, CAMERA_RATIOS, DEFAULT_CAMERA_LAYOUT, DEFAULT_CAMERA_POSITION, MAX_POSITIONS, PRIMARY_DISPLAY_KEY,
-  applyRatio, bubbleRadius, bubbleRect, cameraCrop, cameraPosition, copyCameraLayout, insideBubble, isCameraLayout, positionFromRect,
-  previewSize, snapPosition, withPosition, type CameraLayout,
+  CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, DEFAULT_CAMERA_LAYOUT, DEFAULT_CAMERA_POSITION, MAX_POSITIONS, PRIMARY_DISPLAY_KEY,
+  bubbleRadius, bubbleRect, cameraCrop, cameraPosition, copyCameraLayout, insideBubble, isCameraLayout, positionFromRect,
+  previewSize, withPosition, type CameraLayout,
 } from "./camera-layout";
 import { RESOLUTION_CAPS, fitWithinCap } from "./quality";
 
@@ -47,8 +47,9 @@ describe("bubbleRect", () => {
   });
 
   it("puts the edges' positions on the edges", () => {
-    expect(bubbleRect(layout(), { x: 0, y: 0 }, 1000, 500)).toEqual({ x: 0, y: 0, width: 100, height: 100 });
-    expect(bubbleRect(layout(), { x: 1, y: 1 }, 1000, 500)).toEqual({ x: 900, y: 400, width: 100, height: 100 });
+    const square = layout({ width: 0.2, height: 0.2 });
+    expect(bubbleRect(square, { x: 0, y: 0 }, 1000, 500)).toEqual({ x: 0, y: 0, width: 100, height: 100 });
+    expect(bubbleRect(square, { x: 1, y: 1 }, 1000, 500)).toEqual({ x: 900, y: 400, width: 100, height: 100 });
   });
 
   it("is the same bubble on the display and in every resolution cap's recording, to within a pixel of each", () => {
@@ -93,26 +94,6 @@ describe("rounding (D2)", () => {
   });
 });
 
-describe("applyRatio", () => {
-  it("keeps the width and matches the height for each ratio button", () => {
-    for (const ratio of CAMERA_RATIOS) {
-      const [w, h] = ratio.split(":").map(Number) as [number, number];
-      const shaped = applyRatio(layout({ width: 0.3, height: 0.1 }), ratio);
-      expect(shaped.width / shaped.height).toBeCloseTo(w / h, 9);
-      expect(shaped.width).toBeCloseTo(0.3, 9);
-    }
-  });
-
-  it("brings the width in where the height would leave the range", () => {
-    const tall = applyRatio(layout({ width: 0.5 }), "3:4");
-    expect(tall.height).toBe(CAMERA_MAX_SIZE);
-    expect(tall.width / tall.height).toBeCloseTo(3 / 4, 9);
-    const flat = applyRatio(layout({ width: CAMERA_MIN_SIZE }), "16:9");
-    expect(flat.height).toBe(CAMERA_MIN_SIZE);
-    expect(flat.width / flat.height).toBeCloseTo(16 / 9, 9);
-  });
-});
-
 describe("dragging", () => {
   it("turns a dragged rectangle back into the position it came from", () => {
     const l = layout({ width: 0.3, height: 0.2 });
@@ -127,11 +108,6 @@ describe("dragging", () => {
     expect(positionFromRect(10, 0, 1000, 100, 1000, 500)).toEqual({ x: 0.5, y: 0 });
   });
 
-  it("snaps near the edges and the centre, each axis on its own", () => {
-    expect(snapPosition({ x: 0.02, y: 0.985 })).toEqual({ x: 0, y: 1 });
-    expect(snapPosition({ x: 0.51, y: 0.4 })).toEqual({ x: 0.5, y: 0.4 });
-    expect(snapPosition({ x: 0.2, y: 0.8 })).toEqual({ x: 0.2, y: 0.8 });
-  });
 });
 
 describe("stored layouts", () => {

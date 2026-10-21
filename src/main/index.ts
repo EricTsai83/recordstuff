@@ -4,7 +4,7 @@
  * capture runs in the native engine's `utilityProcess` (plan 076).
  */
 import { createPreferenceActions } from "./settings/preferences";
-import { DEFAULT_AUDIO_GAIN } from "../shared/audio-gain";
+import { DEFAULT_AUDIO_VOLUME } from "../shared/audio-volume";
 import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
 import { QuitStatus } from "./app/quit-status";
 import { installQuitCoordinator } from "./app/quit-coordinator";
@@ -286,8 +286,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
       logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor, x: d.bounds.x, y: d.bounds.y,
-      // The work area starts below the menu bar on macOS, on each display that has one.
-      ...(process.platform === "darwin" ? { menuBar: Math.max(0, d.workArea.y - d.bounds.y) } : {}),
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
   const displayMedia = new DisplayMedia<DesktopCapturerSource>({
@@ -408,7 +406,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
     },
     // The volumes (D21): autorecord's are 0 dB, its sound as the inputs give it.
-    audioGain: () => autoRecord?.ok ? { ...DEFAULT_AUDIO_GAIN } : settings.audioGain,
+    audioVolume: () => autoRecord?.ok ? { ...DEFAULT_AUDIO_VOLUME } : settings.audioVolume,
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -523,6 +521,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   let previewFailure: ErrorCode | undefined;
   /** Whether the Recording Studio is open in a window in sight, which a Live preview lasts as long as. */
   let studioOpen = false;
+  /** The recording whose picture Live preview was switched off for (2026-10-21); the next session shows its own again. */
+  let pictureHiddenFor: string | undefined;
+  const pictureHidden = (): boolean => pictureHiddenFor !== undefined && pictureHiddenFor === recorder.previewSessionId && !recorder.preview;
   /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
   const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.hideSystemUi, settings.outputDir,
     settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null]);
@@ -576,14 +577,15 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     })(),
     studio: {
       ...(recorder.preview ? { preview: { live: recorder.preview.live } } : {}),
-      showing: recorder.previewSessionId !== undefined,
+      showing: recorder.previewSessionId !== undefined && !pictureHidden(),
+      ...(pictureHidden() ? { pictureHidden: true } : {}),
       ...(previewFailure ? { previewFailure } : {}),
     },
     ...(() => {
       const audio = recorder.audio;
       return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
     })(),
-    audioGain: settings.audioGain,
+    audioVolume: settings.audioVolume,
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
     outputDir: settings.outputDir,
@@ -854,6 +856,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   const actionHandler = createActionHandler({
     studioOpen: () => studioOpen,
+    studioPicture: (shown) => {
+      pictureHiddenFor = shown || recorder.preview ? undefined : recorder.previewSessionId;
+      log(`studio: the recording's picture ${pictureHidden() ? "hidden" : "shown"}`);
+      refreshUi();
+    },
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
     savePreference, changeOutputDir, openOutputDir, revealLog, searchMicrophones,

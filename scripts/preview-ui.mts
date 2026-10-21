@@ -6,7 +6,8 @@
  * `out/`, with the real model over a demonstration folder: cards over three days, and, when FFmpeg is installed, one
  * decodable clip the player and the full-screen page play. Both languages and themes, the default, narrow and minimum
  * sizes, every tab and the bottom of each page that scrolls, either side of the 600 px and 420 px breakpoints, a large
- * window, the app's zoom steps (and a 200% probe), a recording, a missing permission, help, an invalid file name, the
+ * window, the app's zoom steps (and a 200% probe), a recording and the Recording Studio during one, its picture shown and
+ * hidden, a missing permission, help, an invalid file name, the
  * card menu, renaming, an empty and an unreadable folder, keyboard focus, the zoom notice, the player and full screen
  * (plan 067). Beside every picture, measurements.json keeps what the page measured: text sizes and contrast, control
  * hit rectangles, overflow and cut-off text. shots.json is the manifest that pairs one run's pictures with another's. It judges nothing; behaviour is

@@ -10,7 +10,7 @@
  * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
-import { CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, CAMERA_RATIOS, DEFAULT_CAMERA_LAYOUT, recordedPosition } from "../../shared/camera-layout";
+import { CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, DEFAULT_CAMERA_LAYOUT, recordedPosition } from "../../shared/camera-layout";
 import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../recording/recording-result";
 import { displayLabel, displayFailureText, type DisplayInfo } from "../../shared/display";
 import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "../display/display-source";
@@ -29,7 +29,7 @@ import {
 } from "../../shared/quality";
 import { DEFAULT_HOTKEY, settingsShortcut, describeAccelerator, canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../../shared/hotkey";
 import { COUNTDOWN_CHOICES } from "../../shared/countdown";
-import { AUDIO_GAIN_MAX_DB, AUDIO_GAIN_MIN_DB, DEFAULT_AUDIO_GAIN, gainText, isGainDb } from "../../shared/audio-gain";
+import { AUDIO_VOLUME_MAX, AUDIO_VOLUME_STEP, DEFAULT_AUDIO_VOLUME, isVolume } from "../../shared/audio-volume";
 import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, canonicalFileNameTemplate, formatFileName } from "../../shared/file-name";
 import { isLibraryLayout } from "../../shared/appearance";
 import { formatDuration } from "../../shared/video-player";
@@ -78,7 +78,7 @@ function group(
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
 const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "microphone", "camera", "studioCamera", "cameraShown", "cameraMirror"]);
-const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance", "cameraRatio"]);
+const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
@@ -92,10 +92,10 @@ const SECTIONS: Record<string, string> = {
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
   camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
-  studioControls: "studioControls", cameraPreview: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
+  studioControls: "studioControls", cameraPreview: "studioPreview", studioLive: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
   systemGain: "studioAudio", microphoneGain: "studioAudio",
   studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
-  cameraRatio: "studioCamera", cameraRounding: "studioCamera", cameraMirror: "studioCamera",
+  cameraRounding: "studioCamera", cameraMirror: "studioCamera",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -325,21 +325,60 @@ function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefined {
 
 /** The choice id of the system default camera; device ids come from the engine. */
 const DEFAULT_CAMERA = "systemDefault";
-/** The sliders' groups and what each sets, as whole percents (D1, D3). */
-const CAMERA_SLIDERS = {
-  cameraWidth: { key: "width", min: CAMERA_MIN_SIZE * 100, max: CAMERA_MAX_SIZE * 100, step: 1 },
-  cameraHeight: { key: "height", min: CAMERA_MIN_SIZE * 100, max: CAMERA_MAX_SIZE * 100, step: 1 },
-  cameraRounding: { key: "rounding", min: 0, max: 100, step: 5 },
+/**
+ * The bubble's number fields and what each sets (D1, D3; 2026-10-21, at the maintainer's request, in place of sliders
+ * and the shape's segments): the width and height in the recording's pixels, the rounding in whole percent.
+ */
+const CAMERA_FIELDS = {
+  cameraWidth: { key: "width", short: "W" },
+  cameraHeight: { key: "height", short: "H" },
+  cameraRounding: { key: "rounding", short: "Round" },
 } as const;
-type CameraSlider = keyof typeof CAMERA_SLIDERS;
-const isCameraSlider = (id: unknown): id is CameraSlider => typeof id === "string" && id in CAMERA_SLIDERS;
+type CameraField = keyof typeof CAMERA_FIELDS;
+const isCameraField = (id: unknown): id is CameraField => typeof id === "string" && id in CAMERA_FIELDS;
+/** The shorter side a bubble's pixels are counted on when the display a recording would capture is not known. */
+const FALLBACK_SHORTER_SIDE = 1080;
+
+/**
+ * A field's range and value: the size in pixels of the recording's shorter side, which the layout keeps as a share of
+ * it (D3), so the bubble keeps its share of the picture on any display or quality; the rounding in whole percent.
+ */
+function cameraField(ctx: AppContext, id: CameraField): { min: number; max: number; value: number; unit: "px" | "percent" } {
+  const layout = ctx.camera?.layout ?? DEFAULT_CAMERA_LAYOUT;
+  const { key } = CAMERA_FIELDS[id];
+  if (key === "rounding") return { min: 0, max: 100, value: Math.round(layout.rounding * 100), unit: "percent" };
+  const shorter = recordedShorterSide(ctx);
+  const share = Math.min(CAMERA_MAX_SIZE, Math.max(CAMERA_MIN_SIZE, layout[key]));
+  // As the preview and the engine size it (bubbleRect, Layout::bubble): the share of the shorter side, rounded.
+  return { min: Math.ceil(CAMERA_MIN_SIZE * shorter), max: Math.floor(CAMERA_MAX_SIZE * shorter), value: Math.round(share * shorter), unit: "px" };
+}
+
+/** The recording's size on the display it would capture now, at the chosen quality; none when it cannot be found. */
+function recordedSize(ctx: AppContext): { width: number; height: number } | undefined {
+  const display = previewDisplay(ctx);
+  if (!display) return undefined;
+  const even = (value: number): number => Math.max(2, Math.round(value / 2) * 2);
+  const quality = effectiveQuality(ctx.quality, ctx.platform);
+  return fitWithinCap({ width: even(display.logicalWidth * display.scaleFactor), height: even(display.logicalHeight * display.scaleFactor) }, quality.resolutionCap);
+}
+
+function recordedShorterSide(ctx: AppContext): number {
+  const size = recordedSize(ctx);
+  return size ? Math.min(size.width, size.height) : FALLBACK_SHORTER_SIDE;
+}
 
 /**
  * Whether the bubble's shape may change now (D7): while the Camera switch is on, between recordings and while a
  * recording composes the camera, which takes the change from its next frame on.
  */
+/**
+ * Whether the bubble's size, rounding and mirror may change: at any time, the camera off included (2026-10-22, at the
+ * maintainer's request, as the bubble's place), except while a recording that is to compose the camera cannot take a
+ * change yet, during its start.
+ */
 function cameraShapeEnabled(ctx: AppContext, unlocked: boolean): boolean {
-  return ctx.camera?.enabled === true && (unlocked || ctx.camera.session !== undefined);
+  if (!ctx.camera) return false;
+  return unlocked || ctx.camera.session !== undefined || !ctx.camera.enabled;
 }
 
 /**
@@ -395,7 +434,8 @@ function studioGroups(state: RecordingState, ctx: AppContext, unlocked: boolean)
     }
     camerasRows.push(...cameraShapeGroups(ctx, unlocked));
   }
-  return [...camerasRows, ...studioAudioGroups(ctx), studioControlsGroup(state, ctx)];
+  const live = studioLiveGroup(state, ctx);
+  return [...camerasRows, ...(live ? [live] : []), ...studioAudioGroups(ctx), studioControlsGroup(state, ctx)];
 }
 
 /**
@@ -411,15 +451,14 @@ function studioAudioGroups(ctx: AppContext): Group[] {
       { id: "unmute", label: t("Unmute", language), enabled: true, checked: !muted, action: { setAudioMuted: { source, muted: false } } },
     ]),
     control: "meter", meter: { source },
-    ...(session ? {} : { note: t("Its level shows, and it can be muted, while recording.", language) }),
   });
   // Each input's fader (D21): a setting, so offered before, during and between recordings alike.
-  const fader = (id: AudioGainGroup, label: PlainMessageKey): Group => {
-    const source = AUDIO_GAIN_GROUPS[id];
-    const value = (ctx.audioGain ?? DEFAULT_AUDIO_GAIN)[source];
-    return { ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: gainText(value),
-      enabled: true, checked: true, action: { setAudioGain: { source, db: value } } }]),
-      control: "slider", slider: { min: AUDIO_GAIN_MIN_DB, max: AUDIO_GAIN_MAX_DB, step: 1, value, unit: "decibels" } };
+  const fader = (id: AudioVolumeGroup, label: PlainMessageKey): Group => {
+    const source = AUDIO_VOLUME_GROUPS[id];
+    const value = (ctx.audioVolume ?? DEFAULT_AUDIO_VOLUME)[source];
+    return { ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: `${value}%`,
+      enabled: true, checked: true, action: { setAudioVolume: { source, volume: value } } }]),
+      control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent" } };
   };
   const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), fader("systemGain", "System audio")];
   if (session ? session.microphone : ctx.microphone?.enabled) {
@@ -429,24 +468,42 @@ function studioAudioGroups(ctx: AppContext): Group[] {
 }
 
 /** The faders' groups and the input each sets (D21). */
-const AUDIO_GAIN_GROUPS = { systemGain: "system", microphoneGain: "microphone" } as const;
-type AudioGainGroup = keyof typeof AUDIO_GAIN_GROUPS;
-const isAudioGainGroup = (id: unknown): id is AudioGainGroup => typeof id === "string" && id in AUDIO_GAIN_GROUPS;
+const AUDIO_VOLUME_GROUPS = { systemGain: "system", microphoneGain: "microphone" } as const;
+type AudioVolumeGroup = keyof typeof AUDIO_VOLUME_GROUPS;
+const isAudioVolumeGroup = (id: unknown): id is AudioVolumeGroup => typeof id === "string" && id in AUDIO_VOLUME_GROUPS;
 
 
-/** Start, Cancel or Stop, as the tray offers it now, with the recording's elapsed time (D19). */
+/**
+ * Live preview (D20) as a switch of the preview's own, apart from the recording's controls (2026-10-21): between
+ * recordings it holds the recording's session to show the picture it will hold, and during one it shows or hides
+ * the recording's picture, which costs nothing to the file. None where the engine makes no preview.
+ */
+function studioLiveGroup(state: RecordingState, ctx: AppContext): Group | undefined {
+  if (!ctx.camera?.available) return undefined;
+  const language = ctx.language;
+  const preview = ctx.studio?.preview;
+  const between = state.type === "idle" || state.type === "needsPermission";
+  // During a recording the switch follows its picture; Saving… ends the session, so there is nothing left to show.
+  const on = between ? preview !== undefined : ctx.studio?.pictureHidden !== true;
+  const enabled = between ? state.type === "idle" && !ctx.mediaComponentsMissing : state.type !== "stopping";
+  const choices = [true, false].map((value) => ({ id: value ? "on" : "off", label: t(value ? "On" : "Off", language), enabled: true,
+    checked: value === on, action: (between ? (value ? "startPreview" : "stopPreview") : (value ? "showStudioPicture" : "hideStudioPicture")) as AppAction }));
+  const failure = ctx.studio?.previewFailure;
+  return { ...group("studioLive", t("Live preview", language), enabled, choices), control: "switch",
+    ...(between && preview && !preview.live ? { note: t("Starting preview…", language), noteKind: "status" as const }
+      : failure && state.type === "idle" && !preview
+        ? { note: t("Live preview could not start: {reason}", language, { reason: failureReason(failure, language) }), noteKind: "status" as const } : {}) };
+}
+
+/** Start, Cancel or Stop, as the tray offers it now, with the recording's phase and elapsed time (D19). */
 function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
   const language = ctx.language;
   const choice = (id: string, label: PlainMessageKey, action: AppAction, enabled = true): Group["choices"][number] =>
     ({ id, label: t(label, language), enabled, checked: false, action });
   // Start as the tray offers it: without screen recording's permission it waits, the status card above every tab
-  // offering the fix (opening the pane, or relaunching once it is allowed), which is not repeated here. Between
-  // recordings, Live preview (D20) beside it where the engine makes a preview (macOS).
-  const preview = ctx.studio?.preview;
-  const previewChoice = !ctx.camera?.available ? [] : preview ? [choice("stopPreview", "Stop preview", "stopPreview")]
-    : [choice("preview", "Live preview", "startPreview", state.type === "idle" && !ctx.mediaComponentsMissing)];
+  // offering the fix (opening the pane, or relaunching once it is allowed), which is not repeated here.
   const choices = state.type === "idle" || state.type === "needsPermission"
-    ? [...previewChoice, choice("start", "Start recording", "start", state.type === "idle" && !ctx.mediaComponentsMissing)]
+    ? [choice("start", "Start recording", "start", state.type === "idle" && !ctx.mediaComponentsMissing)]
     : state.type === "starting" || state.type === "countdown" ? [choice("cancel", "Cancel recording", "cancelCountdown")]
     : state.type === "recording" ? [choice("stop", "Stop recording", "stop")]
     : [choice("saving", "Saving…", "stop", false)];
@@ -455,11 +512,9 @@ function studioControlsGroup(state: RecordingState, ctx: AppContext): Group {
     : state.type === "countdown" ? t("Recording starts in {seconds} s", language, { seconds: state.remaining })
     : state.type === "starting" ? t("Starting…", language) : state.type === "stopping" ? t("Saving…", language)
     : state.type === "needsPermission" ? t("Screen recording permission required", language)
-    : preview ? t(preview.live ? "Previewing" : "Starting preview…", language) : t("Ready", language);
-  const failure = ctx.studio?.previewFailure;
-  return { ...group("studioControls", label, true, choices), kind: "actions",
-    ...(failure && state.type === "idle" && !preview
-      ? { note: t("Live preview could not start: {reason}", language, { reason: failureReason(failure, language) }), noteKind: "status" as const } : {}),
+    : t("Ready", language);
+  const phase = state.type === "needsPermission" ? "blocked" : state.type === "stopping" ? "saving" : state.type;
+  return { ...group("studioControls", label, true, choices), kind: "actions", phase,
     ...(state.type === "recording" ? { elapsedSince: state.startedAt } : {}) };
 }
 
@@ -469,25 +524,21 @@ function cameraShapeGroups(ctx: AppContext, unlocked: boolean): Group[] {
   const language = ctx.language;
   const layout = camera.layout ?? DEFAULT_CAMERA_LAYOUT;
   const shapeEnabled = cameraShapeEnabled(ctx, unlocked);
-  const slider = (id: CameraSlider, label: string): Group => {
-    const { key, min, max, step } = CAMERA_SLIDERS[id];
-    const value = Math.round(layout[key] * 100);
-    return { ...group(id, label, shapeEnabled, [{ id: String(value), label: `${value}%`, enabled: true, checked: true,
+  const field = (id: CameraField, label: string): Group => {
+    const { key, short } = CAMERA_FIELDS[id];
+    const { min, max, value, unit } = cameraField(ctx, id);
+    return { ...group(id, label, shapeEnabled, [{ id: String(value), label: unit === "px" ? `${value} px` : `${value}%`, enabled: true, checked: true,
       action: { setCameraShape: { [key]: layout[key] } } }]),
-      control: "slider", slider: { min, max, step, value, unit: "percent" } };
+      control: "number", number: { min, max, step: 1, value, unit, short: t(short, language) } };
   };
-  const ratio = layout.width / layout.height;
+  const size = recordedSize(ctx);
   return [
-    { ...slider("cameraWidth", t("Width", language)), info: t("A share of the recording's shorter side.", language) },
-    slider("cameraHeight", t("Height", language)),
-    group("cameraRatio", t("Shape", language), shapeEnabled, CAMERA_RATIOS.map((value) => {
-      const [w, h] = value.split(":").map(Number) as [number, number];
-      return { id: value, label: value, enabled: true, checked: Math.abs(ratio - w / h) < 0.01, action: { setCameraRatio: value } };
-    })),
-    { ...slider("cameraRounding", t("Rounding", language)), info: t("100% is a circle, or round ends on a wide or tall bubble.", language) },
+    { ...field("cameraWidth", t("Width", language)),
+      ...(size ? { note: t("Pixels in a {width} × {height} recording.", language, { width: size.width, height: size.height }) } : {}) },
+    field("cameraHeight", t("Height", language)),
+    { ...field("cameraRounding", t("Rounding", language)), info: t("100% is a circle, or round ends on a wide or tall bubble.", language) },
     { ...group("cameraMirror", t("Mirror in recording", language), shapeEnabled,
-      switchChoices(language, layout.mirror, (value) => ({ setCameraShape: { mirror: value } }))),
-    info: t("Flips the camera left to right in the recording, as a mirror shows you.", language) },
+      switchChoices(language, layout.mirror, (value) => ({ setCameraShape: { mirror: value } }))) },
   ];
 }
 
@@ -505,9 +556,11 @@ function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefin
   const { x, y } = recordedPosition(layout, display.id);
   const granted = camera.access === undefined || camera.access === "granted";
   // The engine's picture whenever a session makes one: a Live preview or a recording, with the camera or not (D20).
-  const showing = camera.session !== undefined || ctx.studio?.showing === true;
+  // Not while Live preview is switched off during the recording: the bubble's place then, as before it (2026-10-21).
+  const hidden = ctx.studio?.pictureHidden === true;
+  const showing = !hidden && (camera.session !== undefined || ctx.studio?.showing === true);
   const mode = showing ? "recording" : !camera.enabled ? "off" : unlocked && granted ? "live" : "off";
-  const status = showing ? undefined : !camera.enabled ? t("Turn on Camera to see it here.", language)
+  const status = showing ? undefined : hidden ? t("Live preview is off.", language) : !camera.enabled ? t("Turn on Camera to see it here.", language)
     : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
     : undefined;
   const id = `${x},${y}`;
@@ -515,13 +568,14 @@ function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefin
   const chosen = camera.device && camera.devices?.find((device) => device.id === camera.device?.id);
   const named = chosen ? chosen.name : camera.devices?.find((device) => device.default)?.name;
   return {
-    ...group("cameraPreview", t("Preview", language), cameraShapeEnabled(ctx, unlocked),
+    // The bubble is placed at any time, the camera off, a countdown or a recording in progress: a setting, as its shape (D7).
+    ...group("cameraPreview", t("Preview", language), true,
       [{ id, label: id, enabled: true, checked: true, action: { setCameraPosition: { display: display.id, x, y } } }]),
     control: "cameraPreview",
-    info: t("Drag the bubble, or move it with the arrow keys (Shift for larger steps); it snaps to the edges and the centre.", language),
+    info: t("Drag the bubble, or move it with the arrow keys (Shift for larger steps).", language),
     cameraPreview: {
       mode,
-      display: { width: display.logicalWidth, height: display.logicalHeight, menuBar: ctx.hideSystemUi ? 0 : display.menuBar ?? 0 },
+      display: { width: display.logicalWidth, height: display.logicalHeight },
       bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
       // The picture holds a camera to place only while its session composes one.
       composed: !showing || camera.session !== undefined,
@@ -642,12 +696,9 @@ function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {
  * from the encoder targets, so quality is chosen knowing the file size rather than only told it grows.
  */
 function sizeEstimate(ctx: AppContext): { footnote?: string } {
-  const resolution = displayResolution(ctx.displays, ctx.display);
-  const display = resolution.ok ? ctx.displays.find((d) => d.id === resolution.id) : undefined;
-  if (!display) return {};
+  const size = recordedSize(ctx);
+  if (!size) return {};
   const quality = effectiveQuality(ctx.quality, ctx.platform);
-  const even = (value: number): number => Math.max(2, Math.round(value / 2) * 2);
-  const size = fitWithinCap({ width: even(display.logicalWidth * display.scaleFactor), height: even(display.logicalHeight * display.scaleFactor) }, quality.resolutionCap);
   return { footnote: t("About {size} per minute at {width} × {height}, {fps} fps.", ctx.language,
     { size: formatBytes(estimatedBytesPerMinute(size, quality)), width: size.width, height: size.height, fps: quality.frameRate }) };
 }
@@ -1216,24 +1267,26 @@ export function settingsAction(
     const template = canonicalFileNameTemplate(choiceId);
     return template !== undefined && preferencesUnlocked(state) ? { setFileNameTemplate: template } : undefined;
   }
-  // The camera's sliders send the whole percent let go of; any in range is offered while the shape may change (D7).
-  if (isCameraSlider(groupId)) {
-    const { key, min, max } = CAMERA_SLIDERS[groupId];
-    const value = typeof choiceId === "string" && /^\d{1,3}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
-    return value >= min && value <= max && cameraShapeEnabled(ctx, preferencesUnlocked(state)) && ctx.camera?.available
-      ? { setCameraShape: { [key]: value / 100 } } : undefined;
+  // The camera's fields send the whole pixels or percent entered; any in range is offered while the shape may change (D7).
+  if (isCameraField(groupId)) {
+    const { key } = CAMERA_FIELDS[groupId];
+    const { min, max, unit } = cameraField(ctx, groupId);
+    const value = typeof choiceId === "string" && /^\d{1,5}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
+    if (!(value >= min && value <= max && cameraShapeEnabled(ctx, preferencesUnlocked(state)) && ctx.camera?.available)) return undefined;
+    // Pixels become the share of the shorter side they are, which gives the same pixels back (cameraField).
+    return { setCameraShape: { [key]: unit === "px" ? value / recordedShorterSide(ctx) : value / 100 } };
   }
-  // A fader sends the whole dB let go of (D21); the microphone's only while its fader is offered.
-  if (isAudioGainGroup(groupId)) {
-    const db = typeof choiceId === "string" && /^-?\d{1,2}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
+  // A fader sends the whole percent let go of (D21); the microphone's only while its fader is offered.
+  if (isAudioVolumeGroup(groupId)) {
+    const volume = typeof choiceId === "string" && /^\d{1,3}$/.test(choiceId) ? Number(choiceId) : Number.NaN;
     const offered = groupId === "systemGain" || (ctx.audioSession ? ctx.audioSession.microphone : ctx.microphone?.enabled);
-    return isGainDb(db) && offered ? { setAudioGain: { source: AUDIO_GAIN_GROUPS[groupId], db } } : undefined;
+    return isVolume(volume) && offered ? { setAudioVolume: { source: AUDIO_VOLUME_GROUPS[groupId], volume } } : undefined;
   }
-  // The preview sends where the bubble was let go of, on the display it shows (D7: also while recording).
+  // The preview sends where the bubble was let go of, on the display it shows, at any time (D7: also while recording).
   if (groupId === "cameraPreview") {
     const position = previewPosition(choiceId);
     const display = previewDisplay(ctx);
-    return position && display && ctx.camera?.available && cameraShapeEnabled(ctx, preferencesUnlocked(state))
+    return position && display && ctx.camera?.available
       ? { setCameraPosition: { display: display.id, ...position } } : undefined;
   }
   if (groupId === "status") {

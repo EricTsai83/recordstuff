@@ -23,7 +23,7 @@ import type { RecordingState } from "../../../src/shared/state";
 import { DEFAULT_QUALITY } from "../../../src/shared/quality";
 import { DEFAULT_HOTKEY } from "../../../src/shared/hotkey";
 import type { AppContext } from "../../../src/main/app/ui-model";
-import { applyRatio, DEFAULT_CAMERA_LAYOUT, withPosition } from "../../../src/shared/camera-layout";
+import { DEFAULT_CAMERA_LAYOUT, withPosition } from "../../../src/shared/camera-layout";
 import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "../../../src/main/library/recordings-library";
 import { videoThumbnail } from "../../../src/main/library/video-thumbnail";
 import { settingsWindowOptions } from "../../../src/main/settings/settings-window";
@@ -301,7 +301,7 @@ function installPanelHandlers(): void {
       return { view: settingsView(sessionState, state.microphoneContext), applied: action !== undefined };
     }
     // The Recording Studio's Start, Cancel and Stop (plan 075, D19): main's to act on; the view follows the state pushed.
-    if (group === "studioControls" && state.cameraContext) {
+    if ((group === "studioControls" || group === "studioLive") && state.cameraContext) {
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
     }
@@ -310,9 +310,9 @@ function installPanelHandlers(): void {
       const context = state.cameraContext;
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       const action = settingsAction(sessionState, context, group, choice);
-      if (typeof action === "object" && "setAudioGain" in action) {
-        const { source, db } = action.setAudioGain;
-        state.cameraContext = { ...context, audioGain: { ...(context.audioGain ?? { system: 0, microphone: 0 }), [source]: db } };
+      if (typeof action === "object" && "setAudioVolume" in action) {
+        const { source, volume } = action.setAudioVolume;
+        state.cameraContext = { ...context, audioVolume: { ...(context.audioVolume ?? { system: 100, microphone: 100 }), [source]: volume } };
       }
       return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
     }
@@ -336,7 +336,6 @@ function installPanelHandlers(): void {
       let next = camera;
       if (typeof action === "object" && "setCamera" in action) next = { ...camera, enabled: action.setCamera };
       if (typeof action === "object" && "setCameraShape" in action) next = { ...camera, layout: { ...layout, ...action.setCameraShape } };
-      if (typeof action === "object" && "setCameraRatio" in action) next = { ...camera, layout: applyRatio(layout, action.setCameraRatio) };
       if (typeof action === "object" && "setCameraPosition" in action) {
         const { display, x, y } = action.setCameraPosition;
         next = { ...camera, layout: withPosition(layout, display, { x, y }) };

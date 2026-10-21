@@ -75,14 +75,16 @@ it("reads out only news, as sentences of the panel's language, and keeps focus w
   await vi.waitFor(() => expect(retry.hidden).toBe(false));
   expect(document.activeElement).toBe(retry);
 
-  // A radio group has no focusable element of its own: its checked radio takes focus instead.
+  // A radio group has no focusable element of its own: its checked radio takes focus instead, which while the retry
+  // saves is the choice being retried (2026-10-22).
   const zhRadio = document.getElementById("setting-language-zh-TW") as HTMLInputElement;
   zhRadio.focus(); zhRadio.click();
   const languageRetry = document.getElementById("setting-language-retry") as HTMLButtonElement;
   await vi.waitFor(() => expect(languageRetry.hidden).toBe(false));
+  expect(document.getElementById("setting-language-en")?.getAttribute("aria-pressed"), "the failed choice shows main's value again").toBe("true");
   languageRetry.focus(); languageRetry.click();
   expect(languageRetry.hidden).toBe(true);
-  expect(document.activeElement?.id).toBe("setting-language-en");
+  expect(document.activeElement?.id).toBe("setting-language-zh-TW");
   await vi.waitFor(() => expect(choose).toHaveBeenCalledTimes(4));
 });
 

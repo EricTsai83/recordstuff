@@ -154,7 +154,7 @@ describe("createActionHandler", () => {
       expect(ctx.tray.notifyCameraDenied).not.toHaveBeenCalled();
     });
 
-    it("saves the camera, the shape and a ratio, and hands a new shape to the recording in progress", async () => {
+    it("saves the camera and the shape, and hands a new shape to the recording in progress", async () => {
       const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [{ display: "primary", x: 0.1, y: 0.1 }] };
       const settings = { language: "en", cameraLayout: layout, cameraDevice: undefined as { id: string; label: string } | undefined,
         setCameraLayout: vi.fn(async (shape: Omit<typeof layout, "positions">) => { settings.cameraLayout = { ...settings.cameraLayout, ...shape }; }),
@@ -166,8 +166,8 @@ describe("createActionHandler", () => {
       await ctx.act({ setCameraShape: { width: 0.4 } });
       expect(settings.setCameraLayout).toHaveBeenLastCalledWith({ width: 0.4, height: 0.2, rounding: 1, mirror: false });
       expect(updateCamera).toHaveBeenLastCalledWith({ layout: expect.objectContaining({ width: 0.4, positions: layout.positions }) });
-      await ctx.act({ setCameraRatio: "16:9" });
-      expect(settings.cameraLayout.height).toBeCloseTo(0.4 * 9 / 16, 9);
+      await ctx.act({ setCameraShape: { height: 0.3 } });
+      expect(settings.cameraLayout).toMatchObject({ width: 0.4, height: 0.3 });
       await ctx.act({ setCameraShape: { mirror: true } });
       expect(settings.cameraLayout.mirror).toBe(true);
       await ctx.act({ setCameraPosition: { display: "9", x: 0.25, y: 0.5 } });
@@ -209,17 +209,17 @@ describe("createActionHandler", () => {
 
     it("saves an input's volume and gives it to the session in progress, also while recording (D21)", async () => {
       const updateGains = vi.fn(() => true);
-      const settings = { audioGain: { system: 0, microphone: 0 },
-        setAudioGain: vi.fn(async (source: "system" | "microphone", db: number) => { settings.audioGain = { ...settings.audioGain, [source]: db }; }) };
+      const settings = { audioVolume: { system: 100, microphone: 100 },
+        setAudioVolume: vi.fn(async (source: "system" | "microphone", volume: number) => { settings.audioVolume = { ...settings.audioVolume, [source]: volume }; }) };
       const ctx = harness({ recorder: { updateGains, state: { type: "recording", startedAt: "2026-10-18T00:00:00Z" } }, settings,
         savePreference: vi.fn(async (_what: string, save: PreferenceSave) => {
           expect(save.locked, "not locked while recording").toBeFalsy();
           await save.write(); save.applied?.();
         }) } as unknown as Partial<ActionDeps>);
-      await ctx.act({ setAudioGain: { source: "microphone", db: 6 } });
-      expect(settings.setAudioGain).toHaveBeenCalledWith("microphone", 6);
+      await ctx.act({ setAudioVolume: { source: "microphone", volume: 250 } });
+      expect(settings.setAudioVolume).toHaveBeenCalledWith("microphone", 250);
       expect(updateGains).toHaveBeenCalledTimes(1);
-      expect(ctx.deps.log).toHaveBeenCalledWith("settings: volume system 0 dB, microphone 6 dB");
+      expect(ctx.deps.log).toHaveBeenCalledWith("settings: volume system 100%, microphone 250%");
     });
 
     it("hides and shows the camera of the recording in progress, and says so when there is none", async () => {

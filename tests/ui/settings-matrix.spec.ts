@@ -110,8 +110,9 @@ async function checkState(host: Launched, page: Page, testInfo: TestInfo, lang: 
     }
   }
   if (state === "recording" || state === "locked") {
-    // The status card speaks only when needed: a busy recorder shows it, a ready one does not.
-    const card = await read<{ shown: boolean; text: string }>(page, `(el => ({ shown: el.checkVisibility() && el.getBoundingClientRect().height > 0, text: el.textContent.trim() }))(document.getElementById("status"))`);
+    // The status card speaks only when needed: a busy recorder shows it, or on a collapsed sidebar (a narrow window's)
+    // the bell that opens it; a ready one shows neither.
+    const card = await read<{ shown: boolean; text: string }>(page, `(el => ({ shown: (el.checkVisibility() && el.getBoundingClientRect().height > 0) || Boolean(document.getElementById("status-bell")?.checkVisibility()), text: el.textContent.trim() }))(document.getElementById("status"))`);
     expect.soft(state === "locked" ? card.shown && card.text !== "" : !card.shown, `S025 ${key}: the status card speaks only when needed ${JSON.stringify(card)}`).toBe(true);
     if (size === "default" && state === "recording") {
       // From the top of the page the first Tab reaches the tabs, never the window actions (Hide interface).
@@ -122,8 +123,10 @@ async function checkState(host: Launched, page: Page, testInfo: TestInfo, lang: 
     }
   }
   if (state === "general") {
-    // Wherever the design puts it, Hide interface stays reachable on General at every size.
-    const hide = await read<boolean>(page, `[...document.querySelectorAll("button[aria-label]")].some(b => b.getAttribute("aria-label") === ${JSON.stringify(translate("Hide interface", lang))} && b.checkVisibility() && !b.disabled)`);
+    // Wherever the design puts it, Hide interface stays reachable on General at every size: its own button, or the
+    // collapsed sidebar's window-actions menu that holds it.
+    const names = [translate("Hide interface", lang), translate("RecordStuff window actions", lang)];
+    const hide = await read<boolean>(page, `[...document.querySelectorAll("button[aria-label]")].some(b => ${JSON.stringify(names)}.includes(b.getAttribute("aria-label")) && b.checkVisibility() && !b.disabled)`);
     expect.soft(hide, `S025 ${key}: Hide interface is visible and enabled`).toBe(true);
   }
   await picture(page, testInfo, `panel-${lang}-${scheme}-${size}-${state}.png`);

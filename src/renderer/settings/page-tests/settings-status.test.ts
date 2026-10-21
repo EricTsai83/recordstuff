@@ -28,8 +28,8 @@ it("hides the card while ready, shows a problem with its fix and a recording wit
   expect([...document.querySelector(".settings-tabs")!.children].map(el => el.id || (el.classList.contains("tabs") ? "tabs" : el.className))).toEqual(["settings-tabs", "status", "settings-content"]);
   expect(document.querySelector(".tabs")!.getAttribute("role")).toBe("tablist");
 
-  // The sidebar's split control keeps a named Hide action and a menu, under the sidebar's own collapse button;
-  // credit, version and links stay in General.
+  // The sidebar's split control keeps a named Hide action and a menu, after the sidebar's own collapse button, which
+  // the page draws at its top beside the window controls. Credit, version and links stay in General.
   const foot = document.getElementById("sidebar-about")!;
   const hide = foot.querySelector<HTMLButtonElement>("#sidebar-about-hide")!;
   expect([foot.hidden, hide.textContent, hide.getAttribute("aria-label"), Boolean(hide.querySelector("svg")), foot.querySelectorAll("button").length]).toEqual([false, "Hide interface", "Hide interface", true, 3]);

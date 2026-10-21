@@ -118,7 +118,11 @@ test("the macOS top strip covers the window width without covering settings cont
         const strip = document.querySelector(".titlebar"), r = strip.getBoundingClientRect();
         const covered = [...document.querySelectorAll("main button, main input, main select, main a, main [role=slider]")]
           .filter(el => el.checkVisibility())
-          .filter(el => { const b = el.getBoundingClientRect(); return b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top; })
+          // A control drawn over the strip on purpose (the sidebar toggle) stays reachable: only one the strip lies over counts.
+          // One scrolled out of its scroller's view (the tabs of a short window) is not under the strip but out of sight.
+          .filter(el => { const b = el.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+            for (let n = el.parentElement; n; n = n.parentElement) { if (getComputedStyle(n).overflowY !== "visible") { const c = n.getBoundingClientRect(); if (y < c.top || y > c.bottom || x < c.left || x > c.right) return false; } }
+            return b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top && !el.contains(document.elementFromPoint(x, y)); })
           .map(el => el.id || el.tagName);
         return {
           hit: [0.25, 0.5, 0.9].every(x => document.elementFromPoint(innerWidth * x, r.height / 2) === strip), covered };
@@ -150,7 +154,7 @@ test("the macOS sidebar's blank space drags while tabs, window actions and overl
     }
     return false;
   })()`), "the sidebar keeps blank space that drags the window").toBe(true);
-  for (const selector of ["#tab-library", "#status-action", "#status-secondary", "#sidebar-about-hide", "#sidebar-about-hide-menu"])
+  for (const selector of ["#sidebar-toggle", "#tab-library", "#status-action", "#status-secondary", "#sidebar-about-hide", "#sidebar-about-hide-menu"])
     await expect(page.locator(selector)).toHaveCSS(region, "no-drag");
   await page.locator("#tab-general").click();
   await expect(page.locator("#tab-general")).toHaveAttribute("aria-selected", "true");
@@ -214,7 +218,8 @@ test("wheel and keyboard scrolling in settings keep controls below the macOS dra
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`Window actions ${language}/${scheme}: the label reads in full in both placements, with mouse and keyboard access`, { tag: "@general" }, async ({}, testInfo) => {
-    for (const size of ["default", "minimum"] as const) {
+    // The full sidebar's Hide interface and its more-actions menu; a narrow window's collapsed sidebar follows.
+    for (const size of ["default"] as const) {
       await host.evaluate((h, args) => {
         h.theme(args.scheme);
         h.setSize(...h.SNAPSHOT_SIZES[args.size]);
@@ -282,6 +287,39 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await menu.getByRole("menuitem", { name: language === "en" ? "Quit RecordStuff" : "結束 RecordStuff" }).click();
       await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"], ["about", "quit"], ["about", "quit"]]);
     }
+    // A narrow window's collapsed sidebar: one button, whose menu holds Hide interface and Quit.
+    await host.evaluate((h, args) => { h.setSize(...h.SNAPSHOT_SIZES.minimum); h.pushModel({ type: "idle" }, { language: args.language }); }, { language });
+    await page.locator("#tab-general").click();
+    const names = language === "en" ? ["Hide interface", "Quit RecordStuff"] : ["隱藏介面", "結束 RecordStuff"];
+    const trigger = page.locator("#sidebar-about-hide-menu"), menu = page.locator("#sidebar-about-hide-menu-content");
+    await expect(trigger).toHaveAccessibleName(language === "en" ? "RecordStuff window actions" : "RecordStuff 視窗操作");
+    await expect(trigger).toBeInViewport();
+    const box = (await trigger.boundingBox())!;
+    expect(box.width >= 24 && box.height >= 24, "minimum: the window-actions button has a usable hit area").toBe(true);
+    const before = await host.evaluate(h => h.chooseCalls.length);
+    await trigger.click();
+    await expect(menu.getByRole("menuitem")).toHaveText(names);
+    await expect.poll(async () => {
+      const bounds = await menu.boundingBox(), viewport = await read<{ width: number; height: number }>(page, `({ width: innerWidth, height: innerHeight })`);
+      return Boolean(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height);
+    }, { message: "minimum: the menu opens inside the window" }).toBe(true);
+    const measured = await read<UiMeasurement>(page, MEASURE_UI);
+    expect(measured.texts.filter(text => text.at.startsWith("#sidebar-about-hide") && text.clipped), "minimum: the menu's labels read in full").toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("window-actions-minimum-menu.png"), animations: "disabled" });
+    await menu.getByRole("menuitem", { name: names[0]! }).click();
+    await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"]]);
+    await host.evaluate((h, language) => h.pushModel({ type: "idle" }, { language }), language);
+    await trigger.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "quit"]]);
   });
 }
 
@@ -321,6 +359,11 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
         h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang });
       }, { lang, scheme, size });
       const action = page.locator("#status-action"), secondary = page.locator("#status-secondary");
+      // A collapsed sidebar (a narrow window's) keeps the card behind its bell.
+      if (size !== "default") {
+        await expect(page.locator("#status-bell")).toBeVisible();
+        if (await page.locator("#status").isHidden()) await page.locator("#status-bell").click();
+      }
       await expect(action).toBeVisible();
       await expect(secondary).toBeVisible();
       await expect(action).toHaveText(lang === "en" ? "Open Settings" : "開啟系統設定");

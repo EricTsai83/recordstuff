@@ -52,15 +52,21 @@ it("keeps a running action focusable, ignores its second activation and leaves f
   expect(check.matches('[aria-disabled="true"]')).toBe(false);
   expect(document.activeElement).toBe(check);
 
-  // A button beside a switch waits for its request the same way; every other action is busy with it.
+  // A button beside a switch waits for its own request the same way; another setting's action does not wait for it
+  // and is sent at once (2026-10-22).
   const pane = document.getElementById("setting-notifications-openSettings") as HTMLButtonElement;
   pane.focus(); pane.click();
   await vi.waitFor(() => expect(pane.getAttribute("aria-disabled")).toBe("true"));
   expect(pane.disabled).toBe(false);
   expect(check.disabled).toBe(false);
-  expect(check.getAttribute("aria-disabled")).toBe("true");
-  pane.click(); check.click();
-  expect(choose).toHaveBeenCalledTimes(2);
+  expect(check.getAttribute("aria-disabled"), "another setting's action stays usable").toBe("false");
+  pane.click();
+  expect(choose, "its own second activation is ignored").toHaveBeenCalledTimes(2);
+  check.click();
+  expect(choose, "another setting's is sent while it waits").toHaveBeenCalledTimes(3);
+  expect(choose).toHaveBeenLastCalledWith("updates", "check");
+  current = view(false); push(current);
+  pane.focus();
   finish!();
   await vi.waitFor(() => expect(pane.getAttribute("aria-disabled")).toBe("false"));
   expect(document.activeElement).toBe(pane);

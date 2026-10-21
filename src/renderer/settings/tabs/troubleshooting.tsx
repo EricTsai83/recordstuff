@@ -14,7 +14,7 @@ export function Troubleshooting({ head }: { head?: HTMLElement | null }) {
   // restoring focus cannot reselect the previously focused tools tab during that handoff.
   const page = selection.entry === entry ? selection.page : "history";
   const list = (
-    <Tabs.List activateOnFocus aria-label={model.text("Troubleshooting sections")} className="darwin:wide:window-no-drag flex min-w-0 gap-6 border-b border-border">
+    <Tabs.List activateOnFocus aria-label={model.text("Troubleshooting sections")} className="darwin:window-no-drag flex min-w-0 gap-6 border-b border-border">
       {([["history", "Failure history"], ["tools", "Diagnostics and cleanup"]] as const).map(([value, label]) => (
         <Tabs.Tab
           key={value}

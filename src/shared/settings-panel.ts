@@ -64,12 +64,17 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "cameraPreview" | "meter" | "inputMeter";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "inputMeter";
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
-   * validates (plan 075's camera size and rounding, and D21's volumes in dB).
+   * validates (plan 075's camera size and rounding, and D21's volumes).
    */
-  slider?: { min: number; max: number; step: number; value: number; unit: "percent" | "decibels" };
+  slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
+  /**
+   * A `number` field's range and value, whole steps in `unit`, and the short name shown in it (the camera's width, height
+   * and rounding, 2026-10-21); the page sends the value entered as the choice, which main validates.
+   */
+  number?: { min: number; max: number; step: number; value: number; unit: "px" | "percent"; short: string };
   /**
    * `inputMeter` (plan 079, D1) is the chosen input's level between recordings, which the page gets apart from the
    * view while it shows it. A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
@@ -78,6 +83,8 @@ export interface SettingsGroup {
   meter?: { source: "system" | "microphone" };
   /** The Recording Studio's controls (plan 075, D19): when the recording in progress began, for the elapsed time. */
   elapsedSince?: string;
+  /** The Recording Studio's controls: where the recording is, which the page draws its state with (2026-10-21). */
+  phase?: "idle" | "blocked" | "starting" | "countdown" | "recording" | "saving";
   /** A `cameraPreview`'s stage and bubble (plan 075 step 7); the page sends a new position as the choice `x,y`. */
   cameraPreview?: CameraPreviewView;
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */
@@ -110,14 +117,14 @@ export interface SettingsGroup {
   actions?: SettingsChoice[];
 }
 /**
- * Settings' camera preview (plan 075 step 7): the recorded display to scale, with its menu bar's band, and the bubble
+ * Settings' camera preview (plan 075 step 7): the recorded display to scale, and the bubble
  * where the recording puts it. Before recording the page shows the camera itself in the bubble (`live`), while a
  * recording composes the camera the engine's preview of the whole picture (`recording`); `off` shows the outline only.
  */
 export interface CameraPreviewView {
   mode: "live" | "recording" | "off";
-  /** The display's logical size and its menu bar's height, 0 when the recording hides it or it has none. */
-  display: { width: number; height: number; menuBar: number };
+  /** The display's logical size. */
+  display: { width: number; height: number };
   /** The bubble's shape (fractions of the display's shorter side), as the recording composes it. */
   bubble: { width: number; height: number; rounding: number; mirror: boolean };
   /** Whether the bubble is part of the picture: not in a session that composes no camera, which has nothing to place. */
@@ -357,5 +364,10 @@ export interface StudioLevels { system: number; microphone?: number }
 /** The chosen input's peak and RMS over the last 50 ms between recordings (plan 079, D1), linear. */
 export interface MicrophoneLevel { peak: number; rms: number }
 
+/**
+ * The page's zoom steps (2026-10-05): ⌘+ and ⌘- (Ctrl elsewhere) move one step, ⌘0 returns to 100%. Kept between
+ * 80% and 150%, where the sidebar layout and the cards still fit the default window.
+ */
+export const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
 export type SettingsZoomRequest = "in" | "out" | "reset";
 export interface SettingsZoom { factor: number; canZoomIn: boolean; canZoomOut: boolean }

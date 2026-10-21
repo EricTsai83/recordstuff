@@ -73,7 +73,7 @@ test("S010–S013 a change reaches main as ids, re-renders in the committed lang
   expect(await page.locator("#setting-frameRate").getAttribute("data-value"), "S013 a choice that did not commit reports it and shows the committed value").toBe("30");
 });
 
-test("S014–S015 two held saves and an older push: the pushed committed value shows with the lock kept, and the final completion unlocks", { tag: "@settings-bridge" }, async () => {
+test("S014–S015 two held saves and an older push: the newest choice shows over them, other settings stay usable, and the final completion settles", { tag: "@settings-bridge" }, async () => {
   await commitEnglish();
   await host.evaluate(h => { h.state.holdSaves = true; });
   await page.locator("#setting-language-zh-TW").click();
@@ -83,14 +83,39 @@ test("S014–S015 two held saves and an older push: the pushed committed value s
   const state = `({ value: document.querySelector("#setting-language button[aria-pressed=true]").id.replace("setting-language-", ""),
     locked: document.querySelector("#setting-hotkey").disabled, feedback: document.querySelector("#feedback").textContent,
     lang: document.documentElement.lang, hotkeyLabel: document.querySelector("label[for='setting-hotkey']").textContent })`;
-  await expect.poll(() => read<{ value: string }>(page, state).then(value => value.value)).toBe("zh-TW");
+  await expect.poll(() => read<{ lang: string }>(page, state).then(value => value.lang)).toBe("zh-Hant");
   const pending = await read<{ value: string; locked: boolean; feedback: string }>(page, state);
-  expect.soft([pending.value, pending.locked, pending.feedback], "S014 an older completion and push show the committed pushed value and retain the pending lock").toEqual(["zh-TW", true, ""]);
+  // The choice being saved shows over an older completion and push, and another setting stays usable (2026-10-22).
+  expect.soft([pending.value, pending.locked, pending.feedback], "S014 an older completion and push leave the newest choice shown, the other controls usable").toEqual(["en", false, ""]);
   await host.evaluate(h => h.releaseSave());
   await expect.poll(() => read<{ locked: boolean }>(page, state).then(value => value.locked)).toBe(false);
   const finished = await read<{ value: string; locked: boolean; lang: string; hotkeyLabel: string }>(page, state);
-  expect([finished.value, finished.locked, finished.lang, finished.hotkeyLabel], "S015 the final completion unlocks controls and displays committed settings").toEqual(["en", false, "en", "Shortcut"]);
+  expect([finished.value, finished.locked, finished.lang, finished.hotkeyLabel], "S015 the final completion displays committed settings").toEqual(["en", false, "en", "Shortcut"]);
   await host.evaluate(h => { h.state.holdSaves = false; });
+});
+
+test("S014a a choice for another setting while one saves is its own: shown and sent at once, answered on its own (2026-10-22)", { tag: "@settings-bridge" }, async () => {
+  await commitEnglish();
+  // The fixture's language is on one tab and its notifications on another: a save in flight on one, a choice on the other.
+  const notifications = page.locator("#setting-notifications");
+  await host.evaluate(h => { h.state.holdSaves = true; });
+  await page.locator("#setting-language-zh-TW").click();
+  await expect.poll(() => host.evaluate(h => h.pendingSaves())).toBe(1);
+  await page.locator("#tab-general").click();
+  await expect(notifications).toHaveAttribute("aria-checked", "true");
+  await expect(notifications, "S014a the other setting stays usable while one saves").toBeEnabled();
+  await notifications.click();
+  await expect(notifications, "S014a and shows the choice made at once").toHaveAttribute("aria-checked", "false");
+  await expect.poll(calls, { message: "S014a it is sent at once, not behind the save in flight" }).toEqual([["language", "zh-TW"], ["notifications", "off"]]);
+  await expect.poll(() => host.evaluate(h => h.pendingSaves())).toBe(2);
+  await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); h.releaseSave(); });
+  await expect(notifications, "S014a main's answer keeps it").toHaveAttribute("aria-checked", "false");
+  // Back as it was, in English, for the cases after.
+  await clearCalls();
+  await notifications.click();
+  await expect(notifications).toHaveAttribute("aria-checked", "true");
+  await page.locator("#tab-recording").click();
+  await commitEnglish();
 });
 
 test("S016–S021 the notification setting: switch and pane button, ids to main, held saves keep the control, restrictions disable", { tag: "@general" }, async () => {
@@ -126,8 +151,9 @@ test("S016–S021 the notification setting: switch and pane button, ids to main,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
       value: beforeToggle.select.getAttribute("aria-checked") === "true" ? "on" : "off",
       buttonLocked: beforeToggle.button.getAttribute("aria-disabled") === "true" && !beforeToggle.button.disabled })`);
+    // The choice being saved shows over main's push of the value it replaces (2026-10-22); its own pane button waits for it.
     expect.soft(during, `S019 notification ${value}: pending save and push preserve controls, focus and scroll`).toEqual({ sameSelect: true, samePanel: true, focused: true,
-      scrollStable: true, value: value === "on" ? "off" : "on", buttonLocked: true });
+      scrollStable: true, value, buttonLocked: true });
     await host.evaluate(h => h.releaseSave());
     await until(page, `beforeToggle.select.getAttribute("aria-checked") === ${JSON.stringify(value === "on" ? "true" : "false")}`);
     const after = await read<Record<string, unknown>>(page, `({ sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
@@ -304,56 +330,83 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
   await expect(page.getByRole("button", { name: "已經允許了？重新啟動 RecordStuff" })).toBeVisible();
 });
 
-test("S124–S126 camera rows: a slider names its percent and commits once, a recording with the camera keeps the shape editable (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
+test("S124–S126 camera rows: number fields in pixels and percent, typed, stepped or dragged by their names, each commits once; a recording with the camera keeps the shape editable (plan 075, step 7; 2026-10-21)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
   const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
   await host.evaluate((h, list) => {
     h.state.cameraState = undefined;
-    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted", devices: list } };
+    // A square a fifth of the shorter side: 432 pixels of the host display's 3840 × 2160 recording.
+    const layout = { width: 0.2, height: 0.2, rounding: 1, mirror: false, positions: [] };
+    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted", devices: list, layout } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   }, devices);
   await page.locator("#tab-studio").click();
-  const width = page.getByRole("slider", { name: "Width" });
+  const width = page.getByRole("spinbutton", { name: "Width" });
+  const rounding = page.getByRole("spinbutton", { name: "Rounding" });
   await width.scrollIntoViewIfNeeded();
-  await expect(width, "S124 a slider is named by its row and reads as a percent").toHaveAttribute("aria-valuetext", "20%");
+  await expect(width, "S124 a field is named by its row and reads in pixels").toHaveAttribute("aria-valuetext", "432 px");
+  await expect(page.locator("#studio-camera-pixels"), "S124 and says what they are counted on").toHaveText("Pixels in a 3840 × 2160 recording.");
+  await expect(width, "S124 to assistive technology too").toHaveAccessibleDescription("Pixels in a 3840 × 2160 recording.");
+  await expect(rounding, "S124 the rounding in percent").toHaveAttribute("aria-valuetext", "100%");
+  await expect(page.getByRole("spinbutton"), "S125 no shape buttons: the width and height make the shape").toHaveCount(3);
   await clearCalls();
   await width.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(calls, { message: "S124 a step commits the whole percent to main" }).toEqual([["cameraWidth", "21"]]);
-  await expect(width, "S124 the committed value shows").toHaveAttribute("aria-valuetext", "21%");
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(calls, { message: "S124 a step commits the whole pixels to main" }).toEqual([["cameraWidth", "433"]]);
+  await expect(width, "S124 the committed value shows").toHaveAttribute("aria-valuetext", "433 px");
   await host.evaluate(h => { h.state.holdSaves = true; });
   await clearCalls();
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(calls, { message: "S124 a key held while saving goes on from the value let go of" }).toEqual([["cameraWidth", "22"], ["cameraWidth", "23"]]);
-  await expect(width, "S124 and shows it while it saves").toHaveAttribute("aria-valuetext", "23%");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(calls, { message: "S124 a key held while saving goes on from the value stepped to" }).toEqual([["cameraWidth", "434"], ["cameraWidth", "435"]]);
+  await expect(width, "S124 and shows it while it saves").toHaveValue("435");
   await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); h.releaseSave(); });
-  await expect(width).toHaveAttribute("aria-valuetext", "23%");
+  await expect(width).toHaveAttribute("aria-valuetext", "435 px");
   await clearCalls();
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("ArrowLeft");
-  await expect.poll(calls).toEqual([["cameraWidth", "22"], ["cameraWidth", "21"]]);
-  await expect(width).toHaveAttribute("aria-valuetext", "21%");
-
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(calls, { message: "S124 Shift steps ten" }).toEqual([["cameraWidth", "425"]]);
+  // Typed: sent once on Enter, kept within the range, and Escape gives the typing up.
   await clearCalls();
-  await page.locator("#setting-cameraRatio-16\\:9").click();
-  await expect.poll(calls, { message: "S125 a shape asks main" }).toEqual([["cameraRatio", "16:9"]]);
-  await expect(page.locator("#setting-cameraRatio-16\\:9"), "S125 and is the shape then").toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("slider", { name: "Height" })).toHaveAttribute("aria-valuetext", "12%");
-  // Out to 4:3 and back to the saved 16:9 while the first still saves: the step back is sent too.
-  await host.evaluate(h => { h.state.holdSaves = true; });
+  await width.fill("300");
+  await expect.poll(calls, { message: "S124 typing alone sends nothing" }).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect.poll(calls, { message: "S124 Enter sends the pixels typed" }).toEqual([["cameraWidth", "300"]]);
+  await expect(width).toHaveAttribute("aria-valuetext", "300 px");
   await clearCalls();
-  await page.locator("#setting-cameraRatio-4\\:3").click();
-  await page.locator("#setting-cameraRatio-16\\:9").click();
-  await expect.poll(calls, { message: "S125 a step back while saving is sent" }).toEqual([["cameraRatio", "4:3"], ["cameraRatio", "16:9"]]);
-  await host.evaluate(h => { h.state.holdSaves = false; h.releaseSave(); h.releaseSave(); });
-  await expect(page.locator("#setting-cameraRatio-16\\:9")).toHaveAttribute("aria-pressed", "true");
-  // However narrow the Camera panel, each shape is a whole target, none covering another.
-  for (const [width, height] of [[600, 680], [760, 680], [1000, 680]] as const) {
-    await host.evaluate((h, size) => h.setSize(size[0], size[1]), [width, height]);
-    const boxes = await page.locator("#setting-cameraRatio [aria-pressed]").evaluateAll(els => els.map(el => el.getBoundingClientRect()).map(r => [r.left, r.right, r.width]));
-    expect(boxes.every(([, , w]) => w! >= 24), `S125 ${width}px: ${JSON.stringify(boxes)}`).toBe(true);
-    expect(boxes.every((box, i) => i === 0 || box[0]! >= boxes[i - 1]![1]! - 0.5), `S125 ${width}px no overlap`).toBe(true);
+  await width.fill("9999");
+  await page.keyboard.press("Enter");
+  await expect.poll(calls, { message: "S124 past the top is the top" }).toEqual([["cameraWidth", "1296"]]);
+  await clearCalls();
+  await width.fill("80");
+  await page.keyboard.press("Escape");
+  await expect(width, "S124 Escape restores the saved value").toHaveValue("1296");
+  await rounding.fill("37");
+  await rounding.blur();
+  await expect.poll(calls, { message: "S124 leaving the field sends it" }).toEqual([["cameraRounding", "37"]]);
+  await expect(rounding).toHaveAttribute("aria-valuetext", "37%");
+  // Dragged sideways by its name, as a slider: one save, where it was let go of.
+  await clearCalls();
+  const name = page.locator(".number-setting", { has: rounding }).locator(".number-setting-name");
+  const box = (await name.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 6, box.y + box.height / 2, { steps: 3 });
+  await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2, { steps: 3 });
+  await page.mouse.up();
+  await expect.poll(calls, { message: "S124 one drag is one save" }).toEqual([["cameraRounding", "47"]]);
+  await expect(rounding).toHaveAttribute("aria-valuetext", "47%");
+  // However narrow the Camera panel, each field shows its whole name, value and unit, none covering another.
+  for (const [w, h] of [[600, 680], [760, 680], [1000, 680]] as const) {
+    await host.evaluate((host, size) => host.setSize(size[0], size[1]), [w, h]);
+    const fields = await page.locator(".studio-fields .number-setting").evaluateAll(els => els.map(el => {
+      const r = el.getBoundingClientRect();
+      const input = el.querySelector("input")!;
+      const clipped = el.scrollWidth > el.clientWidth + 0.5 || input.scrollWidth > input.clientWidth + 0.5;
+      return { clipped, box: [r.left, r.top, r.right, r.bottom] };
+    }));
+    expect(fields.every((f) => !f.clipped), `S125 ${w}px nothing cut off: ${JSON.stringify(fields)}`).toBe(true);
+    const meet = (a: number[], b: number[]) => a[0]! < b[2]! - 0.5 && b[0]! < a[2]! - 0.5 && a[1]! < b[3]! - 0.5 && b[1]! < a[3]! - 0.5;
+    expect(fields.every((f, i) => fields.every((g, j) => i === j || !meet(f.box, g.box))), `S125 ${w}px no overlap`).toBe(true);
   }
   await host.evaluate(h => h.setSize(560, 680));
 
@@ -366,11 +419,11 @@ test("S124–S126 camera rows: a slider names its percent and commits once, a re
   await expect(width, "S126 the shape is not (D7)").toBeEnabled();
   await clearCalls();
   await width.focus();
-  await page.keyboard.press("ArrowLeft");
-  await expect.poll(calls, { message: "S126 a change while recording reaches main" }).toEqual([["cameraWidth", "20"]]);
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(calls, { message: "S126 a change while recording reaches main" }).toEqual([["cameraWidth", "1295"]]);
 
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", camera: { enabled: true, available: true, access: "granted" } }); });
-  await expect(page.getByRole("slider", { name: "寬度" }), "S124 zh-TW").toHaveAttribute("aria-valuetext", "20%");
+  await expect(page.getByRole("spinbutton", { name: "寬度" }), "S124 zh-TW, at the default's").toHaveAttribute("aria-valuetext", "454 px");
 });
 
 test("S127–S130 camera preview: the camera in the bubble while in sight, dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7)", { tag: "@recording-settings" }, async () => {
@@ -402,19 +455,30 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
     h.state.cameraState = undefined;
     h.previewWatches.length = 0;
     h.state.cameraContext = { ...h.baseContext(),
-      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0, menuBar: 33 }],
+      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }],
       camera: { enabled: true, available: true, access: "granted", devices: list, device: { id: "iphone", label: "iPhone Camera" } } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   }, devices);
   await page.locator("#tab-studio").click();
   const bubble = page.getByRole("application", { name: "Preview" });
   await bubble.scrollIntoViewIfNeeded();
-  await expect(bubble, "S127 the bubble says where it is").toHaveAccessibleDescription(/97% from the left, 95% from the top/);
+  await expect(bubble, "S127 the bubble says where it is").toHaveAccessibleDescription(/97% from the left, 5% from the top/);
   await expect.poll(async () => (await cameraCalls()).opened, { message: "S127 the chosen camera, matched by its name, opens while in sight" })
     .toEqual([expect.stringContaining("web-iphone")]);
   await expect(page.locator(".camera-preview-camera"), "S127 and shows in the bubble").toBeVisible();
-  await expect(page.locator(".camera-preview-menubar"), "S127 under the menu bar's band").toBeVisible();
 
+  // Let go of just inside an edge, the bubble stays there: nothing pulls it onto the edge (2026-10-22).
+  await clearCalls();
+  {
+    const from = (await bubble.boundingBox())!, area = (await page.locator(".camera-preview-stage").boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    // 2% of the free width from the left edge, and the middle of the free height off the centre.
+    await page.mouse.move(area.x + 0.02 * (area.width - from.width) + from.width / 2, area.y + 0.4 * (area.height - from.height) + from.height / 2, { steps: 4 });
+    await page.mouse.up();
+  }
+  await expect.poll(async () => (await calls()).map(([group, choice]) => [group, ...String(choice).split(",").map(Number)]), { message: "S128 let go of near an edge, it stays where it was let go of" })
+    .toEqual([["cameraPreview", expect.closeTo(0.02, 1), expect.closeTo(0.4, 1)]]);
   await clearCalls();
   const box = (await bubble.boundingBox())!;
   const stage = (await page.locator(".camera-preview-stage").boundingBox())!;
@@ -423,7 +487,7 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
   await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2, { steps: 4 });
   await page.mouse.move(stage.x - 40, stage.y - 40, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(calls, { message: "S128 one drag is one save, where it was let go of, snapped inside the display" }).toEqual([["cameraPreview", "0,0"]]);
+  await expect.poll(calls, { message: "S128 one drag is one save, where it was let go of, kept inside the display" }).toEqual([["cameraPreview", "0,0"]]);
   await expect(bubble).toHaveAccessibleDescription(/0% from the left, 0% from the top/);
   await clearCalls();
   await bubble.focus();
@@ -507,12 +571,12 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
   await clearCalls();
   await page.getByRole("application", { name: "Preview" }).focus();
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(calls, { message: "S130 the bubble still moves while recording (D7)" }).toEqual([["cameraPreview", "0.96,0.95"]]);
+  await expect.poll(calls, { message: "S130 the bubble still moves while recording (D7)" }).toEqual([["cameraPreview", "0.96,0.05"]]);
 
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW",
     displays: h.state.cameraContext!.displays, camera: { enabled: false, available: true, access: "granted" } }); });
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S130 and let go of once the recording is over" }).toEqual([true, false]);
-  await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 95%/);
+  await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 5%/);
   await expect(page.locator(".camera-preview-status")).toHaveText("開啟「相機」後即可在此預覽。");
 });
 
@@ -526,8 +590,8 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
   await page.locator("#tab-studio").click();
   await expect(page.locator("#tab-studio"), "S131 a tab of its own").toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#setting-cameraWidth"), "S131 the bubble's shape is the Studio's").toHaveCount(1);
-  await expect(page.getByRole("slider", { name: "Width" }), "S131 its explanation as in Recording settings").toHaveAccessibleDescription(/shorter side/);
-  await expect(page.getByRole("button", { name: "Mirror in recording", exact: true })).toHaveAccessibleDescription(/Flips the camera/);
+  await expect(page.getByRole("spinbutton", { name: "Width" }), "S131 said with what its pixels are counted on").toHaveAccessibleDescription(/Pixels in a \d+ × \d+ recording/);
+  await expect(page.getByRole("button", { name: "Mirror in recording", exact: true }), "S131 the mirror, named by its tooltip").toBeVisible();
   await clearCalls();
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect.poll(calls, { message: "S131 Start asks main" }).toEqual([["studioControls", "start"]]);
@@ -564,9 +628,11 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   });
   await page.locator("#tab-studio").click();
   const system = page.getByRole("button", { name: "Mute System audio" });
-  await system.scrollIntoViewIfNeeded();
-  await expect(system, "S133 between recordings there is nothing to mute").toBeDisabled();
-  await expect(page.getByRole("meter", { name: "Microphone" }), "S133 the microphone's meter while its switch is on").toBeVisible();
+  await page.getByRole("slider", { name: "Microphone volume" }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("slider", { name: "Microphone volume" }), "S133 the microphone's fader while its switch is on").toBeVisible();
+  // Between recordings there is no level to show and nothing to mute: no meter, no mute (2026-10-22).
+  await expect(system, "S133 between recordings there is nothing to mute").toHaveCount(0);
+  await expect(page.getByRole("meter"), "S133 nor a level to show").toHaveCount(0);
   await page.waitForTimeout(200);
   expect(await host.evaluate(h => [...h.levelWatches]), "S133 no levels are asked for between recordings").toEqual([]);
 
@@ -575,6 +641,8 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
     h.state.cameraContext = { ...h.state.cameraContext!, audioSession: { systemMuted: false, microphone: { muted: false } } };
     h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
   });
+  await expect(system, "S133 a recording's mute, beside its input's name").toBeEnabled();
+  await expect(page.getByRole("meter", { name: "Microphone" }), "S133 and each input's meter").toBeVisible();
   await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 a recording's meter in sight asks for levels" }).toEqual([true]);
   await host.evaluate(h => h.pushLevels({ system: 0.5, microphone: 0.1 }));
   await expect(page.getByRole("meter", { name: "System audio" }), "S133 a level in dB below full scale").toHaveAttribute("aria-valuetext", "-6 dB");
@@ -602,14 +670,14 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   await host.evaluate(h => h.push(h.settingsView({ type: "countdown", remaining: 3 }, h.state.cameraContext!)));
   await expect(page.getByRole("meter", { name: "System audio" }), "S133 a next recording's meter starts from silence").toHaveAttribute("aria-valuenow", "-60");
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true } }); });
-  await expect(page.getByRole("button", { name: "將系統聲音靜音" }), "S133 zh-TW").toBeVisible();
+  await expect(page.getByRole("slider", { name: "系統聲音音量" }), "S133 zh-TW, between recordings its fader alone").toBeVisible();
 });
 
-test("S138 each input's fader under its meter: saved between and during recordings, said in dB, silent at its bottom (plan 075, D21)", { tag: "@recording-settings" }, async () => {
+test("S138 each input's fader under its meter: saved between and during recordings, said in percent, silent at its bottom (plan 075, D21, 2026-10-21)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
-    h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true }, audioGain: { system: 0, microphone: -6 } };
+    h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true }, audioVolume: { system: 100, microphone: 50 } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
   await page.locator("#tab-studio").click();
@@ -617,13 +685,16 @@ test("S138 each input's fader under its meter: saved between and during recordin
   const microphone = page.getByRole("slider", { name: "Microphone volume" });
   await system.scrollIntoViewIfNeeded();
   await expect(system, "S138 between recordings a fader may move").toBeEnabled();
-  await expect(system).toHaveAttribute("aria-valuetext", "0 dB");
-  await expect(microphone, "S138 each input its own").toHaveAttribute("aria-valuetext", "−6 dB");
+  await expect(system, "S138 as it comes is 100%").toHaveAttribute("aria-valuetext", "100%");
+  await expect(microphone, "S138 each input its own").toHaveAttribute("aria-valuetext", "50%");
   await clearCalls();
   await system.focus();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(calls, { message: "S138 a step asks main to save it" }).toEqual([["systemGain", "1"]]);
-  await expect(system, "S138 and shows it, signed").toHaveAttribute("aria-valuetext", "+1 dB");
+  await expect.poll(calls, { message: "S138 a step of 5% asks main to save it" }).toEqual([["systemGain", "105"]]);
+  await expect(system, "S138 and shows it").toHaveAttribute("aria-valuetext", "105%");
+  await clearCalls();
+  await page.keyboard.press("End");
+  await expect.poll(calls, { message: "S138 the top is 600%" }).toEqual([["systemGain", "600"]]);
 
   await host.evaluate(h => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
@@ -634,13 +705,13 @@ test("S138 each input's fader under its meter: saved between and during recordin
   await clearCalls();
   await microphone.focus();
   await page.keyboard.press("Home");
-  await expect.poll(calls, { message: "S138 the bottom is a choice main takes" }).toEqual([["microphoneGain", "-60"]]);
-  await expect(microphone, "S138 and is silence").toHaveAttribute("aria-valuetext", "−∞ dB");
+  await expect.poll(calls, { message: "S138 the bottom is a choice main takes" }).toEqual([["microphoneGain", "0"]]);
+  await expect(microphone, "S138 and is silence").toHaveAttribute("aria-valuetext", "0%");
   await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", microphone: { enabled: true } }); });
   await expect(page.getByRole("slider", { name: "麥克風音量" }), "S138 zh-TW").toBeVisible();
 });
 
-test("S135 the sidebar collapses to a rail of icons named by their tooltips, its status a light that opens it, and is remembered (2026-10-17)", { tag: "@layout" }, async () => {
+test("S135 the sidebar collapses to toolbars of icons named by their tooltips, its status a bell that opens the card beside it, and is remembered; a narrow window keeps it collapsed (2026-10-17, 2026-10-20, 2026-10-21)", { tag: "@layout" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(1000, 680); h.pushModel({ type: "idle" }); });
   const toggle = page.locator("#sidebar-toggle");
   await expect(toggle).toHaveAttribute("aria-label", "Collapse sidebar");
@@ -653,31 +724,69 @@ test("S135 the sidebar collapses to a rail of icons named by their tooltips, its
   await expect(page.locator("#tab-library"), "S135 and stay their names").toHaveAccessibleName("Recordings");
   await page.locator("#tab-studio").hover();
   await expect(page.locator('[data-slot="tooltip-content"][data-open]'), "S135 a tooltip names the tab").toHaveText("Recording Studio");
-  // A problem's card gives way to a light in its tone, which opens the sidebar to show it.
+  // The toggle stays where it was, so the same click opens the sidebar again.
+  const collapsedAt = await toggle.boundingBox();
+  await toggle.click();
+  expect(await toggle.boundingBox(), "S135 the toggle does not move").toEqual(collapsedAt);
+  await toggle.click();
+  // A problem's card gives way to a bell named by it, which opens the card beside it; the sidebar stays collapsed.
   await host.evaluate(h => h.pushModel({ type: "idle", outputDirUnavailable: true }));
-  const light = page.locator("#status-light");
-  await expect(light).toBeVisible();
-  await light.click();
-  await expect(page.locator("main")).not.toHaveAttribute("data-sidebar", "collapsed");
-  await expect(page.locator("#status"), "S135 the card again").toBeVisible();
-  // Collapsed again, it is remembered by the page.
+  const bell = page.locator("#status-bell"), card = page.locator("#status");
+  await expect(bell).toBeVisible();
+  await expect(card).toBeHidden();
+  await bell.click();
+  await expect(card, "S135 the card beside the bell").toBeVisible();
+  await expect(bell).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("main")).toHaveAttribute("data-sidebar", "collapsed");
+  await expect(page.locator("#status-action")).toBeVisible();
+  // Escape closes the card, not the window, and gives the focus back to the bell.
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await expect(bell).toBeFocused();
+  await bell.click();
+  await expect(card).toBeVisible();
+  await page.locator(".settings-head").click({ position: { x: 300, y: 60 } });
+  await expect(card, "S135 a press elsewhere closes it").toBeHidden();
+  await host.evaluate(h => h.pushModel({ type: "idle" }));
+  await expect(bell, "S135 no problem, no bell").toBeHidden();
+  // The window's actions are one button whose menu holds Hide and Quit.
+  await page.locator("#sidebar-about-hide-menu").click();
+  await expect(page.getByRole("menuitem", { name: "Hide interface" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Quit RecordStuff" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Hide interface" })).toBeHidden();
+  // Either way, it is remembered by the page.
+  await toggle.click();
+  expect(await page.evaluate(() => localStorage.getItem("recordstuff.sidebarCollapsed"))).toBe("0");
   await toggle.click();
   expect(await page.evaluate(() => localStorage.getItem("recordstuff.sidebarCollapsed"))).toBe("1");
   await toggle.click();
-  expect(await page.evaluate(() => localStorage.getItem("recordstuff.sidebarCollapsed"))).toBe("0");
-  // Troubleshooting's unread count stays readable on the rail.
-  await toggle.click();
+  // Troubleshooting's unread items are a dot on the collapsed sidebar, the count still in the tab's name.
   await host.evaluate(h => { const view = h.settingsView({ type: "idle" }, h.baseContext());
     h.push({ ...view, tabs: view.tabs.map((tab: { id: string; label: string }) => tab.id === "failures" ? { ...tab, label: "Troubleshooting (2)" } : tab) }); });
   await expect(page.locator("#tab-failures .tab-badge")).toBeVisible();
-  expect(await page.locator("#tab-failures .tab-badge").evaluate(el => parseFloat(getComputedStyle(el).fontSize)), "S135 at least 12px").toBeGreaterThanOrEqual(12);
+  await expect(page.locator("#tab-failures .tab-dot")).toBeHidden();
   await toggle.click();
-  // A narrow window's tabs are a line already: nothing collapses.
+  await expect(page.locator("#tab-failures .tab-dot")).toBeVisible();
+  await expect(page.locator("#tab-failures .tab-badge")).toBeHidden();
+  await expect(page.locator("#tab-failures")).toHaveAccessibleName(/2/);
+  // Each icon stays where it was in the full sidebar.
+  const collapsedIcon = await page.locator("#tab-recording .tab-icon").boundingBox();
+  await toggle.click();
+  expect(await page.locator("#tab-recording .tab-icon").boundingBox(), "S135 the icons do not move").toEqual(collapsedIcon);
+  // A narrow window has no room for the full sidebar: it keeps the collapsed toolbars, with no toggle, and the choice
+  // saved for a wide window stays (2026-10-21).
   await host.evaluate(h => { h.setSize(560, 680); h.pushModel({ type: "idle" }); });
+  await expect(page.locator("main"), "S135 a narrow window's sidebar is collapsed").toHaveAttribute("data-sidebar", "collapsed");
   await expect(toggle).toBeHidden();
+  await expect(page.locator("#sidebar-about-hide-menu"), "S135 …its window actions one button").toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("recordstuff.sidebarCollapsed"))).toBe("0");
+  await host.evaluate(h => h.setSize(1000, 680));
+  await expect(page.locator("main"), "S135 widened, the saved full sidebar returns").not.toHaveAttribute("data-sidebar", "collapsed");
+  await expect(toggle).toBeVisible();
 });
 
-test("S136–S137 Live preview: the Studio's button asks main, the engine's picture shows with no bubble to place when the camera is off, and leaving the Studio lets it go (plan 075, D20)", { tag: "@recording-settings" }, async () => {
+test("S136–S137 Live preview: a switch of the preview's own, apart from Start, asks main; the engine's picture shows with no bubble to place when the camera is off, can be hidden while recording, and leaving the Studio lets it go (plan 075, D20, 2026-10-21)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.studioWatches.length = 0;
@@ -688,24 +797,49 @@ test("S136–S137 Live preview: the Studio's button asks main, the engine's pict
   });
   await page.locator("#tab-studio").click();
   await expect.poll(() => host.evaluate(h => [...h.studioWatches]), { message: "S136 the Studio says it is open" }).toEqual([true]);
+  const live = page.getByRole("switch", { name: "Live preview" });
+  await expect(live, "S136 a switch, off").toHaveAttribute("aria-checked", "false");
+  await expect(page.locator(".studio-controls").getByRole("button"), "S136 the recording's controls hold Start alone").toHaveText(["Start recording"]);
+  await expect(page.locator(".studio-controls"), "S136 the bar is drawn in the recording's phase").toHaveAttribute("data-phase", "idle");
   await clearCalls();
-  await page.getByRole("button", { name: "Live preview" }).click();
-  await expect.poll(calls, { message: "S136 Live preview asks main" }).toEqual([["studioControls", "preview"]]);
+  await live.click();
+  await expect.poll(calls, { message: "S136 Live preview asks main" }).toEqual([["studioLive", "on"]]);
   await host.evaluate(h => {
     h.state.cameraContext = { ...h.state.cameraContext!, studio: { preview: { live: true }, showing: true } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
-  await expect(page.locator("#setting-studioControls-label"), "S136 the state").toHaveText("Previewing");
-  await expect(page.getByRole("button", { name: "Stop preview" })).toBeVisible();
+  await expect(live).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#setting-studioControls-label"), "S136 the recording's state, not the preview's").toHaveText("Ready");
   await expect(page.locator(".camera-preview-picture"), "S136 the engine's picture").toBeVisible();
   await expect(page.locator(".camera-preview-handle"), "S136 no bubble to place without the camera").toHaveCount(0);
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S136 its picture is asked for" }).toEqual([true]);
-  // A preview that could not start says why, until the next.
+  // While recording: Stop with the elapsed time, and the picture switched off, which lets the engine's preview go.
   await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: true } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(page.locator(".studio-controls"), "S136 recording").toHaveAttribute("data-phase", "recording");
+  await expect(page.getByRole("button", { name: "Stop recording" }), "S136 Stop says a recording is under way, with its time").toContainText(/\d:\d\d/);
+  await expect(live, "S136 the recording's picture shows").toHaveAttribute("aria-checked", "true");
+  await clearCalls();
+  await live.click();
+  await expect.poll(calls, { message: "S136 hiding the picture asks main" }).toEqual([["studioLive", "off"]]);
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: false, pictureHidden: true } };
+    h.push(h.settingsView(h.state.cameraState!, h.state.cameraContext));
+  });
+  await expect(live).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator(".camera-preview-picture"), "S136 no picture").toBeHidden();
+  await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S136 the picture is let go" }).toEqual([true, false]);
+  // A preview that could not start says why, under the picture and to its switch, until the next.
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
     h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: false, previewFailure: "camera_unavailable" } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
-  await expect(page.locator(".studio-controls [role=status]"), "S136 why").toContainText("Live preview could not start:");
+  await expect(page.locator(".studio-stage [role=status]"), "S136 why").toContainText("Live preview could not start:");
+  await expect(live, "S136 its switch is described by why").toHaveAccessibleDescription(/Live preview could not start:/);
   await page.locator("#tab-general").click();
   await expect.poll(() => host.evaluate(h => [...h.studioWatches]), { message: "S137 leaving the Studio lets the preview go" }).toEqual([true, false]);
   await host.evaluate(h => h.setSize(560, 680));
@@ -859,7 +993,8 @@ test("S053–S057 General's footer and the log link: wide and narrow windows, a 
     const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
     return { credit: credit.checkVisibility() && c.height > 0, links: links.map(b => Boolean(b?.checkVisibility() && b.getAttribute("aria-label"))),
       apart: links.every(b => b && apart(c, b.getBoundingClientRect())),
-      hide: [...document.querySelectorAll("button[aria-label]")].some(b => b.getAttribute("aria-label") === "Hide interface" && b.checkVisibility()) }; })()`;
+      // Hide interface itself, or the collapsed sidebar's (a narrow window's) window-actions menu that holds it.
+      hide: [...document.querySelectorAll("button[aria-label]")].some(b => ["Hide interface", "RecordStuff window actions"].includes(b.getAttribute("aria-label")) && b.checkVisibility()) }; })()`;
   expect.soft(await read(page, footer), "S053 General's footer shows the credit and named website/source links without overlap; Hide interface stays reachable")
     .toEqual({ credit: true, links: [true, true], apart: true, hide: true });
   await host.evaluate(h => h.setSize(560, 760));

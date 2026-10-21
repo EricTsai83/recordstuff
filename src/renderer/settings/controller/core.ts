@@ -65,21 +65,33 @@ export let view: SettingsView | undefined;
 export let selectedTab: SettingsTab = "library";
 export let feedbackText = "";
 export let startupFailed = false;
-export let saving:
-  | { group: string; choice: string; control: string }
-  | undefined;
-export let failure:
-  | {
-      group: string;
-      choice?: string;
-      text: string;
-      baseline?: string;
-      refused?: true;
-      editor?: true;
-    }
-  | undefined;
+/** A setting's save in flight: the choice sent, the control it came from, and its request. */
+export interface Save { choice: string; control: string; request: number }
+/** Why a setting's last choice did not apply, said at its row until it is changed again. */
+export interface Failure {
+  group: string;
+  choice?: string;
+  text: string;
+  /** Main's value when the choice failed: a retry is offered only while it still holds. */
+  baseline?: string;
+  refused?: true;
+  editor?: true;
+}
+/**
+ * Each setting saves on its own (2026-10-22): its save in flight and its failure are its own, so a choice for one
+ * setting is sent at once, never waiting for or dropped behind another's. Main writes the settings file through one
+ * ordered queue and stamps every view with a rising revision, which render() orders by; the page needs no lock.
+ */
+const saves = new Map<string, Save>();
+const failures = new Map<string, Failure>();
+/** The save in flight for `group`, if any. */
+export const savingOf = (group: string): Save | undefined => saves.get(group);
+/** Whether any setting is saving: only for what must wait for every save (Hide and Quit, the shortcut editor). */
+export const anySaving = (): boolean => saves.size > 0;
+/** Why `group`'s last choice did not apply, if it did not. */
+export const failureOf = (group: string): Failure | undefined => failures.get(group);
+const capturing = (): boolean => [...saves.values()].some((save) => isCaptureControl(save.control));
 let requestId = 0,
-  pending = 0,
   reportedReady = false;
 let resultFocus = 0,
   lastNotice: string | undefined;
@@ -113,8 +125,18 @@ export const platform = (): string =>
   shortcutGroup()?.platform ?? browserPlatform();
 export const shortcutGroup = (): SettingsGroup | undefined =>
   view?.groups.find((g) => g.kind === "shortcut");
-export const committed = (group: SettingsGroup | undefined): string =>
+/** The value main says is in force for `group`. */
+export const confirmed = (group: SettingsGroup | undefined): string =>
   group?.choices.find((c) => c.checked)?.id ?? "";
+/**
+ * The value `group` shows: the one being saved while it saves, if it is one of the group's own values, else the one main
+ * confirms (2026-10-22). A control shows the user's choice at once and goes back to main's value if the save fails. An
+ * action (a pane, a check) is no value, and a typed or dragged value keeps its own draft until main answers.
+ */
+export const committed = (group: SettingsGroup | undefined): string => {
+  const save = group && saves.get(group.id);
+  return save && group.choices.some((c) => c.id === save.choice) && !isAction(group, save.choice) ? save.choice : confirmed(group);
+};
 const isRecoveryControl = (id: string): boolean =>
   /-(retry|recovery)$/.test(id);
 export const focus = (id: string | undefined): void => {
@@ -151,17 +173,14 @@ function reportReady(): void {
   );
 }
 export function localFailure(group: string, message: string): void {
-  failure = { group, text: message };
+  failures.set(group, { group, text: message });
   announce(message);
 }
-export function setFailure(value: typeof failure): void {
-  failure = value;
+export function setFailure(value: Failure): void {
+  failures.set(value.group, value);
 }
 export function clearFailure(group: string): void {
-  if (failure?.group === group) {
-    failure = undefined;
-    draw();
-  }
+  if (failures.delete(group)) draw();
 }
 export function isAction(
   group: SettingsGroup,
@@ -189,12 +208,12 @@ export function groupControl(
   );
 }
 export function retryAllowed(group: SettingsGroup): boolean {
+  const failure = failures.get(group.id);
   return Boolean(
     failure?.choice &&
-    failure.group === group.id &&
     group.enabled &&
-    failure.baseline === committed(group) &&
-    group.choices.some((c) => c.id === failure?.choice && c.enabled),
+    failure.baseline === confirmed(group) &&
+    group.choices.some((c) => c.id === failure.choice && c.enabled),
   );
 }
 export function activateTab(tab: SettingsTab): void {
@@ -227,25 +246,26 @@ export async function choose(
   choice: string,
   control: string,
 ): Promise<void> {
-  // The currently edited value can queue a newer intent; actions never duplicate.
-  if (
-    saving &&
-    (saving.group !== group ||
-      isRecoveryControl(control) ||
-      isCaptureControl(control))
-  )
-    return;
+  // A setting being edited can send a newer intent of its own; its actions never duplicate, and the shortcut editor's
+  // save stands alone, as its key capture does.
+  const own = saves.get(group);
+  if (own && (isRecoveryControl(control) || isCaptureControl(control))) return;
+  if (isCaptureControl(control) ? saves.size > 0 : capturing()) return;
   const id = ++requestId;
-  pending++;
-  saving = { group, choice, control };
-  failure = undefined;
+  saves.set(group, { choice, control, request: id });
+  failures.delete(group);
   announce("");
   draw();
   let success = false;
   let returnCaptureFocus = false;
+  // Only the newest request for this setting speaks for it; a view from any request still renders by its revision.
+  const newest = (): boolean => saves.get(group)?.request === id;
   try {
     const result = await window.settings.choose(group, choice);
-    if (id !== requestId) return;
+    if (!newest()) {
+      render(result.view);
+      return;
+    }
     returnCaptureFocus =
       isCaptureControl(control) &&
       document.activeElement?.id === control &&
@@ -253,13 +273,14 @@ export async function choose(
     render(result.view);
     success = result.applied;
     if (!success) {
-      failure = {
+      const failure: Failure = {
         group,
         choice,
         text: result.failure ?? result.view.failure,
-        baseline: committed(result.view.groups.find((g) => g.id === group)!),
+        baseline: confirmed(result.view.groups.find((g) => g.id === group)),
         ...(result.refused ? { refused: true as const } : {}),
       };
+      failures.set(group, failure);
       announce(failure.text);
     } else if (
       isCaptureControl(control) &&
@@ -276,19 +297,20 @@ export async function choose(
     )
       announce(text("Switched to Primary display"));
   } catch {
-    if (id === requestId && view) {
-      failure = {
+    if (newest() && view) {
+      const failure: Failure = {
         group,
         choice,
         text: view.failure,
-        baseline: committed(view.groups.find((g) => g.id === group)!),
+        baseline: confirmed(view.groups.find((g) => g.id === group)),
       };
+      failures.set(group, failure);
       announce(failure.text);
       if (isCaptureControl(control)) void capture(false);
     }
   } finally {
-    pending--;
-    if (!pending) saving = undefined;
+    if (!newest()) return;
+    saves.delete(group);
     // Only move focus if the user's focus is still on the disappearing field.
     const restore =
       document.activeElement?.id === control && document.hasFocus();
@@ -340,9 +362,9 @@ export function render(next: SettingsView): void {
         returned.add(group.id);
       beforeCapture.delete(group.id);
       // Cancelled, timed out or saved: a key the closed editor refused is no longer what the card is about.
-      if (failure?.group === group.id && failure.editor) failure = undefined;
+      if (failures.get(group.id)?.editor) failures.delete(group.id);
       // Main ended it (its time limit, a recording starting) while the user may still be typing a combination.
-      if (!closingCapture && !(saving && isCaptureControl(saving.control)))
+      if (!closingCapture && !capturing())
         endedByMain = true;
     }
   }
@@ -369,7 +391,7 @@ export function render(next: SettingsView): void {
   // Escape does not close the window. A choice's own reply is left to `choose`, which knows the row that stands for it.
   if (
     focusedBefore &&
-    !pending &&
+    saves.size === 0 &&
     document.hasFocus() &&
     (!focusedBefore.isConnected ||
       focusedBefore.closest("[hidden]") ||

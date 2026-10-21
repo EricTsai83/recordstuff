@@ -10,8 +10,8 @@ import {
   draw,
   localFailure,
   render,
-  saving,
-  setFailure,
+  anySaving,
+  clearFailure,
   shortcutGroup,
   text,
   view,
@@ -53,7 +53,7 @@ export async function capture(armed: boolean, restore = false): Promise<void> {
   if (
     armed &&
     (!shortcutGroup()?.enabled ||
-      saving ||
+      anySaving() ||
       arming ||
       shortcutGroup()?.capturing)
   )
@@ -64,7 +64,7 @@ export async function capture(armed: boolean, restore = false): Promise<void> {
   previewParts = [];
   candidateToConfirm = undefined;
   if (armed) {
-    setFailure(undefined);
+    clearFailure("hotkey");
     announce("");
   } else closingCapture = true;
   draw();

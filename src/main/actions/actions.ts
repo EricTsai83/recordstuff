@@ -3,7 +3,6 @@
  * menu, notifications and the Settings shortcut all end here, so the quit gate and each preference's lock are
  * decided in one place. `index.ts` builds the collaborators and passes them in; this module creates none.
  */
-import { applyRatio } from "../../shared/camera-layout";
 import fs from "node:fs/promises";
 import type { MessageBoxOptions } from "electron";
 import type { AppAction } from "../app/ui-model";
@@ -25,6 +24,8 @@ export interface ActionDeps {
   quitRequested(): boolean;
   /** Whether the Recording Studio is open in a window in sight (plan 075, D20), which a Live preview lasts as long as. */
   studioOpen?(): boolean;
+  /** Shows or hides the recording's picture in the Recording Studio while it records (2026-10-21). */
+  studioPicture?(shown: boolean): void;
   /** Nothing is recording or quitting (`preferencesUnlocked`), so a session-touching change may apply. */
   settled(): boolean;
   platform: NodeJS.Platform;
@@ -36,7 +37,7 @@ export interface ActionDeps {
     | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
-    | "audioGain" | "setAudioGain">;
+    | "audioVolume" | "setAudioVolume">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "updateMicrophone"
     | "audio" | "startPreview" | "stopPreview">;
   /** Lists the audio inputs again at once (plan 079, D2); resolves once they are listed or could not be. */
@@ -147,10 +148,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         write: () => settings.setCameraDevice(action.setCameraDevice),
         applied: () => log(`settings: camera device ${settings.cameraDevice ? settings.cameraDevice.id : "system default"}`),
       });
-    } else if ("setCameraShape" in action || "setCameraRatio" in action) {
+    } else if ("setCameraShape" in action) {
       // Not locked while recording (D7): the recording takes the new bubble from its next frame on.
       const current = settings.cameraLayout;
-      const next = "setCameraRatio" in action ? applyRatio(current, action.setCameraRatio) : { ...current, ...action.setCameraShape };
+      const next = { ...current, ...action.setCameraShape };
       await deps.savePreference("camera shape", {
         write: () => settings.setCameraLayout({ width: next.width, height: next.height, rounding: next.rounding, mirror: next.mirror }),
         applied: () => {
@@ -176,14 +177,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       // Judged as the switch is, by the muting now in force.
       if (!recorder.updateAudio({ [source]: muted })) log(`audio: no recording to mute or unmute ${source === "system" ? "system audio" : "the microphone"} in`);
       deps.refresh();
-    } else if ("setAudioGain" in action) {
+    } else if ("setAudioVolume" in action) {
       // A setting, not locked while recording (D21), as the bubble's shape: taken from the input's next sound on.
-      const { source, db } = action.setAudioGain;
+      const { source, volume } = action.setAudioVolume;
       await deps.savePreference(source === "system" ? "system audio volume" : "microphone volume", {
-        write: () => settings.setAudioGain(source, db),
+        write: () => settings.setAudioVolume(source, volume),
         applied: () => {
-          const saved = settings.audioGain;
-          log(`settings: volume system ${saved.system} dB, microphone ${saved.microphone} dB`);
+          const saved = settings.audioVolume;
+          log(`settings: volume system ${saved.system}%, microphone ${saved.microphone}%`);
           recorder.updateGains();
         },
       });
@@ -338,6 +339,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         return true;
       case "stopPreview":
         recorder.stopPreview();
+        return true;
+      case "showStudioPicture":
+      case "hideStudioPicture":
+        deps.studioPicture?.(action === "showStudioPicture");
         return true;
       case "start":
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).

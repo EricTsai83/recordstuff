@@ -68,7 +68,8 @@ for (const scheme of ["light", "dark"] as const) {
       const sample = await page.evaluate(index =>
         (window as unknown as { selectionProbe: SelectionProbe }).selectionProbe.samples[index]!, index);
       expect(sample.id).toBe(`setting-${group}-${choice}`);
-      if (group === "language") expect(sample.language).toBe(choice === "en" ? "en" : "zh-Hant");
+      // The selection shows at once (2026-10-22); the language applies once main has saved it.
+      if (group === "language") await expect(page.locator("html")).toHaveAttribute("lang", choice === "en" ? "en" : "zh-Hant");
       if (group === "appearance") {
         // The chosen appearance reaches the page: the renderer follows nativeTheme's dark or light.
         const dark = await app.evaluate((_h, _arg, electron) => electron.nativeTheme.shouldUseDarkColors);

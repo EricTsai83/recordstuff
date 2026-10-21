@@ -1,9 +1,8 @@
 /** Model-driven preference, diagnostic and cleanup rows grouped into sections. */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, Ratio, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, CircleHelp, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, Moon, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 import type { SettingsGroup, SettingsChoice } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
-import { gainText } from "../../../shared/audio-gain";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
@@ -22,7 +21,6 @@ import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
 import { CameraPreview } from "./camera-preview";
 import { AudioMeter, InputMeter } from "./audio-meter";
-import { WindowActions } from "../window-actions";
 
 const icons = {
   screen: Monitor,
@@ -38,7 +36,6 @@ const icons = {
   cameraDevice: Webcam,
   cameraWidth: MoveHorizontal,
   cameraHeight: MoveVertical,
-  cameraRatio: Ratio,
   cameraRounding: SquareRoundCorner,
   cameraMirror: FlipHorizontal2,
   cameraPreview: Move,
@@ -93,7 +90,7 @@ export function SliderSetting({ id, group, slider, disabled, describedBy }: {
 }) {
   const [moving, setMoving] = useState<number | undefined>(undefined);
   const shown = moving ?? slider.value;
-  const text = slider.unit === "decibels" ? gainText(shown) : `${shown}%`;
+  const text = `${shown}%`;
   return (
     <div className="slider-setting">
       <Slider
@@ -167,7 +164,7 @@ export function Action({
   wrap?: boolean;
   className?: string | undefined;
 }) {
-  const busy = Boolean(model.saving) || choice.busy === true,
+  const busy = Boolean(model.savingOf(group.id)) || choice.busy === true,
     iconOnly = group.id === "about" && (choice.id === "website" || choice.id === "source");
   return (
     <ControlTooltip label={iconOnly ? choice.label : undefined}>
@@ -256,18 +253,15 @@ export function TextSetting({
   group: SettingsGroup;
   description: string;
 }) {
-  const { value, held, draft, field, submit, refused, note, edit, reset } = useTextSetting(group);
+  const { value, draft, field, submit, refused, note, edit, reset } = useTextSetting(group);
   return (
     <>
       <Input
         ref={field}
         id={`setting-${group.id}`}
-        className={held ? "text-field disabled:cursor-default disabled:opacity-100" : "text-field"}
+        className="text-field"
         value={draft}
-        disabled={
-          !group.enabled ||
-          Boolean(model.saving && model.saving.group !== group.id)
-        }
+        disabled={!group.enabled}
         spellCheck={false}
         autoComplete="off"
         autoCapitalize="off"
@@ -308,14 +302,12 @@ export function SettingRow({ group }: { group: SettingsGroup }) {
 }
 function PreferenceRow({ group }: { group: SettingsGroup }) {
   const id = `setting-${group.id}`,
-    ownFailure = model.failure?.group === group.id ? model.failure : undefined;
+    ownFailure = model.failureOf(group.id);
   const actions =
     group.kind === "actions" ? group.choices : (group.actions ?? []);
-  const busy = Boolean(model.saving && model.saving.group !== group.id),
-    // While another setting saves, this row's controls hold still but keep their look: dimming every control on the
-    // page for each save read as the whole tab flickering (2026-10-07; the pre-shadcn page had .saving-disabled).
-    held = busy && group.enabled,
-    value = model.committed(group),
+  // While another setting saves, this row's controls stay usable: a choice made meanwhile waits its turn
+  // (controller/core.ts, 2026-10-22), so nothing holds still or dims for another setting's save.
+  const value = model.committed(group),
     diagnosticVisible = Boolean(group.diagnostics?.length || ownFailure);
   const description = [
     group.capturing ? `${id}-help` : "",
@@ -354,7 +346,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
         (!retry && document.activeElement === retryRef.current))
     )
       model
-        .groupControl(group.id, model.saving?.choice ?? model.failure?.choice)
+        .groupControl(group.id, model.savingOf(group.id)?.choice ?? ownFailure?.choice)
         ?.focus({ preventScroll: true });
   });
   const Row = group.kind === "actions" ? "div" : Field;
@@ -364,7 +356,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
       // The Keyboard Shortcuts tab's Change… lands here when a recording or a save has the control disabled (plan 073).
       tabIndex={group.kind === "shortcut" ? -1 : undefined}
       className={group.id === "about" ? "row about-row" : "row block gap-0 [&>*]:w-auto"}
-      aria-busy={model.saving?.group === group.id}
+      aria-busy={Boolean(model.savingOf(group.id))}
     >
       <div className="row-line">
         {group.id === "log" ? (
@@ -407,11 +399,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
         >
           {group.elapsedSince && <Elapsed since={group.elapsedSince} />}
           {group.kind === "actions" ? (
-            actions.filter(choice => group.id !== "about" || choice.id !== "hide").map((choice) => group.id === "about" && choice.id === "quit" ? (
-              <div key={choice.id} className="wide:hidden">
-                <WindowActions group={group} quit={choice} />
-              </div>
-            ) : (
+            // Hide and Quit are the sidebar's, at every width.
+            actions.filter(choice => group.id !== "about" || (choice.id !== "hide" && choice.id !== "quit")).map((choice) => (
               <Action
                 key={choice.id}
                 group={group}
@@ -424,10 +413,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
               id={id}
               aria-labelledby={`${id}-label`}
               checked={value === "on"}
-              className={held ? "data-disabled:cursor-default data-disabled:opacity-100" : undefined}
               disabled={
                 !group.enabled ||
-                busy ||
                 !group.choices.find(
                   (choice) => choice.id === (value === "on" ? "off" : "on"),
                 )?.enabled
@@ -440,15 +427,15 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           ) : group.control === "text" ? (
             <TextSetting group={group} description={description} />
           ) : group.control === "arrangement" ? (
-            <DisplayArrangement group={group} value={value} disabled={!group.enabled || busy} held={held} describedBy={description || undefined} />
+            <DisplayArrangement group={group} value={value} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "meter" && group.meter ? (
-            <AudioMeter group={group} source={group.meter.source} muted={value === "mute"} disabled={!group.enabled || busy} describedBy={description || undefined} />
+            <AudioMeter group={group} source={group.meter.source} muted={value === "mute"} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "inputMeter" ? (
             <InputMeter group={group} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "cameraPreview" && group.cameraPreview ? (
-            <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled || busy} describedBy={description || undefined} />
+            <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "slider" && group.slider ? (
-            <SliderSetting id={id} group={group} slider={group.slider} disabled={!group.enabled || busy} describedBy={description || undefined} />
+            <SliderSetting id={id} group={group} slider={group.slider} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "segmented" ? (
             <ToggleGroup
               id={id}
@@ -475,19 +462,15 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
                     id={`${id}-${choice.id}`}
                     value={choice.id}
                     onClick={() => {
-                      if (
-                        model.saving?.group === group.id &&
-                        model.saving.choice !== value &&
-                        choice.id === value
-                      )
+                      const saving = model.savingOf(group.id);
+                      if (saving && saving.choice !== value && choice.id === value)
                         void model.choose(
                           group.id,
                           choice.id,
                           `${id}-${choice.id}`,
                         );
                     }}
-                    disabled={!group.enabled || !choice.enabled || busy}
-                    className={held && choice.enabled ? "disabled:opacity-100" : undefined}
+                    disabled={!group.enabled || !choice.enabled}
                     aria-label={choice.label}
                   >
                     {group.iconChoices ? (
@@ -515,7 +498,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
                   ? [{ value: "custom", label: model.text("Custom shortcut…") }]
                   : []),
               ]}
-              disabled={!group.enabled || busy}
+              disabled={!group.enabled}
               onValueChange={(choice) => {
                 if (typeof choice !== "string" || choice === value) return;
                 // Custom… opens the shortcut editor; the menu keeps showing the shortcut in use.
@@ -527,11 +510,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
               <SelectTrigger
                 id={id}
                 data-value={value}
-                className={
-                  held
-                    ? "max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4] disabled:cursor-default disabled:opacity-100"
-                    : "max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4]"
-                }
+                className="max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4]"
                 {...desc}
               >
                 {/* A block, not a flex box: a long choice (a screen with its size) wraps in full instead of running past the card. */}
@@ -553,7 +532,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
                     value="custom"
                     data-value="custom"
                     disabled={Boolean(
-                      model.saving || model.arming || group.capturing,
+                      model.anySaving() || model.arming || group.capturing,
                     )}
                   >
                     {model.text("Custom shortcut…")}
@@ -601,9 +580,9 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           variant="outline"
           hidden={!recover}
           disabled={!group.enabled}
-          aria-disabled={!group.enabled || Boolean(model.saving)}
+          aria-disabled={!group.enabled || Boolean(model.savingOf(group.id))}
           onClick={() => {
-            if (group.recovery && !model.saving && group.enabled)
+            if (group.recovery && !model.savingOf(group.id) && group.enabled)
               void model.choose(
                 group.id,
                 group.recovery.choice,
@@ -620,10 +599,10 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           variant="outline"
           hidden={!retry}
           disabled={!group.enabled}
-          aria-disabled={!group.enabled || Boolean(model.saving)}
+          aria-disabled={!group.enabled || Boolean(model.savingOf(group.id))}
           onClick={() => {
-            if (retry && model.failure?.choice && !model.saving)
-              void model.choose(group.id, model.failure.choice, `${id}-retry`);
+            if (retry && ownFailure?.choice && !model.savingOf(group.id))
+              void model.choose(group.id, ownFailure.choice, `${id}-retry`);
           }}
         >
           {model.text(
@@ -662,8 +641,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
         </div>
       )}
       <span className="applying sr-only">
-        {model.saving?.group === group.id &&
-        !actions.some((choice) => choice.id === model.saving?.choice)
+        {model.savingOf(group.id) &&
+        !actions.some((choice) => choice.id === model.savingOf(group.id)?.choice)
           ? model.text("Applying…")
           : ""}
       </span>

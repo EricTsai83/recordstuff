@@ -138,10 +138,14 @@ for (const language of ["en", "zh-TW"] as const) {
         if (target === 0.8) { h.zoom("out"); h.zoom("out"); }
         if (target === 1.5) { h.zoom("in"); h.zoom("in"); h.zoom("in"); }
       }, factor);
-      // Sonner publishes the hook's presence changes with a zero-delay timer.
+      // Sonner publishes the hook's presence changes with a zero-delay timer, set only once React has committed the
+      // notice: the paused clock is moved on until it shows, as a window that collapses its sidebar on the resize above
+      // may commit after the first step.
       await page.clock.runFor(50);
-      await page.clock.runFor(1);
-      await expect(notice).toContainText(`${Math.round(factor * 100)}%`);
+      await expect.poll(async () => {
+        await page.clock.runFor(1);
+        return (await notice.allTextContents()).join("");
+      }, { timeout: 5000 }).toContain(`${Math.round(factor * 100)}%`);
       await notice.hover();
       const geometry = await notice.evaluate((node) => {
         const rect = node.getBoundingClientRect();

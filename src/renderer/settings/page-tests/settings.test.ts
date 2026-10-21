@@ -92,8 +92,8 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   push(current);
   expect(button().disabled).toBe(true);
 
-  // Recovery shares the original choice path, keeps committed values, and
-  // never overwrites a newer selection after a failed save.
+  // Recovery shares the original choice path, shows its choice while it saves and main's value again once it fails
+  // (2026-10-22), and never overwrites a newer selection after a failed save.
   current.groups.push({ id: "screen", label: "Screen", tab: "recording", enabled: true,
     choices: [{ id: "primary", label: "Primary", enabled: true, checked: false },
       { id: "2", label: "Missing", enabled: false, checked: true }],
@@ -108,9 +108,10 @@ it("arms only after main acknowledges, captures a combination, cancels and obeys
   const recovery = document.getElementById("setting-screen-recovery") as HTMLButtonElement;
   recovery.focus(); recovery.click(); recovery.click();
   expect(choose).toHaveBeenCalledTimes(2);
-  expect(menuValue("setting-screen")).toBe("2");
+  expect(menuValue("setting-screen"), "the choice being saved shows").toBe("primary");
   finishSave();
   await vi.waitFor(() => expect(document.querySelector("#setting-screen-row .save-error")?.hasAttribute("hidden")).toBe(false));
+  expect(menuValue("setting-screen"), "a failed save shows main's value again").toBe("2");
   expect(document.querySelectorAll("#setting-screen-row .diagnostic")).toHaveLength(2);
   const retry = document.getElementById("setting-screen-retry") as HTMLButtonElement;
   expect(retry.hidden).toBe(false);

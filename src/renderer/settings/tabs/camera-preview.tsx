@@ -1,16 +1,16 @@
 /**
- * The Camera section's preview (plan 075 step 7): the display the recording will capture, to scale with its menu bar's
- * band, and the bubble where the recording composes it, by the same formulas (camera-layout.ts, D2). The bubble is
- * dragged, or moved with the arrow keys, and snaps to the edges and the centre; where it is let go of is the choice
- * sent to main, so one drag is one save, also while recording (D7).
+ * The Camera section's preview (plan 075 step 7): the display the recording will capture, to scale, and the bubble
+ * where the recording composes it, by the same formulas (camera-layout.ts, D2). The bubble is dragged, or moved with the
+ * arrow keys, to exactly where it is let go of, with no snapping to the edges or the centre (2026-10-22, at the
+ * maintainer's request); that place is the choice sent to main, so one drag is one save, also while recording (D7).
  *
  * Before recording the bubble shows the camera itself, opened only while the preview is in sight (D6); while a
  * recording composes the camera, the page asks main for the engine's preview of the whole picture (D17), also only
  * while in sight, and the bubble is an outline over it to drag.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
-import { bubbleRadius, bubbleRect, positionFromRect, snapPosition, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
+import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
 import { previewDecoder } from "../../lib/preview-decoder";
 import { translate } from "../../../shared/i18n";
 import * as model from "../settings-controller";
@@ -122,8 +122,10 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
   return drawing;
 }
 
-export function CameraPreview({ group, preview, disabled, describedBy }: {
+export function CameraPreview({ group, preview, disabled, describedBy, overlay }: {
   group: SettingsGroup; preview: CameraPreviewView; disabled: boolean; describedBy: string | undefined;
+  /** A control laid over the picture, as the Studio's Live preview is. */
+  overlay?: ReactNode;
 }) {
   const id = `setting-${group.id}`;
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
@@ -169,7 +171,7 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
     if (!stage || !box || !grip) return undefined;
     // The bubble is placed in the stage's content box, inside its bezel.
     const left = box.left + stage.clientLeft, top = box.top + stage.clientTop;
-    return snapPosition(positionFromRect(clientX - left - grip.dx, clientY - top - grip.dy, bubble.width, bubble.height, stage.clientWidth, stage.clientHeight));
+    return positionFromRect(clientX - left - grip.dx, clientY - top - grip.dy, bubble.width, bubble.height, stage.clientWidth, stage.clientHeight);
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     if (disabled || event.button !== 0) return;
@@ -211,9 +213,6 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
         style={{ aspectRatio: `${preview.display.width} / ${preview.display.height}`, ["--preview-ratio" as string]: preview.display.width / preview.display.height }}
       >
         <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording"} aria-hidden="true" />
-        {preview.display.menuBar > 0 && preview.mode !== "recording" && (
-          <div className="camera-preview-menubar" style={{ height: `${(preview.display.menuBar / preview.display.height) * 100}%` }} aria-hidden="true" />
-        )}
         {preview.composed && <div
           className="camera-preview-bubble"
           data-live={live || undefined}
@@ -249,6 +248,7 @@ export function CameraPreview({ group, preview, disabled, describedBy }: {
           onKeyDown={onKeyDown}
         />}
         {status && <p className="camera-preview-status">{status}</p>}
+        {overlay}
       </div>
       <span id={`${id}-position`} className="sr-only">
         {translate("{x}% from the left, {y}% from the top", model.view?.language, { x: Math.round(position.x * 100), y: Math.round(position.y * 100) })}

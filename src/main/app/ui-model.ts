@@ -8,8 +8,8 @@
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
-import type { CameraLayout, CameraRatio } from "../../shared/camera-layout";
-import type { AudioGain } from "../../shared/audio-gain";
+import type { CameraLayout } from "../../shared/camera-layout";
+import type { AudioVolume } from "../../shared/audio-volume";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
@@ -58,6 +58,9 @@ export type AppAction =
   /** A Live preview in the Recording Studio (plan 075, D20), and letting it go. */
   | "startPreview"
   | "stopPreview"
+  /** The recording's picture in the Recording Studio, shown or hidden while it records (2026-10-21). */
+  | "showStudioPicture"
+  | "hideStudioPicture"
   /** The main window at its Recording Studio tab (plan 075, D19). */
   | "openStudio"
   | "cancelCountdown"
@@ -92,11 +95,10 @@ export type AppAction =
   /** The bubble's shape or mirror (D1, D3, D8), also while recording (D7). */
   | { setCameraShape: { width?: number; height?: number; rounding?: number; mirror?: boolean } }
   /** A ratio button (D1): the width kept, the height made to match. */
-  | { setCameraRatio: CameraRatio }
   /** Mutes or unmutes an input of the recording in progress (plan 075, D19), for that recording only. */
   | { setAudioMuted: { source: "system" | "microphone"; muted: boolean } }
   /** An input's volume in whole dB (D21): saved, and taken by a preview or recording from its next sound on. */
-  | { setAudioGain: { source: "system" | "microphone"; db: number } }
+  | { setAudioVolume: { source: "system" | "microphone"; volume: number } }
   /** Where the bubble sits on a display (plan 075 step 7): dragged or moved with the keys in Settings' preview. */
   | { setCameraPosition: { display: string; x: number; y: number } }
   /** `null` is the system default input. */
@@ -165,12 +167,13 @@ export interface AppContext {
   /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
   audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
   /** The inputs' saved volumes in dB (plan 075, D21); absent is 0 dB. */
-  audioGain?: AudioGain;
+  audioVolume?: AudioVolume;
   /**
    * The Recording Studio's picture (plan 075, D20): a Live preview, whether it is live yet, the session the Studio
-   * may show (a live preview or a recording), and why the last preview could not start.
+   * may show (a live preview or a recording), whether its picture is hidden during the recording, and why the last
+   * preview could not start.
    */
-  studio?: { preview?: { live: boolean }; showing: boolean; previewFailure?: ErrorCode };
+  studio?: { preview?: { live: boolean }; showing: boolean; pictureHidden?: boolean; previewFailure?: ErrorCode };
   platform: NodeJS.Platform;
   /** Windows lacks Media Foundation (plan 078): recording cannot start until the Media Feature Pack is installed. */
   mediaComponentsMissing?: boolean;

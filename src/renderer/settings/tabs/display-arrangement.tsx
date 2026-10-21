@@ -58,13 +58,11 @@ export function DisplayArrangement({
   group,
   value,
   disabled,
-  held,
   describedBy,
 }: {
   group: SettingsGroup;
   value: string;
   disabled: boolean;
-  held: boolean;
   describedBy: string | undefined;
 }) {
   const id = `setting-${group.id}`;
@@ -90,12 +88,13 @@ export function DisplayArrangement({
   const checkName = () => setNameHidden((followName.current?.offsetWidth ?? 1) <= 1);
   useLayoutEffect(checkName);
   // While another screen is being saved, choosing the committed one again is a newer intent that replaces it.
-  const pending = model.saving?.group === group.id && model.saving.choice !== value;
+  const saving = model.savingOf(group.id);
+  const pending = saving !== undefined && saving.choice !== value;
   const choose = (choice: SettingsChoice, control = `${id}-${choice.id}`) => {
     if (!disabled && choice.enabled && (choice.id !== value || pending)) void model.choose(group.id, choice.id, control);
   };
   // The switch shows the newest intent, so a click while another screen saves turns following on rather than off.
-  const followIntended = (pending ? model.saving!.choice : value) === "primary";
+  const followIntended = (pending ? saving.choice : value) === "primary";
   const screens = [...placed, ...others];
   // One stop in the Tab order; the arrows move between the screens, choosing as they go.
   const focusable = (screens.find((choice) => choice.id === value && choice.enabled) ??
@@ -113,7 +112,7 @@ export function DisplayArrangement({
     if (choice) choose(choice);
   };
   return (
-    <div id={id} role="group" className="arrangement" data-held={held || undefined} aria-labelledby={`${id}-label`} aria-describedby={describedBy} onPointerEnter={checkName} onFocus={checkName}>
+    <div id={id} role="group" className="arrangement" aria-labelledby={`${id}-label`} aria-describedby={describedBy} onPointerEnter={checkName} onFocus={checkName}>
       <div className="arrangement-stage">
         <div role="radiogroup" className="arrangement-screens" aria-labelledby={`${id}-label`} onKeyDown={onKeyDown}>
         <div
@@ -191,7 +190,6 @@ export function DisplayArrangement({
                   size="sm"
                   checked={followIntended}
                   disabled={disabled || (followIntended ? !primaryScreen?.enabled : !follow.enabled)}
-                  className={held ? "data-disabled:cursor-default data-disabled:opacity-100" : undefined}
                   onCheckedChange={(checked) => {
                     const next = checked ? follow : primaryScreen;
                     if (next) choose(next, `${id}-primary`);

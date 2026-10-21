@@ -11,7 +11,7 @@
 import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
-import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, isFolderChoice, isMoveChoice, isRenameChoice, type FolderChoice, type MoveChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
+import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, ZOOM_STEPS, isFolderChoice, isMoveChoice, isRenameChoice, type FolderChoice, type MoveChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
 import { fileNameProblemText, fileNameTemplateProblem, folderProblemText, type FolderProblem } from "../../shared/file-name";
 import type { MoveProblem, RenameProblem } from "../library/recordings-library";
 import type { RecordingState } from "../../shared/state";
@@ -29,11 +29,7 @@ import type { AppAction, AppContext } from "../app/ui-model";
 const HISTORY_PAGE_ROWS = 50;
 /** Escapes this soon after a video's fullscreen ended belong to the press that ended it. */
 const FULLSCREEN_ESCAPE_QUIET_MS = 1000;
-/**
- * The page's zoom steps (2026-10-05): ⌘+ and ⌘- (Ctrl elsewhere) move one step, ⌘0 returns to 100%. Kept between
- * 80% and 150%, where the sidebar layout and the cards still fit the default window.
- */
-export const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
+export { ZOOM_STEPS };
 export type ZoomRequest = "in" | "out" | "reset";
 /** The step a zoom request lands on from `current`, which may lie between steps (a value saved by another version). */
 export function nextZoom(current: number, request: ZoomRequest): number {

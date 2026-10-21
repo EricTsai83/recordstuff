@@ -89,7 +89,7 @@ it("draws the screens where they stand, chooses one by click or arrow, and follo
   radio("primary").click();
   expect(choose).toHaveBeenLastCalledWith("screen", "primary");
   first(); release();
-  await vi.waitFor(() => expect(model.saving).toBeUndefined());
+  await vi.waitFor(() => expect(model.savingOf("screen")).toBeUndefined());
   expect(radio("primary").getAttribute("aria-checked")).toBe("true");
   expect(radio("2").getAttribute("aria-checked")).toBe("false");
   choose.mockImplementation(async (_group: string, choice: string) => {
