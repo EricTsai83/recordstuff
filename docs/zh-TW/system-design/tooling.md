@@ -32,7 +32,8 @@
 | `pnpm acceptance:settings-native` | 需要桌面的設定案例：App 自己的視窗與 macOS 畫的視窗框，顯示並啟用，用來檢查視窗框本身，以及另一個視窗在前時的焦點框與跨日；沿用 plan 057 對被其他 App 取消啟用視窗的 blocked 規則。報告寫到 docs/verification/measurements。屬桌面回合 |
 | `pnpm acceptance:regression` | `pnpm check`（含建置），再執行背景套件（`pnpm test:ui`）：設定、正式 main 的快捷鍵與視窗整合、播放器與倒數。沒有桌面回合、不錄影，也不啟動或關閉使用者的 RecordStuff。原生案例用 `pnpm acceptance:recipe -- native-ui` |
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
-| `pnpm acceptance:studio` | 啟動 bundle，錄影工作室放在測試素材旁：在其他 App 在前景時以三種方式各按一次「即時預覽」，並只移動游標、不點擊地移到錄影工作室上再移開，以 App 的 log 判定（plan 082；[說明](#錄影工作室驗收)） |
+| `pnpm acceptance:studio` | 啟動 bundle，錄影工作室放在測試素材旁：在其他 App 在前景時以三種方式各按一次「即時預覽」，只移動游標、不點擊地移到錄影工作室上再移開，並在錄影工作室開始的錄影中以「即時預覽」隱藏與顯示畫面，以 App 的 log 與存下的檔案判定（plan 082；[說明](#錄影工作室驗收)） |
+| `pnpm acceptance:capture-settings` | 在單色素材上以相機的預設與已儲存泡泡錄影，並以系統聲音 100%、50%、600% 與 0% 錄影，判定畫格中泡泡的位置與形狀，以及每個檔案相對 100% 的音量（2026-10-22；[說明](#錄影設定驗收)） |
 | `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、左鍵開啟選單、三種取消、以鍵盤到「開啟 RecordStuff」與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 RecordStuff 是否在最前面、設定視窗聚焦並開在該檔的「錄影檔」（2026-10-04；之前為 Finder），每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
@@ -180,7 +181,7 @@ baseline 存在 [cpu-baselines.json](../../../scripts/lib/verification/cpu-basel
 **相機與錄影工作室**（plan 075）。`--camera <value>` 以 `RECORDSTUFF_CAMERA_PROTOTYPE=<value>`（第 2 步的開發開關；`1`，或 `width=…,height=…,rounding=…,x=…,y=…,mirror=…,device=…,preview=0`）啟動 bundle，並在 settings.json 中把「相機」開關設為開啟，值中有 `device=<id>` 時一併寫入 `cameraDevice`，因此每段錄影都依保存的版面合成相機；`camera` 與 `cameraDevice` 會和其他預先寫入的鍵一起還原。它需要 `--skip-settings --skip-playback`，並省略 B，因為原型的預覽頁面（值中沒有 `preview=0` 時會開啟）是待機契約不允許的 renderer。`--studio`（搭配 `--camera`，不可搭配 `--skip-recording`）在每種幀率、R 之前、同樣的移動素材上加兩個情境：
 
 - **S. 錄影工作室顯示著錄影時的錄影：**在素材的全螢幕把選單列蓋住之前，從 tray 的「開啟錄影工作室…」開啟錄影工作室，然後在它顯示引擎預覽與音量表的情況下錄同樣的錄影。對照同幀率 R 的中位數判定（D18：最多多 8 點；錄影工作室視窗不在素材以外的螢幕時只回報不判定，報告會註明位置），並對照相機的錄影預算加 8（30 fps 28%、60 fps 33%）。
-- **L. 即時預覽：**以游標按下「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，找到後立即關閉輔助使用樹（Chromium 可能留下部分成本，所以 L 排在 S 之後），穩定 5 秒後保持 50 秒，再按「停止預覽」。依有相機的錄影判定，因為它就是不寫檔的錄影：30 fps 最多 20%、60 fps 最多 25%。按下前先把 RecordStuff 帶到前景（plan 082）：在 macOS 上點擊不在前景的視窗只會啟用它，所以素材在前景時，080 與 081 幾乎每次第一次按下都沒有開始任何東西。按下後仍沒有開始任何東西（15 秒內沒有記錄 `recorder: session … prepared after`）時最多重試三次，失敗訊息會指出每一步。
+- **L. 即時預覽：**以游標按下「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，找到後立即關閉輔助使用樹（Chromium 可能留下部分成本，所以 L 排在 S 之後），穩定 5 秒後保持 50 秒，再按同一個開關停止。依有相機的錄影判定，因為它就是不寫檔的錄影：30 fps 最多 20%、60 fps 最多 25%。按下前先把 RecordStuff 帶到前景（plan 082）：在 macOS 上點擊不在前景的視窗只會啟用它，所以素材在前景時，080 與 081 幾乎每次第一次按下都沒有開始任何東西。按下後仍沒有開始任何東西（15 秒內沒有記錄 `recorder: session … prepared after`）時最多重試三次，失敗訊息會指出每一步。
 
 執行時用 `--camera preview=0`，讓 R 沒有原型頁面，並把錄影工作室放在第二個螢幕上。開過錄影工作室後，Chromium 的 `utility:video_capture` 與 `utility:audio`（由錄影工作室的 `getUserMedia` 啟動）在最後一段錄影後仍會留著；另一次檢查顯示它們沒有可量測的 CPU（見[桌面功能](desktop.md#錄影工作室)）。自 plan 082 的 D2 起，`--studio` 執行的角色檢查在 R 之後各允許一個（`afterStudio`），並在檢查名稱中註明；其他角色照舊判定。第一份整份判 PASS 的 `--studio` 報告是 plan 082 的（2026-10-19）：單次量測 30 fps 時 S 比 R 多 8.0 點，L 15.4%，沒有重試。
 
@@ -349,11 +350,11 @@ Runner 將原始碼與建置資源複製至專用報告目錄，只修改該副�
 
 ### 視窗拖移驗收
 
-完成[桌面交接](../testing.md#測試前確認桌面交接)，並關閉 RecordStuff 與本 checkout 的開發版 Electron 後，執行 `pnpm acceptance:window-drag`。命令建置一次，啟動隔離的原生設定 fixture：使用正式的 `settingsWindowOptions`、建置好的 preload 與頁面，以及獨立的 idle model 和 userData。不啟動簽章 bundle、不改動既有偏好。需要 macOS、輔助使用權限、供 OS 截圖使用的螢幕錄製權限，以及未鎖定、工作區至少 1090×700 點的主螢幕。缺少前提記為 blocked（exit 2），不要求或更動隱私權限。
+完成[桌面交接](../testing.md#測試前確認桌面交接)，並關閉 RecordStuff 與本 checkout 的開發版 Electron 後，執行 `pnpm acceptance:window-drag`。命令建置一次，啟動隔離的原生設定 fixture：使用正式的 `settingsWindowOptions`、建置好的 preload 與頁面，以及獨立的 idle model 和 userData。不啟動簽章 bundle、不改動既有偏好。需要 macOS、輔助使用權限、供 OS 截圖使用的螢幕錄製權限，以及未鎖定、工作區至少 1090×760 點的主螢幕。缺少前提記為 blocked（exit 2），不要求或更動隱私權限。
 
-runner 送出 CoreGraphics 滑鼠按下、十六個 `leftMouseDragged` 步驟、再放開。每個案例都透過輔助使用讀取自己的視窗前後座標：可拖移區必須移動 60×40 點（容許 2 點誤差），且不能改變大小。涵蓋寬版 100%、寬版 150% 與窄版 100% 頂端橫條的三個位置；兩種寬版的 sidebar 空白與品牌區；頁籤與視窗操作選單按鈕不拖動視窗、仍能點擊；以及選單開啟時停用頂端拖移。`setBounds` 與縮放只用於量測區間外的準備、還原，renderer input 或 CSS 計算值不能代替真正的視窗移動。
+runner 送出 CoreGraphics 滑鼠按下、十六個 `leftMouseDragged` 步驟、再放開。每個案例都透過輔助使用讀取自己的視窗前後座標：可拖移區必須移動 60×40 點（容許 2 點誤差），且不能改變大小。涵蓋寬版 100%、寬版 150% 與窄版 100% 頂端橫條的三個位置。兩種寬版各測完整的 sidebar，以及點按切換按鈕收合後的 sidebar；窄版測它固定使用的收合 sidebar（2026-10-21）：頁籤與視窗操作之間的 sidebar 空白，以及完整 sidebar 的品牌區可拖移；頁籤、切換按鈕與視窗操作選單按鈕不拖動視窗、仍能點擊；選單開啟時停用頂端拖移。150% 的視窗高 660 點（頁面超過 420 px，完整 sidebar 的最小高度）；若 sidebar 空白仍太少、無法明確瞄準，runner 會先在量測區間外把視窗拉高，工作區放不下時記為 blocked。`setBounds` 與縮放只用於量測區間外的準備、還原，renderer input 或 CSS 計算值不能代替真正的視窗移動。
 
-`report.md`、`results.json`、`environment.json`、`cleanup.json`、`electron.log` 與 OS 前後截圖存入獨立的 `docs/verification/measurements/<timestamp>-window-drag/`。`-- --out <新目錄>` 可另選尚未使用的目錄。腳本檢查前景焦點及 blur，還原游標、釋放按住的滑鼠、關閉自己的視窗、正常退出並確認整個程序群組已結束。清理失敗為 exit 1；否則 Ctrl-C/SIGTERM 為 130/143，鎖定或無法使用桌面為 2，判定失敗為 1，全部 24 個案例通過為 0。已知桌面干擾會讓相關觀察無法下結論；目前不偵測所有實體輸入干擾。外觀證據須另外判讀截圖。此 fixture 驗證正式頁面與視窗設定在 OS 上的拖移，不代表簽章 bundle 的入口或錄影證據。
+`report.md`、`results.json`、`environment.json`、`cleanup.json`、`electron.log` 與 OS 前後截圖存入獨立的 `docs/verification/measurements/<timestamp>-window-drag/`。`-- --out <新目錄>` 可另選尚未使用的目錄。腳本檢查前景焦點及 blur，還原游標、釋放按住的滑鼠、關閉自己的視窗、正常退出並確認整個程序群組已結束。清理失敗為 exit 1；否則 Ctrl-C/SIGTERM 為 130/143，鎖定或無法使用桌面為 2，判定失敗為 1，全部案例通過為 0。已知桌面干擾會讓相關觀察無法下結論；目前不偵測所有實體輸入干擾。外觀證據須另外判讀截圖。此 fixture 驗證正式頁面與視窗設定在 OS 上的拖移，不代表簽章 bundle 的入口或錄影證據。
 
 取消／清理演練：先用正常命令建置一次，再對同一份未變更的 `out/` 執行 `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-window-drag.mts --drill-cancel`。第一個拖移案例完成後會中斷；預期 exit 143 與 `groupGone: true` 是清理證據，不是產品通過。`node scripts/acceptance-window-drag.mts --help` 只印使用說明。
 
@@ -376,11 +377,20 @@ pnpm acceptance:tray -- --long-start <run> # 對執行中的受控 build 跑 pla
 ### 錄影工作室驗收
 
 ```bash
-pnpm acceptance:studio                       # 第一次點擊與 hover
-pnpm acceptance:studio -- --skip-first-click # 只做 hover；另有 --skip-hover、--out <dir>
+pnpm acceptance:studio                       # 第一次點擊、hover 與錄影中的畫面
+pnpm acceptance:studio -- --skip-first-click # 另有 --skip-hover、--skip-picture、--out <dir>
 ```
 
-Plan 082。先建置並結束 bundle；RecordStuff 執行中時 runner 拒絕開始，之後啟動它，從狀態列開啟錄影工作室，把視窗移到另一個螢幕（需要第二個螢幕），並在主螢幕全螢幕開啟測試素材，讓其他 App 在前景，如同在那裡錄影時。**第一次點擊：**以 CoreGraphics 點擊按一次「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，點擊前先關閉輔助使用樹，(a) 立即按、(b) 2 秒後按、(c) 先讓 RecordStuff 到前景再按；各以 8 秒內是否出現 `recorder: session … prepared after` 判定，並回報點擊前在前景的 App。(a) 與 (b) 只回報，因為點擊不在前景的視窗只會啟用它（D1 維持 macOS 的慣例）；(c) 必須啟動預覽。**Hover：**即時預覽進行中、素材在前景時，把游標（`NativeAx.move`）移到錄影工作室的預覽上，5 秒內必須出現 `studio: preview at 10 a second`，移開後 3 秒內必須出現 `at 5`。每次預覽都以「停止預覽」結束。runner 不改任何設定，正常結束 App 並確認已退出，關閉素材；報告寫在 `docs/verification/measurements/<time>-studio-acceptance/`。結束代碼依共用的順序。2026-10-19（簽署 bundle，錄影工作室在第二個螢幕）：(a) 與 (b) 沒有啟動任何東西，(c) 有，兩行 hover 的 log 都有出現。
+Plan 082。先建置並結束 bundle；RecordStuff 執行中時 runner 拒絕開始，之後啟動它，從狀態列開啟錄影工作室，把視窗移到另一個螢幕（需要第二個螢幕），並在主螢幕全螢幕開啟測試素材，讓其他 App 在前景，如同在那裡錄影時。**第一次點擊：**以 CoreGraphics 點擊按一次「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，點擊前先關閉輔助使用樹，(a) 立即按、(b) 2 秒後按、(c) 先讓 RecordStuff 到前景再按；各以 8 秒內是否出現 `recorder: session … prepared after` 判定，並回報點擊前在前景的 App。(a) 與 (b) 只回報，因為點擊不在前景的視窗只會啟用它（D1 維持 macOS 的慣例）；(c) 必須啟動預覽。**Hover：**即時預覽進行中、素材在前景時，把游標（`NativeAx.move`）移到錄影工作室的預覽上，5 秒內必須出現 `studio: preview at 10 a second`，移開後 3 秒內必須出現 `at 5`。**錄影中的畫面**（2026-10-22）：RecordStuff 在前景時點擊錄影工作室的「開始錄影」；開始錄影後（經過使用者自己的倒數）按「即時預覽」，必須記錄 `studio: the recording's picture hidden`，再按一次必須記錄 `… shown`；接著點擊「停止錄影」，該次錄影必須存成長度與實際錄影相符（差距 1.5 秒內）的檔案，證明隱藏畫面不影響檔案。runner 會在顯示與隱藏畫面時各截一張錄影工作室的圖（`picture-shown.png`、`picture-hidden.png`），由人或 Computer Use 判讀；這次錄影會留在輸出資料夾。每次預覽都再按一次同一個開關結束。runner 不改任何設定，正常結束 App 並確認已退出，關閉素材；報告寫在 `docs/verification/measurements/<time>-studio-acceptance/`。結束代碼依共用的順序。2026-10-19（簽署 bundle，錄影工作室在第二個螢幕）：(a) 與 (b) 沒有啟動任何東西，(c) 有，兩行 hover 的 log 都有出現。
+
+### 錄影設定驗收
+
+```bash
+pnpm acceptance:capture-settings                  # 實際錄影中的相機泡泡與輸入音量
+pnpm acceptance:capture-settings -- --skip-volume # 另有 --skip-camera、--out <dir>
+```
+
+2026-10-22。確認相機版面與音量在錄影檔裡的實際效果，這是單元測試與背景套件看不到的。先建置並結束 bundle。每個案例 runner 都會把該案例的設定寫進使用者的設定（不倒數、主螢幕），啟動 bundle，透過 System Events 按下已註冊的快捷鍵錄影、停止、等待存檔後結束 App。**相機**：以 `scripts/camera-material.html`（全螢幕單一洋紅色）為素材，錄兩次：新的泡泡（沒有儲存版面，因此是 `DEFAULT_CAMERA_LAYOUT`）與已儲存的泡泡（左下角附近的圓形，位置記在主螢幕）。每次錄影取中間的一格，相機畫面必須出現在 `bubbleRect` 算出的位置，每一邊差距 3 px 內、內部填滿、四角依 `insideBubble` 的方式呈圓角，其他地方都是素材（`scripts/lib/acceptance/capture-settings.mts`）；這兩格存成 `camera-default.png` 與 `camera-saved.png` 供人檢視。相機使用使用者自己的選擇；沒有送出任何畫面的相機（休眠的 iPhone、闔上的螢幕）會讓該案例記為 blocked。**音量**：以 `scripts/test-material.html` 的嗶聲為素材，系統聲音依序設為 100%、50%、600% 與 0%。host 必須記錄 `volumeDb` 算出的增益（`audio: system … dB`），每個檔案的峰值與 100% 的差距必須等於該增益（誤差 1 dB 內）；0% 必須無聲（≤ −70 dBFS）。實際聽感仍由人判斷。設定檔會先複製成 `settings.before.json`，結束時逐位元組還原；錄影檔留在輸出資料夾。報告寫在 `docs/verification/measurements/<time>-capture-settings-acceptance/`。結束代碼依共用的順序。
 
 ## 設定快捷鍵驗收
 

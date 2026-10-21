@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設定頁怎麼儲存才不會卡：每項設定各自儲存、單一寫入者排序、畫面樂觀顯示</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body { margin: 0; background: var(--ivory); color: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; font-weight: 430; line-height: 1.55; letter-spacing: 0; }
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.18; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-md); }
+h2 { font-size: 1.22rem; line-height: 1.25; margin: var(--space-3xl) 0 var(--space-md); }
+h3 { font-size: 1rem; line-height: 1.35; margin: var(--space-2xl) 0 var(--space-sm); }
+p, ul, ol, .deck, .callout, table, pre { max-width: var(--content-width); }
+table, pre { width: 100%; }
+.deck { color: var(--gray-700); font-size: 1.05rem; margin: 0 0 var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+li { margin: 4px 0; }
+code { background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm); padding: 0 4px; font-size: 0.9em; overflow-wrap: anywhere; }
+table { border-collapse: collapse; margin: var(--space-lg) 0 var(--space-xl); font-size: 0.94rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 600; }
+.callout { background: var(--gray-100); border: 1px solid var(--oat); border-left: 3px solid var(--clay); border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl); }
+.callout.warning { border-left-color: var(--warning); }
+.callout p { margin: 0; }
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; overflow-wrap: normal; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code { position: absolute; top: 9px; right: 9px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm); background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer; }
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+.flow-figure { margin: var(--space-xl) 0; max-width: 420px; }
+.flow-figure svg { display: block; width: 100%; height: auto; }
+.flow-figure figcaption { color: var(--gray-700); font-size: 0.9rem; margin-top: var(--space-sm); }
+.sources { border-top: 1px solid var(--oat); margin-top: var(--space-3xl); padding-top: var(--space-lg); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  table { display: block; overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+<h1>設定頁怎麼儲存才不會卡：每項設定各自儲存、單一寫入者排序、畫面樂觀顯示</h1>
+<p class="deck">當設定的真實值住在另一個 process（Electron 的主程序、後端伺服器、作業系統服務），畫面每改一個值都要來回一趟。這篇說明一個可遷移的做法：每項設定各自送出、由擁有資料的一方單一寫入並替結果編號、畫面先顯示使用者的選擇並在失敗時退回，以及它在什麼條件下才是最好的預設、什麼時候不該用。</p>
+
+<h2>情境：值不在畫面這邊</h2>
+<p>許多桌面 App 和網頁的設定頁都長這樣：畫面（renderer、瀏覽器）只負責顯示與收集輸入，真正的設定值由另一方保管。以 Electron 為例，設定頁跑在 renderer process，主程序（main process）擁有設定檔、驗證值是否合法、在錄影中鎖住不能改的項目，也會因為別的入口（選單列圖示、快捷鍵）改動設定而主動推送新的畫面資料。</p>
+<p>這個模式成立需要幾個前提，後面的論證都建立在它們上面：</p>
+<ul>
+  <li><strong>擁有者在另一邊。</strong>畫面送出「我想把 X 改成 v」，擁有者決定接不接受，並回傳整份最新的畫面資料（以下稱 view）。</li>
+  <li><strong>一次只改一個值，而且改動很頻繁。</strong>開關、分段按鈕、滑桿、拖曳位置，使用者常在幾百毫秒內連續操作好幾項。</li>
+  <li><strong>往返很快但不是零。</strong>同機 IPC 加上寫檔通常是幾毫秒到幾十毫秒；偶爾會失敗（磁碟錯誤、值被拒絕、正在錄影而被鎖）。</li>
+  <li><strong>擁有者也會主動推送。</strong>畫面收到的 view 可能來自自己的請求，也可能來自別的入口，抵達順序不保證等於產生順序。</li>
+</ul>
+<p>本文的範例是一個螢幕錄影 App 的「錄影工作室」：使用者調整相機泡泡的寬、高、圓角，切換鏡像，拖曳泡泡位置，也調整系統聲音的音量。每一個動作都是一次「改一個值」。</p>
+
+<h2>天真的做法會怎麼壞</h2>
+<h3>做法一：同一時間只存一個，其他控制項鎖住</h3>
+<p>最直覺的保護是全頁一個「正在儲存」旗標：存檔期間，其他設定的變更直接丟掉，為了不讓使用者點了沒反應，乾脆把其他控制項 disable。它確實避免了並行，但使用者看到的是：改寬度時，高度、圓角、音量滑桿全部閃一下變灰；手快一點，第二個點擊就消失了。保護的是程式，犧牲的是操作。</p>
+<h3>做法二：畫面這邊排隊</h3>
+<p>把「丟掉」改成「先記著，等前一個存完再送」，閃爍消失了，但帶來三個新問題：無關的設定互相等待（延遲串成一條鏈）；排隊中的變更只存在畫面記憶體裡，視窗在那幾十毫秒內關掉就遺失；而且為了讓排隊中的值看起來已生效，需要另一套顯示來源，和滑桿、數字欄位自己記住的拖曳中值並存，兩套規則難以維護。</p>
+<h3>做法三：全部直接並行送出，不做任何排序</h3>
+<p>反方向走到底也會壞。兩個請求同時抵達擁有者，如果各自「讀出目前設定、改一個欄位、寫回檔案」，後寫的會蓋掉先寫的改動（lost update）；回應抵達畫面的順序也不固定，較早產生的 view 晚到時，會把畫面倒回舊狀態。</p>
+<p>這三種失敗指出了要同時滿足的力量：</p>
+<ul>
+  <li>使用者的每個選擇都要被送出，不能被丟掉，也不該被無關的存檔擋住。</li>
+  <li>寫入必須有確定的順序，每次都從最新的已存值出發。</li>
+  <li>畫面不能被較舊的資料蓋回去。</li>
+  <li>失敗要能被看見，而且歸屬清楚：是哪一項、要不要重試。</li>
+  <li>控制項不該閃，也不該在使用者手上突然變灰。</li>
+</ul>
+
+<h2>模式：把三種責任分開</h2>
+<p>關鍵觀察是：「寫入順序」、「畫面新舊」和「單一設定的進行中狀態」是三件不同的事，做法一用一個全域旗標同時處理三件，所以只好把全頁鎖住。把它們分給最適合的一方：</p>
+<ol>
+  <li><strong>寫入順序交給擁有者的單一寫入者。</strong>擁有者用一條佇列依序處理所有寫入，每次都從上一次成功寫入後的值套用變更。不管畫面同時送來幾個請求，檔案上都不會有 lost update。</li>
+  <li><strong>畫面新舊交給遞增的版本號。</strong>擁有者每產生一份 view 就給它一個遞增的 revision。畫面只套用比手上更新的 view，較舊的直接丟棄。抵達順序因此不再重要。</li>
+  <li><strong>進行中狀態改成每項設定各一份。</strong>畫面替每項設定記住「正在存哪個值、是哪一次請求」和「上一次為什麼失敗」。一項設定的存檔只影響它自己：同一項設定的新選擇取代舊的，其他設定照常送出。</li>
+</ol>
+<p>在這三個基礎上，畫面可以安全地做第四件事：<strong>樂觀顯示</strong>。使用者一選，控制項立刻顯示新值；擁有者確認後換成它回傳的值（通常相同）；失敗時退回擁有者的值，並在那一列說明原因。</p>
+<figure class="flow-figure">
+  <svg id="mermaid-mvifddgv-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 360 734" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mvifddgv-title mermaid-mvifddgv-desc"><title id="mermaid-mvifddgv-title">每項設定各自儲存的資料流</title><desc id="mermaid-mvifddgv-desc">控制項立刻顯示新值並送出；主程序以單一佇列寫入，回傳帶遞增 revision 的 view；頁面依 revision 套用，失敗時該列恢復主程序的值並顯示錯誤。</desc><style>#mermaid-mvifddgv-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvifddgv-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvifddgv-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvifddgv-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvifddgv-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvifddgv-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvifddgv-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvifddgv-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvifddgv-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvifddgv-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvifddgv-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvifddgv-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvifddgv-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvifddgv-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvifddgv-my-svg p{margin:0;}#mermaid-mvifddgv-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mvifddgv-my-svg .cluster-label text{fill:#05060a;}#mermaid-mvifddgv-my-svg .cluster-label span{color:#05060a;}#mermaid-mvifddgv-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mvifddgv-my-svg .label text,#mermaid-mvifddgv-my-svg span{fill:#141413;color:#141413;}#mermaid-mvifddgv-my-svg .node rect,#mermaid-mvifddgv-my-svg .node circle,#mermaid-mvifddgv-my-svg .node ellipse,#mermaid-mvifddgv-my-svg .node polygon,#mermaid-mvifddgv-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvifddgv-my-svg .rough-node .label text,#mermaid-mvifddgv-my-svg .node .label text,#mermaid-mvifddgv-my-svg .image-shape .label,#mermaid-mvifddgv-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mvifddgv-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mvifddgv-my-svg .rough-node .label,#mermaid-mvifddgv-my-svg .node .label,#mermaid-mvifddgv-my-svg .image-shape .label,#mermaid-mvifddgv-my-svg .icon-shape .label{text-align:center;}#mermaid-mvifddgv-my-svg .node.clickable{cursor:pointer;}#mermaid-mvifddgv-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mvifddgv-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mvifddgv-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mvifddgv-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mvifddgv-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvifddgv-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvifddgv-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvifddgv-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mvifddgv-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mvifddgv-my-svg .cluster text{fill:#05060a;}#mermaid-mvifddgv-my-svg .cluster span{color:#05060a;}#mermaid-mvifddgv-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mvifddgv-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mvifddgv-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mvifddgv-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvifddgv-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mvifddgv-my-svg .icon-shape,#mermaid-mvifddgv-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mvifddgv-my-svg .icon-shape p,#mermaid-mvifddgv-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mvifddgv-my-svg .icon-shape .label rect,#mermaid-mvifddgv-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvifddgv-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mvifddgv-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mvifddgv-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvifddgv-my-svg [data-look="neo"].node rect,#mermaid-mvifddgv-my-svg [data-look="neo"].cluster rect,#mermaid-mvifddgv-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvifddgv-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvifddgv-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvifddgv-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvifddgv-my-svg-gradient);stroke-width:1px;}#mermaid-mvifddgv-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvifddgv-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvifddgv-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvifddgv-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvifddgv-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvifddgv-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvifddgv-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvifddgv-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvifddgv-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvifddgv-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mvifddgv-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M184,84L184,120" id="mermaid-mvifddgv-my-svg-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_A_B_0" data-points="W3sieCI6MTg0LCJ5Ijo4NH0seyJ4IjoxODQsInkiOjEyNH1d" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M184,196L184,232" id="mermaid-mvifddgv-my-svg-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_B_C_0" data-points="W3sieCI6MTg0LCJ5IjoxOTZ9LHsieCI6MTg0LCJ5IjoyMzZ9XQ==" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M184,308L184,344" id="mermaid-mvifddgv-my-svg-L_C_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_C_D_0" data-points="W3sieCI6MTg0LCJ5IjozMDh9LHsieCI6MTg0LCJ5IjozNDh9XQ==" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M184,420L184,456" id="mermaid-mvifddgv-my-svg-L_D_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_D_E_0" data-points="W3sieCI6MTg0LCJ5Ijo0MjB9LHsieCI6MTg0LCJ5Ijo0NjB9XQ==" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M162,556L162,568.9289321881345Q162,576 154.92893218813452,576L95.07106781186548,576Q88,576 88,583.0710678118655L88,654" id="mermaid-mvifddgv-my-svg-L_E_G_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 162.67172241210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_E_G_0" data-points="W3sieCI6MTYyLCJ5Ijo1NTZ9LHsieCI6MTYyLCJ5Ijo1NzZ9LHsieCI6ODgsInkiOjU3Nn0seyJ4Ijo4OCwieSI6NjU4fV0=" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M206,556L206,568.9289321881345Q206,576 213.07106781186548,576L272.9289321881345,576Q280,576 280,583.0710678118655L280,654" id="mermaid-mvifddgv-my-svg-L_E_F_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 162.67172241210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvifddgv-L_E_F_0" data-points="W3sieCI6MjA2LCJ5Ijo1NTZ9LHsieCI6MjA2LCJ5Ijo1NzZ9LHsieCI6MjgwLCJ5Ijo1NzZ9LHsieCI6MjgwLCJ5Ijo2NTh9XQ==" data-look="neo" marker-end="url(#mermaid-mvifddgv-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(87.8828125, 607)"><g class="label" data-id="mermaid-mvifddgv-L_E_G_0" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">成功</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(279.8828125, 607)"><g class="label" data-id="mermaid-mvifddgv-L_E_F_0" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">失敗</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-A-0" data-look="neo" transform="translate(184, 48)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>控制項<br />立刻顯示新值</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-B-1" data-look="neo" transform="translate(184, 160)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>送出這項設定<br />不等其他設定</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-C-3" data-look="neo" transform="translate(184, 272)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>主程序<br />單一寫入佇列</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-D-5" data-look="neo" transform="translate(184, 384)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>回傳 view<br />帶遞增 revision</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-E-7" data-look="neo" transform="translate(184, 508)"><rect class="basic label-container" x="-76" y="-48" width="152" height="96"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>頁面套用<br />丟棄較舊的 revision</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-G-9" data-look="neo" transform="translate(88, 694)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>顯示主程序確認的值</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvifddgv-my-svg-flowchart-F-11" data-look="neo" transform="translate(280, 694)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>該列顯示錯誤<br />恢復主程序的值</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvifddgv-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvifddgv-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvifddgv-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>頁面不鎖、不排隊：寫入順序交給主程序的單一寫入者，畫面新舊交給 revision。</figcaption>
+</figure>
+<h2>每個機制解決哪個問題</h2>
+<table>
+  <thead><tr><th>機制</th><th>解決的失敗</th><th>放在哪一方</th></tr></thead>
+  <tbody>
+    <tr><td>單一寫入佇列，每次從最新已存值套用</td><td>並行寫入互相覆蓋（lost update）、暫存檔競爭</td><td>擁有者</td></tr>
+    <tr><td>每份 view 帶遞增 revision，畫面丟棄舊的</td><td>晚到的舊回應或舊推送把畫面倒回去</td><td>擁有者編號、畫面比較</td></tr>
+    <tr><td>每項設定各自的進行中狀態與最新請求編號</td><td>無關設定互相等待或被丟掉、全頁鎖住造成閃爍</td><td>畫面</td></tr>
+    <tr><td>同一項設定只聽最新那次請求</td><td>快速連點時，較早的結果把較新的意圖顯示成失敗或舊值</td><td>畫面</td></tr>
+    <tr><td>樂觀顯示，失敗時退回擁有者的值</td><td>點了之後要等一個往返才看到變化；失敗後畫面停在錯的值</td><td>畫面</td></tr>
+    <tr><td>每項設定各自的錯誤與重試基準</td><td>一個錯誤蓋掉另一個、重試在值已被別處改動後仍出現</td><td>畫面</td></tr>
+  </tbody>
+</table>
+
+<h2>值與動作要分開對待</h2>
+<p>不是每次送出都是「改一個值」。「開啟系統通知設定」、「檢查更新」、「選擇資料夾」是動作：它們沒有可以先顯示的結果，重複觸發還可能開兩個對話框。所以：</p>
+<ul>
+  <li><strong>值</strong>做樂觀顯示，同一項設定的新選擇取代舊的。</li>
+  <li><strong>動作</strong>不做樂觀顯示；同一項設定的動作在執行中時，再按一次會被忽略。但它只等自己，不等其他設定。</li>
+  <li><strong>連續輸入</strong>（拖曳滑桿、拖曳位置、打字）由控制項自己保留草稿值，放開或送出時才算一次選擇。打字的內容尤其不該被樂觀值覆蓋：如果擁有者拒絕了這個檔名，使用者需要原本打的字來修改，而不是看到它被換回舊值。</li>
+  <li><strong>少數真正需要獨佔的操作</strong>才等所有存檔完成，例如結束 App（不該在存檔途中離開）、會攔截所有按鍵的快捷鍵編輯器。這是例外清單，不是預設。</li>
+</ul>
+
+<h2>程式碼長什麼樣</h2>
+<p>以下是範例 App 實際採用的形狀，刪去了焦點管理與報讀等細節。先看擁有者端的單一寫入者：每次寫入都排在前一次之後，並從最新的已存值計算新值，前一次失敗也不會卡住後面的寫入。</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// 主程序：設定檔的唯一寫入者</span>
+private <span class="f">save</span><span class="o">(</span>update<span class="o">:</span> <span class="o">(</span>current<span class="o">:</span> <span class="t">Settings</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="t">Settings</span><span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> run <span class="o">=</span> this<span class="o">.</span><span class="p">queue</span><span class="o">.</span><span class="p">then</span><span class="o">(</span><span class="k">async</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+    <span class="k">const</span> next <span class="o">=</span> <span class="f">update</span><span class="o">(</span>this<span class="o">.</span><span class="p">settings</span><span class="o">)</span><span class="o">;</span> <span class="c">// 從最新已存值出發</span>
+    <span class="k">await</span> this<span class="o">.</span><span class="p">write</span><span class="o">(</span>next<span class="o">)</span><span class="o">;</span>
+    this<span class="o">.</span><span class="p">settings</span> <span class="o">=</span> next<span class="o">;</span>
+  <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+  this<span class="o">.</span><span class="p">queue</span> <span class="o">=</span> run<span class="o">.</span><span class="k">catch</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="n">undefined</span><span class="o">)</span><span class="o">;</span> <span class="c">// 失敗只拒絕自己的呼叫者</span>
+  <span class="k">return</span> run<span class="o">;</span>
+<span class="o">}</span></code></pre>
+<p>擁有者每產生一份 view 就遞增 revision，畫面只接受更新的版本。這一行讓「哪個回應先到」不再影響正確性：</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">// 畫面：較舊的 view 一律丟棄</span>
+<span class="k">export</span> <span class="k">function</span> <span class="f">render</span><span class="o">(</span>next<span class="o">:</span> <span class="t">SettingsView</span><span class="o">)</span><span class="o">:</span> void <span class="o">{</span>
+  <span class="k">if</span> <span class="o">(</span>next<span class="o">.</span><span class="p">revision</span> <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="n">undefined</span> <span class="o">&amp;</span><span class="o">&amp;</span> view<span class="o">?</span><span class="o">.</span><span class="p">revision</span> <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="n">undefined</span> <span class="o">&amp;</span><span class="o">&amp;</span> next<span class="o">.</span><span class="p">revision</span> <span class="o">&lt;</span> view<span class="o">.</span><span class="p">revision</span><span class="o">)</span> <span class="k">return</span><span class="o">;</span>
+  view <span class="o">=</span> next<span class="o">;</span>
+  <span class="c">// …重新繪製</span>
+<span class="o">}</span></code></pre>
+<p>畫面端每項設定有自己的進行中狀態與錯誤。送出時只登記自己那一項；回應回來時，只有「這項設定最新的那次請求」能決定它成功或失敗，但任何回應帶回的 view 都照 revision 套用：</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> saves <span class="o">=</span> <span class="k">new</span> <span class="t">Map</span><span class="o">&lt;</span>string<span class="o">,</span> <span class="o">{</span> choice<span class="o">:</span> string<span class="o">;</span> request<span class="o">:</span> number <span class="o">}</span><span class="o">&gt;</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+<span class="k">const</span> failures <span class="o">=</span> <span class="k">new</span> <span class="t">Map</span><span class="o">&lt;</span>string<span class="o">,</span> <span class="t">Failure</span><span class="o">&gt;</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+
+<span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">choose</span><span class="o">(</span>group<span class="o">:</span> string<span class="o">,</span> choice<span class="o">:</span> string<span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> id <span class="o">=</span> <span class="o">+</span><span class="o">+</span>requestId<span class="o">;</span>
+  saves<span class="o">.</span><span class="p">set</span><span class="o">(</span>group<span class="o">,</span> <span class="o">{</span> choice<span class="o">,</span> request<span class="o">:</span> id <span class="o">}</span><span class="o">)</span><span class="o">;</span> <span class="c">// 同一項設定的新選擇取代舊的</span>
+  failures<span class="o">.</span><span class="p">delete</span><span class="o">(</span>group<span class="o">)</span><span class="o">;</span>
+  <span class="f">draw</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">const</span> newest <span class="o">=</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> saves<span class="o">.</span><span class="p">get</span><span class="o">(</span>group<span class="o">)</span><span class="o">?</span><span class="o">.</span><span class="p">request</span> <span class="o">=</span><span class="o">=</span><span class="o">=</span> id<span class="o">;</span>
+  <span class="k">try</span> <span class="o">{</span>
+    <span class="k">const</span> result <span class="o">=</span> <span class="k">await</span> window<span class="o">.</span><span class="p">settings</span><span class="o">.</span><span class="p">choose</span><span class="o">(</span>group<span class="o">,</span> choice<span class="o">)</span><span class="o">;</span>
+    <span class="f">render</span><span class="o">(</span>result<span class="o">.</span><span class="p">view</span><span class="o">)</span><span class="o">;</span> <span class="c">// 由 revision 決定要不要套用</span>
+    <span class="k">if</span> <span class="o">(</span><span class="f">newest</span><span class="o">(</span><span class="o">)</span> <span class="o">&amp;</span><span class="o">&amp;</span> <span class="o">!</span>result<span class="o">.</span><span class="p">applied</span><span class="o">)</span> failures<span class="o">.</span><span class="p">set</span><span class="o">(</span>group<span class="o">,</span> <span class="f">failureFrom</span><span class="o">(</span>result<span class="o">,</span> group<span class="o">)</span><span class="o">)</span><span class="o">;</span>
+  <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="f">newest</span><span class="o">(</span><span class="o">)</span><span class="o">)</span> saves<span class="o">.</span><span class="p">delete</span><span class="o">(</span>group<span class="o">)</span><span class="o">;</span>
+    <span class="f">draw</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre>
+<p>樂觀顯示只需要一個讀值函式：這項設定正在存的值若是它自己的選項之一，就顯示它；否則顯示擁有者確認的值。存檔結束（不論成敗）後，進行中的紀錄被移除，畫面自然回到擁有者的值。</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">export</span> <span class="k">const</span> confirmed <span class="o">=</span> <span class="o">(</span>group<span class="o">:</span> <span class="t">SettingsGroup</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span>
+  group<span class="o">.</span><span class="p">choices</span><span class="o">.</span><span class="p">find</span><span class="o">(</span><span class="o">(</span>c<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> c<span class="o">.</span><span class="p">checked</span><span class="o">)</span><span class="o">?</span><span class="o">.</span><span class="p">id</span> <span class="o">?</span><span class="o">?</span> <span class="s">""</span><span class="o">;</span>
+
+<span class="k">export</span> <span class="k">const</span> committed <span class="o">=</span> <span class="o">(</span>group<span class="o">:</span> <span class="t">SettingsGroup</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">const</span> save <span class="o">=</span> saves<span class="o">.</span><span class="p">get</span><span class="o">(</span>group<span class="o">.</span><span class="p">id</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">const</span> isValue <span class="o">=</span> save <span class="o">&amp;</span><span class="o">&amp;</span> group<span class="o">.</span><span class="p">choices</span><span class="o">.</span><span class="p">some</span><span class="o">(</span><span class="o">(</span>c<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> c<span class="o">.</span><span class="p">id</span> <span class="o">=</span><span class="o">=</span><span class="o">=</span> save<span class="o">.</span><span class="p">choice</span><span class="o">)</span> <span class="o">&amp;</span><span class="o">&amp;</span> <span class="o">!</span><span class="f">isAction</span><span class="o">(</span>group<span class="o">,</span> save<span class="o">.</span><span class="p">choice</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">return</span> isValue <span class="o">?</span> save<span class="o">.</span><span class="p">choice</span> <span class="o">:</span> <span class="f">confirmed</span><span class="o">(</span>group<span class="o">)</span><span class="o">;</span>
+<span class="o">}</span><span class="o">;</span></code></pre>
+<p>注意失敗時記錄的「重試基準」要用 <code>confirmed</code>，不能用 <code>committed</code>：失敗那一刻進行中的紀錄還在，用樂觀值當基準會讓重試判斷錯誤。</p>
+
+<h2>為什麼它是這些前提下最好的預設</h2>
+<p>和最簡單的可行替代方案「全頁一個存檔鎖」相比：鎖確實正確，但它把三種不同的保證綁在一起，代價由使用者承擔（閃爍、被吞掉的點擊、無關設定互相等待）。拆開之後，每一種保證由最有資格的一方提供：擁有者本來就是唯一能決定寫入順序與版本的人；畫面本來就是唯一知道使用者剛剛選了什麼的人。和「畫面端排隊」相比，它不需要第二套顯示來源，也沒有「已顯示但尚未送出」的空窗。</p>
+<p>它接受的代價是：畫面上會短暫出現擁有者還沒確認的值；失敗時控制項會跳回去。因為往返只有幾十毫秒，失敗也少見，這個代價在前提成立時很小，換到的是每次操作都立即回應。</p>
+
+<div class="callout warning"><p><strong>這個模式依賴擁有者端的兩個保證。</strong>如果擁有者沒有單一寫入者（每個請求各自讀寫檔案），或 view 沒有單調遞增的版本號，就不能讓畫面並行送出；應先在擁有者端補上這兩點，再拆掉畫面的鎖。</p></div>
+
+<h2>什麼時候不該用</h2>
+<ul>
+  <li><strong>值之間有必須一起成立的約束。</strong>例如「最小值不能大於最大值」、多欄位組成一個帳號設定。逐欄各自儲存會產生暫時不合法的組合。這時改用表單：使用者填完按「儲存」，一次送出、一次驗證、一次寫入。</li>
+  <li><strong>往返很慢或常常失敗。</strong>跨網路、會被伺服器大幅改寫的值，樂觀顯示會頻繁跳回去，反而更混亂。應顯示「儲存中」並在完成前保持原值，或先在本地驗證。</li>
+  <li><strong>動作不可逆或昂貴。</strong>刪除、付款、送出訊息不該樂觀地假設成功；它們是動作，不是值。</li>
+  <li><strong>只有一兩個欄位、幾乎不會連續操作。</strong>全頁鎖雖然不優雅，但如果使用者永遠碰不到並行，拆開的複雜度不值得。</li>
+  <li><strong>寫入彼此依賴順序以外的語意。</strong>例如「切換語言」會改變其他所有設定的顯示文字。這仍然可以並行，因為整份 view 會由最新 revision 決定；但若某項改動會使另一項的值失效，擁有者必須在寫入佇列中檢查，而不是假設畫面送來的值都還合法。</li>
+</ul>
+<h2>套用在本專案</h2>
+<p>RecordStuff 是一個 Electron 螢幕錄影 App，設定頁與錄影工作室跑在 renderer，主程序擁有設定。擁有者端的兩個保證原本就存在：設定儲存（<code>SettingsStore.save</code>）是單一佇列，主程序產生的每份 view 都帶遞增的 <code>revision</code>，畫面也早就會丟棄舊的 view。真正卡住的是畫面端：<code>choose()</code> 用一個全域的 <code>saving</code>、一個全域的請求編號與一個全域的 <code>failure</code>，任何設定存檔時，其他設定的選擇都被丟掉，於是每個控制項都得在別人存檔時暫時 disable。在錄影工作室裡，這就是改寬度時其他欄位一起閃的原因。</p>
+<p>改動因此集中在畫面端：</p>
+<ul>
+  <li><code>saving</code> 換成每項設定一份的 <code>savingOf(group)</code>，<code>failure</code> 換成 <code>failureOf(group)</code>，全域請求編號只用來產生唯一 id，每項設定只聽自己最新的請求。</li>
+  <li><code>committed()</code> 對值類設定做樂觀顯示，<code>confirmed()</code> 保留擁有者的值作為失敗後的重試基準。</li>
+  <li>開關、分段按鈕、下拉選單、滑桿、文字欄位、螢幕排列與錄影工作室的所有欄位，不再因為別的設定存檔而 disable。</li>
+  <li>動作按鈕只等自己那項設定；只有隱藏介面、結束與快捷鍵編輯器使用 <code>anySaving()</code> 等待所有存檔。</li>
+</ul>
+<p>測試鎖住的是行為，不是實作：一個 UI 測試讓第一項設定的存檔卡住，確認第二項設定仍可操作、立刻顯示、立刻送出，並在兩者都回應後保持正確的值；一個頁面測試確認同一項設定的動作重複按會被忽略，另一項設定的動作則照常送出；另有測試確認失敗後控制項退回擁有者的值。</p>
+<p>開發過程中曾先做過「畫面端排隊」的版本，它解決了閃爍，但留下串接延遲、關窗遺失與兩套顯示來源三個問題，最後被這個版本取代；這段歷程正好對應前面的做法二。</p>
+
+<h2>在別的程式碼庫判斷是否適用</h2>
+<ol>
+  <li>設定值是否由另一方擁有，而畫面每次只改一個值？</li>
+  <li>擁有者是否有單一寫入者，讓每次寫入都從最新已存值出發？沒有就先補。</li>
+  <li>擁有者送出的每份資料是否有單調遞增的版本，畫面能否據此丟棄舊資料？沒有就先補。</li>
+  <li>值之間是否有必須一起成立的約束？有的話，那一組改用表單一次送出。</li>
+  <li>往返是否夠快、失敗是否少見，讓樂觀顯示偶爾跳回去可以接受？</li>
+  <li>哪些送出是動作而不是值？它們不做樂觀顯示，只防同一項的重複觸發。</li>
+  <li>哪些操作真的需要等所有存檔完成？把它們列成明確的例外，其餘一律各自儲存。</li>
+</ol>
+
+<section class="sources">
+  <h2>本專案中的對應檔案</h2>
+  <ul>
+    <li><a href="../../src/renderer/settings/controller/core.ts"><code>src/renderer/settings/controller/core.ts</code></a>：每項設定的存檔狀態、錯誤、樂觀顯示與 <code>render</code> 的版本檢查。</li>
+    <li><a href="../../src/main/settings/settings.ts"><code>src/main/settings/settings.ts</code></a>：設定檔的單一寫入佇列。</li>
+    <li><a href="../../src/main/settings/settings-window.ts"><code>src/main/settings/settings-window.ts</code></a>：替每份 view 編上遞增的 revision。</li>
+    <li><a href="../system-design/desktop.md"><code>docs/system-design/desktop.md</code></a>：設定頁目前行為的規格。</li>
+  </ul>
+</section>
+</article>
+</main>
+<script>
+(() => {
+  const copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path></svg>';
+  const checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true; } catch {
+      const area = document.createElement("textarea");
+      area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      const ok = document.execCommand("copy"); area.remove(); return ok;
+    }
+  };
+  for (const pre of document.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    if (!code) continue;
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", async () => {
+      if (!(await copy(code.innerText))) return;
+      button.classList.add("copied"); button.innerHTML = checkIcon;
+      setTimeout(() => { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+    });
+    pre.appendChild(button);
+    const bar = document.createElement("div"), thumb = document.createElement("div");
+    bar.className = "code-scrollbar"; thumb.className = "code-scrollbar-thumb"; bar.appendChild(thumb); pre.appendChild(bar);
+    const update = () => {
+      const overflow = code.scrollWidth - code.clientWidth;
+      bar.classList.toggle("hidden", overflow <= 1);
+      if (overflow <= 1) return;
+      const ratio = code.clientWidth / code.scrollWidth;
+      thumb.style.width = `${ratio * 100}%`;
+      thumb.style.transform = `translateX(${(code.scrollLeft / overflow) * (bar.clientWidth - thumb.clientWidth)}px)`;
+    };
+    code.addEventListener("scroll", update, { passive: true });
+    new ResizeObserver(update).observe(code);
+    let drag;
+    thumb.addEventListener("pointerdown", (event) => { drag = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); });
+    thumb.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const overflow = code.scrollWidth - code.clientWidth, room = bar.clientWidth - thumb.clientWidth;
+      code.scrollLeft = drag.left + (event.clientX - drag.x) * (room > 0 ? overflow / room : 0);
+    });
+    thumb.addEventListener("pointerup", () => { drag = undefined; });
+    bar.addEventListener("click", (event) => {
+      if (event.target !== bar) return;
+      const box = bar.getBoundingClientRect();
+      code.scrollLeft = ((event.clientX - box.left) / box.width) * (code.scrollWidth - code.clientWidth);
+    });
+    update();
+  }
+})();
+</script>
+</body>
+</html>
