@@ -494,7 +494,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   let searchingMicrophones = false;
   /** The host lists one kind at a time and a newer listing ends the one in flight, so the kinds wait their turn. */
   let listings: Promise<void> = Promise.resolve();
-  const inTurn = (list: () => Promise<void>): Promise<void> => (listings = listings.then(list));
+  const inTurn = (list: () => Promise<void>): Promise<void> => {
+    const run = listings.then(list);
+    // A listing that fails is its own caller's to report; the next one still takes its turn.
+    listings = run.catch(() => undefined);
+    return run;
+  };
   const refreshMicrophones = (): Promise<void> => {
     if (listingMicrophones) return listingMicrophones;
     if (!preferencesUnlocked(recorder.state)) return Promise.resolve();
@@ -540,16 +545,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recorder.stopPreview();
     if (studioOpen) setTimeout(() => { if (studioOpen && !recorder.preview) recorder.startPreview(); }, 0);
   };
-  let listingCameras = false;
+  /** The camera listing in flight, which a second request waits for rather than starting another. */
+  let listingCameras: Promise<void> | undefined;
   // The engine composes the camera on macOS and, since plan 075 step 6, on Windows.
   const cameraAvailable = (): boolean => process.platform === "darwin" || process.platform === "win32";
   const refreshCameras = (): Promise<void> => {
-    if (listingCameras || !cameraAvailable() || !preferencesUnlocked(recorder.state)) return Promise.resolve();
-    listingCameras = true;
-    return inTurn(() => host.listCameras(() => preferencesUnlocked(recorder.state)).then(
+    if (listingCameras) return listingCameras;
+    if (!cameraAvailable() || !preferencesUnlocked(recorder.state)) return Promise.resolve();
+    return listingCameras = inTurn(() => host.listCameras(() => preferencesUnlocked(recorder.state)).then(
       (devices) => { cameras = devices; },
       (cause: unknown) => log(`camera: the cameras could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
-    )).finally(() => { listingCameras = false; refreshUi(); });
+    )).finally(() => { listingCameras = undefined; refreshUi(); });
   };
   const refreshDevices = (): void => { void refreshMicrophones(); void refreshCameras(); };
   /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */

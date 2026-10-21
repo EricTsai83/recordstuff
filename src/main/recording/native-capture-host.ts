@@ -236,8 +236,9 @@ export class NativeCaptureHost implements RecorderHost {
   }
 
   private list(kind: "microphones" | "cameras", what: string, allowed: () => boolean): Promise<MicrophoneDevice[]> {
-    const child = this.spawn(`capture host (${kind})`);
+    // Forked inside the promise: a process that cannot start rejects this listing, never throws into its caller.
     return new Promise<MicrophoneDevice[]>((resolve, reject) => {
+      const child = this.spawn(`capture host (${kind})`);
       let settled = false;
       const done = (result: MicrophoneDevice[] | Error): void => {
         if (settled) return;

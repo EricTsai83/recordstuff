@@ -218,6 +218,15 @@ describe("NativeCaptureHost", () => {
     await expect(crashed).rejects.toThrow("exited with 3");
   });
 
+  it("rejects a listing whose process cannot start, rather than throwing into its caller", async () => {
+    const host = new NativeCaptureHost({ entryPath: "/out/main/native-host-process.js", addonPath: "/out/native/recordstuff-capture.node",
+      resolveDisplay: async () => undefined, ownPids: () => [], hideSystemUi: () => false, log: () => {},
+      fork: () => { throw new Error("entry missing"); } });
+    let listed: Promise<unknown> | undefined;
+    expect(() => { listed = host.listCameras(); }).not.toThrow();
+    await expect(listed).rejects.toThrow("entry missing");
+  });
+
   it("runs Settings' monitor in a process of its own: messages wait for ready, its answers and its end are heard (plan 079)", async () => {
     const ctx = setup();
     const heard: unknown[] = [], ends: string[] = [];
