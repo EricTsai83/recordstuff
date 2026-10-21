@@ -312,7 +312,7 @@ Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipel
 
 ## 設定視窗 — main/settings/settings-window.ts、renderer/settings/settings.ts
 
-頁面外框是 `settings-app.tsx`；分頁是 `tabs/library.tsx`、`tabs/preferences.tsx`（含 `tabs/shortcut-editor.tsx`）與 `tabs/failures.tsx`。`settings-controller.ts` 是頁面讀取的唯一介面，內容依職責放在 `controller/`：投影與請求（`core.ts`）、快捷鍵編輯器、失敗紀錄列、錄影檔分頁、內嵌播放器、說明 popover 與提示。
+頁面外框是 `settings-app.tsx`；分頁是 `tabs/library.tsx`（卡片、類別選擇器、標題列與對話框在 `tabs/library/`）、`tabs/preferences.tsx`（含 `tabs/shortcut-editor.tsx`）與 `tabs/failures.tsx`。`settings-controller.ts` 是頁面讀取的唯一介面，內容依職責放在 `controller/`：投影與請求（`core.ts`）、快捷鍵編輯器、失敗紀錄列、錄影檔分頁、內嵌播放器、說明 popover 與提示。
 
 | 函式／方法 | 契約與副作用 |
 | --- | --- |
