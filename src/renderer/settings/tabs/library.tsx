@@ -544,10 +544,9 @@ function CategoryHeader() {
 
 /** The library's search and folder controls, on their own line in the page's fixed head above the scrolling recordings. */
 export function LibraryHead() {
-  const library = model.view?.library,
-    folder = model.view?.groups.find((group) => group.id === "outputFolder"),
+  const folder = model.view?.groups.find((group) => group.id === "outputFolder"),
     reveal = folder?.choices.find((choice) => choice.id === "reveal"),
-    layout = model.optimisticLayout ?? library?.layout ?? "grid";
+    layout = model.shownLayout();
   return (
     <div className="library-head">
       <CategoryPicker />
@@ -732,7 +731,7 @@ export function Library() {
     query = model.queryNow ? model.query : deferredQuery,
     items = useMemo(() => model.shownItems(library, query), [all, shownFolder, query]),
     narrowed = Boolean(all?.length) && (shownFolder !== undefined || query.trim() !== ""),
-    layout = model.optimisticLayout ?? library?.layout ?? "grid";
+    layout = model.shownLayout();
   const days = useMemo(() => {
     const groups = new Map<string, LibraryItemView[]>();
     for (const item of items ?? []) {

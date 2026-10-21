@@ -33,10 +33,40 @@ export let renaming:
       pending: boolean;
     }
   | undefined;
-export let optimisticLayout: LibraryLayout | undefined;
-/** The preview sound just chosen, shown while main saves it (settings `libraryPreviewSound`). */
-let optimisticPreviewSound: boolean | undefined;
-let previewSoundRequest = 0;
+/**
+ * One of the tab's own choices, shown at once while main saves it: only the latest request's answer ends it, since an
+ * earlier one would flash its choice back. A failure is said; the view then shows main's value.
+ */
+class OptimisticChoice<T> {
+  value: T | undefined;
+  private request = 0;
+
+  async choose(value: T, choice: string): Promise<void> {
+    const request = ++this.request;
+    this.value = value;
+    draw();
+    try {
+      const result = await window.settings.choose("library", choice);
+      render(result.view);
+      if (!result.applied) announce(failedText(result.failure));
+    } catch {
+      announce(failedText());
+    } finally {
+      if (request === this.request) {
+        this.value = undefined;
+        draw();
+      }
+    }
+  }
+}
+/** The grid or list layout just chosen (settings `libraryLayout`). */
+const layoutChoice = new OptimisticChoice<LibraryLayout>();
+/** The preview sound just chosen (settings `libraryPreviewSound`). */
+const previewSoundChoice = new OptimisticChoice<boolean>();
+/** What a library action that failed says when main gave no reason of its own. */
+function failedText(failure?: string): string {
+  return failure ?? text("Could not complete this action. Try again.");
+}
 /**
  * The category shown: every recording (undefined), those directly in the output folder (`{ folder: null }`, Uncategorized)
  * or one subfolder's. Main remembers it (settings `libraryShown`), so the tab opens on it again in a new window or launch.
@@ -56,8 +86,6 @@ export let folderDialog:
   | { folder?: string; name: string; error: string; pending: boolean }
   | undefined;
 let folderPending = false;
-/** Only the latest layout request's answer ends the optimistic layout: an earlier one would flash back its choice. */
-let layoutRequest = 0;
 let undoing = false;
 const trashedCards: string[] = [];
 const fileActionsPending = new Set<string>();
@@ -129,49 +157,19 @@ export function forgetMissingItems(ids: Set<string>): void {
   if (renaming && !renaming.pending && !ids.has(renaming.id))
     renaming = undefined;
 }
-export async function chooseLayout(layout: LibraryLayout): Promise<void> {
-  const request = ++layoutRequest;
-  optimisticLayout = layout;
-  draw();
-  try {
-    const result = await window.settings.choose("library", layout);
-    render(result.view);
-    if (!result.applied)
-      announce(
-        result.failure ?? text("Could not complete this action. Try again."),
-      );
-  } catch {
-    announce(text("Could not complete this action. Try again."));
-  } finally {
-    if (request === layoutRequest) {
-      optimisticLayout = undefined;
-      draw();
-    }
-  }
+export function chooseLayout(layout: LibraryLayout): Promise<void> {
+  return layoutChoice.choose(layout, layout);
+}
+/** The layout the tab shows: the choice being saved, else the saved one (a grid by default). */
+export function shownLayout(): LibraryLayout {
+  return layoutChoice.value ?? view?.library?.layout ?? "grid";
 }
 /** Whether a grid card's hover preview plays its sound: the choice being saved, else the saved one (muted by default). */
 export function previewSound(): boolean {
-  return optimisticPreviewSound ?? view?.library?.previewSound ?? false;
+  return previewSoundChoice.value ?? view?.library?.previewSound ?? false;
 }
-export async function choosePreviewSound(on: boolean): Promise<void> {
-  const request = ++previewSoundRequest;
-  optimisticPreviewSound = on;
-  draw();
-  try {
-    const result = await window.settings.choose("library", on ? "previewSound:on" : "previewSound:off");
-    render(result.view);
-    if (!result.applied)
-      announce(
-        result.failure ?? text("Could not complete this action. Try again."),
-      );
-  } catch {
-    announce(text("Could not complete this action. Try again."));
-  } finally {
-    if (request === previewSoundRequest) {
-      optimisticPreviewSound = undefined;
-      draw();
-    }
-  }
+export function choosePreviewSound(on: boolean): Promise<void> {
+  return previewSoundChoice.choose(on, on ? "previewSound:on" : "previewSound:off");
 }
 export async function revealFolder(): Promise<void> {
   await choose("outputFolder", "reveal", "library-reveal");
@@ -323,7 +321,7 @@ export async function fileAction(
     render(result.view);
     if (!result.applied)
       libraryError = view?.library?.items.some((item) => item.id === id)
-        ? (result.failure ?? text("Could not complete this action. Try again."))
+        ? (failedText(result.failure))
         : text("This recording is no longer in the folder.");
     else if (action === "trash") {
       const title = text(
@@ -336,7 +334,7 @@ export async function fileAction(
     }
   } catch {
     if (action !== "drag")
-      libraryError = text("Could not complete this action. Try again.");
+      libraryError = failedText();
   } finally {
     fileActionsPending.delete(id);
     draw();
@@ -354,7 +352,7 @@ export async function undoTrash(): Promise<void> {
     render(result.view);
     if (!result.applied) {
       announce(
-        result.failure ?? text("Could not complete this action. Try again."),
+        failedText(result.failure),
       );
       return;
     }
@@ -375,7 +373,7 @@ export async function undoTrash(): Promise<void> {
           : `tab-${selectedTab}`,
       );
   } catch {
-    announce(text("Could not complete this action. Try again."));
+    announce(failedText());
   } finally {
     undoing = false;
     draw();
@@ -402,9 +400,9 @@ export async function moveTo(id: string, folder: string | null): Promise<void> {
       announce(translate("Moved {name} to {folder}", view?.language, { name: item.name, folder: folder ?? text("Uncategorized") }));
       const moved = result.renamed && view?.library?.items.find((entry) => entry.id === result.renamed);
       if (focused && moved && isShown(moved) && document.hasFocus()) focus(`clip-${moved.id}-open`);
-    } else libraryError = result.failure ?? text("Could not complete this action. Try again.");
+    } else libraryError = failedText(result.failure);
   } catch {
-    libraryError = text("Could not complete this action. Try again.");
+    libraryError = failedText();
   } finally {
     movesPending.delete(id);
     draw();
@@ -470,7 +468,7 @@ export async function submitFolderDialog(): Promise<void> {
     : { action: "renameFolder", folder: current.folder, name });
   current.pending = false;
   if (!result.applied) {
-    fail(result.failure ?? text("Could not complete this action. Try again."));
+    fail(failedText(result.failure));
     return;
   }
   // Only the dialog that asked, still open, takes the page to its folder and the focus with it: one cancelled meanwhile,
@@ -509,7 +507,7 @@ export async function removeFolder(folder: string): Promise<void> {
           ? (left === 1 ? "“{name}” still holds 1 recording. Move it to another category or to the Trash first." : "“{name}” still holds {count} recordings. Move them to another category or to the Trash first.")
           : (left === 1 ? "“{name}” still holds 1 recording. Move it to another category or to the Recycle Bin first." : "“{name}” still holds {count} recordings. Move them to another category or to the Recycle Bin first."),
           view?.language, { name: folder, count: left })
-        : (result.failure ?? text("Could not complete this action. Try again."));
+        : (failedText(result.failure));
       const title = translate("Could not delete “{name}”", view?.language, { name: folder });
       announce(sentences([title, why], view?.language));
       showToast("notice", title, why, 6000);
@@ -534,7 +532,7 @@ export async function favorite(folder: string, on: boolean): Promise<void> {
   }
 }
 function failFavorite(failure: string | undefined): void {
-  const title = text("Could not update favorites"), why = failure ?? text("Could not complete this action. Try again.");
+  const title = text("Could not update favorites"), why = failedText(failure);
   announce(sentences([title, why], view?.language));
   showToast("notice", title, why, 6000);
 }
