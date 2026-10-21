@@ -734,8 +734,8 @@ fn an_input_is_recorded_and_metered_at_its_volume() {
     assert!((recorded - 0.125).abs() < 0.002, "{recorded}");
     let levels = rig.heard.levels.lock().unwrap().clone();
     assert!(levels.iter().skip(1).all(|l| (l.system - 0.125).abs() < 0.002 && l.microphone == Some(0.0)), "{levels:?}");
-    // +12 dB on the microphone's 0.5 would reach about 2: softly limited below full scale, not clipped.
-    rig.core.set_gains(0.0, 12.0);
+    // 600% on the microphone's 0.5 would reach 3: softly limited below full scale, not clipped.
+    rig.core.set_gains(0.0, MAX_GAIN_DB);
     feed_both(&rig, t0, next, 100);
     let recorded = loudest(&rig);
     assert!(recorded > 0.95 && recorded < 1.0, "{recorded}");

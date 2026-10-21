@@ -105,8 +105,8 @@ pub struct Levels {
 
 /// An input's volume at or below this is silence (D21), the bottom of its fader.
 pub const SILENT_GAIN_DB: f64 = -60.0;
-/// The loudest an input's volume raises it: +12 dB, about four times.
-pub const MAX_GAIN_DB: f64 = 12.0;
+/// The loudest an input's volume raises it: 600%, about +15.6 dB (20 log10 6), the fader's top (audio-volume.ts).
+pub const MAX_GAIN_DB: f64 = 15.563025007672874;
 
 /// How often levels are told while watched: 10 times a second, the preview's rate (D21).
 const LEVELS_INTERVAL_NS: u64 = NANOS_PER_SECOND / 10;

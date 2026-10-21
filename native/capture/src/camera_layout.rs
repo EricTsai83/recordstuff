@@ -36,9 +36,9 @@ pub const MIN_SIZE: f64 = 0.05;
 pub const MAX_SIZE: f64 = 0.6;
 
 impl Default for Layout {
-    /// A circle a fifth of the shorter side across, near the bottom-right corner.
+    /// A portrait 3:4 rectangle with slightly rounded corners near the top-right corner, as `DEFAULT_CAMERA_LAYOUT`.
     fn default() -> Self {
-        Self { width: 0.2, height: 0.2, rounding: 1.0, x: 0.97, y: 0.95, mirror: false }
+        Self { width: 0.21, height: 0.28, rounding: 0.15, x: 0.97, y: 0.05, mirror: false }
     }
 }
 
@@ -231,11 +231,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_bubble_is_a_circle_near_the_bottom_right() {
+    fn the_default_bubble_is_a_rounded_portrait_rectangle_near_the_top_right() {
         let layout = Layout::default();
         let bubble = layout.bubble(1920, 1080);
-        assert_eq!(bubble, Rect { x: 1653.0, y: 821.0, width: 216.0, height: 216.0 });
-        assert_eq!(layout.radius(&bubble), 108.0);
+        assert_eq!(bubble, Rect { x: 1642.0, y: 39.0, width: 227.0, height: 302.0 });
+        assert!((layout.radius(&bubble) - 17.025).abs() < 1e-9);
         assert!(bubble.x + bubble.width <= 1920.0 && bubble.y + bubble.height <= 1080.0);
     }
 
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn positions_span_the_free_space() {
-        let corner = |x, y| Layout { x, y, ..Layout::default() }.bubble(1000, 500);
+        let corner = |x, y| Layout { x, y, width: 0.2, height: 0.2, ..Layout::default() }.bubble(1000, 500);
         assert_eq!((corner(0.0, 0.0).x, corner(0.0, 0.0).y), (0.0, 0.0));
         assert_eq!((corner(1.0, 1.0).x, corner(1.0, 1.0).y), (900.0, 400.0));
         assert_eq!(corner(0.5, 0.5).x, 450.0);
@@ -358,6 +358,6 @@ mod tests {
         assert_eq!(parsed.layout, Layout { width: 0.3, height: 0.6, rounding: 0.25, x: 0.0, y: 1.0, mirror: true });
         assert_eq!(parsed.device.as_deref(), Some("ABC-1"));
         assert!(!parsed.preview);
-        assert_eq!(CameraPrototype::parse("rounding=nan").unwrap().layout.rounding, 1.0);
+        assert_eq!(CameraPrototype::parse("rounding=nan").unwrap().layout.rounding, Layout::default().rounding);
     }
 }
