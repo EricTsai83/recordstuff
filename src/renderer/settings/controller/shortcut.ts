@@ -63,10 +63,13 @@ export async function capture(armed: boolean, restore = false): Promise<void> {
   preview = "";
   previewParts = [];
   candidateToConfirm = undefined;
+  // Set by every request, not only a close: a close still unanswered when the editor reopens must not leave it set,
+  // or main ending the new editor (its time limit) would read as the page's own close.
+  closingCapture = !armed;
   if (armed) {
     clearFailure("hotkey");
     announce("");
-  } else closingCapture = true;
+  }
   draw();
   try {
     const next = await window.settings.capture(armed);
