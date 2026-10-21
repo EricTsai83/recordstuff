@@ -18,23 +18,41 @@ export function isComposing(event: React.KeyboardEvent): boolean {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
 
-/** New folder, or Rename folder… for the folder shown: one name, checked as main will before it is sent. */
-export function FolderDialog() {
-  const dialog = model.folderDialog,
-    language = model.view?.language;
+/** The ids a name dialog's parts carry; the page's controller and its tests find them by these. */
+interface NameDialogIds { dialog: string; input: string; error: string; cancel: string; confirm: string; title?: string }
+
+/**
+ * One name field in a dialog, for a category's name and a recording's: the field is selected as it opens, Enter (not
+ * while composing) confirms, Escape and Cancel leave it, and an error is said under the field.
+ */
+function NameDialog({ ids, open, draft, title, description, label, placeholder, suffix, confirm, onCancel, onDraft, onSubmit }: {
+  ids: NameDialogIds;
+  open: boolean;
+  draft: { name: string; error: string; pending: boolean } | undefined;
+  title: string;
+  description: string;
+  label: string;
+  placeholder?: string | undefined;
+  /** Shown after the field and not part of it: a recording's extension. */
+  suffix?: string | undefined;
+  confirm: string;
+  onCancel: () => void;
+  onDraft: (name: string) => void;
+  onSubmit: () => void;
+}) {
   return (
     <Dialog
-      open={Boolean(dialog)}
+      open={open}
       onOpenChange={(open) => {
-        if (!open) model.cancelFolderDialog();
+        if (!open) onCancel();
       }}
     >
       <DialogContent
-        id="library-folder-dialog"
+        id={ids.dialog}
         className="clip-rename max-h-[calc(100dvh-32px)] overflow-y-auto"
         showCloseButton={false}
         initialFocus={() => {
-          const field = document.getElementById("library-folder-input") as HTMLInputElement | null;
+          const field = document.getElementById(ids.input) as HTMLInputElement | null;
           field?.select();
           return field;
         }}
@@ -43,148 +61,105 @@ export function FolderDialog() {
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            model.cancelFolderDialog();
+            onCancel();
           }
         }}
       >
         <DialogHeader>
-          <DialogTitle className="[overflow-wrap:anywhere]">
-            {dialog?.folder === undefined
-              ? model.text("New category")
-              : translate("New name for {title}", language, { title: dialog.folder })}
+          <DialogTitle id={ids.title} className="[overflow-wrap:anywhere]">
+            {title}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            {model.text(dialog?.folder === undefined ? "New category" : "Rename category…")}
+            {description}
           </DialogDescription>
         </DialogHeader>
         <Field>
-          <FieldLabel className="sr-only" htmlFor="library-folder-input">
-            {model.text("Category name")}
+          <FieldLabel className="sr-only" htmlFor={ids.input}>
+            {label}
           </FieldLabel>
           <InputGroup className="clip-rename-field bg-card">
             <InputGroupInput
-              id="library-folder-input"
-              value={dialog?.name ?? ""}
-              placeholder={model.text("Category name")}
+              id={ids.input}
+              value={draft?.name ?? ""}
+              placeholder={placeholder}
               spellCheck={false}
               autoComplete="off"
-              aria-describedby={dialog?.error ? "library-folder-error" : undefined}
-              aria-invalid={Boolean(dialog?.error)}
-              onInput={(event) => model.folderDraft(event.currentTarget.value)}
+              aria-describedby={draft?.error ? ids.error : undefined}
+              aria-invalid={Boolean(draft?.error)}
+              onInput={(event) => onDraft(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !isComposing(event)) {
                   event.preventDefault();
-                  void model.submitFolderDialog();
+                  onSubmit();
                 }
               }}
             />
+            {suffix !== undefined && (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText className="clip-rename-extension">{suffix}</InputGroupText>
+              </InputGroupAddon>
+            )}
           </InputGroup>
-          <FieldError role={undefined} id="library-folder-error" className="clip-rename-error" hidden={!dialog?.error}>
-            {dialog?.error}
+          <FieldError role={undefined} id={ids.error} className="clip-rename-error" hidden={!draft?.error}>
+            {draft?.error}
           </FieldError>
         </Field>
         <DialogFooter className="clip-rename-buttons">
-          <Button id="library-folder-cancel" variant="outline" onClick={() => model.cancelFolderDialog()}>
+          <Button id={ids.cancel} variant="outline" onClick={onCancel}>
             {model.text("Cancel")}
           </Button>
-          <Button id="library-folder-confirm" aria-disabled={dialog?.pending} onClick={() => void model.submitFolderDialog()}>
-            {model.text(dialog?.folder === undefined ? "Create" : "Rename")}
+          <Button id={ids.confirm} aria-disabled={draft?.pending} onClick={onSubmit}>
+            {confirm}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+/** New folder, or Rename folder… for the folder shown: one name, checked as main will before it is sent. */
+export function FolderDialog() {
+  const dialog = model.folderDialog,
+    language = model.view?.language,
+    creating = dialog?.folder === undefined;
+  return (
+    <NameDialog
+      ids={{ dialog: "library-folder-dialog", input: "library-folder-input", error: "library-folder-error",
+        cancel: "library-folder-cancel", confirm: "library-folder-confirm" }}
+      open={Boolean(dialog)}
+      draft={dialog}
+      title={creating ? model.text("New category") : translate("New name for {title}", language, { title: dialog?.folder ?? "" })}
+      description={model.text(creating ? "New category" : "Rename category…")}
+      label={model.text("Category name")}
+      placeholder={model.text("Category name")}
+      confirm={model.text(creating ? "Create" : "Rename")}
+      onCancel={() => model.cancelFolderDialog()}
+      onDraft={(name) => model.folderDraft(name)}
+      onSubmit={() => void model.submitFolderDialog()}
+    />
+  );
+}
+
+/** A recording's Rename…: its name, with the extension shown beside the field and kept. */
 export function RenameDialog() {
   const rename = model.renaming,
     item = model.view?.library?.items.find((item) => item.id === rename?.id);
   return (
-    <Dialog
+    <NameDialog
+      ids={{ dialog: "clip-rename", input: "clip-rename-input", error: "clip-rename-error",
+        cancel: "clip-rename-cancel", confirm: "clip-rename-confirm", title: "clip-rename-label" }}
       open={Boolean(rename)}
-      onOpenChange={(open) => {
-        if (!open) model.cancelRename();
-      }}
-    >
-      <DialogContent
-        id="clip-rename"
-        className="clip-rename max-h-[calc(100dvh-32px)] overflow-y-auto"
-        showCloseButton={false}
-        initialFocus={() => {
-          const field = document.getElementById(
-            "clip-rename-input",
-          ) as HTMLInputElement | null;
-          field?.select();
-          return field;
-        }}
-        finalFocus={false}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            model.cancelRename();
-          }
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle id="clip-rename-label" className="[overflow-wrap:anywhere]">
-            {translate("New name for {title}", model.view?.language, {
-              title: item?.title ?? "",
-            })}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            {model.text("Rename…")}
-          </DialogDescription>
-        </DialogHeader>
-        <Field>
-          <FieldLabel className="sr-only" htmlFor="clip-rename-input">
-            {model.text("Rename")}
-          </FieldLabel>
-          <InputGroup className="clip-rename-field bg-card">
-            <InputGroupInput
-              id="clip-rename-input"
-              value={rename?.name ?? ""}
-              spellCheck={false}
-              autoComplete="off"
-              aria-describedby={rename?.error ? "clip-rename-error" : undefined}
-              aria-invalid={Boolean(rename?.error)}
-              onInput={(event) => model.renameDraft(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !isComposing(event)) {
-                  event.preventDefault();
-                  void model.submitRename();
-                }
-              }}
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupText className="clip-rename-extension">{rename?.extension}</InputGroupText>
-            </InputGroupAddon>
-          </InputGroup>
-          <FieldError role={undefined}
-            id="clip-rename-error"
-            className="clip-rename-error"
-            hidden={!rename?.error}
-          >
-            {rename?.error}
-          </FieldError>
-        </Field>
-        <DialogFooter className="clip-rename-buttons">
-          <Button
-            id="clip-rename-cancel"
-            variant="outline"
-            onClick={() => model.cancelRename()}
-          >
-            {model.text("Cancel")}
-          </Button>
-          <Button
-            id="clip-rename-confirm"
-            aria-disabled={rename?.pending}
-            onClick={() => void model.submitRename()}
-          >
-            {model.text("Rename")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      draft={rename}
+      title={translate("New name for {title}", model.view?.language, { title: item?.title ?? "" })}
+      description={model.text("Rename…")}
+      label={model.text("Rename")}
+      // Kept while the dialog closes and `renaming` is already gone, so the field does not change width mid-animation.
+      suffix={rename?.extension ?? ""}
+      confirm={model.text("Rename")}
+      onCancel={() => model.cancelRename()}
+      onDraft={(name) => model.renameDraft(name)}
+      onSubmit={() => void model.submitRename()}
+    />
   );
 }
 export function PlayerDialog() {
