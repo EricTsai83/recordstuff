@@ -29,6 +29,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { mp4Duration } from "./mp4-duration";
 import { errnoCode } from "../lib/errors";
+import { mapLimited } from "../lib/map-limited";
 import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
 
 export const MEDIA_SCHEME = "recordstuff-media";
@@ -127,6 +128,8 @@ export const UNDO_TRASH_MS = 30_000;
  * second before it fails.
  */
 const FOLDER_RENAME_RETRIES_MS = [50, 100, 200, 300, 400];
+/** File-system requests a listing keeps in flight: a large output folder must not hold up main's other reads and writes. */
+const LISTING_CONCURRENCY = 16;
 const HELD_OPEN = new Set(["EPERM", "EACCES", "EBUSY"]);
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
@@ -316,7 +319,7 @@ export class RecordingsLibrary {
           .map(entry => ({ name: entry.name, filePath: path.join(inside, entry.name), ...(folder === undefined ? {} : { folder }) }));
       const candidates = videos(dir, entries);
       // One level only, and never through a link: a subfolder's own folders are not looked into.
-      await Promise.all(entries.filter(entry => entry.isDirectory() && isFolderName(entry.name)).map(async entry => {
+      await mapLimited(entries.filter(entry => entry.isDirectory() && isFolderName(entry.name)), LISTING_CONCURRENCY, async entry => {
         const folderPath = path.join(dir, entry.name);
         let inner: Dirent[];
         try {
@@ -332,14 +335,14 @@ export class RecordingsLibrary {
         if (visible.length && !listed.length && !holdsWaiting) return;
         folders.push({ name: entry.name, empty: !visible.length });
         candidates.push(...listed);
-      }));
+      });
       folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      const stats = await Promise.all(candidates.map(async candidate => {
+      const stats = await mapLimited(candidates, LISTING_CONCURRENCY, async candidate => {
         try {
           const stat = await fs.stat(candidate.filePath);
           return stat.isFile() ? { ...candidate, stat } : undefined;
         } catch { return undefined; }
-      }));
+      });
       files = stats.filter(item => item !== undefined).map(({ name, filePath, folder, stat }) => {
         const version = fileVersion(stat);
         const known = this.durations.get(filePath);
