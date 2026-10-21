@@ -53,8 +53,8 @@ export function VideoApp() {
   useDarkClass();
   useEffect(() => {
     if (load) return;
-    // Main sends once; a second or unreadable message is ignored.
-    window.video?.onLoad((value) => {
+    // Main sends once; a second or unreadable message is ignored, and the page stops listening once it has one.
+    return window.video?.onLoad((value) => {
       const next = videoLoad(value);
       if (next) setLoad((current) => current ?? next);
     });

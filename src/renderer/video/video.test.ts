@@ -2,7 +2,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 /** The fullscreen page (video.ts): loaded fresh for each case, with the query main gives it. */
-async function load(query: string, onLoad: (listener: (load: unknown) => void) => void = () => {}): Promise<{ video: HTMLVideoElement; ready: ReturnType<typeof vi.fn>; exit: ReturnType<typeof vi.fn>; order: string[] }> {
+async function load(query: string, onLoad: (listener: (load: unknown) => void) => () => void = () => () => {}): Promise<{ video: HTMLVideoElement; ready: ReturnType<typeof vi.fn>; exit: ReturnType<typeof vi.fn>; order: string[] }> {
   vi.resetModules();
   document.body.innerHTML = '<div id="root"></div>';
   history.replaceState(null, "", `/video.html?${query}`);
@@ -66,7 +66,8 @@ it("leaves on the platform's close chord, as the app's other window closes on it
 
 it("loaded in standby, draws nothing until main says what to play, then plays it as a page loaded for it would", async () => {
   let send: ((load: unknown) => void) | undefined;
-  await load("standby=1", listener => { send = listener; });
+  const unsubscribe = vi.fn();
+  await load("standby=1", listener => { send = listener; return unsubscribe; });
   expect(document.getElementById("video")).toBeNull();
   // What main did not send is ignored.
   send!({ src: "s", state: { time: -1, playing: true, volume: 1, muted: false }, language: "en" });
@@ -77,6 +78,8 @@ it("loaded in standby, draws nothing until main says what to play, then plays it
   const video = document.getElementById("video") as HTMLVideoElement;
   expect([video.getAttribute("src"), video.volume, video.muted, document.querySelector(".pc-title")!.textContent, document.documentElement.lang])
     .toEqual(["recordstuff-media://video/a", 0.25, true, "今天", "zh-Hant"]);
+  // It stops listening once it has what to play.
+  expect(unsubscribe).toHaveBeenCalledOnce();
   // Once: a second message does not replace what plays.
   send!({ src: "recordstuff-media://video/b", state: { time: 0, playing: false, volume: 1, muted: false }, language: "en" });
   await new Promise(resolve => setTimeout(resolve, 10));

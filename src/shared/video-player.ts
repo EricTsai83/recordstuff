@@ -94,6 +94,6 @@ export const VIDEO_TIMING = {
 export interface VideoBridge {
   ready(): void;
   exit(state: PlaybackState): void;
-  /** A page loaded in standby hears here what to play; main sends it once, if at all. */
-  onLoad(listener: (load: unknown) => void): void;
+  /** A page loaded in standby hears here what to play; main sends it once, if at all. Returns the unsubscribe. */
+  onLoad(listener: (load: unknown) => void): () => void;
 }

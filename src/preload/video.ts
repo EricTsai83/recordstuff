@@ -11,6 +11,10 @@ const bridge: VideoBridge = {
   ready: () => { void ipcRenderer.invoke("video:ready"); },
   exit: (state: PlaybackState) => { void ipcRenderer.invoke("video:exit", state); },
   // Only the value crosses: the page never holds the event or its sender.
-  onLoad: (listener: (load: unknown) => void) => { ipcRenderer.on("video:load", (_event, load: unknown) => listener(load)); },
+  onLoad: (listener: (load: unknown) => void) => {
+    const heard = (_event: unknown, load: unknown): void => listener(load);
+    ipcRenderer.on("video:load", heard);
+    return () => { ipcRenderer.removeListener("video:load", heard); };
+  },
 };
 contextBridge.exposeInMainWorld("video", bridge);

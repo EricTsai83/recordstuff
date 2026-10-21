@@ -46,7 +46,7 @@ it("settings preload passes the camera preview's port into the page (plan 075 st
 it("fullscreen video preload uses exactly the channels main handles for it", async () => {
   await import("./video");
   const bridge = electron.exposed.video;
-  bridge.ready(); bridge.exit({ time: 1, playing: false, volume: 1, muted: false }); bridge.onLoad(() => {});
+  bridge.ready(); bridge.exit({ time: 1, playing: false, volume: 1, muted: false }); bridge.onLoad(() => {})();
   expect([...electron.used].sort()).toEqual(Object.values(VIDEO_CHANNELS).sort());
 });
 
