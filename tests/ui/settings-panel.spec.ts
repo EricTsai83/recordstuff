@@ -88,9 +88,10 @@ test("S014–S015 two held saves and an older push: the newest choice shows over
   // The choice being saved shows over an older completion and push, and another setting stays usable (2026-10-22).
   expect.soft([pending.value, pending.locked, pending.feedback], "S014 an older completion and push leave the newest choice shown, the other controls usable").toEqual(["en", false, ""]);
   await host.evaluate(h => h.releaseSave());
-  await expect.poll(() => read<{ locked: boolean }>(page, state).then(value => value.locked)).toBe(false);
-  const finished = await read<{ value: string; locked: boolean; lang: string; hotkeyLabel: string }>(page, state);
-  expect([finished.value, finished.locked, finished.lang, finished.hotkeyLabel], "S015 the final completion displays committed settings").toEqual(["en", false, "en", "Shortcut"]);
+  // The page is never locked by a save, so the final completion is waited for by what it renders.
+  await expect.poll(() => read<{ value: string; locked: boolean; lang: string; hotkeyLabel: string }>(page, state)
+    .then(finished => [finished.value, finished.locked, finished.lang, finished.hotkeyLabel]), { message: "S015 the final completion displays committed settings" })
+    .toEqual(["en", false, "en", "Shortcut"]);
   await host.evaluate(h => { h.state.holdSaves = false; });
 });
 

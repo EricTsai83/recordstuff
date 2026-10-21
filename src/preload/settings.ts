@@ -5,7 +5,7 @@
  * camera preview, whose frames come on a port posted into the page.
  * No Node API and no generic IPC reaches the page.
  */
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 import type { MicrophoneLevel, SettingsBridge, SettingsView, SettingsZoom } from "../shared/settings-panel";
 
 // Literal copies of `SETTINGS_CHANNELS` (channels.test.ts): a sandboxed preload imports nothing at runtime.
@@ -17,6 +17,7 @@ const bridge: SettingsBridge = {
     ipcRenderer.on("settings:zoom-changed", listener);
     return () => ipcRenderer.removeListener("settings:zoom-changed", listener);
   },
+  zoomFactor: () => webFrame.getZoomFactor(),
   capture: (armed) => ipcRenderer.invoke("settings:capture", armed),
   read: () => ipcRenderer.invoke("settings:read"),
   choose: (group, choice) => ipcRenderer.invoke("settings:choose", group, choice),

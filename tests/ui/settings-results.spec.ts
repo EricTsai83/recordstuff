@@ -92,7 +92,9 @@ test("each failure shows its outcome label, and the rows and tab fit, in both la
     for (const [size, width, height] of [["default", 960, 640], ["minimum", 380, 360]] as const) {
       await host.evaluate((h, value) => h.setSize(value.width, value.height), { width, height });
       await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
-      expect(await read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth && [...document.querySelectorAll(".result-heading")].every(el => el.scrollWidth <= el.clientWidth)`)).toBe(true);
+      // A resize lays the page out again over a frame or more (the sidebar collapses at the minimum): it is waited for.
+      await expect.poll(() => read<boolean>(page, `document.getElementById("settings-panel").scrollWidth <= document.getElementById("settings-panel").clientWidth && [...document.querySelectorAll(".result-heading")].every(el => el.scrollWidth <= el.clientWidth)`),
+        { message: `${lang}/${scheme}/${size}: the panel and the result headings fit their width` }).toBe(true);
       const tab = await read<{ inside: boolean; fullName: boolean }>(page, `(() => { const tab = document.getElementById("tab-failures"), shown = [...tab.querySelectorAll(".tab-badge, .tab-dot")].find(el => el.getClientRects().length), name = tab.querySelector(".tab-name"), r = tab.getBoundingClientRect(), b = shown.getBoundingClientRect(); return { inside: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, fullName: name.scrollWidth <= name.clientWidth }; })()`);
       // The full sidebar shows the count, a collapsed one (a narrow window's) its dot.
       expect(tab.inside, `${lang}/${scheme}/${size}: the unread count or its dot stays inside its tab tile`).toBe(true);

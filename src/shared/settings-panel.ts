@@ -333,6 +333,8 @@ export interface SettingsBridge {
   /** Uses the same persisted zoom as the window's keyboard and menu actions. */
   zoom?(request: SettingsZoomRequest): Promise<void>;
   onZoomChanged?(callback: (zoom: SettingsZoom) => void): () => void;
+  /** The page's zoom factor as the renderer applies it now, whoever set it. */
+  zoomFactor?(): number;
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
   /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts), its new name or folder, or a folder action. */

@@ -9,7 +9,7 @@ import { ScrollFades } from "../components/scroll-fades";
 import { ControlTooltip } from "../components/control-tooltip";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { ZoomToast } from "./zoom-toast";
-import { ZOOM_STEPS, type SettingsStatus } from "../../shared/settings-panel";
+import type { SettingsStatus } from "../../shared/settings-panel";
 import { translate } from "../../shared/i18n";
 import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
@@ -187,28 +187,19 @@ export function SettingsApp() {
     cardOpen = rail && statusOpen && hasCard(model.view?.status);
   useEffect(model.start, []);
   useDarkClass();
-  // The window controls keep their size at any zoom: the sidebar toggle beside them places itself by the page's zoom.
-  // During a live resize the window's outer and inner widths update a frame or more apart, so their ratio wobbles and
-  // would move the toggle with every step: a resize that changes the window's width keeps the zoom it had and reads it
-  // again only once it settles, and a reading lands on the nearest zoom step. Only a zoom changes the inner width alone.
+  // The window controls keep their size at any zoom: the sidebar toggle beside them places itself by the page's zoom,
+  // read from the renderer on every resize (a zoom changes the inner width), never from the window's outer and inner
+  // widths, which a live resize updates a frame or more apart.
   useEffect(() => {
-    let settle: number | undefined, outer = outerWidth;
     const set = (factor: number): void => document.documentElement.style.setProperty("--page-zoom", String(factor));
     const zoom = (): void => {
-      outer = outerWidth;
-      const factor = outerWidth / innerWidth;
-      if (!Number.isFinite(factor) || factor <= 0.25) return set(1);
-      set(ZOOM_STEPS.reduce((near, step) => Math.abs(step - factor) < Math.abs(near - factor) ? step : near));
-    };
-    const resized = (): void => {
-      if (outerWidth === outer) zoom();
-      clearTimeout(settle);
-      settle = window.setTimeout(zoom, 250);
+      const factor = window.settings.zoomFactor?.() ?? 1;
+      set(Number.isFinite(factor) && factor > 0 ? factor : 1);
     };
     zoom();
-    addEventListener("resize", resized);
-    const unsubscribe = window.settings.onZoomChanged?.((next) => { clearTimeout(settle); set(next.factor); });
-    return () => { removeEventListener("resize", resized); clearTimeout(settle); unsubscribe?.(); };
+    addEventListener("resize", zoom);
+    const unsubscribe = window.settings.onZoomChanged?.((next) => set(next.factor));
+    return () => { removeEventListener("resize", zoom); unsubscribe?.(); };
   }, []);
   // The bell's card closes on Escape, which gives the focus back to the bell, or a press anywhere else; the window stays.
   useEffect(() => {
