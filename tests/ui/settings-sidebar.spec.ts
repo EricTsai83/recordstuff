@@ -118,6 +118,38 @@ for (const size of SIZES) {
   });
 }
 
+test("the bell's card left open closes with its status or a sidebar that opens, and never opens again by itself", { tag: "@layout" }, async () => {
+  const attention = { type: "needsPermission", needsRelaunch: false } as const;
+  await host.evaluate((h, state) => { h.theme("light"); h.setContentSize(960, 640); h.pushModel(state); }, attention);
+  const toggle = page.locator("#sidebar-toggle"), main = page.locator("main"), bell = page.locator("#status-bell"), card = page.locator("#status");
+  if (await toggle.getAttribute("aria-expanded") === "true") await toggle.click();
+  await expect(main).toHaveAttribute("data-sidebar", "collapsed");
+  await bell.click();
+  await expect(card).toBeVisible();
+  // The problem is solved elsewhere, then another one comes: the bell is back, its card is not.
+  await host.evaluate(h => h.pushModel({ type: "idle" }));
+  await expect(bell).toBeHidden();
+  await host.evaluate((h, state) => h.pushModel(state), attention);
+  await expect(bell).toBeVisible();
+  await expect(bell).toHaveAttribute("aria-expanded", "false");
+  await expect(card).toBeHidden();
+  // The same when the sidebar opens with the card open and collapses again, here by the window's width, with no press
+  // outside the card that would close it on its own.
+  await toggle.click();
+  await expect(main).not.toHaveAttribute("data-sidebar", "collapsed");
+  await host.evaluate(h => h.setContentSize(560, 640));
+  await expect(main).toHaveAttribute("data-sidebar", "collapsed");
+  await bell.click();
+  await expect(card).toBeVisible();
+  await host.evaluate(h => h.setContentSize(960, 640));
+  await expect(main).not.toHaveAttribute("data-sidebar", "collapsed");
+  await host.evaluate(h => h.setContentSize(560, 640));
+  await expect(main).toHaveAttribute("data-sidebar", "collapsed");
+  await expect(bell).toHaveAttribute("aria-expanded", "false");
+  await expect(card).toBeHidden();
+  await host.evaluate(h => h.setContentSize(960, 640));
+});
+
 /** The fixture's window content height at a size, in page pixels. */
 function innerHeightOf(size: (typeof SIZES)[number]): number {
   return Math.floor(size.height / size.zoom);

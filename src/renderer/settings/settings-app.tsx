@@ -184,8 +184,12 @@ export function SettingsApp() {
   // window with room.
   const rail = collapsed || !roomy;
   const [statusOpen, setStatusOpen] = useState(false),
-    cardOpen = rail && statusOpen && hasCard(model.view?.status);
+    card = hasCard(model.view?.status),
+    cardOpen = rail && statusOpen && card;
   useEffect(model.start, []);
+  // A card that went away or a sidebar that opened closes the bell's card: the next status shows the bell, never the
+  // card unasked.
+  useEffect(() => { if (!rail || !card) setStatusOpen(false); }, [rail, card]);
   useDarkClass();
   // The window controls keep their size at any zoom: the sidebar toggle beside them places itself by the page's zoom,
   // read from the renderer on every resize (a zoom changes the inner width), never from the window's outer and inner
