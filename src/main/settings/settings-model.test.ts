@@ -319,6 +319,12 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on({ enabled: false }), "cameraWidth", "300")).toEqual({ setCameraShape: { width: 300 / 1080 } });
     expect(group(idle, on({ enabled: false }), "cameraRounding")?.enabled).toBe(true);
     expect(settingsAction(idle, on({ enabled: false }), "cameraMirror", "on")).toEqual({ setCameraShape: { mirror: true } });
+    // A group the page names that is only an object's inherited property is no field and no fader.
+    for (const inherited of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+      expect(settingsAction(idle, on(), inherited, "300"), inherited).toBeUndefined();
+      // With the microphone on, so only the group check can refuse it.
+      expect(settingsAction(idle, { ...on(), microphone: { enabled: true } }, inherited, "100"), inherited).toBeUndefined();
+    }
   });
 
   it("keep the shape usable while a recording composes the camera, and lock the device", () => {

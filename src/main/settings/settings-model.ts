@@ -335,7 +335,8 @@ const CAMERA_FIELDS = {
   cameraRounding: { key: "rounding", short: "Round" },
 } as const;
 type CameraField = keyof typeof CAMERA_FIELDS;
-const isCameraField = (id: unknown): id is CameraField => typeof id === "string" && id in CAMERA_FIELDS;
+// Own keys only: a group id from the page such as "constructor" or "toString" is no field (`in` would read the prototype).
+const isCameraField = (id: unknown): id is CameraField => typeof id === "string" && Object.hasOwn(CAMERA_FIELDS, id);
 /** The shorter side a bubble's pixels are counted on when the display a recording would capture is not known. */
 const FALLBACK_SHORTER_SIDE = 1080;
 
@@ -470,7 +471,7 @@ function studioAudioGroups(ctx: AppContext): Group[] {
 /** The faders' groups and the input each sets (D21). */
 const AUDIO_VOLUME_GROUPS = { systemGain: "system", microphoneGain: "microphone" } as const;
 type AudioVolumeGroup = keyof typeof AUDIO_VOLUME_GROUPS;
-const isAudioVolumeGroup = (id: unknown): id is AudioVolumeGroup => typeof id === "string" && id in AUDIO_VOLUME_GROUPS;
+const isAudioVolumeGroup = (id: unknown): id is AudioVolumeGroup => typeof id === "string" && Object.hasOwn(AUDIO_VOLUME_GROUPS, id);
 
 
 /**
