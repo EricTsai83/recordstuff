@@ -330,8 +330,13 @@ function CategoryPicker() {
   const [active, setActive] = useState(0);
   // New category hands the focus to its dialog; any other way the list closes gives it back to the selector (review F4).
   const toDialog = useRef(false);
-  const count = (folder: string | null | undefined): number =>
-    folder === undefined ? items.length : items.filter((item) => (item.folder ?? null) === folder).length;
+  // Counted once per listing, not per option and keystroke: the list shows a count beside every category.
+  const counts = useMemo(() => {
+    const byFolder = new Map<string | null, number>();
+    for (const item of items) byFolder.set(item.folder ?? null, (byFolder.get(item.folder ?? null) ?? 0) + 1);
+    return byFolder;
+  }, [items]);
+  const count = (folder: string | null | undefined): number => folder === undefined ? items.length : counts.get(folder) ?? 0;
   type Option = { id: string; label: string; scope: { folder: string | null } | undefined; group: "top" | "favorites" | "others" };
   const words = filter.trim().toLocaleLowerCase();
   const options: Option[] = [
