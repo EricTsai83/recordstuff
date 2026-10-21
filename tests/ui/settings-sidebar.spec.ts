@@ -158,7 +158,8 @@ test("the sidebar toggle stays in place while the window's width changes, at any
     await host.evaluate((h, factor) => { h.window().webContents.setZoomFactor(factor); h.setContentSize(960, 640); h.pushModel({ type: "idle" }); }, zoom);
     const toggle = page.locator("#sidebar-toggle");
     await expect(toggle).toBeVisible();
-    await page.waitForTimeout(300);
+    // The zoom reaches the page a moment after it is set: the place is read once the page lays out at it.
+    await expect.poll(() => read<number>(page, `Number(document.documentElement.style.getPropertyValue("--page-zoom"))`)).toBeCloseTo(zoom, 3);
     const place = await toggle.boundingBox();
     // Each width is read straight after the resize, before it settles, as a live resize draws it.
     for (const width of [940, 900, 1000, 920, 1040, 960]) {

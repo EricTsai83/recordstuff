@@ -41,7 +41,7 @@ test("S002–S009 the shipped page and preload: CSP, bridge, sandbox, localized 
     note: document.querySelector("#setting-hotkey-note")?.textContent ?? null,
   }))()`);
   expect.soft(rendered.controls.length, "S002 the shipped page loads under the shipped CSP (page errors fail at teardown)").toBe(2);
-  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom, camera preview, level, Studio and input level APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onMicrophoneLevel", "onZoomChanged", "read", "ready", "watchCameraPreview", "watchLevels", "watchMicrophoneLevel", "watchStudio", "zoom"]);
+  expect.soft(rendered.bridge, "S004 the preload exposes only the settings, zoom, camera preview, level, Studio and input level APIs").toEqual(["capture", "choose", "onChanged", "onHidden", "onMicrophoneLevel", "onZoomChanged", "read", "ready", "watchCameraPreview", "watchLevels", "watchMicrophoneLevel", "watchStudio", "zoom", "zoomFactor"]);
   expect.soft(rendered.exposed, "S005 no Node API reaches the sandboxed page").toEqual(["undefined", "undefined", "undefined"]);
   expect.soft([rendered.title, rendered.docTitle, rendered.lang, rendered.controls.find(control => control.id === "setting-hotkey")?.label],
     "S006 the URL language localizes the first render").toEqual(["RecordStuff", "RecordStuff", "zh-Hant", "快捷鍵"]);

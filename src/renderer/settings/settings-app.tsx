@@ -385,8 +385,9 @@ export function SettingsApp() {
             <ControlTooltip label={model.text(rail ? "Expand sidebar" : "Collapse sidebar")} side="bottom">
               <Button id="sidebar-toggle" variant="ghost" size="icon" aria-expanded={!rail} aria-controls="settings-tabs"
                 aria-label={model.text(rail ? "Expand sidebar" : "Collapse sidebar")}
-                // Expanded is the sidebar's state, not an open menu's: the button keeps its plain look.
-                className="sidebar-toggle window-no-drag text-muted-foreground hover:bg-sidebar-accent aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-sidebar-accent aria-expanded:hover:text-foreground"
+                // Expanded is the sidebar's state, not an open menu's: the button keeps its plain look. Only its colours
+                // animate: its place follows the zoom at once, never gliding there.
+                className="sidebar-toggle window-no-drag transition-colors text-muted-foreground hover:bg-sidebar-accent aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-sidebar-accent aria-expanded:hover:text-foreground"
                 onClick={() => { setCollapsed(!rail); setStatusOpen(false); }}>
                 {rail ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
               </Button>
