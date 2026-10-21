@@ -925,7 +925,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         }
         savedNotification.stateChanged(event.state);
         captureNotices.stateChanged(event.state);
-        keepAwake.update(event.state);
+        keepAwake.update(event.state, recorder.saving.length);
         log(`state → ${event.state.type}${event.state.type === "countdown" ? ` (${event.state.remaining})` : ""}`);
         renderUi(event.state);
         updates.flush();
@@ -935,6 +935,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         return;
       }
       case "saving":
+        keepAwake.update(recorder.state, event.saving.length);
         refreshUi();
         return;
       case "savingSlow":
