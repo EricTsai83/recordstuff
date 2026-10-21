@@ -1,0 +1,11 @@
+{
+ "note": "Plan 075, D21: the inputs' volume bounds, checked by src/shared/audio-volume.test.ts against the Settings faders and by native/capture/src/core/mod.rs against the engine's gains; change both sides with it.",
+ "silentGainDb": -60,
+ "maxVolumePercent": 600,
+ "volumes": [
+  { "percent": 0, "db": -60 },
+  { "percent": 50, "db": -6.020599913279624 },
+  { "percent": 100, "db": 0 },
+  { "percent": 600, "db": 15.563025007672874 }
+ ]
+}

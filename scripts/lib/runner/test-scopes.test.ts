@@ -82,7 +82,7 @@ describe("the scope catalog", () => {
       expect(filter, filter).toMatch(/^[a-z0-9_]+::$/);
       const name = filter.slice(0, -2);
       const exists = fs.existsSync(path.join(engine, `${name}.rs`)) || fs.existsSync(path.join(engine, name, "mod.rs"))
-        || fs.readFileSync(path.join(engine, "lib.rs"), "utf8").includes(`mod ${name} {`);
+        || rustFiles("").some(file => fs.readFileSync(path.join(engine, file), "utf8").includes(`mod ${name} {`));
       expect(exists, `${filter} names no module of native/capture/src`).toBe(true);
     }
   });

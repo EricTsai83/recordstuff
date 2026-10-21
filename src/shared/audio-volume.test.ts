@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import bounds from "./audio-volume.bounds.json";
 import { AUDIO_VOLUME_MAX, MAX_GAIN_DB, SILENT_GAIN_DB, isAudioVolume, isGainDb, isVolume, volumeDb, volumeFromDb } from "./audio-volume";
 
 describe("audio volume (plan 075, D21)", () => {
@@ -20,5 +21,10 @@ describe("audio volume (plan 075, D21)", () => {
 
   it("takes a volume once saved in whole dB as the fader's nearest step", () => {
     expect([-60, -20, -6, -3, 0, 3, 6, 12].map(volumeFromDb)).toEqual([0, 10, 50, 70, 100, 140, 200, 400]);
+  });
+
+  it("has the bounds the engine applies (audio-volume.bounds.json, also read by native/capture/src/core/mod.rs)", () => {
+    expect([SILENT_GAIN_DB, AUDIO_VOLUME_MAX]).toEqual([bounds.silentGainDb, bounds.maxVolumePercent]);
+    for (const { percent, db } of bounds.volumes) expect(volumeDb(percent), `${percent}%`).toBeCloseTo(db, 12);
   });
 });

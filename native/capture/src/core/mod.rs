@@ -1227,6 +1227,22 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
     }
 }
 
+/// The bounds the Settings faders send within (src/shared/audio-volume.ts), from the file both sides are checked against.
+#[cfg(test)]
+mod gain_bounds_tests {
+    use super::{MAX_GAIN_DB, SILENT_GAIN_DB};
+
+    #[test]
+    fn the_gains_agree_with_the_settings_faders() {
+        let bounds: serde_json::Value = serde_json::from_str(include_str!("../../../../src/shared/audio-volume.bounds.json")).unwrap();
+        assert_eq!(SILENT_GAIN_DB, bounds["silentGainDb"].as_f64().unwrap());
+        let max_percent = bounds["maxVolumePercent"].as_f64().unwrap();
+        assert!((MAX_GAIN_DB - 20.0 * (max_percent / 100.0).log10()).abs() < 1e-12, "{MAX_GAIN_DB} is not {max_percent}%");
+        let top = bounds["volumes"].as_array().unwrap().iter().find(|volume| volume["percent"].as_f64() == Some(max_percent)).unwrap();
+        assert!((MAX_GAIN_DB - top["db"].as_f64().unwrap()).abs() < 1e-12);
+    }
+}
+
 /// How far ahead of the clock the recording's frames were stamped, on average and at most, in ms. No frame while
 /// recording (a still screen, a stop right after record) is 0 for both: the maximum's `i64::MIN` start is no lead.
 fn frame_lead_ms(sum_us: i64, count: u64, max_us: i64) -> (f64, f64) {
