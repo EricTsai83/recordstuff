@@ -97,7 +97,7 @@ export function Player({
   const [idle, setIdle] = useState(false),
     [flash, setFlash] = useState<Flash | undefined>(undefined),
     [seekHint, setSeekHint] = useState<
-      { side: "back" | "forward"; seq: number } | undefined
+      { side: "back" | "forward"; seconds: number; seq: number } | undefined
     >(undefined),
     flashes = useRef(0),
     // The frame at the moment the seek bar is pointed at, drawn above it while a mouse is on it.
@@ -289,9 +289,10 @@ export function Player({
     );
     textTimer.current = setTimeout(() => setFlash(undefined), 800);
   };
-  const showSeek = (forward: boolean): void => {
+  /** Flashes the side a key sought to, with the step it took (the shortcut catalog's, so the hint cannot differ). */
+  const showSeek = (forward: boolean, seconds: number): void => {
     clearTimeout(seekTimer.current);
-    setSeekHint({ side: forward ? "forward" : "back", seq: ++flashes.current });
+    setSeekHint({ side: forward ? "forward" : "back", seconds, seq: ++flashes.current });
     seekTimer.current = setTimeout(() => setSeekHint(undefined), 650);
   };
   const keydown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -315,7 +316,7 @@ export function Player({
     if (action.kind === "toggle") toggle(true);
     else if (action.kind === "seekBy") {
       seekTo(el.currentTime + action.seconds);
-      if (action.flash) showSeek(action.flash === "forward");
+      if (action.flash) showSeek(action.flash === "forward", Math.abs(action.seconds));
     } else if (action.kind === "volume") nudgeVolume(action.by);
     else if (action.kind === "seekTo")
       seekTo(action.to === "start" ? 0 : Number.isFinite(el.duration) ? el.duration : el.currentTime);
@@ -403,7 +404,7 @@ export function Player({
             </div>
             <div className="pc-seek-label">
               {side === "forward" ? "+" : "−"}
-              {translate("{value} s", language, { value: 5 })}
+              {seekHint?.side === side && translate("{value} s", language, { value: seekHint.seconds })}
             </div>
           </div>
         ))}
