@@ -10,15 +10,14 @@ import path from "node:path";
 import type { ErrorCode } from "../../shared/state";
 import { errnoCode, messageOf } from "../lib/errors";
 
-export interface WritableHandle {
-  write(data: Uint8Array): Promise<{ bytesWritten: number }>;
-  sync(): Promise<void>;
+/** A file opened only to reserve its name: the engine writes it (engine-file-writer.ts). */
+export interface ReservedHandle {
   close(): Promise<void>;
 }
 
 /** Subset of `node:fs/promises` used here; injectable so tests can fail writes. */
 export interface FileWriterFs {
-  open(filePath: string, flags: string): Promise<WritableHandle>;
+  open(filePath: string, flags: string): Promise<ReservedHandle>;
   /** A second name for the same file; rejects with EEXIST instead of replacing `to`. */
   link(from: string, to: string): Promise<void>;
   copyExclusive(from: string, to: string): Promise<void>;
@@ -30,11 +29,7 @@ export interface FileWriterFs {
 export const nodeFs: FileWriterFs = {
   open: async (filePath, flags) => {
     const handle = await fs.open(filePath, flags);
-    return {
-      write: (data) => handle.write(data),
-      sync: () => handle.sync(),
-      close: () => handle.close(),
-    };
+    return { close: () => handle.close() };
   },
   link: (from, to) => fs.link(from, to),
   // On macOS libuv never clones (FICLONE_FORCE is ENOSYS), so this is a full
@@ -132,8 +127,8 @@ export type PublishTimings = Pick<FinishTimings, "publishMs" | "cleanupMs" | "me
  * Publishes the closed `recordingPath` under `finalPath`, or `name-2.mp4` and on when taken, then removes the
  * temporary name. A hard link where the volume supports one: constant time, no extra space, and like the copy it
  * never replaces an existing name. Any refusal other than EEXIST (exFAT and some network volumes have no hard links)
- * falls back to the exclusive copy for this and every later candidate name. Shared by FileWriter and the native
- * engine's EngineFileWriter, whose files reach it the same way.
+ * falls back to the exclusive copy for this and every later candidate name. The native engine's EngineFileWriter
+ * publishes every recording through it.
  */
 export async function publishRecording(io: FileWriterFs, recordingPath: string, finalPath: string): Promise<{ target: string; timings: PublishTimings }> {
   const began = performance.now();

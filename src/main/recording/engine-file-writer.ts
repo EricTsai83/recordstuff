@@ -1,9 +1,9 @@
 /**
  * The Recorder's writer: the native engine writes the file (plan 076, D3). The
  * engine captures, encodes, muxes and writes; main keeps the file's lifecycle. This writer reserves the temporary
- * `.recording.mp4` name by creating it empty and exclusively, as FileWriter's open does, publishes the finished file
- * under its final name exactly as FileWriter does (`publishRecording`), and on a failure keeps whatever the engine
- * wrote. Zero bytes are never published.
+ * `.recording.mp4` name by creating it empty and exclusively, publishes the finished file under its final name
+ * (`publishRecording`: a hard link or an exclusive copy, never replacing a name), and on a failure keeps whatever the
+ * engine wrote. Zero bytes are never published.
  *
  * The engine finishes the file after it reported `stopped`, so a slow volume's save is not part of the stop: `finish`
  * first waits for the engine's outcome for this file (`finished`, or the write error that kept it from being finished).
@@ -11,6 +11,7 @@
 import fs from "node:fs/promises";
 import type { EngineFileReport } from "../../shared/protocol";
 import type { RecorderWriter } from "./recorder";
+import { errnoCode } from "../lib/errors";
 import { FileWriteError, NO_MEDIA_DETAIL, classifyOpenError, nodeFs, publishRecording, type FileWriterFs, type FinishTimings } from "./file-writer";
 
 export interface EngineFileWriterOptions {
@@ -39,7 +40,7 @@ export class EngineFileWriter implements RecorderWriter {
     private readonly outcome: (recordingPath: string) => Promise<EngineFileReport | undefined>,
   ) {}
 
-  /** Creates `recordingPath` empty and exclusively; a name collision is a hard failure, as for FileWriter. */
+  /** Creates `recordingPath` empty and exclusively; a name collision is a hard failure. */
   static async open(recordingPath: string, finalPath: string, options: EngineFileWriterOptions = {}): Promise<EngineFileWriter> {
     const io = options.io ?? nodeFs;
     try {
@@ -106,7 +107,7 @@ export class EngineFileWriter implements RecorderWriter {
       size = await this.size(this.recordingPath);
     } catch (cause) {
       // Already gone (an empty file a failed finish removed), or unreadable: then whether it was kept is unknown.
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") this.preservationUncertain = true;
+      if (errnoCode(cause) !== "ENOENT") this.preservationUncertain = true;
       return undefined;
     }
     this._bytesWritten = size;

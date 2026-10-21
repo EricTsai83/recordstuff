@@ -582,8 +582,8 @@ export class SettingsStore {
    * `rename`, `link` never replaces an existing name, so a copy kept by an
    * earlier launch survives a second unusable load; the atomic write then
    * replaces only the original name. A volume that answers EEXIST for every name
-   * ends the keep as a failure after `KEPT_UNUSABLE_NAMES` names, as FileWriter's
-   * publication does, instead of holding the save queue forever.
+   * ends the keep as a failure after `KEPT_UNUSABLE_NAMES` names, as a
+   * recording's publication does, instead of holding the save queue forever.
    */
   private async keepUnusable(): Promise<void> {
     await this.keepFile("unreadable");
