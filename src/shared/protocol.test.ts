@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isHostMessage, isMainMessage } from "./protocol";
 import { DEFAULT_QUALITY } from "./quality";
+import { MAX_GAIN_DB, volumeDb } from "./audio-volume";
 
 const capture = { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 256_000, warnings: [] };
 
@@ -38,8 +39,10 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "levels", sessionId: "s1", watching: false })).toBe(true);
     expect(isMainMessage({ type: "mute", sessionId: "s1", system: true, microphone: false })).toBe(true);
     expect(isMainMessage({ type: "mute", sessionId: "s1", system: true })).toBe(false);
-    expect(isMainMessage({ type: "gain", sessionId: "s1", system: -60, microphone: 12 })).toBe(true);
-    for (const system of [13, -61, 0.5, "0"]) expect(isMainMessage({ type: "gain", sessionId: "s1", system, microphone: 0 }), String(system)).toBe(false);
+    // In dB, from silence to 600%'s, the volume's percent made into dB (audio-volume.ts): not only whole dB.
+    expect(isMainMessage({ type: "gain", sessionId: "s1", system: -60, microphone: MAX_GAIN_DB })).toBe(true);
+    expect(isMainMessage({ type: "gain", sessionId: "s1", system: volumeDb(250), microphone: volumeDb(5) })).toBe(true);
+    for (const system of [16, -61, Number.NaN, "0"]) expect(isMainMessage({ type: "gain", sessionId: "s1", system, microphone: 0 }), String(system)).toBe(false);
     // Levels go to the Studio's page on its port (plan 081), not to main.
     expect(isHostMessage({ type: "levels", sessionId: "s1", system: 0.5, microphone: 0 })).toBe(false);
     expect(isMainMessage({ type: "cameraPreview", sessionId: "s1", watching: "yes" })).toBe(false);

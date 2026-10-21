@@ -1,4 +1,4 @@
-import type { AudioGain } from "../../shared/audio-gain";
+import type { AudioVolume } from "../../shared/audio-volume";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -59,8 +59,8 @@ class FakeHost implements RecorderHost {
   setMuted(sessionId: string, system: boolean, microphone: boolean): void {
     this.mutes.push([sessionId, system, microphone]);
   }
-  gains: [string, AudioGain][] = [];
-  setGains(sessionId: string, gain: AudioGain): void {
+  gains: [string, AudioVolume][] = [];
+  setGains(sessionId: string, gain: AudioVolume): void {
     this.gains.push([sessionId, gain]);
   }
   /** Each microphone switch sent (plan 079, D3); `accepts` false is a host that does not run the session. */
@@ -445,22 +445,22 @@ describe("the camera (plan 075)", () => {
   });
 
   it("sends the saved volumes once the session is prepared, and again on each change until it stops (D21)", async () => {
-    let gain: AudioGain = { system: 0, microphone: -6 };
-    const ctx = setup({ deps: { audioGain: () => gain } });
+    let gain: AudioVolume = { system: 100, microphone: 50 };
+    const ctx = setup({ deps: { audioVolume: () => gain } });
     expect(ctx.recorder.updateGains(), "no session").toBe(false);
     ctx.recorder.toggle();
     await flush();
-    gain = { system: 3, microphone: -6 };
+    gain = { system: 140, microphone: 50 };
     expect(ctx.recorder.updateGains(), "preparing: taken once prepared").toBe(false);
     expect(ctx.host.gains).toEqual([]);
     ctx.host.emit(prepared("s1"));
     await flush();
-    expect(ctx.host.gains, "before any sound is taken").toEqual([["s1", { system: 3, microphone: -6 }]]);
+    expect(ctx.host.gains, "before any sound is taken").toEqual([["s1", { system: 140, microphone: 50 }]]);
     ctx.host.emit({ type: "started", sessionId: "s1" });
     await flush();
-    gain = { system: -60, microphone: 12 };
+    gain = { system: 0, microphone: 600 };
     expect(ctx.recorder.updateGains()).toBe(true);
-    expect(ctx.host.gains.at(-1)).toEqual(["s1", { system: -60, microphone: 12 }]);
+    expect(ctx.host.gains.at(-1)).toEqual(["s1", { system: 0, microphone: 600 }]);
     ctx.recorder.stop();
     expect(ctx.recorder.updateGains(), "not while stopping").toBe(false);
   });

@@ -256,7 +256,7 @@ export class NativeHost {
         return;
       case "gain":
         if (this.session?.id !== message.sessionId) return;
-        this.log(`audio: system ${message.system} dB, microphone ${message.microphone} dB${this.capture.setGains?.(message.system, message.microphone) ? "" : " (no session)"}`);
+        this.log(`audio: system ${message.system.toFixed(1)} dB, microphone ${message.microphone.toFixed(1)} dB${this.capture.setGains?.(message.system, message.microphone) ? "" : " (no session)"}`);
         return;
       case "cameraPreview":
         if (this.session?.id !== message.sessionId) return;

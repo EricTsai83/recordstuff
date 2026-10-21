@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UtilityProcess } from "electron";
 import { DEFAULT_QUALITY } from "../../shared/quality";
+import { DEFAULT_CAMERA_POSITION } from "../../shared/camera-layout";
 import type { HostMessage, MainMessage } from "../../shared/protocol";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("tests pass their own fork"); } } }));
@@ -65,7 +66,7 @@ describe("cameraChoice (plan 075)", () => {
   it("takes the bubble's position on the recorded display, else the primary display's, else the default", () => {
     expect(cameraChoice({ deviceId: "cam", layout }, "69733632")).toEqual({ deviceId: "cam", width: 0.3, height: 0.2, rounding: 0.5, x: 0.9, y: 0.8, mirror: true });
     expect(cameraChoice({ layout }, "1")).toEqual({ width: 0.3, height: 0.2, rounding: 0.5, x: 0.1, y: 0.2, mirror: true });
-    expect(cameraChoice({ layout: { ...layout, positions: [] } }, "1")).toMatchObject({ x: 0.97, y: 0.95 });
+    expect(cameraChoice({ layout: { ...layout, positions: [] } }, "1")).toMatchObject(DEFAULT_CAMERA_POSITION);
   });
 
   it("posts start with the camera for the display granted", async () => {
@@ -102,11 +103,12 @@ describe("cameraChoice (plan 075)", () => {
     expect(ctx.host.watchLevels("s1", true)).toBe(true);
     ctx.host.setMuted("s1", true, false);
     ctx.host.setMuted("other", true, true);
-    ctx.host.setGains("s1", { system: -6, microphone: 0 });
+    // Volumes go to the engine in dB: 200% about +6 dB, 0% its silence.
+    ctx.host.setGains("s1", { system: 200, microphone: 0 });
     ctx.host.setGains("other", { system: 0, microphone: 0 });
     expect(child.sent.filter((m) => m.type === "levels" || m.type === "mute" || m.type === "gain")).toEqual([
       { type: "levels", sessionId: "s1", watching: true }, { type: "mute", sessionId: "s1", system: true, microphone: false },
-      { type: "gain", sessionId: "s1", system: -6, microphone: 0 }]);
+      { type: "gain", sessionId: "s1", system: 20 * Math.log10(2), microphone: -60 }]);
   });
 
   it("sends a microphone switch to the session's process only (plan 079, D3)", async () => {

@@ -5,7 +5,7 @@
  */
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import type { ErrorCode } from "./state";
-import { isGainDb } from "./audio-gain";
+import { isGainDb } from "./audio-volume";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";

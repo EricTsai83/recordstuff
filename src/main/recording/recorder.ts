@@ -7,7 +7,7 @@
  * event and, when bytes were written, a kept `.recording.mp4`.
  */
 import type { CameraLayout } from "../../shared/camera-layout";
-import type { AudioGain } from "../../shared/audio-gain";
+import type { AudioVolume } from "../../shared/audio-volume";
 import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
@@ -74,7 +74,7 @@ export interface RecorderHost {
   /** Mutes the session's system audio and microphone, or not, from their next sound on (plan 075, D19). */
   setMuted?(sessionId: string, system: boolean, microphone: boolean): void;
   /** The session's inputs' volumes in dB from their next sound on (plan 075, D21). */
-  setGains?(sessionId: string, gain: AudioGain): void;
+  setGains?(sessionId: string, gain: AudioVolume): void;
   /** Records another microphone from now on (plan 079, D3); false when the host does not run the session. */
   setMicrophone?(sessionId: string, deviceId: string | undefined): boolean;
   onMessage(listener: (message: HostMessage) => void): void;
@@ -121,7 +121,7 @@ export interface RecorderDeps {
   /** The same for the camera (plan 075); absent, or undefined from it, means off. */
   camera?: () => SessionCamera | undefined;
   /** The inputs' volumes (plan 075, D21), read when a session is prepared and sent again by `updateGains`; absent is 0 dB. */
-  audioGain?: () => AudioGain;
+  audioVolume?: () => AudioVolume;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -627,7 +627,7 @@ export class Recorder {
   }
 
   private sendGains(session: Session): boolean {
-    const gain = this.deps.audioGain?.();
+    const gain = this.deps.audioVolume?.();
     if (!gain || !this.deps.host.setGains) return false;
     try {
       this.deps.host.setGains(session.id, gain);

@@ -137,7 +137,7 @@ describe("the camera (plan 075)", () => {
     port.deliver({ type: "gain", sessionId: "s1", system: -6, microphone: 12 });
     port.deliver({ type: "gain", sessionId: "other", system: 0, microphone: 0 });
     expect(setGains.mock.calls).toEqual([[-6, 12]]);
-    expect(logs).toContainEqual("audio: system -6 dB, microphone 12 dB");
+    expect(logs).toContainEqual("audio: system -6.0 dB, microphone 12.0 dB");
     const toMain = port.sent.length;
     // Before the page is joined they have nowhere to go.
     emit({ kind: "levels", system: 0.1, microphone: null } as never);
