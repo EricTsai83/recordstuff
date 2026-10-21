@@ -953,14 +953,14 @@ const DATE_FORMATS = {
   time: { hour: "numeric", minute: "2-digit" },
 } satisfies Record<string, Intl.DateTimeFormatOptions>;
 /** Formats a date in one of the shapes above; `zone` is the system time zone the view was made in. */
-export type DateFormats = ((date: Date, format: keyof typeof DATE_FORMATS) => string) & { readonly zone: string };
+type DateFormats = ((date: Date, format: keyof typeof DATE_FORMATS) => string) & { readonly zone: string };
 /**
  * One view's date formatters, each made on first use. Every view names each failure row and recording
  * again, and `toLocale…String` builds a new ICU formatter per call (tens of microseconds each), so a folder
  * of hundreds of recordings made every refresh slow. Made per view, never kept across views: a formatter
  * keeps the time zone it was made in, and the system zone can change while the app runs (review batch 1).
  */
-export function dateFormats(language: Language): DateFormats {
+function dateFormats(language: Language): DateFormats {
   const made = new Map<keyof typeof DATE_FORMATS, Intl.DateTimeFormat>();
   const format = (date: Date, shape: keyof typeof DATE_FORMATS): string => {
     let formatter = made.get(shape);

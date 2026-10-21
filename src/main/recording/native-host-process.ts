@@ -159,7 +159,7 @@ export function engineFailure(cause: unknown): { code: string; detail: string } 
 type Phase = "preparing" | "prepared" | "recording" | "stopping";
 
 /** How long the device list settles before it is listed again (plan 079, D2): one change is told several times. */
-export const DEVICES_SETTLE_MS = 300;
+const DEVICES_SETTLE_MS = 300;
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;

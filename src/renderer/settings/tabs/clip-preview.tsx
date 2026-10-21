@@ -12,7 +12,7 @@ import type { LibraryItemView } from "../../../shared/settings-panel";
 import { FramePeek, seeker, unload, type FramePeekHandle } from "../../player/frame-peek";
 
 /** How long the pointer rests on a picture before its preview starts, so a pass across the grid starts none. */
-export const PREVIEW_DELAY_MS = 400;
+const PREVIEW_DELAY_MS = 400;
 
 let previewId: string | undefined,
   pendingId: string | undefined,

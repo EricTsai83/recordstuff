@@ -8,15 +8,15 @@ import { translate as t, type Language } from "./i18n";
 /** The name a recording gets when nothing else was chosen: `2026-10-05 14-02-11`, as every recording before the choice. */
 export const DEFAULT_FILE_NAME_TEMPLATE = "{date} {time}";
 /** Long enough for any sensible pattern; with `MAX_FILE_NAME_BYTES`, short of the 255-byte name limit of APFS, ext4 and others. */
-export const MAX_FILE_NAME_LENGTH = 120;
+const MAX_FILE_NAME_LENGTH = 120;
 /**
  * The name's own UTF-8 bytes: 255 less a collision suffix and `.recording.mp4`, with room to spare. Characters alone are
  * not enough: 120 Chinese characters are 360 bytes, which no recording could be saved under (review pass 1, F4).
  */
-export const MAX_FILE_NAME_BYTES = 200;
+const MAX_FILE_NAME_BYTES = 200;
 const encoder = new TextEncoder();
 /** What a template may say, each replaced by local time; only digits and `-` come out, safe on every file system. */
-export const FILE_NAME_TOKENS = ["date", "time", "year", "month", "day", "hour", "minute", "second"] as const;
+const FILE_NAME_TOKENS = ["date", "time", "year", "month", "day", "hour", "minute", "second"] as const;
 export type FileNameToken = typeof FILE_NAME_TOKENS[number];
 /** Tokens that change from one second to the next: a template needs one, or every recording would take the same name. */
 const CHANGING_TOKENS: readonly FileNameToken[] = ["time", "second"];

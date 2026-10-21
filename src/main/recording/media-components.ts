@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Media Foundation itself, its H.264 encoder and its AAC encoder: everything the engine loads from it. */
-export const MEDIA_FOUNDATION_LIBRARIES = ["mfplat.dll", "mfh264enc.dll", "mfaacenc.dll"] as const;
+const MEDIA_FOUNDATION_LIBRARIES = ["mfplat.dll", "mfh264enc.dll", "mfaacenc.dll"] as const;
 
 /** The libraries missing from System32; none outside Windows. */
 export function missingMediaComponents(

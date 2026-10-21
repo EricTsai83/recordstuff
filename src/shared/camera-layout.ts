@@ -11,7 +11,7 @@
 
 export const CAMERA_MIN_SIZE = 0.05;
 export const CAMERA_MAX_SIZE = 0.6;
-export const CAMERA_PREVIEW_WIDTH = 640;
+const CAMERA_PREVIEW_WIDTH = 640;
 /** The positions' key for the primary display (DisplayPreference `primary`). */
 export const PRIMARY_DISPLAY_KEY = "primary";
 /** At most this many displays' positions are kept; the oldest beyond it are dropped. */

@@ -139,7 +139,7 @@ export type MainMessage =
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
-export const ENGINE_WRITE_ERROR_CODES = ["disk_full", "output_write_failed"] as const satisfies readonly ErrorCode[];
+const ENGINE_WRITE_ERROR_CODES = ["disk_full", "output_write_failed"] as const satisfies readonly ErrorCode[];
 export type EngineWriteErrorCode = (typeof ENGINE_WRITE_ERROR_CODES)[number];
 
 /** What the native engine reports once it finished the file: its size, and why it stayed fragmented, if it did. */

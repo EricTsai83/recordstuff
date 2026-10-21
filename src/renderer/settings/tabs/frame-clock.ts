@@ -7,7 +7,7 @@
  */
 import { STUDIO_FPS } from "../../../shared/studio-port";
 
-export const FRAME_MS = 1000 / STUDIO_FPS;
+const FRAME_MS = 1000 / STUDIO_FPS;
 
 const listeners = new Set<() => void>();
 let interval = FRAME_MS;

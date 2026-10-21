@@ -35,7 +35,7 @@ export let renaming:
   | undefined;
 export let optimisticLayout: LibraryLayout | undefined;
 /** The preview sound just chosen, shown while main saves it (settings `libraryPreviewSound`). */
-export let optimisticPreviewSound: boolean | undefined;
+let optimisticPreviewSound: boolean | undefined;
 let previewSoundRequest = 0;
 /**
  * The category shown: every recording (undefined), those directly in the output folder (`{ folder: null }`, Uncategorized)

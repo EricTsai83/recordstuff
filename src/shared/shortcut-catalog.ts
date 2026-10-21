@@ -26,9 +26,9 @@ export const PLAYER_KEYS = {
   /** Only while the seek bar has focus. */
   seekBar: ["PageUp", "PageDown", "Home", "End"],
 } as const;
-export const SEEK_STEP_SECONDS = 5;
-export const SEEK_BAR_STEP_SECONDS = 10;
-export const VOLUME_STEP = 0.05;
+const SEEK_STEP_SECONDS = 5;
+const SEEK_BAR_STEP_SECONDS = 10;
+const VOLUME_STEP = 0.05;
 
 export type PlayerKeyAction =
   | { kind: "toggle" }

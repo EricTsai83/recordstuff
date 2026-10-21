@@ -5,7 +5,7 @@ export const CAMERA_PREVIEW_PORT_CHANNEL = "camera-preview:port";
 export const PREVIEW_PORT_MESSAGE = "cameraPreviewPort";
 
 /** Plan 075 step 2's development switch, read by the engine too (native/capture/src/camera_layout.rs). */
-export const CAMERA_PROTOTYPE_SWITCH = "RECORDSTUFF_CAMERA_PROTOTYPE";
+const CAMERA_PROTOTYPE_SWITCH = "RECORDSTUFF_CAMERA_PROTOTYPE";
 
 /** Whether the camera prototype's switch is on, as the engine reads it. */
 export function cameraPrototypeOn(env: Record<string, string | undefined>): boolean {

@@ -38,7 +38,7 @@ const outcomeLabels: Record<RecordingResultView["outcomeState"], PlainMessageKey
   unknown: "Unconfirmed result",
 };
 
-export function FailureRow({ result }: { result: RecordingResultView }) {
+function FailureRow({ result }: { result: RecordingResultView }) {
   const id = model.resultDomId(result.id),
     state = model.resultStates.get(result.id),
     intent = model.resultIntents.get(result.id),

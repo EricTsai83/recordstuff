@@ -115,7 +115,7 @@ export const WATCH_SETTLE_MS = 250;
 /** How often lengths read so far are published while a long folder is still being read. */
 export const LENGTHS_PUBLISH_MS = 500;
 /** How long a picture that could not be made waits before its one more attempt. */
-export const THUMBNAIL_RETRY_MS = 300;
+const THUMBNAIL_RETRY_MS = 300;
 /**
  * How long a recording moved to the Trash can be brought back before it is really moved: longer than its toast stays
  * (2026-10-06, formerly 10 s), since ⌘Z still works once the toast has gone, and waiting only keeps the file in place.

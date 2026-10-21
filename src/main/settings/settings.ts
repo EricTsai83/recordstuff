@@ -90,21 +90,21 @@ export interface Settings {
   libraryShown?: string | null;
 }
 
-export interface MicrophoneDevicePreference {
+interface MicrophoneDevicePreference {
   id: string;
   label: string;
 }
 
 /** A stored input: a non-empty id within a bound, and the name shown while it is not connected. */
-export function isMicrophoneDevicePreference(value: unknown): value is MicrophoneDevicePreference {
+function isMicrophoneDevicePreference(value: unknown): value is MicrophoneDevicePreference {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const { id, label } = value as Record<string, unknown>;
   return typeof id === "string" && id.length > 0 && id.length <= 512 && typeof label === "string" && label.length <= 512;
 }
 
 /** A camera chosen by its unique ID and the name it had then (plan 075, D9), stored as a microphone is. */
-export type CameraDevicePreference = MicrophoneDevicePreference;
-export const isCameraDevicePreference = isMicrophoneDevicePreference;
+type CameraDevicePreference = MicrophoneDevicePreference;
+const isCameraDevicePreference = isMicrophoneDevicePreference;
 
 export interface SettingsStoreOptions {
   filePath: string;

@@ -80,7 +80,7 @@ function subscribeInput(listener: (level: MicrophoneLevel) => void): () => void 
 }
 
 /** A linear peak in dB below full scale, from the floor for silence to 0 for full scale and past it (a loud sum). */
-export function decibels(peak: number): number {
+function decibels(peak: number): number {
   return peak > 0 ? Math.min(0, Math.max(FLOOR_DB, 20 * Math.log10(peak))) : FLOOR_DB;
 }
 

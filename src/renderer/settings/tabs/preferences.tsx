@@ -134,11 +134,11 @@ export function Elapsed({ since }: { since: string }) {
   return <span className="studio-elapsed" role="timer" aria-label={translate("Elapsed {time}", model.view?.language, { time: text })}>{text}</span>;
 }
 
-export function GroupIcon({ id }: { id: string }) {
+function GroupIcon({ id }: { id: string }) {
   const Icon = icons[id as keyof typeof icons] ?? Settings2;
   return <Icon className="row-icon" aria-hidden="true" />;
 }
-export function ActionIcon({ id }: { id: string }) {
+function ActionIcon({ id }: { id: string }) {
   if (id === "source") return (
     // The same GitHub mark as the website's GitHubMark.astro; Lucide's installed set has no brand icons.
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -244,7 +244,7 @@ export function Explanation({ group }: { group: SettingsGroup }) {
     </>
   );
 }
-export function TextSetting({
+function TextSetting({
   group,
   description,
 }: {
@@ -295,7 +295,7 @@ export function TextSetting({
     </>
   );
 }
-export function SettingRow({ group }: { group: SettingsGroup }) {
+function SettingRow({ group }: { group: SettingsGroup }) {
   return group.kind === "shortcutList" ? <ShortcutRows group={group} /> : <PreferenceRow group={group} />;
 }
 function PreferenceRow({ group }: { group: SettingsGroup }) {
