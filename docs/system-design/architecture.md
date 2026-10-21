@@ -68,7 +68,7 @@ Inside the capture process, the Rust module (`native/capture`, built into `recor
 | `main/settings/settings.ts` | Committed settings and serialized saves | A running session's quality snapshot |
 | `main/menus/tray-model.ts` / `tray.ts` | Pure projection of the tray's flat command menu / native presentation | Preferences, or a separate recording state machine |
 | `main/app/ui-model.ts` | The action union and the context snapshot both interfaces share; the preference-lock rule they apply is `main/recording/recording-lock.ts` | Any projection of its own |
-| `main/settings/settings-model.ts` | Every preference, its stable ids, and the authorization of a panel request | Electron, IPC or persistence |
+| `main/settings/settings-model.ts` / `model/*.ts` | Every preference, its stable ids, and the authorization of a panel request / each tab's rows (recording, audio, camera, studio, general, status, history, library) and the shape they share (`group.ts`) | Electron, IPC or persistence |
 | `main/settings/settings-window.ts` | The panel window, sender validation and serialized saves | What a preference means |
 | `renderer/settings/settings.ts` / `preload/settings.ts` | Rendering a view and echoing an id / the read-choose-capture-subscribe bridge | Preference state, actions or Node APIs |
 | `main/permission/permission.ts` | Screen-permission cache and polling | Proof of system-audio permission |

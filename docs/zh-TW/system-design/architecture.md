@@ -68,7 +68,7 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `main/settings/settings.ts` | 已提交設定、序列化保存佇列 | 不修改正在錄影的設定快照 |
 | `main/menus/tray-model.ts` / `tray.ts` | Tray 扁平指令選單的純投影／原生圖示與通知 | 不放偏好設定，也不另建錄影狀態機 |
 | `main/app/ui-model.ts` | 兩個介面共用的 action union 與 context 快照；它們套用的設定鎖定規則在 `main/recording/recording-lock.ts` | 自己不做任何投影 |
-| `main/settings/settings-model.ts` | 所有偏好設定、穩定 id，以及面板請求的授權判定 | 不碰 Electron、IPC 或持久化 |
+| `main/settings/settings-model.ts` / `model/*.ts` | 所有偏好設定、穩定 id，以及面板請求的授權判定／各分頁的列（錄影、音訊、鏡頭、Studio、一般、狀態、紀錄、錄影庫）與共用形狀（`group.ts`） | 不碰 Electron、IPC 或持久化 |
 | `main/settings/settings-window.ts` | 設定視窗、來源驗證與序列化保存 | 不定義任何設定的語意 |
 | `renderer/settings/settings.ts` / `preload/settings.ts` | 畫出 view 並回傳 id／read-choose-capture-subscribe 橋接 | 不持有設定狀態、不產生 action、不碰 Node API |
 | `main/permission/permission.ts` | 螢幕授權驗證快取與輪詢 timer | 不認定系統音訊已授權 |
