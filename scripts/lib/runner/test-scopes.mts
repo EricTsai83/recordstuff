@@ -90,7 +90,7 @@ export const TEST_SCOPES: readonly TestScope[] = [
   {
     name: "studio",
     covers: "the Studio: the camera bubble's layout (its cases are shared with the native engine), input volumes, the Studio port and the preview stream",
-    unit: ["src/renderer/settings/tabs/studio-", "src/renderer/settings/tabs/frame-clock.test.ts", "src/shared/camera-layout.test.ts", "src/shared/audio-volume.test.ts", "src/shared/studio-port.test.ts", "src/renderer/lib/preview-stream.test.ts"],
+    unit: ["src/renderer/settings/tabs/studio-", "src/renderer/settings/tabs/frame-clock.test.ts", "src/shared/camera-layout.test.ts", "src/shared/audio-volume.test.ts", "src/shared/studio-port.test.ts", "src/renderer/lib/preview-stream.test.ts", "src/renderer/lib/use-pending-value.test.ts"],
     ui: [{ file: "settings-panel.spec.ts", tags: ["@recording-settings"] }],
   },
   {

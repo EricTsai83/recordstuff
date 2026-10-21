@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Field, FieldLabel, FieldTitle, FieldDescription, FieldError } from "../../components/ui/field";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { useTextSetting } from "../use-text-setting";
+import { usePendingValue } from "../../lib/use-pending-value";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { Slider } from "../../components/ui/slider";
@@ -88,8 +89,7 @@ function SectionIcon({ id }: { id: string }) {
 export function SliderSetting({ id, group, slider, disabled, describedBy }: {
   id: string; group: SettingsGroup; slider: NonNullable<SettingsGroup["slider"]>; disabled: boolean; describedBy?: string | undefined;
 }) {
-  const [moving, setMoving] = useState<number | undefined>(undefined);
-  const shown = moving ?? slider.value;
+  const { shown, move, commit } = usePendingValue(slider.value);
   const text = `${shown}%`;
   return (
     <div className="slider-setting">
@@ -102,14 +102,12 @@ export function SliderSetting({ id, group, slider, disabled, describedBy }: {
         step={slider.step}
         disabled={disabled}
         thumbProps={{ "aria-label": group.label, "aria-valuetext": text, ...(describedBy ? { "aria-describedby": describedBy } : {}) }}
-        onValueChange={(value) => setMoving(Array.isArray(value) ? value[0] : value)}
+        onValueChange={(value) => move(Array.isArray(value) ? value[0] : value)}
         onValueCommitted={(value) => {
           const next = Array.isArray(value) ? value[0] : value;
-          if (next === undefined || next === slider.value) return setMoving(undefined);
-          // The value let go of stays shown while it saves, so a key held down goes on from it; the view then shows
-          // what was saved, or the old value after a failure.
-          setMoving(next);
-          void model.choose(group.id, String(next), id).finally(() => setMoving((shown) => (shown === next ? undefined : shown)));
+          if (next === undefined) return move(undefined);
+          // The value let go of stays shown while it saves, so a key held down goes on from it.
+          commit(next, (value) => model.choose(group.id, String(value), id));
         }}
       />
       <span className="slider-setting-value" aria-hidden="true">{text}</span>

@@ -13,6 +13,7 @@ import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
 import { previewDecoder } from "../../lib/preview-decoder";
 import { translate } from "../../../shared/i18n";
+import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { frameDrawn } from "./frame-clock";
 import { onPreview } from "./studio-feed";
@@ -136,11 +137,8 @@ export function CameraPreview({ group, preview, disabled, describedBy, overlay }
   const failed = useLiveCamera(video, preview.mode === "live" && inSight, preview.camera);
   const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight);
   /** Where the bubble shows while it is moved or its new place saves; the view's place otherwise. */
-  const [moving, setMoving] = useState<CameraPosition | undefined>(undefined);
+  const { shown: position, move: setMoving, commit: save } = usePendingValue<CameraPosition>({ x: preview.x, y: preview.y }, (a, b) => a.x === b.x && a.y === b.y);
   const drag = useRef<{ pointer: number; dx: number; dy: number } | undefined>(undefined);
-  /** The latest save sent, by its request number, and whether it is still pending. */
-  const pending = useRef<{ request: number; open: boolean }>({ request: 0, open: false });
-  const position = moving ?? { x: preview.x, y: preview.y };
   const shape: CameraLayout = { ...preview.bubble, positions: [] };
   const bubble = bubbleRect(shape, position, Math.max(1, size.width), Math.max(1, size.height));
   const radius = bubbleRadius(shape, bubble);
@@ -152,19 +150,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, overlay }
     x: inside(bubble.x - (handleWidth - bubble.width) / 2, handleWidth, size.width),
     y: inside(bubble.y - (handleHeight - bubble.height) / 2, handleHeight, size.height) };
 
-  const commit = (next: CameraPosition): void => {
-    // The saved place needs no save, unless another is still pending: a step back to it is then the newer intent.
-    if (!pending.current.open && next.x === preview.x && next.y === preview.y) return setMoving(undefined);
-    setMoving(next);
-    const request = pending.current.request + 1;
-    pending.current = { request, open: true };
-    // Only the latest request's end shows the view's place again; an older one, even for the same place, does not.
-    void model.choose(group.id, choiceOf(next), id).finally(() => {
-      if (pending.current.request !== request) return;
-      pending.current = { request, open: false };
-      setMoving(undefined);
-    });
-  };
+  const commit = (next: CameraPosition): void => save(next, (place) => model.choose(group.id, choiceOf(place), id));
   const placed = (clientX: number, clientY: number): CameraPosition | undefined => {
     const box = stage?.getBoundingClientRect();
     const grip = drag.current;

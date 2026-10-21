@@ -9,6 +9,7 @@ import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { ControlTooltip } from "../../components/control-tooltip";
+import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { CameraPreview } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
@@ -52,17 +53,13 @@ function NumberSetting({ group, field, disabled, describedBy }: {
 }) {
   const id = `setting-${group.id}`;
   const [draft, setDraft] = useState<string | undefined>(undefined);
-  const [moving, setMoving] = useState<number | undefined>(undefined);
+  const { shown, moving, move: setMoving, commit: save } = usePendingValue(field.value);
   const drag = useRef<{ pointer: number; x: number; from: number } | undefined>(undefined);
-  const shown = moving ?? field.value;
   const unit = field.unit === "px" ? "px" : "%";
   const within = (value: number): number => Math.min(field.max, Math.max(field.min, Math.round(value)));
   const commit = (value: number): void => {
     setDraft(undefined);
-    const next = within(value);
-    if (next === field.value) return setMoving(undefined);
-    setMoving(next);
-    void model.choose(group.id, String(next), id).finally(() => setMoving((now) => (now === next ? undefined : now)));
+    save(within(value), (next) => model.choose(group.id, String(next), id));
   };
   const typed = (): void => {
     if (draft === undefined) return;
