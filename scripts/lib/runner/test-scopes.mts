@@ -35,7 +35,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
   {
     name: "general",
     covers: "the General tab: language, appearance, notifications, updates, local data cleanup, the footer, Hide interface and Quit",
-    unit: [`${PAGE}settings-appearance.test.ts`, `${PAGE}settings-announce.test.ts`, "src/renderer/settings/controller/", "src/main/settings/settings-model.test.ts", "src/shared/i18n.test.ts"],
+    unit: [`${PAGE}settings-appearance.test.ts`, `${PAGE}settings-announce.test.ts`, "src/renderer/settings/controller/", "src/main/settings/settings-model.test.ts", "src/shared/i18n.test.ts",
+      "src/main/app/updates.test.ts", "src/main/app/data-cleanup"],
     ui: [{ file: "settings-notification-help.spec.ts" }, { file: "settings-segments.spec.ts" }, { file: "window-actions.spec.ts" },
       { file: "settings-panel.spec.ts", tags: ["@general"] }, { file: "components.spec.ts", tags: ["@general"] },
       { file: "settings-layout.spec.ts", tags: ["@general"] }, { file: "settings-matrix.spec.ts", tags: ["@general"] }],
@@ -87,6 +88,36 @@ export const TEST_SCOPES: readonly TestScope[] = [
     ui: [{ file: "settings-reset.spec.ts" }, { file: "settings-panel.spec.ts", tags: ["@settings-bridge"] }],
   },
   {
+    name: "studio",
+    covers: "the Studio: the camera bubble's layout (its cases are shared with the native engine), input volumes, the Studio port and the preview stream",
+    unit: ["src/renderer/settings/tabs/studio-", "src/renderer/settings/tabs/frame-clock.test.ts", "src/shared/camera-layout.test.ts", "src/shared/audio-volume.test.ts", "src/shared/studio-port.test.ts", "src/renderer/lib/preview-stream.test.ts"],
+    ui: [{ file: "settings-panel.spec.ts", tags: ["@recording-settings"] }],
+  },
+  {
+    name: "tray",
+    covers: "the menu bar icon: its menu and model, the actions it and the shortcuts run, and the interface state behind them",
+    unit: ["src/main/menus/tray", "src/main/actions/", "src/main/app/ui-model.test.ts"],
+    ui: [],
+  },
+  {
+    name: "app-lifecycle",
+    covers: "quit, relaunch and session end, deferred-quit feedback, the fault dialog and reopening. Unit tests only: the lifecycle row of docs/testing.md adds pnpm acceptance:lifecycle",
+    unit: ["src/main/app/quit-", "src/main/app/session-end.test.ts", "src/main/app/fault-dialog.test.ts", "src/main/app/reopen.test.ts"],
+    ui: [],
+  },
+  {
+    name: "platform",
+    covers: "the OS boundaries below recording: screen and microphone permissions and their notices, displays and their capture sources",
+    unit: ["src/main/permission/", "src/main/display/"],
+    ui: [],
+  },
+  {
+    name: "main-lib",
+    covers: "the main process's shared helpers: the log file, atomic writes, error text and the drain queue. A change here also takes its consumers' scopes",
+    unit: ["src/main/lib/"],
+    ui: [],
+  },
+  {
     name: "recording",
     covers: "recording logic below the UI: recorder, the native engine's host and protocol, file publication. Unit tests only: capture needs the recording row of docs/testing.md",
     unit: ["src/main/recording/", "src/shared/protocol.test.ts"],
@@ -94,11 +125,17 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "tooling",
-    covers: "runners, analyzers and release tools under scripts/",
-    unit: ["scripts/"],
+    covers: "runners, analyzers and release tools under scripts/, and the background suite's process helpers",
+    unit: ["scripts/", "tests/ui/process-"],
     ui: [],
   },
 ];
+
+/**
+ * Tests that read sources instead of importing them, so no import graph or scope can tell which edit reaches them:
+ * every selection runs them, as `pnpm test:changed` does. Both take about a second.
+ */
+export const ALWAYS_UNIT: readonly string[] = ["tests/source-boundaries.test.ts", "tests/style-guard.test.ts"];
 
 /** What a set of scopes and test files selects, deduplicated. */
 export interface Selection {
@@ -114,7 +151,8 @@ const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\
 
 /**
  * Scopes by name and test files by path (`*.test.ts` for Vitest, `tests/ui/*.spec.ts` for the background suite), merged:
- * a file selected whole by one scope stays whole, otherwise its tags add up. Throws on what names nothing.
+ * a file selected whole by one scope stays whole, otherwise its tags add up, and the unit files always include
+ * {@link ALWAYS_UNIT}. Throws on what names nothing.
  */
 export function resolveSelection(args: readonly string[], scopes: readonly TestScope[] = TEST_SCOPES, exists: (file: string) => boolean = () => true): Selection {
   if (!args.length) throw new Error("Name at least one scope or test file (pnpm test:scope -- --list shows the scopes).");
@@ -149,5 +187,6 @@ export function resolveSelection(args: readonly string[], scopes: readonly TestS
   const grep = uiList.length
     ? uiList.map(({ file, tags }) => tags ? `${escape(file)}.*(?:${tags.map(escape).join("|")})(?:\\s|$)` : escape(file)).join("|")
     : undefined;
+  for (const file of ALWAYS_UNIT) unit.add(file);
   return { scopes: named, unit: [...unit].sort(), ui: uiList, ...(grep ? { grep } : {}) };
 }

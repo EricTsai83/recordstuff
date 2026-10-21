@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { TEST_SCOPES, resolveSelection, type TestScope } from "./test-scopes.mts";
+import { ALWAYS_UNIT, TEST_SCOPES, resolveSelection, type TestScope } from "./test-scopes.mts";
 
 const root = path.resolve(__dirname, "../../..");
 const scopes: TestScope[] = [
@@ -14,7 +14,7 @@ describe("resolveSelection", () => {
   it("merges scopes without duplicates: a file's tags add up", () => {
     const selection = resolveSelection(["a", "b", "a"], scopes);
     expect(selection.scopes).toEqual(["a", "b", "a"]);
-    expect(selection.unit).toEqual(["src/a/", "src/shared.test.ts"]);
+    expect(selection.unit).toEqual([...ALWAYS_UNIT, "src/a/", "src/shared.test.ts"].sort());
     expect(selection.ui).toEqual([{ file: "one.spec.ts", tags: ["@a", "@b"] }, { file: "two.spec.ts" }]);
     expect(selection.grep).toBe("one\\.spec\\.ts.*(?:@a|@b)(?:\\s|$)|two\\.spec\\.ts");
   });
@@ -26,7 +26,7 @@ describe("resolveSelection", () => {
   });
 
   it("takes test files by path and refuses what names nothing, never widening to a full suite", () => {
-    expect(resolveSelection(["src/x.test.ts"], scopes)).toEqual({ scopes: [], unit: ["src/x.test.ts"], ui: [] });
+    expect(resolveSelection(["src/x.test.ts"], scopes)).toEqual({ scopes: [], unit: [...ALWAYS_UNIT, "src/x.test.ts"].sort(), ui: [] });
     expect(() => resolveSelection([], scopes)).toThrow(/at least one/);
     expect(() => resolveSelection(["genral"], scopes)).toThrow(/Unknown scope or test file "genral"; known scopes: a, b, c/);
     expect(() => resolveSelection(["src/gone.test.ts"], scopes, () => false)).toThrow(/does not exist/);
@@ -61,6 +61,11 @@ describe("the scope catalog", () => {
       const source = fs.readFileSync(path.join(root, "tests/ui", file), "utf8");
       for (const tag of tags ?? []) expect(source.includes(`"${tag}"`), `${scope.name}: ${file} has no case tagged ${tag}`).toBe(true);
     }
+  });
+
+  it("leaves no unit test file outside every scope, so an edit to any module has a scope that runs its tests", () => {
+    const filters = [...TEST_SCOPES.flatMap(scope => scope.unit), ...ALWAYS_UNIT];
+    expect(units.filter(file => !filters.some(filter => file.startsWith(filter)))).toEqual([]);
   });
 
   it("leaves no background spec outside every scope, so a full suite's files are all reachable by name", () => {
