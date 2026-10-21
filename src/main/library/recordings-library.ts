@@ -741,11 +741,12 @@ export class RecordingsLibrary {
     if (name === folder) return { folder };
     const from = path.join(this.current.dir, folder), to = path.join(this.current.dir, name);
     // A recording of the folder already being moved to the Trash finishes at its old path first, and one whose time comes
-    // meanwhile waits until its path names the folder's new name (review pass 2, F2).
-    await Promise.all(this.pendingTrash.filter(entry => path.dirname(entry.path) === from && entry.moving).map(entry => entry.moving));
+    // meanwhile, even while the rename waits for those, waits until its path names the folder's new name (review pass 2,
+    // F2). The rename is announced before it waits: a move begun after this sees it, so none is in that wait.
     let renamed!: () => void;
     this.folderRenaming = new Promise<void>(resolve => { renamed = resolve; });
     try {
+      await Promise.all(this.pendingTrash.filter(entry => path.dirname(entry.path) === from && entry.moving).map(entry => entry.moving));
       return await this.renameFolderNow(name, from, to);
     } finally {
       this.folderRenaming = undefined;

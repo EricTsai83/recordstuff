@@ -852,4 +852,27 @@ describe("folders (plan 071)", () => {
       expect([await renaming, library.state.trashFailed, fs.readdirSync(path.join(dir, renamed))]).toEqual([{ folder: renamed }, undefined, []]);
     }
   });
+
+  it("holds a recording whose time comes while a rename waits for another's move until the folder has its new name", async () => {
+    folder("Demos", "a.mp4", "b.mp4");
+    const { library, deps } = setup();
+    // b's Trash is slower than a's, so a rename landing while it works takes b from under it.
+    deps.trash.mockImplementation(async (file: string) => {
+      await new Promise(resolve => setTimeout(resolve, file.endsWith("b.mp4") ? 80 : 20));
+      if (!fs.existsSync(file)) throw new Error(`gone: ${file}`);
+      fs.rmSync(file);
+    });
+    await library.refresh();
+    const id = (name: string) => library.state.files.find(file => file.name === name)!.id;
+    expect(await library.act(id("a.mp4"), "trash")).toBe(true);
+    // a's move begins, then b waits for the Trash; the rename waits for a's move, and b's time comes meanwhile.
+    const first = library.flushTrash();
+    expect(await library.act(id("b.mp4"), "trash")).toBe(true);
+    const renaming = library.renameFolder("Demos", "Talks");
+    // The rename is waiting for a's move by now; b's time comes only then.
+    await new Promise(resolve => setImmediate(resolve));
+    const second = library.flushTrash();
+    await Promise.all([first, renaming, second]);
+    expect([await renaming, library.state.trashFailed, fs.readdirSync(path.join(dir, "Talks"))]).toEqual([{ folder: "Talks" }, undefined, []]);
+  });
 });
