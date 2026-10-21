@@ -19,6 +19,7 @@
  * out of main, and an attempt's process is never asked. `openMonitor` (plan 079) forks one that lives while Settings is
  * open, following the device list and reading the input level meter's device.
  */
+import { StringDecoder } from "node:string_decoder";
 import { utilityProcess, type UtilityProcess } from "electron";
 import { recordedPosition } from "../../shared/camera-layout";
 import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
@@ -96,6 +97,23 @@ export function cameraChoice(camera: SessionCamera, display: string): CameraChoi
   const { width, height, rounding, mirror } = camera.layout;
   const { x, y } = recordedPosition(camera.layout, display);
   return { ...(camera.deviceId ? { deviceId: camera.deviceId } : {}), width, height, rounding, x, y, mirror };
+}
+
+/**
+ * Calls `onLine` with each non-blank, trimmed line of a process's output. Pipe chunks end anywhere: a line that spans
+ * two of them stays one line and a character split between them is decoded whole (the engine's timing lines are read
+ * back by the frame diagnostics). The unfinished last line is given when the stream ends.
+ */
+export function pipeLines(stream: NodeJS.EventEmitter, onLine: (line: string) => void): void {
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  const take = (text: string, final: boolean): void => {
+    const lines = (pending + text).split("\n");
+    pending = final ? "" : lines.pop()!;
+    for (const line of lines) if (line.trim()) onLine(line.trim());
+  };
+  stream.on("data", (chunk: Buffer) => take(decoder.write(chunk), false));
+  stream.once("end", () => take(decoder.end(), true));
 }
 
 export class NativeCaptureHost implements RecorderHost {
@@ -218,8 +236,7 @@ export class NativeCaptureHost implements RecorderHost {
   }
 
   private list(kind: "microphones" | "cameras", what: string, allowed: () => boolean): Promise<MicrophoneDevice[]> {
-    const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
-    const child = fork(this.options.entryPath, [this.options.addonPath]);
+    const child = this.spawn(`capture host (${kind})`);
     return new Promise<MicrophoneDevice[]>((resolve, reject) => {
       let settled = false;
       const done = (result: MicrophoneDevice[] | Error): void => {
@@ -235,11 +252,6 @@ export class NativeCaptureHost implements RecorderHost {
       const cancel = (cause: Error): void => done(cause);
       this.listing?.(new Error("a newer listing replaced it"));
       this.listing = cancel;
-      for (const stream of [child.stdout, child.stderr]) {
-        stream?.on("data", (chunk: Buffer) => {
-          for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (${kind}): ${line.trim()}`);
-        });
-      }
       child.on("exit", (code) => done(new Error(`the process listing ${what} exited with ${code}`)));
       child.on("message", (data: unknown) => {
         if (!isHostMessage(data)) return;
@@ -258,8 +270,7 @@ export class NativeCaptureHost implements RecorderHost {
    * end on its own, or fail to start within the listing's bound.
    */
   openMonitor(onMessage: (message: HostMessage) => void, onExit: (detail: string) => void): MonitorProcess {
-    const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
-    const child = fork(this.options.entryPath, [this.options.addonPath]);
+    const child = this.spawn("capture host (monitor)");
     let ready = false, closed = false;
     const queued: MainMessage[] = [];
     const end = (detail: string): void => {
@@ -270,11 +281,6 @@ export class NativeCaptureHost implements RecorderHost {
       onExit(detail);
     };
     const bound = setTimeout(() => { if (!ready) end(`it did not start within ${LIST_BOUND_MS} ms`); }, LIST_BOUND_MS);
-    for (const stream of [child.stdout, child.stderr]) {
-      stream?.on("data", (chunk: Buffer) => {
-        for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host (monitor): ${line.trim()}`);
-      });
-    }
     child.on("exit", (code) => end(`it exited with ${code}`));
     child.on("message", (data: unknown) => {
       if (closed || !isHostMessage(data)) return;
@@ -388,15 +394,17 @@ export class NativeCaptureHost implements RecorderHost {
     }
   }
 
-  /** Forks a process; `ready` settles when it reports ready, whether or not an attempt owns it by then. */
-  private launch(): { child: UtilityProcess; ready: Promise<void> } {
+  /** Forks an engine process whose output lines are logged under `label`. */
+  private spawn(label: string): UtilityProcess {
     const fork = this.options.fork ?? ((entry, args) => utilityProcess.fork(entry, args, { serviceName: "RecordStuff Capture", stdio: "pipe" }));
     const child = fork(this.options.entryPath, [this.options.addonPath]);
-    for (const stream of [child.stdout, child.stderr]) {
-      stream?.on("data", (chunk: Buffer) => {
-        for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`capture host: ${line.trim()}`);
-      });
-    }
+    for (const stream of [child.stdout, child.stderr]) if (stream) pipeLines(stream, (line) => this.log(`${label}: ${line}`));
+    return child;
+  }
+
+  /** Forks a process; `ready` settles when it reports ready, whether or not an attempt owns it by then. */
+  private launch(): { child: UtilityProcess; ready: Promise<void> } {
+    const child = this.spawn("capture host");
     this.options.onLaunch?.(child);
     let resolveReady!: () => void;
     let rejectReady!: (cause: Error) => void;

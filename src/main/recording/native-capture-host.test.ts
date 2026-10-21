@@ -7,7 +7,7 @@ import type { HostMessage, MainMessage } from "../../shared/protocol";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("tests pass their own fork"); } } }));
 
-const { NativeCaptureHost, cameraChoice } = await import("./native-capture-host");
+const { NativeCaptureHost, cameraChoice, pipeLines } = await import("./native-capture-host");
 
 class Child extends EventEmitter {
   sent: MainMessage[] = [];
@@ -536,5 +536,20 @@ describe("NativeCaptureHost", () => {
     const child = await started(ctx);
     child.stderr.emit("data", Buffer.from("engine could not be loaded\n"));
     expect(ctx.logs).toContain("capture host: engine could not be loaded");
+  });
+
+  it("keeps a line whole across output chunks, including a character split between them, and gives the last line at the end", () => {
+    const stream = new EventEmitter();
+    const lines: string[] = [];
+    pipeLines(stream, (line) => lines.push(line));
+    const text = Buffer.from("microphone: 麥克風 ready\ncapture host: timing frames=3\n\npartial");
+    const split = text.indexOf(Buffer.from("風")) + 1;
+    stream.emit("data", text.subarray(0, split));
+    stream.emit("data", text.subarray(split, split + 30));
+    expect(lines).toEqual(["microphone: 麥克風 ready"]);
+    stream.emit("data", text.subarray(split + 30));
+    expect(lines).toEqual(["microphone: 麥克風 ready", "capture host: timing frames=3"]);
+    stream.emit("end");
+    expect(lines).toEqual(["microphone: 麥克風 ready", "capture host: timing frames=3", "partial"]);
   });
 });
