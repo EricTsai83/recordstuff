@@ -408,16 +408,19 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         if (deps.platform !== "darwin") return false;
         try { await deps.openMicrophoneSettings(); return true; }
         catch (error) { log(`microphone: open settings failed: ${String(error)}`); return false; }
+      // Requests whose progress the page shows itself (the button reads Searching…, a postponed relaunch says why), so
+      // they answer at once: undefined would read as a choice that did not apply, and a search held the panel's
+      // queue for up to the listing's bound.
       case "searchMicrophones":
-        await deps.searchMicrophones?.();
-        return;
+        void deps.searchMicrophones?.().catch((error: unknown) => log(`microphone: search failed: ${String(error)}`));
+        return true;
       case "openCameraSettings":
         if (deps.platform !== "darwin" && deps.platform !== "win32") return false;
         try { await deps.openCameraSettings(); return true; }
         catch (error) { log(`camera: open settings failed: ${String(error)}`); return false; }
       case "relaunch":
         deps.relaunch();
-        return;
+        return true;
       // Settings → General → Log file reads the outcome (2026-10-04); the log moved there from the tray.
       case "revealLog":
         return deps.revealLog();

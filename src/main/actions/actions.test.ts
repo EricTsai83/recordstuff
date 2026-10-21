@@ -305,11 +305,19 @@ describe("createActionHandler", () => {
       expect(saves).toEqual([["microphone device", false], ["microphone device", true]]);
     });
 
-    it("searches for devices at the user's request (plan 079, D2)", async () => {
-      const searchMicrophones = vi.fn(async () => {});
+    it("searches for devices at the user's request (plan 079, D2), answering applied without waiting for the listing", async () => {
+      let finish!: () => void;
+      const searchMicrophones = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
       const { act } = harness({ searchMicrophones });
-      await act("searchMicrophones");
+      expect(await act("searchMicrophones")).toBe(true);
       expect(searchMicrophones).toHaveBeenCalledOnce();
+      finish();
+    });
+
+    it("answers a relaunch request as applied, whether it relaunches now or after the saves", async () => {
+      const { act, deps } = harness();
+      expect(await act("relaunch")).toBe(true);
+      expect(deps.relaunch).toHaveBeenCalledOnce();
     });
 
     it("opens the Microphone pane on macOS only and reports whether it opened", async () => {
