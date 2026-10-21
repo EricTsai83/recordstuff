@@ -181,7 +181,10 @@ export async function relists(dir: string, name: string, folders: readonly Libra
   return fs.stat(path.join(dir, name)).then(stat => stat.isDirectory(), () => false);
 }
 
-/** Changes whenever the file's bytes do, as far as its size and modification time tell. */
+/**
+ * Renames a folder; on Windows, where a file another program holds open in it refuses the rename for a moment (EPERM,
+ * EACCES, EBUSY), it tries again after each of `FOLDER_RENAME_RETRIES_MS` before the last attempt's error stands.
+ */
 async function renameHeldFolder(from: string, to: string): Promise<void> {
   for (const wait of process.platform === "win32" ? FOLDER_RENAME_RETRIES_MS : []) {
     try {
@@ -194,6 +197,7 @@ async function renameHeldFolder(from: string, to: string): Promise<void> {
   await fs.rename(from, to);
 }
 
+/** Changes whenever the file's bytes do, as far as its size and modification time tell. */
 function fileVersion(stat: { size: number; mtimeMs: number }): string {
   return `${stat.size}-${Math.round(stat.mtimeMs)}`;
 }

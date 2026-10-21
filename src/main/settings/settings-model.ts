@@ -369,10 +369,6 @@ function recordedShorterSide(ctx: AppContext): number {
 }
 
 /**
- * Whether the bubble's shape may change now (D7): while the Camera switch is on, between recordings and while a
- * recording composes the camera, which takes the change from its next frame on.
- */
-/**
  * Whether the bubble's size, rounding and mirror may change: at any time, the camera off included (2026-10-22, at the
  * maintainer's request, as the bubble's place), except while a recording that is to compose the camera cannot take a
  * change yet, during its start.

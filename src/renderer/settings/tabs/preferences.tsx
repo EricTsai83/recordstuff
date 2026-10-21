@@ -303,8 +303,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
     ownFailure = model.failureOf(group.id);
   const actions =
     group.kind === "actions" ? group.choices : (group.actions ?? []);
-  // While another setting saves, this row's controls stay usable: a choice made meanwhile waits its turn
-  // (controller/core.ts, 2026-10-22), so nothing holds still or dims for another setting's save.
+  // While another setting saves, this row's controls stay usable: each setting's choice is sent at once, never behind
+  // another's (controller/core.ts, 2026-10-22), so nothing holds still or dims for another setting's save.
   const value = model.committed(group),
     diagnosticVisible = Boolean(group.diagnostics?.length || ownFailure);
   const description = [

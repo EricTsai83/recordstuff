@@ -262,7 +262,6 @@ export class AppTray {
     this.show(hotkeyWriteFailedNotification(this.language));
   }
 
-  /** The click selects the Recording tab even in an open window, where the warning is shown. */
   /** A save outlived the watchdog: its drive may have stopped answering (2026-10-09). */
   notifySavingSlow(dir: string): void {
     const folder = abbreviateHome(dir, this.options.context().homeDir);
