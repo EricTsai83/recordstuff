@@ -46,6 +46,7 @@ import { EngineFileWriter } from "./recording/engine-file-writer";
 import { CountdownOverlay } from "./recording/countdown-overlay";
 import { ensureWritableDir } from "./recording/file-writer";
 import { KeepAwake } from "./recording/keep-awake";
+import { DeviceLists } from "./app/device-lists";
 import { createOutputFolderOpener, isSameFolder } from "./library/output-folder";
 import { createUncaughtExceptionHandler } from "./app/fault-dialog";
 import { createFileLogger, flushBeforeExit } from "./lib/log";
@@ -53,7 +54,6 @@ import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
 import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, openCameraSettings, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
-import type { CameraDevice, MicrophoneDevice } from "../shared/protocol";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
 import { SavedNotification } from "./recording/saved-notification";
@@ -394,8 +394,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     microphone: () => {
       // Autorecord's microphone is the system default; the user's is the one Settings chose.
       const device = autoRecord?.ok ? undefined : settings.microphoneDevice;
-      const named = device ? microphones?.find((candidate) => candidate.id === device.id)?.name ?? device.label
-        : microphones?.find((candidate) => candidate.default)?.name;
+      const named = device ? devices.microphones?.find((candidate) => candidate.id === device.id)?.name ?? device.label
+        : devices.microphones?.find((candidate) => candidate.default)?.name;
       return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
     },
     // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 7, with
@@ -484,44 +484,16 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Loads asynchronously; background save outcomes refresh both projections.
   const recordingResults = new RecordingResults(
     new RecordingResultStore(path.join(app.getPath("userData"), "recording-history.json"), log), log, () => refreshUi());
-  /**
-   * The audio inputs the engine listed last (plan 074), for the Input device menu; refreshed when the window comes
-   * forward and when the microphone is turned on, never while a session runs, and at most one listing at a time.
-   */
-  let microphones: readonly MicrophoneDevice[] | undefined;
-  /** The listing in flight, which Search for devices waits for rather than starting another (plan 079, D2). */
-  let listingMicrophones: Promise<void> | undefined;
-  let searchingMicrophones = false;
-  /** The host lists one kind at a time and a newer listing ends the one in flight, so the kinds wait their turn. */
-  let listings: Promise<void> = Promise.resolve();
-  const inTurn = (list: () => Promise<void>): Promise<void> => {
-    const run = listings.then(list);
-    // A listing that fails is its own caller's to report; the next one still takes its turn.
-    listings = run.catch(() => undefined);
-    return run;
-  };
-  const refreshMicrophones = (): Promise<void> => {
-    if (listingMicrophones) return listingMicrophones;
-    if (!preferencesUnlocked(recorder.state)) return Promise.resolve();
-    return listingMicrophones = inTurn(() => host.listMicrophones(() => preferencesUnlocked(recorder.state)).then(
-      (devices) => { microphones = devices; },
-      (cause: unknown) => log(`microphone: the inputs could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
-    )).finally(() => { listingMicrophones = undefined; refreshUi(); });
-  };
-  /** Settings' Search for devices (plan 079, D2): lists the inputs at once, its button busy meanwhile. */
-  const searchMicrophones = async (): Promise<void> => {
-    if (searchingMicrophones || !preferencesUnlocked(recorder.state)) return;
-    searchingMicrophones = true;
-    log("microphone: searching for devices");
-    refreshUi();
-    try { await refreshMicrophones(); }
-    finally { searchingMicrophones = false; refreshUi(); }
-  };
-  /**
-   * The cameras the engine listed last (plan 075, D9), for the Camera device menu: listed as the inputs are, in turn
-   * with them.
-   */
-  let cameras: readonly CameraDevice[] | undefined;
+  // The engine composes the camera on macOS and, since plan 075 step 6, on Windows.
+  const cameraAvailable = (): boolean => process.platform === "darwin" || process.platform === "win32";
+  const devices = new DeviceLists({
+    listMicrophones: (allowed) => host.listMicrophones(allowed),
+    listCameras: (allowed) => host.listCameras(allowed),
+    allowed: () => preferencesUnlocked(recorder.state),
+    cameraAvailable,
+    changed: () => refreshUi(),
+    log,
+  });
   /** Why the last Live preview could not start (plan 075, D20), until the next one begins. */
   let previewFailure: ErrorCode | undefined;
   /** Whether the Recording Studio is open in a window in sight, which a Live preview lasts as long as. */
@@ -545,19 +517,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recorder.stopPreview();
     if (studioOpen) setTimeout(() => { if (studioOpen && !recorder.preview) recorder.startPreview(); }, 0);
   };
-  /** The camera listing in flight, which a second request waits for rather than starting another. */
-  let listingCameras: Promise<void> | undefined;
-  // The engine composes the camera on macOS and, since plan 075 step 6, on Windows.
-  const cameraAvailable = (): boolean => process.platform === "darwin" || process.platform === "win32";
-  const refreshCameras = (): Promise<void> => {
-    if (listingCameras) return listingCameras;
-    if (!cameraAvailable() || !preferencesUnlocked(recorder.state)) return Promise.resolve();
-    return listingCameras = inTurn(() => host.listCameras(() => preferencesUnlocked(recorder.state)).then(
-      (devices) => { cameras = devices; },
-      (cause: unknown) => log(`camera: the cameras could not be listed: ${cause instanceof Error ? cause.message : String(cause)}`),
-    )).finally(() => { listingCameras = undefined; refreshUi(); });
-  };
-  const refreshDevices = (): void => { void refreshMicrophones(); void refreshCameras(); };
   /** Saves in the background (2026-10-09), by the name each is saved under, and whether a quit waits only for them. */
   const savingContext = (): Pick<AppContext, "saving" | "quitWithoutWaiting"> => {
     const saving = recorder.saving.map(({ recordingPath, slow }) => ({ file: path.basename(recordingPath).replace(/\.recording(\.[^.]+)$/i, "$1"), slow }));
@@ -572,14 +531,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
-      return { enabled: settings.microphone, ...(device ? { device } : {}), ...(microphones ? { devices: microphones } : {}), ...(access ? { access } : {}),
-        ...(searchingMicrophones ? { searching: true as const } : {}) };
+      return { enabled: settings.microphone, ...(device ? { device } : {}), ...(devices.microphones ? { devices: devices.microphones } : {}), ...(access ? { access } : {}),
+        ...(devices.searching ? { searching: true as const } : {}) };
     })(),
     camera: (() => {
       // The engine records the camera on macOS and Windows (plan 075).
       const access = cameraAccess(), session = recorder.camera, device = settings.cameraDevice;
       return { enabled: settings.camera, available: cameraAvailable(), layout: settings.cameraLayout, ...(access ? { access } : {}),
-        ...(session ? { session } : {}), ...(device ? { device } : {}), ...(cameras ? { devices: cameras } : {}) };
+        ...(session ? { session } : {}), ...(device ? { device } : {}), ...(devices.cameras ? { devices: devices.cameras } : {}) };
     })(),
     studio: {
       ...(recorder.preview ? { preview: { live: recorder.preview.live } } : {}),
@@ -639,10 +598,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const device = settings.microphoneDevice;
       return device ? { deviceId: device.id } : {};
     },
-    devices: (devices) => {
-      microphones = devices;
-      refreshUi();
-    },
+    devices: (listed) => devices.setMicrophones(listed),
     log,
   });
   const settingsWindow = new SettingsWindow({
@@ -658,7 +614,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
-    activated: () => { library.watch(); void library.refresh(); refreshDevices(); },
+    activated: () => { library.watch(); void library.refresh(); devices.refresh(); },
     quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
@@ -869,7 +825,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
-    savePreference, changeOutputDir, openOutputDir, revealLog, searchMicrophones,
+    savePreference, changeOutputDir, openOutputDir, revealLog, searchMicrophones: () => devices.search(),
     showLastRecording: () => showRecording(), hideSettings,
     displayPreferenceChanged: () => { displayMedia.failure = undefined; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },
@@ -897,14 +853,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     askCameraAccess: async () => {
       const allowed = await askCameraAccess();
       // The default camera's name for the menu, now that the camera is on.
-      void refreshCameras();
+      void devices.refreshCameras();
       return allowed;
     },
     confirm: options => { focusApp(); return dialog.showMessageBox(options); },
     askMicrophoneAccess: async () => {
       const allowed = await askMicrophoneAccess();
       // The default input's name for the card, now that the microphone is on.
-      void refreshMicrophones();
+      void devices.refreshMicrophones();
       return allowed;
     },
     showInfo: async detail => {

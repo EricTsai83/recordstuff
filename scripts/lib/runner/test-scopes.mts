@@ -113,8 +113,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "platform",
-    covers: "the OS boundaries below recording: screen and microphone permissions and their notices, displays and their capture sources",
-    unit: ["src/main/permission/", "src/main/display/"],
+    covers: "the OS boundaries below recording: screen and microphone permissions and their notices, displays and their capture sources, the input and camera device lists",
+    unit: ["src/main/permission/", "src/main/display/", "src/main/app/device-lists.test.ts"],
     ui: [],
   },
   {
