@@ -13,9 +13,12 @@ export function parseWindowDragResults(text: string): WindowDragResults {
 export function windowDragFailed(results: WindowDragResults | undefined, exit: number | null, stopped?: string): boolean {
   if (results?.cases.some(test => !test.ok)) return true;
   if (results?.blocked) return false;
-  const expected = ["wide-100", "wide-150"].flatMap(profile => ["top-left", "top-middle", "top-right", "sidebar-blank", "brand",
-    "tab-no-drag", "tab-click", "menu-button-no-drag", "menu-click", "menu-overlay-no-drag"].map(name => `${profile}-${name}`));
-  expected.push("narrow-100-top-left", "narrow-100-top-middle", "narrow-100-top-right", "console");
+  // Each wide profile's top strip, its full sidebar and, by the toggle, its collapsed one; the narrow profile's top strip
+  // and the collapsed sidebar it always shows (2026-10-21).
+  const top = ["top-left", "top-middle", "top-right"], sidebar = ["sidebar-blank", "tab-no-drag", "tab-click", "menu-button-no-drag", "menu-click", "menu-overlay-no-drag"];
+  const expected = ["wide-100", "wide-150"].flatMap(profile => [...top.map(name => `${profile}-${name}`),
+    ...[...sidebar, "brand", "toggle-no-drag"].map(name => `${profile}-full-${name}`), ...[...sidebar, "toggle-no-drag"].map(name => `${profile}-collapsed-${name}`)]);
+  expected.push(...[...top, ...sidebar].map(name => `narrow-100-${name}`), "console");
   return exit !== 0 || Boolean(stopped) || !results?.complete || Boolean(results.error)
     || results.cases.length !== expected.length || expected.some(name => !results.cases.some(test => test.name === name));
 }

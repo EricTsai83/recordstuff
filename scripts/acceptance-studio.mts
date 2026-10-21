@@ -1,5 +1,5 @@
 /**
- * `pnpm acceptance:studio [-- --skip-first-click] [--skip-hover] [--out <dir>]` (plan 082): the Recording Studio's
+ * `pnpm acceptance:studio [-- --skip-first-click] [--skip-hover] [--skip-picture] [--out <dir>]` (plan 082): the Recording Studio's
  * first click and its pacing on the packaged app, macOS only; never shipped. Build and quit the bundle first
  * (`pnpm start:app`, then Quit). The runner launches it, opens the Studio from the tray's Open Recording Studio…, moves
  * its window to another display and opens the moving test material full screen on the primary, so another app is in
@@ -15,9 +15,16 @@
  *   clicked, onto the Studio's preview and away again: the app's log must say `studio: preview at 10 a second` once
  *   it is over the window and `at 5` once it has been away longer than the Studio's 3 s.
  *
- * Each Live preview is stopped with Stop preview and its release (`cancelled (preview)`) awaited. The report,
- * `report.md` and `report.json`, goes under `docs/verification/measurements/<time>-studio-acceptance/` (gitignored).
- * The runner changes no setting, quits the app normally, confirms it exited and closes the material. Exit 0 when every
+ * - **Picture during a recording** (2026-10-22). With RecordStuff in front, the Studio's Start recording is clicked;
+ *   once it records (after the user's countdown), the Live preview switch is pressed: the log must say
+ *   `studio: the recording's picture hidden`, and pressed again `… shown`. Stop recording is clicked and the session
+ *   must save a file that lasts the recording, so hiding the picture cost the file nothing. The Studio is screenshot
+ *   showing and hiding the picture (`picture-shown.png`, `picture-hidden.png`) for a person to judge what it draws.
+ *
+ * Each Live preview is stopped by pressing its switch again (one switch since 2026-10-21) and its release
+ * (`cancelled (preview)`) awaited. The report, `report.md` and `report.json`, goes under
+ * `docs/verification/measurements/<time>-studio-acceptance/` (gitignored). The picture case leaves its recording in the
+ * output folder. The runner changes no setting, quits the app normally, confirms it exited and closes the material. Exit 0 when every
  * judged check passed, 1 when one failed or cleanup was incomplete, 2 when blocked (no Accessibility grant, a locked
  * screen, an app already running), 130/143 when interrupted.
  */
@@ -28,7 +35,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids, command } from "./lib/runner/processes.mts";
-import { confirmedIdle, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
+import { confirmedIdle, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance/acceptance-runtime.mts";
 import { createMaterialProfile, currentRunId, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
@@ -37,6 +44,7 @@ import { roundExit } from "./lib/runner/round-exit.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { isLanguage, translate, type Language } from "../src/shared/i18n.ts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
+import { probe } from "./lib/verification/media-tools.mts";
 import { STUDIO_ACTIVE_MS as ACTIVE_MS } from "../src/shared/studio-port.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -49,20 +57,20 @@ const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
 /** How long a press may take to start a Live preview: preparing took under 1 s in 081's rounds. */
 const PRESS_MS = 8000;
 const LIVE_PREVIEW = ["Live preview", "即時預覽"];
-const STOP_PREVIEW = ["Stop preview", "停止預覽"];
 
-const usage = "usage: pnpm acceptance:studio [-- --skip-first-click] [--skip-hover] [--out <dir>]";
-let skipFirstClick = false, skipHover = false;
+const usage = "usage: pnpm acceptance:studio [-- --skip-first-click] [--skip-hover] [--skip-picture] [--out <dir>]";
+let skipFirstClick = false, skipHover = false, skipPicture = false;
 let outDir: string | undefined;
 const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === "--skip-first-click") skipFirstClick = true;
   else if (arg === "--skip-hover") skipHover = true;
+  else if (arg === "--skip-picture") skipPicture = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
-if (skipFirstClick && skipHover) { console.error(usage); process.exit(2); }
+if (skipFirstClick && skipHover && skipPicture) { console.error(usage); process.exit(2); }
 
 const controller = new AbortController();
 let interruptedBy: keyof typeof INTERRUPT_EXIT | undefined;
@@ -105,6 +113,8 @@ async function main(): Promise<number> {
   let appPid = 0;
   let launchIssued = false;
   let previewing = false;
+  /** The picture case's recording while it runs; the quit in cleanup saves it. */
+  let recordingSession: string | undefined;
   /** The material's `open`, kept so cleanup waits for a launch still on its way (as measure-cpu.mts does). */
   let launcher: ChildProcess | undefined;
   const profile = createMaterialProfile("studio");
@@ -166,14 +176,17 @@ async function main(): Promise<number> {
     await command("osascript", ["-e", `tell application id ${JSON.stringify(BUNDLE_ID())} to activate`], AbortSignal.timeout(10_000));
     await sleep(800);
   };
-  /** Where the named control is, read through the accessibility tree, which is then turned off again. */
-  const locate = async (titles: readonly string[]): Promise<{ x: number; y: number }> => {
+  /**
+   * Where the named control is, read through the accessibility tree, which is then turned off again. `prefix` matches a
+   * title that begins with a name, as Stop recording's does, followed by the elapsed time.
+   */
+  const locate = async (titles: readonly string[], prefix = false): Promise<{ x: number; y: number }> => {
     await ax().enableWebAccessibility(appPid);
     let frame: Frame | undefined;
     try {
       for (let attempt = 0; attempt < 20 && !frame; attempt += 1) {
         const layout = await ax().layout(appPid, "RecordStuff", { width: 10_000, height: 10_000 });
-        frame = layout.clickable.find((element) => titles.includes(element.title))?.frame;
+        frame = layout.clickable.find((element) => titles.some((title) => prefix ? element.title.startsWith(title) : element.title === title))?.frame;
         if (!frame) await sleep(250);
       }
     } finally {
@@ -184,10 +197,11 @@ async function main(): Promise<number> {
   const started = (from: LogCursor): Promise<boolean> =>
     waitForLog(log, from, /recorder: session \S+ prepared after|studio: Live preview not started/, "the Live preview's start", controller.signal, PRESS_MS)
       .then((hit) => hit.line.includes("prepared after"), (error: unknown) => { if (controller.signal.aborted) throw error; return false; });
+  /** Turns the Live preview switch off again: the same control that started it (2026-10-21). */
   const stopPreview = async (): Promise<void> => {
     if (!previewing) return;
     await appToFront();
-    const point = await locate(STOP_PREVIEW);
+    const point = await locate(LIVE_PREVIEW);
     const from = log.end();
     await ax().mouse("left", point.x, point.y);
     await waitForLog(log, from, /cancelled \(preview\)/, "the Live preview let go of", controller.signal, 15_000);
@@ -270,6 +284,50 @@ async function main(): Promise<number> {
       note(`hover: full rate ${full ? "logged" : "missing"}, resting ${rest ? "logged" : "missing"}`);
       await stopPreview();
     }
+    if (!skipPicture) {
+      await appToFront();
+      const shot = async (name: string): Promise<void> => {
+        const window = await studioFrame();
+        await command("screencapture", ["-x", "-R", `${window.x},${window.y},${window.width},${window.height}`, path.join(dir, name)], AbortSignal.timeout(10_000));
+      };
+      const click = async (titles: readonly string[], prefix = false): Promise<void> => { const point = await locate(titles, prefix); await ax().mouse("left", point.x, point.y); };
+      const from = log.end();
+      await click([translate("Start recording", language)]);
+      const capture = await waitForRecord(log, from, (r): r is Extract<typeof r, { kind: "capture" }> => r.kind === "capture", "the recording's capture record", controller.signal, 30_000);
+      await waitForLog(log, from, /state → recording/, "`state → recording`", controller.signal, 30_000);
+      recordingSession = capture.record.session;
+      const began = Date.now();
+      note(`picture: recording ${capture.record.session}`);
+      await sleep(2000);
+      await shot("picture-shown.png");
+      const hideFrom = log.end();
+      await click(LIVE_PREVIEW);
+      const hidden = await waitForLog(log, hideFrom, /studio: the recording's picture (hidden|shown)/, "the picture's switch", controller.signal, 5000).then((hit) => hit.line, () => undefined);
+      checks.push({ check: "Picture: Live preview switched off during the recording", expected: "`studio: the recording's picture hidden`",
+        actual: hidden ? hidden.replace(/^.*studio: /, "") : "nothing logged within 5 s", verdict: hidden?.endsWith("hidden") ? "pass" : "fail" });
+      await sleep(1500);
+      await shot("picture-hidden.png");
+      const showFrom = log.end();
+      await click(LIVE_PREVIEW);
+      const shown = await waitForLog(log, showFrom, /studio: the recording's picture (hidden|shown)/, "the picture's switch", controller.signal, 5000).then((hit) => hit.line, () => undefined);
+      checks.push({ check: "Picture: Live preview switched on again", expected: "`studio: the recording's picture shown`",
+        actual: shown ? shown.replace(/^.*studio: /, "") : "nothing logged within 5 s", verdict: shown?.endsWith("shown") ? "pass" : "fail" });
+      await sleep(1500);
+      await click([translate("Stop recording", language)], true);
+      const terminal = await waitForRecord(log, capture.next, (r): r is TerminalRecord => (r.kind === "saved" || r.kind === "failed") && r.session === capture.record.session,
+        "the recording's save", controller.signal, 60_000);
+      recordingSession = undefined;
+      const recorded = (Date.now() - began) / 1000;
+      if (terminal.record.kind === "failed") {
+        checks.push({ check: "Picture: the recording saved whole", expected: "a saved file", actual: `failed: ${terminal.record.code} ${terminal.record.detail}`, verdict: "fail" });
+      } else {
+        const duration = Number(probe(terminal.record.path).info.format.duration);
+        // The stop click and the save's last frame trail the runner's clock by a moment, never by seconds.
+        checks.push({ check: "Picture: the recording saved whole", expected: `a decodable file of about ${recorded.toFixed(1)} s (−1.5 s)`,
+          actual: `${terminal.record.path}: ${duration.toFixed(1)} s`, verdict: duration >= recorded - 1.5 ? "pass" : "fail" });
+      }
+      note("picture: screenshots picture-shown.png and picture-hidden.png");
+    }
   } catch (error) {
     runError = error;
   } finally {
@@ -277,6 +335,7 @@ async function main(): Promise<number> {
     if (previewing && !controller.signal.aborted) {
       try { await stopPreview(); } catch (error) { cleanup.push(`could not stop the Live preview: ${String(error)}`); }
     } else if (previewing) note("interrupted with a Live preview running: the quit releases it");
+    if (recordingSession) note(`the picture case's recording ${recordingSession} was still running: the quit saves it`);
     // Nothing here may skip the quit, the desktop round's end or the report.
     try {
       // `open` returns once Launch Services started Chrome; before that there may be nothing yet to close.

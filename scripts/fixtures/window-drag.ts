@@ -58,6 +58,18 @@ async function click(selector: string): Promise<void> {
   const point = centre(await rect(selector));
   await ax.mouse("left", point.x, point.y);
 }
+/** The sidebar's blank space between its last tab and the window actions: its height and the point at its middle. */
+async function sidebarGap(actions: string): Promise<{ size: number; x: number; y: number }> {
+  const last = await rect("#tab-failures"), foot = await rect(actions), bottom = last.y + last.height;
+  return { size: foot.y - bottom, x: centre(last).x, y: bottom + (foot.y - bottom) / 2 };
+}
+/** Open or close the sidebar by a click on its toggle, the user's own input; setup, never evidence. */
+async function setSidebar(mode: "full" | "collapsed"): Promise<void> {
+  const collapsed = (): Promise<boolean> => read<boolean>(`document.querySelector("main")?.dataset.sidebar === "collapsed"`);
+  if (await collapsed() !== (mode === "collapsed")) await click("#sidebar-toggle");
+  if (!await until(async () => await collapsed() === (mode === "collapsed"))) throw new Error(`The sidebar toggle did not make the sidebar ${mode}`);
+  await delay(200, undefined, { signal: controller.signal });
+}
 async function dragCase(name: string, point: Point, moves: boolean): Promise<void> {
   const before = await frame(), startBlurs = blurs;
   const area = captureRect({ ...before, width: before.width + 60, height: before.height + 40 });
@@ -97,7 +109,7 @@ async function run(): Promise<void> {
   const access = parseAxResult<{ allowed: boolean }>(await command("osascript", ["-l", "JavaScript", "-e", AX_SCRIPT, "screen-access"], controller.signal, 3000), "screen access");
   if (!access.allowed) throw new Blocked("Screen Recording access is missing for OS screenshots; the runner never requests or changes privacy permissions");
   const work = screen.getPrimaryDisplay().workArea;
-  if (work.width < 1090 || work.height < 700) throw new Blocked("Need a primary display work area of at least 1090×700 pt for wide 150% and a 60×40 pt drag");
+  if (work.width < 1090 || work.height < 760) throw new Blocked("Need a primary display work area of at least 1090×760 pt for wide 150% and a 60×40 pt drag");
   pointer = screen.getCursorScreenPoint();
   nativeTheme.themeSource = "light";
   window = new BrowserWindow(settingsWindowOptions({ platform: "darwin", title: "RecordStuff", size: { width: 900, height: 600 },
@@ -113,34 +125,53 @@ async function run(): Promise<void> {
   fs.writeFileSync(path.join(dir, "environment.json"), JSON.stringify({ pid: process.pid, electron: process.versions.electron,
     workArea: work, pointer, runtime: "out/preload/settings.js + out/renderer/settings.html", userData: app.getPath("userData") }, null, 2));
 
-  for (const profile of [{ name: "wide-100", width: 900, zoom: 1 }, { name: "wide-150", width: 930, zoom: 1.5 }, { name: "narrow-100", width: 480, zoom: 1 }]) {
+  // The full sidebar at 100% and 150%, the collapsed one in the same windows, and a narrow window, which keeps the
+  // collapsed sidebar without its toggle (2026-10-21). The full sidebar needs a page over 420 px tall, so the 150%
+  // window is 660 pt (440 px) tall.
+  for (const profile of [{ name: "wide-100", width: 900, height: 600, zoom: 1, wide: true }, { name: "wide-150", width: 930, height: 660, zoom: 1.5, wide: true },
+    { name: "narrow-100", width: 480, height: 600, zoom: 1, wide: false }]) {
     controller.signal.throwIfAborted();
     window.webContents.setZoomFactor(profile.zoom);
-    window.setBounds({ x: work.x + 50, y: work.y + 50, width: profile.width, height: 600 });
+    window.setBounds({ x: work.x + 50, y: work.y + 50, width: profile.width, height: profile.height });
     await delay(400, undefined, { signal: controller.signal });
     const top = await rect(".titlebar");
     for (const [label, fraction] of [["left", 0.25], ["middle", 0.55], ["right", 0.85]] as const)
       await dragCase(`${profile.name}-top-${label}`, { x: top.x + top.width * fraction, y: top.y + Math.min(top.height / 2, 20) }, true);
-    if (profile.name.startsWith("narrow")) continue;
-    const brand = await rect(".brand"), lastTab = await rect("#tab-failures"), footer = await rect("#sidebar-about-hide");
-    const bottom = lastTab.y + lastTab.height, gap = footer.y - bottom;
-    if (gap < 80) throw new Error("Sidebar has no unambiguous blank gap for dragging");
-    await dragCase(`${profile.name}-sidebar-blank`, { x: centre(lastTab).x, y: bottom + gap / 2 }, true);
-    await dragCase(`${profile.name}-brand`, centre(brand), true);
-    await dragCase(`${profile.name}-tab-no-drag`, centre(await rect("#tab-recording")), false);
-    await click("#tab-recording");
-    const selected = await until(() => read<boolean>(`document.querySelector('#tab-recording')?.getAttribute('aria-selected') === 'true'`));
-    record(`${profile.name}-tab-click`, selected, { selected });
-    await dragCase(`${profile.name}-menu-button-no-drag`, centre(await rect("#sidebar-about-hide-menu")), false);
-    await click("#sidebar-about-hide-menu");
-    const opened = await until(() => read<boolean>(`Boolean(document.querySelector('[role="menu"][data-open]'))`));
-    record(`${profile.name}-menu-click`, opened, { opened });
-    if (!opened) throw new Error("Window actions menu did not open; cannot test the overlay");
-    await dragCase(`${profile.name}-menu-overlay-no-drag`, { x: top.x + top.width * 0.85, y: top.y + Math.min(top.height / 2, 20) }, false);
-    // The outside mouse-down used by the overlay case may already dismiss the menu.
-    // Escape with no menu open would correctly close Settings instead of preparing the next profile.
-    if (await read<boolean>(`Boolean(document.querySelector('[role="menu"][data-open]'))`)) await ax.key(KEY.escape);
-    if (!await until(() => read<boolean>(`!document.querySelector('[role="menu"][data-open]')`))) throw new Error("Window actions menu did not close");
+    for (const mode of profile.wide ? ["full", "collapsed"] as const : ["collapsed"] as const) {
+      const name = profile.wide ? `${profile.name}-${mode}` : profile.name;
+      if (profile.wide) await setSidebar(mode);
+      const actions = mode === "full" ? "#sidebar-about-hide" : "#sidebar-about-hide-menu";
+      // The sidebar's blank space between the tabs and the window actions drags. Should six tabs leave too little of it
+      // to aim at unambiguously, the window grows, as a user would make it, first.
+      let gap = await sidebarGap(actions);
+      if (gap.size < 80) {
+        const height = Math.ceil(window.getBounds().height + 90 - gap.size);
+        if (work.y + 50 + height > work.y + work.height) throw new Blocked(`Need a primary display work area of at least ${height + 50} pt tall for ${name}'s sidebar gap`);
+        window.setBounds({ ...window.getBounds(), height });
+        await delay(400, undefined, { signal: controller.signal });
+        gap = await sidebarGap(actions);
+        if (gap.size < 80) throw new Error(`Sidebar has no unambiguous blank gap for dragging (${name}, ${gap.size} pt)`);
+      }
+      await dragCase(`${name}-sidebar-blank`, { x: gap.x, y: gap.y }, true);
+      if (mode === "full") await dragCase(`${name}-brand`, centre(await rect(".brand")), true);
+      await dragCase(`${name}-tab-no-drag`, centre(await rect("#tab-recording")), false);
+      await click("#tab-recording");
+      const selected = await until(() => read<boolean>(`document.querySelector('#tab-recording')?.getAttribute('aria-selected') === 'true'`));
+      record(`${name}-tab-click`, selected, { selected });
+      await click("#tab-library");
+      if (profile.wide) await dragCase(`${name}-toggle-no-drag`, centre(await rect("#sidebar-toggle")), false);
+      await dragCase(`${name}-menu-button-no-drag`, centre(await rect("#sidebar-about-hide-menu")), false);
+      await click("#sidebar-about-hide-menu");
+      const opened = await until(() => read<boolean>(`Boolean(document.querySelector('[role="menu"][data-open]'))`));
+      record(`${name}-menu-click`, opened, { opened });
+      if (!opened) throw new Error("Window actions menu did not open; cannot test the overlay");
+      await dragCase(`${name}-menu-overlay-no-drag`, { x: top.x + top.width * 0.85, y: top.y + Math.min(top.height / 2, 20) }, false);
+      // The outside mouse-down used by the overlay case may already dismiss the menu.
+      // Escape with no menu open would correctly close Settings instead of preparing the next profile.
+      if (await read<boolean>(`Boolean(document.querySelector('[role="menu"][data-open]'))`)) await ax.key(KEY.escape);
+      if (!await until(() => read<boolean>(`!document.querySelector('[role="menu"][data-open]')`))) throw new Error("Window actions menu did not close");
+    }
+    if (profile.wide) await setSidebar("full");
   }
   record("console", consoleErrors.length === 0, consoleErrors);
   complete = true;

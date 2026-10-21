@@ -174,13 +174,15 @@ try {
       await ax.restorePasteboard([]);
       await chord(KEY.a, "⌘A");
       await chord(KEY.c, "⌘C");
-      const labels = [translate("Recording settings", language), translate("General", language)];
+      // The page's title names the tab shown; a full sidebar adds every tab's name, a collapsed one (a narrow window's,
+      // or one the user collapsed) shows its tabs as icons, so one tab's name is what every layout copies.
+      const labels = (["Recordings", "Recording Studio", "Recording settings", "General", "Keyboard Shortcuts", "Troubleshooting"] as const).map(label => translate(label, language));
       let copied = "";
-      for (const deadline = Date.now() + 2000; Date.now() < deadline && !labels.every(label => copied.includes(label)); await sleep(150)) {
+      for (const deadline = Date.now() + 2000; Date.now() < deadline && !labels.some(label => copied.includes(label)); await sleep(150)) {
         copied = await command("pbpaste", [], controller.signal);
       }
-      check(copyCheck, labels.every(label => copied.includes(label)),
-        copied ? `${copied.length} characters, ${labels.map(label => `${JSON.stringify(label)} ${copied.includes(label) ? "present" : "absent"}`).join(", ")}` : "pasteboard still empty after 2 s");
+      check(copyCheck, labels.some(label => copied.includes(label)),
+        copied ? `${copied.length} characters, ${labels.filter(label => copied.includes(label)).map(label => JSON.stringify(label)).join(", ") || "no tab's name"} present` : "pasteboard still empty after 2 s");
     }
     await chord(KEY.m, "⌘M");
     const minimized = await until("⌘M to minimize Settings", snapshot => settingsWindow(snapshot)?.minimized === true).catch(() => undefined);

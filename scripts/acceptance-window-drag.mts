@@ -19,7 +19,7 @@ function stop(message: string, code = 2): never { console.error(message); proces
 if (args.length === 1 && args[0] === "--help") {
   console.log("Usage: pnpm acceptance:window-drag [-- --out <new-directory>] [--drill-cancel]\n"
     + "Builds the production page/preload, then tests real macOS window dragging in an isolated fixture.\n"
-    + "Requires desktop handoff, an unlocked primary work area ≥1090×700 pt, Accessibility and Screen Recording.\n"
+    + "Requires desktop handoff, an unlocked primary work area ≥1090×760 pt, Accessibility and Screen Recording.\n"
     + "Does not record media or modify app preferences. --drill-cancel interrupts after the first measured drag.\n"
     + "Exit: 0 pass, 1 fail/cleanup failure, 2 blocked, 130/143 clean interrupt. Reports include AX bounds and OS screenshots.");
   process.exit(0);

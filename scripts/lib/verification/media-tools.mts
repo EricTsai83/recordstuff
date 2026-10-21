@@ -222,3 +222,27 @@ export function syncMarkers(file: string, durationSeconds: number | undefined): 
   ], "ffmpeg silencedetect"));
   return { flashes: parseBlackdetect(video.stderr, durationSeconds), beeps: parseSilencedetect(audio.stderr, durationSeconds) };
 }
+
+/** The overall peak in dBFS from `astats` (-Infinity for digital silence), for comparing one material's recordings. */
+export function overallPeak(file: string, parse: (stderr: string) => number | undefined): number {
+  const { stderr } = completed("ffmpeg astats", run("ffmpeg", [
+    "-hide_banner", "-nostats", "-vn", "-i", file,
+    "-af", "astats=measure_perchannel=none:measure_overall=Peak_level",
+    "-f", "null", "-",
+  ], "ffmpeg astats peak"));
+  const peak = parse(stderr);
+  if (peak === undefined) throw new MeasurementError(`ffmpeg astats reported no overall peak${stderrTail(stderr)}`);
+  return peak;
+}
+
+/** One frame at `seconds` as `rgb24`, and a PNG of it at `png` for a person to look at. */
+export function frameRgb(file: string, seconds: number, width: number, height: number, png: string): { width: number; height: number; data: Buffer } {
+  const at = ["-hide_banner", "-loglevel", "error", "-ss", seconds.toFixed(3), "-i", file, "-frames:v", "1"];
+  const raw = spawnSync("ffmpeg", [...at, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: MAX_BUFFER, timeout: mediaTimeout(), killSignal: "SIGKILL" });
+  if (raw.error) throw (raw.error as NodeJS.ErrnoException).code === "ENOENT" ? new ToolMissingError("ffmpeg") : new MeasurementError(`ffmpeg: ${raw.error.message}`);
+  if (raw.status !== 0 || raw.stdout.length !== width * height * 3) {
+    throw new MeasurementError(`ffmpeg frame at ${seconds} s: ${raw.stdout.length} bytes for ${width}×${height}${stderrTail(String(raw.stderr))}`);
+  }
+  completed("ffmpeg frame picture", run("ffmpeg", [...at, "-y", png]));
+  return { width, height, data: raw.stdout };
+}

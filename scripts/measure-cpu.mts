@@ -37,7 +37,7 @@
  * full screen hides the menu bar, and closed again before R. Then
  * S. the same recordings with the Studio showing the engine's preview and the meters, judged against R's median at the
  * same rate (D18: at most 8 points more), and L. a Live preview held for 50 s, judged against the camera's recording
- * budget at that rate (D18: a recording without the file), whose Live preview and Stop preview are found through
+ * budget at that rate (D18: a recording without the file), whose Live preview switch, pressed to start and again to stop, is found through
  * Chromium's accessibility tree, turned off again at once (Chromium may keep some of its cost: L is measured after
  * S for that reason), and pressed with the pointer. Run with `--camera preview=0`
  * so R has no prototype page; the Studio window should stand on another display than the material, which the report
@@ -523,7 +523,7 @@ async function main(): Promise<number> {
         { check: "Nothing recorded", limit: "no record sent", actual: wrote ? "a recording began" : "none", verdict: wrote ? "fail" : "pass" }] });
     note(`L at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%`);
     const stopFrom = log.end();
-    await step("L: pressing Stop preview", () => clickNamed(["Stop preview", "停止預覽"], "Stop preview"));
+    await step("L: pressing Live preview again to stop it", () => clickNamed(["Live preview", "即時預覽"], "Live preview"));
     await step("L: the Live preview let go of", () => waitForLog(log, stopFrom, /cancelled \(preview\)/, "the Live preview let go of", controller.signal, 15_000));
   };
   /** Closes Settings with ⌘W while it is focused in front; the quit closes it otherwise. */
