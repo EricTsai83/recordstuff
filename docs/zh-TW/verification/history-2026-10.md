@@ -4,6 +4,19 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 077 結案 — 2026-10-22
+
+Plan 077（原生錄影引擎與麥克風控制的親手驗收）於 2026-10-22 在 `pnpm start:app` 從 `c4dbc2c3` 建置的簽章 bundle 上執行（macOS 26.6.2，兩台 BenQ 螢幕，MacBook 闔上蓋子）。硬體與「系統設定」由維護者操作；Claude 讀取 log 與檔案，並在維護者中途要求下自行完成其餘操作：以 System Events 送快捷鍵、以 CoreGraphics 點擊受測 bundle 的設定，以及在 App 結束時寫入 `settings.json` 的設定。筆記、影格與截圖：[2026-10-22T2314-077-hands-on](../../verification/measurements/2026-10-22T2314-077-hands-on/notes.md)（僅本機）。
+
+- **睡眠（步驟 1）。**兩段錄影都以 Apple 選單 → 睡眠停止。第一段 macOS 關螢幕後 361 ms 又打開，沒有真的睡眠；錄影仍以 `stoppedEarly: "sleep"` 停止並存檔。第二段在 `suspend` 後 304 ms host 停止、再 21 ms 存檔，早於約 5 s 後的睡眠；「已儲存…Mac 進入睡眠，已停止錄影」通知在睡眠期間暫緩、醒來後顯示。沒有留下 sentinel，兩段都沒遇到已知的 drain 風險（stream 在 drain 期間結束仍回報 `capture_failed`）。兩個檔案都可解碼，影音等長。
+- **移除螢幕（步驟 2）。**「螢幕」設為 BenQ BL2480T，錄影 18 s 時拔掉它：記錄 `target_removed`，以 `capture_failed`（recording display removed）結束，保留 fragmented 的 5.3 MB 殘檔（可解碼），顯示「錄影中斷」。殘檔影像 16.6 s、音訊 18.0 s：畫面在 main 的監看發現移除前約 1.4 s 就停了，聲音繼續。保存的螢幕仍不在時兩次開始都以 `display_unavailable`（`target_missing`）拒絕，沒有留下任何東西；改選剩下的螢幕後下一段錄影正常存檔。螢幕已接回。
+- **權限被拒（步驟 3）。**在「螢幕與系統錄音」關閉 RecordStuff 後，開始錄影以 `permission_denied` 失敗，沒有檔案或 sentinel，狀態變成 needsPermission，顯示「錄影失敗／需要螢幕錄製權限」；失敗前在 `starting` 停了 9.3 s，三次來源列舉各自等待（觀察）。設定中的權限卡沒有查看。重新開啟權限時，macOS 的重開打開了 /Applications 裡較舊的 RecordStuff（同一 bundle ID）：它把目前的紀錄讀成無效並拒絕覆寫，也沒改設定；已結束它並以 `pnpm open:app` 重開 bundle，下一段錄影正常存檔。舊版的錄影不算證據。
+- **D6 與 Dock（步驟 4）。**關閉 Dock 自動隱藏後，「隱藏選單列與 Dock」關閉的錄影有 Dock 與選單列（`0 system window(s) hidden`），開啟的錄影兩者都沒有（`35 system window(s) hidden`），由 Claude 判讀各一張影格。
+- **藍牙耳機（步驟 5）。**第一次 FreeClip 2 沒有連上 Mac，什麼也沒列出。從控制中心連上後，連線與收回充電盒都讓監看程序重新列出輸入（`devices: listing the inputs`），期間沒人碰視窗，視窗還在其他視窗後面；選單隨後列出 HUAWEI FreeClip 2，「搜尋裝置」立即再列出它，收回盒子後選單不再有它。macOS 列出其麥克風花了多久沒有量到：macOS 的藍牙 log 沒有連線時間。
+- **錄影中切換（步驟 6）。**系統音訊設為 0%（寫入設定）、由 MacBook 喇叭播 `say`，一段 52.5 s、從 BenQ Monitor 麥克風開始的錄影顯示「會立即切換這次錄影的麥克風。」，並依序切到 MacBook Pro 麥克風（77 ms）、HUAWEI FreeClip 2（325 ms，16 kHz）再回到 BenQ Monitor（129 ms），每次都記錄 `microphone switched from … to …`；選「跟隨系統」而它指向正在錄的耳機時記錄為保留，之後的選擇仍會切換。存檔行與紀錄依序列出 `microphones`；影像與音訊都是 52.547 s，每個切換點的音量都隨之改變。內建麥克風那 13 s 是數位靜音，因為蓋子闔上：macOS 仍列出並允許開啟它，但只送出零，而且不會被判定為遺失（觀察，未變更）。
+- **收尾。**每段錄影都已停止並存檔；RecordStuff 正常結束、沒有殘留程序；`settings.json` 依回合前的副本逐位元組還原；維護者已把 Dock 自動隱藏改回、耳機收回盒中；`pnpm acceptance:cleanup-audit` 通過；`caffeinate` 已停止。步驟 6 改過輸出音量，原值沒有記下。回合結束後依維護者同意，本回合的錄影（含殘檔）與 /Applications 裡較舊的 RecordStuff 已移到垃圾桶。
+- **未驗證。**權限卡；macOS 列出藍牙麥克風的時間；內建麥克風在切換點兩側的人聲（蓋子闔上）；Windows（依 076 的 D8）。
+
 ## Plan 082 結案 — 2026-10-19
 
 Plan 082（錄影工作室的第一次點擊與它的量測 runner）從 081 的結案而來，2026-10-19 在簽署的 bundle 上執行，不需要相機。維護者在第 1 步後決定 D1：維持 macOS 對不在前景的視窗第一次點擊的慣例，改修 runner；D2 依建議。
@@ -41,7 +54,7 @@ Plan 080（macOS 上以共用 GPU 貼圖顯示錄影工作室的預覽）於 202
 
 ## Plan 079 結案 — 2026-10-19
 
-Plan 079（麥克風控制）於 2026-10-19 依維護者採納建議的 D1–D3 實作：設定中的「輸入音量」、跟著連接變化並有「搜尋裝置」的裝置清單，以及錄影中切換麥克風（[錄影](../system-design/recording.md#音訊)、[桌面](../system-design/desktop.md)）。這裡記錄簽署 bundle 上的回合與計畫結案：維護者同日要求，下列兩項需要動手的案例移到 [077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)，由它集中所有需要動手的案例，079 隨之結案。
+Plan 079（麥克風控制）於 2026-10-19 依維護者採納建議的 D1–D3 實作：設定中的「輸入音量」、跟著連接變化並有「搜尋裝置」的裝置清單，以及錄影中切換麥克風（[錄影](../system-design/recording.md#音訊)、[桌面](../system-design/desktop.md)）。這裡記錄簽署 bundle 上的回合與計畫結案：維護者同日要求，下列兩項需要動手的案例移到 [077](#plan-077-結案--2026-10-22)，由它集中所有需要動手的案例，079 隨之結案。
 
 - **自動化。**`pnpm acceptance:regression`：check（1,985 個 Vitest 測試、133 個原生測試、建置）與 168 個背景案例，其中包括 S139–S141（輸入音量、搜尋裝置、錄影中的選擇器）。引擎以 `cargo check` 編譯 `x86_64-pc-windows-msvc`；未觸發 CI。Codex GPT-6.1 Sol 兩輪唯讀 review 找出五個問題，皆已修正：一次只送一個切換，回覆不會被當成之後的選擇；倒數中的回覆也會接受；錄影中仍跟著裝置清單；切換到正在錄的裝置時回報為保留；開始監看時先送一次清單。
 - **桌面回合（依維護者要求無人值守）。**維護者回覆「好了」後要求 agent 代為進行；設定由 Codex GPT-6 Astra 的 computer use 操作，聲音由喇叭播放、經 BenQ 螢幕的麥克風收音。證據為 Computer Use 觀察、App log 與 agent 的截圖。
@@ -152,7 +165,7 @@ Plan 075 把使用者的相機放進錄影。2026-10-17 依維護者要求改採
 - **Windows（D8）。** `native-windows` job 在 `windows-2025` 上錄下螢幕、區域、視窗與單一程序的聲音；安裝程式 smoke 會載入安裝後的模組。未在 Windows 實機上測試：擷取品質與影格時序、錄影中不出現自己的視窗、系統聲音內容、CPU、麥克風，以及 077 的所有案例。編碼器是 Microsoft 的軟體 H.264；硬體編碼器與剩下的 Chromium 時期提示移到 078（[結案紀錄](#plan-078-結案--2026-10-17)）。
 - **macOS 驗收（2026-10-15/16，60 Hz 1920×1080 螢幕，簽署 bundle）。** `pnpm acceptance` 在 60 fps 通過。`pnpm matrix -- quick`：閃光到嗶聲 −25 ms，Chromium 為 +68 至 +74 ms；間隔 50 ms 的影格在 idle 影格修正（PR #12）前為 0.66–2.17%，修正後 0.22–0.44%，Chromium 為 0，剩下部分的原因尚未找到。`pnpm audio:quality` 兩個引擎都通過所有檢查。`pnpm measure:cpu -- --fps 60 --repeat 3`：錄影在 30／60 fps 佔一個核心的 10.4%／14.0%，Chromium 為 15.3%／23.3%；錄影後閒置 0.036%，Chromium 為 0.054%，且不留下 renderer 或音訊服務；這些中位數是參考 Mac 的 baseline。`pnpm acceptance:tray` 通過 14 個案例（兩個因輸入競態而未執行）；錄影中開啟的設定視窗出現在螢幕截圖上，卻不在同一時刻的錄影影格中；錄影中結束 App 會把錄影存檔。維護者在移除 Chromium 路徑前接受了這些結果與剩下的影格間隔（2026-10-16）。
 - **過程中發現。** `pnpm measure:cpu` 的設定視窗情境最高量到一個核心的 39%：一張卡片的 hover 預覽在其他 App 後方不斷循環。runner 會先移開游標（PR #7），設定視窗失去焦點時也會停止預覽（PR #8）。
-- **移到其他計畫。** 錄影中睡眠、移除螢幕、權限被拒以及 D6 的 Dock 需要維護者動手：[077](../../../plans/077-native-hands-on-acceptance.zh-TW.md)。剩下的影格間隔、開發版 App 自己的視窗、原生節奏診斷，以及 Chromium 路徑留下的部分：078（[結案紀錄](#plan-078-結案--2026-10-17)）。
+- **移到其他計畫。** 錄影中睡眠、移除螢幕、權限被拒以及 D6 的 Dock 需要維護者動手：[077](#plan-077-結案--2026-10-22)。剩下的影格間隔、開發版 App 自己的視窗、原生節奏診斷，以及 Chromium 路徑留下的部分：078（[結案紀錄](#plan-078-結案--2026-10-17)）。
 - **學習文章。** 來源都隨 076 結案的三篇：[原生 API 與技術選擇](../../learning/native-apis-and-tech-stack-choices.html)、[編解碼器、容器與不怕當機的錄影](../../learning/codecs-containers-and-crash-safe-recording.html)與[開源授權實務](../../learning/open-source-licenses-in-practice.html)，依維護者要求，每篇都以選擇的取捨為中心。
 - **Pull request。** #5 Windows 引擎、#6 引擎、#7 與 #8 hover 預覽、#9 macOS 整合與 D6 開關、#10 兩個平台的建置、#11 驗證工具、#12 idle 影格修正、#13 `pnpm acceptance` 的結束與自身視窗案例、#14 移除 Chromium 路徑；文件另以一個 pull request 完成。
 

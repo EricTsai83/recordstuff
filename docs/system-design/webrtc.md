@@ -45,7 +45,7 @@ On the M1 Pro, 60 Hz 1920×1080 display, signed bundle, 2026-10-14 to 2026-10-16
 | Frames 50 ms apart | 0.22–0.44% | 0% |
 | Shortcut to `prepared` | 457–535 ms | 347–369 ms |
 
-The maintainer accepted these results, the frame gaps and the slower start included, on 2026-10-16, and the Chromium path was removed. Sleep, display removal, permission denial and the Dock with Hide menu bar and Dock are hands-on cases left to [plan 077](../../plans/077-native-hands-on-acceptance.md); the frame gaps and native cadence diagnostics to plan 078 ([closure](../verification/history-2026-10.md#plan-078-closure--2026-10-17)).
+The maintainer accepted these results, the frame gaps and the slower start included, on 2026-10-16, and the Chromium path was removed. Sleep, display removal, permission denial and the Dock with Hide menu bar and Dock passed hands-on on 2026-10-22 ([plan 077](../verification/history-2026-10.md#plan-077-closure--2026-10-22)); the frame gaps and native cadence diagnostics to plan 078 ([closure](../verification/history-2026-10.md#plan-078-closure--2026-10-17)).
 
 ## What the native engine trades for it
 
