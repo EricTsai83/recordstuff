@@ -167,6 +167,56 @@ it.skipIf(process.platform === "win32")("keeps a sentinel it cannot read now and
   expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([sentinel("e5", "e5")]);
 });
 
+it("reports a complete write whose rename a power loss kept from the disk, newest content first", async () => {
+  fs.mkdirSync(sentinelDir, { recursive: true });
+  // Only the temporary file reached the disk: the media file it names may already exist.
+  fs.writeFileSync(path.join(sentinelDir, "p1.json.tmp"), JSON.stringify({ version: 1, ...sentinel("p1", "p1") }));
+  // A rewrite naming the failure, complete but not renamed over the older sentinel.
+  fs.writeFileSync(path.join(sentinelDir, "p2.json"), JSON.stringify({ version: 1, ...sentinel("p2", "p2") }));
+  fs.writeFileSync(path.join(sentinelDir, "p2.json.tmp"), JSON.stringify({ version: 1, ...sentinel("p2", "p2"), failureId: "f2" }));
+  const log = vi.fn();
+  expect(await new SessionSentinels(sentinelDir, log).leftovers()).toEqual([sentinel("p1", "p1"), { ...sentinel("p2", "p2"), failureId: "f2" }]);
+  expect(fs.readdirSync(sentinelDir).sort()).toEqual(["p1.json", "p2.json"]);
+  expect(log).toHaveBeenCalledWith(expect.stringContaining("adopted the complete interrupted write p1.json.tmp"));
+});
+
+it("keeps a complete write it cannot adopt now, and the older sentinel, for a later launch", async () => {
+  fs.mkdirSync(sentinelDir, { recursive: true });
+  fs.writeFileSync(path.join(sentinelDir, "k1.json"), JSON.stringify({ version: 1, ...sentinel("k1", "k1") }));
+  fs.writeFileSync(path.join(sentinelDir, "k1.json.tmp"), JSON.stringify({ version: 1, ...sentinel("k1", "k1"), failureId: "f1" }));
+  const rename = vi.spyOn(fs.promises, "rename").mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "EBUSY" }));
+  try { expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([]); }
+  finally { rename.mockRestore(); }
+  expect(fs.readdirSync(sentinelDir).sort()).toEqual(["k1.json", "k1.json.tmp"]);
+  expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([{ ...sentinel("k1", "k1"), failureId: "f1" }]);
+});
+
+it("keeps a temporary write it cannot read now, and the older sentinel, for a later launch", async () => {
+  fs.mkdirSync(sentinelDir, { recursive: true });
+  fs.writeFileSync(path.join(sentinelDir, "r1.json"), JSON.stringify({ version: 1, ...sentinel("r1", "r1") }));
+  const tmp = path.join(sentinelDir, "r1.json.tmp");
+  fs.writeFileSync(tmp, JSON.stringify({ version: 1, ...sentinel("r1", "r1"), failureId: "f1" }));
+  const original = fs.promises.open;
+  const open = vi.spyOn(fs.promises, "open").mockImplementation(async (...args: Parameters<typeof fs.promises.open>) => {
+    if (args[0] === tmp) throw Object.assign(new Error("I/O"), { code: "EIO" });
+    return original(...args);
+  });
+  try { expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([]); }
+  finally { open.mockRestore(); }
+  expect(fs.readdirSync(sentinelDir).sort()).toEqual(["r1.json", "r1.json.tmp"]);
+  expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([{ ...sentinel("r1", "r1"), failureId: "f1" }]);
+});
+
+it("removes a session's complete temporary write with its sentinel, so a launch cannot report a finished session", async () => {
+  const sentinels = new SessionSentinels(sentinelDir);
+  await sentinels.write(sentinel("done", "done"));
+  // A rewrite whose rename and cleanup both failed.
+  fs.writeFileSync(path.join(sentinelDir, "done.json.tmp"), JSON.stringify({ version: 1, ...sentinel("done", "done") }));
+  await sentinels.remove("done");
+  expect(fs.readdirSync(sentinelDir)).toEqual([]);
+  expect(await new SessionSentinels(sentinelDir).leftovers()).toEqual([]);
+});
+
 it("never reports this process's own sessions and discards unusable leftovers", async () => {
   const log = vi.fn();
   const sentinels = new SessionSentinels(sentinelDir, log);
@@ -202,7 +252,8 @@ it("removes a sentinel Windows holds open for a moment instead of leaving it to 
     const removed = sentinels.remove("held");
     await vi.runAllTimersAsync();
     await removed;
-    expect(unlink).toHaveBeenCalledTimes(2);
+    // The held sentinel twice, then its absent temporary write once.
+    expect(unlink).toHaveBeenCalledTimes(3);
     expect(fs.readdirSync(sentinelDir)).toEqual([]);
   } finally {
     unlink.mockRestore();

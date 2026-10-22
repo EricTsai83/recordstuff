@@ -220,7 +220,7 @@ sequenceDiagram
 
 `record` 之前不寫入任何東西：引擎在 `prepare` 時開啟預留的檔案，但在 `record` 時才啟動 writer，因此開始失敗或取消只會留下空檔並被刪除，結果為 empty。（隱藏 renderer 的 writer 在可能等待 120 秒的擷取請求之前就開啟並持續 sync，所以它的開始失敗會先排空 writer 最多 2 秒，以回報已保留的磁碟錯誤；現在已不需要。）
 
-中斷證據是每個 session 一個 sentinel 檔，位於 `userData/recording-sessions/`，檔名為 session id，內容為 session id、開始時間與暫存檔路徑。它在建立暫存檔之前以原子寫入完成，因此當機不會留下沒有任何 sentinel 記錄的暫存檔；寫入失敗只記錄一次，不阻擋錄影。為撞名改用後綴時若改寫 sentinel 失敗，會移除前一次嘗試的 sentinel，因為它指向的撞名檔屬於另一個 session。每個終止結果在發布結果後移除該 session 自己的 sentinel，正常退出會等待移除完成。啟動時、在紀錄還原前，先前程序留下的每個 sentinel 都會成為一筆 `app_terminated` 失敗紀錄（「RecordStuff 在錄影期間未正常結束」），其路徑是查找線索，以還原部分檔的相同方式重新檢查：只有該處存在非空檔案時才是 partial，否則為 unknown。紀錄時間為該 session 的開始時間。只有該紀錄已寫入磁碟（包含之後歷史自動重試成功）後，才移除 sentinel，讓失敗紀錄先接手證據，已確認並移除的紀錄也不會再出現；紀錄 ID 由 session 推導，因此紀錄始終未能保存時，下次啟動會重試而不重複新增。單一執行個體鎖與本程序自己的 session 清單確保被回報的 sentinel 都屬於已結束的程序。中斷的 sentinel 寫入或無效內容沒有指向任何媒體，會直接捨棄；啟動時暫時無法讀取的 sentinel，以及較新版本寫下的 sentinel，則保留到之後的啟動。不掃描輸出資料夾中的其他檔案，也不復原、重新封裝或修復任何內容。
+中斷證據是每個 session 一個 sentinel 檔，位於 `userData/recording-sessions/`，檔名為 session id，內容為 session id、開始時間與暫存檔路徑。它在建立暫存檔之前以原子寫入完成，因此當機不會留下沒有任何 sentinel 記錄的暫存檔；寫入失敗只記錄一次，不阻擋錄影。為撞名改用後綴時若改寫 sentinel 失敗，會移除前一次嘗試的 sentinel，因為它指向的撞名檔屬於另一個 session。每個終止結果在發布結果後移除該 session 自己的 sentinel，正常退出會等待移除完成。啟動時、在紀錄還原前，先前程序留下的每個 sentinel 都會成為一筆 `app_terminated` 失敗紀錄（「RecordStuff 在錄影期間未正常結束」），其路徑是查找線索，以還原部分檔的相同方式重新檢查：只有該處存在非空檔案時才是 partial，否則為 unknown。紀錄時間為該 session 的開始時間。只有該紀錄已寫入磁碟（包含之後歷史自動重試成功）後，才移除 sentinel，讓失敗紀錄先接手證據，已確認並移除的紀錄也不會再出現；紀錄 ID 由 session 推導，因此紀錄始終未能保存時，下次啟動會重試而不重複新增。單一執行個體鎖與本程序自己的 session 清單確保被回報的 sentinel 都屬於已結束的程序。完整的暫存寫入（`<id>.json.tmp`，已在重新命名前寫入磁碟，但斷電讓重新命名沒有落盤）是最新內容，會取代原本的 sentinel；寫到一半的寫入或無效內容沒有指向任何媒體，會直接捨棄；啟動時暫時無法讀取的 sentinel，以及較新版本寫下的 sentinel，則保留到之後的啟動。不掃描輸出資料夾中的其他檔案，也不復原、重新封裝或修復任何內容。
 
 ### 存檔時轉成一般 MP4
 

@@ -84,27 +84,33 @@ export class SessionSentinels {
    */
   async remove(sessionId: string): Promise<void> {
     if (!VALID_ID.test(sessionId)) return;
-    try {
-      await retryWhileHeldOpen(() => fs.promises.unlink(this.file(sessionId)));
-    } catch (cause) {
-      if (errnoCode(cause) !== "ENOENT") {
-        this.log(`sentinel: could not remove ${sessionId}: ${String(cause)}`);
+    // A complete temporary write left by a failed rename goes too: a launch would take it for the sentinel.
+    for (const file of [this.file(sessionId), `${this.file(sessionId)}.tmp`]) {
+      try {
+        await retryWhileHeldOpen(() => fs.promises.unlink(file));
+      } catch (cause) {
+        if (errnoCode(cause) !== "ENOENT") {
+          this.log(`sentinel: could not remove ${path.basename(file)}: ${String(cause)}`);
+        }
       }
     }
     this.own.delete(sessionId);
   }
 
   /**
-   * Sentinels left by earlier processes. Never throws. An interrupted atomic
-   * write names no media file yet (the sentinel precedes the temporary file),
-   * so it and invalid content are logged and removed instead of reported. A
-   * sentinel that cannot be read right now, or that a newer version wrote, is
-   * kept for a later launch.
+   * Sentinels left by earlier processes. Never throws. A complete temporary file is the newest content, flushed before
+   * a rename that a power loss kept from the disk (the folder is not flushed), and the media file it names may exist:
+   * it takes the sentinel's place. A torn one names no media file yet (the sentinel precedes the temporary file), so it
+   * and invalid content are logged and removed instead of reported. A sentinel that cannot be read right now, or that
+   * a newer version wrote, is kept for a later launch.
    */
   async leftovers(): Promise<SessionSentinel[]> {
     let names: string[];
+    /** Sessions whose complete temporary write could not be adopted: both files wait for a later launch. */
+    const kept = new Set<string>();
     try {
       names = await fs.promises.readdir(this.dir);
+      if (await this.adoptCompleteWrites(names, kept)) names = await fs.promises.readdir(this.dir);
     } catch (cause) {
       if (errnoCode(cause) !== "ENOENT") this.log(`sentinel: could not read ${this.dir}: ${String(cause)}`);
       return [];
@@ -114,7 +120,7 @@ export class SessionSentinels {
       const temporary = name.endsWith(TEMPORARY);
       if (!temporary && !name.endsWith(SUFFIX)) continue;
       const sessionId = name.slice(0, name.length - (temporary ? TEMPORARY : SUFFIX).length);
-      if (!VALID_ID.test(sessionId) || this.own.has(sessionId)) continue;
+      if (!VALID_ID.test(sessionId) || this.own.has(sessionId) || kept.has(sessionId)) continue;
       const file = path.join(this.dir, name);
       let sentinel: SessionSentinel | "newer" | undefined;
       if (!temporary) {
@@ -146,6 +152,45 @@ export class SessionSentinels {
       await fs.promises.unlink(file).catch(() => undefined);
     }
     return found;
+  }
+
+  /**
+   * Renames each complete temporary write of an earlier process over its sentinel; true when any was. One that cannot
+   * be renamed now is added to `kept`, so neither it nor the older sentinel it replaces is reported or discarded.
+   */
+  private async adoptCompleteWrites(names: readonly string[], kept: Set<string>): Promise<boolean> {
+    let adopted = false;
+    for (const name of names) {
+      if (!name.endsWith(TEMPORARY)) continue;
+      const sessionId = name.slice(0, name.length - TEMPORARY.length);
+      if (!VALID_ID.test(sessionId) || this.own.has(sessionId)) continue;
+      const file = path.join(this.dir, name);
+      let text: string | undefined;
+      try {
+        const handle = await fs.promises.open(file, "r");
+        try {
+          if ((await handle.stat()).size <= MAX_BYTES) text = await handle.readFile("utf8");
+        } finally { await handle.close(); }
+      } catch (cause) {
+        // Unreadable says nothing about the content: deleting it could lose the newest evidence.
+        kept.add(sessionId);
+        this.log(`sentinel: could not read ${name}; kept for a later launch: ${String(cause)}`);
+        continue;
+      }
+      let sentinel: SessionSentinel | "newer" | undefined;
+      try { sentinel = text === undefined ? undefined : parse(sessionId, text); }
+      catch { sentinel = undefined; }
+      if (!sentinel || sentinel === "newer") continue;
+      try {
+        await fs.promises.rename(file, this.file(sessionId));
+        this.log(`sentinel: adopted the complete interrupted write ${name}`);
+        adopted = true;
+      } catch (cause) {
+        kept.add(sessionId);
+        this.log(`sentinel: could not adopt ${name}; kept for a later launch: ${String(cause)}`);
+      }
+    }
+    return adopted;
   }
 }
 
