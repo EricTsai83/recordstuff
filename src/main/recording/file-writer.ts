@@ -10,6 +10,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ErrorCode } from "../../shared/state";
 import { errnoCode, messageOf } from "../lib/errors";
+import { retryWhileHeldOpen } from "../lib/held-open";
 
 /** A file opened only to reserve its name: the engine writes it (engine-file-writer.ts). */
 export interface ReservedHandle {
@@ -172,7 +173,9 @@ export async function publishRecording(io: FileWriterFs, recordingPath: string, 
     const published = performance.now();
     let cleanupError: string | undefined;
     try {
-      await io.unlink(recordingPath);
+      // A scan or the indexer opening the new file can refuse this on Windows for a moment; left behind, the hidden
+      // name would keep the recording's space in use after the user deletes it.
+      await retryWhileHeldOpen(() => io.unlink(recordingPath));
     } catch (cause) {
       // The completed file is safe; a leftover temporary name (a second link
       // to it, or a full copy) must not turn a successful save into a failure.

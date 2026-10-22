@@ -30,6 +30,7 @@ import { Readable } from "node:stream";
 import { mp4Duration } from "./mp4-duration";
 import { errnoCode } from "../lib/errors";
 import { mapLimited } from "../lib/map-limited";
+import { retryWhileHeldOpen } from "../lib/held-open";
 import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
 
 export const MEDIA_SCHEME = "recordstuff-media";
@@ -122,15 +123,8 @@ const THUMBNAIL_RETRY_MS = 300;
  * (2026-10-06, formerly 10 s), since ⌘Z still works once the toast has gone, and waiting only keeps the file in place.
  */
 export const UNDO_TRASH_MS = 30_000;
-/**
- * Windows refuses to rename a folder while any file in it is open (EPERM, EACCES or EBUSY), and a length being read in
- * the background, a thumbnail, Explorer or a virus scan holds one only briefly: the rename is tried again for about a
- * second before it fails.
- */
-const FOLDER_RENAME_RETRIES_MS = [50, 100, 200, 300, 400];
 /** File-system requests a listing keeps in flight: a large output folder must not hold up main's other reads and writes. */
 const LISTING_CONCURRENCY = 16;
-const HELD_OPEN = new Set(["EPERM", "EACCES", "EBUSY"]);
 /** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
 const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
 
@@ -184,20 +178,9 @@ export async function relists(dir: string, name: string, folders: readonly Libra
   return fs.stat(path.join(dir, name)).then(stat => stat.isDirectory(), () => false);
 }
 
-/**
- * Renames a folder; on Windows, where a file another program holds open in it refuses the rename for a moment (EPERM,
- * EACCES, EBUSY), it tries again after each of `FOLDER_RENAME_RETRIES_MS` before the last attempt's error stands.
- */
-async function renameHeldFolder(from: string, to: string): Promise<void> {
-  for (const wait of process.platform === "win32" ? FOLDER_RENAME_RETRIES_MS : []) {
-    try {
-      return await fs.rename(from, to);
-    } catch (cause) {
-      if (!HELD_OPEN.has(errnoCode(cause) ?? "")) throw cause;
-      await new Promise(resolve => setTimeout(resolve, wait));
-    }
-  }
-  await fs.rename(from, to);
+/** Renames a folder; on Windows, where a file another program holds open in it refuses the rename for a moment, it is tried again. */
+function renameHeldFolder(from: string, to: string): Promise<void> {
+  return retryWhileHeldOpen(() => fs.rename(from, to));
 }
 
 /** Changes whenever the file's bytes do, as far as its size and modification time tell. */
