@@ -86,7 +86,8 @@ describe.runIf(process.platform === "darwin").each(RUNNERS)("$name interrupted d
     const pidFile = (file: string): number | undefined => {
       try { return Number(fs.readFileSync(path.join(state, file), "utf8").trim()) || undefined; } catch { return undefined; }
     };
-    for (let i = 0; i < 200 && (pidFile("build.pid") === undefined || pidFile("child.pid") === undefined); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    // Up to 40 s: under the full suite's load the runner can take over 10 s to reach its build.
+    for (let i = 0; i < 800 && (pidFile("build.pid") === undefined || pidFile("child.pid") === undefined); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
     const build = pidFile("build.pid");
     const child = pidFile("child.pid");
     owned.build = build;
@@ -101,5 +102,5 @@ describe.runIf(process.platform === "darwin").each(RUNNERS)("$name interrupted d
     expect(output).toContain("cleanup: every owned process exited");
     expect(alive(build!)).toBe(false);
     expect(alive(child!)).toBe(false);
-  }, 30_000);
+  }, 60_000);
 });
