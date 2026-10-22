@@ -1166,3 +1166,12 @@ fn frame_lead_without_a_frame_is_zero_not_the_maximums_start() {
     assert_eq!(frame_lead_ms(3_000, 2, 2_500), (1.5, 2.5));
     assert_eq!(frame_lead_ms(-4_000, 2, -1_000), (-2.0, -1.0));
 }
+
+#[test]
+fn a_writer_gone_without_answering_is_not_reported_as_a_timeout() {
+    let (reply, result) = std::sync::mpsc::channel();
+    drop(reply);
+    let failure = Finishing::from_receiver(result).wait().err().unwrap();
+    assert_eq!(failure.code, "output_write_failed");
+    assert_eq!(failure.detail, "the writer ended without finishing the file");
+}

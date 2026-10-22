@@ -370,14 +370,24 @@ pub struct Finishing {
 }
 
 impl Finishing {
+    #[cfg(test)]
+    pub(crate) fn from_receiver(result: FinishOutcome) -> Self {
+        Self { outcome: Some((result, None)), began: Instant::now() }
+    }
+
     /// Blocks until the file is plain or why it is not is known.
     pub fn wait(self) -> Result<Finished, WriteFailure> {
         let Some((result, thread)) = self.outcome else {
             return Ok(Finished { bytes: 0, fragmented: None, finalize_ms: 0.0 });
         };
-        let outcome = result
-            .recv_timeout(FINISH_TIMEOUT)
-            .map_err(|_| WriteFailure { code: "output_write_failed", detail: "finishing the file did not complete within 120 s".into() })?;
+        let outcome = result.recv_timeout(FINISH_TIMEOUT).map_err(|error| WriteFailure {
+            code: "output_write_failed",
+            detail: match error {
+                std::sync::mpsc::RecvTimeoutError::Timeout => format!("finishing the file did not complete within {} s", FINISH_TIMEOUT.as_secs()),
+                // The writer thread is gone without answering: it panicked, and the file is as it left it.
+                std::sync::mpsc::RecvTimeoutError::Disconnected => "the writer ended without finishing the file".into(),
+            },
+        })?;
         if let Some(thread) = thread {
             let _ = thread.join();
         }
