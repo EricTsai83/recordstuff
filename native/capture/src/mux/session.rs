@@ -108,6 +108,19 @@ impl<O: Output> SessionMuxer<O> {
         self.mp4.finish()
     }
 
+    /// Writes what is pending and syncs, leaving the file fragmented: for a recording that ends without finishing, so
+    /// what it already holds is kept. The held video sample, whose end is unknown, lasts a thirtieth of a second.
+    pub fn abandon(mut self) -> io::Result<()> {
+        if let Some(held) = self.held.take() {
+            self.video.samples.push(Owned { data: held.data, duration: (self.video_timescale / 30).max(1), sync: held.sync });
+        }
+        self.flush(VIDEO_TRACK)?;
+        if self.audio_timescale.is_some() {
+            self.flush(AUDIO_TRACK)?;
+        }
+        self.mp4.sync()
+    }
+
     /// The decode time video has reached, held sample excluded, and the number of samples written per track.
     #[cfg(test)]
     fn written(&self, track: usize) -> (u64, usize) {

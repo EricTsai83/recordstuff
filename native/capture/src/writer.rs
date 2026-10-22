@@ -186,8 +186,14 @@ fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(Writer
             }
             Ok(Command::Finish { video_end_ns, audio_frames, reply }) => {
                 let outcome = match refused.lock().unwrap().clone() {
-                    // Media is missing from the file: it stays fragmented, as written.
-                    Some(failure) => Err(failure),
+                    // Media is missing from the file: it stays fragmented, with everything that did arrive written and
+                    // synced, since main keeps it as the recording's partial.
+                    Some(failure) => {
+                        if let Some(muxer) = state.muxer.take() {
+                            let _ = muxer.abandon();
+                        }
+                        Err(failure)
+                    }
                     None => state.finish(video_end_ns, audio_frames),
                 };
                 let _ = reply.send(outcome);
@@ -358,14 +364,28 @@ mod tests {
         })
         .unwrap();
         // As if the disk had not kept up with everything already sent.
+        writer.sender.send(Media::VideoFormat { avcc: avcc(), width: 640, height: 360 });
+        // Half a second of video, all of it still pending in the muxer: no fragment has closed yet.
+        for n in 0..15u64 {
+            writer.sender.send(Media::Video { data: vec![n as u8; 20], pts_ns: n * 33_333_333, sync: n == 0 });
+        }
+        // Taken by the writer first, so its own accounting cannot lower the backlog set below.
+        while writer.sender.backlog.load(Ordering::Acquire) != 0 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        // As if the disk had not kept up with everything already sent.
         writer.sender.backlog.store(BACKLOG_LIMIT_BYTES - 10, Ordering::Release);
-        writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 0, sync: true });
-        writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 1, sync: true });
+        writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 15 * 33_333_333, sync: true });
+        writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 16 * 33_333_333, sync: true });
         let error = writer.sender.finish(1, None).recv().unwrap().unwrap_err();
         writer.thread.join().unwrap();
         assert_eq!(error.code, "output_write_failed");
         assert!(error.detail.starts_with("writer backlog limit"));
         assert_eq!(failures.lock().unwrap().len(), 1);
+        // What did arrive is in the partial, fragmented as it was written.
+        let parsed = parse(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(parsed.tracks[0].fragmented);
+        assert_eq!(parsed.tracks[0].samples.len(), 15);
         std::fs::remove_file(&path).unwrap();
     }
 
