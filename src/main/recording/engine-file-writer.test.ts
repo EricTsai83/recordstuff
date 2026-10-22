@@ -103,6 +103,24 @@ describe("EngineFileWriter", () => {
     expect(writer.preservationUncertain).toBe(true);
   });
 
+  it("marks preservation uncertain when the file vanished without this writer removing it", async () => {
+    // A drive unplugged mid-recording: its folder is gone, but the partial may still be on it.
+    const [recording, final] = paths();
+    const writer = await EngineFileWriter.open(recording, final);
+    await fs.writeFile(recording, "partial");
+    await fs.rm(recording);
+    await expect(writer.abandon()).resolves.toBeUndefined();
+    expect(writer.preservationUncertain).toBe(true);
+  });
+
+  it("says nothing was kept after a finish removed the empty file", async () => {
+    const [recording, final] = paths();
+    const writer = await EngineFileWriter.open(recording, final);
+    await expect(writer.finish()).rejects.toMatchObject({ code: "capture_start_failed" });
+    await expect(writer.abandon()).resolves.toBeUndefined();
+    expect(writer.preservationUncertain).toBe(false);
+  });
+
   it("reports a reservation refused for lack of space as disk_full", async () => {
     const [recording, final] = paths();
     const open = async () => { throw Object.assign(new Error("no space"), { code: "ENOSPC" }); };

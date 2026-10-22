@@ -31,6 +31,8 @@ export class EngineFileWriter implements RecorderWriter {
   private _bytesWritten = 0;
   private finished: Promise<string> | undefined;
   private abandoned: Promise<string | undefined> | undefined;
+  /** This writer removed the empty file itself, so a later ENOENT means "nothing was kept", not "can't tell". */
+  private removedEmpty = false;
 
   private constructor(
     readonly recordingPath: string,
@@ -85,7 +87,7 @@ export class EngineFileWriter implements RecorderWriter {
     const began = performance.now();
     this._bytesWritten = await this.size(this.recordingPath);
     if (this._bytesWritten === 0) {
-      await this.io.unlink(this.recordingPath).catch(() => undefined);
+      await this.removeEmpty();
       throw new FileWriteError("capture_start_failed", this.recordingPath, NO_MEDIA_DETAIL);
     }
     const checked = performance.now();
@@ -106,13 +108,19 @@ export class EngineFileWriter implements RecorderWriter {
     try {
       size = await this.size(this.recordingPath);
     } catch (cause) {
-      // Already gone (an empty file a failed finish removed), or unreadable: then whether it was kept is unknown.
-      if (errnoCode(cause) !== "ENOENT") this.preservationUncertain = true;
+      // Gone because this writer removed it empty: nothing was kept. Otherwise the file may still exist where it
+      // can't be seen now (a drive unplugged or a share unmounted mid-recording), so whether it was kept is unknown.
+      if (!(this.removedEmpty && errnoCode(cause) === "ENOENT")) this.preservationUncertain = true;
       return undefined;
     }
     this._bytesWritten = size;
     if (size > 0) return this.recordingPath;
-    await this.io.unlink(this.recordingPath).catch(() => undefined);
+    await this.removeEmpty();
     return undefined;
+  }
+
+  private async removeEmpty(): Promise<void> {
+    await this.io.unlink(this.recordingPath).catch(() => undefined);
+    this.removedEmpty = true;
   }
 }
