@@ -8,6 +8,7 @@
 
 use std::ffi::c_void;
 use std::ptr::{NonNull, null, null_mut};
+use std::sync::Mutex;
 
 use objc2_core_audio_types::{
     AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked, kAudioFormatLinearPCM,
@@ -213,8 +214,11 @@ pub struct DeviceWatch {
     client: *mut WatchClient,
 }
 
+/// What `heard` calls. A HAL notification already running when the watch stops can still read it, since removing a
+/// listener does not wait for a call in progress: so the client is never freed, only emptied under its lock, which
+/// waits for such a call to end. What stays behind is a lock and an empty slot, once per watch.
 struct WatchClient {
-    changed: Box<dyn Fn() + Send + Sync>,
+    changed: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 unsafe impl Send for DeviceWatch {}
@@ -238,11 +242,11 @@ impl DeviceWatch {
         if status != 0 {
             return Err(format!("the HAL's notification thread could not be chosen: {status}"));
         }
-        let watch = Self { client: Box::into_raw(Box::new(WatchClient { changed: Box::new(changed) })) };
+        let watch = Self { client: Box::into_raw(Box::new(WatchClient { changed: Mutex::new(Some(Box::new(changed))) })) };
         for selector in WATCHED {
             let status = unsafe { AudioObjectAddPropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, watch.client.cast()) };
             if status != 0 {
-                // Dropping it removes what was added and frees the client.
+                // Dropping it removes what was added and empties the client.
                 return Err(format!("the device list could not be followed: {status}"));
             }
         }
@@ -255,13 +259,18 @@ impl Drop for DeviceWatch {
         for selector in WATCHED {
             unsafe { AudioObjectRemovePropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, self.client.cast()) };
         }
-        drop(unsafe { Box::from_raw(self.client) });
+        let client = unsafe { &*self.client };
+        // A poisoned lock still holds the closure, which is released all the same.
+        client.changed.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
     }
 }
 
 unsafe extern "C" fn heard(_object: ObjectId, _count: u32, _addresses: *const Address, client: *mut c_void) -> OsStatus {
     let client = unsafe { &*(client as *const WatchClient) };
-    (client.changed)();
+    // Never panics across the C boundary: a poisoned lock is read as it is.
+    if let Some(changed) = client.changed.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref() {
+        changed();
+    }
     0
 }
 
@@ -540,6 +549,25 @@ mod tests {
         let host = host_time_ns(unsafe { mach_absolute_time() });
         let after = super::super::now_ns();
         assert!(host + 1_000_000 >= before && host <= after + 1_000_000, "{host} not within {before}..{after}");
+    }
+
+    #[test]
+    fn a_stopped_watch_calls_nothing_even_from_a_notification_already_under_way() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = calls.clone();
+        let watch = DeviceWatch::start(move || {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+        let client = watch.client;
+        unsafe { heard(SYSTEM_OBJECT, 0, null(), client.cast()) };
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop(watch);
+        // As the HAL may, after the listener was removed: the client is still there, and empty.
+        unsafe { heard(SYSTEM_OBJECT, 0, null(), client.cast()) };
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // The closure went with the watch: only this test's own handle is left.
+        assert_eq!(std::sync::Arc::strong_count(&calls), 1);
     }
 
     #[test]
