@@ -34,6 +34,7 @@
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
 | `pnpm acceptance:studio` | 啟動 bundle，錄影工作室放在測試素材旁：在其他 App 在前景時以三種方式各按一次「即時預覽」，只移動游標、不點擊地移到錄影工作室上再移開，並在錄影工作室開始的錄影中以「即時預覽」隱藏與顯示畫面，以 App 的 log 與存下的檔案判定（plan 082；[說明](#錄影工作室驗收)） |
 | `pnpm acceptance:capture-settings` | 在單色素材上以相機的預設與已儲存泡泡錄影，並以系統聲音 100%、50%、600% 與 0% 錄影，判定畫格中泡泡的位置與形狀，以及每個檔案相對 100% 的音量（2026-10-22；[說明](#錄影設定驗收)） |
+| `pnpm native:input` | 不是 runner：在引導式實機回合中，由執行者一次一個指令操作執行中的 bundle（依標題列出並點擊視窗元素、在其視窗內點擊或捲動、送出它註冊的快捷鍵），每次輸出一行標為執行者輸入的 JSON（2026-10-23；[詳見](#執行者輸入)） |
 | `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、左鍵開啟選單、三種取消、以鍵盤到「開啟 RecordStuff」與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 RecordStuff 是否在最前面、設定視窗聚焦並開在該檔的「錄影檔」（2026-10-04；之前為 Finder），每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
 
@@ -391,6 +392,18 @@ pnpm acceptance:capture-settings -- --skip-volume # 另有 --skip-camera、--out
 ```
 
 2026-10-22。確認相機版面與音量在錄影檔裡的實際效果，這是單元測試與背景套件看不到的。先建置並結束 bundle。每個案例 runner 都會把該案例的設定寫進使用者的設定（不倒數、主螢幕），啟動 bundle，透過 System Events 按下已註冊的快捷鍵錄影、停止、等待存檔後結束 App。**相機**：以 `scripts/camera-material.html`（全螢幕單一洋紅色）為素材，錄兩次：新的泡泡（沒有儲存版面，因此是 `DEFAULT_CAMERA_LAYOUT`）與已儲存的泡泡（左下角附近的圓形，位置記在主螢幕）。每次錄影取中間的一格，相機畫面必須出現在 `bubbleRect` 算出的位置，每一邊差距 3 px 內、內部填滿、四角依 `insideBubble` 的方式呈圓角，其他地方都是素材（`scripts/lib/acceptance/capture-settings.mts`）；這兩格存成 `camera-default.png` 與 `camera-saved.png` 供人檢視。相機使用使用者自己的選擇；沒有送出任何畫面的相機（休眠的 iPhone、闔上的螢幕）會讓該案例記為 blocked。**音量**：以 `scripts/test-material.html` 的嗶聲為素材，系統聲音依序設為 100%、50%、600% 與 0%。host 必須記錄 `volumeDb` 算出的增益（`audio: system … dB`），每個檔案的峰值與 100% 的差距必須等於該增益（誤差 1 dB 內）；0% 必須無聲（≤ −70 dBFS）。實際聽感仍由人判斷。設定檔會先複製成 `settings.before.json`，結束時逐位元組還原；錄影檔留在輸出資料夾。報告寫在 `docs/verification/measurements/<time>-capture-settings-acceptance/`。結束代碼依共用的順序。
+
+### 執行者輸入
+
+```bash
+pnpm native:input -- elements                 # 設定視窗中可點擊或選擇的元素與各自的中心座標
+pnpm native:input -- press 錄影設定            # 點擊標題完全相符、唯一且啟用的元素
+pnpm native:input -- scroll 900 600 6          # 在 bundle 視窗內的一點捲動整數行
+pnpm native:input -- click 1273 459            # 點擊 bundle 視窗內的一點
+pnpm native:input -- shortcut                  # 已註冊的錄影快捷鍵；`shortcut settings` 送 ⌥⌘,
+```
+
+2026-10-23 依 077 的回合新增。不是 runner，也不判定任何結果：在[引導式實機回合](../../../.agents/skills/native-acceptance/SKILL.md)中，沒有 runner 涵蓋的操作（錄影中改設定、選擇輸入、維護者處理硬體時開始錄影）由執行者操作受測 bundle，這是維護者 2026-10-18 允許、以執行檔路徑與 pid 比對受測 bundle 的做法。它只作用於本 checkout 的 `dist/mac-*/RecordStuff.app`，且必須恰好執行一份（以執行檔路徑 `pgrep`）。`elements` 與 `press` 會開啟 Chromium 的輔助使用樹（`AXManualAccessibility`），再透過 `native-ax.mts` 的 `elements` 讀取視窗中的按鈕、彈出按鈕、開關、欄位、連結、分頁、列與選單項目，並最多等 5 s 讓 Chromium 建好輔助使用樹；展開中的下拉選單選項在 AX 中是清單裡的純文字，會回報為 `AXOption`，捲出畫面的元素在 Chromium 中只剩視窗邊緣的一條細線，會標為 `offscreen`。`press` 遇到標題不存在、停用、捲出畫面或重複時會拒絕並列出現有標題，讓選擇依人看得到的文字，而不是從截圖量出的座標。`press`、`click` 與 `scroll` 拒絕程序視窗以外的點，也拒絕以輔助使用命中測試發現被其他程序視窗蓋住的點，因為事件會送到最上層的視窗；`press` 另外在命中元素及其上層都不帶所選標題時拒絕（展開的彈出選單或 bundle 自己的另一個視窗蓋在上面）；工作階段鎖定時（`CGSSessionScreenIsLocked`）一律以受阻拒絕任何輸入；`scroll` 每一格滾輪送一行。`shortcut` 讀取 App log，若最新的啟動不是這個 pid 與執行檔就拒絕（/Applications 中同 bundle ID 的舊版可能在權限變更後被 macOS 重開，並寫入同一份 log），再透過 System Events 送出已註冊的快捷鍵，數字用 key code（按住 Shift 的 `keystroke "1"` 會打出 `!`）。每個指令輸出一行含 `"input": "executor"`、pid 與執行檔的 JSON，供回合報告引用。Exit 0 完成、1 拒絕或失敗、2 受阻（非 macOS、bundle 未執行或執行兩份、螢幕已鎖定、輔助使用或對 System Events 的自動化權限被拒、參數無效）。游標與按鍵都是真的，因此仍須桌面交接；回合只把設定當作前置條件時，也可以像 runner 一樣在 App 結束時寫入 `settings.json`，結束後逐位元組還原。
 
 ## 設定快捷鍵驗收
 

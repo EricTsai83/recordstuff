@@ -1,6 +1,6 @@
 ---
 name: native-acceptance
-description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原生選單列 App。執行者不限：任何能在本機執行指令並看得到截圖的 agent（例如 Claude）先選定並執行專案 runner（Tray、設定入口、快捷鍵錄影、通知、播放），再判讀 runner 與自己保存的截圖及報告；只有沒有 runner、需要即時 computer use 的操作才使用 computer use 或委派 Codex GPT-6 Astra。腳本、agent 觀察與人工證據分開標示。適用於要求實際操作 App、桌面驗收或功能 smoke test；不以單元測試、瀏覽器頁面或直接呼叫錄影邏輯的腳本（matrix、autorecord）代替原生 UI 驗收。
+description: 驗收 RecordStuff 透過 pnpm start:app 建置啟動的 macOS 原生選單列 App。執行者不限：任何能在本機執行指令並看得到截圖的 agent（例如 Claude）先選定並執行專案 runner（Tray、設定入口、快捷鍵錄影、通知、播放），再判讀 runner 與自己保存的截圖及報告；只有沒有 runner、需要即時 computer use 的操作才使用 computer use 或委派 Codex GPT-6 Astra。腳本、agent 觀察與人工證據分開標示。案例需要維護者動手（睡眠、插拔、藍牙、系統設定）時用引導式人機分工：維護者只做硬體與系統動作，其餘由執行者以 runner 與 pnpm native:input 完成。適用於要求實際操作 App、桌面驗收或功能 smoke test；不以單元測試、瀏覽器頁面或直接呼叫錄影邏輯的腳本（matrix、autorecord）代替原生 UI 驗收。
 ---
 
 # Native Acceptance
@@ -79,6 +79,19 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 
 送出提示後停止輸出、結束本輪回覆，等待使用者的明確回覆；不得用 sleep 十秒、持續報進度或未收到反對當作確認。收到「好了」後才執行已說明的連續回合，回覆涵蓋該回合的收尾，不必每次點擊都再問。若中途交還控制權或使用者要求暫停，再次接管前重新交接。記錄回覆及範圍，完成清理後告知使用者可恢復操作。純文件／程式工作不觸發此步驟；建置啟動 App 的命令及無人值守送鍵 runner 若會使用共用桌面，同樣須先完成交接。
 
+## 引導式實機回合：人機分工
+
+案例需要維護者的手（硬體插拔、睡眠、藍牙裝置、「系統設定」或 TCC），但其餘操作 agent 做得到時，用這個模式：維護者只做 agent 不能做的動作，其他全部由執行者完成。077（2026-10-22）前半段把開始錄影、改設定也交給維護者，來回次數多一倍；改為此模式後同樣工作快得多。
+
+1. **先分工再交接。** 每個案例拆成三欄：執行者做的（建置啟動、runner、`pnpm native:input`、在 App 結束時寫入前置設定、判讀 log／檔案／影格）；只有維護者能做的（硬體、睡眠、「系統設定」、TCC、需要聽的判斷）；以及維護者做完後執行者如何查證（App log、`pmset -g log`、`system_profiler SPBluetoothDataType`／`SPAudioDataType`、檔案）。只把第二欄交給維護者。
+2. **合併交接。** 一次交接寫清楚：要做的硬體／系統動作、做到什麼狀態才算完成（例如控制中心顯示「已連線」）、期間不要碰什麼（例如不要點 RecordStuff 的視窗），以及做完回覆什麼。同一則「好了」同時是之後執行者接管桌面的交接；需要維護者再動手前，把能自動做的部分先做完，再提出下一次交接。
+3. **回覆不是證據。** 收到回覆後先用上面的查證方式確認動作確實發生（log 有該事件、裝置真的連上），再判定；沒有證據時具體說明看到與沒看到什麼，請維護者重做那一步，不要判通過或失敗。
+4. **開始前記錄、結束後還原。** 在第一個變更前保存 `settings.json` 的副本與會被改到的系統狀態原值（輸出音量、Dock 自動隱藏、顯示器設定等，由維護者改的也要記），結束時 `settings.json` 逐位元組還原、其他逐項核對；沒記到原值的狀態列為未還原。
+5. **執行者的操作方式。** 用 `pnpm native:input`：`elements` 依標題列出設定視窗中的按鈕、選單、選項與座標，`press <標題>` 依人看得到的文字點擊，`scroll`／`click` 只接受受測程序視窗內的點，`shortcut` 只在 log 最新的啟動是受測 bundle 時送出已註冊的快捷鍵。案例的主題不是設定 UI 時，前置設定（麥克風開關、音量、隱藏選單列等）可在 App 結束時寫入 `settings.json` 後以 `pnpm open:app` 重開。報告把這些步驟標為執行者輸入。
+6. **音訊案例的可判讀素材。** 要區分麥克風來源時，把系統音訊音量設為 0%（寫入設定），以 `say -a <輸出裝置 ID>`（`say -a '?'` 列出）從指定喇叭發聲，錄完用 `ffmpeg … -af asetnsamples=24000,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=<檔>` 量每 0.5 s 的音量，對照 log 的切換時間。先用 `ioreg -r -k AppleClamshellState -d 1` 確認蓋子：闔蓋時內建麥克風仍可選，但只送出數位靜音。
+7. **已知陷阱。** 每次（重新）啟動後核對 log `start:` 行的 `executable` 是本 checkout 的 bundle：/Applications 中同 bundle ID 的舊版可能被 macOS 的「結束並重新打開」啟動，那段錄影不算證據，正常結束它後以 `pnpm open:app` 重開受測 bundle。藍牙耳機可能連到 iPhone 而非 Mac，以 `system_profiler SPBluetoothDataType` 的 Connected 判斷。App 待命時不記錄螢幕的接上或拔除，這類狀態以維護者的回覆與 `system_profiler SPDisplaysDataType` 為準。
+8. **收尾。** 照「證據、收尾與報告」正常結束 App、確認程序消失、還原設定，並詢問維護者要保留或移到垃圾桶的測試錄影；硬體與系統設定的還原由維護者確認。
+
 ## 操作方式：先選 runner，computer use 負責觀察
 
 依[腳本 runner 或 Computer Use](../../../docs/zh-TW/testing.md#腳本-runner-或-computer-use) 與[驗收對照](../../../docs/zh-TW/acceptance.md#腳本-runner-或-computer-use)選定每項操作。維護者 2026-10-02 核准以已提交的 runner 操作 RecordStuff 自己的 Tray 選單、設定視窗與選單項目（[限制](../../../docs/zh-TW/acceptance.md#依影響追加案例)），因此：
@@ -86,7 +99,7 @@ App 已由呼叫者以 pnpm start:app 建置並啟動，輸出在 <start-app.log
 - **由 runner 操作**：Tray 選單的結構、開始／停止、三種取消、以鍵盤選「開啟 RecordStuff」與結束用 `pnpm acceptance:tray`（見下方「Tray」）；以快捷鍵開設定與視窗狀態用 `pnpm acceptance:settings-shortcut -- --observe`；背景套件無法回答的設定視窗框與啟用、真正的註冊被拒與真實視窗狀態、在螢幕上的全螢幕與焦點交還，用 `pnpm acceptance:recipe -- native-ui`（`out/` 產物，一次建置；RecordStuff 執行中時播放器 runner 會拒絕執行）；快捷鍵錄影用 `pnpm acceptance`；存檔通知 → Finder 用 `pnpm acceptance:notification`；播放用 `pnpm acceptance:playback`；延後退出通知用 `pnpm acceptance:quit-dialog`。runner 需要 `pgrep` 與桌面：執行者能在 sandbox 外執行時就自己執行；委派到 sandbox 內的 Astra 時，由呼叫者執行後把報告路徑寫進 prompt。
 - **由執行者觀察**：判讀 runner 與自己保存的截圖（選單外觀、淺色／深色選單列、對齊與可讀性、倒數數字、通知橫幅是否可見與截斷、設定排版）。
 - **由 computer use 操作**（目前 agent 沒有工具時委派 Astra）：沒有 runner 的操作，包括在設定面板內變更設定、手動錄影時點擊素材的開始控制項、案例要求時點擊播放器自身的控制項、VoiceOver，與下方的權限提示。
-- 沒有 runner 涵蓋的操作，執行者可以自行用輔助使用動作（AppleScript、System Events、JXA 的 AX API）或 CoreGraphics 事件操作受測的 RecordStuff bundle（以執行檔路徑與 pid 比對，維護者 2026-10-18 決定）；報告把這些步驟標為執行者輸入，與 runner 證據分開。IPC、renderer evaluate、Playwright 與測試 hook 仍不得代替原生 UI。runner 與執行者的點擊都會移動真正的游標，所以同樣需要桌面交接。
+- 沒有 runner 涵蓋的操作，執行者可以自行用輔助使用動作（AppleScript、System Events、JXA 的 AX API）或 CoreGraphics 事件操作受測的 RecordStuff bundle（以執行檔路徑與 pid 比對，維護者 2026-10-18 決定），優先使用已做好這些比對的 [`pnpm native:input`](../../../docs/zh-TW/system-design/tooling.md#執行者輸入)；報告把這些步驟標為執行者輸入，與 runner 證據分開。IPC、renderer evaluate、Playwright 與測試 hook 仍不得代替原生 UI。runner 與執行者的點擊都會移動真正的游標，所以同樣需要桌面交接。
 - runner 的通過是腳本輸入證據，不能當作視覺或主觀判斷；runner 結果與畫面所見不符時，記為 runner 失敗，不是產品通過。
 
 以下是 computer use 本身的規則：

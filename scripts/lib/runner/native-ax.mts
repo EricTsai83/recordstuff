@@ -15,6 +15,7 @@ import { command } from "./processes.mts";
  * `key <code> [flags]`, `windows <pid>`, `layout <pid> <title> <zone json>`, `menubar <pid>`, `manual <pid> [off]`, `banners`,
  * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
  * `drag-events <event json>`, `release-mouse`, `move-mouse <x> <y>`, `screen-access` support native window dragging.
+ * `scroll <x> <y> <deltas json>`, `hit <x> <y>` and `elements <pid> <title>` serve an executor's own input (`pnpm native:input`).
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
  */
@@ -74,6 +75,46 @@ function run(argv) {
       $.CGEventSetFlags(event, 0);
       $.CGEventPost(0, event);
       delay(0.04);
+    }
+    return out({ posted: true });
+  }
+  if (cmd === 'hit') {
+    // The accessibility element a click at the point would reach, whatever window is on top there, ours or not: its pid,
+    // the title of its window, and the titles of it and its ancestors (informative only: Chromium sometimes answers with a
+    // container rather than the element, so the titles cannot prove which element is hit).
+    ObjC.bindFunction('AXUIElementCreateSystemWide', ['id', []]);
+    ObjC.bindFunction('AXUIElementCopyElementAtPosition', ['int', ['id', 'float', 'float', 'id*']]);
+    ObjC.bindFunction('AXUIElementGetPid', ['int', ['id', 'int*']]);
+    const hit = Ref();
+    const error = $.AXUIElementCopyElementAtPosition($.AXUIElementCreateSystemWide(), Number(a), Number(b), hit);
+    if (error !== 0) return out({ error });
+    const pid = Ref();
+    const pidError = $.AXUIElementGetPid(hit[0], pid);
+    if (pidError !== 0) return out({ error: pidError });
+    const read = (el, name) => { const ref = Ref(); return $.AXUIElementCopyAttributeValue(el, $(name), ref) === 0 ? ref[0] : undefined; };
+    const text = v => { if (v === undefined) return ''; try { const u = ObjC.unwrap(v); return typeof u === 'string' ? u : ''; } catch (e) { return ''; } };
+    const titles = [];
+    let el = hit[0];
+    for (let depth = 0; el !== undefined && depth < 16; depth++) {
+      const title = text(read(el, 'AXTitle')) || text(read(el, 'AXDescription')) || text(read(el, 'AXValue'));
+      if (title) titles.push(title);
+      el = read(el, 'AXParent');
+    }
+    const win = read(hit[0], 'AXWindow');
+    return out({ pid: pid[0], window: win === undefined ? null : text(read(win, 'AXTitle')), titles });
+  }
+  if (cmd === 'scroll') {
+    // Over the point first, then one event per delta in lines (kCGScrollEventUnitLine 1), as scrollDeltas makes them.
+    ObjC.bindFunction('CGEventCreateScrollWheelEvent2', ['id', ['id', 'int', 'int', 'int', 'int', 'int']]);
+    const move = $.CGEventCreateMouseEvent($(), 5, $.CGPointMake(Number(a), Number(b)), 0);
+    $.CGEventSetFlags(move, 0);
+    $.CGEventPost(0, move);
+    delay(0.08);
+    for (const delta of JSON.parse(c)) {
+      const event = $.CGEventCreateScrollWheelEvent2($(), 1, 1, delta, 0, 0);
+      $.CGEventSetFlags(event, 0);
+      $.CGEventPost(0, event);
+      delay(0.03);
     }
     return out({ posted: true });
   }
@@ -268,6 +309,48 @@ function run(argv) {
     if (web) walk(web, 0);
     return out({ frame, controls, webArea: web ? geometry(web) : null, clickable, visited, truncated });
   }
+  if (cmd === 'elements') {
+    // Every web element of the window titled b that a person could click or choose, with its frame: the layout's roles,
+    // plus the rows, items, tabs and options a list, menu or select draws. A select's open list (Radix, role listbox) reaches
+    // AX as an AXList whose options are bare AXStaticText children (2026-10-23, Electron 44): those are reported as AXOption.
+    const win = children(app, 'AXWindows').find(w => plain(raw(w, 'AXTitle')) === b);
+    if (!win) return out({ error: 'no window ' + b });
+    const frame = geometry(win);
+    const roles = ['AXButton', 'AXPopUpButton', 'AXCheckBox', 'AXRadioButton', 'AXTextField', 'AXLink', 'AXMenuButton', 'AXDisclosureTriangle',
+      'AXComboBox', 'AXSlider', 'AXMenuItem', 'AXRow', 'AXTab', 'AXListItem', 'AXOption'];
+    // Chromium builds the web tree a moment after AXManualAccessibility is set: webElements says whether it is there yet.
+    // overlays: the frames of open lists and menus whose options or items were found. Chromium's hit test can fall through
+    // their padding to what lies beneath, so a press checks these frames as well.
+    const elements = [];
+    const overlays = [];
+    let visited = 0, truncated = false, webElements = 0;
+    const walk = (el, depth, inWeb, parentRole, parent) => {
+      if (visited >= 20000 || depth > 120) { truncated = true; return; }
+      visited++;
+      const role = plain(raw(el, 'AXRole'));
+      const subrole = plain(raw(el, 'AXSubrole')) || '';
+      const web = inWeb || role === 'AXWebArea';
+      const option = role === 'AXStaticText' && parentRole === 'AXList';
+      if (roles.includes(role) || roles.includes(subrole) || option) {
+        if (web) webElements++;
+        const f = geometry(el);
+        let layer;
+        if ((option || role === 'AXMenuItem') && parent) {
+          const pf = geometry(parent);
+          if (pf && pf.width > 0 && pf.height > 0) {
+            layer = overlays.findIndex(o => o.x === pf.x && o.y === pf.y && o.width === pf.width && o.height === pf.height);
+            if (layer < 0) layer = overlays.push(pf) - 1;
+          }
+        }
+        if (f && f.width > 0 && f.height > 0) elements.push({ ...(layer === undefined ? {} : { layer }), role: option ? 'AXOption' : subrole && roles.includes(subrole) ? subrole : role,
+          title: plain(raw(el, 'AXTitle')) || plain(raw(el, 'AXDescription')) || plain(raw(el, 'AXValue')) || '',
+          enabled: plain(raw(el, 'AXEnabled')) !== false, frame: f });
+      }
+      for (const child of children(el)) walk(child, depth + 1, web, role, el);
+    };
+    walk(win, 0, false, '', undefined);
+    return out({ frame, elements, overlays, webElements, visited, truncated });
+  }
   throw new Error('unknown command ' + cmd);
 }
 `;
@@ -307,6 +390,33 @@ export interface WindowSnapshot {
   focusedWindow: string | null;
   /** `domId`: the element's HTML id, which Chromium exposes once its web accessibility is on; empty elsewhere. */
   focused: { role: string; title: string; description: string; domId?: string } | null;
+}
+
+/**
+ * One element `elements` read: its AX role (or subrole), the title a person reads, whether it is enabled, and its frame. Chromium
+ * clips a web element's frame to what the window shows, so one scrolled out of view reads as a sliver at the edge.
+ */
+export interface WindowElement {
+  role: string;
+  title: string;
+  enabled: boolean;
+  frame: Frame;
+  /** For an option or menu item, the index in `overlays` of the open list or menu it belongs to. */
+  layer?: number;
+}
+
+/** What a hit test found at a point: the owning pid, the title of the window hit (null when none), and the titles from the element outwards. */
+export interface PointHit { pid: number; window: string | null; titles: string[] }
+
+/** What `elements` reads of one window. */
+export interface WindowElements {
+  frame: Frame;
+  elements: WindowElement[];
+  /** Frames of the open lists and menus whose options or items are listed: drawn over what lies beneath them. */
+  overlays: Frame[];
+  webElements: number;
+  visited: number;
+  truncated: boolean;
 }
 
 /** What `layout` reads of one window: where its controls and its web content are, and what can be clicked in a corner. */
@@ -399,7 +509,13 @@ export interface NativeAx {
   /** Moves the pointer without a click, as a person does (plan 082: what hovering a window does). */
   move(x: number, y: number): Promise<void>;
   key(code: number, flags?: number): Promise<void>;
+  /** Scrolls `lines` whole lines over the point, positive towards the content's end. */
+  scroll(x: number, y: number, lines: number): Promise<void>;
+  /** The accessibility element a click at the point would reach: its pid, its window's title and the titles outwards from it. */
+  hit(x: number, y: number): Promise<PointHit>;
   windows(pid: number): Promise<WindowSnapshot>;
+  /** What can be clicked or chosen in the titled window; read with web accessibility enabled. */
+  elements(pid: number, title: string): Promise<WindowElements>;
   /** The titled window's corner as `judgeWindowLayout` needs it; read with web accessibility enabled. */
   layout(pid: number, title: string, zone: { width: number; height: number }): Promise<WindowLayout>;
   menuBar(pid: number): Promise<AppMenu[]>;
@@ -429,7 +545,10 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
     move: async (x, y) => { await run("pointer move", "move-mouse", x, y); },
     key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
+    scroll: async (x, y, lines) => { await run("scroll", "scroll", x, y, JSON.stringify(scrollDeltas(lines))); },
+    hit: (x, y) => run<PointHit>("hit test", "hit", x, y),
     windows: pid => run<WindowSnapshot>("windows", "windows", pid),
+    elements: (pid, title) => runFor<WindowElements>(60_000, "window elements", "elements", pid, title),
     // Every element of the page is read, a few AX calls each: a long Recordings tab needs longer than one menu.
     layout: (pid, title, zone) => runFor<WindowLayout>(60_000, "window layout", "layout", pid, title, JSON.stringify(zone)),
     menuBar: async pid => (await run<{ menus: AppMenu[] }>("menu bar", "menubar", pid)).menus,
@@ -438,6 +557,15 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     savePasteboard: directory => run<{ items: PasteboardManifest; unsaved: string[] }>("pasteboard save", "pasteboard-save", directory),
     restorePasteboard: async manifest => { await run("pasteboard restore", "pasteboard-restore", JSON.stringify(manifest)); },
   };
+}
+
+/**
+ * One line-unit wheel delta per line, as a notch of a wheel: `lines` positive moves the content towards its end, which a
+ * wheel delta reports as negative. The deltas sum to exactly `-lines`.
+ */
+export function scrollDeltas(lines: number): number[] {
+  const count = Math.abs(Math.trunc(lines));
+  return Array.from({ length: count }, () => (lines > 0 ? -1 : 1));
 }
 
 /** The centre of a frame, where a click lands. */
