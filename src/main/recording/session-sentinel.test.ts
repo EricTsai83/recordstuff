@@ -188,6 +188,29 @@ it("never reports this process's own sessions and discards unusable leftovers", 
   expect(await new SessionSentinels(path.join(dir, "absent")).leftovers()).toEqual([]);
 });
 
+it("removes a sentinel Windows holds open for a moment instead of leaving it to be reported again", async () => {
+  vi.useFakeTimers();
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { value: "win32" });
+  const original = fs.promises.unlink;
+  const unlink = vi.spyOn(fs.promises, "unlink")
+    .mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "EBUSY" }))
+    .mockImplementation((file) => original(file));
+  try {
+    const sentinels = new SessionSentinels(sentinelDir);
+    await sentinels.write(sentinel("held", "h"));
+    const removed = sentinels.remove("held");
+    await vi.runAllTimersAsync();
+    await removed;
+    expect(unlink).toHaveBeenCalledTimes(2);
+    expect(fs.readdirSync(sentinelDir)).toEqual([]);
+  } finally {
+    unlink.mockRestore();
+    Object.defineProperty(process, "platform", platform);
+    vi.useRealTimers();
+  }
+});
+
 it("explains the interruption without pointing at settings, the folder or permissions", () => {
   expect(failureReason("app_terminated", "en")).toBe("RecordStuff did not exit normally while recording.");
   expect(failureReason("app_terminated", "zh-TW")).toBe("RecordStuff 在錄影期間未正常結束");

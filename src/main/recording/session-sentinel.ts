@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { errnoCode, messageOf } from "../lib/errors";
+import { retryWhileHeldOpen } from "../lib/held-open";
 import type { RecordingFailure } from "../../shared/recording-result";
 
 export interface SessionSentinel {
@@ -77,11 +78,14 @@ export class SessionSentinels {
     await this.write({ ...sentinel, failureId });
   }
 
-  /** Never throws: completed checkpoints are safe to leave for the next launch. */
+  /**
+   * Never throws: completed checkpoints are safe to leave for the next launch. Retried while Windows holds the file open
+   * (a scan of the sentinel just written): one left behind is reported again, bringing back an entry the user removed.
+   */
   async remove(sessionId: string): Promise<void> {
     if (!VALID_ID.test(sessionId)) return;
     try {
-      await fs.promises.unlink(this.file(sessionId));
+      await retryWhileHeldOpen(() => fs.promises.unlink(this.file(sessionId)));
     } catch (cause) {
       if (errnoCode(cause) !== "ENOENT") {
         this.log(`sentinel: could not remove ${sessionId}: ${String(cause)}`);
