@@ -5,6 +5,7 @@ import path from "node:path";
 import { FileWriteError, NO_MEDIA_DETAIL, nodeFs } from "./file-writer";
 import { EngineFileWriter } from "./engine-file-writer";
 import { SavedNotification, SAVED_NOTIFICATION_DELAY_MS } from "./saved-notification";
+import { RECORDING_HEALTH } from "./recording-health";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostStartError, type EngineFileReport, type HostMessage } from "../../shared/protocol";
 import { DEFAULT_QUALITY, type CaptureReport, type QualitySettings } from "../../shared/quality";
@@ -1568,6 +1569,19 @@ describe("Recorder review fixes", () => {
     expect(ctx.writers).toHaveLength(2);
     expect(ctx.recorder.state.type).toBe("recording");
     ctx.host.crash(); release(); await flush();
+    expect(await ctx.recorder.shutdown()).toBe(true);
+  });
+
+  it("reports the partial as unknown, keeping its path, when the drive does not answer the check", async () => {
+    const ctx = setup();
+    await startRecording(ctx);
+    ctx.writers[0]!.abandon = () => new Promise(() => undefined);
+    ctx.host.crash();
+    await vi.advanceTimersByTimeAsync(RECORDING_HEALTH.cleanupCheckMs);
+    expect(ctx.events.filter((event) => event.type === "failed").at(-1)).toMatchObject({ outcome: "unknown" });
+    expect(ctx.events.filter((event) => event.type === "failureStatus").at(-1))
+      .toMatchObject({ result: { outcome: "unknown", recordingPath: ctx.writers[0]!.recordingPath } });
+    expect(ctx.recorder.mediaPending).toBe(false);
     expect(await ctx.recorder.shutdown()).toBe(true);
   });
 

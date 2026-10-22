@@ -335,6 +335,8 @@ const DEFAULT_START_TIMEOUT_MS = 8000;
 export const START_CANCEL_GRACE_MS = 1000;
 const DEFAULT_CAPTURE_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_NAME_ATTEMPTS = 10;
+/** A cleanup's file check that went unanswered (`withinCleanupCheck`). */
+const CHECK_UNANSWERED = Symbol("check unanswered");
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 
 /** `2026-09-11 14-30-00`, local time, safe on every file system. */
@@ -1360,8 +1362,9 @@ export class Recorder {
     void this.track(async () => {
       await session.opening?.catch(() => undefined);
       try {
-        const kept = await session.writer?.abandon();
-        if (kept) this.deps.log(`recorder: cancelled session ${session.id} unexpectedly kept ${kept}`);
+        const kept = session.writer ? await this.withinCleanupCheck(session.writer.abandon()) : undefined;
+        if (kept === CHECK_UNANSWERED) this.deps.log(`recorder: cancelled session ${session.id} cleanup unanswered after ${this.health.cleanupCheckMs} ms; the drive may not be responding`);
+        else if (kept) this.deps.log(`recorder: cancelled session ${session.id} unexpectedly kept ${kept}`);
       } catch (cause) {
         this.deps.log(`recorder: cancelled session ${session.id} cleanup could not be confirmed: ${messageOf(cause)}`);
       }
@@ -1639,9 +1642,15 @@ export class Recorder {
     let opened = false;
     try {
       opened = session.opening ? await session.opening.then(() => true, () => false) : false;
-      partialPath = session.writer ? await session.writer.abandon() : undefined;
-      outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
-      if (outcome === "unknown") partialPath = undefined;
+      const kept = session.writer ? await this.withinCleanupCheck(session.writer.abandon()) : undefined;
+      if (kept === CHECK_UNANSWERED) {
+        this.deps.log(`recorder: session ${session.id} partial check unanswered after ${this.health.cleanupCheckMs} ms; the drive may not be responding`);
+        outcome = "unknown";
+      } else {
+        partialPath = kept;
+        outcome = session.writer?.preservationUncertain ? "unknown" : partialPath ? "partial" : "empty";
+        if (outcome === "unknown") partialPath = undefined;
+      }
     } catch (cause) {
       outcome = "unknown";
       this.deps.log(`recorder: failure cleanup could not be confirmed: ${messageOf(cause)}`);
@@ -1655,6 +1664,14 @@ export class Recorder {
     this.emit({ type: "failed", code, detail, ...(partialPath === undefined ? {} : { partialPath }), outcome, session: this.trace(session) });
     await session.sentinel.clear();
     return opened;
+  }
+
+  /** `work`'s answer, or CHECK_UNANSWERED once `cleanupCheckMs` passed without one (a drive that stopped answering). */
+  private async withinCleanupCheck<T>(work: Promise<T>): Promise<T | typeof CHECK_UNANSWERED> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unanswered = new Promise<typeof CHECK_UNANSWERED>((resolve) => { timer = setTimeout(() => resolve(CHECK_UNANSWERED), this.health.cleanupCheckMs); });
+    try { return await Promise.race([work, unanswered]); }
+    finally { clearTimeout(timer); }
   }
 
   private async publishFailure(result: RecordingFailure): Promise<void> {

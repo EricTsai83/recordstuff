@@ -73,6 +73,7 @@ stateDiagram-v2
 | 停止前的聲音 | 引擎最多等 250 ms | 尚未送達的部分以靜音補上；寫入 log |
 | `stopped` 後完成檔案 | 引擎 120 秒；host 程序 150 秒（`FINISH_BOUND_MS`） | output_write_failed（引擎），或結束程序（host）；兩者都保留檔案 |
 | 存檔過慢 | 30 秒（`saveSlowMs`） | 記 log 並告知一次（`savingSlow`）；不放棄 |
+| 清理檢查無回應 | 15 秒（`cleanupCheckMs`） | 失敗的錄影檢查是否保留部分檔時，結果以「未知」回報並附上檔案路徑；取消時只記 log。停止回應的磁碟因此不會卡住退出 |
 | 讓自身視窗恢復可擷取（Windows） | 擷取程序結束時；要求結束後最多 5 秒 | 視窗恢復可擷取 |
 | 退出等待 | 每次嘗試 13 秒（停止期限另加 3 秒） | 尚有工作時延後退出並顯示在地化提示，不截斷存檔 |
 | 心跳 | session 進行中每 5 秒送 ping | 檢查時已有 2 次未回 pong 就 teardown：capture_host_unresponsive |

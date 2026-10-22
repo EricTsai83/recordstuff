@@ -20,6 +20,11 @@ export interface RecordingHealth {
    * answering): logged and told once. It is never abandoned, since a slow drive that is still working finishes it.
    */
   saveSlowMs: number;
+  /**
+   * A failed or cancelled recording's file check (whether a partial was kept) unanswered after this, on a drive that
+   * stopped answering, is reported as unknown with the file's path, so the cleanup ends and quit is not held by it.
+   */
+  cleanupCheckMs: number;
 }
 
 const MIB = 1024 * 1024;
@@ -31,4 +36,5 @@ export const RECORDING_HEALTH: Readonly<RecordingHealth> = {
   stallWarnMs: 10_000,
   stallFailMs: 30_000,
   saveSlowMs: 30_000,
+  cleanupCheckMs: 15_000,
 };

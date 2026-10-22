@@ -73,6 +73,7 @@ Settings → Recording chooses Off, 3, 5 or 10 seconds; the default is 3, also f
 | Sound up to the stop | The engine waits up to 250 ms | What has not arrived is silence; logged |
 | File finish after `stopped` | Engine 120 s; host process 150 s (`FINISH_BOUND_MS`) | output_write_failed (engine), or the process is ended (host); the file is kept either way |
 | Slow save | 30 s (`saveSlowMs`) | Logged and told once (`savingSlow`); never abandoned |
+| Unanswered cleanup check | 15 s (`cleanupCheckMs`) | A failed recording's check for a kept partial is reported as unknown with the file's path, a cancel's is logged; a drive that stopped answering cannot hold quit |
 | Own windows let back in (Windows) | When the capture process exits, at most 5 s after it was told to end | Windows are capturable again |
 | Quit wait | 13 s per attempt (stop timeout + 3 s) | Defer quit with localized feedback while any owned work remains; never truncate finalization |
 | Heartbeat | Ping every 5 s while a session is in flight | Tear down when the check finds two unanswered pings: capture_host_unresponsive |
