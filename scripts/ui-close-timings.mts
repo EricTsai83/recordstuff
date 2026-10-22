@@ -4,8 +4,8 @@
  *
  * The background suite's close timings (plan 078 step 5): every launch's teardown appends its phases to
  * `test-results/ui-close-timings.jsonl` (tests/ui/fixtures.ts), and this prints how the normal closes are spread
- * (median, 95th percentile, slowest) and the slowest launches with each phase, so a Windows shard whose close timed
- * out shows whether its closes were slow throughout or one stalled. check.yml runs it after every UI shard. Reads one
+ * (median, 95th percentile, slowest) and the slowest launches with each phase, so a Windows UI job whose close timed
+ * out shows whether its closes were slow throughout or one stalled. check.yml runs it after every UI group. Reads one
  * file; launches nothing.
  */
 import fs from "node:fs";

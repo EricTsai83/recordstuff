@@ -13,9 +13,10 @@ name: Check
 # without that cache, so what is published is built from source alone.
 #
 # The work is split across runners so the slowest part sets the time (2026-10-09; about 17 minutes before):
-# `pnpm check` and then the drills on its build, per platform; the background suite in four shards per
-# platform (one worker each, as on a developer machine; four keep macOS within the five runners a free account
-# runs at once); and the Windows installer. Every check still runs on both platforms.
+# `pnpm check` and then the drills on its build, per platform; the background suite in four groups by kind of
+# test per platform (scripts/lib/runner/ui-groups.mts; one worker each, as on a developer machine; four keep macOS
+# within the five runners a free account runs at once); and the Windows installer. Every check still runs on both
+# platforms.
 on:
   workflow_dispatch:
   push:
@@ -87,14 +88,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   ui:
-    name: ui ${{ matrix.shard }}/4 (${{ matrix.os }})
+    name: ui ${{ matrix.group }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-2025]
-        shard: [1, 2, 3, 4]
+        group: [layout, states, settings, app]
     runs-on: ${{ matrix.os }}
-    # A quarter of the background suite, about 2–3 minutes on a runner; the whole suite takes about 3.5 minutes on a developer Mac.
+    # One group of the background suite, about 2.5–3.5 minutes on a runner; the whole suite takes about 3.5 minutes on a developer Mac.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -115,7 +116,9 @@ jobs:
       - run: pnpm build
         env:
           RECORDSTUFF_SKIP_NATIVE: "1"
-      - run: pnpm test:ui --shard=${{ matrix.shard }}/4
+      - name: Run the ${{ matrix.group }} group of pnpm test:ui
+        shell: bash
+        run: pnpm test:ui $(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ui-group.mts "${{ matrix.group }}")
       # Plan 078 step 5: how long each launch took to close, the slowest first, passing or not.
       - name: Slowest closes
         if: always()
@@ -123,7 +126,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
-          name: ui-failures-${{ runner.os }}-${{ matrix.shard }}
+          name: ui-failures-${{ runner.os }}-${{ matrix.group }}
           path: |
             playwright-report/
             test-results/ui/
