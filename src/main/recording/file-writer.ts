@@ -7,6 +7,7 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { ErrorCode } from "../../shared/state";
 import { errnoCode, messageOf } from "../lib/errors";
 
@@ -33,18 +34,31 @@ export const nodeFs: FileWriterFs = {
   },
   link: (from, to) => fs.link(from, to),
   // On macOS libuv never clones (FICLONE_FORCE is ENOSYS), so this is a full
-  // copy and needs the file's size in free space. EXCL protects existing destinations.
+  // copy and needs the file's size in free space. The copy is made under a hidden
+  // name the library never lists, so a half-copied file is never shown, renamed or
+  // left behind looking finished; only the synced copy takes the final name.
   copyExclusive: async (from, to) => {
     const [source, volume] = await Promise.all([fs.stat(from), fs.statfs(path.dirname(to))]);
     if (volume.bavail * volume.bsize < source.size + 8 * 1024 * 1024)
       throw Object.assign(new Error("Not enough space to publish a full copy; the original recording is retained"), { code: "ENOSPC" });
-    await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+    // A taken name is answered before the copy, which can take minutes; the exclusive claim below still decides.
+    if (await fs.lstat(to).then(() => true, () => false)) throw Object.assign(new Error(`${to} already exists`), { code: "EEXIST" });
+    const staging = path.join(path.dirname(to), `.${path.basename(to)}.${randomUUID().slice(0, 8)}.copying`);
     try {
-      const copy = await fs.open(to, "r+");
+      await fs.copyFile(from, staging, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+      const copy = await fs.open(staging, "r+");
       try { await copy.sync(); } finally { await copy.close(); }
-    } catch (cause) {
-      await fs.unlink(to).catch(() => undefined);
-      throw cause;
+      // Claimed empty and exclusively, so no one's file is replaced, then the copy takes the name it reserved.
+      const claim = await fs.open(to, "wx");
+      try {
+        await claim.close();
+        await fs.rename(staging, to);
+      } catch (cause) {
+        await fs.unlink(to).catch(() => undefined);
+        throw cause;
+      }
+    } finally {
+      await fs.unlink(staging).catch(() => undefined);
     }
   },
   unlink: (filePath) => fs.unlink(filePath),

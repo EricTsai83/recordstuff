@@ -137,19 +137,46 @@ it("does not recreate a missing custom folder", async () => {
   await expect(fs.stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
-it("removes a copied destination if syncing it fails, retaining the recording", async () => {
+it("removes the copy if syncing it fails, never claiming the name, and retains the recording", async () => {
   const source = path.join(dir, "sync.recording.mp4"), target = path.join(dir, "sync.mp4");
   await fs.writeFile(source, "retained");
   const original = fs.open;
   const spy = vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
     const handle = await original(...args);
-    if (args[0] === target) vi.spyOn(handle, "sync").mockRejectedValue(new Error("sync failed"));
+    if (String(args[0]).endsWith(".copying")) vi.spyOn(handle, "sync").mockRejectedValue(new Error("sync failed"));
     return handle;
   });
   try { await expect(nodeFs.copyExclusive(source, target)).rejects.toThrow("sync failed"); }
   finally { spy.mockRestore(); }
   await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
   expect(await fs.readFile(source, "utf8")).toBe("retained");
+  expect((await fs.readdir(dir)).filter((name) => name.endsWith(".copying"))).toEqual([]);
+});
+
+it("copies under a hidden name and shows the final name only once the copy is complete", async () => {
+  const source = path.join(dir, "whole.recording.mp4"), target = path.join(dir, "whole.mp4");
+  await fs.writeFile(source, "complete");
+  const seen: string[][] = [];
+  const original = fs.copyFile;
+  const spy = vi.spyOn(fs, "copyFile").mockImplementation(async (...args: Parameters<typeof fs.copyFile>) => {
+    await original(...args);
+    seen.push(await fs.readdir(dir));
+  });
+  try { await nodeFs.copyExclusive(source, target); }
+  finally { spy.mockRestore(); }
+  expect(seen[0]).not.toContain("whole.mp4");
+  expect(seen[0]!.some((name) => name.startsWith(".whole.mp4.") && name.endsWith(".copying"))).toBe(true);
+  expect(await fs.readFile(target, "utf8")).toBe("complete");
+  expect((await fs.readdir(dir)).filter((name) => name.endsWith(".copying"))).toEqual([]);
+});
+
+it("refuses a taken name before copying and leaves it as it was", async () => {
+  const source = path.join(dir, "taken.recording.mp4"), target = path.join(dir, "taken.mp4");
+  await fs.writeFile(source, "new");
+  await fs.writeFile(target, "old");
+  await expect(nodeFs.copyExclusive(source, target)).rejects.toMatchObject({ code: "EEXIST" });
+  expect(await fs.readFile(target, "utf8")).toBe("old");
+  expect((await fs.readdir(dir)).filter((name) => name.endsWith(".copying"))).toEqual([]);
 });
 
 it("refuses a full-copy publication without enough space for the recording", async () => {
