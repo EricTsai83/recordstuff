@@ -79,22 +79,57 @@ impl Platform for Mac {
 pub struct Video {
     encoder: VideoEncoder,
     compositor: Option<Arc<Compositor>>,
+    composition: Composition,
 }
 
 impl VideoEncode<Frame> for Video {
     fn encode(&self, frame: &Frame, pts_ns: u64, key_frame: bool) -> Result<(), String> {
         // Hidden (D13): the screen's own frame, exactly as with the camera off.
         match self.compositor.as_ref().filter(|compositor| !compositor.hidden()) {
-            Some(compositor) => {
-                let composed = compositor.compose(&frame.image, pts_ns).map_err(|detail| format!("composing the camera failed: {detail}"))?;
-                self.encoder.encode(&composed, pts_ns, key_frame)
-            }
+            Some(compositor) => match self.composition.picture(compositor.compose(&frame.image, pts_ns)) {
+                Some(composed) => self.encoder.encode(&composed, pts_ns, key_frame),
+                None => self.encoder.encode(&frame.image, pts_ns, key_frame),
+            },
             None => self.encoder.encode(&frame.image, pts_ns, key_frame),
         }
     }
 
     fn flush(&self) {
         self.encoder.flush()
+    }
+}
+
+/// Whether composing the camera into the frames works (plan 075, D12: the camera is the recording's optional part). A
+/// failure, such as a GPU reset around sleep and wake, loses the camera, not the recording: the frame is the screen
+/// alone, told as a camera dropout once, and composing is tried again with each frame. Its recovery is only logged: the
+/// camera's return is the Feed's to tell, which knows whether there is a camera to compose.
+struct Composition {
+    failing: AtomicBool,
+    events: Arc<dyn Events>,
+}
+
+impl Composition {
+    fn new(events: Arc<dyn Events>) -> Self {
+        Self { failing: AtomicBool::new(false), events }
+    }
+
+    /// The composed picture, or None for the screen alone.
+    fn picture<P>(&self, composed: Result<P, String>) -> Option<P> {
+        match composed {
+            Ok(picture) => {
+                if self.failing.swap(false, Ordering::AcqRel) {
+                    eprintln!("camera: composing works again");
+                }
+                Some(picture)
+            }
+            Err(detail) => {
+                if !self.failing.swap(true, Ordering::AcqRel) {
+                    eprintln!("camera: composing failed ({detail}); recording the screen alone until it works again");
+                    self.events.camera_lost(format!("composing the camera failed: {detail}"));
+                }
+                None
+            }
+        }
     }
 }
 
@@ -459,10 +494,11 @@ impl Session {
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
         let encoding_compositor = compositor.clone();
+        let composition = Composition::new(core.shared().events());
         let encoders = core.make_encoders(move |sink| {
             let encoder = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
             let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
-            Ok((Video { encoder, compositor: encoding_compositor }, audio))
+            Ok((Video { encoder, compositor: encoding_compositor, composition }, audio))
         })?;
 
         // The picture's stream carries the sound too when its filter is the sound's.
@@ -699,6 +735,36 @@ mod preview_test {
         fn preview(&self, chunk: core::PreviewChunk) {
             self.0.lock().unwrap().push(chunk);
         }
+    }
+
+    #[derive(Default)]
+    struct Told(Mutex<Vec<String>>);
+
+    impl Events for Told {
+        fn progress(&self, _bytes: u64) {}
+        fn write_failed(&self, _failure: WriteFailure) {}
+        fn capture_failed(&self, _code: &'static str, _detail: String) {}
+        fn microphone_lost(&self, _detail: String) {}
+        fn microphone_resumed(&self, _detail: String) {}
+        fn camera_lost(&self, detail: String) {
+            self.0.lock().unwrap().push(format!("lost: {detail}"));
+        }
+        fn camera_resumed(&self, detail: String) {
+            self.0.lock().unwrap().push(format!("resumed: {detail}"));
+        }
+    }
+
+    #[test]
+    fn a_composition_failure_loses_the_camera_once_and_not_the_frame() {
+        let told = Arc::new(Told::default());
+        let composition = Composition::new(told.clone());
+        assert_eq!(composition.picture(Ok(1)), Some(1));
+        assert_eq!(composition.picture::<u32>(Err("command buffer failed".into())), None);
+        assert_eq!(composition.picture::<u32>(Err("command buffer failed".into())), None);
+        assert_eq!(composition.picture(Ok(2)), Some(2));
+        // Lost again after recovering: a second dropout is told; the recovery itself is not, the Feed tells returns.
+        assert_eq!(composition.picture::<u32>(Err("texture".into())), None);
+        assert_eq!(*told.0.lock().unwrap(), ["lost: composing the camera failed: command buffer failed", "lost: composing the camera failed: texture"]);
     }
 
     #[test]
