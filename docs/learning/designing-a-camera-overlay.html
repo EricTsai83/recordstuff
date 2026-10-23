@@ -569,7 +569,7 @@ decoder<span class="o">.</span><span class="p">configure</span><span class="o">(
   <li><strong>合成：</strong><code>compose.wgsl</code> 一份，建置時由 naga 翻成 MSL 與 HLSL；macOS 經 <code>CVMetalTextureCache</code> 把 IOSurface 的兩個平面當成 Metal 貼圖原地讀寫，Windows 在 Direct3D 11 上做；沒有硬體影像處理器的 Windows 裝置（WARP）則把螢幕讀回 CPU 再上傳。</li>
   <li><strong>錄影中修改：</strong>位置、大小、圓角與鏡像從 Studio 的預覽送出一則版面訊息，下一格生效，每次修改都記進該次錄影的記錄；系統匣（選單列）可以隱藏與顯示攝影機，隱藏時攝影機仍開著。</li>
   <li><strong>遺失：</strong>2 秒沒有畫面，或裝置斷線，就判定遺失；錄影只剩螢幕，結束時告知並標記；以同一個唯一 ID 重新開啟，退避 2 到 30 秒。</li>
-  <li><strong>預覽：</strong>640 像素寬、有人操作時 10 fps、只是看著時 5 fps 的 H.264，經 <code>MessagePort</code> 送到 Studio 頁面，以 WebCodecs 軟體解碼。</li>
+  <li><strong>預覽：</strong>640 像素寬（2026-10-24 起配合放大的預覽區改為 960）、有人操作時 10 fps、只是看著時 5 fps 的 H.264，經 <code>MessagePort</code> 送到 Studio 頁面，以 WebCodecs 軟體解碼。</li>
 </ul>
 
 <p>以下是在參考機（M1 Pro，外接 1920×1080 顯示器，iPhone 的 Continuity Camera）上量到的數字，全部是 RecordStuff 所有行程合計的單核 CPU 百分比。沒有攝影機的基準是 30 fps 10.4%、60 fps 14.0%。</p>

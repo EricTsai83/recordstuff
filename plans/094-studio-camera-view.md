@@ -2,7 +2,7 @@
 
 [English](094-studio-camera-view.md) | [繁體中文](094-studio-camera-view.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-23 at the maintainer's request, split from 092 (its former Camera view in D3) because it is that plan's largest part: a new compositor parameter set on both platforms and a page-side path before recording. Hard dependencies: 092 (its `view` message and Studio baseline) and 090 (a camera that reaches its first frame reliably), and 095 (the stage it is drawn on, added on 2026-10-23). Fifth in the queue, after 092 and ahead of 084, so 084 bounds the port once every message it carries exists. Execute in order under the [plan index](README.md). This task writes the plan only; none of the behavior below has been implemented or verified.
+Status: planned; not started. Created: 2026-10-23 at the maintainer's request, split from 092 (its former Camera view in D3) because it is that plan's largest part: a new compositor parameter set on both platforms and a page-side path before recording. Hard dependencies: 092 (its `view` message and Studio baseline) and 090 (a camera that reaches its first frame reliably), and 095 (the stage it is drawn on, added on 2026-10-23; closed on 2026-10-24, its stage, toolbar line and 960-pixel preview in the [record](../docs/verification/history-2026-10.md#plan-095-closure--2026-10-24) and the [Recording Studio design](../docs/system-design/desktop.md#recording-studio)). Fifth in the queue, after 092 and ahead of 084, so 084 bounds the port once every message it carries exists. Execute in order under the [plan index](README.md). This task writes the plan only; none of the behavior below has been implemented or verified.
 
 ## Goal and current state
 
