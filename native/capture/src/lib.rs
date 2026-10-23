@@ -612,8 +612,8 @@ impl NativeCapture {
         }
     }
 
-    /// The preview's frames a second (plan 081, D1): 10, or 5 while no one works in the Recording Studio; the next
-    /// tick follows it. Answers false without a preview.
+    /// The preview's frames a second (plan 092, D1): 5, 10 or 15, from a frame made at once. Answers false without a
+    /// preview or for another rate.
     #[napi]
     pub fn set_preview_rate(&self, fps: u32) -> Result<bool> {
         #[cfg(any(target_os = "macos", windows))]
@@ -623,6 +623,22 @@ impl NativeCapture {
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = fps;
+            Ok(false)
+        }
+    }
+
+    /// What the preview shows (plan 092, D3): `composed` or `screen`, from a key frame made at once; the recording is
+    /// always the composed picture. Answers false without a preview or for another view.
+    #[napi]
+    pub fn set_preview_view(&self, view: String) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let Some(view) = camera_layout::PreviewView::parse(&view) else { return Ok(false) };
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.set_preview_view(view)))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = view;
             Ok(false)
         }
     }

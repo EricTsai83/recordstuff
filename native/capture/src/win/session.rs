@@ -8,7 +8,6 @@
 
 use std::fs::OpenOptions;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -19,7 +18,8 @@ use super::capture::{self, Area, DisplayCapture, Frame, Gpu};
 use super::compositor::{Compositor, Feed};
 use super::video::H264Encoder;
 use super::{CaptureError, Mta, com, now_ns};
-use crate::camera_layout::{PREVIEW_FPS, preview_tick_shows};
+use crate::camera_layout::{PREVIEW_ENCODER_FPS, PreviewView};
+use crate::core::preview::{PreviewControl, PreviewStep, next_due};
 use crate::core::{self, AudioRequest, CHANNELS, Core, Platform, SAMPLE_RATE, Shared, Source, SystemAudio, VideoEncode};
 use crate::pacing::Pacer;
 
@@ -65,76 +65,52 @@ impl VideoEncode<Frame> for Video {
     }
 }
 
-/// The preview (D17), as on macOS: the composed picture at preview size, `PREVIEW_FPS` times a second, encoded by
-/// Microsoft's software encoder (the GPU's is the recording's) and told to the session's events while someone watches;
-/// unwatched it composes and encodes nothing, and it starts again at a key frame.
+/// The preview (D17), as on macOS: the composed picture at preview size, at the Recording Studio's rate (plan 092),
+/// encoded by Microsoft's software encoder (the GPU's is the recording's) and told to the session's events while
+/// someone watches; unwatched it composes and encodes nothing and its thread sleeps, and it starts again at a key frame.
 struct Preview {
-    stopped: Arc<AtomicBool>,
-    watching: Arc<AtomicBool>,
-    /// Counts each start of watching, so one that comes between two of the thread's ticks still starts at a key frame.
-    watches: Arc<AtomicU64>,
-    /// Frames a second the watcher asks for (plan 081, D1): `PREVIEW_FPS`, or `PREVIEW_RESTING_FPS` while it rests.
-    fps: Arc<AtomicU32>,
+    control: Arc<PreviewControl>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Preview {
     fn start(gpu: Arc<Mta<Gpu>>, shared: Arc<Shared<Win>>, compositor: Arc<Compositor>, watching: bool) -> Result<Self, CaptureError> {
-        let stopped = Arc::new(AtomicBool::new(false));
-        let stop = stopped.clone();
-        let watching = Arc::new(AtomicBool::new(watching));
-        let watched = watching.clone();
-        let watches = Arc::new(AtomicU64::new(0));
-        let started = watches.clone();
-        let fps = Arc::new(AtomicU32::new(PREVIEW_FPS));
-        let rate = fps.clone();
+        let control = Arc::new(PreviewControl::new(watching));
+        let controls = control.clone();
         let (width, height) = compositor.preview_size();
         let sink = Arc::new(core::PreviewSink::new(shared.events()).timed(shared.diagnostics(), now_ns));
-        let encoder = H264Encoder::for_preview(gpu, width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
+        let encoder = H264Encoder::for_preview(gpu, width, height, PREVIEW_ENCODER_FPS, PREVIEW_BITRATE, sink)?;
         let thread = std::thread::Builder::new()
             .name("recordstuff-preview".into())
             .spawn(move || {
                 com();
-                let interval = Duration::from_nanos(1_000_000_000 / u64::from(PREVIEW_FPS));
-                let mut next = Instant::now();
-                let mut first = true;
-                let mut seen = 0;
-                let mut tick: u64 = 0;
-                while !stop.load(Ordering::Acquire) && !shared.halted() {
-                    tick = tick.wrapping_add(1);
-                    let now_started = started.load(Ordering::Acquire);
-                    if now_started != seen {
-                        seen = now_started;
-                        first = true;
+                let mut due = Instant::now();
+                while let PreviewStep::Frame { key, view, interval } = controls.wait(due) {
+                    if shared.halted() {
+                        break;
                     }
-                    if !watched.load(Ordering::Acquire) {
-                        first = true;
-                    } else if !first && !preview_tick_shows(tick, rate.load(Ordering::Acquire)) {
-                        // Resting: this tick shows nothing. A first frame never waits, the key frame a new watcher needs.
-                    } else if let Some(frame) = shared.newest() {
+                    if let Some(frame) = shared.newest() {
                         // A preview is a convenience: one that fails ends, the recording does not.
-                        let Ok(picture) = compositor.preview(&frame) else { return };
-                        if encoder.encode(&picture, now_ns(), first).is_err() {
+                        let Ok(picture) = compositor.preview(&frame, view) else { return };
+                        if encoder.encode(&picture, now_ns(), key).is_err() {
                             return;
                         }
-                        first = false;
+                    } else if key {
+                        // No picture yet: the first one made is still the key frame a new watcher needs.
+                        controls.owe_key();
                     }
-                    next += interval;
-                    let now = Instant::now();
-                    if next > now {
-                        std::thread::sleep(next - now);
-                    } else {
-                        next = now;
-                    }
+                    // A frame made early, for a change, starts the schedule again from itself.
+                    let made = Instant::now();
+                    due = next_due(due.min(made), made, interval);
                 }
                 encoder.flush();
             })
             .map_err(|e| CaptureError::new("capture_start_failed", format!("preview thread: {e}")))?;
-        Ok(Self { stopped, watching, watches, fps, thread: Some(thread) })
+        Ok(Self { control, thread: Some(thread) })
     }
 
     fn stop(mut self) {
-        self.stopped.store(true, Ordering::Release);
+        self.control.stop();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -352,19 +328,23 @@ impl Session {
     /// Whether the preview is watched (plan 075 step 7): Settings shows it, or no longer does. False without one.
     pub fn set_preview(&self, watching: bool) -> bool {
         let Some(preview) = self.preview.as_ref() else { return false };
-        if watching {
-            // A new watcher has a new decoder, which can start only at a key frame.
-            preview.watches.fetch_add(1, Ordering::AcqRel);
-        }
-        preview.watching.store(watching, Ordering::Release);
+        // A new watcher has a new decoder, which can start only at a key frame.
+        preview.control.watch(watching);
         eprintln!("camera: preview {}", if watching { "watched" } else { "not watched" });
         true
     }
 
-    /// The preview's frames a second (plan 081, D1); false without a preview.
+    /// The preview's frames a second (plan 092, D1): one of the Studio's rates, from a frame made at once; false
+    /// without a preview or for another rate.
     pub fn set_preview_rate(&self, fps: u32) -> bool {
+        self.preview.as_ref().is_some_and(|preview| preview.control.set_rate(fps))
+    }
+
+    /// What the preview shows (plan 092, D3), from a key frame made at once; the recording is unchanged. False without
+    /// a preview.
+    pub fn set_preview_view(&self, view: PreviewView) -> bool {
         let Some(preview) = self.preview.as_ref() else { return false };
-        preview.fps.store(fps, Ordering::Release);
+        preview.control.set_view(view);
         true
     }
 
@@ -481,7 +461,8 @@ mod tests {
         let chunks = Arc::new(Chunks::default());
         let (width, height) = compositor.preview_size();
         let encoder =
-            H264Encoder::for_preview(gpu.clone(), width, height, PREVIEW_FPS, PREVIEW_BITRATE, Arc::new(core::PreviewSink::new(chunks.clone()))).unwrap();
+            H264Encoder::for_preview(gpu.clone(), width, height, PREVIEW_ENCODER_FPS, PREVIEW_BITRATE, Arc::new(core::PreviewSink::new(chunks.clone())))
+                .unwrap();
         // A grey screen as capture makes it.
         let data = vec![128u8; 1280 * 720 * 3 / 2];
         let initial = windows::Win32::Graphics::Direct3D11::D3D11_SUBRESOURCE_DATA { pSysMem: data.as_ptr().cast(), SysMemPitch: 1280, SysMemSlicePitch: 0 };
@@ -501,7 +482,7 @@ mod tests {
         unsafe { gpu.0.device.CreateTexture2D(&desc, Some(&initial), Some(&mut texture)) }.unwrap();
         let screen: Frame = Arc::new(Mta(capture::Captured::detached(texture.unwrap(), capture::Image::Nv12)));
         for n in 0..5u64 {
-            let picture = compositor.preview(&screen).unwrap();
+            let picture = compositor.preview(&screen, PreviewView::Composed).unwrap();
             encoder.encode(&picture, 1_000_000_000 + n * 100_000_000, n == 0).unwrap();
         }
         encoder.flush();

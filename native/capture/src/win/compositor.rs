@@ -26,7 +26,7 @@ use windows::core::PCSTR;
 
 use super::Mta;
 use super::capture::{Captured, Frame, Gpu, Image, Pool, Readback};
-use crate::camera_layout::{self, CameraImage, ComposeParams, Layout};
+use crate::camera_layout::{self, CameraImage, ComposeParams, Layout, PreviewView};
 use crate::core::{CameraAges, CameraFeed};
 
 mod names {
@@ -303,12 +303,12 @@ impl Compositor {
 
     /// The frame to encode in place of `screen`, at `at_ns` host time.
     pub fn compose(&self, screen: &Frame, at_ns: u64) -> Result<Frame, String> {
-        self.render(screen, &self.full, Some(at_ns))
+        self.render(screen, &self.full, Some(at_ns), true)
     }
 
-    /// The composed picture of `screen` at preview size, for the preview's encoder.
-    pub fn preview(&self, screen: &Frame) -> Result<Frame, String> {
-        self.render(screen, &self.preview, None)
+    /// The picture of `screen` at preview size in `view` (plan 092, D3), for the preview's encoder.
+    pub fn preview(&self, screen: &Frame, view: PreviewView) -> Result<Frame, String> {
+        self.render(screen, &self.preview, None, view.shows_camera())
     }
 
     /// The camera's age in the frames composed so far, for the log.
@@ -316,12 +316,13 @@ impl Compositor {
         self.ages.summary()
     }
 
-    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview.
-    fn render(&self, screen: &Frame, target: &Mutex<Target>, at_ns: Option<u64>) -> Result<Frame, String> {
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `camera`: whether
+    /// the camera may be drawn, which only the preview's Screen view refuses (plan 092, D3).
+    fn render(&self, screen: &Frame, target: &Mutex<Target>, at_ns: Option<u64>, camera: bool) -> Result<Frame, String> {
         let mut target = target.lock().unwrap();
         let gpu = &self.gpu.0;
-        // Nothing while the camera is lost (D12) or hidden (D13): the screen alone.
-        let camera = if self.hidden() { None } else { self.camera.latest() };
+        // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone.
+        let camera = if self.hidden() || !camera { None } else { self.camera.latest() };
         if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
             self.ages.record(at_ns, *captured_ns);
         }
@@ -574,11 +575,26 @@ mod tests {
         let (compositor, feed) = compositor(&gpu, layout, 1280, 720);
         assert_eq!(compositor.preview_size(), (640, 360));
         deliver(&gpu.0, &feed, |_, _| BRIGHT, (128, 128));
-        let preview = compositor.preview(&screen(&gpu.0, &nv12(1280, 720, |_, _| DARK, (128, 128)), 1280, 720)).unwrap();
+        let preview = compositor.preview(&screen(&gpu.0, &nv12(1280, 720, |_, _| DARK, (128, 128)), 1280, 720), PreviewView::Composed).unwrap();
         let data = read(&gpu.0, &preview, 640, 360);
         assert!(near(data[350 * 640 + 630], BRIGHT), "{}", data[350 * 640 + 630]);
         assert!(near(data[10 * 640 + 10], DARK));
         assert!(data[640 * 360..].iter().all(|&c| c.abs_diff(128) <= 4));
+    }
+
+    #[test]
+    fn the_screen_view_leaves_the_camera_out_of_the_preview_only() {
+        let gpu = gpu();
+        let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
+        let (compositor, feed) = compositor(&gpu, layout, 1280, 720);
+        deliver(&gpu.0, &feed, |_, _| BRIGHT, (128, 128));
+        let data = nv12(1280, 720, |_, _| DARK, (128, 128));
+        let shown = |view| read(&gpu.0, &compositor.preview(&screen(&gpu.0, &data, 1280, 720), view).unwrap(), 640, 360)[350 * 640 + 630];
+        assert!(near(shown(PreviewView::Screen), DARK), "Screen: no camera {}", shown(PreviewView::Screen));
+        // The recording in between is the composed picture whatever the preview shows.
+        let full = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, 1280, 720), 0).unwrap(), 1280, 720);
+        assert!(near(full[710 * 1280 + 1270], BRIGHT), "the recording keeps the camera {}", full[710 * 1280 + 1270]);
+        assert!(near(shown(PreviewView::Composed), BRIGHT), "Composed: the camera again");
     }
 
     #[test]

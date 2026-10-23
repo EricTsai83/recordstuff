@@ -29,7 +29,7 @@ use objc2_metal::{
 };
 
 use super::camera;
-use crate::camera_layout::{self, CameraImage, ComposeParams, Layout};
+use crate::camera_layout::{self, CameraImage, ComposeParams, Layout, PreviewView};
 use crate::core::CameraAges;
 
 mod names {
@@ -238,11 +238,12 @@ impl Compositor {
         camera_layout::compose_params(&self.layout(), self.size, out, camera)
     }
 
-    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview.
-    fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32), at_ns: Option<u64>) -> Result<CFRetained<CVPixelBuffer>, String> {
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `camera`: whether
+    /// the camera may be drawn, which only the preview's Screen view refuses (plan 092, D3).
+    fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32), at_ns: Option<u64>, camera: bool) -> Result<CFRetained<CVPixelBuffer>, String> {
         autoreleasepool(|_| {
-            // Nothing while the camera is lost (D12) or hidden (D13): the screen alone.
-            let camera = if self.hidden() { None } else { self.camera.latest() };
+            // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone.
+            let camera = if self.hidden() || !camera { None } else { self.camera.latest() };
             if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
                 self.ages.record(at_ns, *captured_ns);
             }
@@ -257,12 +258,12 @@ impl Compositor {
     /// The frame to encode in place of `screen`, at `at_ns` host time. Each call drains its own autorelease pool: it
     /// runs on the engine's threads, which have none.
     pub fn compose(&self, screen: &CVImageBuffer, at_ns: u64) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.pool, self.size, Some(at_ns))
+        self.render(screen, &self.pool, self.size, Some(at_ns), true)
     }
 
-    /// The composed picture of `screen` at preview size, for the preview's encoder.
-    pub fn preview(&self, screen: &CVImageBuffer) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.preview_pool, self.preview_size, None)
+    /// The picture of `screen` at preview size in `view` (plan 092, D3), for the preview's encoder.
+    pub fn preview(&self, screen: &CVImageBuffer, view: PreviewView) -> Result<CFRetained<CVPixelBuffer>, String> {
+        self.render(screen, &self.preview_pool, self.preview_size, None, view.shows_camera())
     }
 
     /// The camera's age in the frames composed so far, for the log.
@@ -433,13 +434,28 @@ mod tests {
         let camera = Arc::new(camera::Feed::default());
         let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
         deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
-        let preview = compositor.preview(&buffer(1280, 720, |_, _| DARK)).unwrap();
+        let preview = compositor.preview(&buffer(1280, 720, |_, _| DARK), PreviewView::Composed).unwrap();
         assert_eq!((CVPixelBufferGetWidth(&preview), CVPixelBufferGetHeight(&preview)), (640, 360));
         let data = nv12_bytes(&preview, 640, 360).unwrap();
         let at = |x: usize, y: usize| data[y * 640 + x];
         assert!(near(at(630, 350), BRIGHT), "{}", at(630, 350));
         assert!(near(at(10, 10), DARK));
         assert!(data[640 * 360..].iter().all(|&c| c.abs_diff(128) <= 4));
+    }
+
+    #[test]
+    fn the_screen_view_leaves_the_camera_out_of_the_preview_only() {
+        let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
+        let camera = Arc::new(camera::Feed::default());
+        let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
+        deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
+        let screen = buffer(1280, 720, |_, _| DARK);
+        let shown = |view| nv12_bytes(&compositor.preview(&screen, view).unwrap(), 640, 360).unwrap()[350 * 640 + 630];
+        assert!(near(shown(PreviewView::Screen), DARK), "Screen: no camera {}", shown(PreviewView::Screen));
+        // The recording in between is the composed picture whatever the preview shows.
+        let full = nv12_bytes(&compositor.compose(&screen, 0).unwrap(), 1280, 720).unwrap();
+        assert!(near(full[710 * 1280 + 1270], BRIGHT), "the recording keeps the camera {}", full[710 * 1280 + 1270]);
+        assert!(near(shown(PreviewView::Composed), BRIGHT), "Composed: the camera again");
     }
 
     #[test]

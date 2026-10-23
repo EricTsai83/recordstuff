@@ -163,18 +163,41 @@ pub fn compose_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera
 }
 
 pub const PREVIEW_WIDTH: u32 = 640;
-/// 10 a second since 2026-10-18 (D21): the Recording Studio's page decoding and drawing it cost more than the recording
-/// it shows at 15; the recording keeps its own rate.
+/// The preview's rate at a session's start, until the Studio's page says its own (plan 092, D1): 10 a second, Standard.
 pub const PREVIEW_FPS: u32 = 10;
-/// The preview's rate while no one works in the Recording Studio (plan 081, D1): each frame Chromium composes costs the
-/// Studio's processes about half a point of a core per frame a second, so a Studio only looked at shows half as many.
-pub const PREVIEW_RESTING_FPS: u32 = 5;
+/// The rates the Recording Studio offers (plan 092, D1): Power saving's 5 while only looked at, 10 (Standard, and Power
+/// saving while worked in) and Smooth's 15.
+pub const PREVIEW_RATES: [u32; 3] = [5, 10, 15];
+/// The rate the preview's encoder is configured for: the highest offered, so its rate control never assumes fewer
+/// frames than it is given (it times its bits by the frames' timestamps on macOS).
+pub const PREVIEW_ENCODER_FPS: u32 = 15;
 
-/// Whether the preview thread's `tick`th tick, at `PREVIEW_FPS`, makes a frame at `fps`: every tick at the full rate,
-/// every other at half; the ticks stay `PREVIEW_FPS` apart, so a change of rate takes effect at the next one.
-pub fn preview_tick_shows(tick: u64, fps: u32) -> bool {
-    let every = u64::from(PREVIEW_FPS / fps.clamp(1, PREVIEW_FPS));
-    tick.is_multiple_of(every)
+/// `fps` when the Studio offers it, else none.
+pub fn preview_rate(fps: u32) -> Option<u32> {
+    PREVIEW_RATES.contains(&fps).then_some(fps)
+}
+
+/// What the preview shows (plan 092, D3): the composed picture, or the screen without the camera. Only the preview:
+/// the recording is always the composed picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewView {
+    Composed,
+    Screen,
+}
+
+impl PreviewView {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "composed" => Some(Self::Composed),
+            "screen" => Some(Self::Screen),
+            _ => None,
+        }
+    }
+
+    /// Whether the camera is drawn in this view's preview.
+    pub fn shows_camera(self) -> bool {
+        self == Self::Composed
+    }
 }
 
 /// Step 2's development switch: whether the camera is composed, and how.
@@ -288,13 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn the_preview_shows_every_tick_at_its_rate_and_every_other_resting() {
-        let shown = |fps| (0..10).filter(|&tick| preview_tick_shows(tick, fps)).count();
-        assert_eq!(shown(PREVIEW_FPS), 10);
-        assert_eq!(shown(PREVIEW_RESTING_FPS), 5);
-        // Out of range: never faster than the ticks, and at least once a second.
-        assert_eq!(shown(60), 10);
-        assert_eq!(shown(0), 1);
+    fn the_preview_takes_only_the_studio_s_rates_and_views() {
+        assert_eq!(PREVIEW_RATES.map(preview_rate), [Some(5), Some(10), Some(15)]);
+        assert_eq!([0, 1, 7, 30, 60].map(preview_rate), [None; 5]);
+        assert!(PREVIEW_RATES.contains(&PREVIEW_FPS) && PREVIEW_RATES.iter().all(|&fps| fps <= PREVIEW_ENCODER_FPS));
+        assert_eq!(PreviewView::parse("composed"), Some(PreviewView::Composed));
+        assert_eq!(PreviewView::parse("screen"), Some(PreviewView::Screen));
+        assert_eq!(PreviewView::parse("camera"), None);
+        assert!(PreviewView::Composed.shows_camera() && !PreviewView::Screen.shows_camera());
     }
 
     #[test]

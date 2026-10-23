@@ -24,6 +24,7 @@ pub mod diagnostics;
 mod frame_log;
 pub mod meter;
 mod mixer;
+pub mod preview;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
