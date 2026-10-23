@@ -25,11 +25,12 @@ export function logSessionEvent(log: Log, run: string, event: RecorderEvent): vo
     case "saved": {
       log(`saved ${event.path}${event.stoppedEarly ? ` (stopped early: ${EARLY_STOP_TEXT[event.stoppedEarly]})` : ""}` +
         `${event.microphoneLost ? " (the microphone dropped out partway)" : ""}${event.cameraLost ? " (the camera dropped out partway)" : ""}` +
+        `${event.cameraNotReady ? " (the camera was not ready at the start)" : ""}` +
         `${event.microphones ? ` (microphones in turn: ${event.microphones.join(", ")})` : ""}`);
       const { id, recordingPath: _temporary, ...timing } = event.session;
       log(formatSessionRecord(run, { kind: "saved", session: id, path: event.path,
         ...(event.stoppedEarly ? { stoppedEarly: event.stoppedEarly } : {}), ...(event.microphoneLost ? { microphoneLost: true } : {}),
-        ...(event.cameraLost ? { cameraLost: true } : {}), ...(event.microphones ? { microphones: event.microphones } : {}), ...timing }));
+        ...(event.cameraLost ? { cameraLost: true } : {}), ...(event.cameraNotReady ? { cameraNotReady: true } : {}), ...(event.microphones ? { microphones: event.microphones } : {}), ...timing }));
       return;
     }
     case "failed": {

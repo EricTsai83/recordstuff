@@ -358,6 +358,10 @@ export function cameraDeniedNotification(language?: Language): NotificationText 
 export function cameraLostNotification(language?: Language): NotificationText {
   return notice(t("The camera dropped out during the recording. The screen was recorded without it while it was out.", language));
 }
+/** The camera gave no picture in the time it has to start (plan 090, D1), told once the recording ends as a loss is. */
+export function cameraNotReadyNotification(language?: Language): NotificationText {
+  return notice(t("The camera was not ready when the recording started. The screen was recorded without it until the camera sent a picture.", language));
+}
 /** Told once the recording ends, as the other capture notices are (plan 074). */
 export function microphoneLostNotification(language?: Language): NotificationText {
   return notice(t("The microphone dropped out during the recording. Only system audio was recorded while it was out.", language));

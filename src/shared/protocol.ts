@@ -184,7 +184,9 @@ export type HostMessage =
   | { type: "microphoneResumed"; sessionId: string; detail: string }
   /** The camera stopped delivering while recording, and the recording goes on without it (plan 075, D12). */
   | { type: "cameraLost"; sessionId: string; detail: string }
-  /** The camera told lost delivers again and is composed again. */
+  /** The camera delivered no first frame in the time it has from its opening (plan 090, D1); never a loss. */
+  | { type: "cameraNotReady"; sessionId: string; detail: string }
+  /** The camera told lost or not ready delivers and is composed from then on. */
   | { type: "cameraResumed"; sessionId: string; detail: string }
   /** The microphone switched to while recording (plan 079, D3), by the names of the device before and the one now. */
   | { type: "microphoneSwitched"; sessionId: string; from: string; to: string }
@@ -317,6 +319,7 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "microphoneLost":
     case "microphoneResumed":
     case "cameraLost":
+    case "cameraNotReady":
     case "cameraResumed":
       return isNonEmptyString(value["sessionId"]) && typeof value["detail"] === "string";
     case "microphoneSwitched":

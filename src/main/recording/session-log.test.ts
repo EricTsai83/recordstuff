@@ -57,6 +57,15 @@ describe("session log lines", () => {
     expect(record).not.toHaveProperty("microphoneLost");
   });
 
+  it("marks a recording whose camera was not ready at the start in the human line and the record (plan 090)", () => {
+    const lines: string[] = [];
+    logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/f.mp4", cameraNotReady: true, session: { id: "s7" } });
+    expect(lines[0]).toBe("saved /m/f.mp4 (the camera was not ready at the start)");
+    const record = JSON.parse(lines[1]!.slice("session-record: ".length));
+    expect(record).toMatchObject({ kind: "saved", session: "s7", cameraNotReady: true });
+    expect(record).not.toHaveProperty("cameraLost");
+  });
+
   it("names each microphone a recording switched between in the human line and the record (plan 079, D3)", () => {
     const lines: string[] = [];
     logSessionEvent((message) => lines.push(message), "r1", { type: "saved", path: "/m/g.mp4",

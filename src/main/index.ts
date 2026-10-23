@@ -924,6 +924,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         // The same for the camera (plan 075, D12).
         captureNotices.hold("camera lost", () => tray.notifyCameraLost());
         return;
+      case "cameraNotReady":
+        // Not a loss, told the same way (plan 090, D1).
+        captureNotices.hold("camera not ready", () => tray.notifyCameraNotReady());
+        return;
       case "displayFailed":
         displayMedia.failure = event.detail;
         refreshUi();

@@ -510,6 +510,28 @@ describe("the camera (plan 075)", () => {
     const saved = ctx.events.find((event) => event.type === "saved");
     expect(saved).toMatchObject({ cameraLost: true });
     expect(saved).not.toHaveProperty("microphoneLost");
+    expect(saved).not.toHaveProperty("cameraNotReady");
+  });
+
+  it("keeps recording when the camera is not ready, tells it once apart from a loss and marks the saved recording (plan 090)", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    ctx.host.emit({ type: "cameraNotReady", sessionId: "s1", detail: "the camera delivered no frame in the 10 s after it was opened" });
+    ctx.host.emit({ type: "cameraNotReady", sessionId: "s1", detail: "again" });
+    ctx.host.emit({ type: "cameraNotReady", sessionId: "other", detail: "another session's" });
+    ctx.host.emit({ type: "cameraResumed", sessionId: "s1", detail: "the camera delivered its first frame 12.0 s after it was opened" });
+    expect(ctx.events.filter((event) => event.type === "cameraNotReady")).toEqual([
+      { type: "cameraNotReady", sessionId: "s1", detail: "the camera delivered no frame in the 10 s after it was opened" }]);
+    expect(ctx.events.some((event) => event.type === "cameraLost")).toBe(false);
+    expect(ctx.recorder.state.type).toBe("recording");
+    expect(logs).toContainEqual(expect.stringContaining("camera not ready; recording continues without it"));
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    const saved = ctx.events.find((event) => event.type === "saved");
+    expect(saved).toMatchObject({ cameraNotReady: true });
+    expect(saved).not.toHaveProperty("cameraLost");
   });
 });
 

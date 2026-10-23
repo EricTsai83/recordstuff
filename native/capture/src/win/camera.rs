@@ -365,8 +365,10 @@ impl CameraCapture {
         let chosen = device.and_then(|id| connected.iter().find(|candidate| candidate.link == id)).or_else(|| connected.first());
         let Some(chosen) = chosen else { return Err(unavailable("no camera is connected")) };
         let (link, name) = (chosen.link.clone(), chosen.name.clone());
+        let asked_ns = now_ns();
         let opened = open(&link).map_err(|detail| unavailable(format!("{name}: {detail}")))?;
         let feed = Arc::new(Feed::default());
+        feed.opened(asked_ns);
         let inner = Arc::new(Inner {
             gpu,
             feed: feed.clone(),
@@ -408,11 +410,12 @@ impl CameraCapture {
     pub fn state(&self) -> String {
         let (delivered, losses) = self.feed.counts();
         format!(
-            "{}: {}, {delivered} frame(s) delivered, {losses} loss(es), {} failed read(s), opened again {} time(s)",
+            "{}: {}, {delivered} frame(s) delivered, {losses} loss(es), {} failed read(s), opened again {} time(s), {}",
             self.name,
             if self.inner.source.lock().unwrap().is_some() { "reading" } else { "not reading" },
             self.inner.failed_reads.load(Ordering::Relaxed),
-            self.inner.reopened.load(Ordering::Relaxed)
+            self.inner.reopened.load(Ordering::Relaxed),
+            self.feed.first_frame()
         )
     }
 }

@@ -32,7 +32,7 @@ interface StopReport {
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent {
-  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraResumed" | "levels"
+  kind: "progress" | "writeError" | "captureError" | "microphoneLost" | "microphoneResumed" | "cameraLost" | "cameraNotReady" | "cameraResumed" | "levels"
     | "microphoneSwitched" | "microphoneSwitchFailed" | "meter" | "meterLost" | "devices";
   bytes?: number; code?: string; detail?: string;
   /** With `levels` (plan 075, D19). */
@@ -642,6 +642,8 @@ export class NativeHost {
       this.send({ type: "microphoneSwitchFailed", sessionId: session.id, detail: event.detail ?? "the microphone could not be switched" });
     } else if (event.kind === "cameraLost") {
       this.send({ type: "cameraLost", sessionId: session.id, detail: event.detail ?? "the camera stopped" });
+    } else if (event.kind === "cameraNotReady") {
+      this.send({ type: "cameraNotReady", sessionId: session.id, detail: event.detail ?? "the camera delivered no first frame" });
     } else if (event.kind === "cameraResumed") {
       this.send({ type: "cameraResumed", sessionId: session.id, detail: event.detail ?? "the camera delivered frames again" });
     } else if (event.kind === "levels" && typeof event.system === "number") {

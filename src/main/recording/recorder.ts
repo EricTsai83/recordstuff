@@ -179,14 +179,17 @@ export type RecorderEvent =
   | { type: "state"; state: RecordingState }
   /**
    * `microphoneLost`: the microphone dropped out partway, and that part has system audio only (plan 074);
-   * `cameraLost`: the camera did, and that part shows the screen alone (plan 075). `microphones`: the devices recorded
+   * `cameraLost`: the camera did, and that part shows the screen alone (plan 075); `cameraNotReady`: the camera gave no
+   * picture in the time it has to start, and the recording shows the screen alone until it did (plan 090). `microphones`: the devices recorded
    * in turn, when the user switched while recording (plan 079, D3).
    */
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; microphones?: string[]; session: SessionTrace }
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; cameraNotReady?: true; microphones?: string[]; session: SessionTrace }
   /** The microphone stopped while recording; the recording goes on without it. Told once per session (plan 074). */
   | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The camera stopped while recording; the recording goes on without it. Told once per session (plan 075). */
   | { type: "cameraLost"; sessionId: string; detail: string }
+  /** The camera gave no first frame in time; the recording goes on without it until it does. Told once per session (plan 090). */
+  | { type: "cameraNotReady"; sessionId: string; detail: string }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -270,6 +273,8 @@ interface Session {
   camera?: SessionCamera;
   /** The engine told that the camera stopped while recording. */
   cameraLost?: boolean;
+  /** The engine told that the camera gave no first frame in time (plan 090). */
+  cameraNotReady?: boolean;
   /** Hidden from the tray (D13); the camera stays open. */
   cameraHidden?: boolean;
   /**
@@ -1184,6 +1189,14 @@ export class Recorder {
         session.cameraLost = true;
         this.emit({ type: "cameraLost", sessionId: session.id, detail: message.detail });
         return;
+      case "cameraNotReady":
+        // Not a loss (plan 090, D1): the recording began with the screen alone and composes the camera once it delivers.
+        if (!this.acceptsMedia(session)) return;
+        this.deps.log(`recorder: session ${session.id} camera not ready; recording continues without it: ${message.detail}`);
+        if (session.cameraNotReady) return;
+        session.cameraNotReady = true;
+        this.emit({ type: "cameraNotReady", sessionId: session.id, detail: message.detail });
+        return;
       case "cameraResumed":
         if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} camera resumed: ${message.detail}`);
         return;
@@ -1468,6 +1481,7 @@ export class Recorder {
     this.endSaving(session);
     this.emit({ type: "saved", path: finalPath, ...(session.stoppedEarly ? { stoppedEarly: session.stoppedEarly } : {}),
       ...(session.microphoneLost ? { microphoneLost: true as const } : {}), ...(session.cameraLost ? { cameraLost: true as const } : {}),
+      ...(session.cameraNotReady ? { cameraNotReady: true as const } : {}),
       ...((session.microphones?.length ?? 0) > 1 ? { microphones: session.microphones } : {}),
       session: this.trace(session) });
     await session.sentinel.clear();

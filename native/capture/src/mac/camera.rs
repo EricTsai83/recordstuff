@@ -294,6 +294,7 @@ impl CameraCapture {
     /// its watch. `recording` says whether the recording is on.
     pub fn start(device: Option<&str>, events: Arc<dyn Events>, recording: impl Fn() -> bool + Send + Sync + 'static) -> Result<Arc<Self>, CaptureError> {
         let feed = Arc::new(Feed::default());
+        feed.opened(now_ns());
         let dropped = Arc::new(AtomicU64::new(0));
         let (opened, unique_id, name) = open(Wanted::Chosen(device), &feed, &events, &dropped)?;
         let inner = Arc::new(Inner {
@@ -320,16 +321,18 @@ impl CameraCapture {
         Ok(Arc::new(Self { name, feed, inner, watch: Mutex::new(Some(watch)) }))
     }
 
-    /// What the camera did, for the log: whether its session runs, frames delivered and dropped, losses and reopenings.
+    /// What the camera did, for the log: whether its session runs, frames delivered and dropped, losses and reopenings,
+    /// and when its first frame came.
     pub fn state(&self) -> String {
         let running = self.inner.opened.lock().unwrap().as_ref().map(|opened| unsafe { opened.session.0.isRunning() });
         let (delivered, losses) = self.feed.counts();
         format!(
-            "{}: running {}, {delivered} frame(s) delivered, {} dropped, {losses} loss(es), opened again {} time(s)",
+            "{}: running {}, {delivered} frame(s) delivered, {} dropped, {losses} loss(es), opened again {} time(s), {}",
             self.name,
             running.map_or("no (closed)".into(), |running| running.to_string()),
             self.inner.dropped.load(Ordering::Relaxed),
-            self.inner.reopened.load(Ordering::Relaxed)
+            self.inner.reopened.load(Ordering::Relaxed),
+            self.feed.first_frame()
         )
     }
 }

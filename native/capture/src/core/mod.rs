@@ -28,7 +28,7 @@ mod mixer;
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
-pub use camera::{CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
+pub use camera::{CAMERA_FIRST_FRAME_NS, CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
 pub use diagnostics::Diagnostics;
 pub use frame_log::FrameLog;
 use mixer::Mixer;
@@ -89,7 +89,10 @@ pub trait Events: Send + Sync {
     /// The camera stopped delivering while recording (plan 075, D12): the recording goes on without it. Told once per
     /// dropout.
     fn camera_lost(&self, _detail: String) {}
-    /// The camera told lost delivers again, and is composed again.
+    /// The camera delivered nothing in `CAMERA_FIRST_FRAME_NS` after its opening while recording (plan 090, D1): the
+    /// recording goes on without it. Told once per session, before any loss.
+    fn camera_not_ready(&self, _detail: String) {}
+    /// The camera told lost or not ready delivers, and is composed from then on.
     fn camera_resumed(&self, _detail: String) {}
     /// The loudest sample of each kind of input since the last levels (plan 075, D19), 10 times a second while
     /// they are watched and sound is taken; called on an input's thread.

@@ -581,6 +581,8 @@ export const ZH_TW = {
   "Show camera": "顯示相機",
   "The camera dropped out during the recording. The screen was recorded without it while it was out.":
     "錄影途中相機曾中斷，中斷期間只錄到螢幕畫面。",
+  "The camera was not ready when the recording started. The screen was recorded without it until the camera sent a picture.":
+    "錄影開始時相機尚未就緒，在相機送出畫面前只錄到螢幕畫面。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */
   or: "或",
 } as const;

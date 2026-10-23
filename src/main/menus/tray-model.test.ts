@@ -9,6 +9,7 @@ import {
   microphoneDeniedNotification,
   cameraDeniedNotification,
   cameraLostNotification,
+  cameraNotReadyNotification,
   microphoneLostNotification,
   recordingFailureNotification,
   savedNotification,
@@ -344,6 +345,8 @@ describe("notification text", () => {
     expect(cameraDeniedNotification("zh-TW").body).toBe("RecordStuff 無法使用相機。按一下以開啟系統設定。");
     expect(cameraLostNotification("en").body).toBe("The camera dropped out during the recording. The screen was recorded without it while it was out.");
     expect(cameraLostNotification("zh-TW").body).toBe("錄影途中相機曾中斷，中斷期間只錄到螢幕畫面。");
+    expect(cameraNotReadyNotification("en").body).toBe("The camera was not ready when the recording started. The screen was recorded without it until the camera sent a picture.");
+    expect(cameraNotReadyNotification("zh-TW").body).toBe("錄影開始時相機尚未就緒，在相機送出畫面前只錄到螢幕畫面。");
     expect(microphoneLostNotification("en").body).toBe("The microphone dropped out during the recording. Only system audio was recorded while it was out.");
     expect(microphoneLostNotification("zh-TW").body).toBe("錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。");
   });

@@ -117,6 +117,7 @@ struct Heard {
     microphone_resumed: Mutex<Vec<String>>,
     camera_lost: Mutex<Vec<String>>,
     camera_resumed: Mutex<Vec<String>>,
+    camera_not_ready: Mutex<Vec<String>>,
     levels: Mutex<Vec<Levels>>,
 }
 
@@ -141,6 +142,9 @@ impl Events for Heard {
     }
     fn camera_resumed(&self, detail: String) {
         self.camera_resumed.lock().unwrap().push(detail);
+    }
+    fn camera_not_ready(&self, detail: String) {
+        self.camera_not_ready.lock().unwrap().push(detail);
     }
     fn levels(&self, levels: Levels) {
         self.levels.lock().unwrap().push(levels);
@@ -1080,23 +1084,27 @@ fn a_camera_is_never_told_lost_before_the_recording_or_when_it_delivers() {
 fn a_camera_s_return_names_the_silence_from_the_recording_s_start_or_its_last_frame() {
     let heard = Heard::default();
     let resumed = |heard: &Heard| heard.camera_resumed.lock().unwrap().last().cloned();
-    // Silent from the start of a recording begun at 1000 s of host uptime: lost after 2 s, back 2.5 s in.
+    // Silent from the start of a recording begun at 1000 s of host uptime, its opening not told: not lost after 2 s
+    // (plan 090), told not ready after 10 s, and its first frame 12.5 s in tells its return from the start, not from 0.
     let silent = CameraFeed::<u32>::default();
     let start = 1_000 * NANOS_PER_SECOND;
     silent.judge(start + 2_100_000_000, start, true, &heard);
+    assert!(!silent.is_lost());
+    silent.judge(start + 10_100_000_000, start, true, &heard);
     assert!(silent.is_lost());
-    silent.deliver(1, start + 2_500_000_000, start + 2_500_000_000, &heard);
-    assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered frames again after 2.5 s"));
-    // Delivering, then silent from 1003 s: lost at 1005.1 s, back at 1007.3 s after 4.3 s of silence.
-    silent.deliver(2, 1_003 * NANOS_PER_SECOND, 1_003 * NANOS_PER_SECOND, &heard);
-    silent.judge(1_005_000_000_000, start, true, &heard);
+    silent.deliver(1, start + 12_500_000_000, start + 12_500_000_000, &heard);
+    assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered its first frame 12.5 s after it was opened"));
+    // Delivering, then silent from 1013 s: lost at 1015.1 s, back at 1017.3 s after 4.3 s of silence.
+    silent.deliver(2, 1_013 * NANOS_PER_SECOND, 1_013 * NANOS_PER_SECOND, &heard);
+    silent.judge(1_015_000_000_000, start, true, &heard);
     assert!(!silent.is_lost(), "2 s of silence is not yet a loss");
-    silent.judge(1_005_100_000_000, start, true, &heard);
+    silent.judge(1_015_100_000_000, start, true, &heard);
     assert!(silent.is_lost());
-    silent.deliver(3, 1_007_300_000_000, 1_007_300_000_000, &heard);
+    silent.deliver(3, 1_017_300_000_000, 1_017_300_000_000, &heard);
     assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered frames again after 4.3 s"));
     assert_eq!(heard.camera_resumed.lock().unwrap().len(), 2);
-    assert_eq!(silent.counts(), (3, 2));
+    assert_eq!(heard.camera_lost.lock().unwrap().len(), 1, "not ready is not a loss");
+    assert_eq!(silent.counts(), (3, 1));
     // A frame before the recording, then silence: measured from that frame's recording start, not from 0.
     let before = CameraFeed::<u32>::default();
     before.deliver(1, 500 * NANOS_PER_SECOND, 500 * NANOS_PER_SECOND, &heard);
@@ -1241,4 +1249,69 @@ fn a_writer_gone_without_answering_is_not_reported_as_a_timeout() {
     let failure = Finishing::from_receiver(result).wait().err().unwrap();
     assert_eq!(failure.code, "output_write_failed");
     assert_eq!(failure.detail, "the writer ended without finishing the file");
+}
+
+#[test]
+fn a_camera_s_first_frame_is_timed_from_its_opening_and_the_recording_s_start() {
+    let heard = Heard::default();
+    let opened = 500 * NANOS_PER_SECOND;
+    let feed = CameraFeed::<u32>::default();
+    feed.opened(opened);
+    assert_eq!(feed.first_frame(), "no frame yet");
+    // Before the recording: timed from the opening only.
+    feed.deliver(1, opened + 800_000_000, opened + 800_000_000, &heard);
+    assert_eq!(feed.first_frame(), "first frame 0.80 s after opening");
+    // Once recording since 501 s, the same first frame came 0.20 s before its start; later frames change nothing.
+    feed.judge(opened + 1_100_000_000, opened + NANOS_PER_SECOND, true, &heard);
+    feed.deliver(2, opened + 1_050_000_000, opened + 1_050_000_000, &heard);
+    assert_eq!(feed.first_frame(), "first frame 0.80 s after opening, -0.20 s from the recording's start");
+    // A camera slow to its first frame (plan 090's round): opened, recording 0.5 s later, the frame 2.6 s into it, is
+    // never told lost; opening it again does not move its opening.
+    let slow = CameraFeed::<u32>::default();
+    slow.opened(opened);
+    slow.judge(opened + 3_000_000_000, opened + 500_000_000, true, &heard);
+    assert!(!slow.is_lost());
+    slow.opened(opened + 2_700_000_000);
+    slow.deliver(1, opened + 3_100_000_000, opened + 3_100_000_000, &heard);
+    assert_eq!(slow.first_frame(), "first frame 3.10 s after opening, +2.60 s from the recording's start");
+    assert!(heard.camera_lost.lock().unwrap().is_empty() && heard.camera_resumed.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_camera_without_a_first_frame_is_told_not_ready_from_its_opening_never_lost() {
+    let heard = Heard::default();
+    let opened = 500 * NANOS_PER_SECOND;
+    let start = opened + 700_000_000;
+    let feed = CameraFeed::<u32>::default();
+    feed.opened(opened);
+    // Before the recording nothing is judged, however long it waits.
+    feed.judge(opened + 20 * NANOS_PER_SECOND, 0, false, &heard);
+    assert!(!feed.is_lost());
+    // Recording: within 10 s of its opening it is waited for, and the compositor has nothing to compose.
+    feed.judge(opened + 9_900_000_000, start, true, &heard);
+    assert!(!feed.is_lost());
+    assert_eq!(feed.latest(), None);
+    // Past 10 s from its opening (9.4 s into the recording): told not ready once, and never lost.
+    feed.judge(opened + 10_100_000_000, start, true, &heard);
+    feed.judge(opened + 15 * NANOS_PER_SECOND, start, true, &heard);
+    assert!(feed.is_lost());
+    assert_eq!(heard.camera_not_ready.lock().unwrap().as_slice(), ["the camera delivered no frame in the 10 s after it was opened"]);
+    assert!(heard.camera_lost.lock().unwrap().is_empty());
+    assert_eq!(feed.first_frame(), "no frame in the 10 s after opening");
+    // Its first frame, when it comes, tells its return and is composed.
+    feed.deliver(1, opened + 12 * NANOS_PER_SECOND, opened + 12 * NANOS_PER_SECOND, &heard);
+    assert!(!feed.is_lost());
+    assert_eq!(feed.latest(), Some((1, opened + 12 * NANOS_PER_SECOND)));
+    assert_eq!(heard.camera_resumed.lock().unwrap().as_slice(), ["the camera delivered its first frame 12.0 s after it was opened"]);
+    assert_eq!(feed.counts(), (1, 0));
+    // A device the platform sees go before its first frame is a loss at once, as after it.
+    let gone = CameraFeed::<u32>::default();
+    gone.opened(opened);
+    gone.judge(opened + NANOS_PER_SECOND, start, true, &heard);
+    gone.lose("the camera was disconnected".into(), true, &heard);
+    assert!(gone.is_lost());
+    assert_eq!(heard.camera_lost.lock().unwrap().as_slice(), ["the camera was disconnected"]);
+    assert_eq!(heard.camera_not_ready.lock().unwrap().len(), 1, "a lost camera is not also told not ready");
+    gone.judge(opened + 11 * NANOS_PER_SECOND, start, true, &heard);
+    assert_eq!(heard.camera_not_ready.lock().unwrap().len(), 1);
 }
