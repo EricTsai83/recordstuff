@@ -183,11 +183,11 @@
   {"name":"largest","layout":{"width":0.6,"height":0.6,"rounding":1,"mirror":false},"position":{"x":0.3,"y":0.1},"frame":[100,100],"rect":{"x":12,"y":4,"width":60,"height":60},"radius":30}
  ],
  "previews": [
-  {"frame":[1920,1080],"preview":{"width":640,"height":360}},
-  {"frame":[3024,1964],"preview":{"width":640,"height":414}},
-  {"frame":[3840,2160],"preview":{"width":640,"height":360}},
-  {"frame":[1080,1920],"preview":{"width":640,"height":1136}},
-  {"frame":[1366,768],"preview":{"width":640,"height":358}},
+  {"frame":[1920,1080],"preview":{"width":960,"height":540}},
+  {"frame":[3024,1964],"preview":{"width":960,"height":622}},
+  {"frame":[3840,2160],"preview":{"width":960,"height":540}},
+  {"frame":[1080,1920],"preview":{"width":960,"height":1706}},
+  {"frame":[1366,768],"preview":{"width":960,"height":538}},
   {"frame":[100,100],"preview":{"width":100,"height":100}}
  ],
  "crops": [

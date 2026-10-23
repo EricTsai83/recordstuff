@@ -92,6 +92,8 @@ async function run(): Promise<void> {
   let studioPreview: AppContext["studioPreview"];
   /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
   let cameraState: "waiting" | "notReady" | "lost" | undefined;
+  /** The display recorded: the landscape primary, or the portrait screen for the Studio's stage at its shape (plan 095). */
+  let display: AppContext["display"] = { kind: "primary" };
   // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
   const PREVIEW_DISPLAYS: AppContext["displays"] = [
     { id: "1", label: "BenQ BL2480T", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false, x: -1080, y: -620 },
@@ -99,7 +101,7 @@ async function run(): Promise<void> {
   ];
   const context = (): AppContext => ({ platform: process.platform, language, outputDir: clips, homeDir: os.homedir(), version: "1.5.0",
     quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true, hotkey: { ...DEFAULT_HOTKEY, registered: true }, notifications: true,
-    updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults,
+    updates: { enabled: true, state: { kind: "idle" } }, display, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults,
     // The camera as a Mac has it (available since plan 075 step 7), on with its default bubble, for the Studio's tab.
     camera: { enabled: true, available: true, access: "granted", layout: DEFAULT_CAMERA_LAYOUT, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }],
       ...(state.type === "recording" ? { session: { hidden: false, ...(cameraState ? { state: cameraState } : {}) } } : {}) },
@@ -334,6 +336,24 @@ async function run(): Promise<void> {
         await show(window, each);
         await shoot(window, `${each}-${lang}-light-${width}x${size.height}.png`, `${each} · ${lang} · light · ${width}×${size.height}`);
       }
+      window.destroy();
+    }
+  }
+
+  // 3b. The Studio's stage at its display's shape (plan 095): a landscape and a portrait display at the default, narrow,
+  //     minimum and large sizes, so the picture is seen meeting its stage on one axis at each.
+  for (const [shape, choice] of [["landscape", { kind: "primary" }], ["portrait", { kind: "display", id: "1", label: "BenQ BL2480T" }]] as const) {
+    for (const [sizeName, size] of [["default", DEFAULT_SETTINGS_SIZE], ["narrow", { width: 440, height: 760 }], ["minimum", MIN_SETTINGS_SIZE],
+      ["1043x758", { width: 1043, height: 758 }], ["1440x900", { width: 1440, height: 900 }]] as const) {
+      const window = await begin("studio-stage", "en", "light", sizeName, size);
+      display = choice;
+      await show(window, "studio");
+      await shoot(window, `studio-stage-${shape}-${sizeName}.png`, `the Studio's stage, a ${shape} display · en · light · ${sizeName}`, { state: `stage-${shape}` });
+      if (await scrollable(window)) {
+        await toBottom(window);
+        await shoot(window, `studio-stage-${shape}-bottom-${sizeName}.png`, `the Studio's stage, a ${shape} display, scrolled to the bottom · en · light · ${sizeName}`, { state: `stage-${shape}`, scroll: "bottom" });
+      }
+      display = { kind: "primary" };
       window.destroy();
     }
   }

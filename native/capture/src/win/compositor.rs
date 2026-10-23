@@ -573,13 +573,13 @@ mod tests {
         let gpu = gpu();
         let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
         let (compositor, feed) = compositor(&gpu, layout, 1280, 720);
-        assert_eq!(compositor.preview_size(), (640, 360));
+        assert_eq!(compositor.preview_size(), (960, 540));
         deliver(&gpu.0, &feed, |_, _| BRIGHT, (128, 128));
         let preview = compositor.preview(&screen(&gpu.0, &nv12(1280, 720, |_, _| DARK, (128, 128)), 1280, 720), PreviewView::Composed).unwrap();
-        let data = read(&gpu.0, &preview, 640, 360);
-        assert!(near(data[350 * 640 + 630], BRIGHT), "{}", data[350 * 640 + 630]);
-        assert!(near(data[10 * 640 + 10], DARK));
-        assert!(data[640 * 360..].iter().all(|&c| c.abs_diff(128) <= 4));
+        let data = read(&gpu.0, &preview, 960, 540);
+        assert!(near(data[530 * 960 + 950], BRIGHT), "{}", data[530 * 960 + 950]);
+        assert!(near(data[10 * 960 + 10], DARK));
+        assert!(data[960 * 540..].iter().all(|&c| c.abs_diff(128) <= 4));
     }
 
     #[test]
@@ -589,7 +589,7 @@ mod tests {
         let (compositor, feed) = compositor(&gpu, layout, 1280, 720);
         deliver(&gpu.0, &feed, |_, _| BRIGHT, (128, 128));
         let data = nv12(1280, 720, |_, _| DARK, (128, 128));
-        let shown = |view| read(&gpu.0, &compositor.preview(&screen(&gpu.0, &data, 1280, 720), view).unwrap(), 640, 360)[350 * 640 + 630];
+        let shown = |view| read(&gpu.0, &compositor.preview(&screen(&gpu.0, &data, 1280, 720), view).unwrap(), 960, 540)[530 * 960 + 950];
         assert!(near(shown(PreviewView::Screen), DARK), "Screen: no camera {}", shown(PreviewView::Screen));
         // The recording in between is the composed picture whatever the preview shows.
         let full = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, 1280, 720), 0).unwrap(), 1280, 720);

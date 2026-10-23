@@ -127,7 +127,6 @@ function NumberSetting({ group, field, disabled, describedBy }: {
 function CameraPanel() {
   const camera = groupOf("studioCamera");
   if (!camera) return null;
-  const shown = groupOf("cameraShown");
   const mirror = groupOf("cameraMirror");
   const fields = ["cameraWidth", "cameraHeight", "cameraRounding"].map(groupOf);
   // What the pixels are counted on: the recording's size on the display it would capture now.
@@ -151,16 +150,18 @@ function CameraPanel() {
         {pixels && <p id="studio-camera-pixels" className="studio-note">{pixels}</p>}
         <div className="studio-toggles">
           {mirror && <Toggle group={mirror} icon={FlipHorizontal2} />}
-          {shown && <Toggle group={shown} icon={Eye} offIcon={EyeOff} />}
         </div>
       </div>
-      <Failures groups={[camera, shown, mirror, ...fields]} />
+      <Failures groups={[camera, mirror, ...fields]} />
     </section>
   );
 }
 
+/** The inputs the Studio meters: the system's sound and the microphone, each with its level, mute and fader. */
+const audioRows = (): SettingsGroup[] => ["systemAudio", "microphoneAudio"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.meter));
+
 function AudioPanel() {
-  const rows = ["systemAudio", "microphoneAudio"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.meter));
+  const rows = audioRows();
   if (rows.length === 0) return null;
   const note = rows.find((group) => group.note)?.note;
   return (
@@ -168,15 +169,13 @@ function AudioPanel() {
       <div className="studio-panel-head"><h2 id="studio-audio-heading"><AudioLines aria-hidden="true" />{rows[0]!.sectionHeading ?? model.text("Audio")}</h2></div>
       <div className="studio-mixer">
         {rows.map((group) => {
-          // The input's name with its level and mute beside it while a recording runs (2026-10-22): a short meter that
-          // reads as the sound, apart from the fader under it, the one bar across the panel, which sets the volume.
+          // The input's name over its fader, which sets the volume; its level and mute are in the line of controls
+          // while a recording runs (plan 095, D2), pressed and watched more often than the fader is moved.
           const fader = groupOf(`${group.meter!.source}Gain`);
           return (
             <div key={group.id} className="studio-channel">
               <div className="studio-channel-head">
-                <span id={`setting-${group.id}-label`}>{group.label}</span>
-                {group.enabled && <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
-                  disabled={!group.enabled} describedBy={note ? "studio-audio-note" : undefined} />}
+                <span>{group.label}</span>
               </div>
               {fader?.slider && <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />}
             </div>
@@ -184,8 +183,50 @@ function AudioPanel() {
         })}
       </div>
       {note && <p id="studio-audio-note" className="studio-note">{note}</p>}
-      <Failures groups={[...rows, groupOf("systemGain"), groupOf("microphoneGain")]} />
+      <Failures groups={[groupOf("systemGain"), groupOf("microphoneGain")]} />
     </section>
+  );
+}
+
+/**
+ * Each input's level and mute while a recording runs (plan 095, D2): in the line of controls, so a sign that sound
+ * comes in and its mute stay in sight with Stop; the name is said to assistive technology and shown in a tooltip.
+ */
+function QuickAudio({ rows }: { rows: SettingsGroup[] }) {
+  const shown = rows.filter((group) => group.enabled);
+  if (shown.length === 0) return null;
+  // The note is the Audio panel's, under its faders.
+  const note = rows.find((group) => group.note)?.note;
+  return (
+    <>
+      {shown.map((group) => (
+        <ControlTooltip key={group.id} label={group.label}>
+          <div className="studio-quick-audio">
+            <span id={`setting-${group.id}-label`} className="sr-only">{group.label}</span>
+            <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
+              disabled={!group.enabled} describedBy={note ? "studio-audio-note" : undefined} />
+          </div>
+        </ControlTooltip>
+      ))}
+    </>
+  );
+}
+
+/** The preview's view as segments (plan 092, D3), in the line of controls since plan 095's D2: switched while watching. */
+function ViewChoice({ view }: { view: SettingsGroup }) {
+  const viewChosen = model.committed(view);
+  if (!viewChosen) return null;
+  return (
+    <ToggleGroup id={`setting-${view.id}`} className="segments studio-view" variant="segmented" size="segment" spacing={0.5} value={[viewChosen]}
+      aria-label={view.label} onValueChange={(values) => {
+        const next = values[0];
+        if (next && next !== viewChosen) void model.choose(view.id, String(next), `setting-${view.id}-${next}`);
+      }}>
+      {view.choices.map((choice) => (
+        <ToggleGroupItem key={choice.id} id={`setting-${view.id}-${choice.id}`} value={choice.id} disabled={!view.enabled || !choice.enabled}
+          aria-label={choice.label}>{choice.label}</ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
@@ -235,32 +276,41 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 
 /**
  * One line over the preview (2026-10-21): the recording's phase and action, what the camera is doing when a session
- * gives no picture of it (plan 090), and Live preview at its end (2026-10-23). No bar or card of its own.
+ * gives no picture of it (plan 090), and at its end what is pressed often (plan 095, D2): each input's level and mute
+ * and the camera's showing while a recording runs, the view, and Live preview (2026-10-23). No bar or card of its own.
  */
 function Toolbar({ controls, live, camera }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined; camera: string | undefined }) {
   if (!controls) return null;
+  const shown = groupOf("cameraShown");
+  const view = groupOf("studioPreviewView");
+  const rows = audioRows();
   return (
     <section className="studio-controls" data-phase={controls.phase} aria-labelledby="studio-controls-heading">
       <h2 id="studio-controls-heading" className="sr-only">{controls.sectionHeading ?? controls.label}</h2>
       <RecordControl controls={controls} />
       {camera && <p className="studio-camera-status" role="status"><CameraOff aria-hidden="true" />{camera}</p>}
-      {live && <LiveSwitch live={live} />}
+      <div className="studio-quick">
+        <QuickAudio rows={rows} />
+        {shown && <Toggle group={shown} icon={Eye} offIcon={EyeOff} />}
+        {view && <ViewChoice view={view} />}
+        {live && <LiveSwitch live={live} />}
+      </div>
       {controls.note && <p className="studio-note" role="status">{controls.note}</p>}
-      <Failures groups={[controls]} />
+      <Failures groups={[controls, ...rows, shown, view]} />
     </section>
   );
 }
 
 /**
- * The preview's own panel beside the camera's and the mixer (plan 092, D1, D3; placed there at the maintainer's
- * request on 2026-10-23): its rate, a menu whose every choice says in one line what it does while it is open, and its
- * view as segments. Chosen at any time, a Live preview's or a recording's alike.
+ * The preview's own panel beside the camera's and the mixer (plan 092, D1; placed there at the maintainer's request on
+ * 2026-10-23): its rate, a menu whose every choice says in one line what it does while it is open, set now and then;
+ * its view, switched while watching, is in the line of controls (plan 095, D2). Chosen at any time, a Live preview's or
+ * a recording's alike.
  */
-function PreviewPanel({ rate, view }: { rate: SettingsGroup; view: SettingsGroup | undefined }) {
+function PreviewPanel({ rate }: { rate: SettingsGroup }) {
   const chosen = model.committed(rate);
   const description = rate.choices.find((choice) => choice.id === chosen)?.description;
   const id = `setting-${rate.id}`;
-  const viewChosen = view && model.committed(view);
   return (
     <section className="studio-panel" aria-labelledby="studio-preview-heading">
       <div className="studio-panel-head"><h2 id="studio-preview-heading"><MonitorPlay aria-hidden="true" />{model.text("Preview")}</h2></div>
@@ -286,22 +336,7 @@ function PreviewPanel({ rate, view }: { rate: SettingsGroup; view: SettingsGroup
         {/* What the chosen rate does, said to assistive technology; on screen the open menu says it (2026-10-23). */}
         {description && <span id={`${id}-description`} className="sr-only">{description}</span>}
       </div>
-      {view && viewChosen && (
-        <div className="studio-preview-choices">
-          <span id={`setting-${view.id}-label`} className="studio-preview-label">{view.label}</span>
-          <ToggleGroup id={`setting-${view.id}`} className="segments" variant="segmented" size="segment" spacing={0.5} value={[viewChosen]}
-            aria-labelledby={`setting-${view.id}-label`} onValueChange={(values) => {
-              const next = values[0];
-              if (next && next !== viewChosen) void model.choose(view.id, String(next), `setting-${view.id}-${next}`);
-            }}>
-            {view.choices.map((choice) => (
-              <ToggleGroupItem key={choice.id} id={`setting-${view.id}-${choice.id}`} value={choice.id} disabled={!view.enabled || !choice.enabled}
-                aria-label={choice.label}>{choice.label}</ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-      )}
-      <Failures groups={[rate, view]} />
+      <Failures groups={[rate]} />
     </section>
   );
 }
@@ -366,7 +401,7 @@ export function Studio() {
         </section>
       )}
       <div className="studio-panels">
-        {preview?.cameraPreview && rate && <PreviewPanel rate={rate} view={view} />}
+        {preview?.cameraPreview && rate && <PreviewPanel rate={rate} />}
         <CameraPanel />
         <AudioPanel />
       </div>

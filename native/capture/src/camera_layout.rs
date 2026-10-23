@@ -162,7 +162,8 @@ pub fn compose_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera
     params
 }
 
-pub const PREVIEW_WIDTH: u32 = 640;
+/// The preview's width (plan 095, D3): 960 since the Studio's stage takes the window, 640 until then.
+pub const PREVIEW_WIDTH: u32 = 960;
 /// The preview's rate at a session's start, until the Studio's page says its own (plan 092, D1): 10 a second, Standard.
 pub const PREVIEW_FPS: u32 = 10;
 /// The rates the Recording Studio offers (plan 092, D1): Power saving's 5 while only looked at, 10 (Standard, and Power
@@ -323,8 +324,8 @@ mod tests {
 
     #[test]
     fn the_preview_is_small_and_even() {
-        assert_eq!(preview_size(1920, 1080), (640, 360));
-        assert_eq!(preview_size(3024, 1964), (640, 414));
+        assert_eq!(preview_size(1920, 1080), (960, 540));
+        assert_eq!(preview_size(3024, 1964), (960, 622));
         assert_eq!(preview_size(320, 241), (320, 240));
         assert_eq!(preview_size(0, 0), (2, 2));
     }

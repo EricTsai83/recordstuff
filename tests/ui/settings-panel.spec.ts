@@ -801,7 +801,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
   await expect.poll(() => host.evaluate(h => [...h.studioWatches]), { message: "S136 the Studio says it is open" }).toEqual([true]);
   const live = page.getByRole("switch", { name: "Live preview" });
   await expect(live, "S136 a switch, off").toHaveAttribute("aria-checked", "false");
-  await expect(page.locator(".studio-controls").getByRole("button"), "S136 the recording's controls hold Start alone").toHaveText(["Start recording"]);
+  await expect(page.locator(".studio-record").getByRole("button"), "S136 the recording's control holds Start alone").toHaveText(["Start recording"]);
   await expect(page.locator(".studio-controls"), "S136 the bar is drawn in the recording's phase").toHaveAttribute("data-phase", "idle");
   await clearCalls();
   await live.click();
@@ -934,7 +934,9 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S144 the recording's picture is asked for once on" }).toEqual([true]);
   await expect(page.locator(".camera-preview-picture"), "S144 and takes the stage").toBeVisible();
 
-  // S145 the view: segments beside the rate; the Screen view before a session opens no camera and says when it shows.
+  // S145 the view: segments in the line of controls over the stage (plan 095), switched while watching; the Screen view
+  // before a session opens no camera.
+  await expect(page.locator(".studio-controls").getByRole("group", { name: "Preview view" }), "S145 in the line of controls").toBeVisible();
   await clearCalls();
   await page.getByRole("radio", { name: "Screen" }).or(page.getByRole("button", { name: "Screen", exact: true })).first().click();
   await expect.poll(calls, { message: "S145 Screen asks main" }).toEqual([["studioPreviewView", "screen"]]);
@@ -950,6 +952,81 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
   await expect.poll(calls, { message: "S145 back to Composed" }).toEqual([["studioPreviewView", "composed"]]);
   await expect.poll(opened, { message: "S145 the composed view opens the camera in the bubble" }).toBe(1);
+  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+});
+
+test("S146 the Studio's stage: the largest picture at the display's shape that fits, landscape and portrait, at each size and zoom, the bubble placed by the same fractions, and what is pressed often over it (plan 095)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => h.theme("light"));
+  const DISPLAYS = { landscape: [1920, 1080], portrait: [1080, 1920] } as const;
+  const show = (shape: keyof typeof DISPLAYS, recording = false) => host.evaluate((h, [width, height, recording]) => {
+    h.state.cameraState = recording ? { type: "recording", startedAt: new Date().toISOString() } : undefined;
+    h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true },
+      displays: [{ id: "1", label: "Display", logicalWidth: width, logicalHeight: height, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }],
+      camera: { enabled: true, available: true, access: "granted", layout: { width: 0.2, height: 0.2, rounding: 0.5, mirror: false, positions: [{ display: "1", x: 0.25, y: 0.75 }] },
+        ...(recording ? { session: { hidden: false } } : {}) },
+      ...(recording ? { studio: { showing: true }, audioSession: { systemMuted: false, microphone: { muted: false } } } : {}) };
+    h.push(h.settingsView(h.state.cameraState ?? { type: "idle" }, h.state.cameraContext));
+  }, [DISPLAYS[shape][0], DISPLAYS[shape][1], recording] as const);
+  /** The stage in its letterbox and the bubble in the picture, as fractions the recording composes by. */
+  const measure = () => page.locator(".studio-stage .camera-preview").evaluate((box) => {
+    const stage = box.querySelector<HTMLElement>(".camera-preview-stage")!, bubble = box.querySelector<HTMLElement>(".camera-preview-bubble")!;
+    const outer = box.getBoundingClientRect(), picture = stage.getBoundingClientRect(), drawn = bubble.getBoundingClientRect();
+    const inner = { x: picture.left + stage.clientLeft, y: picture.top + stage.clientTop, width: stage.clientWidth, height: stage.clientHeight };
+    const panel = document.getElementById("settings-panel")!;
+    return { box: { width: outer.width, height: outer.height }, picture: { width: picture.width, height: picture.height }, inner,
+      inside: picture.left >= outer.left - 0.5 && picture.right <= outer.right + 0.5 && picture.top >= outer.top - 0.5 && picture.bottom <= outer.bottom + 0.5,
+      x: (drawn.left - inner.x) / (inner.width - drawn.width), y: (drawn.top - inner.y) / (inner.height - drawn.height), scale: drawn.width / Math.min(inner.width, inner.height),
+      overflow: panel.scrollWidth > panel.clientWidth + 1 };
+  });
+  const SIZES = [[960, 640], [440, 760], [1043, 758], [1440, 900], [380, 360]] as const;
+  const zoomTo = (factor: number) => host.evaluate((_h, factor, electron) => {
+    for (const window of electron.BrowserWindow.getAllWindows()) window.webContents.setZoomFactor(factor);
+  }, factor);
+  await show("landscape");
+  await page.locator("#tab-studio").click();
+  for (const shape of ["landscape", "portrait"] as const) {
+    await show(shape);
+    const ratio = DISPLAYS[shape][0] / DISPLAYS[shape][1];
+    // The app's largest zoom step (settings-window.ts ZOOM_STEPS) at two sizes, beside 100% at every size.
+    for (const [zoom, sizes] of [[1, SIZES], [1.5, [[960, 640], [1440, 900]]]] as const) {
+      await zoomTo(zoom);
+      for (const [width, height] of sizes) {
+        await host.evaluate((h, [width, height]) => h.setSize(width, height), [width, height] as const);
+        const at = `${shape} · ${width}×${height} · ${zoom * 100}%`;
+        // The bubble follows the stage's size a frame after it changes (useSize): what both settle to is judged.
+        await expect.poll(async () => {
+          const m = await measure();
+          return { shape: Math.abs(m.inner.width / m.inner.height - ratio) / ratio < 0.01, inside: m.inside,
+            meets: Math.min(Math.abs(m.picture.width - m.box.width), Math.abs(m.picture.height - m.box.height)) <= 1,
+            overflow: m.overflow, x: m.x, y: m.y, scale: m.scale };
+        }, { message: `S146 the picture keeps the display's shape, never exceeds its stage and meets it on one axis, nothing overflows sideways, and the bubble is at its fractions and to scale (a fifth of the shorter side) · ${at}` })
+          .toEqual({ shape: true, inside: true, meets: true, overflow: false, x: expect.closeTo(0.25, 1), y: expect.closeTo(0.75, 1), scale: expect.closeTo(0.2, 1) });
+      }
+    }
+  }
+  await zoomTo(1);
+  // Dragged on a large stage, the bubble is let go of where the recording composes it.
+  await show("landscape");
+  await host.evaluate(h => h.setSize(1440, 900));
+  const bubble = page.getByRole("application", { name: "Preview" });
+  const stage = (await page.locator(".camera-preview-stage").boundingBox())!, from = (await bubble.boundingBox())!;
+  await clearCalls();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await calls()).map(([group, choice]) => [group, ...String(choice).split(",").map(Number)]), { message: "S146 dragged to the middle of a large stage" })
+    .toEqual([["cameraPreview", expect.closeTo(0.5, 1), expect.closeTo(0.5, 1)]]);
+  // While recording, each input's mute and level, the camera's showing, the view and Live preview are in the line of
+  // controls over the stage, in sight without scrolling at the default size.
+  await show("landscape", true);
+  await host.evaluate(h => h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]));
+  const controls = page.locator(".studio-controls");
+  for (const control of [controls.getByRole("button", { name: "Mute System audio" }), controls.getByRole("button", { name: "Mute Microphone" }),
+    controls.getByRole("meter", { name: "Microphone" }), controls.getByRole("button", { name: "Show camera in recording" }),
+    controls.getByRole("group", { name: "Preview view" }), controls.getByRole("switch", { name: "Live preview" })]) {
+    await expect(control, "S146 in the line of controls, in sight").toBeInViewport();
+  }
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
 

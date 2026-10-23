@@ -26,8 +26,9 @@ use crate::pacing::Pacer;
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
-/// The preview stream's average bit rate: enough for 640 pixels at 10 fps.
-const PREVIEW_BITRATE: u32 = 1_000_000;
+/// The preview stream's average bit rate: enough for 960 pixels at 10 fps (plan 095, D3), 640's 1 Mbps scaled by
+/// its area.
+const PREVIEW_BITRATE: u32 = 2_250_000;
 
 pub struct Win;
 
@@ -489,7 +490,7 @@ mod tests {
         let chunks = chunks.0.lock().unwrap();
         assert!(chunks.len() >= 4, "{} chunks", chunks.len());
         let first = &chunks[0];
-        assert!(first.key && (first.width, first.height) == (640, 360), "{first:?}");
+        assert!(first.key && (first.width, first.height) == (960, 540), "{first:?}");
         // An avcC record starts with version 1.
         assert_eq!(first.description.as_ref().map(|d| d[0]), Some(1));
         assert!(chunks[1..].iter().all(|chunk| chunk.description.is_none() || chunk.key));

@@ -41,8 +41,9 @@ use crate::pacing::{INTERVAL_ENV, Pacer};
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
-/// The preview stream's average bit rate: enough for 640 pixels at 10 fps.
-const PREVIEW_BITRATE: u32 = 1_000_000;
+/// The preview stream's average bit rate: enough for 960 pixels at 10 fps (plan 095, D3), 640's 1 Mbps scaled by
+/// its area.
+const PREVIEW_BITRATE: u32 = 2_250_000;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, what VideoToolbox encodes without converting.
@@ -799,7 +800,7 @@ mod preview_test {
         let chunks = chunks.0.lock().unwrap();
         assert_eq!(chunks.len(), 5, "{chunks:?}");
         let first = &chunks[0];
-        assert!(first.key && (first.width, first.height) == (640, 360));
+        assert!(first.key && (first.width, first.height) == (960, 540));
         // An avcC record starts with version 1, then the profile the codec string is made of.
         assert_eq!(first.description.as_ref().map(|d| d[0]), Some(1));
         // Constrained Baseline (profile 66, constraint flag 1), which decoders show without holding frames back.

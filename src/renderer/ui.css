@@ -948,18 +948,39 @@
     text-shadow: none;
   }
   /* The Recording Studio (plan 075, D19), as OBS lays out its window: the preview across the top, panels under it. */
+  /* The Studio fills the page's height (plan 095), so the stage takes what the line of controls and the panels leave;
+     below its floor the page scrolls. */
+  .settings-card:has(> .studio) {
+    display: flex;
+    flex-direction: column;
+  }
   .studio {
-    display: grid;
+    --studio-stage-floor: 200px;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
     padding-bottom: 12px;
   }
   .studio-stage {
+    flex: 1 1 0;
+    min-height: var(--studio-stage-floor);
     display: grid;
+    grid-template-rows: minmax(0, 1fr);
     gap: 6px;
   }
-  /* The preview takes the panel's width, up to what the window's height leaves above the panels. */
+  /* The grey is only the letterbox the display's shape leaves: the picture is the largest at its ratio that fits the
+     stage, meeting it on one axis (plan 095, R1). The stage is a size container, so its own size never follows the
+     picture's. */
+  .studio-stage .camera-preview {
+    container-type: size;
+    min-height: 0;
+    padding: 0;
+    place-items: center;
+  }
   .studio-stage .camera-preview-stage {
-    width: min(100%, calc(max(200px, 100dvh - 420px) * var(--preview-ratio, 16 / 9)));
+    --bezel: 6px;
+    width: min(calc(100cqw - var(--bezel)), calc((100cqh - var(--bezel)) * var(--preview-ratio, 16 / 9)));
   }
   /* The preview's panel (plan 092): the rate's menu and the view's segments, each on a line with its name. */
   .studio-preview-choices {
@@ -1112,23 +1133,24 @@
     gap: 2px;
     font-size: 12px;
   }
-  /* The input's name, and while recording its level and mute beside it, on one line over its fader. */
+  /* The input's name over its fader; its level and mute are in the line of controls (plan 095, D2). */
   .studio-channel-head {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 28px;
+    min-height: 20px;
   }
   .studio-channel-head > span {
     flex: 1;
     min-width: 0;
   }
-  /* The level beside the name: short and in segments, a reading of the sound, unlike the fader's long track. */
-  .studio-channel .audio-meter {
+  /* Each input's level in the line of controls (plan 095, D2): short and in segments, a reading of the sound, unlike
+     the fader's long track, with its mute. */
+  .studio-quick-audio .audio-meter {
     width: auto;
-    gap: 4px;
+    gap: 2px;
   }
-  .studio-channel .audio-meter-track {
+  .studio-quick-audio .audio-meter-track {
     flex: none;
     width: 64px;
     height: 8px;
@@ -1159,13 +1181,18 @@
     gap: 10px;
     font-size: 12px;
   }
-  /* Live preview over the picture's corner, as a video player's control: glass on any picture, in either theme. It
-     shows while the pointer is over the picture or it has the focus; on, its signal is green, not the recording's red. */
-  /* Live preview at the end of the Studio's line of controls (2026-10-23), beside Start and Stop: always in sight, and
-     nothing over the picture. On, its signal is green, not the recording's red. */
-  .studio-live {
+  /* What is pressed often, at the end of the line of controls (plan 095, D2): the levels and mutes and the camera's
+     showing while recording, the view and Live preview, wrapping under Start in a narrow window. */
+  .studio-quick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px 10px;
     margin-inline-start: auto;
   }
+  /* Live preview at the end of the Studio's line of controls (2026-10-23), beside Start and Stop: always in sight, and
+     nothing over the picture. On, its signal is green, not the recording's red. */
   .studio-live svg {
     width: 14px;
     height: 14px;

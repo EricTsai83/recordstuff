@@ -11,7 +11,8 @@
 
 export const CAMERA_MIN_SIZE = 0.05;
 export const CAMERA_MAX_SIZE = 0.6;
-const CAMERA_PREVIEW_WIDTH = 640;
+/** The preview's width, as the engine's PREVIEW_WIDTH (plan 095, D3: 960; 640 until then). */
+const CAMERA_PREVIEW_WIDTH = 960;
 /** The positions' key for the primary display (DisplayPreference `primary`). */
 export const PRIMARY_DISPLAY_KEY = "primary";
 /** At most this many displays' positions are kept; the oldest beyond it are dropped. */

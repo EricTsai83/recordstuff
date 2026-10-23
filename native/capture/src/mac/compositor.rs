@@ -435,12 +435,12 @@ mod tests {
         let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
         deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let preview = compositor.preview(&buffer(1280, 720, |_, _| DARK), PreviewView::Composed).unwrap();
-        assert_eq!((CVPixelBufferGetWidth(&preview), CVPixelBufferGetHeight(&preview)), (640, 360));
-        let data = nv12_bytes(&preview, 640, 360).unwrap();
-        let at = |x: usize, y: usize| data[y * 640 + x];
-        assert!(near(at(630, 350), BRIGHT), "{}", at(630, 350));
+        assert_eq!((CVPixelBufferGetWidth(&preview), CVPixelBufferGetHeight(&preview)), (960, 540));
+        let data = nv12_bytes(&preview, 960, 540).unwrap();
+        let at = |x: usize, y: usize| data[y * 960 + x];
+        assert!(near(at(950, 530), BRIGHT), "{}", at(950, 530));
         assert!(near(at(10, 10), DARK));
-        assert!(data[640 * 360..].iter().all(|&c| c.abs_diff(128) <= 4));
+        assert!(data[960 * 540..].iter().all(|&c| c.abs_diff(128) <= 4));
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
         let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
         deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
         let screen = buffer(1280, 720, |_, _| DARK);
-        let shown = |view| nv12_bytes(&compositor.preview(&screen, view).unwrap(), 640, 360).unwrap()[350 * 640 + 630];
+        let shown = |view| nv12_bytes(&compositor.preview(&screen, view).unwrap(), 960, 540).unwrap()[530 * 960 + 950];
         assert!(near(shown(PreviewView::Screen), DARK), "Screen: no camera {}", shown(PreviewView::Screen));
         // The recording in between is the composed picture whatever the preview shows.
         let full = nv12_bytes(&compositor.compose(&screen, 0).unwrap(), 1280, 720).unwrap();
