@@ -277,6 +277,8 @@ pub struct Microphone {
     pub name: String,
     /// Whether it is the system's default input now.
     pub default: bool,
+    /// Built into a MacBook whose lid is closed (plan 089): listed and opened, but it hears nothing.
+    pub lid_closed: bool,
 }
 
 pub struct PrepareRequest {
@@ -445,8 +447,11 @@ impl<A: AudioEncode> AudioState<A> {
 /// The microphone's delivery, as `Shared::microphone` keeps it.
 #[derive(Default)]
 struct MicrophoneState {
-    /// Host time it last delivered sound.
+    /// Host time it last delivered sound: a buffer with any sample not exactly zero.
     heard_ns: u64,
+    /// Host time it last delivered a buffer of only digital silence, every sample exactly zero (plan 089, D2): a MacBook's
+    /// built-in microphone with the lid closed is listed and opened but delivers that, which no room does.
+    zeros_ns: u64,
     lost: bool,
 }
 
@@ -657,7 +662,12 @@ impl<P: Platform> Shared<P> {
             return;
         }
         microphone.lost = true;
-        self.events.microphone_lost(format!("the microphone delivered no sound for {} s", MICROPHONE_SILENT_NS / NANOS_PER_SECOND));
+        let seconds = MICROPHONE_SILENT_NS / NANOS_PER_SECOND;
+        self.events.microphone_lost(if microphone.zeros_ns > heard {
+            format!("the microphone delivered only digital silence (every sample zero) for {seconds} s")
+        } else {
+            format!("the microphone delivered no sound for {seconds} s")
+        });
     }
 
     /// Whether capture should read its sound now: while it is taken, or while its levels are watched before (plan 075,
@@ -679,6 +689,8 @@ impl<P: Platform> Shared<P> {
             return Ok(());
         }
         let microphone_input = self.is_microphone(input);
+        // Read before the volume and the mute, which make silence of their own: the device's own digital silence.
+        let digital_silence = microphone_input && (0..frames).all(|frame| sample(frame, 0) == 0.0 && sample(frame, 1) == 0.0);
         // Its volume (D21): raised past -1 dBFS, softly limited as a loud sum is, rather than clipped by the encoder.
         let gain = f32::from_bits(if microphone_input { &self.meters.microphone_gain } else { &self.meters.system_gain }.load(Ordering::Acquire));
         let sample = |frame: usize, channel: usize| {
@@ -701,7 +713,10 @@ impl<P: Platform> Shared<P> {
         // Muted (D19): silence in its place, so the input stays on the clock and unmuting needs no realigning.
         let muted = if microphone_input { &self.meters.microphone_muted } else { &self.meters.system_muted }.load(Ordering::Acquire);
         let sample = |frame: usize, channel: usize| if muted { 0.0 } else { sample(frame, channel) };
-        if microphone_input {
+        if microphone_input && digital_silence {
+            // Not sound (plan 089, D2): 2 s of only this is told lost, as no buffers are; it stays on the clock.
+            self.microphone.lock().unwrap().zeros_ns = P::now_ns();
+        } else if microphone_input {
             let mut microphone = self.microphone.lock().unwrap();
             let now = P::now_ns();
             let heard = std::mem::replace(&mut microphone.heard_ns, now).max(self.t0_ns.load(Ordering::Acquire));

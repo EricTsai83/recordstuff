@@ -51,6 +51,20 @@ describe("isMainMessage", () => {
     expect(isHostMessage({ type: "cameras", error: "a recording is in progress" })).toBe(true);
     expect(isHostMessage({ type: "cameras", devices: [{ id: "", name: "x", default: false }] })).toBe(false);
   });
+  it("carries a built-in input's closed lid (plan 089, D2)", () => {
+    const device = { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: false };
+    expect(isHostMessage({ type: "microphones", devices: [{ ...device, lidClosed: true }] })).toBe(true);
+    expect(isHostMessage({ type: "microphones", devices: [device] })).toBe(true);
+    expect(isHostMessage({ type: "microphones", devices: [{ ...device, lidClosed: "yes" }] })).toBe(false);
+  });
+  it("asks the engine about the screen grant and carries its answer (plan 089, D1)", () => {
+    expect(isMainMessage({ type: "checkScreenAccess", displayId: 3 })).toBe(true);
+    for (const displayId of [1.5, -1, "3", undefined]) expect(isMainMessage({ type: "checkScreenAccess", displayId }), String(displayId)).toBe(false);
+    for (const answer of ["granted", "denied", "unknown"]) expect(isHostMessage({ type: "screenAccess", answer })).toBe(true);
+    expect(isHostMessage({ type: "screenAccess", answer: "denied", detail: "The user declined TCCs (-3801)" })).toBe(true);
+    expect(isHostMessage({ type: "screenAccess", answer: "maybe" })).toBe(false);
+    expect(isHostMessage({ type: "screenAccess", answer: "denied", detail: 3801 })).toBe(false);
+  });
   it("switches the microphone while recording and runs Settings' meter and device watch (plan 079)", () => {
     expect(isMainMessage({ type: "microphone", sessionId: "s1", deviceId: "BuiltInMicrophoneDevice" })).toBe(true);
     expect(isMainMessage({ type: "microphone", sessionId: "s1" })).toBe(true);

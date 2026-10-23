@@ -4,6 +4,18 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 089 結案 — 2026-10-23
+
+Plan 089（及時的權限拒絕與闔蓋時的麥克風）從 077 回合的兩項觀察而來，2026-10-23 在 `pnpm start:app` 從 `75ff6c10` 加上本計畫變更所建置的簽章 bundle 上執行（macOS 26.6.2，兩台 BenQ 螢幕，MacBook 全程闔上蓋子）。每次撤銷由維護者按 Touch ID；依維護者要求，其餘桌面操作都由 Claude 完成，並依計畫對原生驗收 skill 的單次例外，以 Computer Use 關閉與重新開啟授權。維護者看過量測後，D1 與 D2 都依建議。筆記、log 與截圖：[2026-10-23T0033-089-step1](../../verification/measurements/2026-10-23T0033-089-step1/task-note.md)（僅本機）。
+
+- **量測拒絕（步驟 1）。**log 中每筆 `display media:` 的授予或拒絕現在都以耗時結尾。授權正常時 `getSources` 花 15–17 ms，第一次就找到來源。撤銷後（關閉時沒有出現「稍後」提示）每次空的 `getSources` 都等約 3 s，所以第一次開始在 `total 9310 ms` 後才被拒絕；`PermissionWatcher` 到拒絕後 3 s 才懷疑授權，因此步驟原本的建議幫不了第一次開始。2026-09-12 至 2026-10-22 的 App log 有 1046 次授予，全部在第一次列舉。
+- **D1。**在 macOS 上，capture 程序就緒後，引擎的 `probe` 與列舉賽跑（`checkScreenAccess`），ScreenCaptureKit 回 `-3801` 就立即以 `permission_denied` 拒絕；有螢幕卻列不出來源時，第一次回答就拒絕，除非請求期間螢幕有變化，那時維持三次嘗試。簽章 bundle 上撤銷的授權 92 ms 就被拒絕（`engine access denied 92 ms`），0.5 s 後顯示通知，先前是 9.3 s；授權正常的四次開始都在第一次列舉的 15–17 ms 內授予，每次都排除 RecordStuff 自己的視窗，檔案有畫面與聲音。
+- **量測闔蓋的麥克風（步驟 3）。**闔蓋時 IOKit 的 `AppleClamshellState` 為 true，HAL 卻照舊列出內建輸入、狀態存活、資料來源 `imic`。它的 9.93 s 全是剛好為零的樣本；BenQ 麥克風在安靜房間沒有任何零樣本（RMS −53.2 dBFS），而只有系統音訊時混音後也全是零，所以判斷要放在麥克風自己的輸入上。有一次闔蓋時開啟內建麥克風花了 36.2 s，下一次 58 ms，原因不明（觀察）。
+- **D2。**內建傳輸類型的輸入在蓋子闔上時由引擎標記 `lidClosed`；設定列為「（蓋子已闔上）」，沒有錄影時若下一次錄影會用到它就加註提示，也會和「未連接」的退回提示一起顯示；HAL 不會通知，所以設定的監看程序每秒讀一次蓋子狀態。錄影中，麥克風連續 2 s 送出每個樣本都是零的緩衝（在音量與靜音之前判斷），就是既有的 `microphoneLost`，原因為「only digital silence (every sample zero)」。簽章 bundle 上設定顯示了標記與提示；內建麥克風的錄影在 2.09 s 時記錄中斷，存檔後顯示中斷通知；10 s 的 BenQ 錄影沒有中斷；蓋子監看隨監看程序執行並正常停止，沒有錯誤。
+- **檢查與審查。**`pnpm check` 通過（2077 個 TypeScript 測試、140 個 Rust 測試、Clippy、fmt、建置與引擎載入）；最後一次只改提示條件，之後 `pnpm test:scope platform recording recording-settings` 連同 30 個 UI 案例通過。每個決定各做兩輪唯讀的 Codex GPT-6.1 Sol 審查（medium）：D1 的兩項發現已修正，第二輪沒有發現；D2 的三項發現（設定不跟隨蓋子、退回提示旁沒有蓋子提示、錄影中提示可能指錯輸入）都已修正，最後一項在最後一輪之後修正，因此沒有再審查。
+- **收尾。**授權已重新開啟並以重開 bundle 確認；`settings.json` 依回合前的副本還原；RecordStuff 正常結束、沒有殘留程序；`caffeinate` 已停止。
+- **未驗證，經維護者接受。**開蓋時以內建麥克風錄影（一般聲音不會被當成靜音）；藍牙輸入；實際開闔蓋子時設定是否跟著更新；授權正常時螢幕喚醒或拓樸變化會不會列不出來源，D1 現在除非請求期間螢幕有變化，否則會立即拒絕；Windows（依 076 的 D8）。
+
 ## Plan 077 結案 — 2026-10-22
 
 Plan 077（原生錄影引擎與麥克風控制的親手驗收）於 2026-10-22 在 `pnpm start:app` 從 `c4dbc2c3` 建置的簽章 bundle 上執行（macOS 26.6.2，兩台 BenQ 螢幕，MacBook 闔上蓋子）。硬體與「系統設定」由維護者操作；Claude 讀取 log 與檔案，並在維護者中途要求下自行完成其餘操作：以 System Events 送快捷鍵、以 CoreGraphics 點擊受測 bundle 的設定，以及在 App 結束時寫入 `settings.json` 的設定。筆記、影格與截圖：[2026-10-22T2314-077-hands-on](../../verification/measurements/2026-10-22T2314-077-hands-on/notes.md)（僅本機）。

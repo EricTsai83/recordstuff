@@ -4,6 +4,7 @@
  */
 import { translate as t, type PlainMessageKey } from "../../../shared/i18n";
 import { AUDIO_VOLUME_MAX, AUDIO_VOLUME_STEP, DEFAULT_AUDIO_VOLUME } from "../../../shared/audio-volume";
+import type { MicrophoneDevice } from "../../../shared/protocol";
 import type { AppAction, AppContext } from "../../app/ui-model";
 import { type Group, group, relaunchChoice, switchChoices } from "./group";
 
@@ -82,11 +83,13 @@ export function microphoneDeviceGroup(ctx: AppContext, unlocked: boolean): Group
   const devices = (microphone.devices ?? []).filter((device) => device.id !== DEFAULT_MICROPHONE);
   const current = devices.find((device) => device.default);
   const stored = microphone.device;
+  // A MacBook's own microphone with the lid closed (plan 089, D2): listed and opened, but it hears nothing.
+  const named = (device: MicrophoneDevice): string => device.lidClosed ? t("{label} — Lid closed", language, { label: device.name }) : device.name;
   const choices: Group["choices"] = [{
-    id: DEFAULT_MICROPHONE, label: current ? t("System default ({name})", language, { name: current.name }) : t("System default", language),
+    id: DEFAULT_MICROPHONE, label: current ? t("System default ({name})", language, { name: named(current) }) : t("System default", language),
     enabled: true, checked: stored === undefined, action: { setMicrophoneDevice: null },
   }, ...devices.map((device) => ({
-    id: device.id, label: device.name, enabled: true, checked: stored?.id === device.id,
+    id: device.id, label: named(device), enabled: true, checked: stored?.id === device.id,
     action: { setMicrophoneDevice: { id: device.id, label: device.name } } satisfies AppAction,
   }))];
   // Not listed: missing when the inputs are known, or not yet known at all.
@@ -95,8 +98,18 @@ export function microphoneDeviceGroup(ctx: AppContext, unlocked: boolean): Group
     label: microphone.devices ? t("{label} — Not connected", language, { label: stored.label }) : stored.label,
     enabled: !microphone.devices, checked: true, action: { setMicrophoneDevice: stored } });
   const result = group("microphoneDevice", t("Input device", language), (unlocked && microphone.enabled) || switching, choices);
+  // What the next recording would open: the chosen input, else the system default it falls back to. Not while one
+  // records: it keeps the device it opened whatever the default becomes, and the engine tells its silence itself.
+  const used = stored === undefined || missing ? current : devices.find((device) => device.id === stored.id);
+  const lid = used?.lidClosed && microphone.enabled && !switching
+    ? t("{label} hears nothing while the lid is closed. Choose another input, or open the lid.", language, { label: used.name }) : undefined;
   if (missing && microphone.devices) {
-    result.note = t("Recordings use the system default input until {label} is connected.", language, { label: stored.label });
+    const fallback = t("Recordings use the system default input until {label} is connected.", language, { label: stored.label });
+    // Chinese sentences follow one another without a space.
+    result.note = lid ? `${fallback}${language === "zh-TW" ? "" : " "}${lid}` : fallback;
+    result.noteKind = "status";
+  } else if (lid) {
+    result.note = lid;
     result.noteKind = "status";
   } else if (switching) {
     result.note = t("Switches this recording's microphone at once.", language);

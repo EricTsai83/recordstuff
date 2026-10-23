@@ -8,7 +8,10 @@
 
 use std::ffi::c_void;
 use std::ptr::{NonNull, null, null_mut};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use objc2_core_audio_types::{
     AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp, kAudioFormatFlagIsFloat, kAudioFormatFlagIsPacked, kAudioFormatLinearPCM,
@@ -33,6 +36,9 @@ const DEVICE_UID: u32 = code(b"uid ");
 const NAME: u32 = code(b"lnam");
 const STREAMS: u32 = code(b"stm#");
 const ALIVE: u32 = code(b"livn");
+const TRANSPORT: u32 = code(b"tran");
+/// kAudioDeviceTransportTypeBuiltIn: the Mac's own microphone, the one a closed lid silences (plan 089).
+const TRANSPORT_BUILT_IN: u32 = code(b"bltn");
 const NOMINAL_RATE: u32 = code(b"nsrt");
 const RUN_LOOP: u32 = code(b"rnlp");
 const SCOPE_GLOBAL: u32 = code(b"glob");
@@ -179,10 +185,13 @@ pub struct Input {
     pub id: ObjectId,
     pub uid: String,
     pub name: String,
+    /// Built into the Mac (its transport type), as its microphone is.
+    pub built_in: bool,
 }
 
 fn input(id: ObjectId) -> Option<Input> {
-    Some(Input { id, uid: string(id, DEVICE_UID)?, name: string(id, NAME).unwrap_or_default() })
+    let built_in = value::<u32>(id, TRANSPORT, SCOPE_GLOBAL, None) == Some(TRANSPORT_BUILT_IN);
+    Some(Input { id, uid: string(id, DEVICE_UID)?, name: string(id, NAME).unwrap_or_default(), built_in })
 }
 
 /// The devices that have input, as the HAL lists them now.
@@ -209,9 +218,11 @@ pub fn alive(device: ObjectId) -> bool {
 
 /// Follows the device list while Settings is open (plan 079, D2): `changed` is called on the HAL's notification thread
 /// whenever a device is connected or leaves, or the default input changes. The HAL is told to notify on its own
-/// thread, as the capture process runs no main run loop (by default it would use the main thread's).
+/// thread, as the capture process runs no main run loop (by default it would use the main thread's). The lid closing or
+/// opening is told the same way (plan 089, D2): the HAL tells nothing then, so a thread reads it every second.
 pub struct DeviceWatch {
     client: *mut WatchClient,
+    lid: Option<(Arc<AtomicBool>, JoinHandle<()>)>,
 }
 
 /// What `heard` calls. A HAL notification already running when the watch stops can still read it, since removing a
@@ -242,7 +253,7 @@ impl DeviceWatch {
         if status != 0 {
             return Err(format!("the HAL's notification thread could not be chosen: {status}"));
         }
-        let watch = Self { client: Box::into_raw(Box::new(WatchClient { changed: Mutex::new(Some(Box::new(changed))) })) };
+        let mut watch = Self { client: Box::into_raw(Box::new(WatchClient { changed: Mutex::new(Some(Box::new(changed))) })), lid: None };
         for selector in WATCHED {
             let status = unsafe { AudioObjectAddPropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, watch.client.cast()) };
             if status != 0 {
@@ -250,6 +261,31 @@ impl DeviceWatch {
                 return Err(format!("the device list could not be followed: {status}"));
             }
         }
+        let stop = Arc::new(AtomicBool::new(false));
+        // The client is never freed (see `WatchClient`), so the thread may read it after the watch stops.
+        let client = watch.client as usize;
+        let stopping = stop.clone();
+        let thread = std::thread::Builder::new()
+            .name("lid watch".into())
+            .spawn(move || {
+                let mut closed = super::microphone::lid_closed();
+                // Read every tenth 100 ms wait: once a second, and stopped within 100 ms.
+                let mut waits = 0u32;
+                while !stopping.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(100));
+                    waits += 1;
+                    if !waits.is_multiple_of(10) {
+                        continue;
+                    }
+                    let now = super::microphone::lid_closed();
+                    if now != closed {
+                        closed = now;
+                        unsafe { heard(SYSTEM_OBJECT, 0, null(), client as *mut c_void) };
+                    }
+                }
+            })
+            .map_err(|e| format!("the lid could not be followed: {e}"))?;
+        watch.lid = Some((stop, thread));
         Ok(watch)
     }
 }
@@ -258,6 +294,10 @@ impl Drop for DeviceWatch {
     fn drop(&mut self) {
         for selector in WATCHED {
             unsafe { AudioObjectRemovePropertyListener(SYSTEM_OBJECT, &address(selector, SCOPE_GLOBAL), heard, self.client.cast()) };
+        }
+        if let Some((stop, thread)) = self.lid.take() {
+            stop.store(true, Ordering::Release);
+            let _ = thread.join();
         }
         let client = unsafe { &*self.client };
         // A poisoned lock still holds the closure, which is released all the same.

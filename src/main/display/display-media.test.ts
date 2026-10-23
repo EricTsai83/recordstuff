@@ -90,6 +90,29 @@ describe("refusals", () => {
     expect(media.explain("permission_denied")).toBe("capture_start_failed");
   });
 
+  it("logs each grant and refusal with what every enumeration took and listed, and the engine's answer (plan 089)", async () => {
+    const logs: string[] = [];
+    let clock = 0;
+    let listed: { display_id: string }[] | "hang" = [{ display_id: "1" }];
+    const media = new DisplayMedia({
+      platform: "darwin", preference: () => ({ kind: "primary" }), displays: () => [main, side], primaryDisplayId: () => "1",
+      getSources: () => listed === "hang" ? new Promise<never>(() => undefined) : (clock += 3000, Promise.resolve(listed)),
+      changed: () => undefined, log: (m) => logs.push(m), now: () => clock,
+    });
+    media.begin("s1");
+    await new Promise((resolve) => media.answer(() => true, resolve));
+    expect(logs.at(-1)).toBe('display media: requested {"kind":"primary"}; resolved 1; label Built-in; rule primary; retry 0; timing 3000 ms (1 source(s), 2 display(s)); total 3000 ms');
+    listed = [];
+    media.begin("s2");
+    await new Promise((resolve) => media.answer(() => true, resolve));
+    expect(logs.at(-1)).toBe('display media: denied (permission_denied); requested {"kind":"primary"}; resolved none; rule primary; retry 0; detail source_missing; timing 3000 ms (0 source(s), 2 display(s)); total 3000 ms');
+    // The engine refuses after 80 ms while the enumeration still waits: refused then, the enumeration not counted.
+    listed = "hang";
+    media.begin("s3");
+    await new Promise((resolve) => media.answer(() => true, resolve, async () => { clock += 80; return "denied"; }));
+    expect(logs.at(-1)).toBe('display media: denied (permission_denied); requested {"kind":"primary"}; resolved none; rule primary; retry 0; detail source_missing; timing no enumeration; engine access denied 80 ms; total 80 ms');
+  });
+
   it("a later grant clears an earlier refusal of the same attempt", async () => {
     const x = setup();
     x.getSources.mockRejectedValueOnce(new Error("TCC"));

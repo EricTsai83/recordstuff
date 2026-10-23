@@ -29,7 +29,7 @@ function setup(display: string | undefined = "69733632", windows: Partial<Constr
     ...windows,
     entryPath: "/out/main/native-host-process.js",
     addonPath: "/out/native/recordstuff-capture.node",
-    resolveDisplay: async () => display,
+    resolveDisplay: windows.resolveDisplay ?? (async () => display),
     ownPids: () => [100, 101],
     hideSystemUi: () => true,
     log: (message) => logs.push(message),
@@ -58,6 +58,60 @@ async function started(ctx: ReturnType<typeof setup>): Promise<Child> {
   await start;
   return child;
 }
+
+describe("the engine's answer on the screen grant (plan 089, D1)", () => {
+  /** A host whose display request asks the engine about `displayId`, and hands back what it answered. */
+  function asking(displayId = "3") {
+    let answered!: Promise<string>;
+    const ctx = setup(undefined, { resolveDisplay: (_session, screenAccess) => { answered = screenAccess(displayId); return answered.then(() => undefined); } });
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    // A process that ends fails its start, which these tests do not follow.
+    start.catch(() => undefined);
+    return { ...ctx, start, answered: () => answered };
+  }
+  it("asks the attempt's process once it is ready, and keeps the answer from the recorder", async () => {
+    const x = asking();
+    await vi.advanceTimersByTimeAsync(0);
+    const child = x.children.at(-1)!;
+    expect(child.sent).toEqual([]);
+    child.deliver({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(child.sent).toEqual([{ type: "checkScreenAccess", displayId: 3 }]);
+    child.deliver({ type: "screenAccess", answer: "denied", detail: "The user declined TCCs (-3801)" });
+    expect(await x.answered()).toBe("denied");
+    await x.start;
+    expect(x.messages.some((m) => m.type === "screenAccess")).toBe(false);
+    expect(x.logs).toContain("capture host: screen access denied: The user declined TCCs (-3801)");
+  });
+  it("answers unknown when the process ends or stays silent past the bound, or the display is not a number", async () => {
+    const ended = asking();
+    await vi.advanceTimersByTimeAsync(0);
+    ended.children.at(-1)!.deliver({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    ended.children.at(-1)!.emit("exit", 1);
+    expect(await ended.answered()).toBe("unknown");
+    const silent = asking();
+    await vi.advanceTimersByTimeAsync(0);
+    silent.children.at(-1)!.deliver({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(await silent.answered()).toBe("unknown");
+    // The display was chosen before the process was ready: nobody waits for the answer, so it is not asked.
+    let early!: Promise<string>;
+    const chosen = setup(undefined, { resolveDisplay: async (_session, screenAccess) => { early = screenAccess("3"); return "3"; } });
+    const done = chosen.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4");
+    await vi.advanceTimersByTimeAsync(0);
+    chosen.children.at(-1)!.deliver({ type: "ready" });
+    await done;
+    expect(await early).toBe("unknown");
+    expect(chosen.children.at(-1)!.sent.map((m) => m.type)).toEqual(["start"]);
+    const named = asking("primary");
+    expect(await named.answered()).toBe("unknown");
+    await vi.advanceTimersByTimeAsync(0);
+    named.children.at(-1)!.deliver({ type: "ready" });
+    await named.start;
+    expect(named.children.at(-1)!.sent.some((m) => m.type === "checkScreenAccess")).toBe(false);
+  });
+});
 
 describe("cameraChoice (plan 075)", () => {
   const layout = { width: 0.3, height: 0.2, rounding: 0.5, mirror: true,

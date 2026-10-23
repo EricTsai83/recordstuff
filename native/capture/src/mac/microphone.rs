@@ -28,6 +28,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+use objc2_core_foundation::CFString;
 
 use super::CaptureError;
 use super::hal::{self, Chunk, InputUnit, Resampler};
@@ -47,10 +48,57 @@ fn unavailable(detail: impl Into<String>) -> CaptureError {
     CaptureError::new("microphone_unavailable", format!("microphone: {}", detail.into()))
 }
 
-/// The audio input devices, the system's default marked.
+/// The audio input devices, the system's default marked, and the built-in ones marked while the lid is closed.
 pub fn list() -> Result<Vec<Microphone>, CaptureError> {
     let default = hal::default_input().map(|input| input.uid);
-    Ok(hal::inputs().into_iter().map(|input| Microphone { default: default.as_deref() == Some(input.uid.as_str()), name: input.name, id: input.uid }).collect())
+    let closed = lid_closed();
+    Ok(hal::inputs()
+        .into_iter()
+        .map(|input| Microphone {
+            default: default.as_deref() == Some(input.uid.as_str()),
+            lid_closed: closed && input.built_in,
+            name: input.name,
+            id: input.uid,
+        })
+        .collect())
+}
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOServiceMatching(name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+    fn IOServiceGetMatchingService(main_port: u32, matching: *mut std::ffi::c_void) -> u32;
+    fn IORegistryEntryCreateCFProperty(entry: u32, key: *const CFString, allocator: *const std::ffi::c_void, options: u32) -> *const std::ffi::c_void;
+    fn IOObjectRelease(object: u32) -> i32;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFGetTypeID(value: *const std::ffi::c_void) -> usize;
+    fn CFBooleanGetTypeID() -> usize;
+    fn CFBooleanGetValue(value: *const std::ffi::c_void) -> u8;
+    fn CFRelease(value: *const std::ffi::c_void);
+}
+
+/// Whether the MacBook's lid is closed (plan 089 step 3): IOKit's `AppleClamshellState` on the power root domain. The
+/// HAL still lists the built-in microphone then, alive and with its usual data source, while it delivers only digital
+/// silence. False where there is no lid or the state cannot be read.
+pub fn lid_closed() -> bool {
+    let key = CFString::from_str("AppleClamshellState");
+    unsafe {
+        // The matching dictionary is consumed by the lookup; kIOMainPortDefault is 0.
+        let service = IOServiceGetMatchingService(0, IOServiceMatching(c"IOPMrootDomain".as_ptr()));
+        if service == 0 {
+            return false;
+        }
+        let value = IORegistryEntryCreateCFProperty(service, &*key, std::ptr::null(), 0);
+        IOObjectRelease(service);
+        if value.is_null() {
+            return false;
+        }
+        let closed = CFGetTypeID(value) == CFBooleanGetTypeID() && CFBooleanGetValue(value) != 0;
+        CFRelease(value);
+        closed
+    }
 }
 
 /// AVFoundation's microphone authorization for this process: 0 not determined, 1 restricted, 2 denied, 3 authorized.

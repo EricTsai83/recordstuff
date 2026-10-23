@@ -23,7 +23,7 @@ import { StringDecoder } from "node:string_decoder";
 import { utilityProcess, type UtilityProcess } from "electron";
 import { recordedPosition } from "../../shared/camera-layout";
 import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
-import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice } from "../../shared/protocol";
+import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice, type ScreenAccess } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
 import { volumeDb, type AudioVolume } from "../../shared/audio-volume";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
@@ -34,8 +34,11 @@ export interface NativeCaptureHostOptions {
   entryPath: string;
   /** The engine's `.node` file, outside the asar archive. */
   addonPath: string;
-  /** The display this attempt records (Electron's display id), or undefined when main refused one. */
-  resolveDisplay: (sessionId: string) => Promise<string | undefined>;
+  /**
+   * The display this attempt records (Electron's display id), or undefined when main refused one. `screenAccess` asks
+   * the attempt's process whether macOS lets the engine capture a display (plan 089, D1), once that process is ready.
+   */
+  resolveDisplay: (sessionId: string, screenAccess: (displayId: string) => Promise<ScreenAccess>) => Promise<string | undefined>;
   /** A point on that display in physical screen pixels, which is how the engine finds it on Windows. */
   displayPoint?: (displayId: string) => { x: number; y: number } | undefined;
   /** Keeps RecordStuff's windows out of capture, or lets them back in (Windows, where the engine cannot). */
@@ -72,6 +75,8 @@ const RELEASE_BOUND_MS = 5000;
 const FINISH_BOUND_MS = 150_000;
 /** Listing the audio inputs: the process's start and AVFoundation's or WASAPI's answer. */
 const LIST_BOUND_MS = 8000;
+/** Past the engine's 15 s bound on ScreenCaptureKit's content: the grant is then "unknown". */
+const ACCESS_BOUND_MS = 16_000;
 
 /** Settings' monitor process (plan 079): what main posts to it, and its end. */
 export interface MonitorProcess {
@@ -172,16 +177,20 @@ export class NativeCaptureHost implements RecorderHost {
     const now = this.options.now ?? (() => performance.now());
     const began = now();
     let chosenAt = began;
-    const choice = this.options.resolveDisplay(sessionId).then(
-      (display) => { chosenAt = now(); return { display }; },
-      (cause: unknown) => ({ cause }),
+    // Forked first, so the display's request can ask this process about the screen grant once it is ready.
+    const created = this.create();
+    created.catch(() => undefined);
+    let chose = false;
+    const choice = this.options.resolveDisplay(sessionId, (displayId) => this.screenAccess(created, generation, displayId, () => chose)).then(
+      (display) => { chose = true; chosenAt = now(); return { display }; },
+      (cause: unknown) => { chose = true; return { cause }; },
     );
     // Alongside the process's start; a refusal is the engine's to report, as `microphone_unavailable`.
     const microphoneAsked = capture?.microphone?.enabled && this.options.prepareMicrophone
       ? this.options.prepareMicrophone().catch((cause: unknown) => this.log(`capture host: asking for the microphone failed: ${String(cause)}`))
       : undefined;
     try {
-      await this.create();
+      await created;
     } catch (cause) {
       if (generation === this.generation) this.teardown();
       throw cause;
@@ -217,6 +226,36 @@ export class NativeCaptureHost implements RecorderHost {
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
       ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
     } });
+  }
+
+  /**
+   * The engine's answer on the screen grant for `displayId` (plan 089, D1), from the attempt's process once `ready`:
+   * "unknown" when the process did not start, was replaced, ended or did not answer within the bound. Not asked once
+   * the display was `chosen` before the process was ready, the usual case with the grant intact: nobody waits for it.
+   */
+  private async screenAccess(ready: Promise<void>, generation: number, displayId: string, chosen: () => boolean): Promise<ScreenAccess> {
+    if (!/^\d+$/.test(displayId)) return "unknown";
+    try { await ready; } catch { return "unknown"; }
+    const child = this.child;
+    if (!child || generation !== this.generation || chosen()) return "unknown";
+    return new Promise<ScreenAccess>((resolve) => {
+      const done = (answer: ScreenAccess): void => {
+        clearTimeout(bound);
+        child.off("message", heard);
+        child.off("exit", ended);
+        resolve(answer);
+      };
+      const heard = (data: unknown): void => {
+        if (!isHostMessage(data) || data.type !== "screenAccess") return;
+        if (data.detail) this.log(`capture host: screen access ${data.answer}: ${data.detail}`);
+        done(data.answer);
+      };
+      const ended = (): void => done("unknown");
+      const bound = setTimeout(() => done("unknown"), ACCESS_BOUND_MS);
+      child.on("message", heard);
+      child.on("exit", ended);
+      child.postMessage({ type: "checkScreenAccess", displayId: Number(displayId) } satisfies MainMessage);
+    });
   }
 
   /** The listing in flight, which a session that starts ends at once (`cancelListing`). */
@@ -437,6 +476,8 @@ export class NativeCaptureHost implements RecorderHost {
         return;
       }
       if (data.type === "pong") this.missedPongs = 0;
+      // `screenAccess` answers the display's request (above), not the recorder.
+      if (data.type === "screenAccess") return;
       // Before the recorder hears it and tears the attempt down: this process now finishes the file.
       if (data.type === "stopped" && data.sessionId === this.watching && this.recordingPath) this.keepFinishing(child, data.sessionId, this.recordingPath);
       this.emit(data);

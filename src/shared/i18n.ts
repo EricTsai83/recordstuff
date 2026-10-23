@@ -501,6 +501,8 @@ export const ZH_TW = {
   "Input device": "輸入裝置",
   "System default ({name})": "跟隨系統（{name}）",
   "{label} — Not connected": "{label}（未連接）",
+  "{label} — Lid closed": "{label}（蓋子已闔上）",
+  "{label} hears nothing while the lid is closed. Choose another input, or open the lid.": "蓋子闔上時，{label} 收不到聲音。請改選其他輸入裝置，或打開蓋子。",
   "Recordings use the system default input until {label} is connected.": "{label} 連接前，錄影會使用系統預設的輸入裝置。",
   // Microphone controls (plan 079).
   "Search for devices": "搜尋裝置",

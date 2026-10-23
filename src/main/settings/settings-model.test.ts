@@ -546,6 +546,28 @@ describe("microphone (plan 074)", () => {
     expect(settingsAction(idle, { ...on(), microphone: { enabled: false, devices } }, "microphoneDevice", "usb-mic")).toBeUndefined();
   });
 
+  it("marks the built-in input while the lid is closed and says it hears nothing when it is the one used (plan 089, D2)", () => {
+    const closed = devices.map((device) => device.id === "BuiltInMicrophoneDevice" ? { ...device, lidClosed: true } : device);
+    const row = group(idle, on({ devices: closed }), "microphoneDevice")!;
+    expect(row.choices.map(c => c.label)).toEqual(["System default (MacBook Pro Microphone — Lid closed)", "MacBook Pro Microphone — Lid closed", "USB Microphone"]);
+    expect(row).toMatchObject({ note: "MacBook Pro Microphone hears nothing while the lid is closed. Choose another input, or open the lid.", noteKind: "status" });
+    // Still choosable: the lid may open before the recording.
+    expect(settingsAction(idle, on({ devices: closed }), "microphoneDevice", "BuiltInMicrophoneDevice")).toEqual({ setMicrophoneDevice: { id: "BuiltInMicrophoneDevice", label: "MacBook Pro Microphone" } });
+    const zh = group(idle, { ...on({ devices: closed }), language: "zh-TW" }, "microphoneDevice")!;
+    expect(zh.choices[1]?.label).toBe("MacBook Pro Microphone（蓋子已闔上）");
+    expect(zh.note).toBe("蓋子闔上時，MacBook Pro Microphone 收不到聲音。請改選其他輸入裝置，或打開蓋子。");
+    // A chosen input that is missing falls back to the default, here the closed-lid one: both are said.
+    expect(group(idle, on({ devices: closed, device: { id: "headset", label: "AirPods" } }), "microphoneDevice")?.note).toBe(
+      "Recordings use the system default input until AirPods is connected. MacBook Pro Microphone hears nothing while the lid is closed. Choose another input, or open the lid.");
+    // While recording the device opened is kept whatever the default becomes, and the engine tells its silence: the
+    // row says what it said before.
+    const recording = { type: "recording", startedAt: "2026-10-23T00:00:00Z" } as const;
+    expect(group(recording, { ...on({ devices: closed }), audioSession: { systemMuted: false, microphone: { muted: false } } }, "microphoneDevice")?.note).toBe("Switches this recording's microphone at once.");
+    // Another input chosen, or the microphone off: nothing to warn about.
+    expect(group(idle, on({ devices: closed, device: { id: "usb-mic", label: "USB Microphone" } }), "microphoneDevice")?.note).toBeUndefined();
+    expect(group(idle, on({ devices: closed, enabled: false }), "microphoneDevice")?.note).toBeUndefined();
+  });
+
   it("keeps a chosen input that is not connected selected and says the default is used until it is back", () => {
     const missing = on({ device: { id: "headset", label: "AirPods" } });
     const row = group(idle, missing, "microphoneDevice")!;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HostMessage, NativeStart } from "../../shared/protocol";
+import type { HostMessage, MicrophoneDevice, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
 import { NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
 
@@ -25,7 +25,7 @@ function fakeEngine() {
     stop: vi.fn(async () => ({ drainMs: 31, drainPaddedFrames: 0, frameLeadAvgMs: 4.2, frameLeadMaxMs: 9 })),
     finish: vi.fn(async (): Promise<{ bytes: number; finalizeMs: number; fragmented?: string | null }> => ({ bytes: 1234, finalizeMs: 4, fragmented: null })),
     cancel: vi.fn(async () => undefined),
-    microphones: vi.fn(async () => [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }]),
+    microphones: vi.fn(async (): Promise<MicrophoneDevice[]> => [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }]),
   };
   return { engine, factory: (onEvent: (event: Event) => void) => { emit = onEvent; return engine; }, emit: (event: Event) => emit(event) };
 }
@@ -343,6 +343,11 @@ describe("NativeHost", () => {
       port.deliver({ type: "listMicrophones" });
       await flush();
       expect(port.sent.at(-1)).toEqual({ type: "microphones", devices: [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true }] });
+      // The engine marks a built-in input with the lid closed (plan 089, D2); the mark goes on to main.
+      fake.engine.microphones.mockResolvedValueOnce([{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true, lidClosed: true }]);
+      port.deliver({ type: "listMicrophones" });
+      await flush();
+      expect(port.sent.at(-1)).toEqual({ type: "microphones", devices: [{ id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true, lidClosed: true }] });
       fake.engine.microphones.mockRejectedValueOnce(new Error("capture_start_failed|AVFoundation has no audio media type"));
       port.deliver({ type: "listMicrophones" });
       await flush();
@@ -518,6 +523,50 @@ describe("NativeHost", () => {
     await flush();
     expect(fake.engine.cancel).toHaveBeenCalledTimes(1);
     expect(port.sent.map((m) => m.type)).toEqual(["ready", "stopped"]);
+  });
+
+  it("answers whether macOS lets the engine capture, by its probe, and not while a session holds the engine (plan 089, D1)", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    new NativeHost(port, fake.factory, () => undefined);
+    port.deliver({ type: "checkScreenAccess", displayId: 3 });
+    await flush();
+    expect(fake.engine.probe).toHaveBeenCalledWith(3);
+    expect(port.sent.at(-1)).toEqual({ type: "screenAccess", answer: "granted" });
+    fake.engine.probe.mockRejectedValueOnce(new Error("permission_denied|The user declined TCCs (-3801)"));
+    port.deliver({ type: "checkScreenAccess", displayId: 3 });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "screenAccess", answer: "denied", detail: "The user declined TCCs (-3801)" });
+    fake.engine.probe.mockRejectedValueOnce(new Error("no_display|display 9 is not available for capture"));
+    port.deliver({ type: "checkScreenAccess", displayId: 9 });
+    await flush();
+    expect(port.sent.at(-1)).toEqual({ type: "screenAccess", answer: "unknown", detail: "display 9 is not available for capture" });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    const probes = fake.engine.probe.mock.calls.length;
+    port.deliver({ type: "checkScreenAccess", displayId: 3 });
+    await flush();
+    expect(fake.engine.probe).toHaveBeenCalledTimes(probes);
+    expect(port.sent.at(-1)).toEqual({ type: "screenAccess", answer: "unknown", detail: "a recording is in progress" });
+  });
+
+  it("probes for a start only after the access check in flight, so prepare never takes the check's content (plan 089)", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const order: string[] = [];
+    let answer!: () => void;
+    fake.engine.probe.mockImplementationOnce(() => new Promise((resolve) => { answer = () => { order.push("access probe done"); resolve({ width: 1, height: 1 }); }; }));
+    fake.engine.probe.mockImplementation(async () => { order.push("start probe"); return { width: 3456, height: 2234 }; });
+    fake.engine.prepare.mockImplementation(async (options) => { order.push("prepare"); return { width: options.width, height: options.height, sampleRate: 48_000, channelCount: 2, primingFrames: 2112, excludedApps: 2, hiddenWindows: 0, warnings: [], timings: "" }; });
+    new NativeHost(port, fake.factory, () => undefined);
+    port.deliver({ type: "checkScreenAccess", displayId: 1 });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    expect(order).toEqual([]);
+    answer();
+    await flush();
+    expect(order).toEqual(["access probe done", "start probe", "prepare"]);
+    expect(port.sent.map((m) => m.type)).toEqual(["ready", "screenAccess", "prepared"]);
   });
 
   it("maps a refused prepare to its host error code", async () => {

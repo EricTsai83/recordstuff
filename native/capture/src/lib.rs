@@ -99,6 +99,8 @@ pub struct MicrophoneInfo {
     pub id: String,
     pub name: String,
     pub default: bool,
+    /// Built into a MacBook whose lid is closed (plan 089): it records only digital silence.
+    pub lid_closed: bool,
 }
 
 #[cfg(any(target_os = "macos", windows))]
@@ -704,7 +706,7 @@ impl Task for MicrophonesTask {
         #[cfg(any(target_os = "macos", windows))]
         {
             let found = platform::microphone::list().map_err(|e| failure(e.code, e.detail))?;
-            Ok(found.into_iter().map(|m| MicrophoneInfo { id: m.id, name: m.name, default: m.default }).collect())
+            Ok(found.into_iter().map(|m| MicrophoneInfo { id: m.id, name: m.name, default: m.default, lid_closed: m.lid_closed }).collect())
         }
         #[cfg(not(any(target_os = "macos", windows)))]
         Ok(Vec::new())

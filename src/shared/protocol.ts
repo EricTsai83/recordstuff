@@ -58,6 +58,8 @@ export interface MicrophoneDevice {
   name: string;
   /** The system's default input now. */
   default: boolean;
+  /** Built into a MacBook whose lid is closed (plan 089, D2): it records only digital silence. Absent is false. */
+  lidClosed?: boolean;
 }
 
 /** A camera the engine listed (plan 075, D9): AVCaptureDevice's unique ID, its name, and whether it is the default. */
@@ -136,6 +138,12 @@ export type MainMessage =
    */
   | { type: "watchDevices"; watching: boolean }
   | { type: "meter"; watching: boolean; deviceId?: string }
+  /**
+   * Whether macOS lets the engine capture `displayId` (plan 089, D1): asked by an attempt's process while main
+   * enumerates the screens, so a revoked grant is refused without waiting for the enumeration. Answered with
+   * `screenAccess`. Only to a host with no session.
+   */
+  | { type: "checkScreenAccess"; displayId: number }
   | { type: "ping" };
 
 /** Write failures the native engine, which writes the file itself (plan 076, D3), reports. */
@@ -148,6 +156,10 @@ export interface EngineFileReport {
   finalizeMs: number;
   fragmented?: string;
 }
+
+/** The engine's answer on the screen grant: "unknown" when it could not tell (no such display, a timeout). */
+export type ScreenAccess = "granted" | "denied" | "unknown";
+const SCREEN_ACCESS = ["granted", "denied", "unknown"] as const satisfies readonly ScreenAccess[];
 
 export type HostMessage =
   | { type: "ready" }
@@ -188,6 +200,8 @@ export type HostMessage =
   | { type: "microphones"; error: string }
   | { type: "cameras"; devices: CameraDevice[] }
   | { type: "cameras"; error: string }
+  /** The answer to `checkScreenAccess`, with the engine's reason when it is not "granted". */
+  | { type: "screenAccess"; answer: ScreenAccess; detail?: string }
   | { type: "pong" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -214,7 +228,8 @@ function isMicrophoneChoice(value: unknown): value is MicrophoneChoice {
 }
 
 function isMicrophoneDevice(value: unknown): value is MicrophoneDevice {
-  return isRecord(value) && isNonEmptyString(value["id"]) && typeof value["name"] === "string" && typeof value["default"] === "boolean";
+  return isRecord(value) && isNonEmptyString(value["id"]) && typeof value["name"] === "string" && typeof value["default"] === "boolean" &&
+    (value["lidClosed"] === undefined || typeof value["lidClosed"] === "boolean");
 }
 
 function isNativeStart(value: unknown): value is NativeStart {
@@ -257,6 +272,8 @@ export function isMainMessage(value: unknown): value is MainMessage {
       return typeof value["watching"] === "boolean";
     case "meter":
       return typeof value["watching"] === "boolean" && (value["deviceId"] === undefined || isNonEmptyString(value["deviceId"]));
+    case "checkScreenAccess":
+      return typeof value["displayId"] === "number" && Number.isInteger(value["displayId"]) && value["displayId"] >= 0;
     case "listMicrophones":
     case "listCameras":
     case "ping":
@@ -275,6 +292,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "ready":
     case "pong":
       return true;
+    case "screenAccess":
+      return (SCREEN_ACCESS as readonly unknown[]).includes(value["answer"]) && (value["detail"] === undefined || typeof value["detail"] === "string");
     case "prepared":
       return (
         isNonEmptyString(value["sessionId"]) &&

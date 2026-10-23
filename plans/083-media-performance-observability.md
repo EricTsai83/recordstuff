@@ -2,7 +2,7 @@
 
 [English](083-media-performance-observability.md) | [繁體中文](083-media-performance-observability.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-22. Hard dependencies: None; follows 089 in the queue, 077 having closed on 2026-10-22. Execute in order under the [plan index](README.md). This task writes plans only; none of the implementation or performance claims below has been verified.
+Status: planned; not started. Created: 2026-10-22. Hard dependencies: None; next in the queue, 089 having closed on 2026-10-23. Execute in order under the [plan index](README.md). This task writes plans only; none of the implementation or performance claims below has been verified.
 
 ## Goal and current state
 

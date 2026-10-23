@@ -1058,8 +1058,8 @@ export class Recorder {
   }
 
   private handleHostMessage(message: HostMessage): void {
-    // `microphones` and `cameras` answer a listing process, never an attempt's.
-    if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras") return;
+    // `microphones` and `cameras` answer a listing process, never an attempt's; `screenAccess` answers main's display request.
+    if (message.type === "ready" || message.type === "pong" || message.type === "microphones" || message.type === "cameras" || message.type === "screenAccess") return;
     // Settings' monitor process answers these (plan 079), never an attempt's.
     if (message.type === "meterStarted" || message.type === "meterLevel" || message.type === "meterStopped") return;
     const session = this.session;

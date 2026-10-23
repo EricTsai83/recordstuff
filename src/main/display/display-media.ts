@@ -6,8 +6,9 @@
  * lives here so each rule is testable without Electron.
  */
 import type { DisplayFailure, DisplayInfo, DisplayPreference } from "../../shared/display";
+import type { ScreenAccess } from "../../shared/protocol";
 import type { ErrorCode } from "../../shared/state";
-import { DisplayRequest } from "./display-source";
+import { DisplayRequest, describeResolutionTiming } from "./display-source";
 import { stackOf } from "../lib/errors";
 
 type Source = { display_id: string };
@@ -22,6 +23,8 @@ export interface DisplayMediaOptions<S extends Source> {
   /** A refusal changed what the UI shows. */
   changed: () => void;
   log: (message: string) => void;
+  /** Monotonic milliseconds for the request's timing; injectable for tests. */
+  now?: () => number;
 }
 
 export class DisplayMedia<S extends Source> {
@@ -48,44 +51,46 @@ export class DisplayMedia<S extends Source> {
     this.sessionId = sessionId;
     this.denial = undefined;
     this.activeDisplayId = undefined;
-    const { platform, getSources, log } = this.options;
+    const { platform, getSources, log, now } = this.options;
     const preference = { ...this.options.preference() };
     this.request = new DisplayRequest({
-      preference, platform, getSources,
+      preference, platform, getSources, ...(now ? { now } : {}),
       snapshot: () => ({
         displays: this.options.displays(),
         primaryDisplayId: this.options.primaryDisplayId(),
         generation: this.topologyGeneration,
       }),
-      selected: (source, rule, attempt, resolution) => {
+      // Each line carries the request's timing (plan 089 step 1): what each enumeration took and listed.
+      selected: (source, rule, attempt, resolution, timing) => {
         this.denial = undefined;
         this.activeDisplayId = source.display_id || undefined;
-        log(`display media: requested ${JSON.stringify(preference)}; resolved ${source.display_id}; label ${resolution.ok ? resolution.label : ""}; rule ${rule}; retry ${attempt - 1}`);
+        log(`display media: requested ${JSON.stringify(preference)}; resolved ${source.display_id}; label ${resolution.ok ? resolution.label : ""}; rule ${rule}; retry ${attempt - 1}; ${describeResolutionTiming(timing)}`);
       },
-      denied: (code, detail, attempt) => {
+      denied: (code, detail, attempt, timing) => {
         this.denial = code;
         if (code === "display_unavailable") this.failure = detail;
-        log(`display media: denied (${code}); requested ${JSON.stringify(preference)}; resolved none; rule ${preference.kind}; retry ${attempt - 1}; detail ${detail}`);
+        log(`display media: denied (${code}); requested ${JSON.stringify(preference)}; resolved none; rule ${preference.kind}; retry ${attempt - 1}; detail ${detail}; ${describeResolutionTiming(timing)}`);
         this.options.changed();
       },
-      failed: (cause) => {
+      failed: (cause, timing) => {
         this.denial = "capture_start_failed";
-        log(`display media: request failed unexpectedly; requested ${JSON.stringify(preference)}; ${stackOf(cause)}`);
+        log(`display media: request failed unexpectedly; requested ${JSON.stringify(preference)}; ${describeResolutionTiming(timing)}; ${stackOf(cause)}`);
       },
     });
   }
 
   /**
    * Answer one OS display-media request. `owns` confirms that the requesting
-   * frame belongs to this attempt; any other request gets no source.
+   * frame belongs to this attempt; any other request gets no source. `screenAccess`
+   * asks the engine about the screen grant alongside the enumeration (plan 089, D1).
    */
-  answer(owns: (sessionId: string) => boolean, callback: (source?: S) => void): void {
+  answer(owns: (sessionId: string) => boolean, callback: (source?: S) => void, screenAccess?: (displayId: string) => Promise<ScreenAccess>): void {
     const { request, sessionId } = this;
     if (!request || !sessionId || !owns(sessionId)) {
       callback();
       return;
     }
-    void request.run(callback);
+    void request.run(callback, screenAccess);
   }
 
   /** The real cause of a host error that main's refusal explains; each refusal explains one error. */

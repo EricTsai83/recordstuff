@@ -160,7 +160,12 @@ pub fn microphones() -> Result<Vec<crate::core::Microphone>, CaptureError> {
         let Ok(device) = (unsafe { collection.Item(index) }) else { continue };
         let Ok(id) = (unsafe { device.GetId() }) else { continue };
         let id = take_id(id);
-        found.push(crate::core::Microphone { default: default.as_deref() == Some(id.as_str()), name: device_name(&device).unwrap_or_else(|| id.clone()), id });
+        found.push(crate::core::Microphone {
+            default: default.as_deref() == Some(id.as_str()),
+            lid_closed: false,
+            name: device_name(&device).unwrap_or_else(|| id.clone()),
+            id,
+        });
     }
     Ok(found)
 }

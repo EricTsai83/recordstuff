@@ -506,6 +506,44 @@ fn a_microphone_that_stops_delivering_is_told_and_taken_again_when_its_sound_com
 }
 
 #[test]
+fn a_microphone_delivering_only_digital_silence_is_told_lost_but_a_quiet_one_is_not() {
+    // Plan 089, D2: a MacBook's built-in microphone with the lid closed delivers buffers of exact zeros. 2 s of only
+    // those is told lost, naming them; a quiet room's faint sound, however low, is sound.
+    let mut rig = Rig::with_inputs("microphone-zeros", 2);
+    rig.core.watch_microphone(1);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let mut next = 0u64;
+    let mut feed = |rig: &Rig, millis: u64, level: f32| {
+        let began = Instant::now();
+        while began.elapsed() < Duration::from_millis(millis) {
+            while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+                let at = t0 + next * NANOS_PER_SECOND / 48_000;
+                rig.shared.sound(0, at, 480, |_, _| 0.0).unwrap();
+                // One sample in the buffer carries the level, as a quiet room's noise floor does at -100 dBFS.
+                rig.shared.sound(1, at, 480, |frame, _| if frame == 7 { level } else { 0.0 }).unwrap();
+                next += 480;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    };
+    feed(&rig, 2_600, 1e-5);
+    assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "{:?}", rig.heard.microphone_lost.lock().unwrap());
+    feed(&rig, 2_600, 0.0);
+    let lost = rig.heard.microphone_lost.lock().unwrap().clone();
+    assert_eq!(lost.len(), 1, "{lost:?}");
+    assert!(lost[0].contains("only digital silence") && lost[0].contains("for 2 s"), "{lost:?}");
+    // Sound again (the lid opened): told back once.
+    feed(&rig, 100, 0.25);
+    let resumed = rig.heard.microphone_resumed.lock().unwrap().clone();
+    assert_eq!(resumed.len(), 1, "{resumed:?}");
+    let (_, _, _) = rig.stop();
+    assert!(rig.heard.failures.lock().unwrap().is_empty(), "{:?}", rig.heard.failures.lock().unwrap());
+}
+
+#[test]
 fn switching_the_microphone_counts_its_silence_from_the_switch() {
     // Plan 079, D3: opening the device switched to can take a Bluetooth headset a second or two, which is no loss.
     let mut rig = Rig::with_inputs("microphone-switched", 2);

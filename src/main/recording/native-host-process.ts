@@ -163,6 +163,8 @@ const DEVICES_SETTLE_MS = 300;
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
+  /** The screen access check in flight (plan 089, D1), which a start's own probe waits for. */
+  private accessCheck: Promise<void> | undefined;
   private previewPort: PreviewPort | undefined;
   private previewFrames = 0;
   /** Settings' meter (plan 079, D1): the latest request, and the requests applied one after another. */
@@ -236,6 +238,9 @@ export class NativeHost {
         return;
       case "stop":
         void this.stop(message.sessionId);
+        return;
+      case "checkScreenAccess":
+        void this.checkScreenAccess(message.displayId);
         return;
       case "listMicrophones":
         void this.listMicrophones();
@@ -387,6 +392,29 @@ export class NativeHost {
     }
   }
 
+  /**
+   * Whether macOS lets the engine capture the display (plan 089, D1), by the probe a start makes: ScreenCaptureKit
+   * refuses a revoked grant as `permission_denied` even while Electron's enumeration waits on it.
+   */
+  private checkScreenAccess(displayId: number): Promise<void> {
+    if (this.session) {
+      this.send({ type: "screenAccess", answer: "unknown", detail: "a recording is in progress" });
+      return Promise.resolve();
+    }
+    const check = this.askScreenAccess(displayId).finally(() => { if (this.accessCheck === check) this.accessCheck = undefined; });
+    this.accessCheck = check;
+    return check;
+  }
+  private async askScreenAccess(displayId: number): Promise<void> {
+    try {
+      await this.capture.probe(displayId);
+      this.send({ type: "screenAccess", answer: "granted" });
+    } catch (cause) {
+      const { code, detail } = engineFailure(cause);
+      this.send({ type: "screenAccess", answer: code === "permission_denied" ? "denied" : "unknown", detail });
+    }
+  }
+
   /** The audio inputs, for the Settings device menu (plan 074). Never while a session holds the engine. */
   private async listMicrophones(): Promise<void> {
     if (this.session) {
@@ -395,7 +423,7 @@ export class NativeHost {
     }
     try {
       const devices = await this.capture.microphones();
-      this.send({ type: "microphones", devices: devices.map(({ id, name, default: isDefault }) => ({ id, name, default: isDefault })) });
+      this.send({ type: "microphones", devices: devices.map(({ id, name, default: isDefault, lidClosed }) => ({ id, name, default: isDefault, ...(lidClosed ? { lidClosed } : {}) })) });
     } catch (cause) {
       this.send({ type: "microphones", error: engineFailure(cause).detail });
     }
@@ -420,6 +448,9 @@ export class NativeHost {
     this.session = session;
     let capture: CaptureReport;
     try {
+      // Both probes keep their content for `prepare`: the access check's, taken before main made sure RecordStuff
+      // owns a window, must not be the one `prepare` uses (plan 089).
+      await this.accessCheck;
       const began = this.now();
       // napi-rs reads an absent optional object as None and refuses null, so the point is left out on macOS.
       const chosen = this.development.source;
