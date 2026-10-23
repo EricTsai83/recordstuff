@@ -4,6 +4,18 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 091 結案 — 2026-10-23
+
+Plan 091（擷取程序的 CPU 花在哪裡）源自 083 的數字，於 2026-10-23 在 `pnpm start:app` 由 `35414cf6` 加上本計畫開發開關建置的簽章 bundle 上執行（參考機 M1 Pro、macOS 26.6.2，螢幕與素材同 083）。Claude 實作工具，並在維護者回覆「好了」後一次跑完五個桌面回合；全程未開啟相機。報告：`docs/verification/measurements/091-r1-moving` 至 `091-r4-frame-interval` 與 `091-r5-aac-bench`（僅存於本機）。
+
+- **工具。** `pnpm diagnose:profile` 依原因、執行緒與函式庫分配一個被 profile 程序的 on-CPU 樣本，並以實測 CPU 換算；`pnpm measure:cpu -- --audio off` 與 `--capture-interval frame` 分別隔離聲音與 pacer 捨棄的遞送，後者透過新的開發開關 `RECORDSTUFF_CAPTURE_INTERVAL=frame`，在 macOS 擷取開始時讀取（[CPU 預算](../system-design/tooling.md#cpu-預算)）。步驟 1：`sample` 能依執行緒與 dispatch queue 解析 ScreenCaptureKit、CMCapture、CoreMedia、AudioToolbox 與引擎的 frame；只裝 Command Line Tools 時沒有 `xctrace`，因此未使用。
+- **變更前的數字（步驟 2）。** 動態素材下 App 在 30 fps 為 10.5–10.6%、60 fps 為 14.6–14.9%（擷取程序 10.4% / 14.5%），靜態素材 3.5–3.6%（一次 30 fps 為 5.5%，報告取中位數）；`pnpm matrix -- quick,long` 每個案例都通過：掉 frame 0、A/V 偏移 −2 至 −18 ms、3 分鐘漂移 0 ms。
+- **隔離（步驟 3）。** 關掉聲音在 30 fps 省 1.68 點、60 fps 省 1.70 點（檔案仍有一條靜音 AAC 音軌，仍會編碼）；`AacEncoder` 的 release benchmark 在 256 kbps 下每秒靜音聲音 2.4 ms、類音樂聲音 5.3 ms（最低 codec 品質 2.3 ms），所以整條聲音路徑約 1.9 點。向擷取要求 frame 間隔使遞送減半（30 fps 每分鐘 3,623 → 1,775 次），在 30 fps 省 1.3 點、60 fps 省 1.0 點，但 30 fps 掉了 2.5% 的 frame 並出現 50 ms 間隔，60 fps 掉 4.2%（`pnpm verify`；原本 0%）。每個編碼 frame 讓程序在 30 fps 花約 1.9 ms、60 fps 約 1.85 ms（60 fps 時擷取沒有 pacer 捨棄的遞送，開關的節省只來自掉的 frame），其中引擎自己的工作約 0.2 ms（083），其餘是程序內 ScreenCaptureKit 的遞送、CoreMedia 與 VideoToolbox 的送交。profile 的份額高估了聲音頻繁的 callback（AAC 約每秒 29 ms），所以結論以開關與 benchmark 的數字為準；四種情況依執行緒的份額也一併保留（[表格](../system-design/tooling.md#管線-baseline)）。
+- **D1：停止。** 沒有任何單一原因在 30 fps 時以安全的改法值得 2 點：聲音只有整體算才約 1.9 點，AAC 最低品質最多省 0.3 點，frame 間隔會帶回 076 與 078 消除的間隔。Node runtime 只占一小部分（約每秒 5 ms）。未做產品變更，因此 083 的管線 baseline 維持不變，步驟 5、6 不適用。兩個開關保留為開發開關；AAC benchmark 是暫時測試，已移除。
+- **檢查與 review。** 回合前 `pnpm check` 通過（177 個檔案、2101 個 TypeScript 測試；153 個 Rust 測試、7 個 ignored；Clippy、fmt、build 與引擎載入）。兩次 medium 的唯讀 Codex GPT-6.1 Sol review 找到四個問題，全部修正：`diagnose:profile` 用最後一段錄影的 CPU 換算跨多段錄影存在的程序（main、GPU 程序）；60 fps 每個 frame 的數字與所寫的公式不符；依執行緒的歸因沒有保留在耐久文件中；執行緒表格最初把跨執行緒的原因混入列中。修正後 `pnpm typecheck` 與腳本的 verification 和 runner 測試（31 個檔案、253 個測試）通過；最後一項修正沒有再經過 review。
+- **清理。** 每個回合都還原 `settings.json`、結束 RecordStuff 並關閉素材，沒有殘留程序；`caffeinate` 在回合期間執行，之後已停止。錄影檔在 ~/Movies/RecordStuff（2026-10-23 19-11 至 19-57）。
+- **未測試。** Windows 僅由 CI 涵蓋（interval 開關只在 macOS）；麥克風的份額（每個回合都關閉）；參考機 M1 Pro 以外的機器。
+
 ## Plan 090 後續：錄影工作室中的相機狀態 — 2026-10-23
 
 090 結案後依維護者要求進行，在 `pnpm start:app` 從 `1ca55bd5` 加上這些變更所建置的簽章 bundle 上執行（闔蓋）。由 Claude 實作，並在維護者回覆「好了」後執行一個桌面回合。

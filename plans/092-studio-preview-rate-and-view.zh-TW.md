@@ -18,7 +18,7 @@
 
 ## 步驟與責任
 
-- [ ] **先量 baseline。** 在 091 的最終 bundle 上（若 091 沒有採用變更，就用當時的 HEAD），量現在的 Studio：S（只是看著，5 fps）、加上 `--studio-active` 的 S（10 fps）與 L，30 與 60 fps，`--repeat 3 --diagnostics`，同一輪也量 R，因為 Studio 的數字是相對 R 的增量。從 profile 數出 capture 程序中預覽執行緒的喚醒次數。
+- [ ] **先量 baseline。** 在當時 HEAD 的簽章 bundle 上（091 沒有採用變更：[紀錄](../docs/zh-TW/verification/history-2026-10.md#plan-091-結案--2026-10-23)），量現在的 Studio：S（只是看著，5 fps）、加上 `--studio-active` 的 S（10 fps）與 L，30 與 60 fps，`--repeat 3 --diagnostics`，同一輪也量 R，因為 Studio 的數字是相對 R 的增量。從 profile 數出 capture 程序中預覽執行緒的喚醒次數。
 - [ ] **引擎端的幀率。** 預覽執行緒改為依所選幀率的間隔排程下一格，不再以 `PREVIEW_FPS` tick 再跳過，所以只在出畫面時喚醒（每秒 5、10 或 15 次）；改幀率或來源時立即喚醒並重設排程，`preview_tick_shows` 由這個排程取代。確認編碼器設定的幀率與 1 Mbps 在 15 fps 下夠用。port 的 `rate` 訊息（`isStudioRate`，[studio-port.ts](../src/shared/studio-port.ts)）接受 D1 的各幀率；「關閉」是頁面不再訂閱預覽（和預覽區離開視線時同一條路），不是幀率 0。macOS 與 Windows 的 session 都要改。
 - [ ] **頁面端的幀率。** main 的 Studio model（[model/studio.ts](../src/main/settings/model/studio.ts)）新增並保存這個設定，預設「關閉」，i18n 補英文與繁中。`paceStudio` 只在「省電」時運作，其他選項固定送一個幀率；角落標籤讀 `paceStudio` 目前的值。單元測試涵蓋選項、預設值與保存，以及各選項的節奏。
 - [ ] **「螢幕」來源。** Studio port 新增 `view` 訊息（`composed` 或 `screen`；未知的值由 validator 拒絕）；compositor 的預覽 render 依來源：「螢幕」走現有相機隱藏（D13）的路徑。切換來源時強制出 key frame。錄影的 `compose` 不動。兩個平台的 compositor 都有 Rust 測試，確認預覽參數跟著來源變、錄影參數不變。頁面：分段按鈕；session 開始前，「螢幕」提示開始 Live preview 後顯示。只用正式元件與 CSS，依 [UI 對齊規則](../docs/zh-TW/testing.md#測試-ui-與-app-保持一致)。

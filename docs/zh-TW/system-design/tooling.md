@@ -99,6 +99,8 @@ pnpm measure:cpu -- --fps 60 --repeat 3                  # baseline 回合：兩
 pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2   # 相機：R、S（錄影工作室顯示錄影）與 L（即時預覽）；plan 075
 pnpm measure:cpu -- --skip-settings --skip-playback --fps 60 --minutes 1 --diagnostics   # 每段錄影的管線數據（plan 083）；旁邊再跑一次不加 --diagnostics，可得它的成本
 pnpm diagnose:pipeline -- --last 3                       # 從 App 的 log 讀最近幾個工作階段的管線數據（plan 083）
+pnpm measure:cpu -- --skip-settings --skip-playback --fps 60 --minutes 1 --repeat 3 --profile --audio off   # 單獨隔離一個原因：不錄聲音（或 --capture-interval frame）；plan 091
+pnpm diagnose:profile -- docs/verification/measurements/<run>   # 擷取程序 profile 的 CPU 依原因、執行緒與函式庫拆分（plan 091）
 pnpm measure:thumbnails                                  # 在隱藏的 view host 以數百支真實影片比較錄影檔縮圖的並行上限與快取；需要 out/；約 2 分鐘
 ```
 
@@ -186,7 +188,33 @@ Plan 083 在 2026-10-23 的量測回合（M1 Pro 參考機，macOS 26.6.2，闔�
 
 **plan 090 重測的相機數據**（2026-10-23，在含 090 變更的簽章 bundle 上執行同一個指令，iPhone 的接續互通相機，闔蓋，背景沒有其他播放；報告 `090-r2-after`）。這組數據取代上方第 7 輪的相機數據，那一輪的錄影有一段時間沒有相機。每段錄影從第一秒就有相機（第一格在開啟後 0.70–0.76 秒，相對錄影開始 +0.22 至 +0.26 秒）：R 在 30 fps 為 12.2%、60 fps 為 17.2%；S 為 19.1%／23.3%，比 R 多 6.9／6.1 點，只是看著時符合 D18；L 為 15.9%／16.2%。合成相機每格 p50 1.66–1.92 ms、p95 7.7–9.2 ms，編碼延遲 p50 在 30 fps 為 18.4 ms、60 fps 為 22.5 ms，writer 積壓最多 0.32 MB，capture 程序約 105 MB；沒有任何丟棄。相機畫面比它所在的影格舊 115–124 ms。變更前的同一個指令（報告 `090-r1-before`，背景有影片在播放，因此數據僅供參考）為 R 11.7%／16.2%、S 比 R 多 8.0／8.6 點、L 12.9%／15.2%。相機的第一格時間不是 CPU 數據，記在[錄影設計](recording.md#相機)。
 
-**未完成計畫（091–094、084、085、087）使用的預算。** 在各計畫量測自己的工作之前，以 `--diagnostics` 在相同負載下對照；哪些計畫在何時重量這份 baseline 的哪些部分，列在計畫索引的 [baseline](../../../plans/README.zh-TW.md#baseline)：
+**擷取程序的 CPU 花在哪裡**（計畫 091，2026-10-23；`35414cf6` 加上 091 開關的簽章 bundle，相同的機器、螢幕與素材；報告 `091-r1-moving` 至 `091-r5-aac-bench`，僅存於本機）。擷取程序在動態素材上 30 fps 為 10.4%、60 fps 為 14.5%，靜態素材 3.4%（三次的中位數；整個 App 為 10.6% / 14.7% / 3.6%）。每個原因以同一 bundle 上的開關或 benchmark 量測：
+
+| 原因 | 量法 | 30 fps | 60 fps |
+| --- | --- | --- | --- |
+| 聲音：ScreenCaptureKit 的音訊、mixer、AAC | `--audio off`（1.7 點）加上靜音音軌的 AAC（benchmark） | 約 1.9 點 | 約 1.9 點 |
+| 單獨的 AAC 編碼 | 60 秒 48 kHz 立體聲以 256 kbps 經過 `AacEncoder` | 靜音 2.4 ms/s，類音樂 5.3 ms/s | 相同 |
+| pacer 捨棄的遞送 | `--capture-interval frame`：30 fps 時遞送從每分鐘 3,623 次降到 1,775 次 | 1.3 點，但掉了 2.5% 的 frame，出現 50 ms 間隔 | 沒有可捨棄的遞送（3,623 次遞送對 3,615 個 frame）；開關省下的 1.0 點只是因為掉了 4.2% 的 frame |
+| 每個編碼 frame 在程序內的路徑 | （動態 − 靜態 − 捨棄的遞送）/ 每秒 frame 數 | 每個 frame 約 1.9 ms（(10.41 − 3.39 − 1.34) / 30） | 每個 frame 約 1.85 ms（(14.47 − 3.43) / 60） |
+| 不論畫面如何的其餘部分 | 靜態素材扣除聲音 | 約 15 ms/s | 約 15 ms/s |
+
+每個 frame 的 1.9 ms 中引擎自己的處理約 0.2 ms（083）；其餘在程序內的系統框架：ScreenCaptureKit 的 IOSurface 遞送及其 Objective-C 與 CoreFoundation 工作、CoreMedia，以及 VideoToolbox 的送交與它的 preparation 和 compression queue。Node runtime 只占一小部分（profile 中約每秒 5 ms）。
+
+依執行緒，profile 中擷取程序的 on-CPU 份額（每種情況合併三份 10 秒的 profile；聲音 queue 被高估，見 [CPU 預算](#cpu-預算)，所以只當作順序，不當作成本）：
+
+| 執行緒或 queue | 動態 30 fps | 動態 60 fps | 靜態 30 fps | 靜態 60 fps |
+| --- | --- | --- | --- | --- |
+| ScreenCaptureKit 送畫面進引擎的 queue | 29% | 25% | 12% | 0% |
+| ScreenCaptureKit 送聲音進引擎的 queue（mixer 與 AAC） | 42% | 34% | 62% | 76% |
+| VideoToolbox 的 preparation、compression 與 callback queue | 18% | 23% | 13% | 3% |
+| 引擎的 writer | 4% | 3% | 7% | 12% |
+| 引擎的 refresh 執行緒 | 1% | 0% | 1% | 2% |
+| Node、V8 與 Chromium 的執行緒（主執行緒、libuv、V8 worker） | 0% | 0% | 2% | 3% |
+| 其他（libdispatch、CoreMedia 的執行緒） | 6% | 14% | 3% | 4% |
+
+任何執行緒上 Node、V8 與 Chromium 的 frame 是原因而非執行緒，因此與上表各列重疊，分別為 4%、4%、4% 與 6%。沒有任何單一原因在 30 fps 時以安全的改法值得計畫的 2 點：聲音只有整體算才有 1.9 點，AAC 用最低品質最多省 0.3 點，而向擷取要求 frame 間隔會帶回計畫 076 與 078 消除的間隔。沒有採用任何變更，所以上面的數字仍是 baseline。
+
+**未完成計畫（092–094、084、085、087）使用的預算。** 在各計畫量測自己的工作之前，以 `--diagnostics` 在相同負載下對照；哪些計畫在何時重量這份 baseline 的哪些部分，列在計畫索引的 [baseline](../../../plans/README.zh-TW.md#baseline)：
 
 - 錄影 CPU 維持在本節的中位數加上其範圍內（以及 `CPU_BUDGET`）；優化只有在中位數改善超過該範圍且至少 10%、錄影完整性檢查不變時才算數。
 - 佇列維持現在的上限：編碼器不丟幀，等待編碼器的影格最多 4 個，Standard 品質下 writer 積壓低於 1 MB。
@@ -240,6 +268,8 @@ baseline 存在 [cpu-baselines.json](../../../scripts/lib/verification/cpu-basel
 **矩陣。**`pnpm matrix` 的每個案例以同一個取樣程式追蹤開發用 Electron.app 的主程序與其子孫程序（啟動後一秒內開始），判定範圍是該案例錄影的第 3 秒到要求停止為止；沒有這些 log 行的案例，改用啟動後第 3 秒到退出，這段期間預期擷取程序會啟動與結束。取樣程式沒找到 App、提前結束，或取樣不到判定範圍 80% 的案例，會以 CPU 證據不完整判定失敗。CPU 檢查會列出平均、第 95 百分位、峰值與 VTEncoderXPCService，超過該幀率的門檻時判定失敗，本機有 matrix baseline 時並註記比 baseline 退步（也會印在主控台）以及編碼器不存在的情況。plan 049 之前記錄的 17%、21% 與 23% 來自 `ps` 在整個案例上會衰減的平均，無法與現在的數字比較。
 
 `--profile`（計畫 081）另在報告旁寫入 main、GPU 程序、每個 renderer 與擷取程序各 10 秒的 macOS `sample`（`profile-NN-<情境>-<角色>-<pid>.txt`），從每段錄影第 25 秒、每段即時預覽第 20 秒開始，用來依執行緒拆分一個程序的份額：H.264 解碼器的 `Media` 執行緒、renderer 的主執行緒與合成執行緒、GPU 程序的 `VizCompositorThread` 與 `CVDisplayLink`。Electron 的 framework 已 strip，符號只是最接近的匯出符號；可信的是執行緒的拆分。取樣會干擾它所在的區間（計畫 081 的量測中約 0.3 點），數字會包含這部分。
+
+`pnpm diagnose:profile -- <run>… [--role utility-node] [--json <file>]`（計畫 091）讀取這些檔案，依區間（`R30`、`R60`、`S30`…）合併一個角色的 call graph（預設為擷取程序），把 on-CPU 樣本依原因（AAC 編碼、畫面與聲音的遞送、送交視訊編碼器、系統的媒體 queue、Node 與 Chromium 的執行緒等）、依執行緒或 dispatch queue、依最內層 frame 所在的函式庫分配份額（[sample-profile.mts](../../../scripts/lib/verification/sample-profile.mts)），並以同一段錄影中該程序的平均 CPU 把份額換算成每秒毫秒數。`sample` 不論執行緒在執行或等待都會記錄堆疊，所以最內層 frame 是 kernel 等待的樣本算作不在 CPU 上；這個估計會高估短而頻繁的 callback：計畫 091 中它估 AAC 編碼約每秒 29 ms，但關掉聲音只省下 17 ms，編碼器的 benchmark 則量到 2.4–5.3 ms。它的份額只用來決定往哪裡看，一個原因要以把它關掉來量。這個估計需要系統的等待 frame 有名稱，在擷取程序中成立；main 與 Chromium 的其他程序的 Electron frame 已 strip，其中的等待會被算成執行中（main 的 profile 是實測 CPU 的數百倍），所以只用它們的執行緒拆分。份額只以該程序所在的唯一一段錄影換算，所以 main、GPU 程序與即時預覽的 profile 不換算。兩個這樣的開關，僅供開發，以 `open --env` 傳入：`--audio off` 不錄聲音（`RECORDSTUFF_CAPTURE_AUDIO=off`；檔案仍有一條靜音 AAC 音軌，仍會編碼），`--capture-interval frame` 向 ScreenCaptureKit 要求一個 frame 間隔而非四分之一（`RECORDSTUFF_CAPTURE_INTERVAL=frame`，[pacing.rs](../../../native/capture/src/pacing.rs)，macOS）；`scrubbedEnv` 會移除兩者，launchd 持有任一個時 runner 拒絕開始。在開關下做的報告會註明，且不是 baseline。
 
 **相機與錄影工作室**（plan 075）。`--camera <value>` 以 `RECORDSTUFF_CAMERA_PROTOTYPE=<value>`（第 2 步的開發開關；`1`，或 `width=…,height=…,rounding=…,x=…,y=…,mirror=…,device=…,preview=0`）啟動 bundle，並在 settings.json 中把「相機」開關設為開啟，值中有 `device=<id>` 時一併寫入 `cameraDevice`，因此每段錄影都依保存的版面合成相機；`camera` 與 `cameraDevice` 會和其他預先寫入的鍵一起還原。它需要 `--skip-settings --skip-playback`，並省略 B，因為原型的預覽頁面（值中沒有 `preview=0` 時會開啟）是待機契約不允許的 renderer。`--studio`（搭配 `--camera`，不可搭配 `--skip-recording`）在每種幀率、R 之前、同樣的移動素材上加兩個情境：
 
