@@ -2,12 +2,13 @@ import { spawnSync } from "node:child_process";
 
 /**
  * The app's development capture switches (native-host-process.ts `developmentCapture`, and plan 075's camera
- * prototype, which `pnpm measure:cpu -- --camera` sets on purpose): inherited from a runner's
- * shell, they would silently change the recorded source or its sound, so `scrubbedEnv` removes them. The native engine
+ * prototype and plan 091's capture interval, which `pnpm measure:cpu -- --camera` and `--capture-interval` set on
+ * purpose): inherited from a runner's shell, they would silently change the recorded source, its sound or its pacing,
+ * so `scrubbedEnv` removes them. The native engine
  * is the only one since plan 076 removed the hidden capture renderer; `RECORDSTUFF_CAPTURE_ENGINE` is listed so an old
  * shell's value never reaches the app either.
  */
-export const CAPTURE_KEYS = ["RECORDSTUFF_CAPTURE_ENGINE", "RECORDSTUFF_CAPTURE_SOURCE", "RECORDSTUFF_CAPTURE_AUDIO", "RECORDSTUFF_CAMERA_PROTOTYPE"] as const;
+export const CAPTURE_KEYS = ["RECORDSTUFF_CAPTURE_ENGINE", "RECORDSTUFF_CAPTURE_SOURCE", "RECORDSTUFF_CAPTURE_AUDIO", "RECORDSTUFF_CAMERA_PROTOTYPE", "RECORDSTUFF_CAPTURE_INTERVAL"] as const;
 
 /**
  * The capture switches launchd would hand an app `open` starts (`launchctl setenv`), by name: a runner that launches

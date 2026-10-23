@@ -102,7 +102,22 @@ impl Pacer {
     pub fn capture_interval_ns(frame_rate: u32) -> u64 {
         NANOS_PER_SECOND / (4 * u64::from(frame_rate.max(1)))
     }
+
+    /// The interval macOS asks capture for: `capture_interval_ns`, or the frame interval itself under plan 091's
+    /// development switch (`RECORDSTUFF_CAPTURE_INTERVAL=frame`), which measures what the deliveries the pacer leaves
+    /// out cost. Not a product setting: asking for the frame interval brings back the gaps described above.
+    pub fn requested_interval_ns(frame_rate: u32, switch: Option<&str>) -> u64 {
+        match switch {
+            Some(FRAME_INTERVAL) => NANOS_PER_SECOND / u64::from(frame_rate.max(1)),
+            _ => Self::capture_interval_ns(frame_rate),
+        }
+    }
 }
+
+/// Plan 091's development switch: `RECORDSTUFF_CAPTURE_INTERVAL=frame` in the app's environment. Off by default;
+/// nothing ships that sets it.
+pub const INTERVAL_ENV: &str = "RECORDSTUFF_CAPTURE_INTERVAL";
+const FRAME_INTERVAL: &str = "frame";
 
 #[cfg(test)]
 mod tests {
@@ -183,5 +198,14 @@ mod tests {
         // Below a 60 Hz refresh period (16.7 ms) at 30 fps, and below a 120 Hz one (8.3 ms) at 60 fps.
         assert_eq!(Pacer::capture_interval_ns(30), 8_333_333);
         assert_eq!(Pacer::capture_interval_ns(60), 4_166_666);
+    }
+
+    #[test]
+    fn the_development_switch_asks_for_the_frame_interval_only_when_named() {
+        assert_eq!(Pacer::requested_interval_ns(30, Some("frame")), 33_333_333);
+        assert_eq!(Pacer::requested_interval_ns(60, Some("frame")), 16_666_666);
+        for other in [None, Some(""), Some("Frame"), Some("quarter")] {
+            assert_eq!(Pacer::requested_interval_ns(30, other), Pacer::capture_interval_ns(30));
+        }
     }
 }

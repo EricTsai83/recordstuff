@@ -35,7 +35,7 @@ use super::video::VideoEncoder;
 use super::{CaptureError, Unsent, host_ns, now_ns};
 use crate::camera_layout::{PREVIEW_FPS, preview_tick_shows};
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
-use crate::pacing::Pacer;
+use crate::pacing::{INTERVAL_ENV, Pacer};
 
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
 
@@ -526,7 +526,7 @@ impl Session {
         unsafe {
             config.setWidth(request.width as usize);
             config.setHeight(request.height as usize);
-            let interval = Pacer::capture_interval_ns(request.frame_rate) as i64;
+            let interval = Pacer::requested_interval_ns(request.frame_rate, std::env::var(INTERVAL_ENV).ok().as_deref()) as i64;
             config.setMinimumFrameInterval(CMTime { value: interval, timescale: 1_000_000_000, flags: CMTimeFlags::Valid, epoch: 0 });
             config.setPixelFormat(PIXEL_FORMAT_420V);
             config.setShowsCursor(true);

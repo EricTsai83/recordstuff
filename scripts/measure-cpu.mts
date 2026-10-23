@@ -1,5 +1,5 @@
 /**
- * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--studio] [--studio-active] [--material moving|still] [--diagnostics] [--profile] [--out <dir>]`
+ * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--studio] [--studio-active] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
@@ -60,6 +60,12 @@
  * where it shows 10 frames a second instead of the 5 it shows while only looked at (plan 081, D1); L presses Live
  * preview with the pointer, so the Studio is at 10 there either way.
  *
+ * Plan 091's isolating switches, each a development switch passed with `open --env` (launchd's copy is refused above):
+ * `--audio off` records without sound (`RECORDSTUFF_CAPTURE_AUDIO=off`, native-host-process.ts `developmentCapture`,
+ * which leaves the microphone off too), and `--capture-interval frame` asks capture for the frame interval instead of a
+ * quarter of it (`RECORDSTUFF_CAPTURE_INTERVAL=frame`, native/capture/src/pacing.rs, macOS). Neither is a product
+ * setting: they measure what one cause costs, and a recording made under them is not a pacing or sync baseline.
+ *
  * It writes report.md and report.json under docs/verification/measurements/<time>-cpu/
  * (gitignored). Like the other runners it declares user activity and holds a display and
  * idle-sleep assertion for its lifetime, sets the seeded settings only while the app is quit and
@@ -112,7 +118,7 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] (with --skip-settings --skip-playback)] [--material moving|still] [--diagnostics] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
@@ -121,6 +127,9 @@ let studio = false;
 let studioActive = false;
 let diagnostics = false;
 let materialKind: keyof typeof MATERIALS = "moving";
+/** Plan 091: record without sound, and ask capture for the frame interval. */
+let audioOff = false;
+let frameInterval = false;
 /** Plan 081 step 1: `sample` each of the app's processes for 10 s inside every recording and Live preview. */
 let profileProcesses = false;
 /** Whether `--camera` opens the preview page, which `cameraPreviewOn` decides as the app does. */
@@ -145,6 +154,8 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--diagnostics") diagnostics = true;
   else if (arg === "--material" && (argv[i + 1] === "moving" || argv[i + 1] === "still")) materialKind = argv[++i] as keyof typeof MATERIALS;
   else if (arg === "--profile") profileProcesses = true;
+  else if (arg === "--audio" && argv[i + 1] === "off") { audioOff = true; i += 1; }
+  else if (arg === "--capture-interval" && argv[i + 1] === "frame") { frameInterval = true; i += 1; }
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
@@ -198,7 +209,8 @@ const LAUNCH_SETTLE_MS = 10_000;
 async function launch(): Promise<{ pid: number; run: string; recordingKey: string }> {
   const from = log.end();
   launchIssued = true;
-  const env = [...(camera === undefined ? [] : [`RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), ...(diagnostics ? [`${DIAGNOSTICS_ENV}=1`] : [])];
+  const env = [...(camera === undefined ? [] : [`RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), ...(diagnostics ? [`${DIAGNOSTICS_ENV}=1`] : []),
+    ...(audioOff ? ["RECORDSTUFF_CAPTURE_AUDIO=off"] : []), ...(frameInterval ? ["RECORDSTUFF_CAPTURE_INTERVAL=frame"] : [])];
   await command("open", [...env.flatMap((value) => ["--env", value]), "-a", BUNDLE], AbortSignal.timeout(15_000));
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
   // Each wait is bounded by the launch's shared 60 s rather than its own default.
@@ -865,7 +877,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, studio, studioActive, material: materialKind, diagnostics, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, studio, studioActive, material: materialKind, audio: audioOff ? "off" : "on", captureInterval: frameInterval ? "frame" : "quarter", diagnostics, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
@@ -877,6 +889,7 @@ function renderReport(result: string, environment: Record<string, unknown>, scen
   const lines = [
     "# CPU budget (`pnpm measure:cpu`)", "",
     `Result: **${result}**. CPU is a percentage of one core (the machine has ${String(environment["cores"])} cores); wake-ups are idle plus interrupt wake-ups per second; the app is its main process and every descendant, with ${ENCODER_SERVICE} reported apart.`, "",
+    ...(audioOff || frameInterval ? [`Development switches (plan 091): ${[audioOff ? "sound off" : "", frameInterval ? "capture asked for the frame interval" : ""].filter(Boolean).join(", ")}; not a baseline.`, ""] : []),
     "## Environment", "", "```json", JSON.stringify(environment, null, 2), "```", "",
   ];
   for (const scenario of scenarios) {
