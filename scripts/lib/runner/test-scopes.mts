@@ -100,6 +100,13 @@ export const TEST_SCOPES: readonly TestScope[] = [
     native: ["camera_layout::", "preview_gate_tests::", "gain_bounds_tests::"],
   },
   {
+    name: "pipeline-diagnostics",
+    covers: "the media pipeline's figures (plan 083): the engine's stage histograms and the writer's queue, the capture host's diagnostics lines, the Studio page's preview figures and the report that reads them",
+    unit: ["src/shared/pipeline-histogram.test.ts", "scripts/lib/verification/pipeline-report.test.ts", "src/main/recording/native-host-process.test.ts", "src/shared/studio-port.test.ts", "src/renderer/settings/tabs/studio-feed.test.ts"],
+    ui: [],
+    native: ["core::", "writer::", "preview_gate_tests::"],
+  },
+  {
     name: "tray",
     covers: "the menu bar icon: its menu and model, the actions it and the shortcuts run, and the interface state behind them",
     unit: ["src/main/menus/tray", "src/main/actions/", "src/main/app/ui-model.test.ts"],

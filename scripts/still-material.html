@@ -1,0 +1,41 @@
+<!doctype html>
+<!--
+  The still material of `pnpm measure:cpu -- --material still` (plan 083): static text, as a document or a code editor
+  shows it, with nothing that moves, no pointer and no sound. Capture then delivers few pictures and the recording takes
+  its idle path (the last picture encoded again each second), against the moving material's every frame. Shown full
+  screen in a Chrome kiosk. Nothing here is part of the app.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RecordStuff still material</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fbfbf8; color: #1d1d1f; font: 2.1vmin/1.6 -apple-system, "Helvetica Neue", sans-serif; cursor: none; overflow: hidden; }
+  main { columns: 3; column-gap: 4vmin; padding: 4vmin; }
+  h1 { font-size: 3.4vmin; margin: 0 0 1.5vmin; column-span: all; }
+  pre { font: 1.7vmin/1.5 ui-monospace, Menlo, monospace; background: #f0f0ec; padding: 1.5vmin; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main id="text"></main>
+<script>
+  // Written once at load, the same every time: a few pages of plain prose and code.
+  const prose = "A recording of a still screen holds the same picture for seconds at a time. The capture delivers a frame only when something changes, and the recorder encodes the last picture again once a second so that a key frame still arrives and the file keeps closing its fragments. ";
+  const code = "fn encode(frame: &Frame, pts: u64) -> Result<(), String> {\n    let started = Instant::now();\n    encoder.encode(frame, pts, false)?;\n    stage.record(started.elapsed());\n    Ok(())\n}\n";
+  const main = document.getElementById("text");
+  const title = document.createElement("h1");
+  title.textContent = "Still material: text that does not move";
+  main.append(title);
+  for (let i = 0; i < 18; i += 1) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = `${i + 1}. ${prose.repeat(2)}`;
+    main.append(paragraph);
+    if (i % 4 === 3) {
+      const block = document.createElement("pre");
+      block.textContent = code;
+      main.append(block);
+    }
+  }
+</script>
+</body>
+</html>

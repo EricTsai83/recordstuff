@@ -1,5 +1,5 @@
 /**
- * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--studio] [--profile] [--out <dir>]`
+ * `pnpm measure:cpu [-- --minutes 5] [--fps 60] [--repeat N] [--skip-recording] [--skip-settings] [--skip-playback] [--camera <value>] [--studio] [--studio-active] [--material moving|still] [--diagnostics] [--profile] [--out <dir>]`
  *
  * The CPU budget on the packaged app (plan 049, docs/system-design/tooling.md#cpu-budget).
  * Build and quit the bundle first (`pnpm start:app`, then Quit); this runner refuses to start
@@ -49,6 +49,17 @@
  * every save the roles are snapshotted, and every snapshot of a launch must match the first: what
  * a recording starts once is expected, what it adds each time is a leak.
  *
+ * `--diagnostics` (plan 083) launches the bundle with `RECORDSTUFF_DIAGNOSTICS=1`, so each session logs its pipeline's
+ * figures once it ends (core/diagnostics.rs, the Studio page's while it shows the preview), and adds them to the report
+ * per recording and per scenario: each stage's count, mean, p50, p95 and maximum, the queues' high-water marks and the
+ * drops (scripts/lib/verification/pipeline-report.mts). A recording or Live preview without the engine's figures fails
+ * its check. Compare a run with it against one without on the same bundle: the switch's own cost is in the figures.
+ * `--material still` records `scripts/still-material.html`, static text, instead of the moving material: a still screen,
+ * whose capture delivers few pictures (the recording's idle path). `--studio` without `--camera` shows the screen's
+ * preview with the camera switch held off, so no camera opens; `--studio-active` rests the pointer on the Studio during S,
+ * where it shows 10 frames a second instead of the 5 it shows while only looked at (plan 081, D1); L presses Live
+ * preview with the pointer, so the Studio is at 10 there either way.
+ *
  * It writes report.md and report.json under docs/verification/measurements/<time>-cpu/
  * (gitignored). Like the other runners it declares user activity and holds a display and
  * idle-sleep assertion for its lifetime, sets the seeded settings only while the app is quit and
@@ -78,6 +89,8 @@ import { AccessibilityBlockedError, FLAG, KEY, centre, osascriptAx } from "./lib
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
 import { percentile } from "./lib/verification/stats.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
+import { DIAGNOSTICS_ENV } from "../src/shared/pipeline-histogram.ts";
+import { formatSession, mergeSessions, parsePipelineLog, summarizeSession, type PipelineSession, type SessionSummary } from "./lib/verification/pipeline-report.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
 import { isLanguage, translate, type Language } from "../src/shared/i18n.ts";
@@ -93,17 +106,21 @@ const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.a
 const ELECTRON_APP_REAL = fs.existsSync(ELECTRON_APP) ? fs.realpathSync(ELECTRON_APP) : ELECTRON_APP;
 const LOG_PATH = APP_LOG_PATH;
 const SETTINGS_PATH = APP_SETTINGS_PATH;
-const MATERIAL = path.join(REPO_ROOT, "scripts/test-material.html");
+const MATERIALS = { moving: path.join(REPO_ROOT, "scripts/test-material.html"), still: path.join(REPO_ROOT, "scripts/still-material.html") } as const;
 const RECORDING_SECONDS = 60;
 const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio (with --camera)] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] (with --skip-settings --skip-playback)] [--material moving|still] [--diagnostics] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
 let studio = false;
+/** Plan 083: the pointer rests on the Studio during S, and each session's pipeline figures are logged and reported. */
+let studioActive = false;
+let diagnostics = false;
+let materialKind: keyof typeof MATERIALS = "moving";
 /** Plan 081 step 1: `sample` each of the app's processes for 10 s inside every recording and Live preview. */
 let profileProcesses = false;
 /** Whether `--camera` opens the preview page, which `cameraPreviewOn` decides as the app does. */
@@ -124,6 +141,9 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--hover-card") hoverCard = true;
   else if (arg === "--camera" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) camera = argv[++i];
   else if (arg === "--studio") studio = true;
+  else if (arg === "--studio-active") studioActive = true;
+  else if (arg === "--diagnostics") diagnostics = true;
+  else if (arg === "--material" && (argv[i + 1] === "moving" || argv[i + 1] === "still")) materialKind = argv[++i] as keyof typeof MATERIALS;
   else if (arg === "--profile") profileProcesses = true;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
@@ -131,7 +151,10 @@ for (let i = 0; i < argv.length; i += 1) {
 // An odd count, so the median is one run's own figure and its breakdown.
 if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 || repeat > 9 || repeat % 2 === 0) { console.error(usage); process.exit(2); }
 if (camera !== undefined && (!skipSettings || !skipPlayback || /[\s]/.test(camera))) { console.error(usage); process.exit(2); }
-if (studio && (camera === undefined || skipRecording)) { console.error(usage); process.exit(2); }
+// The Studio's window stays open between its scenarios and C's or P's, whose role contracts do not allow its services.
+if (studio && (skipRecording || !skipSettings || !skipPlayback)) { console.error(usage); process.exit(2); }
+if (studioActive && !studio) { console.error(usage); process.exit(2); }
+const MATERIAL = MATERIALS[materialKind];
 cameraPreview = camera !== undefined && cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: camera });
 
 const controller = new AbortController();
@@ -175,7 +198,8 @@ const LAUNCH_SETTLE_MS = 10_000;
 async function launch(): Promise<{ pid: number; run: string; recordingKey: string }> {
   const from = log.end();
   launchIssued = true;
-  await command("open", [...(camera === undefined ? [] : ["--env", `RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), "-a", BUNDLE], AbortSignal.timeout(15_000));
+  const env = [...(camera === undefined ? [] : [`RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), ...(diagnostics ? [`${DIAGNOSTICS_ENV}=1`] : [])];
+  await command("open", [...env.flatMap((value) => ["--env", value]), "-a", BUNDLE], AbortSignal.timeout(15_000));
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
   // Each wait is bounded by the launch's shared 60 s rather than its own default.
   const start = await waitForLog(log, from, /\] start: /, "`start:`", signal, 60_000);
@@ -219,7 +243,8 @@ function seed(frameRate: 30 | 60): void {
   // `--camera`: the Camera switch on (plan 075), the device the value names if it names one; the value itself, in the
   // launch's environment, makes the switch available and says whether preview frames are made.
   const device = camera === undefined ? undefined : /(?:^|,)\s*device\s*=\s*([^,]+)/.exec(camera)?.[1]?.trim();
-  const cameraSettings = camera === undefined ? {} : { camera: true, ...(device ? { cameraDevice: { id: device, label: device } } : {}) };
+  // Without `--camera` the switch is held off, so no recording or Studio of the round opens a camera.
+  const cameraSettings = camera === undefined ? { camera: false } : { camera: true, ...(device ? { cameraDevice: { id: device, label: device } } : {}) };
   writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality, ...cameraSettings });
   seeded = true;
 }
@@ -248,9 +273,28 @@ async function quitApp(): Promise<void> {
 
 const terminal = (line: string): boolean => ["saved", "failed"].includes(parseSessionRecord(line)?.kind ?? "");
 
-interface Scenario { name: string; key: string; summary: Summary; verdicts: Verdict[]; roles?: RoleCounts; note?: string }
-/** `roles` and `residentBytes` (the app's memory in total) five seconds after the save. */
-interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: RoleCounts; residentBytes: number; samplerFailure: string | undefined; studio?: boolean }
+interface Scenario { name: string; key: string; summary: Summary; verdicts: Verdict[]; roles?: RoleCounts; note?: string; pipeline?: SessionSummary }
+/** `roles` and `residentBytes` (the app's memory in total) five seconds after the save; `pipeline`, its figures (`--diagnostics`). */
+interface Recording { fps: 30 | 60; file?: string; summary: Summary; roles: RoleCounts; residentBytes: number; samplerFailure: string | undefined; studio?: boolean; pipeline?: PipelineSession }
+
+/**
+ * Plan 083: the figures of the session that ended after `from`, waiting up to 15 s for the engine's line, which the
+ * capture host logs once the file is finished or the session cancelled; undefined when it never came.
+ */
+async function pipelineSince(from: LogCursor, signal: AbortSignal): Promise<PipelineSession | undefined> {
+  const engine = /capture host: diagnostics: \{"kind":"engine"/;
+  await waitForLog(log, from, engine, "the session's pipeline figures", signal, 15_000).catch((error: unknown) => { if (signal.aborted) throw error; });
+  // The page's last report comes as its port is let go, just after: a moment for it.
+  await delay(1500, undefined, { signal });
+  const report = parsePipelineLog(log.since(from).lines.map((line) => line.text));
+  for (const problem of report.problems) note(`pipeline figures: ${problem}`);
+  return report.sessions.findLast((session) => session.outcome !== undefined);
+}
+/** The check that a scenario's sessions logged their figures, with `--diagnostics`. */
+const judgePipeline = (sessions: readonly (PipelineSession | undefined)[]): Verdict => {
+  const missing = sessions.filter((session) => !session?.outcome || Object.keys(session.stages).length === 0).length;
+  return { check: "Pipeline figures logged (--diagnostics)", limit: "every session", actual: `${sessions.length - missing} of ${sessions.length}`, verdict: missing ? "fail" : "pass" };
+};
 
 async function main(): Promise<number> {
   if (process.platform !== "darwin") fail("macOS only");
@@ -279,6 +323,12 @@ async function main(): Promise<number> {
   const held = Object.entries(launchdCaptureVariables());
   if (held.length) {
     console.error(`BLOCKED: launchd holds ${held.map(([key, value]) => `${key}=${value}`).join(", ")}; unset it (\`launchctl unsetenv <name>\`) before this round`);
+    return 2;
+  }
+  // Plan 083: a run without `--diagnostics` is the comparison's other half, which launchd's switch would turn on unseen.
+  const launchdDiagnostics = spawnSync("launchctl", ["getenv", DIAGNOSTICS_ENV], { encoding: "utf8" }).stdout?.trim();
+  if (launchdDiagnostics && !diagnostics) {
+    console.error(`BLOCKED: launchd holds ${DIAGNOSTICS_ENV}=${launchdDiagnostics}; unset it (\`launchctl unsetenv ${DIAGNOSTICS_ENV}\`) or pass --diagnostics`);
     return 2;
   }
   const desktop = await beginDesktopRound().catch((cause: unknown) => {
@@ -375,11 +425,12 @@ async function main(): Promise<number> {
     const file = record?.kind === "saved" ? record.path : undefined;
     if (record?.kind === "failed") fail(`the ${fps} fps recording failed: ${settled.line}`);
     const summary = window(started + 5000, started + (RECORDING_SECONDS - 5) * 1000);
+    const pipeline = diagnostics ? await pipelineSince(from, controller.signal) : undefined;
     // The capture host and overlay are destroyed as the state settles; give their processes time to exit.
     await sleep(5000);
     const roles = readRoles(appPid);
     const residentBytes = (sampler!.samples.at(-1)?.procs ?? []).filter((p) => !p.followed).reduce((total, p) => total + p.resident_bytes, 0);
-    recordings.push({ fps, ...(file ? { file } : {}), summary, roles, residentBytes, samplerFailure: sampler!.failure, ...(withStudio ? { studio: true } : {}) });
+    recordings.push({ fps, ...(file ? { file } : {}), summary, roles, residentBytes, samplerFailure: sampler!.failure, ...(withStudio ? { studio: true } : {}), ...(pipeline ? { pipeline } : {}) });
     note(`recording at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%, 95th ${summary.cpuPercent.p95.toFixed(1)}%, encoder ${summary.followed.cpuPercent.average.toFixed(1)}%; ${file ?? "no file"}; then ${roleText(roles)}`);
   };
   // After the Studio its two Chromium services stay (plan 082, D2): R's contract allows them, and its check says so.
@@ -396,7 +447,8 @@ async function main(): Promise<number> {
       verdicts: [...judgeRecording(chosen.summary, fps, cpuBaseline(`measure:cpu recording ${fps}`, model)),
         ...set.map((r, i) => ({ ...judgeCoverage(r.summary, RECORDING_SECONDS - 10, r.samplerFailure), check: `Sampled coverage, run ${i + 1}` })),
         { ...judgeRoles(set.at(-1)!.roles, afterRecordingRoles), check: `Process roles 5 s after the last save${studio ? " (the Studio's utility:video_capture and utility:audio allowed)" : ""}` },
-        judgeSteadyState(set.map((r) => r.roles))],
+        judgeSteadyState(set.map((r) => r.roles)), ...(diagnostics ? [judgePipeline(set.map((r) => r.pipeline))] : [])],
+      ...(diagnostics ? { pipeline: summarizeSession(mergeSessions(`R. ${fps} fps, ${set.length} run(s)`, set.flatMap((r) => r.pipeline ? [r.pipeline] : []))) } : {}),
       note: `Run averages: ${averages.map((a) => `${a.toFixed(1)}%`).join(", ")}; the median run's breakdown is shown. App memory 5 s after each save: ${set.map((r) => mb(r.residentBytes)).join(", ")}.` });
   };
 
@@ -480,13 +532,16 @@ async function main(): Promise<number> {
     const chosen = medianOf(recordings.filter((r) => r.fps === fps && r.studio));
     if (!chosen) return;
     const extra = plain ? chosen.summary.cpuPercent.average - plain.summary.cpuPercent.average : Number.NaN;
-    scenarios.push({ name: `S. Recording at ${fps} fps with the Recording Studio showing it`, key: `studioRecording${fps}`, summary: chosen.summary,
-      note: `The Studio window at ${studioDisplay}.`,
+    const set = recordings.filter((r) => r.fps === fps && r.studio);
+    scenarios.push({ name: `S. Recording at ${fps} fps with the Recording Studio showing it${studioActive ? " (the pointer on it)" : ""}`, key: `studioRecording${fps}`, summary: chosen.summary,
+      note: `The Studio window at ${studioDisplay}; ${studioActive ? "the pointer rested on it (10 frames a second)" : "the pointer off it (5 frames a second once it rests)"}${camera === undefined ? "; no camera composed" : ""}.`,
+      ...(diagnostics ? { pipeline: summarizeSession(mergeSessions(`S. ${fps} fps, ${set.length} run(s)`, set.flatMap((r) => r.pipeline ? [r.pipeline] : []))) } : {}),
       verdicts: [judgeCoverage(chosen.summary, RECORDING_SECONDS - 10, chosen.samplerFailure),
         { check: "Over R's median at the same rate (D18)", limit: "≤ 8 points", actual: plain ? `${extra.toFixed(1)} points (${chosen.summary.cpuPercent.average.toFixed(1)}% against ${plain.summary.cpuPercent.average.toFixed(1)}%)` : "no R to compare",
           verdict: !studioOnAnotherDisplay || !plain ? "report" : extra <= 8 ? "pass" : "fail" },
-        { check: "Average with the camera (D18)", limit: `≤ ${cameraBudget(fps) + 8}%`, actual: `${chosen.summary.cpuPercent.average.toFixed(1)}%`,
-          verdict: chosen.summary.cpuPercent.average <= cameraBudget(fps) + 8 ? "pass" : "fail" }] });
+        { check: `Average ${camera === undefined ? "within the camera's budget, no camera composed" : "with the camera"} (D18)`, limit: `≤ ${cameraBudget(fps) + 8}%`, actual: `${chosen.summary.cpuPercent.average.toFixed(1)}%`,
+          verdict: chosen.summary.cpuPercent.average <= cameraBudget(fps) + 8 ? "pass" : "fail" },
+        ...(diagnostics ? [judgePipeline(set.map((r) => r.pipeline))] : [])] });
     note(`S at ${fps} fps: average ${chosen.summary.cpuPercent.average.toFixed(1)}%${plain ? `, ${extra.toFixed(1)} points over R` : ""}`);
   };
   /** L: a Live preview held for 50 s (D20), judged as a recording with the camera at the launch's rate (D18). */
@@ -516,22 +571,43 @@ async function main(): Promise<number> {
     await profiling;
     const summary = window(lFrom, Date.now());
     const wrote = log.since(from).lines.some((line) => /\] state → recording|record sent/.test(line.text));
-    scenarios.push({ name: `L. Live preview at ${fps} fps in the Recording Studio`, key: `livePreview${fps}`, summary, note: `The Studio window at ${studioDisplay}.`,
-      verdicts: [judgeCoverage(summary, 50, sampler!.failure),
-        { check: "Average with the camera (D18: a recording without the file)", limit: `≤ ${cameraBudget(fps)}%`, actual: `${summary.cpuPercent.average.toFixed(1)}%`,
-          verdict: summary.cpuPercent.average <= cameraBudget(fps) ? "pass" : "fail" },
-        { check: "Nothing recorded", limit: "no record sent", actual: wrote ? "a recording began" : "none", verdict: wrote ? "fail" : "pass" }] });
+    const verdicts: Verdict[] = [judgeCoverage(summary, 50, sampler!.failure),
+      { check: `Average ${camera === undefined ? "within the camera's budget, no camera composed" : "with the camera"} (D18: a recording without the file)`, limit: `≤ ${cameraBudget(fps)}%`, actual: `${summary.cpuPercent.average.toFixed(1)}%`,
+        verdict: summary.cpuPercent.average <= cameraBudget(fps) ? "pass" : "fail" },
+      { check: "Nothing recorded", limit: "no record sent", actual: wrote ? "a recording began" : "none", verdict: wrote ? "fail" : "pass" }];
+    const scenario: Scenario = { name: `L. Live preview at ${fps} fps in the Recording Studio`, key: `livePreview${fps}`, summary, note: `The Studio window at ${studioDisplay}.`, verdicts };
+    scenarios.push(scenario);
     note(`L at ${fps} fps: average ${summary.cpuPercent.average.toFixed(1)}%`);
     const stopFrom = log.end();
     await step("L: pressing Live preview again to stop it", () => clickNamed(["Live preview", "即時預覽"], "Live preview"));
     await step("L: the Live preview let go of", () => waitForLog(log, stopFrom, /cancelled \(preview\)/, "the Live preview let go of", controller.signal, 15_000));
+    if (diagnostics) {
+      // Its figures come once the cancelled session is let go: after the scenario's own window.
+      const pipeline = await pipelineSince(from, controller.signal);
+      verdicts.push(judgePipeline([pipeline]));
+      if (pipeline) scenario.pipeline = summarizeSession(mergeSessions(`L. ${fps} fps`, [pipeline]));
+    }
   };
-  /** Closes Settings with ⌘W while it is focused in front; the quit closes it otherwise. */
+  /**
+   * Closes Settings before R, which measures the recording with it closed: ⌘W while it is focused in front, then its
+   * window's close button for one still open (plan 083's round of 2026-10-23: after L, ⌘W left the Studio open, so R ran
+   * with it showing the preview); a window that stays fails the round rather than measuring R with it.
+   */
   const closeStudio = async (): Promise<void> => {
+    const open = async (): Promise<boolean> => (await osascriptAx(controller.signal).windows(appPid)).windows.some((window) => window.title === "RecordStuff");
     if (await settingsInFront()) {
       await command("osascript", ["-e", 'tell application "System Events" to keystroke "w" using {command down}'], AbortSignal.timeout(5000));
       await sleep(1000);
-    } else note("the Recording Studio: Settings is not focused in front; the quit closes it");
+    }
+    if (!await open()) return;
+    const button = (await osascriptAx(controller.signal).layout(appPid, "RecordStuff", { width: 1, height: 1 })).controls.find((control) => control.name === "AXCloseButton")?.frame;
+    if (button) {
+      const point = centre(button);
+      await osascriptAx(controller.signal).mouse("left", point.x, point.y);
+      await sleep(1500);
+    }
+    if (await open()) fail("the Recording Studio did not close before R, which must run with Settings closed");
+    note("the Recording Studio closed with its window's close button");
   };
   /**
    * The Studio's scenarios at the launch's rate. The Studio opens from the tray before the material does, since the
@@ -541,6 +617,14 @@ async function main(): Promise<number> {
   const studioScenarios = async (fps: 30 | 60): Promise<void> => {
     await openStudio();
     await openMaterial();
+    if (studioActive) {
+      // On the Studio's window, after the material took the front: the pointer over it is someone working in it.
+      const frame = (await osascriptAx(controller.signal).windows(appPid)).windows.find((window) => window.title === "RecordStuff")?.frame;
+      if (!frame) fail("--studio-active: the Studio's window was not found to rest the pointer on");
+      const point = centre(frame!);
+      await osascriptAx(controller.signal).move(point.x, point.y);
+      note(`S: the pointer rests on the Studio at ${point.x},${point.y}`);
+    }
     for (let i = 0; i < repeat; i += 1) await record(fps, true);
     await livePreview(fps);
     await closeStudio();
@@ -636,8 +720,9 @@ async function main(): Promise<number> {
       const idleAfter = window(bFrom, Date.now());
       const afterRoles = readRoles(appPid);
       const encoderQuiet = idleAfter.followed.cpuPercent.average < 0.1;
-      const rolesVerdict = judgeRoles(afterRoles, roles.afterRecording);
-      const steady = judgeSteadyState([...recordings.filter((r) => r.fps === 30).map((r) => r.roles), afterRoles]);
+      const rolesVerdict = judgeRoles(afterRoles, afterRecordingRoles);
+      // R's recordings only: S's were taken with the Studio's window open, whose renderer B no longer has.
+      const steady = judgeSteadyState([...recordings.filter((r) => r.fps === 30 && !r.studio).map((r) => r.roles), afterRoles]);
       scenarios.push({ name: "B. Idle after the recording", key: "idleAfterRecording", summary: idleAfter, roles: afterRoles, verdicts: [
         judgeCoverage(idleAfter, minutes * 60, sampler.failure), ...judgeIdle(idleAfter),
         rolesVerdict, { ...steady, check: "Same roles after every recording and at the end of B" },
@@ -780,7 +865,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, studio, studioActive, material: materialKind, diagnostics, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
@@ -806,6 +891,12 @@ function renderReport(result: string, environment: Record<string, unknown>, scen
   if (recordings.length) {
     lines.push("## Recordings", "", "| fps | CPU average | 95th | Encoder | Roles 5 s after the save | App memory then | File |", "| --- | --- | --- | --- | --- | --- | --- |",
       ...recordings.map((r) => `| ${r.fps} | ${r.summary.cpuPercent.average.toFixed(1)}% | ${r.summary.cpuPercent.p95.toFixed(1)}% | ${r.summary.followed.cpuPercent.average.toFixed(1)}% | ${roleText(r.roles)} | ${mb(r.residentBytes)} | ${r.file ?? "—"} |`), "");
+  }
+  const figures = scenarios.filter((scenario) => scenario.pipeline);
+  if (figures.length) {
+    lines.push("## Pipeline figures (`--diagnostics`)", "",
+      "Per scenario, its sessions merged (plan 083): each stage in milliseconds on one clock in its process; the page's port delay on both processes' wall clock in whole milliseconds; drawn is into the canvas, not yet on the screen. Each recording's own are in report.json.", "",
+      ...figures.map((scenario) => formatSession({ ...scenario.pipeline!, session: scenario.name })));
   }
   lines.push("## Cleanup", "", cleanup.length ? cleanup.map((line) => `- ${line}`).join("\n") : "Complete: RecordStuff exited, the seeded settings were restored and the material closed.", "",
     "## Events", "", ...events.map((event) => `- ${event}`), "");
