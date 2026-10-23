@@ -454,6 +454,14 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(preview({ type: "starting" }, on())?.cameraPreview).toMatchObject({ mode: "off", status: "Shown here once the recording starts." });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.status).toBeUndefined();
+    // While the camera gives no picture, one line says why (plan 090); nothing while it is hidden.
+    expect(preview(recording, on({ session: { hidden: false, state: "waiting" } }))?.cameraPreview).toMatchObject({ mode: "recording", status: "Waiting for the camera…" });
+    expect(preview(recording, on({ session: { hidden: false, state: "notReady" } }))?.cameraPreview?.status).toBe("The camera is not ready.");
+    expect(preview(recording, on({ session: { hidden: false, state: "lost" } }))?.cameraPreview?.status).toBe("The camera dropped out. Reconnecting…");
+    expect(preview(recording, on({ session: { hidden: false, state: "lost" } }, { language: "zh-TW" }))?.cameraPreview?.status).toBe("相機已中斷，正在重新連線…");
+    expect(preview(recording, on({ session: { hidden: true, state: "waiting" } }))?.cameraPreview?.status).toBeUndefined();
+    expect(preview(idle, on({ session: { hidden: false, state: "waiting" } }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview?.status,
+      "a Live preview waits for the camera too").toBe("Waiting for the camera…");
     expect(preview(recording, on({ session: { hidden: false } }, { studio: { showing: false, pictureHidden: true } }))?.cameraPreview,
       "Live preview switched off during the recording: the bubble's place, to drag (2026-10-21)").toMatchObject({ mode: "off", composed: true, status: "Live preview is off." });
     expect(preview(idle, { ...on(), language: "zh-TW" })).toMatchObject({ label: "預覽" });

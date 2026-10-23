@@ -170,7 +170,10 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
   const hidden = ctx.studio?.pictureHidden === true;
   const showing = !hidden && (camera.session !== undefined || ctx.studio?.showing === true);
   const mode = showing ? "recording" : !camera.enabled ? "off" : unlocked && granted ? "live" : "off";
-  const status = showing ? undefined : hidden ? t("Live preview is off.", language) : !camera.enabled ? t("Turn on Camera to see it here.", language)
+  // While the engine's picture is shown, a word only when the camera gives none (plan 090); nothing while it is hidden.
+  const missing = camera.session && !camera.session.hidden ? camera.session.state : undefined;
+  const status = showing ? (missing === "waiting" ? t("Waiting for the camera…", language) : missing === "notReady" ? t("The camera is not ready.", language)
+    : missing === "lost" ? t("The camera dropped out. Reconnecting…", language) : undefined) : hidden ? t("Live preview is off.", language) : !camera.enabled ? t("Turn on Camera to see it here.", language)
     : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
     : undefined;
   const id = `${x},${y}`;

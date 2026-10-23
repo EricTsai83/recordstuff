@@ -190,6 +190,8 @@ export type RecorderEvent =
   | { type: "cameraLost"; sessionId: string; detail: string }
   /** The camera gave no first frame in time; the recording goes on without it until it does. Told once per session (plan 090). */
   | { type: "cameraNotReady"; sessionId: string; detail: string }
+  /** The camera's state in `camera` changed (plan 090): Settings redraws what its preview says. */
+  | { type: "cameraState" }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -275,6 +277,8 @@ interface Session {
   cameraLost?: boolean;
   /** The engine told that the camera gave no first frame in time (plan 090). */
   cameraNotReady?: boolean;
+  /** What the camera does now (plan 090): absent until its first frame, which the engine tells as `cameraReady`. */
+  cameraState?: "ready" | "notReady" | "lost";
   /** Hidden from the tray (D13); the camera stays open. */
   cameraHidden?: boolean;
   /**
@@ -550,9 +554,12 @@ export class Recorder {
    * recording), since the state's change is what redraws Settings and the tray. Without a countdown the short arming
    * after `prepared` keeps `starting`.
    */
-  get camera(): { hidden: boolean } | undefined {
+  get camera(): { hidden: boolean; state?: "waiting" | "notReady" | "lost" } | undefined {
     const session = this.cameraSession();
-    return session ? { hidden: session.cameraHidden === true } : undefined;
+    if (!session) return undefined;
+    // `state` only while the camera gives no picture (plan 090): waiting for its first frame, not ready or lost.
+    const state = session.cameraState ?? "waiting";
+    return { hidden: session.cameraHidden === true, ...(state === "ready" ? {} : { state }) };
   }
 
   /**
@@ -1184,6 +1191,7 @@ export class Recorder {
       case "cameraLost":
         // The recording goes on with the screen alone, and composes the camera again if it comes back (plan 075, D12).
         if (!this.acceptsMedia(session)) return;
+        this.cameraStateChanged(session, "lost");
         this.deps.log(`recorder: session ${session.id} camera lost; recording continues without it: ${message.detail}`);
         if (session.cameraLost) return;
         session.cameraLost = true;
@@ -1192,13 +1200,22 @@ export class Recorder {
       case "cameraNotReady":
         // Not a loss (plan 090, D1): the recording began with the screen alone and composes the camera once it delivers.
         if (!this.acceptsMedia(session)) return;
+        this.cameraStateChanged(session, "notReady");
         this.deps.log(`recorder: session ${session.id} camera not ready; recording continues without it: ${message.detail}`);
         if (session.cameraNotReady) return;
         session.cameraNotReady = true;
         this.emit({ type: "cameraNotReady", sessionId: session.id, detail: message.detail });
         return;
+      case "cameraReady":
+        // Also while preparing, a Live preview or the countdown: the Studio waits for the camera from its opening.
+        if (session.finalizing) return;
+        this.deps.log(`recorder: session ${session.id} camera ready: ${message.detail}`);
+        this.cameraStateChanged(session, "ready");
+        return;
       case "cameraResumed":
+        if (session.finalizing) return;
         if (this.acceptsMedia(session)) this.deps.log(`recorder: session ${session.id} camera resumed: ${message.detail}`);
+        this.cameraStateChanged(session, "ready");
         return;
       case "stopped":
         if (session.finalizing) return;
@@ -1224,6 +1241,12 @@ export class Recorder {
   }
 
   /** Media can exist only after `record`, and not once the finalizer owns the attempt. */
+  private cameraStateChanged(session: Session, state: NonNullable<Session["cameraState"]>): void {
+    if (session.cameraState === state) return;
+    session.cameraState = state;
+    this.emit({ type: "cameraState" });
+  }
+
   private acceptsMedia(session: Session): boolean {
     return !session.finalizing && (session.phase === "arming" || session.phase === "recording" || session.phase === "stopping");
   }

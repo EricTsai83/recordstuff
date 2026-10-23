@@ -244,8 +244,8 @@
   --display-glare: inset 0 1px 0 rgb(255 255 255 / 0.18);
   --display-ink: #fff;
   --display-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.1);
-  /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper, the bubble before its
-     picture arrives, and the outline that is dragged over a recording's picture, the same in both themes. */
+  /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper and the bubble before its
+     picture arrives, the same in both themes. */
   /* The Recording Studio's panels, raised as Settings' section cards are. */
   --studio-panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 2px 10px rgb(0 0 0 / 0.035);
   /* Live preview's glass pill over the picture, the same in both themes: its edge, glass and ink, white once on, and
@@ -262,7 +262,6 @@
   --meter-level: linear-gradient(90deg, oklch(0.72 0.17 150) 0% 80%, oklch(0.8 0.16 85) 80% 95%, oklch(0.63 0.22 27) 95%);
   --camera-preview-bubble: oklch(0.32 0.01 260);
   --camera-preview-bubble-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
-  --camera-preview-outline: inset 0 0 0 1.5px rgb(255 255 255 / 0.9), 0 0 0 1px rgb(0 0 0 / 0.35);
   --display-text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
@@ -897,10 +896,11 @@
   .camera-preview-handle[aria-disabled] {
     cursor: default;
   }
-  /* While recording the engine's picture holds the bubble; an outline over it is what is dragged. */
-  .camera-preview-bubble[data-outline] {
+  /* While recording the engine's picture holds the camera: the bubble draws nothing over it (2026-10-23, at the
+     maintainer's request) and is dragged where the picture shows it. */
+  .camera-preview[data-mode="recording"] .camera-preview-bubble {
     background: none;
-    box-shadow: var(--camera-preview-outline);
+    box-shadow: none;
   }
   .camera-preview-handle:focus-visible {
     box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--ring);
@@ -919,6 +919,23 @@
     text-align: center;
     text-shadow: var(--media-text-shadow);
     pointer-events: none;
+  }
+  /* While recording, what the camera is doing when it gives no picture (plan 090): Live preview's glass pill, centred
+     at the picture's foot, so one short line reads over any screen in either theme. */
+  .camera-preview[data-mode="recording"] .camera-preview-status {
+    inset: auto 0 10px;
+    width: fit-content;
+    max-width: calc(100% - 20px);
+    margin-inline: auto;
+    padding: 5px 10px;
+    border: 1px solid var(--studio-live-edge);
+    border-radius: 999px;
+    background: var(--studio-live-glass);
+    backdrop-filter: blur(8px);
+    color: var(--studio-live-ink-on);
+    font-weight: 500;
+    line-height: 1.2;
+    text-shadow: none;
   }
   /* The Recording Studio (plan 075, D19), as OBS lays out its window: the preview across the top, panels under it. */
   .studio {

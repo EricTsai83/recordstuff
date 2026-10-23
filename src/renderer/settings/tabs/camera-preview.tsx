@@ -6,7 +6,7 @@
  *
  * Before recording the bubble shows the camera itself, opened only while the preview is in sight (D6); while a
  * recording composes the camera, the page asks main for the engine's preview of the whole picture (D17), also only
- * while in sight, and the bubble is an outline over it to drag.
+ * while in sight, and the bubble is dragged over it unseen, with a word under the picture when the camera gives none.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
@@ -206,7 +206,6 @@ export function CameraPreview({ group, preview, disabled, describedBy, overlay }
         {preview.composed && <div
           className="camera-preview-bubble"
           data-live={live || undefined}
-          data-outline={preview.mode === "recording" || undefined}
           aria-hidden="true"
           style={{ left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius }}
         >

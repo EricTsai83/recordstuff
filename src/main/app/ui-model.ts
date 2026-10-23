@@ -135,7 +135,7 @@ export interface CameraContext {
   /** macOS's answer for the camera; absent on Windows, which has no status to read. */
   access?: "granted" | "denied" | "restricted" | "not-determined" | "unknown";
   /** The recording in progress composes the camera: whether it is hidden from the tray (D13). */
-  session?: { hidden: boolean };
+  session?: { hidden: boolean; state?: "waiting" | "notReady" | "lost" };
   /** The stored camera; absent is the system default (D9). */
   device?: { id: string; label: string };
   /** The cameras the engine listed last; absent until they are listed, or when listing failed. */

@@ -209,7 +209,7 @@ describe("Live preview (plan 075, D20)", () => {
     await flush();
     expect(ctx.recorder.preview).toEqual({ sessionId: "s1", live: true });
     expect(ctx.recorder.previewSessionId, "the Studio shows its picture").toBe("s1");
-    expect(ctx.recorder.camera, "its camera changes as a recording's").toEqual({ hidden: false });
+    expect(ctx.recorder.camera, "its camera changes as a recording's").toEqual({ hidden: false, state: "waiting" });
     expect(ctx.host.recorded).toEqual([]);
     expect(ctx.states).toEqual([]);
     expect(ctx.events.filter((e) => e.type === "preview")).toHaveLength(2);
@@ -403,11 +403,11 @@ describe("the camera (plan 075)", () => {
     const logs: string[] = [];
     const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
     await startRecording(ctx);
-    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(ctx.recorder.camera).toEqual({ hidden: false, state: "waiting" });
     const moved = { ...layout, width: 0.3 };
     expect(ctx.recorder.updateCamera({ layout: moved })).toBe(true);
     expect(ctx.recorder.updateCamera({ hidden: true })).toBe(true);
-    expect(ctx.recorder.camera).toEqual({ hidden: true });
+    expect(ctx.recorder.camera).toEqual({ hidden: true, state: "waiting" });
     expect(ctx.host.cameraChanges).toEqual([
       { sessionId: "s1", camera: { layout: moved }, hidden: false },
       { sessionId: "s1", camera: { layout: moved }, hidden: true }]);
@@ -441,7 +441,7 @@ describe("the camera (plan 075)", () => {
     ctx.host.emit(chunk("s1", 0));
     await flush();
     expect(ctx.recorder.state.type).toBe("recording");
-    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(ctx.recorder.camera).toEqual({ hidden: false, state: "waiting" });
     expect(ctx.recorder.cameraSessionId, "the session Settings' preview joins").toBe("s1");
   });
 
@@ -511,6 +511,30 @@ describe("the camera (plan 075)", () => {
     expect(saved).toMatchObject({ cameraLost: true });
     expect(saved).not.toHaveProperty("microphoneLost");
     expect(saved).not.toHaveProperty("cameraNotReady");
+  });
+
+  it("keeps the camera's state for Settings from its first frame, a loss, its return and not ready, and says each change (plan 090)", async () => {
+    const logs: string[] = [];
+    const ctx = setup({ log: (line) => logs.push(line), deps: { camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    const changes = () => ctx.events.filter((event) => event.type === "cameraState").length;
+    expect(ctx.recorder.camera, "waiting for its first frame").toEqual({ hidden: false, state: "waiting" });
+    ctx.host.emit({ type: "cameraReady", sessionId: "s1", detail: "the camera delivered its first frame 2.8 s after it was opened" });
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(logs).toContainEqual(expect.stringContaining("camera ready: the camera delivered its first frame 2.8 s after it was opened"));
+    ctx.host.emit({ type: "cameraReady", sessionId: "other", detail: "another session's" });
+    expect(changes()).toBe(1);
+    ctx.host.emit({ type: "cameraLost", sessionId: "s1", detail: "the camera delivered no frame for 2 s" });
+    expect(ctx.recorder.camera).toEqual({ hidden: false, state: "lost" });
+    ctx.host.emit({ type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.0 s" });
+    expect(ctx.recorder.camera).toEqual({ hidden: false });
+    expect(changes()).toBe(3);
+    const notReady = setup({ deps: { camera: () => ({ layout }) } });
+    await startRecording(notReady);
+    notReady.host.emit({ type: "cameraNotReady", sessionId: "s1", detail: "the camera delivered no frame in the 10 s after it was opened" });
+    expect(notReady.recorder.camera).toEqual({ hidden: false, state: "notReady" });
+    notReady.host.emit({ type: "cameraResumed", sessionId: "s1", detail: "the camera delivered its first frame 12.0 s after it was opened" });
+    expect(notReady.recorder.camera).toEqual({ hidden: false });
   });
 
   it("keeps recording when the camera is not ready, tells it once apart from a loss and marks the saved recording (plan 090)", async () => {
