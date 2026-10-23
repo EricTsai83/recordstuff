@@ -10,7 +10,8 @@
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
-import { isStudioRate } from "../../shared/studio-port";
+import { isStudioPreviewDiagnostics, isStudioRate, STUDIO_DIAGNOSTICS_MS, type StudioDiagnosticsRequest } from "../../shared/studio-port";
+import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogram";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -91,6 +92,8 @@ interface NativeCapture {
   /** Plan 079, D1: Settings' input level meter, `meter` events until stopped; resolves with the device's name. */
   startMeter?(deviceId?: string): Promise<string>;
   stopMeter?(): void;
+  /** Plan 083: the last session's stage figures as JSON once it has ended; null unless it kept them. */
+  diagnostics?(): string | null;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -160,6 +163,8 @@ type Phase = "preparing" | "prepared" | "recording" | "stopping";
 
 /** How long the device list settles before it is listed again (plan 079, D2): one change is told several times. */
 const DEVICES_SETTLE_MS = 300;
+/** How often a running session's figures are logged under the diagnostics switch (plan 083). */
+const DIAGNOSTICS_SNAPSHOT_MS = 5000;
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
@@ -167,6 +172,13 @@ export class NativeHost {
   private accessCheck: Promise<void> | undefined;
   private previewPort: PreviewPort | undefined;
   private previewFrames = 0;
+  /** Preview chunks the engine gave while no page held a port, and `previewFrames` at the last figures (plan 083). */
+  private previewWithoutPort = 0;
+  private previewFramesBefore = 0;
+  /** The latest session's id: the page's last figures come once its port is let go, after the session ended. */
+  private lastSessionId: string | undefined;
+  /** The running session's figures logged every `DIAGNOSTICS_SNAPSHOT_MS`: main ends a Live preview by ending this process. */
+  private snapshots: ReturnType<typeof setInterval> | undefined;
   /** Settings' meter (plan 079, D1): the latest request, and the requests applied one after another. */
   private meterWanted: { deviceId?: string } | undefined;
   private meterRunning = false;
@@ -182,6 +194,8 @@ export class NativeHost {
     private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
     /** The prototype's switch: the preview is watched from the start, for its page. */
     private readonly cameraPreview = false,
+    /** Plan 083's development switch, `RECORDSTUFF_DIAGNOSTICS=1`: each session's figures are logged once it ends. */
+    private readonly diagnostics = false,
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
     // Frames come only while main says the preview is watched, or from the start under the prototype's switch.
@@ -194,10 +208,18 @@ export class NativeHost {
         // The page's rate for the preview (plan 081, D1); a port given over again starts at the full rate, as the
         // engine does for a new watcher.
         studio?.on?.("message", ({ data }) => {
-          if (studio !== this.previewPort || !isStudioRate(data)) return;
+          if (studio !== this.previewPort) return;
+          if (isStudioPreviewDiagnostics(data)) {
+            // Logged as it comes, whichever session it covers: the page's port outlives none of them.
+            const { type: _type, ...figures } = data;
+            if (this.diagnostics) this.log(`diagnostics: ${JSON.stringify({ kind: "page", session: this.session?.id ?? this.lastSessionId ?? null, ...figures })}`);
+            return;
+          }
+          if (!isStudioRate(data)) return;
           this.log(`studio: preview at ${data.fps} a second${this.capture.setPreviewRate?.(data.fps) ? "" : " (no preview in this session)"}`);
         });
         studio?.start?.();
+        if (this.diagnostics) studio?.postMessage({ type: "diagnostics", everyMs: STUDIO_DIAGNOSTICS_MS } satisfies StudioDiagnosticsRequest);
         return;
       }
       this.handle(data);
@@ -207,7 +229,10 @@ export class NativeHost {
 
   /** Forwards a preview chunk to the preview page, when main gave one; dropped otherwise. */
   private preview(frame: PreviewFrame): void {
-    if (!this.previewPort) return;
+    if (!this.previewPort) {
+      this.previewWithoutPort += 1;
+      return;
+    }
     this.previewFrames += 1;
     this.previewPort.postMessage({
       width: frame.width, height: frame.height, data: frame.data, key: frame.key, timestamp: frame.timestamp,
@@ -446,6 +471,11 @@ export class NativeHost {
     }
     const session = { id: sessionId, phase: "preparing" as Phase, recordingPath: native.recordingPath, cancelled: false };
     this.session = session;
+    this.lastSessionId = sessionId;
+    // Counted per session, as the engine's figures are.
+    this.previewFramesBefore = this.previewFrames;
+    this.previewWithoutPort = 0;
+    this.stopSnapshots();
     let capture: CaptureReport;
     try {
       // Both probes keep their content for `prepare`: the access check's, taken before main made sure RecordStuff
@@ -494,11 +524,13 @@ export class NativeHost {
     // Main gave up while the engine prepared: never keep capturing with nobody listening.
     if (session.cancelled) {
       await this.capture.cancel().catch(() => undefined);
+      this.logDiagnostics(sessionId, "cancelled");
       this.session = undefined;
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return;
     }
     session.phase = "prepared";
+    if (this.diagnostics) this.snapshots = setInterval(() => this.logDiagnostics(sessionId, "running"), DIAGNOSTICS_SNAPSHOT_MS);
     this.send({ type: "prepared", sessionId, mimeType: OUTPUT_MIME_TYPE, capture });
   }
 
@@ -534,6 +566,7 @@ export class NativeHost {
     session.phase = "stopping";
     if (!wasRecording) {
       await this.capture.cancel().catch(() => undefined);
+      this.logDiagnostics(sessionId, "cancelled");
       this.session = undefined;
       this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });
       return;
@@ -562,12 +595,33 @@ export class NativeHost {
     try {
       const file = await this.capture.finish();
       this.log(`timing: file finished ${Math.round(file.finalizeMs)} ms after the stop`);
+      this.logDiagnostics(sessionId, "finished");
       this.send({ type: "finished", sessionId,
         file: { bytes: file.bytes, finalizeMs: file.finalizeMs, ...(file.fragmented ? { fragmented: file.fragmented } : {}) } });
     } catch (cause) {
       const { code, detail } = engineFailure(cause);
+      this.logDiagnostics(sessionId, "writeError");
       this.send({ type: "writeError", sessionId, code: WRITE_CODES.includes(code) ? code as "disk_full" | "output_write_failed" : "output_write_failed", detail });
     }
+  }
+
+  /**
+   * Logs the session's figures so far (plan 083) as one `diagnostics: {"kind":"engine",…}` line: the engine's stages and
+   * queues, and the preview chunks this process forwarded to the page or had no port for. Every figure counts from the
+   * session's start, so the last line of a session is its whole: `running` while it runs, its outcome once it ended.
+   */
+  private logDiagnostics(sessionId: string, outcome: "running" | "finished" | "writeError" | "cancelled" | "failed"): void {
+    if (outcome !== "running") this.stopSnapshots();
+    if (!this.diagnostics) return;
+    let engine: unknown = null;
+    try {
+      const text = this.capture.diagnostics?.();
+      engine = text ? JSON.parse(text) as unknown : null;
+    } catch (cause) {
+      this.log(`diagnostics: the engine's figures could not be read: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+    const host = { previewForwarded: this.previewFrames - this.previewFramesBefore, previewWithoutPort: this.previewWithoutPort };
+    this.log(`diagnostics: ${JSON.stringify({ kind: "engine", schema: PIPELINE_SCHEMA, session: sessionId, outcome, host, engine })}`);
   }
 
   private event(event: EngineEvent): void {
@@ -600,7 +654,13 @@ export class NativeHost {
     }
   }
 
+  private stopSnapshots(): void {
+    if (this.snapshots !== undefined) clearInterval(this.snapshots);
+    this.snapshots = undefined;
+  }
+
   private fail(sessionId: string, code: HostErrorCode, detail: string): void {
+    if (this.lastSessionId === sessionId && this.snapshots !== undefined) this.logDiagnostics(sessionId, "failed");
     this.send({ type: "error", sessionId, code, detail });
   }
 
@@ -617,7 +677,8 @@ if (parentPort) {
     if (!addonPath) throw new Error("no engine path was given");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const engine = require(addonPath) as EngineModule;
-    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env), cameraPreviewOn(process.env));
+    new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env), cameraPreviewOn(process.env),
+      process.env[DIAGNOSTICS_ENV] === "1");
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
     const message = cause instanceof Error ? cause.message : String(cause);

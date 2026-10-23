@@ -16,7 +16,7 @@ import { translate } from "../../../shared/i18n";
 import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { frameDrawn } from "./frame-clock";
-import { onPreview } from "./studio-feed";
+import { onPreview, previewFigures } from "./studio-feed";
 
 /** A key's step, as a fraction of the free space: 1%, or 10% with Shift. */
 const STEP = 0.01, BIG_STEP = 0.1;
@@ -109,7 +109,11 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
     if (!on || !canvas) return;
     // Once: a state set for every frame drawn renders the page 10 times a second for nothing.
     let seen = false;
-    const decoder = previewDecoder(canvas, { drawn: () => { frameDrawn(); if (!seen) { seen = true; setDrawing(true); } } });
+    const decoder = previewDecoder(canvas, {
+      drawn: (_message, received) => { if (previewFigures.keeping) previewFigures.drawn(received, Date.now()); frameDrawn(); if (!seen) { seen = true; setDrawing(true); } },
+      skipped: () => previewFigures.notDecoded(),
+      restarted: (cause) => previewFigures.restarted(cause),
+    });
     if (!decoder) return;
     // On the Studio's port, which the meters' levels share (plan 081).
     const stop = onPreview({ chunk: (message) => decoder.decode(message), joined: () => decoder.reset() });

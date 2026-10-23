@@ -64,3 +64,37 @@ it("says its rate on each new port and when it changes, and closes the port a ne
   expect(second.posted).toEqual([{ type: "rate", fps: 5 }]);
   stop();
 });
+
+it("keeps the preview's figures only once the capture process asks, reports them on the port and at its release (plan 083)", async () => {
+  vi.useFakeTimers();
+  try {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const feed = await import("./studio-feed");
+    const stop = feed.onPreview({ chunk: () => undefined, joined: () => undefined });
+    const port = fakePort();
+    give(port);
+    // Not asked: nothing kept, nothing reported, and the clock not even read.
+    port.say({ ...chunk, sent: 990, n: 1 });
+    expect(clock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10_000);
+    expect(port.posted).toEqual([{ type: "rate", fps: 10 }]);
+    port.say({ type: "diagnostics", everyMs: 5000 });
+    port.say({ ...chunk, sent: 990, n: 2 });
+    // Chunk 3 never came.
+    port.say({ ...chunk, sent: 996, n: 4 });
+    feed.previewFigures.drawn(998, 1_000);
+    vi.advanceTimersByTime(5000);
+    expect(port.posted[1]).toEqual(expect.objectContaining({ type: "previewDiagnostics", schema: 1, received: 2, drawn: 1, missed: 1,
+      port: expect.objectContaining({ n: 2, max: 10_000 }), decode: expect.objectContaining({ n: 1, max: 2000 }) }));
+    feed.previewFigures.restarted("error");
+    stop();
+    // Let go: what was kept since goes with the port, and nothing more is reported.
+    expect(port.posted[2]).toEqual(expect.objectContaining({ received: 0, restarts: { codec: 0, error: 1 } }));
+    expect(port.closed).toBe(true);
+    vi.advanceTimersByTime(10_000);
+    expect(port.posted).toHaveLength(3);
+    expect(feed.previewFigures.keeping).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});

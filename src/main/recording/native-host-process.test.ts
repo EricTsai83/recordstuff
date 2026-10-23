@@ -691,3 +691,104 @@ describe("Settings' microphone monitor and switching while recording (plan 079)"
     expect(port.sent.at(-1)).toEqual({ type: "microphoneSwitchFailed", sessionId: "s1", detail: "this recording records no microphone" });
   });
 });
+
+describe("the pipeline's figures (plan 083)", () => {
+  const engineFigures = `{"schema":1,"stages":{"write":{"n":2,"sum":40,"max":30,"b":{"16":1,"19":1}}},"counts":{"frames_submitted":2}}`;
+  const studioPort = () => {
+    let listener: ((message: { data: unknown }) => void) | undefined;
+    return { posted: [] as unknown[], postMessage(m: unknown) { this.posted.push(m); }, close() {}, start() {},
+      on(_event: "message", next: (message: { data: unknown }) => void) { listener = next; },
+      say(data: unknown) { listener?.({ data }); } };
+  };
+  const page = { type: "previewDiagnostics", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, restarts: { codec: 1, error: 0 },
+    port: { n: 9, sum: 9000, max: 2000, b: { 39: 9 } }, decode: { n: 8, sum: 16_000, max: 3000, b: { 44: 8 } } };
+
+  it("logs nothing and asks the page for nothing without the development switch", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const diagnostics = vi.fn(() => engineFigures);
+    const logs: string[] = [];
+    new NativeHost(port, (onEvent) => ({ ...fake.factory(onEvent), diagnostics }), (line) => logs.push(line));
+    const studio = studioPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+    studio.say(page);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    await flush();
+    expect(studio.posted).toEqual([]);
+    expect(diagnostics).not.toHaveBeenCalled();
+    expect(logs.filter((line) => line.startsWith("diagnostics:"))).toEqual([]);
+  });
+
+  it("with it, asks the page every 5 s and logs the engine's figures once the file is finished and the page's as they come", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    let previewTo: (frame: PreviewFrame) => void = () => undefined;
+    const engine = { ...fake.engine, diagnostics: vi.fn(() => engineFigures), onPreview: (onFrame: (frame: PreviewFrame) => void) => { previewTo = onFrame; } };
+    const logs: string[] = [];
+    new NativeHost(port, engine, (line) => logs.push(line), undefined, {}, false, true);
+    const frame: PreviewFrame = { width: 640, height: 360, data: new Uint8Array(1), key: true, timestamp: 1 };
+    // Before the session: not its figures.
+    previewTo(frame);
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    previewTo(frame);
+    const studio = studioPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+    expect(studio.posted).toEqual([{ type: "diagnostics", everyMs: 5000 }]);
+    previewTo(frame);
+    previewTo(frame);
+    port.deliver({ type: "record", sessionId: "s1" });
+    studio.say(page);
+    studio.say({ ...page, schema: 2 });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    await flush();
+    // The page's last report comes after the session ended, as its port is let go: it is the last session's.
+    studio.say({ ...page, received: 1 });
+    const lines = logs.filter((line) => line.startsWith("diagnostics: ")).map((line) => JSON.parse(line.slice("diagnostics: ".length)) as Record<string, unknown>);
+    expect(lines).toEqual([
+      { kind: "page", session: "s1", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, restarts: { codec: 1, error: 0 }, port: page.port, decode: page.decode },
+      { kind: "engine", schema: 1, session: "s1", outcome: "finished", host: { previewForwarded: 2, previewWithoutPort: 1 }, engine: JSON.parse(engineFigures) },
+      expect.objectContaining({ kind: "page", session: "s1", received: 1 }),
+    ]);
+  });
+
+  it("logs a cancelled session's figures, and says so when the engine's cannot be read", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const logs: string[] = [];
+    new NativeHost(port, { ...fake.engine, diagnostics: () => "{not json" }, (line) => logs.push(line), undefined, {}, false, true);
+    port.deliver({ type: "start", sessionId: "s2", quality: DEFAULT_QUALITY, native });
+    await flush();
+    port.deliver({ type: "stop", sessionId: "s2" });
+    await flush();
+    expect(fake.engine.cancel).toHaveBeenCalled();
+    expect(logs.some((line) => line.startsWith("diagnostics: the engine's figures could not be read"))).toBe(true);
+    expect(logs).toContainEqual(expect.stringContaining(`"kind":"engine","schema":1,"session":"s2","outcome":"cancelled"`));
+  });
+
+  it("logs a running session's figures every 5 s, since main ends a Live preview by ending the process, and stops at its end", async () => {
+    vi.useFakeTimers();
+    try {
+      const port = new Port();
+      const fake = fakeEngine();
+      const logs: string[] = [];
+      new NativeHost(port, { ...fake.engine, diagnostics: () => engineFigures }, (line) => logs.push(line), undefined, {}, false, true);
+      port.deliver({ type: "start", sessionId: "p1", quality: DEFAULT_QUALITY, native });
+      await vi.advanceTimersByTimeAsync(0);
+      const outcomes = () => logs.filter((line) => line.includes(`"kind":"engine"`)).map((line) => /"outcome":"(\w+)"/.exec(line)?.[1]);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(outcomes()).toEqual(["running", "running"]);
+      port.deliver({ type: "stop", sessionId: "p1" });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(outcomes()).toEqual(["running", "running", "cancelled"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
