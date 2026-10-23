@@ -24,7 +24,9 @@
  * Each Live preview is stopped by pressing its switch again (one switch since 2026-10-21) and its release
  * (`cancelled (preview)`) awaited. The report, `report.md` and `report.json`, goes under
  * `docs/verification/measurements/<time>-studio-acceptance/` (gitignored). The picture case leaves its recording in the
- * output folder. The runner changes no setting, quits the app normally, confirms it exited and closes the material. Exit 0 when every
+ * output folder. Since plan 092 the Studio's preview is off by default: the runner seeds Power saving (`studioPreview`,
+ * the composed view) for the round and sets the key back once the app has quit, changing no other setting; it quits
+ * the app normally, confirms it exited and closes the material. Exit 0 when every
  * judged check passed, 1 when one failed or cleanup was incomplete, 2 when blocked (no Accessibility grant, a locked
  * screen, an app already running), 130/143 when interrupted.
  */
@@ -33,7 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
+import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, runnerArgs, writeAppSettings } from "./lib/runner/runner-env.mts";
 import { INTERRUPT_EXIT, electronPattern, escapeRegExp, pgrepPids, recordStuffPids, signalPids, command } from "./lib/runner/processes.mts";
 import { confirmedIdle, waitForLog, waitForRecord, type TerminalRecord } from "./lib/acceptance/acceptance-runtime.mts";
 import { createMaterialProfile, currentRunId, materialOpenArgs, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
@@ -45,7 +47,7 @@ import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { isLanguage, translate, type Language } from "../src/shared/i18n.ts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
 import { probe } from "./lib/verification/media-tools.mts";
-import { STUDIO_ACTIVE_MS as ACTIVE_MS } from "../src/shared/studio-port.ts";
+import { STUDIO_ACTIVE_MS as ACTIVE_MS } from "../src/shared/studio-rates.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE = developmentAppPath(REPO_ROOT);
@@ -121,6 +123,13 @@ async function main(): Promise<number> {
   const materialPids = (): number[] => pgrepPids(escapeRegExp(profile));
   const ax = () => osascriptAx(controller.signal, 30_000);
   const stored = readAppSettings(APP_SETTINGS_PATH)?.["language"];
+  // Plan 092: the preview at Power saving, whose pacing the hover case judges and whose picture the picture case shows.
+  const before = readAppSettings(APP_SETTINGS_PATH);
+  if (!before) fail(`no ${APP_SETTINGS_PATH}: launch RecordStuff once and choose an output folder first`);
+  const hadPreview = Object.hasOwn(before!, "studioPreview");
+  const originalPreview = before!["studioPreview"];
+  writeAppSettings({ ...before, studioPreview: { rate: "power", view: "composed" } });
+  note("seeded the Studio's preview at Power saving, composed");
   const language: Language = isLanguage(stored) ? stored : "en";
 
   /** Launches the bundle and waits for idle with screen recording allowed and the startup work settled. */
@@ -350,6 +359,13 @@ async function main(): Promise<number> {
       }
     } catch (error) { cleanup.push(`could not close the material browser: ${String(error)}`); }
     try { await quitApp(); } catch (error) { cleanup.push(String(error)); }
+    if (running() === undefined) {
+      try {
+        const next = readAppSettings(APP_SETTINGS_PATH) ?? {};
+        if (hadPreview) next["studioPreview"] = originalPreview; else delete next["studioPreview"];
+        writeAppSettings(next);
+      } catch (error) { cleanup.push(`could not restore studioPreview: ${String(error)}`); }
+    } else cleanup.push("RecordStuff still runs, so the seeded studioPreview was not restored");
     desktop.end();
   }
 
@@ -364,7 +380,7 @@ async function main(): Promise<number> {
     `Result: **${result}**.${runError ? ` Stopped by: ${runError instanceof Error ? runError.message : String(runError)}.` : ""}`, "",
     "| Check | Expected | Actual | Verdict |", "| --- | --- | --- | --- |",
     ...checks.map((check) => `| ${check.check} | ${check.expected} | ${check.actual} | ${check.verdict} |`), "",
-    "## Cleanup", "", cleanupIncomplete ? cleanup.map((line) => `- ${line}`).join("\n") : "Complete: RecordStuff exited and the material closed; no setting was changed.", "",
+    "## Cleanup", "", cleanupIncomplete ? cleanup.map((line) => `- ${line}`).join("\n") : "Complete: RecordStuff exited, the material closed and `studioPreview` was set back; no other setting was changed.", "",
     "## Desktop", "", desktop.summary, "",
     "## Events", "", ...events.map((line) => `- ${line}`), "",
   ].join("\n");
