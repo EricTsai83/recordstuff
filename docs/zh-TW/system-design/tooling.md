@@ -97,6 +97,8 @@ pnpm bench:publication -- --dir /Volumes/test/rs --sizes 64m,2g                 
 pnpm measure:cpu                                         # 在已結束的打包 App 上量 CPU 預算：待機、一段 30 fps 錄影、錄影後待機、設定開著；約 15 分鐘
 pnpm measure:cpu -- --fps 60 --repeat 3                  # baseline 回合：兩種幀率各錄三次；約 25 分鐘
 pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2   # 相機：R、S（錄影工作室顯示錄影）與 L（即時預覽）；plan 075
+pnpm measure:cpu -- --skip-settings --skip-playback --fps 60 --minutes 1 --diagnostics   # 每段錄影的管線數據（plan 083）；旁邊再跑一次不加 --diagnostics，可得它的成本
+pnpm diagnose:pipeline -- --last 3                       # 從 App 的 log 讀最近幾個工作階段的管線數據（plan 083）
 pnpm measure:thumbnails                                  # 在隱藏的 view host 以數百支真實影片比較錄影檔縮圖的並行上限與快取；需要 out/；約 2 分鐘
 ```
 
@@ -132,6 +134,62 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 每段合成了相機的錄影停止時，引擎會記錄相機畫面在它被合成進去的影格中有多舊（plan 075 第 8 步，[camera.rs](../../../native/capture/src/core/camera.rs) 的 `CameraAges`）：`camera: the camera's picture 113.9 ms older than its frame on average (87.7 to 138.7 ms) in 1005 frame(s)`，即每個合成影格的 host 時間減去其中相機影格的擷取時間，相機影格較新時為負值。它取代了「對相機閃光、再從檔案中找出閃光」的量法。上面那一行來自 2026-10-18 的回合，用的是 iPhone 的接續互通相機，數字中包含無線連線的延遲。Windows 上相機影格是在抵達時才標時間，所以那裡的數字不含相機與 Media Foundation 保留畫面的時間。
 
+### 管線數據
+
+Plan 083 逐階段量測一個工作階段的時間花在哪裡，和逐影格 log 一樣是開發用開關：App 的環境帶有 `RECORDSTUFF_DIAGNOSTICS=1` 時，每個擷取工作階段保留有上限的數據（[diagnostics.rs](../../../native/capture/src/core/diagnostics.rs)）；沒有它時不計時任何階段。每個階段是固定 128 個計數器的陣列（每格是微秒的四分之一個二倍區間，所以從中讀出的百分位數誤差約在 12.5% 內），加上次數、總和與最大值，不隨錄影長度增長；不逐幀寫入任何地方，每個數字都在同一個程序內、同一個時鐘上取得。
+
+| 數據 | 計時的範圍 | 說明 |
+| --- | --- | --- |
+| `capture_callback` | 核心接下一張擷取畫面：影像鎖、pacer，以及畫面被保留時的送出 | ScreenCaptureKit 為影格標的時間比 host 時鐘早約 10 ms（停止時的 `frames stamped … ahead` 那行），所以送達本身的延遲無法在這個時鐘上讀出 |
+| `encode_submit` | 把影格交給編碼器 | 在 macOS 合成相機時包含合成 |
+| `compose` | 在 GPU 上把相機合成進錄影影格，並等它完成 | macOS |
+| `encode_latency` | 影格送出到它的編碼樣本 | 依影格時間配對，最多 64 個等待中：`in_flight_high` 是最多等待數，`unmatched_samples` 是找不到送出紀錄的樣本，`encoder_dropped` 是 VideoToolbox 沒給樣本的影格 |
+| `write_wait`、`write` | 媒體交給 writer 到被取走；封裝並寫入它 | `writer_pending_high` 與 `writer_backlog_high_bytes` 是佇列的最高水位；超過 64 MiB 的上限會讓錄影失敗 |
+| `preview_compose`、`preview_encode` | 預覽畫面（macOS）；它送出到 chunk 產生 | `preview_chunks` 是產生數；`preview_gate_sent` 與 `preview_gate_dropped` 是 napi 兩個在途上限的閘門在 JavaScript 執行緒前放行或丟棄的 chunk |
+
+capture host 在工作階段進行中每 5 秒、結束時再一次讀取這些數據（`NativeCapture.diagnostics()`，從工作階段開始累計），每次記一行 `capture host: diagnostics: {"kind":"engine",…}`，含工作階段、`running` 或結束方式（`finished`、`writeError`、`cancelled`、`failed`），以及它自己轉送給錄影工作室的預覽 chunk 數和沒有頁面持有 port 時收到的數量。錄影工作室顯示預覽時，host 在 Studio 的 port 上向頁面要求數據，頁面每 5 秒回報一次，放開 port 時再報一次（`{"kind":"page",…}`；[preview-diagnostics.ts](../../../src/renderer/lib/preview-diagnostics.ts)）：收到、畫出、從未收到（編號出現缺口）與收到但未解碼的 chunk 數；因編解碼器或錯誤而重啟 decoder 的次數；port 延遲，即 capture 程序送出時的 `Date.now()` 到頁面收到時的 `Date.now()`，兩個程序共用同一個系統時鐘、以整數毫秒計，時鐘跳動會干擾它；以及解碼加上畫進 canvas 的時間，畫進 canvas 還不等於螢幕已顯示。不保留任何畫面、裝置名稱或輸入文字。
+
+一個工作階段的最後一行就是它的全部：主程序以結束 capture 程序的方式結束即時預覽，此時不會記下結束方式，所以它的數據是最後一次 5 秒快照的數據。`pnpm diagnose:pipeline -- [<log>…] [--session <id>]… [--last N] [--json <file>]` 讀取 App 的 log（預設為封存檔與目前的檔案），印出每個工作階段各階段的次數、平均、p50、p95、最大值與計數；[pipeline-report.mts](../../../scripts/lib/verification/pipeline-report.mts) 以相加 bucket 的方式合併直方圖，多次執行不需原始樣本就能合併，報告格式為 `recordstuff.pipeline-diagnostics/1`，拒收其他 schema 的數據。`pnpm measure:cpu -- --diagnostics` 以這個開關啟動 bundle，把數據依錄影與情境加進報告，若某段錄影或即時預覽沒有引擎那一行就判為失敗；launchd 持有這個開關而沒加 `--diagnostics` 時拒絕執行。`RECORDSTUFF_DIAGNOSTICS=1 pnpm matrix -- quick` 會把它傳給開發版 App。開關本身的成本與得到的 baseline 見[管線 baseline](#管線-baseline)。
+
+#### 管線 baseline
+
+Plan 083 在 2026-10-23 的量測回合（M1 Pro 參考機，macOS 26.6.2，闔上蓋子，素材全螢幕顯示在 BenQ GW2785TC 的 1920×1080，錄影工作室在 BL2480T；簽章 bundle 由 `3b76a8cb` 加上 plan 083 的變更建置；報告為 `docs/verification/measurements/083-r1-off` … `083-r6-off`，僅本機）。每個數字都只屬於這台機器與這些負載；換機器或素材要重新量。
+
+**開關本身的成本。** 同一個建置上依序關、開、再關，每種幀率各錄三段 60 秒（第二次關的回合在重建後執行，重建只改了開關啟用時才執行的程式）：30 fps 為 10.09–10.37%、10.16–10.46% 與 10.19–10.37%；60 fps 為 14.31–14.34%、14.56–14.79% 與 14.17–14.74%。兩種幀率下，開啟開關的各次都落在兩個關閉回合的範圍內，所以它的成本與回合間的漂移（30 fps 約 0.3 點、60 fps 約 0.6 點）無法區分，不需要降低取樣。閒置（A、B）維持 0.04–0.07%。
+
+**錄影，動態素材**（開關開啟，三段錄影合併；p50／p95／最大值，單位 ms，由直方圖讀出）：
+
+| 階段 | 30 fps | 60 fps |
+| --- | --- | --- |
+| `capture_callback` | 0.06 / 0.96 / 13.6 | 0.14 / 1.41 / 15.5 |
+| `encode_submit` | 0.12 / 1.15 / 13.6 | 0.10 / 1.41 / 12.3 |
+| `encode_latency` | 18.4 / 18.4 / 54.9 | 18.4 / 22.5 / 40.6 |
+| `write_wait` | 0.04 / 3.84 / 15.7 | 0.09 / 4.61 / 19.1 |
+| `write` | 0.00 / 0.01 / 9.6 | 0.00 / 0.01 / 12.1 |
+
+編碼器沒有丟掉影格，也沒有對不上的樣本；最多 3 個影格（60 fps 為 4 個）等待編碼器，最多 3 筆媒體、0.29–0.32 MB 等待 writer，上限是 64 MiB。capture 程序的記憶體峰值為 98–101 MB。檢查的兩個檔案都通過 `pnpm verify --sync`（30 fps：0 掉幀，音畫 −23 ms；60 fps：0.17% 掉幀，−9 ms），並在 QuickTime 中播到結尾、跳轉位置正確。
+
+**靜態素材**（`--material still`）：30 fps 為 3.3%、60 fps 為 3.5%，擷取每分鐘約送來 51 張畫面，錄影走閒置路徑編碼（每分鐘 347 與 434 個影格，`encode_latency` 的 p95 為 36.9 ms）；writer 積壓的峰值為 0.49–0.60 MB。
+
+**錄影工作室**（沒有合成相機；S 與同一回合 R 的中位數比較；第一個錄影工作室回合的 R 是在錄影工作室沒關的情況下錄的，所以改與開關開啟回合的 R 比較）：
+
+| 情況 | 預覽 | CPU 30／60 fps | 比 R 多 |
+| --- | --- | --- | --- |
+| 只是看著（S） | 每秒 5 格 | 17.7% / 20.9% | 7.3 / 6.2 點 |
+| 正在操作、游標在上面（S，`--studio-active`） | 每秒 10 格 | 21.6% / 24.9% | 11.2 / 10.1 點 |
+| 即時預覽（L） | 每秒 10 格 | 14.8–14.9% / 14.4–15.1% | — |
+| 不在畫面上或已關閉（R） | 無 | 10.5% / 14.8% | — |
+
+只是看著時符合 D18 的 8 點；正在操作時超出 2–3 點，與 plan 081 的量測（當時 30 fps 為 9.9）一致，也是其 D1 已接受的情況。預覽路徑上沒有任何遺失：產生的每個 chunk 都通過 napi 的閘門、被轉送並畫出（0 缺漏、0 丟棄、0 未解碼，每個工作階段啟動一次 decoder）。預覽合成 p50 1.2–1.4 ms（p95 4.6–6.7），預覽編碼在 30 fps 錄影旁 p50 4.6 ms（p95 7.7–11）、在 60 fps 錄影旁 9.2–13.3 ms（p95 18–23），port 0–1 ms（整數毫秒），解碼加繪製 p50 1.9 ms（p95 3.8–5.6；只是看著時 302 格中有一格 218 ms）。有預覽時 capture 程序的記憶體峰值為 106–109 MB，錄影工作室的 renderer 為 252–270 MB。
+
+**084–088 使用的預算。** 在各計畫量測自己的工作之前，以 `--diagnostics` 在相同負載下對照：
+
+- 錄影 CPU 維持在本節的中位數加上其範圍內（以及 `CPU_BUDGET`）；優化只有在中位數改善超過該範圍且至少 10%、錄影完整性檢查不變時才算數。
+- 佇列維持現在的上限：編碼器不丟幀，等待編碼器的影格最多 4 個，Standard 品質下 writer 積壓低於 1 MB。
+- 預覽送出它產生的全部：跟得上的頁面 0 缺漏、0 閘門丟棄，port 的 p95 最多 1 ms，解碼加繪製的 p95 最多 6 ms；084 以這些標準量測慢的 consumer。
+- 記憶體：有預覽時 capture 程序最多約 110 MB，錄影工作室的 renderer 約 270 MB；新增的成本與任何節省分開報告。
+- 編輯計畫（085–088）的預算在各自量測前都是暫定；它們的成本屬於新功能，以這些 baseline 判定，不藏在 baseline 裡。
+
 ### 收尾量測
 
 `pnpm measure:finalization`（plan 037）量測停止錄影後要讓下一段錄影等多久，以及時間花在哪裡；它不做判定，也不隨 App 發布。每次呼叫是一個桌面回合：建置一次、開啟測試素材（Chrome kiosk，除非加 `--no-open-material`），再透過開發版 App 與 `RECORDSTUFF_AUTORECORD` 錄影 `--repeat` 段（預設 5）、每段 `--seconds` 秒（預設 15），使用 `--quality`（預設 standard）與 `--fps`（預設 60）的原始解析度，寫到 `--dir`；這個絕對路徑作為 autorecord 的 `outputDir`，因此不會寫入 settings.json。執行前先結束 RecordStuff 與開發版 App。停止到可再開始的時間是 App log 從 `state → stopping` 到 `state → idle`，也就是切換鍵再次開始新錄影的時刻；停止到存檔是 `state → stopping` 到 `file finalized`；兩者都以 idle 與存檔中先到的那一個和它的停止配對，因為存檔自 2026-10-09 起在背景進行，idle 通常比存檔先到；各階段取自 recorder 的 `finalize timing` 行（host 的停止、之後的 drain、引擎轉成 plain MP4 的 finalize、close、發布與其方式、清理，以及中斷 sentinel 的完成 checkpoint；其中 flush 欄位只為保留這一行的格式，固定為 0，因為引擎自己 sync 檔案），idle 在存檔之後時另加從 `file finalized` 到 idle 的 UI 收斂。checkpoint（`checkpoint N ms`，plan 053）會讀取該次錄影的 sentinel，並在 userData 以 fsync 原子重寫，因此 userData 磁碟區變慢時會顯示在這裡；最後一次 sentinel 寫入失敗的錄影會略過它並記為 `checkpoint ? ms`，而此欄位出現之前的 log 行仍可解析，只是沒有這一項。每段檔案都需要有影像流與音訊流、無解碼錯誤，且除非因低空間提前停止，長度需在要求值 ±2 秒內。`--verify quick`（預設）以 ffprobe 完整解碼第一段已儲存的檔案，其餘只讀取串流與長度，並只解碼最前與最後一秒；`--verify full` 則每段都完整解碼。區間解碼使用 ffprobe，因為 `ffmpeg -f null` 會把靜止畫面重複的時間戳記報成錯誤，即使每個影格都能解碼。之後刪除檔案，除非加 `--keep`，因此回合不會在磁碟區累積錄影。`--label` 指定報告資料夾名稱，`--no-build` 沿用目前的 `out/`。慢速、小容量或非原生檔案系統請指向隔離資料夾或磁碟映像；不要塞滿系統磁碟。證據寫到 `docs/verification/measurements/<timestamp>-finalization-<label>/`（`summary.md` 含各階段的 nearest-rank 分布，以及 `summary.json`）。每段都儲存並驗證通過時 exit 0；任一段未通過、超過時限（報告會註明 App 之後是收到 SIGTERM 正常退出，還是必須強制結束），或收尾留下程序時 exit 1；缺少 ffprobe、App 已在執行或桌面鎖定時 exit 2；SIGINT 或 SIGTERM 會先等仍在進行的啟動最多 5 秒，再正常結束本回合的 App 並關閉素材，不寫摘要，exit 130 或 143。
@@ -156,7 +214,7 @@ Autorecord 存檔後立即退出，因此 macOS 待送的儲存通知會被退�
 
 **程序角色。**每個待機情境也會依 Chromium 角色檢查 App 的程序；角色取自程序命令列的 `--type` 與 `--utility-sub-type`，因為三個 helper 的名稱都一樣。待機契約是 cpu-sampler.mts 的 `IDLE_ROLES`，也就是原生引擎的契約（plan 076）：主程序、GPU 與網路服務各一個，除此之外只能有[設計總覽](design-overview.md#在選單列待命)說明過的程序。啟動後（A）沒有 renderer，因為視窗開啟前沒有任何東西使用預設 session；錄影後（B）也沒有：擷取既不會啟動 Chromium 的音訊服務，也不會留下常駐程序，因為擷取用的 `utilityProcess`（`utility:node`）在檔案完成後就結束，所以殘留的倒數覆蓋層會判定失敗，其他任何角色也一樣會失敗。設定視窗開著時（C）必須有設定頁的 renderer，所以沒有真的開啟的設定視窗會判定失敗，而不是量到關閉時的待機；另允許第二個 renderer（隱藏等待中的全螢幕頁面）、Chromium 的音訊服務，以及麥克風開啟時設定的麥克風監看程序（`utility:node`，plan 079）。每次儲存後 5 秒會記下一次角色，同一次啟動中的每一次記錄，以及 B 結束時的角色，都必須和第一次相同：錄影只啟動一次的東西是預期的，每錄一次就多一份的才是洩漏。這和 [fuite](https://github.com/nolanlawson/fuite) 這類洩漏偵測工具的做法一樣，看每次重複的成長，而不是和冷啟動比較。報告也會列出每次記錄時 App 的記憶體，只回報不判定。
 
-`--skip-recording` 省略 R、B 與 P，`--skip-settings` 省略 C，`--skip-playback` 省略 P，`--hover-card` 在游標停在卡片上時量 C，`--camera` 與 `--studio` 加入相機與錄影工作室（見下方），`--profile` 對 App 的程序取樣（見下方），`--out` 指定報告資料夾。報告是 `docs/verification/measurements/<time>-cpu/`（git 忽略）下的 `report.md` 與 `report.json`，包含每個情境對照預算的檢查、判定與捨棄的區間、合計與逐程序的 CPU、喚醒、能耗與記憶體、儲存的檔案，以及機器、macOS、Electron、螢幕、電源與產物時間。結束時 runner 會正常結束 App（中斷時，若已要求啟動 App，會先等最多 10 秒讓它出現），確認它已退出，關閉素材瀏覽器並確認它也已結束，在沒有任何 RecordStuff 程序後，把 `countdown`、`display` 與 `quality` 設回執行前的值，並保留 App 在這段時間存下的其他設定；原始檔案另存在報告旁的 `settings-before.json`。錄影檔留在輸出資料夾。和其他桌面 runner 一樣，它會宣告使用者活動，並在整個執行期間持有螢幕與閒置睡眠的 assertion。每項判定都通過時 exit 0；任一失敗、執行出錯或收尾不完整時 exit 1；blocked（沒有 Command Line Tools、沒有輔助使用權限、螢幕鎖定）時 exit 2；收到 SIGINT 或 SIGTERM 時，會先收尾進行中的錄影（只有在這段錄影正在倒數或錄影、且尚未送出停止時才送出快捷鍵，因此絕不會開始新的錄影），再關閉素材、結束 App 並還原設定，再寫出標記為 INTERRUPTED 的部分報告，exit 130 或 143。
+`--skip-recording` 省略 R、B 與 P，`--skip-settings` 省略 C，`--skip-playback` 省略 P，`--hover-card` 在游標停在卡片上時量 C，`--camera` 與 `--studio` 加入相機與錄影工作室（見下方），`--profile` 對 App 的程序取樣（見下方），`--diagnostics` 加入[管線數據](#管線數據)，`--material still` 改錄靜態文字（`scripts/still-material.html`，擷取送來的畫面很少的靜止螢幕）而非動態素材，`--out` 指定報告資料夾。沒有 `--camera` 時，這一輪會把「相機」開關寫成關閉，讓其中的錄影與錄影工作室都不會開啟相機。報告是 `docs/verification/measurements/<time>-cpu/`（git 忽略）下的 `report.md` 與 `report.json`，包含每個情境對照預算的檢查、判定與捨棄的區間、合計與逐程序的 CPU、喚醒、能耗與記憶體、儲存的檔案，以及機器、macOS、Electron、螢幕、電源與產物時間。結束時 runner 會正常結束 App（中斷時，若已要求啟動 App，會先等最多 10 秒讓它出現），確認它已退出，關閉素材瀏覽器並確認它也已結束，在沒有任何 RecordStuff 程序後，把 `countdown`、`display` 與 `quality` 設回執行前的值，並保留 App 在這段時間存下的其他設定；原始檔案另存在報告旁的 `settings-before.json`。錄影檔留在輸出資料夾。和其他桌面 runner 一樣，它會宣告使用者活動，並在整個執行期間持有螢幕與閒置睡眠的 assertion。每項判定都通過時 exit 0；任一失敗、執行出錯或收尾不完整時 exit 1；blocked（沒有 Command Line Tools、沒有輔助使用權限、螢幕鎖定）時 exit 2；收到 SIGINT 或 SIGTERM 時，會先收尾進行中的錄影（只有在這段錄影正在倒數或錄影、且尚未送出停止時才送出快捷鍵，因此絕不會開始新的錄影），再關閉素材、結束 App 並還原設定，再寫出標記為 INTERRUPTED 的部分報告，exit 130 或 143。
 
 **預算。**plan 049 的初始目標，已由參考機 M1 Pro 經舊 Chromium 路徑的 [2026-09-28 baseline](../verification/history-2026-09.md#plan-049-cpu-baseline-結案--2026-09-28) 確認，原生引擎則以更大的餘裕符合（plan 076 第 7 步，2026-10-16：30 fps 10.4%、60 fps 14.0%）；數值放在 cpu-sampler.mts 的 `CPU_BUDGET`。
 
@@ -184,7 +242,7 @@ baseline 存在 [cpu-baselines.json](../../../scripts/lib/verification/cpu-basel
 - **S. 錄影工作室顯示著錄影時的錄影：**在素材的全螢幕把選單列蓋住之前，從 tray 的「開啟錄影工作室…」開啟錄影工作室，然後在它顯示引擎預覽與音量表的情況下錄同樣的錄影。對照同幀率 R 的中位數判定（D18：最多多 8 點；錄影工作室視窗不在素材以外的螢幕時只回報不判定，報告會註明位置），並對照相機的錄影預算加 8（30 fps 28%、60 fps 33%）。
 - **L. 即時預覽：**以游標按下「即時預覽」，按鈕透過 Chromium 的輔助使用樹找到，找到後立即關閉輔助使用樹（Chromium 可能留下部分成本，所以 L 排在 S 之後），穩定 5 秒後保持 50 秒，再按同一個開關停止。依有相機的錄影判定，因為它就是不寫檔的錄影：30 fps 最多 20%、60 fps 最多 25%。按下前先把 RecordStuff 帶到前景（plan 082）：在 macOS 上點擊不在前景的視窗只會啟用它，所以素材在前景時，080 與 081 幾乎每次第一次按下都沒有開始任何東西。按下後仍沒有開始任何東西（15 秒內沒有記錄 `recorder: session … prepared after`）時最多重試三次，失敗訊息會指出每一步。
 
-執行時用 `--camera preview=0`，讓 R 沒有原型頁面，並把錄影工作室放在第二個螢幕上。開過錄影工作室後，Chromium 的 `utility:video_capture` 與 `utility:audio`（由錄影工作室的 `getUserMedia` 啟動）在最後一段錄影後仍會留著；另一次檢查顯示它們沒有可量測的 CPU（見[桌面功能](desktop.md#錄影工作室)）。自 plan 082 的 D2 起，`--studio` 執行的角色檢查在 R 之後各允許一個（`afterStudio`），並在檢查名稱中註明；其他角色照舊判定。第一份整份判 PASS 的 `--studio` 報告是 plan 082 的（2026-10-19）：單次量測 30 fps 時 S 比 R 多 8.0 點，L 15.4%，沒有重試。
+執行時用 `--camera preview=0`，讓 R 沒有原型頁面，並把錄影工作室放在第二個螢幕上。`--studio` 也可以不加 `--camera`（plan 083）：此時錄影工作室顯示螢幕的預覽，「相機」開關保持關閉，S 與 L 仍以相機的預算判定。`--studio-active` 在 S 期間讓游標停在錄影工作室的視窗上，此時它每秒顯示 10 格，而只是被看著時是 5 格（plan 081，D1）；L 用游標按下「即時預覽」，所以兩種情況都是 10 格。`--studio` 需要 `--skip-settings --skip-playback`。R 之前 runner 先以 ⌘W 關閉錄影工作室，視窗仍開著時再按它的關閉按鈕，仍關不掉就讓這一輪失敗：plan 083 第一個錄影工作室回合中，L 之後的 ⌘W 沒有關掉它，R 因此是在錄影工作室顯示預覽時錄的（30 fps 為 21.3%）。開過錄影工作室後，Chromium 的 `utility:video_capture` 與 `utility:audio`（由錄影工作室的 `getUserMedia` 啟動）在最後一段錄影後仍會留著；另一次檢查顯示它們沒有可量測的 CPU（見[桌面功能](desktop.md#錄影工作室)）。自 plan 082 的 D2 起，`--studio` 執行的角色檢查在 R 之後各允許一個（`afterStudio`），並在檢查名稱中註明；其他角色照舊判定。第一份整份判 PASS 的 `--studio` 報告是 plan 082 的（2026-10-19）：單次量測 30 fps 時 S 比 R 多 8.0 點，L 15.4%，沒有重試。
 
 2026-10-18 實測（M1 Pro 參考機，錄影工作室在第二個螢幕，素材在主螢幕全螢幕，`pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2`，報告在 `docs/verification/measurements/` 下）：A 0.042%；30 fps 時 R 15.5%、S 24.5%（比 R 多 8.9 點）、L 16.9%；60 fps 時 R 19.4%、S 30.7%（多 11.3 點）、L 16.9%。所有絕對預算都通過；S 相對 R 的額外成本超出 D18 的 8 點 0.9 與 3.3 點，plan 075 的 D21 已接受（見[設計決策](decisions.md)）。在 D21 改為每秒 10 格之前，錄影工作室的成本更高：30 fps 的 S 一開始 35.7%，音量表改為不經 React 繪製後 31.1%，改用單一重繪時脈後 28.9%（比 R 的 14.7–15.2% 多約 14 點），L 從 29.8% 降到 26.3%。第 2 步的原型在 2026-10-17 以開發用預覽頁面（而非錄影工作室）量測，有相機、無預覽時 30／60 fps 為 14.7%／21.2%（以 Core Image 合成時 30 fps 為 20.9%）。
 
@@ -478,7 +536,7 @@ pnpm acceptance:regression
 
 ### 聚焦測試 scope
 
-`pnpm test:scope`（[test-scope.mts](../../../scripts/test-scope.mts)，plan 070）從 [test-scopes.mts](../../../scripts/lib/runner/test-scopes.mts) 的 scope 目錄執行單一工作的檢查。每個 scope 描述一項行為與負責它的測試：Vitest 過濾條件（檔案、資料夾或檔名前綴），以及整份或依 Playwright tag 選取的背景 spec。Scope 有 `recording-settings`、`general`、`library` 與 `failures`（各對應一個設定分頁）、`layout`（共用元件、主題、縮放、視窗外框與完整視覺矩陣）、`player`、`countdown`、`shortcut`、`settings-bridge`（preload、IPC、持久化、啟動）、`studio`（鏡頭版面、輸入音量、Studio port 與預覽串流），以及只有單元測試的 `tray`（選單、動作、介面狀態）、`app-lifecycle`（結束、重新啟動、工作階段結束、錯誤對話框、重新開啟）、`platform`（權限、顯示器）、`main-lib`（主程序共用工具）、`recording` 與 `tooling`（scripts/ 全部，另依資料夾拆成 `tooling-runner`、`tooling-acceptance`、`tooling-analysis` 與 `tooling-release`），以及只有 Rust 測試的 `engine-file`（MP4 muxer、writer、AVC/AAC）、`engine-core`（pacing、timing、mixer、鏡頭、編碼執行緒）與 `engine-platform`（macOS 與 Windows 擷取，各在自己的平台執行）；`studio` 也會執行引擎的鏡頭版面與預覽閘門測試，其案例與 TypeScript 端共用。也可以在 scope 旁邊或改為直接指定測試檔。每次選取也會一併執行 source-boundary 與 style-guard 測試，它們讀取檔案而非 import，與 `pnpm test:changed` 相同。選取會合併且不重複：任何 scope 整份選取的 spec 就保持整份，否則 tag 相加；一次 Playwright 執行帶入所有選到的檔案，並以一個比對檔案、標題與 tag 的 `--grep` 選取，絕不依標題措辭選取。
+`pnpm test:scope`（[test-scope.mts](../../../scripts/test-scope.mts)，plan 070）從 [test-scopes.mts](../../../scripts/lib/runner/test-scopes.mts) 的 scope 目錄執行單一工作的檢查。每個 scope 描述一項行為與負責它的測試：Vitest 過濾條件（檔案、資料夾或檔名前綴），以及整份或依 Playwright tag 選取的背景 spec。Scope 有 `recording-settings`、`general`、`library` 與 `failures`（各對應一個設定分頁）、`layout`（共用元件、主題、縮放、視窗外框與完整視覺矩陣）、`player`、`countdown`、`shortcut`、`settings-bridge`（preload、IPC、持久化、啟動）、`studio`（鏡頭版面、輸入音量、Studio port 與預覽串流）、`pipeline-diagnostics`（plan 083 的數據：共用直方圖、報告、capture host 與頁面的數據行，以及引擎 core（含 diagnostics）、writer 與預覽閘門的測試），以及只有單元測試的 `tray`（選單、動作、介面狀態）、`app-lifecycle`（結束、重新啟動、工作階段結束、錯誤對話框、重新開啟）、`platform`（權限、顯示器）、`main-lib`（主程序共用工具）、`recording` 與 `tooling`（scripts/ 全部，另依資料夾拆成 `tooling-runner`、`tooling-acceptance`、`tooling-analysis` 與 `tooling-release`），以及只有 Rust 測試的 `engine-file`（MP4 muxer、writer、AVC/AAC）、`engine-core`（pacing、timing、mixer、鏡頭、編碼執行緒）與 `engine-platform`（macOS 與 Windows 擷取，各在自己的平台執行）；`studio` 也會執行引擎的鏡頭版面與預覽閘門測試，其案例與 TypeScript 端共用。也可以在 scope 旁邊或改為直接指定測試檔。每次選取也會一併執行 source-boundary 與 style-guard 測試，它們讀取檔案而非 import，與 `pnpm test:changed` 相同。選取會合併且不重複：任何 scope 整份選取的 spec 就保持整份，否則 tag 相加；一次 Playwright 執行帶入所有選到的檔案，並以一個比對檔案、標題與 tag 的 `--grep` 選取，絕不依標題措辭選取。
 
 各階段依序執行，遇到第一個未通過的就停止，並沿用配方 runner 的 process group 與清理：`pnpm typecheck`（三個專案都跑，因為檔案的 import 會延伸到檔案之外；`--no-typecheck` 會省略並註明）、對過濾條件執行 `vitest run`、任一 scope 指定原生 filter 時對其執行 `cargo test --lib` 並加跑 `pnpm lint:native` 與 `pnpm fmt:native:check`、只有選到 UI 案例且 `out/` 不是目前原始碼的建置時才 `pnpm build`，接著對選到的檔案執行 `playwright test --project=background`。dry run 以 `vitest list --filesOnly` 與 `playwright test --list` 列出，兩者都不載入 App，也不執行套件的 global setup。執行時印出每個階段與總時間；聚焦執行不寫報告檔。Exit 0 通過、1 失敗、2 為用法錯誤或套件 blocked（global setup 拒絕缺少或過期的 `out/`），中斷後為 130/143。
 
