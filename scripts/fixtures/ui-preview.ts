@@ -88,6 +88,8 @@ async function run(): Promise<void> {
   let libraryOverride: LibraryState | undefined;
   /** The Recording Studio's picture (2026-10-22): between recordings none, during one shown or hidden by Live preview. */
   let studio: NonNullable<AppContext["studio"]> = { showing: false };
+  /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
+  let cameraState: "waiting" | "notReady" | "lost" | undefined;
   // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
   const PREVIEW_DISPLAYS: AppContext["displays"] = [
     { id: "1", label: "BenQ BL2480T", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: false, x: -1080, y: -620 },
@@ -98,7 +100,7 @@ async function run(): Promise<void> {
     updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" }, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults,
     // The camera as a Mac has it (available since plan 075 step 7), on with its default bubble, for the Studio's tab.
     camera: { enabled: true, available: true, access: "granted", layout: DEFAULT_CAMERA_LAYOUT, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }],
-      ...(state.type === "recording" ? { session: { hidden: false } } : {}) },
+      ...(state.type === "recording" ? { session: { hidden: false, ...(cameraState ? { state: cameraState } : {}) } } : {}) },
     audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio,
     ...(state.type === "recording" ? { audioSession: { systemMuted: false } } : {}) });
   let entry = 0;
@@ -194,6 +196,11 @@ async function run(): Promise<void> {
       studio = { showing: true };
       await show(window, "studio");
       await shoot(window, `studio-recording-${lang}-${scheme}.png`, `the Studio while recording · ${lang} · ${scheme}`, { state: "recording" });
+      // The camera not yet giving a picture (plan 090): the Studio says so in its line of controls.
+      cameraState = "waiting";
+      await show(window, "studio");
+      await shoot(window, `studio-camera-waiting-${lang}-${scheme}.png`, `the Studio while recording, waiting for the camera · ${lang} · ${scheme}`, { state: "camera-waiting" });
+      cameraState = undefined;
       studio = { showing: false, pictureHidden: true };
       await show(window, "studio");
       await shoot(window, `studio-picture-hidden-${lang}-${scheme}.png`, `the Studio while recording, its picture hidden · ${lang} · ${scheme}`, { state: "picture-hidden" });

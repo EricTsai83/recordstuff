@@ -846,6 +846,30 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
   await host.evaluate(h => h.setSize(560, 680));
 });
 
+test("S142 the Studio's line of controls: Live preview beside Start, and what the camera is doing while a recording gives no picture of it, nothing over the picture (plan 090, 2026-10-23)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  const recording = (state?: "waiting" | "notReady" | "lost") => host.evaluate((h, state) => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.state.cameraContext = { ...h.baseContext(), studio: { showing: true },
+      camera: { enabled: true, available: true, access: "granted", session: { hidden: false, ...(state ? { state } : {}) } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  }, state);
+  await recording("waiting");
+  await page.locator("#tab-studio").click();
+  const controls = page.locator(".studio-controls");
+  await expect(controls.getByRole("switch", { name: "Live preview" }), "S142 Live preview is in the line of controls").toBeVisible();
+  await expect(page.locator(".camera-preview-stage").getByRole("switch"), "S142 nothing laid over the picture").toHaveCount(0);
+  await expect(controls.getByRole("status"), "S142 waiting for its first frame").toHaveText("Waiting for the camera…");
+  await expect(page.locator(".camera-preview-stage .camera-preview-status"), "S142 not over the picture").toHaveCount(0);
+  await recording("notReady");
+  await expect(controls.getByRole("status"), "S142 not ready").toHaveText("The camera is not ready.");
+  await recording("lost");
+  await expect(controls.getByRole("status"), "S142 lost").toHaveText("The camera dropped out. Reconnecting…");
+  await recording();
+  await expect(controls.getByRole("status"), "S142 nothing while it delivers").toHaveCount(0);
+  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);

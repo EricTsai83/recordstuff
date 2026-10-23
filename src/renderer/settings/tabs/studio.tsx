@@ -4,7 +4,7 @@
  * still a group main offers and answers (settings-model.ts), chosen the same way as anywhere in Settings.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { AudioLines, Camera, Eye, EyeOff, FlipHorizontal2, Radio, Square } from "lucide-react";
+import { AudioLines, Camera, CameraOff, Eye, EyeOff, FlipHorizontal2, Radio, Square } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
@@ -186,18 +186,17 @@ function AudioPanel() {
 }
 
 /**
- * Live preview, a switch of the preview's own laid over the picture (2026-10-21): what the picture shows is not what
- * the recording does. It shows while the pointer is over the picture or it has the focus: off, in the picture's middle,
- * where it is easy to reach; on, in its corner, out of the way of what it shows (2026-10-22).
+ * Live preview, a switch in the Studio's one line of controls beside Start and Stop (2026-10-23): always in sight, and
+ * nothing laid over the picture it shows. On, its signal is green, not the recording's red.
  */
 function LiveSwitch({ live }: { live: SettingsGroup }) {
   const on = model.committed(live) === "on";
   return (
-    <button type="button" role="switch" id={`setting-${live.id}`} className="studio-live" data-place={on ? "corner" : "centre"} aria-checked={on}
+    <Button id={`setting-${live.id}`} variant="outline" role="switch" aria-checked={on} className="studio-live h-8 gap-1.5 rounded-full px-3.5 text-xs"
       disabled={!live.enabled} aria-describedby={live.note ? `setting-${live.id}-note` : undefined}
       onClick={() => void model.choose(live.id, on ? "off" : "on", `setting-${live.id}`)}>
       <Radio aria-hidden="true" />{live.label}
-    </button>
+    </Button>
   );
 }
 
@@ -231,14 +230,17 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 }
 
 /**
- * One line over the preview (2026-10-21): the recording's phase and action. No bar or card of its own.
+ * One line over the preview (2026-10-21): the recording's phase and action, what the camera is doing when a session
+ * gives no picture of it (plan 090), and Live preview at its end (2026-10-23). No bar or card of its own.
  */
-function Toolbar({ controls }: { controls: SettingsGroup | undefined }) {
+function Toolbar({ controls, live, camera }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined; camera: string | undefined }) {
   if (!controls) return null;
   return (
     <section className="studio-controls" data-phase={controls.phase} aria-labelledby="studio-controls-heading">
       <h2 id="studio-controls-heading" className="sr-only">{controls.sectionHeading ?? controls.label}</h2>
       <RecordControl controls={controls} />
+      {camera && <p className="studio-camera-status" role="status"><CameraOff aria-hidden="true" />{camera}</p>}
+      {live && <LiveSwitch live={live} />}
       {controls.note && <p className="studio-note" role="status">{controls.note}</p>}
       <Failures groups={[controls]} />
     </section>
@@ -267,11 +269,11 @@ export function Studio() {
   const live = groupOf("studioLive");
   return (
     <div className="studio">
-      <Toolbar controls={controls} />
+      <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}>
-          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled}
-            describedBy={preview.info ? "setting-cameraPreview-info" : undefined} overlay={live && <LiveSwitch live={live} />} />
+          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside
+            describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
           {live?.note && <p id="setting-studioLive-note" className="studio-note" role="status">{live.note}</p>}
           {/* How to move the bubble, for assistive technology only: on screen the bubble shows it can be dragged. */}
           {preview.info && <p id="setting-cameraPreview-info" className="sr-only">{preview.info}</p>}

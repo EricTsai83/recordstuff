@@ -8,7 +8,7 @@
  * recording composes the camera, the page asks main for the engine's preview of the whole picture (D17), also only
  * while in sight, and the bubble is dragged over it unseen, with a word under the picture when the camera gives none.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
 import { previewDecoder } from "../../lib/preview-decoder";
@@ -127,10 +127,10 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
   return drawing;
 }
 
-export function CameraPreview({ group, preview, disabled, describedBy, overlay }: {
+export function CameraPreview({ group, preview, disabled, describedBy, statusOutside }: {
   group: SettingsGroup; preview: CameraPreviewView; disabled: boolean; describedBy: string | undefined;
-  /** A control laid over the picture, as the Studio's Live preview is. */
-  overlay?: ReactNode;
+  /** The Studio says a session's status in its own line of controls (2026-10-23), not over the picture. */
+  statusOutside?: boolean;
 }) {
   const id = `setting-${group.id}`;
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
@@ -236,8 +236,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, overlay }
           onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}
           onKeyDown={onKeyDown}
         />}
-        {status && <p className="camera-preview-status">{status}</p>}
-        {overlay}
+        {status && !(statusOutside && preview.mode === "recording") && <p className="camera-preview-status">{status}</p>}
       </div>
       <span id={`${id}-position`} className="sr-only">
         {translate("{x}% from the left, {y}% from the top", model.view?.language, { x: Math.round(position.x * 100), y: Math.round(position.y * 100) })}
