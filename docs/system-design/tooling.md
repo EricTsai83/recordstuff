@@ -185,13 +185,13 @@ D18's 8 points hold while the Studio is only watched and are exceeded by 2–3 p
 
 **With the iPhone's camera** (the maintainer's Continuity Camera at their go-ahead, a separate round on the same bundle, `--camera device=<its id>,preview=0 --studio --diagnostics`; report `083-r7-camera`): R 12.3% at 30 fps, about 2 points over the screen alone; S 19.2% / 23.4% at 30 / 60 fps, 6.9 / 7.2 points over R, within D18 while only watched; L 16.8% / 17.1%. Composing the camera (`compose`) took p50 1.7–1.9 ms and p95 5.6–7.7 ms a frame, the encoder's latency p50 18.4 ms at 30 fps and 22.5 ms at 60, the capture process at most 113 MB; nothing was dropped. The camera's picture was 112–124 ms older than its frame (075: 113.9 ms). In both recordings started right after the Studio closed, the camera delivered its first frame only after 2.5 s and 12 s, so each was told lost and then resumed; the 60 fps R composed the camera for about 48 of its 60 s, and its 16.2% is low for that.
 
-**Budgets for 084–088.** Measured against the same workloads with `--diagnostics`, until a plan measures its own:
+**Budgets for the open plans (090–094, 084, 085, 087).** Measured against the same workloads with `--diagnostics`, until a plan measures its own; the plans that retake parts of this baseline, and when, are listed in the plan index's [baselines](../../plans/README.md#baselines):
 
 - Recording CPU stays within this section's spread of its median (and `CPU_BUDGET`); an optimization counts only when it improves the median by more than that spread and at least 10%, with the recording's integrity checks unchanged.
 - Queues stay bounded as now: no encoder drop, frames waiting for the encoder at most 4, the writer's backlog under 1 MB at Standard quality.
 - The preview delivers what it makes: 0 missed and 0 gate drops for a page that keeps up, the port's p95 at most 1 ms, decoding and drawing p95 at most 6 ms; 084 measures a slow consumer against these.
 - Memory: the capture process at most about 110 MB with the preview (113 MB with the camera), the Studio's renderer about 270 MB; a new cost is reported apart from any saving.
-- The editing plans' (085–088) budgets are provisional until each measures its own work; their cost is a new feature's, judged against these baselines rather than hidden in them.
+- The editing plans' (085 and 087) budgets are provisional until each measures its own work; their cost is a new feature's, judged against these baselines rather than hidden in them.
 
 ### Finalization measurement
 
