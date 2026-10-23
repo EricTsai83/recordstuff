@@ -20,6 +20,8 @@ struct State<F> {
     latest: Option<(F, u64)>,
     /// Host time a frame last arrived; 0 before the first.
     heard_ns: u64,
+    /// The recording's start, as `judge` was last told it; 0 before the recording.
+    since_ns: u64,
     lost: bool,
     delivered: u64,
     losses: u64,
@@ -32,16 +34,17 @@ pub struct CameraFeed<F> {
 
 impl<F: Clone> Default for CameraFeed<F> {
     fn default() -> Self {
-        Self { state: Mutex::new(State { latest: None, heard_ns: 0, lost: false, delivered: 0, losses: 0 }) }
+        Self { state: Mutex::new(State { latest: None, heard_ns: 0, since_ns: 0, lost: false, delivered: 0, losses: 0 }) }
     }
 }
 
 impl<F: Clone> CameraFeed<F> {
     /// A frame captured at `pts_ns`, arriving at `now_ns`: it replaces the one before. Tells the camera's return when
-    /// it was lost.
+    /// it was lost, with the silence measured as `judge` measures it: from the recording's start if the camera
+    /// delivered nothing before it (plan 093).
     pub fn deliver(&self, frame: F, pts_ns: u64, now_ns: u64, events: &dyn Events) {
         let mut state = self.state.lock().unwrap();
-        let gap = now_ns.saturating_sub(state.heard_ns);
+        let gap = now_ns.saturating_sub(state.heard_ns.max(state.since_ns));
         state.latest = Some((frame, pts_ns));
         state.heard_ns = now_ns;
         state.delivered += 1;
@@ -63,6 +66,9 @@ impl<F: Clone> CameraFeed<F> {
     /// the recording's start, if it delivered nothing before it).
     pub fn judge(&self, now_ns: u64, since_ns: u64, recording: bool, events: &dyn Events) {
         let mut state = self.state.lock().unwrap();
+        if recording {
+            state.since_ns = since_ns;
+        }
         let heard = state.heard_ns.max(since_ns);
         if !recording || state.lost || now_ns.saturating_sub(heard) <= CAMERA_SILENT_NS {
             return;

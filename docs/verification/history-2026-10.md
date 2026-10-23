@@ -4,6 +4,16 @@
 
 [Back to the verification index](README.md). These are historical results; use the [testing guide](../testing.md) for current policy. Raw measurements links are local only and absent from a fresh clone.
 
+## Plan 093 closure — 2026-10-23
+
+Plan 093 (the camera's resumption names the real gap), split from 090 at the maintainer's request, ran on 2026-10-23 on the working tree from `fab860fb`. Claude implemented it; no desktop round was run, as the plan requires none.
+
+- **The defect.** `CameraFeed::deliver` measured a resumption's gap from `heard_ns`, which is 0 before a camera's first frame, so a camera that delivered nothing until after it was told lost gave the host's uptime: 083's camera round logged 2478244.7 s for about 2.5 s ([record](#plan-083-closure--2026-10-23)). It had existed since plan 075.
+- **The fix.** The feed keeps the recording's start as `judge` is told it on the refresh thread (`since_ns`), and `deliver` measures from `heard_ns.max(since_ns)`, the reference `judge` already used for the loss ([camera.rs](../../native/capture/src/core/camera.rs)). The message's wording, the event's shape, `CAMERA_SILENT_NS` and the platforms' calls are unchanged; 090's start rule is not touched.
+- **Tests.** A new case in `core/tests.rs` with explicit host times: a camera silent from a recording started at 1000 s of uptime, back 2.5 s in, reports 2.5 s; one that delivered and was silent 4.3 s reports 4.3 s (and is not lost at exactly 2 s); a frame before the recording followed by silence reports the gap from the recording's start. The existing loss cases pass unchanged.
+- **Checks.** `pnpm test:scope -- pipeline-diagnostics` (67 Rust tests under its filters, Clippy, fmt) and `pnpm check` passed (176 files, 2093 TypeScript tests; 149 Rust tests, 7 ignored; the build and the engine's load).
+- **Untested.** The message on hardware, which 090's camera round observes; a loss the platform tells (`lose`) before the refresh thread's first judgement of the recording, within its first 100 ms, still measures from 0 for a camera that has delivered nothing; Windows, by CI only, as 076's D8 says.
+
 ## Plan 083 closure — 2026-10-23
 
 Plan 083 (media pipeline measurement and budgets), the first of the Glide-inspired 083–088 series, ran on 2026-10-23 on signed bundles built by `pnpm start:app` from `3b76a8cb` with the plan's changes (reference M1 Pro, macOS 26.6.2, two BenQ displays, the MacBook's lid closed). Claude implemented and ran every round after the maintainer's go-ahead; the rounds without a camera held the Camera switch off, and a seventh round, after the maintainer allowed it, used their iPhone's Continuity Camera. Reports: `docs/verification/measurements/083-r1-off` to `083-r7-camera` (local only).

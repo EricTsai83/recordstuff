@@ -4,6 +4,16 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 093 結案 — 2026-10-23
+
+Plan 093（相機恢復訊息寫出實際間隔）依維護者要求從 090 拆出，2026-10-23 在 `fab860fb` 的工作樹上執行。由 Claude 實作；依計畫不需要桌面回合，也沒有跑。
+
+- **缺陷。** `CameraFeed::deliver` 從 `heard_ns` 計算恢復的間隔，而相機送出第一格前 `heard_ns` 為 0，所以直到被判中斷後才送出畫面的相機，會回報主機的開機時間：083 的相機回合把約 2.5 秒記成 2478244.7 秒（[紀錄](#plan-083-結案--2026-10-23)）。這個問題從 plan 075 就存在。
+- **修正。** feed 保存 refresh 執行緒呼叫 `judge` 時告知的錄影開始時間（`since_ns`），`deliver` 改從 `heard_ns.max(since_ns)` 計算，與 `judge` 判斷中斷時用的基準相同（[camera.rs](../../../native/capture/src/core/camera.rs)）。訊息文字、事件格式、`CAMERA_SILENT_NS` 與各平台的呼叫都不變；沒有改動 090 的開始規則。
+- **測試。** `core/tests.rs` 新增一個以明確主機時間撰寫的案例：在開機 1000 秒時開始的錄影中，從一開始就沒有畫面、2.5 秒後恢復的相機回報 2.5 秒；送出過畫面後靜默 4.3 秒的相機回報 4.3 秒（剛好 2 秒時不算中斷）；錄影前送出一格、之後靜默的相機，從錄影開始計算。既有的中斷案例不變且通過。
+- **檢查。** `pnpm test:scope -- pipeline-diagnostics`（其篩選下 67 個 Rust 測試、Clippy、fmt）與 `pnpm check` 通過（176 個檔案、2093 個 TypeScript 測試；149 個 Rust 測試、7 個 ignored；建置與引擎載入）。
+- **未測試。** 實機上的訊息，由 090 的相機回合觀察；平台在錄影開始後、refresh 執行緒第一次 judge 之前（前 100 ms 內）以 `lose` 回報的中斷，若相機還沒送出任何畫面，仍會從 0 計算；Windows 只由 CI 檢查，依 076 的 D8。
+
 ## Plan 083 結案 — 2026-10-23
 
 Plan 083（媒體管線量測與預算）是 Glide 參考系列 083–088 的第一個，2026-10-23 在 `pnpm start:app` 從 `3b76a8cb` 加上本計畫變更所建置的簽章 bundle 上執行（M1 Pro 參考機，macOS 26.6.2，兩台 BenQ 螢幕，MacBook 闔上蓋子）。維護者同意後，由 Claude 實作並執行每個回合；沒有相機的回合都把「相機」開關保持關閉，維護者同意後的第七輪使用其 iPhone 的 Continuity Camera。報告：`docs/verification/measurements/083-r1-off` 至 `083-r7-camera`（僅本機）。

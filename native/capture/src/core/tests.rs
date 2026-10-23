@@ -1077,6 +1077,35 @@ fn a_camera_is_never_told_lost_before_the_recording_or_when_it_delivers() {
 }
 
 #[test]
+fn a_camera_s_return_names_the_silence_from_the_recording_s_start_or_its_last_frame() {
+    let heard = Heard::default();
+    let resumed = |heard: &Heard| heard.camera_resumed.lock().unwrap().last().cloned();
+    // Silent from the start of a recording begun at 1000 s of host uptime: lost after 2 s, back 2.5 s in.
+    let silent = CameraFeed::<u32>::default();
+    let start = 1_000 * NANOS_PER_SECOND;
+    silent.judge(start + 2_100_000_000, start, true, &heard);
+    assert!(silent.is_lost());
+    silent.deliver(1, start + 2_500_000_000, start + 2_500_000_000, &heard);
+    assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered frames again after 2.5 s"));
+    // Delivering, then silent from 1003 s: lost at 1005.1 s, back at 1007.3 s after 4.3 s of silence.
+    silent.deliver(2, 1_003 * NANOS_PER_SECOND, 1_003 * NANOS_PER_SECOND, &heard);
+    silent.judge(1_005_000_000_000, start, true, &heard);
+    assert!(!silent.is_lost(), "2 s of silence is not yet a loss");
+    silent.judge(1_005_100_000_000, start, true, &heard);
+    assert!(silent.is_lost());
+    silent.deliver(3, 1_007_300_000_000, 1_007_300_000_000, &heard);
+    assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered frames again after 4.3 s"));
+    assert_eq!(heard.camera_resumed.lock().unwrap().len(), 2);
+    assert_eq!(silent.counts(), (3, 2));
+    // A frame before the recording, then silence: measured from that frame's recording start, not from 0.
+    let before = CameraFeed::<u32>::default();
+    before.deliver(1, 500 * NANOS_PER_SECOND, 500 * NANOS_PER_SECOND, &heard);
+    before.judge(start + 2_100_000_000, start, true, &heard);
+    before.deliver(2, start + 3 * NANOS_PER_SECOND, start + 3 * NANOS_PER_SECOND, &heard);
+    assert_eq!(resumed(&heard).as_deref(), Some("the camera delivered frames again after 3.0 s"));
+}
+
+#[test]
 fn the_camera_is_closed_however_the_session_ends() {
     // A stop: closed once capture has ended, before the file is finished.
     let mut stopped = Rig::new("camera-stop");
