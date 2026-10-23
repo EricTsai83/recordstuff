@@ -80,13 +80,16 @@ pub struct Video {
     encoder: VideoEncoder,
     compositor: Option<Arc<Compositor>>,
     composition: Composition,
+    /// The session's stage figures (plan 083): composing is timed apart from the submission that includes it.
+    diagnostics: Option<Arc<core::Diagnostics>>,
 }
 
 impl VideoEncode<Frame> for Video {
     fn encode(&self, frame: &Frame, pts_ns: u64, key_frame: bool) -> Result<(), String> {
         // Hidden (D13): the screen's own frame, exactly as with the camera off.
         match self.compositor.as_ref().filter(|compositor| !compositor.hidden()) {
-            Some(compositor) => match self.composition.picture(compositor.compose(&frame.image, pts_ns)) {
+            Some(compositor) => match self.composition.picture(timed(self.diagnostics.as_deref(), |d| &d.compose, || compositor.compose(&frame.image, pts_ns)))
+            {
                 Some(composed) => self.encoder.encode(&composed, pts_ns, key_frame),
                 None => self.encoder.encode(&frame.image, pts_ns, key_frame),
             },
@@ -97,6 +100,15 @@ impl VideoEncode<Frame> for Video {
     fn flush(&self) {
         self.encoder.flush()
     }
+}
+
+/// Runs `work`, timed into `stage` of `diagnostics` when the session keeps figures (plan 083).
+fn timed<T>(diagnostics: Option<&core::Diagnostics>, stage: impl Fn(&core::Diagnostics) -> &core::diagnostics::Histogram, work: impl FnOnce() -> T) -> T {
+    let Some(diagnostics) = diagnostics else { return work() };
+    let began = Instant::now();
+    let result = work();
+    stage(diagnostics).record_ns(began.elapsed().as_nanos() as u64);
+    result
 }
 
 /// Whether composing the camera into the frames works (plan 075, D12: the camera is the recording's optional part). A
@@ -157,7 +169,8 @@ impl Preview {
         let fps = Arc::new(AtomicU32::new(PREVIEW_FPS));
         let rate = fps.clone();
         let (width, height) = compositor.preview_size();
-        let sink = Arc::new(core::PreviewSink::new(shared.events()));
+        let diagnostics = shared.diagnostics();
+        let sink = Arc::new(core::PreviewSink::new(shared.events()).timed(diagnostics.clone(), now_ns));
         let encoder = VideoEncoder::for_preview(width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
         let thread = std::thread::Builder::new()
             .name("recordstuff-preview".into())
@@ -180,7 +193,7 @@ impl Preview {
                         // Resting: this tick shows nothing. A first frame never waits, the key frame a new watcher needs.
                     } else if let Some(frame) = shared.newest() {
                         // A preview is a convenience: one that fails ends, the recording does not.
-                        let Ok(picture) = compositor.preview(&frame.image) else { return };
+                        let Ok(picture) = timed(diagnostics.as_deref(), |d| &d.preview_compose, || compositor.preview(&frame.image)) else { return };
                         if encoder.encode(&picture, now_ns(), first).is_err() {
                             return;
                         }
@@ -495,10 +508,11 @@ impl Session {
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
         let encoding_compositor = compositor.clone();
         let composition = Composition::new(core.shared().events());
+        let diagnostics = core.shared().diagnostics();
         let encoders = core.make_encoders(move |sink| {
             let encoder = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
             let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
-            Ok((Video { encoder, compositor: encoding_compositor, composition }, audio))
+            Ok((Video { encoder, compositor: encoding_compositor, composition, diagnostics }, audio))
         })?;
 
         // The picture's stream carries the sound too when its filter is the sound's.
@@ -704,6 +718,11 @@ impl Session {
 
     pub fn frames_seen(&self) -> u64 {
         self.core.frames_seen()
+    }
+
+    /// The session's stage figures, when the development switch asks for them (plan 083).
+    pub fn diagnostics(&self) -> Option<Arc<core::Diagnostics>> {
+        self.core.shared().diagnostics()
     }
 }
 

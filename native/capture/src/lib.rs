@@ -270,6 +270,9 @@ const PREVIEW_IN_FLIGHT: usize = 2;
 pub struct PreviewGate {
     in_flight: std::sync::atomic::AtomicUsize,
     awaiting_key: std::sync::atomic::AtomicBool,
+    /// Chunks sent and dropped (refused or never queued) by this process (plan 083), which runs one session.
+    sent: std::sync::atomic::AtomicU64,
+    dropped: std::sync::atomic::AtomicU64,
 }
 
 impl PreviewGate {
@@ -277,15 +280,24 @@ impl PreviewGate {
     pub fn admit(&self, key: bool) -> bool {
         use std::sync::atomic::Ordering;
         if !key && self.awaiting_key.load(Ordering::Acquire) {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
             return false;
         }
         if self.in_flight.fetch_add(1, Ordering::AcqRel) >= PREVIEW_IN_FLIGHT {
             self.in_flight.fetch_sub(1, Ordering::AcqRel);
             self.awaiting_key.store(true, Ordering::Release);
+            self.dropped.fetch_add(1, Ordering::Relaxed);
             return false;
         }
         self.awaiting_key.store(false, Ordering::Release);
+        self.sent.fetch_add(1, Ordering::Relaxed);
         true
+    }
+
+    /// Chunks sent and dropped so far.
+    pub fn counts(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering;
+        (self.sent.load(Ordering::Relaxed), self.dropped.load(Ordering::Relaxed))
     }
 
     pub fn done(&self) {
@@ -296,6 +308,9 @@ impl PreviewGate {
     pub fn lost(&self) {
         self.done();
         self.awaiting_key.store(true, std::sync::atomic::Ordering::Release);
+        // Counted as sent by `admit`: it is a drop after all.
+        self.sent.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -404,6 +419,10 @@ type Session = ();
 type Finishing = core::Finishing;
 #[cfg(not(any(target_os = "macos", windows)))]
 type Finishing = ();
+#[cfg(any(target_os = "macos", windows))]
+type SessionDiagnostics = Arc<core::Diagnostics>;
+#[cfg(not(any(target_os = "macos", windows)))]
+type SessionDiagnostics = ();
 
 #[napi]
 pub struct NativeCapture {
@@ -417,6 +436,8 @@ pub struct NativeCapture {
     meter: Arc<Mutex<Option<Meter>>>,
     /// The device list followed while Settings is open (D2).
     devices: Mutex<Option<DeviceWatch>>,
+    /// The last prepared session's stage figures (plan 083), until the next session is prepared.
+    diagnostics: Arc<Mutex<Option<SessionDiagnostics>>>,
 }
 
 #[napi]
@@ -431,7 +452,28 @@ impl NativeCapture {
             preview: Arc::new(Mutex::new(None)),
             meter: Arc::new(Mutex::new(None)),
             devices: Mutex::new(None),
+            diagnostics: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// The latest session's stage figures so far as JSON (plan 083, core/diagnostics.rs), with the preview chunks this
+    /// process sent to and dropped before the JavaScript thread; null unless the session keeps figures
+    /// (`RECORDSTUFF_DIAGNOSTICS=1`). Cumulative and read as often as wanted: the capture host reads them while the
+    /// session runs, since main ends a Live preview by ending the process, and once more when the session has ended.
+    #[napi]
+    pub fn diagnostics(&self) -> Option<String> {
+        let current = self.diagnostics.lock().unwrap().clone();
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let diagnostics = current?;
+            let (sent, dropped) = self.preview.lock().unwrap().as_ref().map_or((0, 0), |sink| sink.gate.counts());
+            Some(diagnostics.json(&[("preview_gate_sent", sent), ("preview_gate_dropped", dropped)]))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = current;
+            None
+        }
     }
 
     /// Sends preview frames of the composed picture to `on_frame` while a session with the camera prototype runs.
@@ -517,7 +559,13 @@ impl NativeCapture {
 
     #[napi(ts_return_type = "Promise<PreparedInfo>")]
     pub fn prepare(&self, options: PrepareOptions) -> AsyncTask<PrepareTask> {
-        AsyncTask::new(PrepareTask { options: Some(options), session: self.session.clone(), events: self.events.clone(), preview: self.preview.clone() })
+        AsyncTask::new(PrepareTask {
+            options: Some(options),
+            session: self.session.clone(),
+            events: self.events.clone(),
+            preview: self.preview.clone(),
+            diagnostics: self.diagnostics.clone(),
+        })
     }
 
     /// The camera's bubble and whether it is shown (plan 075, D7 and D13), from the next frame on; answers false when
@@ -766,6 +814,7 @@ pub struct PrepareTask {
     session: Arc<Mutex<Option<Session>>>,
     events: Arc<EventCallback>,
     preview: Arc<Mutex<Option<PreviewSink>>>,
+    diagnostics: Arc<Mutex<Option<SessionDiagnostics>>>,
 }
 
 impl Task for PrepareTask {
@@ -808,6 +857,7 @@ impl Task for PrepareTask {
             };
             let (session, prepared) =
                 Session::prepare(request, Arc::new(Emitter(self.events.clone(), self.preview.clone()))).map_err(|e| failure(e.code, e.detail))?;
+            *self.diagnostics.lock().unwrap() = session.diagnostics();
             *self.session.lock().unwrap() = Some(session);
             Ok(PreparedInfo {
                 width: prepared.width,
@@ -973,5 +1023,18 @@ mod preview_gate_tests {
         gate.lost();
         assert!(!gate.admit(false));
         assert!(gate.admit(true));
+    }
+
+    #[test]
+    fn the_gate_counts_what_it_sent_and_dropped_until_read() {
+        let gate = PreviewGate::default();
+        assert!(gate.admit(true));
+        assert!(gate.admit(false));
+        assert!(!gate.admit(false));
+        gate.done();
+        gate.lost();
+        assert_eq!(gate.counts(), (1, 2));
+        assert!(gate.admit(true));
+        assert_eq!(gate.counts(), (2, 2));
     }
 }

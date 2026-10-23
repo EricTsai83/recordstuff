@@ -20,6 +20,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 mod camera;
+pub mod diagnostics;
 mod frame_log;
 pub mod meter;
 mod mixer;
@@ -28,6 +29,7 @@ use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
 use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
 pub use camera::{CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
+pub use diagnostics::Diagnostics;
 pub use frame_log::FrameLog;
 use mixer::Mixer;
 
@@ -159,11 +161,22 @@ pub struct PreviewChunk {
 pub struct PreviewSink {
     events: Arc<dyn Events>,
     format: Mutex<Option<(Vec<u8>, u32, u32)>>,
+    /// The session's stage figures (plan 083) and the clock its frames are stamped on.
+    diagnostics: Option<(Arc<Diagnostics>, Clock)>,
 }
+
+/// A platform's host clock, in nanoseconds.
+type Clock = fn() -> u64;
 
 impl PreviewSink {
     pub fn new(events: Arc<dyn Events>) -> Self {
-        Self { events, format: Mutex::new(None) }
+        Self { events, format: Mutex::new(None), diagnostics: None }
+    }
+
+    /// Counts the chunks and times each from its frame's submission, stamped by `now`, when the session keeps figures.
+    pub fn timed(mut self, diagnostics: Option<Arc<Diagnostics>>, now: fn() -> u64) -> Self {
+        self.diagnostics = diagnostics.map(|diagnostics| (diagnostics, now));
+        self
     }
 }
 
@@ -172,6 +185,10 @@ impl VideoSink for PreviewSink {
         match media {
             Media::VideoFormat { avcc, width, height } => *self.format.lock().unwrap() = Some((avcc, u32::from(width), u32::from(height))),
             Media::Video { data, pts_ns, sync } => {
+                if let Some((diagnostics, now)) = self.diagnostics.as_ref() {
+                    diagnostics.preview_chunks.fetch_add(1, Ordering::Relaxed);
+                    diagnostics.preview_encode.record_ns(now().saturating_sub(pts_ns));
+                }
                 let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
                 self.events.preview(PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
             }
@@ -187,6 +204,8 @@ impl VideoSink for PreviewSink {
 pub trait VideoSink: Send + Sync {
     fn media(&self, media: Media);
     fn failed(&self, detail: String);
+    /// The encoder answered a frame without a sample: it dropped it.
+    fn dropped(&self) {}
 }
 
 /// An H.264 encoder that sends `Media::VideoFormat` once and then each sample to its `VideoSink`.
@@ -492,6 +511,8 @@ pub struct Shared<P: Platform> {
     /// The camera composed into the frames (plan 075): judged on the refresh thread, closed when capture ends.
     camera: Mutex<Option<Arc<dyn CameraControl>>>,
     meters: Meters,
+    /// The stage figures, when the development switch asks for them (plan 083, diagnostics.rs).
+    diagnostics: Option<Arc<Diagnostics>>,
 }
 
 impl<P: Platform> Shared<P> {
@@ -521,8 +542,31 @@ impl<P: Platform> Shared<P> {
         self.events.capture_failed(code, detail);
     }
 
+    /// Hands `frame` at `pts` to the encoder, timed when the session keeps figures (plan 083).
+    fn submit(&self, encoder: &P::Video, frame: &P::Frame, pts: u64, key_frame: bool) -> Result<(), String> {
+        let Some(diagnostics) = self.diagnostics.as_ref() else { return encoder.encode(frame, pts, key_frame) };
+        // Remembered before the call: an encoder may hand the sample back before it returns.
+        diagnostics.submitted(pts, P::now_ns());
+        let began = Instant::now();
+        let result = encoder.encode(frame, pts, key_frame);
+        diagnostics.encode_submit.record_ns(began.elapsed().as_nanos() as u64);
+        result
+    }
+
+    /// The session's stage figures, when the development switch asks for them.
+    pub fn diagnostics(&self) -> Option<Arc<Diagnostics>> {
+        self.diagnostics.clone()
+    }
+
     /// A complete frame captured at `pts` host time. Kept as the newest; encoded when the pacer wants it.
     pub fn frame(&self, frame: P::Frame, pts: u64) {
+        let Some(diagnostics) = self.diagnostics.as_ref() else { return self.take_frame(frame, pts) };
+        let began = Instant::now();
+        self.take_frame(frame, pts);
+        diagnostics.capture_callback.record_ns(began.elapsed().as_nanos() as u64);
+    }
+
+    fn take_frame(&self, frame: P::Frame, pts: u64) {
         self.frames_seen.fetch_add(1, Ordering::Relaxed);
         let recording = self.phase.load(Ordering::Acquire) == RECORDING;
         if recording {
@@ -551,7 +595,7 @@ impl<P: Platform> Shared<P> {
         video.pending = eligible && !wanted && video.pacer.is_some();
         if wanted {
             if let Some(encoder) = video.encoder.as_ref()
-                && let Err(detail) = encoder.encode(&frame, pts, false)
+                && let Err(detail) = self.submit(encoder, &frame, pts, false)
             {
                 drop(guard);
                 self.fail(detail);
@@ -573,7 +617,7 @@ impl<P: Platform> Shared<P> {
             return Ok(());
         }
         if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
-            encoder.encode(frame, at, false)?;
+            self.submit(encoder, frame, at, false)?;
         }
         video.last_encoded_ns = at;
         video.pending = false;
@@ -615,7 +659,7 @@ impl<P: Platform> Shared<P> {
             return;
         }
         if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref())
-            && let Err(detail) = encoder.encode(frame, pts, false)
+            && let Err(detail) = self.submit(encoder, frame, pts, false)
         {
             drop(guard);
             self.fail(detail);
@@ -820,11 +864,20 @@ impl<P: Platform> Shared<P> {
 
 impl<P: Platform> VideoSink for Shared<P> {
     fn media(&self, media: Media) {
+        if let (Some(diagnostics), Media::Video { pts_ns, .. }) = (self.diagnostics.as_ref(), &media) {
+            diagnostics.encoded(*pts_ns, P::now_ns());
+        }
         self.send(media);
     }
 
     fn failed(&self, detail: String) {
         self.fail(detail);
+    }
+
+    fn dropped(&self) {
+        if let Some(diagnostics) = self.diagnostics.as_ref() {
+            diagnostics.encoder_dropped.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -865,6 +918,7 @@ impl<P: Platform> Core<P> {
             every_slot: AtomicBool::new(false),
             camera: Mutex::new(None),
             meters: Meters::default(),
+            diagnostics: Diagnostics::from_env().map(Arc::new),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
     }
@@ -993,7 +1047,8 @@ impl<P: Platform> Core<P> {
             }
         };
         let events = self.shared.events.clone();
-        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: Some(config) }, move |event| match event {
+        let diagnostics = self.shared.diagnostics.clone();
+        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: Some(config), diagnostics }, move |event| match event {
             WriterEvent::Progress { bytes } => events.progress(bytes),
             WriterEvent::Failed(failure) => events.write_failed(failure),
         })
@@ -1045,7 +1100,7 @@ impl<P: Platform> Core<P> {
                 if at >= stop_ns {
                     // No time left before the stop to show it.
                 } else if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref())
-                    && encoder.encode(frame, at, false).is_ok()
+                    && self.shared.submit(encoder, frame, at, false).is_ok()
                 {
                     video.last_encoded_ns = at;
                     self.shared.log_frame(video, at, "stop", true);
@@ -1167,7 +1222,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         let mut guard = shared.video.lock().unwrap();
         let video = &mut *guard;
         let first = match (video.encoder.as_ref(), video.last.as_ref()) {
-            (Some(encoder), Some(frame)) => encoder.encode(frame, t0, true),
+            (Some(encoder), Some(frame)) => shared.submit(encoder, frame, t0, true),
             _ => Err("no frame to start the recording with".into()),
         };
         if let Err(detail) = first {
@@ -1236,7 +1291,7 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
         let Some((at, kind)) = at else { continue };
         video.pending = false;
         let result = match (video.encoder.as_ref(), video.last.as_ref()) {
-            (Some(encoder), Some(frame)) => encoder.encode(frame, at, false),
+            (Some(encoder), Some(frame)) => shared.submit(encoder, frame, at, false),
             _ => Ok(()),
         };
         video.last_encoded_ns = at;

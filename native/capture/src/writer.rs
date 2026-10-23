@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::core::Diagnostics;
 use crate::mux::mp4::{Codec, FinishReport, TrackConfig};
 use crate::mux::session::SessionMuxer;
 use crate::timing::ticks;
@@ -43,14 +44,11 @@ impl Media {
 }
 
 enum Command {
-    Media(Media),
+    /// With when it was handed over, while the session keeps figures (plan 083).
+    Media(Media, Option<Instant>),
     /// Write what is pending and make the file plain; video lasts until `video_end_ns`, and the audio track presents
     /// `audio_frames` frames after the encoder's priming.
-    Finish {
-        video_end_ns: u64,
-        audio_frames: Option<u64>,
-        reply: Sender<Result<FinishReport, WriteFailure>>,
-    },
+    Finish { video_end_ns: u64, audio_frames: Option<u64>, reply: Sender<Result<FinishReport, WriteFailure>> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -79,6 +77,8 @@ pub struct WriterConfig {
     /// Host time of the recording's start; video times count from it.
     pub t0_ns: u64,
     pub audio: Option<AudioSpec>,
+    /// The session's stage figures, when the development switch asks for them (plan 083).
+    pub diagnostics: Option<Arc<Diagnostics>>,
 }
 
 pub fn classify(error: &std::io::Error) -> &'static str {
@@ -103,6 +103,7 @@ pub struct MediaSender {
     /// Set once media was refused for the backlog; `finish` then reports it.
     refused: Arc<Mutex<Option<WriteFailure>>>,
     events: Events,
+    diagnostics: Option<Arc<Diagnostics>>,
 }
 
 impl MediaSender {
@@ -123,8 +124,12 @@ impl MediaSender {
             (self.events)(WriterEvent::Failed(failure));
             return;
         }
-        self.backlog.fetch_add(size, Ordering::AcqRel);
-        let _ = self.commands.send(Command::Media(media));
+        let backlog = self.backlog.fetch_add(size, Ordering::AcqRel) + size;
+        let queued = self.diagnostics.as_ref().map(|diagnostics| {
+            diagnostics.queued(backlog);
+            Instant::now()
+        });
+        let _ = self.commands.send(Command::Media(media, queued));
     }
 
     /// Asks the writer to finish the file; the answer arrives on the returned receiver.
@@ -144,7 +149,8 @@ pub struct Writer {
 pub fn spawn(config: WriterConfig, events: impl Fn(WriterEvent) + Send + Sync + 'static) -> std::io::Result<Writer> {
     let (commands, receiver) = channel();
     let events: Events = Arc::new(events);
-    let sender = MediaSender { commands, backlog: Arc::new(AtomicU64::new(0)), refused: Arc::new(Mutex::new(None)), events: events.clone() };
+    let diagnostics = config.diagnostics.clone();
+    let sender = MediaSender { commands, backlog: Arc::new(AtomicU64::new(0)), refused: Arc::new(Mutex::new(None)), events: events.clone(), diagnostics };
     let (backlog, refused) = (sender.backlog.clone(), sender.refused.clone());
     let thread = std::thread::Builder::new().name("recordstuff-writer".into()).spawn(move || run(config, receiver, &*events, &backlog, &refused))?;
     Ok(Writer { sender, thread })
@@ -162,6 +168,7 @@ struct State {
 }
 
 fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(WriterEvent), backlog: &AtomicU64, refused: &Mutex<Option<WriteFailure>>) {
+    let diagnostics = config.diagnostics;
     let mut state = State {
         file: Some(config.file),
         t0_ns: config.t0_ns,
@@ -176,11 +183,21 @@ fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(Writer
     loop {
         let wait = next_sync.min(next_progress).saturating_duration_since(Instant::now());
         match receiver.recv_timeout(wait) {
-            Ok(Command::Media(media)) => {
+            Ok(Command::Media(media, queued)) => {
                 state.media_since_progress = true;
                 let size = media.len();
+                let took = match (diagnostics.as_ref(), queued) {
+                    (Some(diagnostics), Some(queued)) => {
+                        diagnostics.taken(queued.elapsed().as_nanos() as u64);
+                        Some(Instant::now())
+                    }
+                    _ => None,
+                };
                 if let Err(failure) = state.take(media) {
                     state.fail(failure, &events);
+                }
+                if let (Some(diagnostics), Some(took)) = (diagnostics.as_ref(), took) {
+                    diagnostics.write.record_ns(took.elapsed().as_nanos() as u64);
                 }
                 backlog.fetch_sub(size, Ordering::AcqRel);
             }
@@ -313,7 +330,7 @@ mod tests {
         let spec = AudioSpec { config: vec![0x11, 0x90], priming: 0, sample_rate: 48_000, channels: 2, bitrate: 256_000 };
         let events = Arc::new(Mutex::new(Vec::new()));
         let seen = events.clone();
-        let writer = spawn(WriterConfig { file, t0_ns: t0, audio: Some(spec) }, move |event| {
+        let writer = spawn(WriterConfig { file, t0_ns: t0, audio: Some(spec), diagnostics: None }, move |event| {
             seen.lock().unwrap().push(matches!(event, WriterEvent::Failed(_)));
         })
         .unwrap();
@@ -344,7 +361,7 @@ mod tests {
     #[test]
     fn finishing_without_video_writes_nothing() {
         let path = temp("empty");
-        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None }, |_| {}).unwrap();
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: None }, |_| {}).unwrap();
         let result = writer.sender.finish(0, None);
         assert_eq!(result.recv().unwrap().unwrap().bytes, 0);
         writer.thread.join().unwrap();
@@ -357,7 +374,7 @@ mod tests {
         let path = temp("backlog");
         let failures = Arc::new(Mutex::new(Vec::new()));
         let seen = failures.clone();
-        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None }, move |event| {
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: None }, move |event| {
             if let WriterEvent::Failed(failure) = event {
                 seen.lock().unwrap().push(failure);
             }
@@ -390,6 +407,25 @@ mod tests {
     }
 
     #[test]
+    fn with_figures_kept_every_piece_of_media_is_timed_from_its_hand_over_to_its_write() {
+        let path = temp("figures");
+        let diagnostics = Arc::new(Diagnostics::default());
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: Some(diagnostics.clone()) }, |_| {}).unwrap();
+        writer.sender.send(Media::VideoFormat { avcc: avcc(), width: 640, height: 360 });
+        for n in 0..10u64 {
+            writer.sender.send(Media::Video { data: vec![n as u8; 20], pts_ns: n * 33_333_333, sync: n == 0 });
+        }
+        writer.sender.finish(10 * 33_333_333, None).recv().unwrap().unwrap();
+        writer.thread.join().unwrap();
+        assert_eq!(diagnostics.write_wait.count(), 11);
+        assert_eq!(diagnostics.write.count(), 11);
+        assert_eq!(diagnostics.writer_pending.load(Ordering::Relaxed), 0);
+        assert!(diagnostics.writer_pending_high.load(Ordering::Relaxed) >= 1);
+        assert!(diagnostics.writer_backlog_high_bytes.load(Ordering::Relaxed) >= 20);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
     fn a_full_disk_is_classified_as_such() {
         assert_eq!(classify(&std::io::Error::from(std::io::ErrorKind::StorageFull)), "disk_full");
         #[cfg(unix)]
@@ -405,7 +441,7 @@ mod tests {
         let file = File::open(&path).unwrap();
         let failures = Arc::new(Mutex::new(Vec::new()));
         let seen = failures.clone();
-        let writer = spawn(WriterConfig { file, t0_ns: 0, audio: None }, move |event| {
+        let writer = spawn(WriterConfig { file, t0_ns: 0, audio: None, diagnostics: None }, move |event| {
             if let WriterEvent::Failed(failure) = event {
                 seen.lock().unwrap().push(failure);
             }

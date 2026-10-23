@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** What native-host-process.ts calls on an engine. */
-export const ENGINE_METHODS = ["probe", "prepare", "record", "stop", "finish", "cancel", "microphones", "cameras", "onPreview", "setCameraLayout", "setCameraPreview", "setPreviewRate", "watchLevels", "setMuted", "setGains"];
+export const ENGINE_METHODS = ["probe", "prepare", "record", "stop", "finish", "cancel", "microphones", "cameras", "onPreview", "setCameraLayout", "setCameraPreview", "setPreviewRate", "watchLevels", "setMuted", "setGains", "diagnostics"];
 
 /** The methods `module` lacks; throws when it has no NativeCapture class. */
 export function missingMethods(module) {

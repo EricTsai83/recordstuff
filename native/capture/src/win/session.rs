@@ -89,7 +89,7 @@ impl Preview {
         let fps = Arc::new(AtomicU32::new(PREVIEW_FPS));
         let rate = fps.clone();
         let (width, height) = compositor.preview_size();
-        let sink = Arc::new(core::PreviewSink::new(shared.events()));
+        let sink = Arc::new(core::PreviewSink::new(shared.events()).timed(shared.diagnostics(), now_ns));
         let encoder = H264Encoder::for_preview(gpu, width, height, PREVIEW_FPS, PREVIEW_BITRATE, sink)?;
         let thread = std::thread::Builder::new()
             .name("recordstuff-preview".into())
@@ -438,6 +438,11 @@ impl Session {
 
     pub fn frames_seen(&self) -> u64 {
         self.core.frames_seen()
+    }
+
+    /// The session's stage figures, when the development switch asks for them (plan 083).
+    pub fn diagnostics(&self) -> Option<Arc<core::Diagnostics>> {
+        self.core.shared().diagnostics()
     }
 }
 

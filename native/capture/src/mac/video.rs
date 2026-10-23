@@ -132,7 +132,10 @@ unsafe extern "C-unwind" fn output(refcon: *mut c_void, _frame: *mut c_void, sta
         return;
     }
     // A frame the encoder dropped: nothing to write.
-    let Some(sample) = (unsafe { sample.as_ref() }) else { return };
+    let Some(sample) = (unsafe { sample.as_ref() }) else {
+        callback.sink.dropped();
+        return;
+    };
     if !callback.format_sent.load(Ordering::Acquire) {
         match unsafe { video_format(sample) } {
             Some(format) => {
