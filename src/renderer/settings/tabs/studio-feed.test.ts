@@ -49,19 +49,23 @@ it("gives each listener its own part of the Studio's port: chunks to the preview
   expect(late.started).toBe(false);
 });
 
-it("says its rate on each new port and when it changes, and closes the port a newer one replaces", async () => {
+it("says its rate and view on each new port and when they change, and closes the port a newer one replaces (plan 092)", async () => {
   const feed = await import("./studio-feed");
   const stop = feed.onLevels(() => undefined);
   const first = fakePort(), second = fakePort();
   give(first);
-  expect(first.posted).toEqual([{ type: "rate", fps: 10 }]);
+  const told = [{ type: "rate", fps: 10 }, { type: "view", view: "composed" }];
+  expect(first.posted).toEqual(told);
   feed.setPreviewRate(5);
   feed.setPreviewRate(5);
-  expect(first.posted).toEqual([{ type: "rate", fps: 10 }, { type: "rate", fps: 5 }]);
+  feed.setPreviewRate(15);
+  feed.setPreviewView("screen");
+  feed.setPreviewView("screen");
+  expect(first.posted).toEqual([...told, { type: "rate", fps: 5 }, { type: "rate", fps: 15 }, { type: "view", view: "screen" }]);
   give(second);
   expect(first.closed).toBe(true);
-  // A new session's preview starts at the full rate: the page says its own.
-  expect(second.posted).toEqual([{ type: "rate", fps: 5 }]);
+  // A new session's preview starts at 10 and composed: the page says its own.
+  expect(second.posted).toEqual([{ type: "rate", fps: 15 }, { type: "view", view: "screen" }]);
   stop();
 });
 
@@ -77,22 +81,22 @@ it("keeps the preview's figures only once the capture process asks, reports them
     port.say({ ...chunk, sent: 990, n: 1 });
     expect(clock).not.toHaveBeenCalled();
     vi.advanceTimersByTime(10_000);
-    expect(port.posted).toEqual([{ type: "rate", fps: 10 }]);
+    expect(port.posted).toEqual([{ type: "rate", fps: 10 }, { type: "view", view: "composed" }]);
     port.say({ type: "diagnostics", everyMs: 5000 });
     port.say({ ...chunk, sent: 990, n: 2 });
     // Chunk 3 never came.
     port.say({ ...chunk, sent: 996, n: 4 });
     feed.previewFigures.drawn(998, 1_000);
     vi.advanceTimersByTime(5000);
-    expect(port.posted[1]).toEqual(expect.objectContaining({ type: "previewDiagnostics", schema: 1, received: 2, drawn: 1, missed: 1,
+    expect(port.posted[2]).toEqual(expect.objectContaining({ type: "previewDiagnostics", schema: 1, received: 2, drawn: 1, missed: 1,
       port: expect.objectContaining({ n: 2, max: 10_000 }), decode: expect.objectContaining({ n: 1, max: 2000 }) }));
     feed.previewFigures.restarted("error");
     stop();
     // Let go: what was kept since goes with the port, and nothing more is reported.
-    expect(port.posted[2]).toEqual(expect.objectContaining({ received: 0, restarts: { codec: 0, error: 1 } }));
+    expect(port.posted[3]).toEqual(expect.objectContaining({ received: 0, restarts: { codec: 0, error: 1 } }));
     expect(port.closed).toBe(true);
     vi.advanceTimersByTime(10_000);
-    expect(port.posted).toHaveLength(3);
+    expect(port.posted).toHaveLength(4);
     expect(feed.previewFigures.keeping).toBe(false);
   } finally {
     vi.useRealTimers();

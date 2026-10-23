@@ -6,16 +6,40 @@
  */
 import { PIPELINE_SCHEMA, isHistogramJson, type HistogramJson } from "./pipeline-histogram";
 
-/** How often the Studio shows its preview and meters while someone works in it (D21), and while it is only looked at (plan 081, D1). */
-export const STUDIO_FPS = 10;
-export const STUDIO_RESTING_FPS = 5;
-/** How long the full rate lasts after a key, click or scroll in the Studio with the pointer outside it (studio-pace.ts). */
-export const STUDIO_ACTIVE_MS = 3000;
+import { STUDIO_FPS, STUDIO_RATES, STUDIO_SMOOTH_FPS, type StudioFps } from "./studio-rates";
+
+export { STUDIO_ACTIVE_MS, STUDIO_FPS, STUDIO_RATES, STUDIO_RESTING_FPS, STUDIO_SMOOTH_FPS, type StudioFps } from "./studio-rates";
+
+/**
+ * The Studio's preview rate (plan 092, D1), one persisted choice for a Live preview and a recording alike: Off (the
+ * default: no preview is composed, encoded or drawn, and the Studio opens no camera of its own), Power saving (5 a
+ * second while only looked at, 10 while someone works in it), Standard (10) and Smooth (15).
+ */
+export const STUDIO_PREVIEW_RATES = ["off", "power", "standard", "smooth"] as const;
+export type StudioPreviewRate = (typeof STUDIO_PREVIEW_RATES)[number];
+/** What the preview shows (plan 092, D3): the composed picture, or the screen without the camera; never the recording's. */
+export const STUDIO_VIEWS = ["composed", "screen"] as const;
+export type StudioView = (typeof STUDIO_VIEWS)[number];
+/** The choice as stored: the rate and the view. */
+export interface StudioPreviewSettings { rate: StudioPreviewRate; view: StudioView }
+export const DEFAULT_STUDIO_PREVIEW: StudioPreviewSettings = { rate: "off", view: "composed" };
+/** The one rate of a choice that holds one; Power saving's follows the Studio's use (studio-pace.ts), Off has none. */
+export const FIXED_STUDIO_FPS: Partial<Record<StudioPreviewRate, StudioFps>> = { standard: STUDIO_FPS, smooth: STUDIO_SMOOTH_FPS };
+
+export const isStudioPreviewRate = (value: unknown): value is StudioPreviewRate => STUDIO_PREVIEW_RATES.includes(value as StudioPreviewRate);
+export const isStudioView = (value: unknown): value is StudioView => STUDIO_VIEWS.includes(value as StudioView);
+
+export function isStudioPreviewSettings(value: unknown): value is StudioPreviewSettings {
+  const m = value as { rate?: unknown; view?: unknown } | null;
+  return !!m && typeof m === "object" && !Array.isArray(m) && isStudioPreviewRate(m.rate) && isStudioView(m.view);
+}
 
 /** The inputs' loudest samples since the last, linear, before muting (plan 075, D19): from the capture process. */
 export interface StudioLevelsMessage { type: "levels"; system: number; microphone?: number }
 /** The preview's frames a second the page asks for: from the page. */
-export interface StudioRateMessage { type: "rate"; fps: typeof STUDIO_FPS | typeof STUDIO_RESTING_FPS }
+export interface StudioRateMessage { type: "rate"; fps: StudioFps }
+/** What the preview shows (plan 092, D3), from a key frame: from the page. */
+export interface StudioViewMessage { type: "view"; view: StudioView }
 
 const isLevel = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 16;
 
@@ -26,7 +50,12 @@ export function isStudioLevels(value: unknown): value is StudioLevelsMessage {
 
 export function isStudioRate(value: unknown): value is StudioRateMessage {
   const m = value as Partial<StudioRateMessage> | null;
-  return !!m && typeof m === "object" && m.type === "rate" && (m.fps === STUDIO_FPS || m.fps === STUDIO_RESTING_FPS);
+  return !!m && typeof m === "object" && m.type === "rate" && STUDIO_RATES.includes(m.fps as StudioFps);
+}
+
+export function isStudioViewMessage(value: unknown): value is StudioViewMessage {
+  const m = value as Partial<StudioViewMessage> | null;
+  return !!m && typeof m === "object" && m.type === "view" && isStudioView(m.view);
 }
 
 /** How often the page reports its preview figures when asked (plan 083). */

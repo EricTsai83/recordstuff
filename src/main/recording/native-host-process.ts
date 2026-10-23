@@ -10,7 +10,7 @@
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
-import { isStudioPreviewDiagnostics, isStudioRate, STUDIO_DIAGNOSTICS_MS, type StudioDiagnosticsRequest } from "../../shared/studio-port";
+import { isStudioPreviewDiagnostics, isStudioRate, isStudioViewMessage, STUDIO_DIAGNOSTICS_MS, type StudioDiagnosticsRequest } from "../../shared/studio-port";
 import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogram";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
@@ -80,6 +80,8 @@ interface NativeCapture {
   setCameraPreview?(watching: boolean): boolean;
   /** Plan 081, D1: the preview's frames a second; false without a preview. */
   setPreviewRate?(fps: number): boolean;
+  /** What the preview shows (plan 092, D3): `composed` or `screen`. */
+  setPreviewView?(view: string): boolean;
   /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
   watchLevels?(watching: boolean): boolean;
   setMuted?(system: boolean, microphone: boolean): boolean;
@@ -205,14 +207,17 @@ export class NativeHost {
         this.previewPort?.close();
         const studio = ports?.[0];
         this.previewPort = studio;
-        // The page's rate for the preview (plan 081, D1); a port given over again starts at the full rate, as the
-        // engine does for a new watcher.
+        // The page's rate and view for the preview (plan 092, D1, D3); the page says both on each port it is given.
         studio?.on?.("message", ({ data }) => {
           if (studio !== this.previewPort) return;
           if (isStudioPreviewDiagnostics(data)) {
             // Logged as it comes, whichever session it covers: the page's port outlives none of them.
             const { type: _type, ...figures } = data;
             if (this.diagnostics) this.log(`diagnostics: ${JSON.stringify({ kind: "page", session: this.session?.id ?? this.lastSessionId ?? null, ...figures })}`);
+            return;
+          }
+          if (isStudioViewMessage(data)) {
+            this.log(`studio: preview view ${data.view}${this.capture.setPreviewView?.(data.view) ? "" : " (no preview in this session)"}`);
             return;
           }
           if (!isStudioRate(data)) return;

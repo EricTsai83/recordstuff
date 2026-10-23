@@ -9,6 +9,30 @@ import type { AppAction, AppContext } from "../../app/ui-model";
 import { studioAudioGroups } from "./audio";
 import { cameraPreviewGroup, cameraShapeGroups } from "./camera";
 import { type Group, group, switchChoices } from "./group";
+import { DEFAULT_STUDIO_PREVIEW, STUDIO_PREVIEW_RATES, STUDIO_VIEWS, type StudioPreviewRate } from "../../../shared/studio-port";
+
+const RATE_LABELS: Record<StudioPreviewRate, [PlainMessageKey, PlainMessageKey]> = {
+  off: ["Off", "No preview: the Studio adds no work and opens no camera."],
+  power: ["Power saving", "5 fps while you only watch, 10 fps while you work in the Studio."],
+  standard: ["Standard", "10 fps all the time."],
+  smooth: ["Smooth", "15 fps all the time; uses the most power."],
+};
+
+/**
+ * The preview's rate and view (plan 092, D1, D3): one persisted choice each, changed at any time, the same for a Live
+ * preview and a recording; the page paces the preview and tells the capture process both (studio-pace.ts, studio-feed.ts).
+ */
+function studioPreviewGroups(ctx: AppContext): Group[] {
+  const language = ctx.language;
+  const chosen = ctx.studioPreview ?? DEFAULT_STUDIO_PREVIEW;
+  const rate = group("studioPreviewRate", t("Preview rate", language), true, STUDIO_PREVIEW_RATES.map((id) => ({
+    id, label: t(RATE_LABELS[id][0], language), description: t(RATE_LABELS[id][1], language), enabled: true, checked: id === chosen.rate,
+    action: { setStudioPreview: { rate: id } } as AppAction })));
+  const view = group("studioPreviewView", t("Preview view", language), true, STUDIO_VIEWS.map((id) => ({
+    id, label: t(id === "composed" ? "Composed" : "Screen", language), enabled: true, checked: id === chosen.view,
+    action: { setStudioPreview: { view: id } } as AppAction })));
+  return [rate, { ...view, control: "segmented" }];
+}
 
 /**
  * The Recording Studio (plan 075, D19): the preview, the camera's switch, its showing in the recording in progress
@@ -20,7 +44,7 @@ export function studioGroups(state: RecordingState, ctx: AppContext, unlocked: b
   const camerasRows: Group[] = [];
   if (camera?.available) {
     const preview = cameraPreviewGroup(ctx, unlocked);
-    if (preview) camerasRows.push(preview);
+    if (preview) camerasRows.push(preview, ...studioPreviewGroups(ctx));
     camerasRows.push({ ...group("studioCamera", t("Camera", language), unlocked,
       switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
     ...(unlocked ? {} : { note: t("Turned on or off between recordings.", language) }) });

@@ -455,7 +455,8 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
   await host.evaluate((h, list) => {
     h.state.cameraState = undefined;
     h.previewWatches.length = 0;
-    h.state.cameraContext = { ...h.baseContext(),
+    // The preview on (plan 092: Off by default), so the bubble shows the camera and a recording its picture.
+    h.state.cameraContext = { ...h.baseContext(), studioPreview: { rate: "power", view: "composed" },
       displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }],
       camera: { enabled: true, available: true, access: "granted", devices: list, device: { id: "iphone", label: "iPhone Camera" } } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
@@ -574,7 +575,7 @@ test("S127–S130 camera preview: the camera in the bubble while in sight, dragg
   await page.keyboard.press("ArrowLeft");
   await expect.poll(calls, { message: "S130 the bubble still moves while recording (D7)" }).toEqual([["cameraPreview", "0.96,0.05"]]);
 
-  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW",
+  await host.evaluate(h => { h.state.cameraState = undefined; h.pushModel({ type: "idle" }, { language: "zh-TW", studioPreview: h.state.cameraContext!.studioPreview,
     displays: h.state.cameraContext!.displays, camera: { enabled: false, available: true, access: "granted" } }); });
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S130 and let go of once the recording is over" }).toEqual([true, false]);
   await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 5%/);
@@ -793,7 +794,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
     h.studioWatches.length = 0;
     h.previewWatches.length = 0;
     h.state.cameraState = undefined;
-    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: false, available: true, access: "granted" } };
+    h.state.cameraContext = { ...h.baseContext(), studioPreview: { rate: "power", view: "composed" }, camera: { enabled: false, available: true, access: "granted" } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
   await page.locator("#tab-studio").click();
@@ -867,6 +868,88 @@ test("S142 the Studio's line of controls: Live preview beside Start, and what th
   await expect(controls.getByRole("status"), "S142 lost").toHaveText("The camera dropped out. Reconnecting…");
   await recording();
   await expect(controls.getByRole("status"), "S142 nothing while it delivers").toHaveCount(0);
+  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+});
+
+test("S143–S145 the Studio's preview panel: Off by default with no camera opened and the bubble still placed, a rate whose every choice says what it does, and the Screen view (plan 092)", { tag: "@recording-settings" }, async () => {
+  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await page.evaluate(() => {
+    const record = { opened: 0 };
+    (window as unknown as { cameraCalls: typeof record }).cameraCalls = record;
+    navigator.mediaDevices.enumerateDevices = async () => [] as MediaDeviceInfo[];
+    navigator.mediaDevices.getUserMedia = async () => {
+      record.opened += 1;
+      const canvas = document.createElement("canvas");
+      canvas.getContext("2d")!.fillRect(0, 0, 8, 8);
+      return canvas.captureStream(5);
+    };
+  });
+  const opened = (): Promise<number> => page.evaluate(() => (window as unknown as { cameraCalls: { opened: number } }).cameraCalls.opened);
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    h.previewWatches.length = 0;
+    // No `studioPreview`: the default a new install has.
+    h.state.cameraContext = { ...h.baseContext(),
+      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }],
+      camera: { enabled: true, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  const stage = page.locator(".studio-stage .camera-preview-stage");
+  const rate = page.getByRole("combobox", { name: /Preview rate/ });
+  await expect(rate, "S143 off by default").toHaveText(/Off/);
+  await expect(stage.getByRole("button"), "S143 nothing over the empty stage to press").toHaveCount(0);
+  await page.waitForTimeout(500);
+  expect(await opened(), "S143 opening the Studio opens no camera").toBe(0);
+  const bubble = page.getByRole("application", { name: "Preview" });
+  await expect(bubble, "S143 the bubble is still placed over the empty stage").toBeVisible();
+  await clearCalls();
+  await bubble.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls, { message: "S143 and moves" }).toEqual([["cameraPreview", expect.stringMatching(/^0\.\d+,0\.\d+$/)]]);
+  // During a recording, Off asks for no picture.
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: true }, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(page.locator(".camera-preview-picture"), "S143 no picture while off during a recording").toBeHidden();
+  await page.waitForTimeout(500);
+  expect(await host.evaluate(h => [...h.previewWatches]), "S143 no picture asked for while off").toEqual([]);
+
+  // S144 the rate: a menu in the Preview panel whose every choice says what it does while it is open; the chosen one's
+  // line is its description to assistive technology.
+  await expect(page.locator(".studio-panels").getByRole("combobox", { name: /Preview rate/ }), "S144 in the panels under the stage").toBeVisible();
+  await expect(page.locator(".studio-stage").getByRole("combobox"), "S144 nothing over the stage").toHaveCount(0);
+  await expect(rate, "S144 described by what it does").toHaveAccessibleDescription("No preview: the Studio adds no work and opens no camera.");
+  await rate.click();
+  for (const [name, line] of [["Off", "No preview: the Studio adds no work and opens no camera."], ["Power saving", "5 fps while you only watch"],
+    ["Standard", "10 fps all the time."], ["Smooth", "15 fps all the time; uses the most power."]] as const) {
+    await expect(page.getByRole("option", { name: new RegExp(`^${name}`) }), `S144 ${name} with its line`).toContainText(line);
+  }
+  await clearCalls();
+  await page.getByRole("option", { name: /^Smooth/ }).click();
+  await expect.poll(calls, { message: "S144 a rate is chosen during a recording" }).toEqual([["studioPreviewRate", "smooth"]]);
+  await expect(rate).toHaveText(/Smooth/);
+  await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S144 the recording's picture is asked for once on" }).toEqual([true]);
+  await expect(page.locator(".camera-preview-picture"), "S144 and takes the stage").toBeVisible();
+
+  // S145 the view: segments beside the rate; the Screen view before a session opens no camera and says when it shows.
+  await clearCalls();
+  await page.getByRole("radio", { name: "Screen" }).or(page.getByRole("button", { name: "Screen", exact: true })).first().click();
+  await expect.poll(calls, { message: "S145 Screen asks main" }).toEqual([["studioPreviewView", "screen"]]);
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    const { studio: _studio, ...ctx } = h.state.cameraContext!;
+    h.state.cameraContext = { ...ctx, camera: { enabled: true, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.waitForTimeout(500);
+  expect(await opened(), "S145 the Screen view opens no camera").toBe(0);
+  await clearCalls();
+  await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
+  await expect.poll(calls, { message: "S145 back to Composed" }).toEqual([["studioPreviewView", "composed"]]);
+  await expect.poll(opened, { message: "S145 the composed view opens the camera in the bubble" }).toBe(1);
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
 

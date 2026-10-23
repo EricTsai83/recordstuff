@@ -566,6 +566,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     fileNameTemplate: settings.fileNameTemplate,
     libraryLayout: settings.libraryLayout,
     libraryPreviewSound: settings.libraryPreviewSound,
+    studioPreview: settings.studioPreview,
     libraryFavorites: settings.libraryFavorites,
     ...(settings.libraryShown === undefined ? {} : { libraryShown: settings.libraryShown }),
     updates: { state: updates.state, enabled: settings.updates.enabled },

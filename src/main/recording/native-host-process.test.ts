@@ -148,11 +148,12 @@ describe("the camera (plan 075)", () => {
     expect(port.sent.length).toBe(toMain);
   });
 
-  it("passes the page's rate on the Studio's port to the engine, from the port given last only (plan 081, D1)", () => {
+  it("passes the page's rate and view on the Studio's port to the engine, from the port given last only (plan 092)", () => {
     const port = new Port();
     const fake = fakeEngine();
     const setPreviewRate = vi.fn(() => true);
-    new NativeHost(port, { ...fake.engine, setPreviewRate }, () => undefined);
+    const setPreviewView = vi.fn(() => true);
+    new NativeHost(port, { ...fake.engine, setPreviewRate, setPreviewView }, () => undefined);
     const studioPort = () => {
       let listener: ((message: { data: unknown }) => void) | undefined;
       return { started: false, postMessage() {}, close() {}, start() { this.started = true; },
@@ -164,11 +165,17 @@ describe("the camera (plan 075)", () => {
     expect(first.started).toBe(true);
     first.say({ type: "rate", fps: 5 });
     first.say({ type: "rate", fps: 7 });
+    first.say({ type: "rate", fps: 15 });
     first.say("rate");
+    first.say({ type: "view", view: "screen" });
+    first.say({ type: "view", view: "camera" });
     port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
     first.say({ type: "rate", fps: 10 });
+    first.say({ type: "view", view: "composed" });
     second.say({ type: "rate", fps: 10 });
-    expect(setPreviewRate.mock.calls).toEqual([[5], [10]]);
+    second.say({ type: "view", view: "composed" });
+    expect(setPreviewRate.mock.calls).toEqual([[5], [15], [10]]);
+    expect(setPreviewView.mock.calls).toEqual([["screen"], ["composed"]]);
   });
 
   it("forwards the engine's camera loss and return for the session", async () => {

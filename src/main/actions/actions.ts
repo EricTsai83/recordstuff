@@ -33,8 +33,8 @@ export interface ActionDeps {
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
-    | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setAppearance"
-    | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
+    | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setStudioPreview" | "setAppearance"
+    | "studioPreview" | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
     | "audioVolume" | "setAudioVolume">;
@@ -228,6 +228,12 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       await deps.savePreference("library layout", { write: () => settings.setLibraryLayout(action.setLibraryLayout) });
     } else if ("setLibraryPreviewSound" in action) {
       await deps.savePreference("library preview sound", { write: () => settings.setLibraryPreviewSound(action.setLibraryPreviewSound) });
+    } else if ("setStudioPreview" in action) {
+      // The Studio's page reads it from the view and tells its capture process the rate and view (plan 092).
+      await deps.savePreference("Studio preview", {
+        write: () => settings.setStudioPreview(action.setStudioPreview),
+        applied: () => log(`settings: Studio preview ${JSON.stringify(settings.studioPreview)}`),
+      });
     } else if ("setAppearance" in action) {
       await deps.savePreference("appearance", {
         write: () => settings.setAppearance(action.setAppearance),

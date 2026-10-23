@@ -43,7 +43,7 @@ const SECTIONS: Record<string, string> = {
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
   camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
-  studioControls: "studioControls", cameraPreview: "studioPreview", studioLive: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
+  studioControls: "studioControls", cameraPreview: "studioPreview", studioPreviewRate: "studioPreview", studioPreviewView: "studioPreview", studioLive: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
   systemGain: "studioAudio", microphoneGain: "studioAudio",
   studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
   cameraRounding: "studioCamera", cameraMirror: "studioCamera",

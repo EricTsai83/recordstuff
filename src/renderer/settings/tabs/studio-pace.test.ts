@@ -7,12 +7,12 @@ vi.mock("./studio-feed", () => ({ setPreviewRate: (fps: number) => rates.preview
 
 afterEach(() => { vi.useRealTimers(); rates.frame.length = 0; rates.preview.length = 0; });
 
-it("shows the Studio at the full rate while the pointer is over it or for 3 s after an input, and at half otherwise (plan 081, D1)", async () => {
+it("under Power saving shows the Studio at the full rate while the pointer is over it or for 3 s after an input, and at half otherwise (plan 081, D1)", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let now = 0;
   const { paceStudio, ACTIVE_MS } = await import("./studio-pace");
   const root = document.documentElement;
-  const stop = paceStudio(() => now);
+  const { stop } = paceStudio("power", () => now);
   expect(rates.preview).toEqual([5]);
   root.dispatchEvent(new PointerEvent("pointerenter"));
   expect(rates.preview).toEqual([5, 10]);
@@ -39,4 +39,34 @@ it("shows the Studio at the full rate while the pointer is over it or for 3 s af
   const told = rates.preview.length;
   root.dispatchEvent(new PointerEvent("pointerleave"));
   expect(rates.preview).toHaveLength(told);
+});
+
+it("holds Standard at 10 and Smooth at 15 whatever is done in the Studio, paces Off's meters as Power saving, and keeps the pointer across choices (plan 092, D1)", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { paceStudio } = await import("./studio-pace");
+  const root = document.documentElement;
+  for (const [rate, fps] of [["standard", 10], ["smooth", 15]] as const) {
+    rates.preview.length = 0;
+    const { stop } = paceStudio(rate);
+    root.dispatchEvent(new PointerEvent("pointerenter"));
+    root.dispatchEvent(new PointerEvent("pointerleave"));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(rates.preview, rate).toEqual([fps]);
+    stop();
+    expect(rates.preview.at(-1), `${rate} stopped`).toBe(10);
+  }
+  rates.preview.length = 0;
+  const pacer = paceStudio("off");
+  root.dispatchEvent(new PointerEvent("pointerenter"));
+  expect(rates.preview, "Off's meters follow the pointer").toEqual([5, 10]);
+  // The pointer rests on the Studio while a rate is chosen: Power saving starts at the working rate, as it would
+  // have, and Smooth and back keep it.
+  pacer.rate("smooth");
+  pacer.rate("power");
+  expect(rates.preview).toEqual([5, 10, 15, 10]);
+  root.dispatchEvent(new PointerEvent("pointerleave"));
+  expect(rates.preview.at(-1)).toBe(5);
+  pacer.stop();
+  expect(rates.frame.at(-1)).toBe(10);
 });

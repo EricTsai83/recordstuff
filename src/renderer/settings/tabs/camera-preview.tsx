@@ -17,6 +17,7 @@ import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { frameDrawn } from "./frame-clock";
 import { onPreview, previewFigures } from "./studio-feed";
+import type { StudioView } from "../../../shared/studio-port";
 
 /** A key's step, as a fraction of the free space: 1%, or 10% with Shift. */
 const STEP = 0.01, BIG_STEP = 0.1;
@@ -127,10 +128,20 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
   return drawing;
 }
 
-export function CameraPreview({ group, preview, disabled, describedBy, statusOutside }: {
+/**
+ * What the Recording Studio chose to show (plan 092): with the preview off, nothing is drawn and no camera opened, the
+ * stage keeping its frame and the bubble to place; the Screen view leaves the camera out.
+ */
+export interface PreviewShown {
+  off: boolean;
+  view: StudioView;
+}
+
+export function CameraPreview({ group, preview, disabled, describedBy, statusOutside, shown }: {
   group: SettingsGroup; preview: CameraPreviewView; disabled: boolean; describedBy: string | undefined;
   /** The Studio says a session's status in its own line of controls (2026-10-23), not over the picture. */
   statusOutside?: boolean;
+  shown?: PreviewShown | undefined;
 }) {
   const id = `setting-${group.id}`;
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
@@ -138,8 +149,11 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const inSight = useInSight(stage);
   const size = useSize(stage);
-  const failed = useLiveCamera(video, preview.mode === "live" && inSight, preview.camera);
-  const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight);
+  const off = shown?.off === true;
+  const screenOnly = shown?.view === "screen";
+  // Before a session the camera itself opens in the bubble only for the composed picture the preview shows.
+  const failed = useLiveCamera(video, preview.mode === "live" && inSight && !off && !screenOnly, preview.camera);
+  const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight && !off);
   /** Where the bubble shows while it is moved or its new place saves; the view's place otherwise. */
   const { shown: position, move: setMoving, commit: save } = usePendingValue<CameraPosition>({ x: preview.x, y: preview.y }, (a, b) => a.x === b.x && a.y === b.y);
   const drag = useRef<{ pointer: number; dx: number; dy: number } | undefined>(undefined);
@@ -192,17 +206,18 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
     commit({ x: +clamp01(position.x + move[0]).toFixed(4), y: +clamp01(position.y + move[1]).toFixed(4) });
   };
 
-  const live = preview.mode === "live" && !failed;
-  const status = failed ? model.text("The camera could not be shown here.")
-    : preview.mode === "recording" && !drawing ? undefined : preview.status;
+  const live = preview.mode === "live" && !failed && !off && !screenOnly;
+  const status = off ? undefined : failed ? model.text("The camera could not be shown here.")
+    : preview.mode === "recording" && !drawing ? undefined
+    : screenOnly && preview.mode !== "recording" ? undefined : preview.status;
   return (
-    <div className="camera-preview" data-mode={preview.mode}>
+    <div className="camera-preview" data-mode={preview.mode} data-off={off || undefined} data-view={shown?.view}>
       <div
         ref={setStage}
         className="camera-preview-stage"
         style={{ aspectRatio: `${preview.display.width} / ${preview.display.height}`, ["--preview-ratio" as string]: preview.display.width / preview.display.height }}
       >
-        <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording"} aria-hidden="true" />
+        <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true" />
         {preview.composed && <div
           className="camera-preview-bubble"
           data-live={live || undefined}

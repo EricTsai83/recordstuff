@@ -5,7 +5,7 @@
  * once nothing listens, as main lets the session go then; the next listener's watching brings a new one.
  */
 import { SETTINGS_CHANNELS, type StudioLevels } from "../../../shared/settings-panel";
-import { isStudioDiagnosticsRequest, isStudioLevels, STUDIO_FPS, type StudioRateMessage } from "../../../shared/studio-port";
+import { isStudioDiagnosticsRequest, isStudioLevels, STUDIO_FPS, type StudioRateMessage, type StudioView, type StudioViewMessage } from "../../../shared/studio-port";
 import { PreviewDiagnostics } from "../../lib/preview-diagnostics";
 import { isPreviewMessage, type PreviewMessage } from "../../lib/preview-stream";
 
@@ -16,6 +16,7 @@ const previews = new Set<PreviewListener>();
 const levels = new Set<(levels: StudioLevels) => void>();
 let port: MessagePort | undefined;
 let fps: StudioRateMessage["fps"] = STUDIO_FPS;
+let view: StudioView = "composed";
 let listening = false;
 /** The preview's figures (plan 083), kept and reported on the port only once the capture process asked for them. */
 export const previewFigures = new PreviewDiagnostics();
@@ -28,6 +29,7 @@ function stopReporting(): void {
 }
 
 const said = (): void => port?.postMessage({ type: "rate", fps } satisfies StudioRateMessage);
+const shown = (): void => port?.postMessage({ type: "view", view } satisfies StudioViewMessage);
 
 function joined(event: MessageEvent): void {
   // Only the preload's own post, which comes from this window (Electron's MessagePort pattern): never another frame's.
@@ -53,9 +55,10 @@ function joined(event: MessageEvent): void {
     }
   };
   port.start();
-  // A new port is a new session's, whose preview starts at the full rate, or the same session's after both were let
-  // go: the page says its own either way.
+  // A new port is a new session's, whose preview starts at 10 a second and composed, or the same session's after both
+  // were let go: the page says its own either way.
   said();
+  shown();
   for (const listener of previews) listener.joined();
 }
 
@@ -90,9 +93,16 @@ export function onLevels(listener: (levels: StudioLevels) => void): () => void {
   return () => { levels.delete(listener); release(); };
 }
 
-/** How often the preview is shown (plan 081, D1), told to the capture process now and on every new port. */
+/** How often the preview is shown (plan 092, D1), told to the capture process now and on every new port. */
 export function setPreviewRate(next: StudioRateMessage["fps"]): void {
   if (next === fps) return;
   fps = next;
   said();
+}
+
+/** What the preview shows (plan 092, D3), told to the capture process now and on every new port. */
+export function setPreviewView(next: StudioView): void {
+  if (next === view) return;
+  view = next;
+  shown();
 }

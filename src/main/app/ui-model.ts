@@ -17,6 +17,7 @@ import type { Language, PlainMessageKey } from "../../shared/i18n";
 import type { QualitySettings } from "../../shared/quality";
 import type { ErrorCode } from "../../shared/state";
 import type { CountdownSeconds } from "../../shared/countdown";
+import type { StudioPreviewRate, StudioPreviewSettings, StudioView } from "../../shared/studio-port";
 import type { HotkeySettings } from "../../shared/hotkey";
 import type { SettingsHotkeyStatus } from "../shortcuts/settings-hotkey";
 import type { UpdateState } from "./updates";
@@ -108,6 +109,8 @@ export type AppAction =
   | { setFileNameTemplate: string }
   | { setLibraryLayout: LibraryLayout }
   | { setLibraryPreviewSound: boolean }
+  /** The Recording Studio's preview rate or view (plan 092, D1, D3), at any time. */
+  | { setStudioPreview: { rate?: StudioPreviewRate; view?: StudioView } }
   | { setLanguage: Language }
   | { setHotkey: HotkeySettings };
 
@@ -197,6 +200,8 @@ export interface AppContext {
   libraryLayout?: LibraryLayout;
   /** Whether a grid card's hover preview plays its sound; absent is muted. */
   libraryPreviewSound?: boolean;
+  /** The Recording Studio's preview rate and view (plan 092); absent is the default, Off. */
+  studioPreview?: StudioPreviewSettings;
   /** Favorite categories by name (settings.ts `libraryFavorites`). */
   libraryFavorites?: string[];
   /** The category the tab last showed: absent for every recording, `null` for Uncategorized. */

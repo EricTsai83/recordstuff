@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStudioDiagnosticsRequest, isStudioLevels, isStudioPreviewDiagnostics, isStudioRate, STUDIO_FPS, STUDIO_RESTING_FPS } from "./studio-port";
+import { isStudioDiagnosticsRequest, isStudioLevels, isStudioPreviewDiagnostics, isStudioPreviewSettings, isStudioRate, isStudioViewMessage, STUDIO_RATES } from "./studio-port";
 
 describe("the Recording Studio's port (plan 081)", () => {
   it("takes levels from the capture process, with or without the microphone's", () => {
@@ -11,11 +11,25 @@ describe("the Recording Studio's port (plan 081)", () => {
     expect(isStudioLevels({ width: 640, height: 360, data: new Uint8Array(1), key: true, timestamp: 0, sent: 0, n: 1 })).toBe(false);
   });
 
-  it("takes from the page only the two rates the Studio shows", () => {
-    expect(isStudioRate({ type: "rate", fps: STUDIO_FPS })).toBe(true);
-    expect(isStudioRate({ type: "rate", fps: STUDIO_RESTING_FPS })).toBe(true);
+  it("takes from the page only the rates the Studio offers, the same as the engine's (plan 092, D1)", () => {
+    expect(STUDIO_RATES).toEqual([5, 10, 15]);
+    for (const fps of STUDIO_RATES) expect(isStudioRate({ type: "rate", fps }), String(fps)).toBe(true);
     for (const fps of [0, 7.5, 30, "10"]) expect(isStudioRate({ type: "rate", fps }), String(fps)).toBe(false);
     expect(isStudioRate(null)).toBe(false);
+  });
+
+  it("takes from the page only the views the Studio offers, and refuses another (plan 092, D3)", () => {
+    expect(isStudioViewMessage({ type: "view", view: "composed" })).toBe(true);
+    expect(isStudioViewMessage({ type: "view", view: "screen" })).toBe(true);
+    for (const view of ["camera", "", 1, undefined]) expect(isStudioViewMessage({ type: "view", view }), String(view)).toBe(false);
+    expect(isStudioViewMessage({ type: "rate", fps: 10 })).toBe(false);
+  });
+
+  it("reads a stored rate choice only whole (plan 092)", () => {
+    expect(isStudioPreviewSettings({ rate: "off", view: "screen" })).toBe(true);
+    for (const bad of [{ rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "camera" }, [], null]) {
+      expect(isStudioPreviewSettings(bad), JSON.stringify(bad)).toBe(false);
+    }
   });
 
   it("takes the capture process's request for the preview's figures, at most once a second (plan 083)", () => {

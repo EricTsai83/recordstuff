@@ -88,6 +88,8 @@ async function run(): Promise<void> {
   let libraryOverride: LibraryState | undefined;
   /** The Recording Studio's picture (2026-10-22): between recordings none, during one shown or hidden by Live preview. */
   let studio: NonNullable<AppContext["studio"]> = { showing: false };
+  /** The Studio's preview rate and view (plan 092): absent is the default, Off, as the tabs are drawn. */
+  let studioPreview: AppContext["studioPreview"];
   /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
   let cameraState: "waiting" | "notReady" | "lost" | undefined;
   // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
@@ -101,7 +103,7 @@ async function run(): Promise<void> {
     // The camera as a Mac has it (available since plan 075 step 7), on with its default bubble, for the Studio's tab.
     camera: { enabled: true, available: true, access: "granted", layout: DEFAULT_CAMERA_LAYOUT, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }],
       ...(state.type === "recording" ? { session: { hidden: false, ...(cameraState ? { state: cameraState } : {}) } } : {}) },
-    audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio,
+    audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio, ...(studioPreview ? { studioPreview } : {}),
     ...(state.type === "recording" ? { audioSession: { systemMuted: false } } : {}) });
   let entry = 0;
   let tab: SettingsTab = "library";
@@ -166,7 +168,7 @@ async function run(): Promise<void> {
   const toBottom = (window: BrowserWindow): Promise<unknown> => run(window, `(p => { p.scrollTop = p.scrollHeight; })(document.getElementById("settings-panel"))`);
   const toTop = (window: BrowserWindow): Promise<unknown> => run(window, `document.getElementById("settings-panel").scrollTop = 0`);
   const begin = async (group: string, lang: Language, scheme: "light" | "dark", sizeName: string, size: { width: number; height: number }): Promise<BrowserWindow> => {
-    language = lang; state = { type: "idle" }; libraryOverride = undefined; studio = { showing: false };
+    language = lang; state = { type: "idle" }; libraryOverride = undefined; studio = { showing: false }; studioPreview = undefined;
     nativeTheme.themeSource = scheme;
     current = { group, lang, scheme, size: sizeName, width: size.width, height: size.height };
     return open(size);
@@ -192,8 +194,15 @@ async function run(): Promise<void> {
       state = { type: "recording", startedAt: new Date().toISOString() };
       await show(window, "recording");
       await shoot(window, `recording-state-${lang}-${scheme}.png`, `recording in progress · ${lang} · ${scheme}`, { state: "recording" });
-      // The Studio during a recording: its picture shown, then hidden by Live preview (2026-10-21).
+      // The Studio during a recording with the preview off (plan 092's default), then on at Power saving: its picture
+      // shown, then hidden by Live preview (2026-10-21).
       studio = { showing: true };
+      await show(window, "studio");
+      await shoot(window, `studio-recording-off-${lang}-${scheme}.png`, `the Studio while recording, the preview off · ${lang} · ${scheme}`, { state: "recording-preview-off" });
+      studioPreview = { rate: "power", view: "screen" };
+      await show(window, "studio");
+      await shoot(window, `studio-recording-screen-${lang}-${scheme}.png`, `the Studio while recording, Power saving, the Screen view · ${lang} · ${scheme}`, { state: "recording-screen" });
+      studioPreview = { rate: "power", view: "composed" };
       await show(window, "studio");
       await shoot(window, `studio-recording-${lang}-${scheme}.png`, `the Studio while recording · ${lang} · ${scheme}`, { state: "recording" });
       // The camera not yet giving a picture (plan 090): the Studio says so in its line of controls.
@@ -219,6 +228,7 @@ async function run(): Promise<void> {
         window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
       }
       studio = { showing: false };
+      studioPreview = undefined;
       state = { type: "needsPermission", needsRelaunch: false };
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`, { state: "needsPermission" });

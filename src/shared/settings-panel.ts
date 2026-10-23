@@ -21,6 +21,8 @@ export interface SettingsChoice {
   busy?: boolean;
   /** A screen choice's place in the desktop's arrangement, in logical pixels; presentation only. */
   display?: DisplayFrame;
+  /** One line saying what the choice does, shown with it (the Studio's preview rates, plan 092). */
+  description?: string;
 }
 export interface DisplayFrame {
   x: number;

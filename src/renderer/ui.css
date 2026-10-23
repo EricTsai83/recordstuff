@@ -902,6 +902,16 @@
     background: none;
     box-shadow: none;
   }
+  /* With the preview off (plan 092) the stage is empty, so the bubble is drawn as before a session; the Screen view's
+     picture has no camera, so the bubble is an outline over it, still dragged. */
+  .camera-preview[data-mode="recording"][data-off] .camera-preview-bubble {
+    background: var(--camera-preview-bubble);
+    box-shadow: var(--camera-preview-bubble-shadow);
+  }
+  .camera-preview[data-mode="recording"][data-view="screen"]:not([data-off]) .camera-preview-bubble {
+    outline: 1.5px dashed var(--display-ink);
+    outline-offset: -1.5px;
+  }
   .camera-preview-handle:focus-visible {
     box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--ring);
   }
@@ -950,6 +960,26 @@
   /* The preview takes the panel's width, up to what the window's height leaves above the panels. */
   .studio-stage .camera-preview-stage {
     width: min(100%, calc(max(200px, 100dvh - 420px) * var(--preview-ratio, 16 / 9)));
+  }
+  /* The preview's panel (plan 092): the rate's menu and the view's segments, each on a line with its name. */
+  .studio-preview-choices {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 12px;
+  }
+  .studio-preview-label {
+    color: var(--muted-foreground);
+  }
+  .studio-preview-option {
+    display: grid;
+    gap: 1px;
+    white-space: normal;
+  }
+  .studio-preview-option-note {
+    max-width: 30ch;
+    color: var(--muted-foreground);
   }
   .studio-panels {
     display: grid;

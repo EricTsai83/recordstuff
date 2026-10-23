@@ -23,6 +23,7 @@ import { DEFAULT_CAMERA_LAYOUT, copyCameraLayout, isCameraLayout, isCameraPositi
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_QUALITY, isQualitySettings, type QualitySettings } from "../../shared/quality";
+import { DEFAULT_STUDIO_PREVIEW, isStudioPreviewRate, isStudioPreviewSettings, isStudioView, type StudioPreviewSettings } from "../../shared/studio-port";
 import { DEFAULT_COUNTDOWN, DEFAULT_COUNTDOWN_SOUND, isCountdownSeconds, type CountdownSeconds } from "../../shared/countdown";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../../shared/i18n";
 import { DEFAULT_AUDIO_VOLUME, isAudioVolume, isLegacyGain, isVolume, volumeFromDb, type AudioVolume } from "../../shared/audio-volume";
@@ -76,6 +77,8 @@ export interface Settings {
   cameraLayout: CameraLayout;
   /** The chosen camera, as the microphone's (D9); absent is the system default camera. */
   cameraDevice?: CameraDevicePreference;
+  /** The Recording Studio's preview rate and view (plan 092, D1, D3); Off by default, so opening the Studio costs nothing. */
+  studioPreview: StudioPreviewSettings;
   /** The icon's left click. */
   trayClick: TrayClick;
   /** How new recordings are named (file-name.ts); the default gives the names every recording had before the choice. */
@@ -140,6 +143,7 @@ export function defaultSettings(outputDir: string): Settings {
     audioVolume: { ...DEFAULT_AUDIO_VOLUME },
     camera: false,
     cameraLayout: copyCameraLayout(DEFAULT_CAMERA_LAYOUT),
+    studioPreview: { ...DEFAULT_STUDIO_PREVIEW },
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
     trayClick: "menu",
     fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
@@ -236,6 +240,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const camera = field("camera", isBoolean, defaults.camera, `camera is not a boolean: using ${defaults.camera ? "on" : "off"}`);
   const cameraLayout = field("cameraLayout", isCameraLayout, defaults.cameraLayout, "cameraLayout is invalid: using the default bubble");
   const cameraDevice = field<CameraDevicePreference | undefined>("cameraDevice", isCameraDevicePreference, undefined, "cameraDevice is invalid: using the system default camera");
+  const studioPreview = field("studioPreview", isStudioPreviewSettings, defaults.studioPreview, "studioPreview is invalid: the Recording Studio's preview is off");
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
   // Only a pattern stored as it would be saved: trimmed and usable.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;
@@ -248,7 +253,8 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
-    camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }), trayClick,
+    camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }),
+    studioPreview: { rate: studioPreview.rate, view: studioPreview.view }, trayClick,
     fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
 }
 
@@ -402,6 +408,20 @@ export class SettingsStore {
   setLibraryLayout(libraryLayout: LibraryLayout): Promise<void> {
     if (!isLibraryLayout(libraryLayout)) return Promise.reject(new Error(`unsupported library layout: ${JSON.stringify(libraryLayout)}`));
     return this.save((current) => ({ ...current, libraryLayout }));
+  }
+
+  get studioPreview(): StudioPreviewSettings { return { ...this.settings.studioPreview }; }
+
+  /** The Studio's preview rate or view (plan 092). */
+  setStudioPreview(change: { rate?: unknown; view?: unknown }): Promise<void> {
+    if ((change.rate !== undefined && !isStudioPreviewRate(change.rate)) || (change.view !== undefined && !isStudioView(change.view)) || (change.rate === undefined && change.view === undefined)) {
+      return Promise.reject(new Error(`unsupported Studio preview: ${JSON.stringify(change)}`));
+    }
+    const { rate, view } = change as { rate?: StudioPreviewSettings["rate"]; view?: StudioPreviewSettings["view"] };
+    return this.save((current) => ({ ...current, studioPreview: {
+      rate: rate ?? current.studioPreview.rate,
+      view: view ?? current.studioPreview.view,
+    } }));
   }
 
   get libraryPreviewSound(): boolean { return this.settings.libraryPreviewSound; }

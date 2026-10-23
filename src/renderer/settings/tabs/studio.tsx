@@ -4,18 +4,22 @@
  * still a group main offers and answers (settings-model.ts), chosen the same way as anywhere in Settings.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { AudioLines, Camera, CameraOff, Eye, EyeOff, FlipHorizontal2, Radio, Square } from "lucide-react";
+import { isStudioPreviewRate, isStudioView, type StudioPreviewRate } from "../../../shared/studio-port";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
+import { AudioLines, Camera, CameraOff, Eye, EyeOff, FlipHorizontal2, MonitorPlay, Radio, Square } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
-import { CameraPreview } from "./camera-preview";
+import { CameraPreview, type PreviewShown } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
 import { SliderSetting } from "./row-parts/slider";
 import { Elapsed } from "./row-parts/elapsed";
-import { paceStudio } from "./studio-pace";
+import { paceStudio, type StudioPacer } from "./studio-pace";
+import { setPreviewView } from "./studio-feed";
 
 const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.find((group) => group.id === id && group.tab === "studio");
 
@@ -247,6 +251,85 @@ function Toolbar({ controls, live, camera }: { controls: SettingsGroup | undefin
   );
 }
 
+/**
+ * The preview's own panel beside the camera's and the mixer (plan 092, D1, D3; placed there at the maintainer's
+ * request on 2026-10-23): its rate, a menu whose every choice says in one line what it does while it is open, and its
+ * view as segments. Chosen at any time, a Live preview's or a recording's alike.
+ */
+function PreviewPanel({ rate, view }: { rate: SettingsGroup; view: SettingsGroup | undefined }) {
+  const chosen = model.committed(rate);
+  const description = rate.choices.find((choice) => choice.id === chosen)?.description;
+  const id = `setting-${rate.id}`;
+  const viewChosen = view && model.committed(view);
+  return (
+    <section className="studio-panel" aria-labelledby="studio-preview-heading">
+      <div className="studio-panel-head"><h2 id="studio-preview-heading"><MonitorPlay aria-hidden="true" />{model.text("Preview")}</h2></div>
+      <div className="studio-preview-choices">
+        <span id={`${id}-label`} className="studio-preview-label">{rate.label}</span>
+        <Select id={id} value={chosen} items={rate.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!rate.enabled}
+          onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(rate.id, next, id); }}>
+          <SelectTrigger id={id} data-value={chosen} aria-labelledby={`${id}-label ${id}`}
+            aria-describedby={description ? `${id}-description` : undefined} className="studio-preview-rate">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} align="start">
+            {rate.choices.map((choice) => (
+              <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
+                <span className="studio-preview-option">
+                  <span>{choice.label}</span>
+                  {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* What the chosen rate does, said to assistive technology; on screen the open menu says it (2026-10-23). */}
+        {description && <span id={`${id}-description`} className="sr-only">{description}</span>}
+      </div>
+      {view && viewChosen && (
+        <div className="studio-preview-choices">
+          <span id={`setting-${view.id}-label`} className="studio-preview-label">{view.label}</span>
+          <ToggleGroup id={`setting-${view.id}`} className="segments" variant="segmented" size="segment" spacing={0.5} value={[viewChosen]}
+            aria-labelledby={`setting-${view.id}-label`} onValueChange={(values) => {
+              const next = values[0];
+              if (next && next !== viewChosen) void model.choose(view.id, String(next), `setting-${view.id}-${next}`);
+            }}>
+            {view.choices.map((choice) => (
+              <ToggleGroupItem key={choice.id} id={`setting-${view.id}-${choice.id}`} value={choice.id} disabled={!view.enabled || !choice.enabled}
+                aria-label={choice.label}>{choice.label}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      )}
+      <Failures groups={[rate, view]} />
+    </section>
+  );
+}
+
+/**
+ * Paces the Studio at the chosen rate (studio-pace.ts) and tells the capture process the chosen view; returns what
+ * the stage shows of them. Power saving's rate in use is not shown: the rate's own line says what it does (the
+ * maintainer, 2026-10-23, in place of D1's corner label).
+ */
+function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup | undefined): PreviewShown {
+  const chosen: StudioPreviewRate = rate && isStudioPreviewRate(model.committed(rate)) ? model.committed(rate) as StudioPreviewRate : "off";
+  const viewChosen = view && isStudioView(model.committed(view)) ? model.committed(view) as "composed" | "screen" : "composed";
+  // One pacer from the Studio's opening, told each rate chosen, so what the pointer did before a choice still counts.
+  const pacer = useRef<StudioPacer | undefined>(undefined);
+  useEffect(() => {
+    const pacing = paceStudio(chosen);
+    pacer.current = pacing;
+    return () => { pacing.stop(); pacer.current = undefined; };
+    // Made once with the rate it starts at; later choices reach it below.
+  }, []);
+  useEffect(() => pacer.current?.rate(chosen), [chosen]);
+  useEffect(() => setPreviewView(viewChosen), [viewChosen]);
+  return {
+    off: chosen === "off",
+    view: viewChosen,
+  };
+}
+
 /** Tells main the Studio is open while it is shown in a window in sight (D20: a Live preview lasts only so long). */
 function useStudioOpen(): void {
   useEffect(() => {
@@ -262,17 +345,19 @@ function useStudioOpen(): void {
 
 export function Studio() {
   useStudioOpen();
-  // Its preview and meters at the full rate while someone works in it, at half while it is only looked at (plan 081).
-  useEffect(() => paceStudio(), []);
   const preview = groupOf("cameraPreview");
   const controls = groupOf("studioControls");
   const live = groupOf("studioLive");
+  const rate = groupOf("studioPreviewRate");
+  const view = groupOf("studioPreviewView");
+  // Its preview and meters at the chosen rate (plan 092, D1), and the chosen view (D3).
+  const shown = usePreviewChoice(rate, view);
   return (
     <div className="studio">
       <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}>
-          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside
+          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={rate ? shown : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
           {live?.note && <p id="setting-studioLive-note" className="studio-note" role="status">{live.note}</p>}
           {/* How to move the bubble, for assistive technology only: on screen the bubble shows it can be dragged. */}
@@ -281,6 +366,7 @@ export function Studio() {
         </section>
       )}
       <div className="studio-panels">
+        {preview?.cameraPreview && rate && <PreviewPanel rate={rate} view={view} />}
         <CameraPanel />
         <AudioPanel />
       </div>

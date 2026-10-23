@@ -305,6 +305,18 @@ function installPanelHandlers(): void {
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       return { view: settingsView(sessionState, state.cameraContext), applied: settingsAction(sessionState, state.cameraContext, group, choice) !== undefined };
     }
+    // The preview's rate and view (plan 092): main saves them, and the view shows them.
+    if ((group === "studioPreviewRate" || group === "studioPreviewView") && state.cameraContext) {
+      const context = state.cameraContext;
+      const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
+      const action = settingsAction(sessionState, context, group, choice);
+      if (typeof action === "object" && "setStudioPreview" in action) {
+        const current = context.studioPreview ?? { rate: "off", view: "composed" };
+        const { rate, view } = action.setStudioPreview;
+        state.cameraContext = { ...context, studioPreview: { rate: rate ?? current.rate, view: view ?? current.view } };
+      }
+      return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
+    }
     // The faders (D21): main saves the volume, and the view shows it.
     if ((group === "systemGain" || group === "microphoneGain") && state.cameraContext) {
       const context = state.cameraContext;
