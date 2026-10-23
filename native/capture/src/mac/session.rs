@@ -113,16 +113,18 @@ fn timed<T>(diagnostics: Option<&core::Diagnostics>, stage: impl Fn(&core::Diagn
 
 /// Whether composing the camera into the frames works (plan 075, D12: the camera is the recording's optional part). A
 /// failure, such as a GPU reset around sleep and wake, loses the camera, not the recording: the frame is the screen
-/// alone, told as a camera dropout once, and composing is tried again with each frame. Its recovery is only logged: the
-/// camera's return is the Feed's to tell, which knows whether there is a camera to compose.
+/// alone, told as a camera dropout once, and composing is tried again with each frame. Its recovery tells the camera's
+/// return while the Feed still delivers (plan 090: the Recording Studio would otherwise say the camera is out for the
+/// rest of the recording); a Feed that is lost tells its own return when it delivers again.
 struct Composition {
     failing: AtomicBool,
     events: Arc<dyn Events>,
+    feed: Option<Arc<super::camera::Feed>>,
 }
 
 impl Composition {
-    fn new(events: Arc<dyn Events>) -> Self {
-        Self { failing: AtomicBool::new(false), events }
+    fn new(events: Arc<dyn Events>, feed: Option<Arc<super::camera::Feed>>) -> Self {
+        Self { failing: AtomicBool::new(false), events, feed }
     }
 
     /// The composed picture, or None for the screen alone.
@@ -131,6 +133,9 @@ impl Composition {
             Ok(picture) => {
                 if self.failing.swap(false, Ordering::AcqRel) {
                     eprintln!("camera: composing works again");
+                    if let Some(feed) = self.feed.as_ref() {
+                        feed.composed_again(&*self.events);
+                    }
                 }
                 Some(picture)
             }
@@ -507,7 +512,7 @@ impl Session {
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
         let encoding_compositor = compositor.clone();
-        let composition = Composition::new(core.shared().events());
+        let composition = Composition::new(core.shared().events(), camera.as_ref().map(|camera| camera.feed.clone()));
         let diagnostics = core.shared().diagnostics();
         let encoders = core.make_encoders(move |sink| {
             let encoder = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
@@ -776,14 +781,23 @@ mod preview_test {
     #[test]
     fn a_composition_failure_loses_the_camera_once_and_not_the_frame() {
         let told = Arc::new(Told::default());
-        let composition = Composition::new(told.clone());
+        let feed = Arc::new(super::super::camera::Feed::default());
+        let composition = Composition::new(told.clone(), Some(feed.clone()));
         assert_eq!(composition.picture(Ok(1)), Some(1));
         assert_eq!(composition.picture::<u32>(Err("command buffer failed".into())), None);
         assert_eq!(composition.picture::<u32>(Err("command buffer failed".into())), None);
+        // Its recovery before the camera's first frame is not its return (plan 090): the camera tells that frame itself.
+        // Recovery while the camera delivers is told by the Feed (`CameraFeed::composed_again`, the core's tests).
         assert_eq!(composition.picture(Ok(2)), Some(2));
-        // Lost again after recovering: a second dropout is told; the recovery itself is not, the Feed tells returns.
+        // Lost again after recovering: a second dropout is told; with the camera itself lost meanwhile, the recovery is
+        // not told either, as the camera tells its own return when it delivers.
         assert_eq!(composition.picture::<u32>(Err("texture".into())), None);
-        assert_eq!(*told.0.lock().unwrap(), ["lost: composing the camera failed: command buffer failed", "lost: composing the camera failed: texture"]);
+        feed.lose("the camera was disconnected".into(), true, &*told);
+        assert_eq!(composition.picture(Ok(3)), Some(3));
+        assert_eq!(
+            *told.0.lock().unwrap(),
+            ["lost: composing the camera failed: command buffer failed", "lost: composing the camera failed: texture", "lost: the camera was disconnected"]
+        );
     }
 
     #[test]

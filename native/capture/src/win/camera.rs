@@ -7,15 +7,16 @@
 //! Windows has no system default camera: the first one Media Foundation lists stands for it (D9). A camera is found
 //! by its symbolic link, which stays the same while it is connected to the same port.
 //!
-//! A read that fails (the camera unplugged, its access withdrawn in Settings > Privacy & security > Camera, or taken
-//! by another app that holds it exclusively) is a loss told at once; a camera that stalls is told lost by its silence
+//! The start does not wait for the camera's first frame (plan 090): a camera opened in `prepare` is read on its own
+//! thread, and the recording starts without it, as on macOS. A read that fails (the camera unplugged, its access
+//! withdrawn in Settings > Privacy & security > Camera, or taken by another app that holds it exclusively), its first
+//! read included, is a loss told at once while recording; a camera that stalls is told lost by its silence
 //! (the core's 2 s), and its source is then shut down, which ends a read that waits for it. The read thread then opens
 //! the same camera again, by its symbolic link and never another, after 2 s and backing off to 30 s, the waits starting
 //! over once a camera opened again has delivered. Closing shuts the media source down, which ends a read in progress
 //! and turns the camera's light off.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -32,8 +33,6 @@ use crate::core::{CAMERA_SILENT_NS, CameraControl, Events};
 
 /// The waits between attempts to open a lost camera again, the last repeated.
 const BACKOFF: [Duration; 5] = [Duration::from_secs(2), Duration::from_secs(4), Duration::from_secs(8), Duration::from_secs(16), Duration::from_secs(30)];
-/// How long `start` waits for the camera's first frame or its refusal before going on without either.
-const FIRST_READ: Duration = Duration::from_secs(3);
 const WANTED: (u32, u32) = (1280, 720);
 const STREAM: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 
@@ -235,9 +234,8 @@ struct Inner {
 }
 
 impl Inner {
-    /// Reads `opened` until it fails or the camera is closed; `first` hears the first frame's arrival or the failure.
-    /// Answers whether it delivered a frame.
-    fn read(&self, opened: Opened, first: &mut Option<std::sync::mpsc::Sender<Result<(), String>>>) -> bool {
+    /// Reads `opened` until it fails or the camera is closed. Answers whether it delivered a frame.
+    fn read(&self, opened: Opened) -> bool {
         {
             // Published with its own watch state, under the lock `silence` judges under, so a check about the source
             // before never shuts this one down.
@@ -268,12 +266,9 @@ impl Inner {
             };
             if let Some(detail) = failure {
                 self.failed_reads.fetch_add(1, Ordering::Relaxed);
-                match first.take() {
-                    Some(first) => {
-                        let _ = first.send(Err(detail));
-                    }
-                    None => self.feed.lose(detail, (self.recording)(), &*self.events),
-                }
+                // Before the recording the next frame or the start decides (`CameraFeed::lose`), and the read thread
+                // opens the camera again meanwhile.
+                self.feed.lose(detail, (self.recording)(), &*self.events);
                 break;
             }
             if flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0 {
@@ -291,9 +286,6 @@ impl Inner {
                     self.feed.deliver(Arc::new(Mta(frame)), arrived, arrived, &*self.events);
                     self.heard_ns.store(arrived, Ordering::Release);
                     delivered = true;
-                    if let Some(first) = first.take() {
-                        let _ = first.send(Ok(()));
-                    }
                 }
                 Err(detail) => eprintln!("camera: a frame was skipped: {detail}"),
             }
@@ -320,9 +312,9 @@ impl Inner {
     }
 
     /// The read thread: the camera opened at the start, then opened again after each loss, until it is closed.
-    fn run(&self, opened: Opened, mut first: Option<std::sync::mpsc::Sender<Result<(), String>>>) {
+    fn run(&self, opened: Opened) {
         com();
-        let mut attempt = usize::from(!self.read(opened, &mut first));
+        let mut attempt = usize::from(!self.read(opened));
         while !self.closed.load(Ordering::Acquire) {
             std::thread::sleep(BACKOFF[attempt.min(BACKOFF.len() - 1)]);
             if self.closed.load(Ordering::Acquire) {
@@ -333,7 +325,7 @@ impl Inner {
                 Ok(opened) => {
                     self.reopened.fetch_add(1, Ordering::Relaxed);
                     // A camera that delivered again before failing starts its waits over.
-                    if self.read(opened, &mut None) {
+                    if self.read(opened) {
                         attempt = 0;
                     }
                 }
@@ -351,8 +343,9 @@ pub struct CameraCapture {
 }
 
 impl CameraCapture {
-    /// Opens `device` (its symbolic link; the first camera listed when `None` or not connected, D9), starts reading
-    /// it and waits up to `FIRST_READ` for its first frame, so a camera that refuses refuses the start.
+    /// Opens `device` (its symbolic link; the first camera listed when `None` or not connected, D9) and starts reading
+    /// it, without waiting for its first frame (plan 090): a camera that cannot be opened refuses the start (D11), one
+    /// that opens but refuses its reads is a loss.
     pub fn start(
         gpu: Arc<Mta<Gpu>>,
         device: Option<&str>,
@@ -382,28 +375,16 @@ impl CameraCapture {
             reopened: AtomicU64::new(0),
             failed_reads: AtomicU64::new(0),
         });
-        let (first, heard) = channel();
         let reading = inner.clone();
         let opened = Mta(opened);
         std::thread::Builder::new()
             .name("recordstuff-camera".into())
             .spawn(move || {
                 let opened = opened;
-                reading.run(opened.0, Some(first));
+                reading.run(opened.0);
             })
             .map_err(|e| unavailable(format!("camera thread: {e}")))?;
-        let capture = Arc::new(Self { name: name.clone(), feed, inner });
-        match heard.recv_timeout(FIRST_READ) {
-            Ok(Ok(())) | Err(RecvTimeoutError::Timeout) => Ok(capture),
-            Ok(Err(detail)) => {
-                capture.close();
-                Err(unavailable(format!("{name}: {detail}")))
-            }
-            Err(RecvTimeoutError::Disconnected) => {
-                capture.close();
-                Err(unavailable(format!("{name}: the camera thread ended")))
-            }
-        }
+        Ok(Arc::new(Self { name, feed, inner }))
     }
 
     /// What the camera did, for the log.

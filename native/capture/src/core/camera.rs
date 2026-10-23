@@ -64,6 +64,10 @@ impl<F: Clone> CameraFeed<F> {
             state.first_ns = now_ns;
         }
         state.delivered += 1;
+        if first && !state.lost {
+            // Told under the lock, before any frame after it could be told lost.
+            events.camera_ready(format!("the camera delivered its first frame {:.1} s after it was opened", opened_for as f64 / NANOS_PER_SECOND as f64));
+        }
         if state.lost {
             state.lost = false;
             // Told under the lock, so a loss and a return are told in the order they happened.
@@ -153,6 +157,16 @@ impl<F: Clone> CameraFeed<F> {
             note.push_str(&format!(", {:+.2} s from the recording's start", seconds(state.first_ns as i128 - state.since_ns as i128)));
         }
         note
+    }
+
+    /// Composing the camera works again after it failed (macOS's composition, plan 090): told as the camera's return
+    /// only while it delivers a picture, under the lock its loss and first frame are told under, so a loss told
+    /// meanwhile is never overtaken; a camera lost or without its first frame tells its own return or first frame.
+    pub fn composed_again(&self, events: &dyn Events) {
+        let state = self.state.lock().unwrap();
+        if !state.lost && state.latest.is_some() {
+            events.camera_resumed("composing the camera works again".into());
+        }
     }
 
     pub fn is_lost(&self) -> bool {

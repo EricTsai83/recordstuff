@@ -89,6 +89,9 @@ pub trait Events: Send + Sync {
     /// The camera stopped delivering while recording (plan 075, D12): the recording goes on without it. Told once per
     /// dropout.
     fn camera_lost(&self, _detail: String) {}
+    /// The camera delivered its first frame, unless it was told lost or not ready before it (then `camera_resumed`
+    /// tells it), so the Recording Studio can stop saying it waits for the camera (plan 090). Told at most once.
+    fn camera_ready(&self, _detail: String) {}
     /// The camera delivered nothing in `CAMERA_FIRST_FRAME_NS` after its opening while recording (plan 090, D1): the
     /// recording goes on without it. Told once per session, before any loss.
     fn camera_not_ready(&self, _detail: String) {}

@@ -180,8 +180,10 @@ describe("the camera (plan 075)", () => {
       { type: "cameraResumed", sessionId: "s1", detail: "the camera delivered frames again after 3.0 s" }]);
   });
 
-  it("forwards the engine's camera not ready for the session (plan 090)", async () => {
+  it("forwards the engine's camera not ready and its first frame for the session (plan 090)", async () => {
     const { port, emit } = await prepared();
+    emit({ kind: "cameraReady", detail: "the camera delivered its first frame 0.7 s after it was opened" } as never);
+    expect(port.sent.at(-1)).toEqual({ type: "cameraReady", sessionId: "s1", detail: "the camera delivered its first frame 0.7 s after it was opened" });
     emit({ kind: "cameraNotReady", detail: "the camera delivered no frame in the 10 s after it was opened" } as never);
     expect(port.sent.at(-1)).toEqual({ type: "cameraNotReady", sessionId: "s1", detail: "the camera delivered no frame in the 10 s after it was opened" });
   });

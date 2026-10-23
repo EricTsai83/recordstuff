@@ -118,6 +118,7 @@ struct Heard {
     camera_lost: Mutex<Vec<String>>,
     camera_resumed: Mutex<Vec<String>>,
     camera_not_ready: Mutex<Vec<String>>,
+    camera_ready: Mutex<Vec<String>>,
     levels: Mutex<Vec<Levels>>,
 }
 
@@ -145,6 +146,9 @@ impl Events for Heard {
     }
     fn camera_not_ready(&self, detail: String) {
         self.camera_not_ready.lock().unwrap().push(detail);
+    }
+    fn camera_ready(&self, detail: String) {
+        self.camera_ready.lock().unwrap().push(detail);
     }
     fn levels(&self, levels: Levels) {
         self.levels.lock().unwrap().push(levels);
@@ -1261,10 +1265,12 @@ fn a_camera_s_first_frame_is_timed_from_its_opening_and_the_recording_s_start() 
     // Before the recording: timed from the opening only.
     feed.deliver(1, opened + 800_000_000, opened + 800_000_000, &heard);
     assert_eq!(feed.first_frame(), "first frame 0.80 s after opening");
+    assert_eq!(heard.camera_ready.lock().unwrap().as_slice(), ["the camera delivered its first frame 0.8 s after it was opened"]);
     // Once recording since 501 s, the same first frame came 0.20 s before its start; later frames change nothing.
     feed.judge(opened + 1_100_000_000, opened + NANOS_PER_SECOND, true, &heard);
     feed.deliver(2, opened + 1_050_000_000, opened + 1_050_000_000, &heard);
     assert_eq!(feed.first_frame(), "first frame 0.80 s after opening, -0.20 s from the recording's start");
+    assert_eq!(heard.camera_ready.lock().unwrap().len(), 1, "told once");
     // A camera slow to its first frame (plan 090's round): opened, recording 0.5 s later, the frame 2.6 s into it, is
     // never told lost; opening it again does not move its opening.
     let slow = CameraFeed::<u32>::default();
@@ -1303,6 +1309,7 @@ fn a_camera_without_a_first_frame_is_told_not_ready_from_its_opening_never_lost(
     assert!(!feed.is_lost());
     assert_eq!(feed.latest(), Some((1, opened + 12 * NANOS_PER_SECOND)));
     assert_eq!(heard.camera_resumed.lock().unwrap().as_slice(), ["the camera delivered its first frame 12.0 s after it was opened"]);
+    assert!(heard.camera_ready.lock().unwrap().is_empty(), "a camera told not ready returns as resumed, not ready");
     assert_eq!(feed.counts(), (1, 0));
     // A device the platform sees go before its first frame is a loss at once, as after it.
     let gone = CameraFeed::<u32>::default();
@@ -1314,4 +1321,25 @@ fn a_camera_without_a_first_frame_is_told_not_ready_from_its_opening_never_lost(
     assert_eq!(heard.camera_not_ready.lock().unwrap().len(), 1, "a lost camera is not also told not ready");
     gone.judge(opened + 11 * NANOS_PER_SECOND, start, true, &heard);
     assert_eq!(heard.camera_not_ready.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn composing_again_is_the_camera_s_return_only_while_it_delivers_a_picture() {
+    let heard = Heard::default();
+    let resumed = |heard: &Heard| heard.camera_resumed.lock().unwrap().clone();
+    let feed = CameraFeed::<u32>::default();
+    feed.opened(NANOS_PER_SECOND);
+    // Before its first frame: nothing, the waiting goes on until the camera tells its first frame.
+    feed.composed_again(&heard);
+    assert!(resumed(&heard).is_empty());
+    // Delivering: composing again is told as its return.
+    feed.deliver(1, 2 * NANOS_PER_SECOND, 2 * NANOS_PER_SECOND, &heard);
+    feed.composed_again(&heard);
+    assert_eq!(resumed(&heard), ["composing the camera works again"]);
+    // Lost meanwhile: not told, so a loss is never overtaken by a return; its next frame tells the return.
+    feed.lose("the camera was disconnected".into(), true, &heard);
+    feed.composed_again(&heard);
+    assert_eq!(resumed(&heard).len(), 1);
+    feed.deliver(2, 9 * NANOS_PER_SECOND, 9 * NANOS_PER_SECOND, &heard);
+    assert_eq!(resumed(&heard).len(), 2);
 }

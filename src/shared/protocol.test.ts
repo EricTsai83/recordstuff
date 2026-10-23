@@ -120,7 +120,7 @@ describe("isHostMessage", () => {
   it("accepts the microphone's refusal, its loss and the listed inputs, and refuses malformed ones (plan 074)", () => {
     expect(isHostMessage({ type: "error", sessionId: "a", code: "microphone_unavailable", detail: "microphone: there is no audio input" })).toBe(true);
     expect(isHostMessage({ type: "error", sessionId: "a", code: "camera_unavailable", detail: "camera: no camera is connected" })).toBe(true);
-    for (const type of ["cameraLost", "cameraNotReady", "cameraResumed"]) {
+    for (const type of ["cameraLost", "cameraReady", "cameraNotReady", "cameraResumed"]) {
       expect(isHostMessage({ type, sessionId: "a", detail: "the camera delivered no frame for 2 s" })).toBe(true);
       expect(isHostMessage({ type, sessionId: "", detail: "x" })).toBe(false);
     }

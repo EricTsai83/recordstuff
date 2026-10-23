@@ -225,7 +225,7 @@ pub struct FinishReport {
 #[derive(Clone, Default)]
 pub struct EngineEvent {
     /// `progress`, `writeError`, `captureError`, `microphoneLost` (074: the recording goes on without it), `cameraLost`
-    /// and `cameraResumed` (plan 075, the same for the camera), `cameraNotReady` (plan 090: no first frame in time), `levels` (plan 075, D19: the inputs' peaks), and plan
+    /// and `cameraResumed` (plan 075, the same for the camera), `cameraReady` and `cameraNotReady` (plan 090: the first frame, or none in time), `levels` (plan 075, D19: the inputs' peaks), and plan
     /// 079's `microphoneSwitched`, `microphoneSwitchFailed`, `meter`, `meterLost` and `devices` (the list changed).
     pub kind: String,
     pub bytes: Option<f64>,
@@ -360,6 +360,9 @@ impl core::Events for Emitter {
 
     fn camera_lost(&self, detail: String) {
         self.emit(EngineEvent { kind: "cameraLost".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
+    }
+    fn camera_ready(&self, detail: String) {
+        self.emit(EngineEvent { kind: "cameraReady".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
     }
     fn camera_not_ready(&self, detail: String) {
         self.emit(EngineEvent { kind: "cameraNotReady".into(), bytes: None, code: None, detail: Some(detail), ..Default::default() });
