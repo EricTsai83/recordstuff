@@ -2,7 +2,7 @@
 
 [English](090-camera-first-frame.md) | [繁體中文](090-camera-first-frame.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-23 at the maintainer's request, from two observations of 083's camera round ([record](../docs/verification/history-2026-10.md#plan-083-closure--2026-10-23)). Hard dependencies: none; next in the queue, ahead of 084. Execute in order under the [plan index](README.md). This task writes the plan only; none of the behavior below has been implemented or verified.
+Status: planned; not started. Created: 2026-10-23 at the maintainer's request, from two observations of 083's camera round ([record](../docs/verification/history-2026-10.md#plan-083-closure--2026-10-23)). Hard dependencies: none; next in the queue, ahead of 091 and 084. Execute in order under the [plan index](README.md). This task writes the plan only; none of the behavior below has been implemented or verified.
 
 ## Goal and current state
 
