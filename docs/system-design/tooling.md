@@ -183,12 +183,14 @@ No frame was dropped by the encoder or left unmatched; at most 3 frames (4 at 60
 
 D18's 8 points hold while the Studio is only watched and are exceeded by 2–3 points while someone works in it, as plan 081 measured (9.9 at 30 fps then) and its D1 accepted. Along the preview's path nothing was lost: every chunk made was sent through napi's gate, forwarded and drawn (0 missed, 0 dropped, 0 not decoded, one decoder start a session). Preview composing p50 1.2–1.4 ms (p95 4.6–6.7), its encoding p50 4.6 ms (p95 7.7–11) beside a 30 fps recording and 9.2–13.3 ms (p95 18–23) beside a 60 fps one, the port 0–1 ms (whole milliseconds), decoding and drawing p50 1.9 ms (p95 3.8–5.6; one 218 ms outlier in 302 frames while only watched). The capture process peaked at 106–109 MB with the preview, the Studio's renderer at 252–270 MB.
 
+**With the iPhone's camera** (the maintainer's Continuity Camera at their go-ahead, a separate round on the same bundle, `--camera device=<its id>,preview=0 --studio --diagnostics`; report `083-r7-camera`): R 12.3% at 30 fps, about 2 points over the screen alone; S 19.2% / 23.4% at 30 / 60 fps, 6.9 / 7.2 points over R, within D18 while only watched; L 16.8% / 17.1%. Composing the camera (`compose`) took p50 1.7–1.9 ms and p95 5.6–7.7 ms a frame, the encoder's latency p50 18.4 ms at 30 fps and 22.5 ms at 60, the capture process at most 113 MB; nothing was dropped. The camera's picture was 112–124 ms older than its frame (075: 113.9 ms). In both recordings started right after the Studio closed, the camera delivered its first frame only after 2.5 s and 12 s, so each was told lost and then resumed; the 60 fps R composed the camera for about 48 of its 60 s, and its 16.2% is low for that.
+
 **Budgets for 084–088.** Measured against the same workloads with `--diagnostics`, until a plan measures its own:
 
 - Recording CPU stays within this section's spread of its median (and `CPU_BUDGET`); an optimization counts only when it improves the median by more than that spread and at least 10%, with the recording's integrity checks unchanged.
 - Queues stay bounded as now: no encoder drop, frames waiting for the encoder at most 4, the writer's backlog under 1 MB at Standard quality.
 - The preview delivers what it makes: 0 missed and 0 gate drops for a page that keeps up, the port's p95 at most 1 ms, decoding and drawing p95 at most 6 ms; 084 measures a slow consumer against these.
-- Memory: the capture process at most about 110 MB with the preview, the Studio's renderer about 270 MB; a new cost is reported apart from any saving.
+- Memory: the capture process at most about 110 MB with the preview (113 MB with the camera), the Studio's renderer about 270 MB; a new cost is reported apart from any saving.
 - The editing plans' (085–088) budgets are provisional until each measures its own work; their cost is a new feature's, judged against these baselines rather than hidden in them.
 
 ### Finalization measurement

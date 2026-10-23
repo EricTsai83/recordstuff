@@ -6,16 +6,18 @@
 
 ## Plan 083 結案 — 2026-10-23
 
-Plan 083（媒體管線量測與預算）是 Glide 參考系列 083–088 的第一個，2026-10-23 在 `pnpm start:app` 從 `3b76a8cb` 加上本計畫變更所建置的簽章 bundle 上執行（M1 Pro 參考機，macOS 26.6.2，兩台 BenQ 螢幕，MacBook 闔上蓋子）。維護者同意後，由 Claude 實作並執行每個回合；維護者本輪沒有允許使用真實相機，所以沒有開啟任何相機。報告：`docs/verification/measurements/083-r1-off` 至 `083-r6-off`（僅本機）。
+Plan 083（媒體管線量測與預算）是 Glide 參考系列 083–088 的第一個，2026-10-23 在 `pnpm start:app` 從 `3b76a8cb` 加上本計畫變更所建置的簽章 bundle 上執行（M1 Pro 參考機，macOS 26.6.2，兩台 BenQ 螢幕，MacBook 闔上蓋子）。維護者同意後，由 Claude 實作並執行每個回合；沒有相機的回合都把「相機」開關保持關閉，維護者同意後的第七輪使用其 iPhone 的 Continuity Camera。報告：`docs/verification/measurements/083-r1-off` 至 `083-r7-camera`（僅本機）。
 
 - **新增的內容。** 開發用開關 `RECORDSTUFF_DIAGNOSTICS=1`：每個擷取工作階段在引擎中保留有上限的各階段直方圖（每個 128 個計數器）與佇列最高水位（[diagnostics.rs](../../../native/capture/src/core/diagnostics.rs)），capture host 每 5 秒與工作階段結束時把它們記成 `diagnostics:` 行，錄影工作室頁面只在被要求後才在 Studio 的 port 上回報預覽數據；`pnpm diagnose:pipeline` 把它們讀成 `recordstuff.pipeline-diagnostics/1`，`pnpm measure:cpu -- --diagnostics`、`--material still`、`--studio-active`（以及不加 `--camera` 的 `--studio`）用它們量測（見[管線數據](../system-design/tooling.md#管線數據)）。開關關閉時不計時任何階段，頁面也不為此讀取時鐘。不保留任何畫面、裝置名稱或輸入文字，錄影的資料也不經過 renderer。
 - **Baseline 與預算。** 記在工具指南的[管線 baseline](../system-design/tooling.md#管線-baseline)：錄影 CPU 在 30 fps 為 10.1–10.5%、60 fps 為 14.2–14.8%；編碼延遲 p50 18.4 ms；writer 積壓最多 0.6 MB；capture 程序最多 109 MB；預覽從引擎到 canvas 沒有遺失；靜態素材 3.3–3.5%；以及 084–088 對照的預算。本計畫沒有嘗試任何優化，所以沒有採用任何優化：本計畫的成果就是量測本身。
 - **開關的成本。** 依序關、開、再關，每種幀率各錄三段：開啟時的各次都落在兩個關閉回合的範圍內（九次合計 30 fps 為 10.09–10.46%、60 fps 為 14.17–14.79%），所以成本在 baseline 範圍內。只看第一次比較（60 fps 關 14.3%、開 14.7%）像是多了 0.4 點；第二個關閉回合（14.17–14.74%）顯示那是漂移。
 - **錄影工作室。** 沒有合成相機時，只是看著（每秒 5 格）S 在 30／60 fps 比 R 多 7.3／6.2 點，游標停在上面（每秒 10 格）時多 11.2／10.1 點，D18 是 8 點：操作中的情況超出，與 plan 081 的量測及其 D1 接受的情況一致，所以 `measure:cpu` 的 S 檢查在那裡失敗，該回合只因此判為 FAIL。L 為 14.4–15.1%。
+- **相機（第 7 輪）。** 合成 iPhone 相機時：R 在 30 fps 為 12.3%；S 在 30／60 fps 比 R 多 6.9／7.2 點（符合 D18）；L 為 16.8–17.1%；每格合成 p50 1.7–1.9 ms；相機畫面比所在影格舊 112–124 ms；capture 程序最多 113 MB；沒有任何丟棄。該回合判為 PASS。
+- **觀察到、未修改。** 錄影工作室關閉後立刻開始的兩段錄影中，iPhone 分別在 2.5 秒與 12 秒後才送出第一格，所以都先被判為中斷（`cameraLost`，存檔後通知）再恢復；是否因錄影工作室放開自己的擷取後 Continuity 重新連線，目前不清楚。每次恢復的訊息都把間隔寫成約 2,478,000 秒（2478244.7 與 2478495.7）：還沒送出任何畫面的相機，是從 0 而不是從錄影開始計算（`CameraFeed::deliver`，自 plan 075 起）。兩者留給之後的計畫。
 - **回合中發現並修正。** 即時預覽的數據缺少（1 次中 0 次有記錄）：主程序以結束 capture 程序的方式取消它，所以 host 現在每 5 秒記一次累計快照，parser 保留每個工作階段的最後一次。第一個錄影工作室回合中，L 之後的 ⌘W 沒有關掉錄影工作室，所以該回合的 R（21.3%／25.2%）與 B 的程序角色無效；runner 現在在 ⌘W 無效時按視窗的關閉按鈕，仍關不掉就讓該輪失敗，第二個錄影工作室回合確認了這點。合併情境的標題誤寫「no engine figures」，已更正。
 - **檢查與審查。** `pnpm check` 在回合前與回合中修正後都通過（176 個檔案、2093 個 TypeScript 測試；148 個 Rust 測試，7 個略過；Clippy、fmt、建置與引擎載入），Windows target 的 Clippy 也通過，審查修正後 `pnpm test:scope -- pipeline-diagnostics studio` 連同其 11 個 UI 案例也通過。唯讀的 Codex GPT-6.1 Sol（medium）審查找到兩個問題，都已修正：B 拿錄影工作室的錄影比較程序角色，以及開關關閉時頁面仍讀取時鐘。回合中的修正沒有再審查。
-- **清理。** 每個 runner 都還原了 `settings.json`（已確認：相機與麥克風關閉，倒數 3，60 fps），正常結束 RecordStuff 且沒有殘留程序，並關閉素材；QuickTime 已關閉；`caffeinate` 已停止。各回合的錄影在 ~/Movies/RecordStuff（2026-10-23 13-01 至 14-03）。
-- **未測試。** 真實相機（維護者的選擇），以及計畫列為可選、沒有製作的合成相機素材：相機的合成（`compose`）與相機延遲在這些數據下都未量測。Windows，依 076 的 D8（其預覽數據與編碼延遲的接法相同但未執行）。開著但被隱藏的錄影工作室；執行期間的 NTP 時鐘跳動；聆聽檔案。
+- **清理。** 每個 runner 都還原了 `settings.json`（最後一輪後已確認：相機與麥克風關閉，倒數 3，60 fps），正常結束 RecordStuff 且沒有殘留程序，並關閉素材；QuickTime 已關閉；`caffeinate` 已停止。各回合的錄影在 ~/Movies/RecordStuff（2026-10-23 13-01 至 14-33）。
+- **未測試。** 計畫列為可選、沒有製作的合成相機素材；相機的數據只來自第 7 輪每種幀率各一段錄影。Windows，依 076 的 D8（其預覽數據與編碼延遲的接法相同但未執行）。開著但被隱藏的錄影工作室；執行期間的 NTP 時鐘跳動；聆聽檔案。
 
 ## Plan 089 結案 — 2026-10-23
 
