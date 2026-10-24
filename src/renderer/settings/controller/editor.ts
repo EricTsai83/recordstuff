@@ -177,15 +177,18 @@ function followAll(exact: boolean): void {
 const followers: Array<[string, () => void]> = [
   ["play", () => { resumeAudio(); followAll(true); }],
   ["pause", () => followAll(true)], ["seeked", () => followAll(true)], ["ratechange", () => followAll(false)],
-  ["volumechange", () => followAll(false)], ["timeupdate", () => followAll(false)],
+  ["volumechange", () => { followAll(false); syncPreviewAudio(); }], ["timeupdate", () => followAll(false)],
 ];
 
 /**
  * The preview's sound (plan 087): each element through a gain at its track's volume, summed, then through the export's
- * soft limit (core's `limit`, as a wave shaper), so a loud or raised mix sounds as the export will. Created once; each
- * element's source can be made only once, so an element's nodes live as long as it is shown, and are released after.
+ * soft limit (core's `limit`, as a wave shaper), so a loud or raised mix sounds as the export will, and only then the
+ * player's own volume and mute, as a master gain: Chromium applies an element's volume and mute to its source node
+ * (measured 2026-10-25), so each element's gain divides its own volume back out, and the mix is limited as the export
+ * limits it whatever the player's volume (Codex's second review). Created once; each element's source can be made only
+ * once, so an element's nodes live as long as it is shown, and are released after.
  */
-let audio: { context: AudioContext; mix: AudioNode; nodes: Map<HTMLMediaElement, { source: AudioNode; gain: GainNode }> } | undefined;
+let audio: { context: AudioContext; mix: AudioNode; master: GainNode; nodes: Map<HTMLMediaElement, { source: AudioNode; gain: GainNode }> } | undefined;
 /** The span of sums the limiter's curve covers: past it a sum is as limited as full scale is. */
 const LIMIT_SPAN = 8;
 
@@ -198,8 +201,9 @@ function gainFor(media: HTMLMediaElement): GainNode | undefined {
     into.gain.value = 1 / LIMIT_SPAN;
     const shaper = context.createWaveShaper();
     shaper.curve = Float32Array.from({ length: 4096 }, (_, n) => softLimit((n / 4095 * 2 - 1) * LIMIT_SPAN));
-    into.connect(shaper).connect(context.destination);
-    audio = { context, mix: into, nodes: new Map() };
+    const master = context.createGain();
+    into.connect(shaper).connect(master).connect(context.destination);
+    audio = { context, mix: into, master, nodes: new Map() };
   }
   let nodes = audio.nodes.get(media);
   if (!nodes) {
@@ -244,17 +248,24 @@ export function soundGain(scene: EditScene, sound: EditableSound | undefined): n
 export function syncPreviewAudio(): void {
   const editor = editorView();
   const scene = editor && editorScene(editor);
+  // What the element's volume did to its source undone: the gain alone is the scene's.
+  const set = (media: HTMLMediaElement, gain: GainNode, factor: number): void => {
+    const level = media.muted ? 0 : media.volume;
+    gain.gain.value = level > 0 ? factor / level : 0;
+  };
+  if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
   if (!editor?.editable || !scene) {
     const kept = editorVideo && audio?.nodes.get(editorVideo);
-    if (kept) kept.gain.gain.value = 1;
+    if (kept && editorVideo) set(editorVideo, kept.gain, 1);
     return;
   }
   const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[editorVideo, editor.editable.sounds[0]], [previewSound, editor.editable.sounds[1]]];
   for (const [media, sound] of pairs) {
     if (!media) continue;
     const gain = gainFor(media);
-    if (gain) gain.gain.value = soundGain(scene, sound);
+    if (gain) set(media, gain, soundGain(scene, sound));
   }
+  if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
 }
 
 /**
