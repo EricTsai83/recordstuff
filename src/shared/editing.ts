@@ -195,6 +195,8 @@ export interface EditorEditable {
   /** The bubble's shape as recorded; absent without a camera track. */
   camera?: { rounding: number; mirror: boolean };
   scene: EditScene;
+  /** The scene as the recording left it (`defaultScene`), which Reset returns to. */
+  recorded: EditScene;
   /**
    * The preview's other tracks, as media URLs the page plays beside the recording (`recordstuff-media://preview/…`),
    * once made: the camera, and the second sound. Absent while they are made, or when they could not be.

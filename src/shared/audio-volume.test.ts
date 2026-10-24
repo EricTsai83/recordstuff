@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import bounds from "./audio-volume.bounds.json";
-import { AUDIO_VOLUME_MAX, MAX_GAIN_DB, SILENT_GAIN_DB, isAudioVolume, isGainDb, isVolume, volumeDb, volumeFromDb, softLimit } from "./audio-volume";
+import { AUDIO_VOLUME_MAX, MAX_GAIN_DB, SILENT_GAIN_DB, VOLUME_FADER_MAX, isAudioVolume, isGainDb, isVolume, volumeDb, volumeFromDb, volumeFromFader, volumeToFader, softLimit } from "./audio-volume";
 
 describe("audio volume (plan 075, D21)", () => {
   it("is a whole percent from silent to 600%", () => {
@@ -26,6 +26,21 @@ describe("audio volume (plan 075, D21)", () => {
   it("has the bounds the engine applies (audio-volume.bounds.json, also read by native/capture/src/core/mod.rs)", () => {
     expect([SILENT_GAIN_DB, AUDIO_VOLUME_MAX]).toEqual([bounds.silentGainDb, bounds.maxVolumePercent]);
     for (const { percent, db } of bounds.volumes) expect(volumeDb(percent), `${percent}%`).toBeCloseTo(db, 12);
+  });
+});
+
+describe("a volume fader's position (2026-10-25)", () => {
+  it("puts 100% in the middle, the left half by 5% and the right by 25%", () => {
+    expect(VOLUME_FADER_MAX).toBe(40);
+    expect([0, 50, 100, 125, 600].map(volumeToFader)).toEqual([0, 10, 20, 21, 40]);
+    expect([0, 10, 19, 20, 21, 40].map(volumeFromFader)).toEqual([0, 50, 95, 100, 125, 600]);
+  });
+
+  it("reads a volume off the grid between two positions, and any position as a volume", () => {
+    expect(volumeToFader(110)).toBeCloseTo(20.4);
+    for (let p = 0; p <= 40; p += 0.5) expect(isVolume(volumeFromFader(p))).toBe(true);
+    expect(volumeFromFader(-3)).toBe(0);
+    expect(volumeFromFader(99)).toBe(600);
   });
 });
 

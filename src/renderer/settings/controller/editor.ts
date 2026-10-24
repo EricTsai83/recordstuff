@@ -27,6 +27,8 @@ export let selectedFrom: number | undefined;
 interface EditState { removed: EditRange[]; scene?: EditScene }
 /** The edits each saved change replaced, newest last. */
 const undoStack: EditState[] = [];
+/** The edits Undo took back, newest last, which Redo makes again; a new change clears it. */
+const redoStack: EditState[] = [];
 /** The scene shown while the bubble is dragged or a slider moves, until it is let go and saved. */
 let sceneDraft: EditScene | undefined;
 /** A change being saved: further edits wait for its answer, which brings the revision they change. */
@@ -83,6 +85,10 @@ export function canUndo(): boolean {
   return undoStack.length > 0 && !editorSaving;
 }
 
+export function canRedo(): boolean {
+  return redoStack.length > 0 && !editorSaving;
+}
+
 /** Opens the edit view for `item`. */
 export async function openEditor(item: LibraryItemView): Promise<void> {
   forgetMenu();
@@ -90,6 +96,7 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   splits = [];
   selectedFrom = undefined;
   undoStack.length = 0;
+  redoStack.length = 0;
   sceneDraft = undefined;
   draw();
   // Refused (another recording's export runs): the view closes and says so.
@@ -111,6 +118,7 @@ export function closeEditor(restore = true): void {
   splits = [];
   selectedFrom = undefined;
   undoStack.length = 0;
+  redoStack.length = 0;
   sceneDraft = undefined;
   draw();
   void window.settings.choose(`recordingEdit:${item.id}`, { action: "close" } satisfies EditorChoice).then((result) => render(result.view), () => undefined);
@@ -292,6 +300,7 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
     undoStack.push({ removed: copy(now.removed), scene: now.editable.scene });
     const saved = await save(now.removed, next);
     if (!saved) undoStack.pop();
+    else redoStack.length = 0;
     return saved;
   }).finally(() => {
     if (--scenesWaiting === 0) sceneDraft = undefined;
@@ -367,7 +376,8 @@ export async function toggleSelected(): Promise<void> {
   undoStack.push({ removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}) });
   const saved = await save(removed);
   if (!saved) undoStack.pop();
-  else announce(translate(part.removed ? "Kept {from} to {to}" : "Removed {from} to {to}", view?.language, {
+  else redoStack.length = 0;
+  if (saved) announce(translate(part.removed ? "Kept {from} to {to}" : "Removed {from} to {to}", view?.language, {
     from: clock(part.from / editor.timescale), to: clock(part.to / editor.timescale),
   }));
 }
@@ -385,15 +395,45 @@ function subtract(ranges: readonly EditRange[], part: TimelinePart): EditRange[]
   return out;
 }
 
+/** The edit as it is now, as Undo and Redo keep it. */
+function current(editor: EditorView): EditState {
+  return { removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}) };
+}
+
 export async function undoEdit(): Promise<void> {
+  await step(undoStack, redoStack, "Undone");
+}
+
+/** Makes again the change Undo took back last (⇧⌘Z / Ctrl+Shift+Z or Ctrl+Y). */
+export async function redoEdit(): Promise<void> {
+  await step(redoStack, undoStack, "Redone");
+}
+
+/** Saves the newest edit of `from`, keeping the one it replaces on `to`; a failed save leaves both as they were. */
+async function step(from: EditState[], to: EditState[], said: "Undone" | "Redone"): Promise<void> {
   const editor = editorView();
   if (!editor || editor.state !== "ready" || editorSaving || editor.export.phase === "exporting") return;
-  const previous = undoStack.pop();
-  if (!previous) return;
-  if (await save(previous.removed, previous.scene)) {
+  const next = from.pop();
+  if (!next) return;
+  const now = current(editor);
+  if (await save(next.removed, next.scene)) {
+    to.push(now);
     syncPreviewAudio();
-    announce(translate("Undone", view?.language));
-  } else undoStack.push(previous);
+    announce(translate(said, view?.language));
+  } else from.push(next);
+}
+
+/** An editable recording's camera and volumes back to how the recording left them, as one change Undo takes back. */
+export function resetScene(): Promise<boolean> {
+  const editor = editorView();
+  const recorded = editor?.editable?.recorded;
+  if (!editor || !recorded || sameScene(editorScene(editor), recorded)) return Promise.resolve(false);
+  return changeScene(recorded, true);
+}
+
+/** Whether two scenes place and mix alike. */
+export function sameScene(a: EditScene | undefined, b: EditScene | undefined): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 async function save(removed: EditRange[], scene?: EditScene): Promise<boolean> {
@@ -419,6 +459,7 @@ export function cancelExport(): Promise<boolean> {
 
 export function discardEdit(): Promise<boolean> {
   undoStack.length = 0;
+  redoStack.length = 0;
   sceneDraft = undefined;
   splits = [];
   return send({ action: "discard" });

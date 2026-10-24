@@ -13,7 +13,7 @@ const START: EditScene = { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, 
 const ready = (scene: EditScene, revision: number): EditorView => ({
   id: "a", state: "ready", timescale: 90_000, duration: 900_000, seconds: 10, frameRate: 30, removed: [], skipped: [], revision, notes: [],
   outputSeconds: 10, exportable: true, export: { phase: "idle" },
-  editable: { sounds: ["system", "microphone"], camera: { rounding: 0.15, mirror: true }, scene,
+  editable: { sounds: ["system", "microphone"], camera: { rounding: 0.15, mirror: true }, scene, recorded: START,
     preview: { camera: "recordstuff-media://preview/1/camera", secondSound: "recordstuff-media://preview/1/secondSound" } },
 });
 

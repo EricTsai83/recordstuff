@@ -53,7 +53,7 @@ export function studioAudioGroups(ctx: AppContext): Group[] {
     const value = (ctx.audioVolume ?? DEFAULT_AUDIO_VOLUME)[source];
     return { ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: `${value}%`,
       enabled: true, checked: true, action: { setAudioVolume: { source, volume: value } } }]),
-      control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent" } };
+      control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent", scale: "volume" } };
   };
   const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), fader("systemGain", "System audio")];
   if (session ? session.microphone : ctx.microphone?.enabled) {

@@ -141,7 +141,7 @@ test("the preview skips removed parts, Undo takes a removal back, and a cancelle
  * main as a version-2 edit; the recording itself and the preview still play through the CORS-enabled scheme; and the
  * export is asked for rendered, with the camera where it was dragged and the volumes in dB.
  */
-test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered", async () => {
+test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered; then snapped, resized by its handle, a sound muted, everything reset, undone and redone", async () => {
   const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
@@ -151,12 +151,13 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await expect(page.locator(".editor-overlay audio")).toHaveAttribute("src", /\/secondSound$/);
 
   // The picture as drawn, and the bubble near its top-right corner, as the recording left it.
-  const picture = await read<{ left: number; top: number; width: number; height: number }>(page, `(() => {
+  const measure = () => read<{ left: number; top: number; width: number; height: number }>(page, `(() => {
     const video = document.querySelector("#editor .pc video");
     const box = video.getBoundingClientRect();
     const scale = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
     const width = video.videoWidth * scale, height = video.videoHeight * scale;
     return { left: box.left + (box.width - width) / 2, top: box.top + (box.height - height) / 2, width, height }; })()`);
+  const picture = await measure();
   const before = (await bubble.boundingBox())!;
   expect(before.x + before.width).toBeGreaterThan(picture.left + picture.width * 0.95);
   expect(before.y).toBeLessThan(picture.top + picture.height * 0.1);
@@ -212,5 +213,51 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(render.camera).toEqual({ width: 0.2, height: 0.3, rounding: 0.15, x: 0, y: 1, mirror: false });
   expect(render.volumesDb[0]).toBe(0);
   expect(render.volumesDb[1]).toBeCloseTo(20 * Math.log10(0.95), 6);
+
+  // 2026-10-25: a drop near the middle snaps onto it; ⌥ would place it exactly. The bubble sits over the player's
+  // seek bar here, which gives the press to the bubble. Measured again: the export's message moved the dialog.
+  const placed = (await bubble.boundingBox())!;
+  const now = await measure();
+  await page.mouse.move(placed.x + placed.width / 2, placed.y + placed.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(now.left + now.width / 2 + 3, now.top + now.height / 2 - 2, { steps: 8 });
+  await page.mouse.up();
+  expect(await eventually(() => record().scene?.camera?.x === 0.5 && record().scene?.camera?.y === 0.5), JSON.stringify(record().scene)).toBe(true);
+
+  // The handle on the corner facing the middle grows it from the opposite corner, its shape kept.
+  const handle = page.locator(".editor-camera-handle");
+  const grip = (await handle.boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width / 2 + 40, grip.y + grip.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  expect(await eventually(() => (record().scene?.camera?.width ?? 0) > 0.2)).toBe(true);
+  const grown = record().scene.camera;
+  expect(grown.height / grown.width).toBeCloseTo(0.3 / 0.2, 2);
+  await expect(page.locator("#editor-camera-size")).toBeAttached();
+  await expect(page.locator(".editor-scene-group").first().locator(".editor-scene-value")).toHaveText(`${Math.round(grown.height * 100)}%`);
+
+  // A sound muted by its button and back to where it was.
+  await page.locator("#editor-volume-system-mute").click();
+  expect(await eventually(() => record().scene?.volumes?.system === 0)).toBe(true);
+  await page.locator("#editor-volume-system-mute").click();
+  expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);
+
+  // Reset puts the camera and the volumes back as recorded; Undo takes it back, Redo makes it again.
+  await page.locator("#editor-scene-reset").click();
+  const recorded = { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } };
+  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
+  await expect(page.locator("#editor-scene-reset")).toBeDisabled();
+  await page.locator("#editor-undo").click();
+  expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
+  await page.locator("#editor-redo").click();
+  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
+  await expect(page.locator("#editor-redo")).toBeDisabled();
+  // And by the keyboard: ⌘Z / Ctrl+Z, then ⇧⌘Z / Ctrl+Shift+Z.
+  await page.locator("#editor-undo").focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
   await page.keyboard.press("Escape");
 });

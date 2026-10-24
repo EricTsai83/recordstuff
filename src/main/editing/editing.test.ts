@@ -511,6 +511,8 @@ describe("an editable recording (plan 087)", () => {
       sounds: ["system", "microphone"],
       camera: { rounding: 0.15, mirror: true },
       scene: { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } },
+      // Where Reset goes back to: as the recording left it.
+      recorded: { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } },
     });
     // Its camera and its second sound, copied for the page; served only at this view's addresses.
     const { camera, secondSound } = view.editable!.preview;

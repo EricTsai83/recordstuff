@@ -70,9 +70,10 @@ export interface SettingsGroup {
   control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "inputMeter";
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
-   * validates (plan 075's camera size and rounding, and D21's volumes).
+   * validates (plan 075's camera size and rounding, and D21's volumes). `scale: "volume"` lays a volume out as the
+   * faders do, 100% in the middle (audio-volume.ts `volumeToFader`); otherwise the track is linear.
    */
-  slider?: { min: number; max: number; step: number; value: number; unit: "percent" };
+  slider?: { min: number; max: number; step: number; value: number; unit: "percent"; scale?: "volume" };
   /**
    * A `number` field's range and value, whole steps in `unit`, and the short name shown in it (the camera's width, height
    * and rounding, 2026-10-21); the page sends the value entered as the choice, which main validates.

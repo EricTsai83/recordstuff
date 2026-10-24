@@ -678,7 +678,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   await expect(page.getByRole("slider", { name: "系統聲音音量" }), "S133 zh-TW, between recordings its fader alone").toBeVisible();
 });
 
-test("S138 each input's fader under its meter: saved between and during recordings, said in percent, silent at its bottom (plan 075, D21, 2026-10-21)", { tag: "@recording-settings" }, async () => {
+test("S138 each input's fader under its meter: saved between and during recordings, said in percent, 100% in the middle, silent at its bottom (plan 075, D21, 2026-10-21; 2026-10-25)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -694,9 +694,15 @@ test("S138 each input's fader under its meter: saved between and during recordin
   await expect(microphone, "S138 each input its own").toHaveAttribute("aria-valuetext", "50%");
   await clearCalls();
   await system.focus();
+  // 100% in the middle (2026-10-25): a step down is 5%, a step up 25%.
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(calls, { message: "S138 a step down of 5% asks main to save it" }).toEqual([["systemGain", "95"]]);
+  await expect(system, "S138 and shows it").toHaveAttribute("aria-valuetext", "95%");
+  await clearCalls();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(calls, { message: "S138 a step of 5% asks main to save it" }).toEqual([["systemGain", "105"]]);
-  await expect(system, "S138 and shows it").toHaveAttribute("aria-valuetext", "105%");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(calls, { message: "S138 past the middle a step is 25%" }).toEqual([["systemGain", "100"], ["systemGain", "125"]]);
+  await expect(system, "S138 and shows it").toHaveAttribute("aria-valuetext", "125%");
   await clearCalls();
   await page.keyboard.press("End");
   await expect.poll(calls, { message: "S138 the top is 600%" }).toEqual([["systemGain", "600"]]);

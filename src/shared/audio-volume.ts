@@ -14,6 +14,28 @@ export const AUDIO_VOLUME_MAX = 600;
 export const AUDIO_VOLUME_STEP = 5;
 export const DEFAULT_AUDIO_VOLUME: AudioVolume = { system: 100, microphone: 100 };
 
+/**
+ * A volume fader's position (2026-10-25, at the maintainer's request): 100% in the middle, the left half 0–100% by the
+ * fader's step and the right half 100–600% by 25%, so turning an input down, the common change, has half the travel
+ * instead of a sixth. Faders move by whole positions; a volume saved off this grid sits between two of them.
+ */
+export const VOLUME_FADER_MIDDLE = 100 / AUDIO_VOLUME_STEP;
+const RAISED_STEP = (AUDIO_VOLUME_MAX - 100) / VOLUME_FADER_MIDDLE;
+export const VOLUME_FADER_MAX = 2 * VOLUME_FADER_MIDDLE;
+
+/** Where a volume sits on a fader. */
+export function volumeToFader(percent: number): number {
+  const v = Math.min(AUDIO_VOLUME_MAX, Math.max(0, percent));
+  return v <= 100 ? v / AUDIO_VOLUME_STEP : VOLUME_FADER_MIDDLE + (v - 100) / RAISED_STEP;
+}
+
+/** The volume at a fader's position: whole steps of the fader, so always a volume. */
+export function volumeFromFader(position: number): number {
+  const p = Math.min(VOLUME_FADER_MAX, Math.max(0, position));
+  const v = p <= VOLUME_FADER_MIDDLE ? p * AUDIO_VOLUME_STEP : 100 + (p - VOLUME_FADER_MIDDLE) * RAISED_STEP;
+  return Math.round(v / AUDIO_VOLUME_STEP) * AUDIO_VOLUME_STEP;
+}
+
 /** The engine's silence: a gain at or under it is no sound at all. */
 export const SILENT_GAIN_DB = -60;
 /** 600% in dB, about +15.6 dB. */

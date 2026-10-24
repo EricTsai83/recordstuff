@@ -49,7 +49,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
     .map((part) => [part.getAttribute("aria-label"), part.dataset.removed !== undefined, part.getAttribute("aria-pressed") === "true"]);
   expect(parts()).toEqual([["0:00.0 to 0:10.0, kept", false, false]]);
   expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("true");
-  expect(document.getElementById("editor-remove")).toHaveProperty("disabled", true);
+  expect(document.getElementById("editor-remove")?.getAttribute("aria-disabled")).toBe("true");
 
   // S splits at the playhead (3 s); the part after it is selected.
   const video = document.querySelector<HTMLVideoElement>("#editor video")!;
@@ -70,7 +70,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 1 }));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Undone"));
-  expect(document.getElementById("editor-undo")).toHaveProperty("disabled", true);
+  expect(document.getElementById("editor-undo")?.getAttribute("aria-disabled")).toBe("true");
 
   // Removed again, then exported: progress, then main's outcome.
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[1]!);

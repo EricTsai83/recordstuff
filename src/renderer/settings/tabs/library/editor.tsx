@@ -1,10 +1,11 @@
 /**
  * The edit view (plan 085): a recording's player above a timeline of its parts. A part is selected by clicking it, split
- * at the playhead (S) and removed or kept again (Delete); Undo (⌘Z / Ctrl+Z) takes the last change back. The preview
- * plays only what is kept. Export writes a new file beside the recording, which stays as it is.
+ * at the playhead (S) and removed or kept again (Delete); Undo (⌘Z / Ctrl+Z) takes the last change back and Redo
+ * (⇧⌘Z / Ctrl+Shift+Z or Ctrl+Y) makes it again. The preview plays only what is kept, over a strip of the recording's
+ * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FolderOpen, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { FolderOpen, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -49,15 +50,69 @@ function usePlayhead(): number {
   return time;
 }
 
-/** Keys of the edit view that are not the player's: Split, Remove or keep, Undo. */
+/** Resolves once `media` fires `event`, or rejects after `ms`: a picture the strip waits for never holds it up for long. */
+function once(media: HTMLMediaElement, event: string, ms = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const done = (): void => { clearTimeout(timer); media.removeEventListener(event, done); resolve(); };
+    const timer = setTimeout(() => { media.removeEventListener(event, done); reject(new Error(`no ${event}`)); }, ms);
+    media.addEventListener(event, done);
+  });
+}
+
+/**
+ * The recording's pictures along the timeline (2026-10-25, at the maintainer's request): one frame per tile, as many
+ * tiles as fit the timeline's width at its height, read by a hidden video of its own one seek at a time, so a long
+ * recording costs a few dozen decodes, once per view. The parts are drawn over it.
+ */
+function TimelineStrip({ source }: { source: string }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const target = canvas.current;
+    const context = target?.getContext?.("2d");
+    if (!target || !context || target.clientWidth === 0) return;
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "auto";
+    video.crossOrigin = "anonymous";
+    let stopped = false;
+    void (async () => {
+      const loaded = once(video, "loadedmetadata");
+      video.src = source;
+      await loaded;
+      const ratio = window.devicePixelRatio || 1;
+      const width = target.clientWidth, height = target.clientHeight;
+      target.width = Math.round(width * ratio);
+      target.height = Math.round(height * ratio);
+      const tile = video.videoHeight > 0 ? height * video.videoWidth / video.videoHeight : height;
+      const count = Math.max(1, Math.ceil(width / tile));
+      for (let index = 0; index < count && !stopped; index++) {
+        const seeked = once(video, "seeked");
+        video.currentTime = ((index + 0.5) / count) * video.duration;
+        await seeked;
+        if (stopped) return;
+        context.drawImage(video, index * tile * ratio, 0, tile * ratio, height * ratio);
+      }
+    })().catch(() => undefined);
+    return () => {
+      stopped = true;
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [source]);
+  return <canvas ref={canvas} className="editor-strip" aria-hidden="true" />;
+}
+
+/** Keys of the edit view that are not the player's: Split, Remove or keep, Undo, Redo. */
 function editorKey(event: React.KeyboardEvent): void {
   const target = event.target as HTMLElement;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
   const command = model.platform() === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (command && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "z") {
+  const key = event.key.toLowerCase();
+  const redo = command && !event.altKey && ((event.shiftKey && key === "z") || (model.platform() !== "darwin" && !event.shiftKey && key === "y"));
+  if (redo || (command && !event.shiftKey && !event.altKey && key === "z")) {
     event.preventDefault();
     event.stopPropagation();
-    void model.undoEdit();
+    void (redo ? model.redoEdit() : model.undoEdit());
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -176,13 +231,17 @@ function EditorPanel() {
   }
   const parts = model.timelineParts(editor);
   const selected = model.selectedPart(editor);
+  // Unavailable while a change saves or an export runs, but still focusable (aria-disabled): a control disabled under
+  // the keyboard's focus would drop it, and the edit view's shortcuts with it (2026-10-25).
   const busy = model.editorSaving || editor.export.phase === "exporting";
   const percent = (ticks: number): string => `${(ticks / editor.duration) * 100}%`;
   const at = (seconds: number): string => model.clock(seconds);
   const removing = selected && !selected.removed;
+  const editingSource = model.editingItem?.video;
   return (
     <div className="editor-panel">
       <div className="editor-timeline" role="group" aria-label={model.text("Timeline")}>
+        {editingSource && <TimelineStrip source={editingSource} />}
         {parts.map((part) => {
           const label = translate(part.removed ? "{from} to {to}, removed" : "{from} to {to}, kept", language, {
             from: at(part.from / editor.timescale),
@@ -210,21 +269,27 @@ function EditorPanel() {
       </div>
       <div className="editor-actions">
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="outline" size="sm" disabled={busy} onClick={() => model.splitAtPlayhead()}>
+          <Button id="editor-split" variant="outline" size="sm" aria-disabled={busy} onClick={() => { if (!busy) model.splitAtPlayhead(); }}>
             <Scissors />
             {model.text("Split")}
           </Button>
         </ControlTooltip>
         <ControlTooltip label={model.text(removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
-          <Button id="editor-remove" variant="outline" size="sm" disabled={busy || !selected} onClick={() => void model.toggleSelected()}>
+          <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || !selected} onClick={() => { if (!busy && selected) void model.toggleSelected(); }}>
             {removing || !selected ? <Trash2 /> : <RotateCcw />}
             {model.text(removing || !selected ? "Remove part" : "Keep part")}
           </Button>
         </ControlTooltip>
         <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
-          <Button id="editor-undo" variant="outline" size="sm" disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
+          <Button id="editor-undo" variant="outline" size="sm" aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
             <Undo2 />
             {model.text("Undo")}
+          </Button>
+        </ControlTooltip>
+        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Y)")}>
+          <Button id="editor-redo" variant="outline" size="sm" aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
+            <Redo2 />
+            {model.text("Redo")}
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
@@ -279,7 +344,8 @@ function ExportControls() {
       {state.phase === "done" && (
         <>
           <span className="editor-done" role="status">{state.message}</span>
-          <Button id="editor-reveal" variant="outline" size="sm" onClick={() => void model.revealExport()}>
+          {/* Once exported, finding the file is what comes next: the main button, Export again beside it. */}
+          <Button id="editor-reveal" size="sm" onClick={() => void model.revealExport()}>
             <FolderOpen />
             {model.text(model.platform() === "darwin" ? "Show in Finder" : "Open folder")}
           </Button>
@@ -290,6 +356,7 @@ function ExportControls() {
         <Button
           id="editor-export"
           size="sm"
+          variant={state.phase === "done" ? "outline" : "default"}
           // Not while a change is being saved: the export takes the edit as saved.
           aria-disabled={!editor.exportable || model.editorSaving}
           onClick={() => {

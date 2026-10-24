@@ -357,6 +357,7 @@ export class Editing {
       sounds: description.sounds,
       ...(description.camera ? { camera: { rounding: description.camera.rounding, mirror: description.camera.mirror } } : {}),
       scene: this.sceneOf(open, description),
+      recorded: defaultScene(description),
       preview: urls,
     };
   }
