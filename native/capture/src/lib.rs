@@ -9,6 +9,7 @@
 
 pub mod core;
 pub mod edit;
+pub mod editable;
 mod export_api;
 pub mod mux;
 pub mod pacing;

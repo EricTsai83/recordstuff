@@ -64,11 +64,11 @@ impl VideoSink for Collector {
 }
 
 /// A decoded picture, or why there is none.
-type Picture = Result<CFRetained<CVImageBuffer>, String>;
+pub(super) type Picture = Result<CFRetained<CVImageBuffer>, String>;
 
 /// Where the decoder's callback hands each picture, with the index it was decoded as: kept for `take`, or passed on
 /// as it comes (an export's encoder), so a group's pictures never wait in memory together.
-type Forward = Box<dyn Fn(usize, Picture) + Send + Sync>;
+pub(super) type Forward = Box<dyn Fn(usize, Picture) + Send + Sync>;
 
 #[derive(Default)]
 struct Decoded {
@@ -122,7 +122,7 @@ impl Decoder {
         Self::with_forward(avcc, None)
     }
 
-    fn with_forward(avcc: &[u8], forward: Option<Forward>) -> Result<Self, String> {
+    pub(super) fn with_forward(avcc: &[u8], forward: Option<Forward>) -> Result<Self, String> {
         let (sps, pps) = avc::record_parameter_sets(avcc).ok_or("the recording's avcC holds no parameter sets")?;
         let pointers = [NonNull::from(&sps[0]), NonNull::from(&pps[0])];
         let sizes = [sps.len(), pps.len()];
@@ -163,7 +163,7 @@ impl Decoder {
 
     /// As `decode`: `asynchronous` lets the decoder run ahead (`wait` collects it), and a picture not to `output` is
     /// decoded only as a reference for the next ones.
-    fn decode_with(&self, data: &[u8], index: usize, asynchronous: bool, output: bool) -> Result<(), String> {
+    pub(super) fn decode_with(&self, data: &[u8], index: usize, asynchronous: bool, output: bool) -> Result<(), String> {
         let mut block: *mut CMBlockBuffer = null_mut();
         let status = unsafe {
             CMBlockBuffer::create_with_memory_block(
@@ -208,7 +208,7 @@ impl Decoder {
         Ok(())
     }
 
-    #[cfg(test)]
+    /// Every picture decoded so far that was wanted, in the order the decoder gave them.
     pub(super) fn take(&self) -> Vec<(usize, Picture)> {
         self.wait();
         std::mem::take(&mut *unsafe { &*self.decoded }.pictures.lock().unwrap())

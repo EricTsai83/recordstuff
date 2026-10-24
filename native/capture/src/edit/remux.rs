@@ -87,15 +87,15 @@ pub struct ExportError {
 }
 
 impl ExportError {
-    fn new(code: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, detail: impl Into<String>) -> Self {
         Self { code, detail: detail.into() }
     }
 
-    fn write(error: &io::Error, what: &str) -> Self {
+    pub(crate) fn write(error: &io::Error, what: &str) -> Self {
         Self { code: classify(error), detail: format!("{what}: {error}") }
     }
 
-    fn read(error: &io::Error) -> Self {
+    pub(crate) fn read(error: &io::Error) -> Self {
         Self { code: "read_failed", detail: format!("reading the recording: {error}") }
     }
 }
@@ -227,7 +227,7 @@ fn reencode_part(source: &dyn ReadAt, index: &SourceIndex, part: &plan::Part, co
     Ok(encoded)
 }
 
-fn video_format(index: &SourceIndex) -> VideoFormat {
+pub(crate) fn video_format(index: &SourceIndex) -> VideoFormat {
     let v = &index.video;
     let seconds = v.end() as f64 / f64::from(v.timescale);
     let frame_rate = if seconds > 0.0 { (v.times.len() as f64 / seconds).round().clamp(1.0, 240.0) as u32 } else { 30 };
@@ -258,7 +258,7 @@ fn level_max_bitrate(level: u8) -> Option<u64> {
 /// The re-encoded pictures' bit rate: twice the source's average video rate, at least 2 Mbps, and within nine tenths of
 /// what the source's level allows, which an encoder set to that level refuses to exceed (VideoToolbox: -12902). Never
 /// below the source's own rate, which its level already allows (D2).
-fn bitrate(index: &SourceIndex) -> u32 {
+pub(crate) fn bitrate(index: &SourceIndex) -> u32 {
     let v = &index.video;
     let bytes: u64 = v.samples.sizes.iter().map(|&s| u64::from(s)).sum();
     let seconds = (v.end() as f64 / f64::from(v.timescale)).max(0.001);
@@ -269,7 +269,7 @@ fn bitrate(index: &SourceIndex) -> u32 {
 }
 
 /// Reads samples `from..to` in spans of consecutive bytes.
-fn read_samples(source: &dyn ReadAt, samples: &Samples, from: usize, to: usize) -> Result<Vec<Vec<u8>>, ExportError> {
+pub(crate) fn read_samples(source: &dyn ReadAt, samples: &Samples, from: usize, to: usize) -> Result<Vec<Vec<u8>>, ExportError> {
     let mut out = Vec::with_capacity(to.saturating_sub(from));
     for_each_sample(source, samples, from, to, &mut |_, data| {
         out.push(data.to_vec());
@@ -279,10 +279,10 @@ fn read_samples(source: &dyn ReadAt, samples: &Samples, from: usize, to: usize) 
 }
 
 /// What `for_each_sample` calls with each sample's index and bytes.
-type EachSample<'a> = dyn FnMut(usize, &[u8]) -> Result<(), ExportError> + 'a;
+pub(crate) type EachSample<'a> = dyn FnMut(usize, &[u8]) -> Result<(), ExportError> + 'a;
 
 /// Calls `each` with every sample `from..to`, reading runs of samples that lie one after another in one read.
-fn for_each_sample(source: &dyn ReadAt, samples: &Samples, from: usize, to: usize, each: &mut EachSample) -> Result<(), ExportError> {
+pub(crate) fn for_each_sample(source: &dyn ReadAt, samples: &Samples, from: usize, to: usize, each: &mut EachSample) -> Result<(), ExportError> {
     let mut spans: Vec<(usize, u64, u64)> = Vec::new();
     samples.locate(from, to, |index, offset, size| match spans.last_mut() {
         Some((_, start, length)) if *start + *length == offset && *length + u64::from(size) <= SPAN_BYTES => *length += u64::from(size),

@@ -65,7 +65,7 @@ fn synthetic_frames_and_tone_become_a_plain_mp4() {
         .unwrap_or_else(|_| std::env::temp_dir().join(format!("recordstuff-synthetic-{}.mp4", std::process::id())));
     let file = std::fs::File::create(&path).unwrap();
     let spec = AudioSpec { config: aac.audio_specific_config(), priming: aac.priming, sample_rate: 48_000, channels: 2, bitrate: aac.bitrate };
-    let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: vec![spec], camera: None, diagnostics: None }, |_| {}).unwrap();
+    let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: vec![spec], camera: None, metadata: None, diagnostics: None }, |_| {}).unwrap();
     let media = std::mem::take(&mut *sink.0.lock().unwrap());
     assert!(matches!(media.first(), Some(Media::VideoFormat { width: 640, height: 360, .. })));
     let samples = media.iter().filter(|m| matches!(m, Media::Video { .. })).count();

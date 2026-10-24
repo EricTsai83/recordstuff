@@ -164,7 +164,12 @@ pub struct HybridMp4<O: Output> {
     moov_head: Vec<u8>,
     sequence: u32,
     finished: bool,
+    /// The editable recording's description (plan 087), written in the `moov`'s `udta` as an `rsed` box.
+    metadata: Option<Vec<u8>>,
 }
+
+/// The `udta` child that holds an editable recording's description (plan 087): RecordStuff's own four-character code.
+pub const METADATA_BOX: &[u8; 4] = b"rsed";
 
 impl<O: Output> HybridMp4<O> {
     /// Writes the initialization segment for `tracks`, in order (track IDs 1, 2, ...).
@@ -174,7 +179,16 @@ impl<O: Output> HybridMp4<O> {
 
     /// As `create`, with a second sample description for one track (plan 085): `(track, codec)`, used by the
     /// fragments written with `write_fragment_described(track, _, 2)`.
-    pub fn create_with_alternate(mut out: O, tracks: Vec<TrackConfig>, alternate: Option<(usize, Codec)>) -> io::Result<Self> {
+    pub fn create_with_alternate(out: O, tracks: Vec<TrackConfig>, alternate: Option<(usize, Codec)>) -> io::Result<Self> {
+        Self::create_full(out, tracks, alternate, None)
+    }
+
+    /// As `create`, with `metadata` in the movie's `udta` (plan 087's editable recording).
+    pub fn create_with_metadata(out: O, tracks: Vec<TrackConfig>, metadata: Option<Vec<u8>>) -> io::Result<Self> {
+        Self::create_full(out, tracks, None, metadata)
+    }
+
+    fn create_full(mut out: O, tracks: Vec<TrackConfig>, alternate: Option<(usize, Codec)>, metadata: Option<Vec<u8>>) -> io::Result<Self> {
         assert!(!tracks.is_empty(), "a movie needs a track");
         let mut alternate = alternate;
         let tracks: Vec<TrackState> = tracks
@@ -197,11 +211,11 @@ impl<O: Output> HybridMp4<O> {
         let mut w = BoxWriter::new();
         write_ftyp(&mut w);
         let moov_at = w.len() as u64;
-        write_moov(&mut w, &tracks, false);
+        write_moov(&mut w, &tracks, false, metadata.as_deref());
         let moov_size = w.len() as u64 - moov_at;
         let moov_head = w.bytes[moov_at as usize..][..16].to_vec();
         out.write_at(&w.bytes, 0)?;
-        Ok(Self { out, end: w.len() as u64, tracks, moov_at, moov_size, moov_head, sequence: 0, finished: false })
+        Ok(Self { out, end: w.len() as u64, tracks, moov_at, moov_size, moov_head, sequence: 0, finished: false, metadata })
     }
 
     /// Bytes written so far.
@@ -321,7 +335,7 @@ impl<O: Output> HybridMp4<O> {
         self.out.sync()?;
         let end = self.end;
         let mut w = BoxWriter::new();
-        write_moov(&mut w, &self.tracks, true);
+        write_moov(&mut w, &self.tracks, true, self.metadata.as_deref());
         if self.moov_size < 16 {
             return Ok((FinishReport { bytes: end, fragmented: Some("a moov too small for an mdat header".into()) }, self.out));
         }
@@ -355,7 +369,7 @@ fn write_ftyp(w: &mut BoxWriter) {
 }
 
 /// The fragmented `moov` (empty sample tables and `mvex`) or, with `plain`, the whole movie's index.
-fn write_moov(w: &mut BoxWriter, tracks: &[TrackState], plain: bool) {
+fn write_moov(w: &mut BoxWriter, tracks: &[TrackState], plain: bool, metadata: Option<&[u8]>) {
     let moov = w.open(b"moov");
     let timescale = movie_timescale(tracks);
     let movie_duration = if plain { tracks.iter().map(|t| t.duration_in(timescale)).max().unwrap_or(0) } else { 0 };
@@ -376,6 +390,13 @@ fn write_moov(w: &mut BoxWriter, tracks: &[TrackState], plain: bool) {
         let first = !tracks[..index].iter().any(|other| kind(other) == kind(track));
         let group = if shared { if kind(track) { 1 } else { 2 } } else { 0 };
         write_trak(w, track, plain, timescale, group, first);
+    }
+    if let Some(metadata) = metadata {
+        let udta = w.open(b"udta");
+        let rsed = w.open(METADATA_BOX);
+        w.raw(metadata);
+        w.close(rsed);
+        w.close(udta);
     }
     if !plain {
         let mvex = w.open(b"mvex");

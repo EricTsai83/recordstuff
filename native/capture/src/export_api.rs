@@ -15,9 +15,12 @@ use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi::{Env, Result, Status, Task};
 use napi_derive::napi;
 
+use crate::camera_layout::Layout;
+use crate::core::gain_factor;
 use crate::edit::plan::Plan;
 use crate::edit::remux::{self, Codecs, ExportError, JoinPolicy};
-use crate::edit::source::SourceIndex;
+use crate::edit::render::{self, RenderOptions, Renderer};
+use crate::edit::source::{self, SourceIndex};
 use crate::failure;
 
 #[napi(object)]
@@ -35,6 +38,29 @@ pub struct ExportRequest {
     pub removed: Vec<ExportRange>,
     /// `keyFrame` forces every join inside a group of pictures to resume at a key frame (a fixture's fallback).
     pub join: Option<String>,
+    /// An editable recording's rendered export (plan 087): the camera's place and the volumes. Absent is 085's remux.
+    pub render: Option<ExportRender>,
+}
+
+/// What an editable recording's export composes and mixes (plan 087).
+#[napi(object)]
+#[derive(Clone)]
+pub struct ExportRender {
+    /// The camera's bubble, in the camera layout's fractions (src/shared/camera-layout.ts); absent leaves it out.
+    pub camera: Option<ExportCamera>,
+    /// Each sound track's volume in dB, in the file's order (the Studio's faders, src/shared/audio-volume.ts).
+    pub volumes_db: Vec<f64>,
+}
+
+#[napi(object)]
+#[derive(Clone, Copy)]
+pub struct ExportCamera {
+    pub width: f64,
+    pub height: f64,
+    pub rounding: f64,
+    pub x: f64,
+    pub y: f64,
+    pub mirror: bool,
 }
 
 #[napi(object)]
@@ -64,6 +90,8 @@ pub struct ExportPlan {
     pub dropped: Vec<ExportRange>,
     pub second_description: bool,
     pub has_audio: bool,
+    /// An editable recording's description as written (plan 087, editable.rs), which main reads; absent otherwise.
+    pub editable: Option<String>,
 }
 
 #[napi(object)]
@@ -81,7 +109,7 @@ fn facts(index: &SourceIndex) -> SourceFacts {
     (index.video.timescale, index.video.end(), index.video.times.len())
 }
 
-fn plan_view((timescale, duration, frames): SourceFacts, plan: &Plan, second_description: bool) -> ExportPlan {
+fn plan_view((timescale, duration, frames): SourceFacts, plan: &Plan, second_description: bool, editable: Option<String>) -> ExportPlan {
     let range = |(from, to): (u64, u64)| ExportRange { from: from as f64, to: to as f64 };
     ExportPlan {
         timescale,
@@ -103,7 +131,8 @@ fn plan_view((timescale, duration, frames): SourceFacts, plan: &Plan, second_des
             .collect(),
         dropped: plan.dropped.iter().map(|d| range((d.start, d.stop))).collect(),
         second_description,
-        has_audio: plan.audio.is_some(),
+        has_audio: plan.audio.is_some() || editable.is_some(),
+        editable,
     }
 }
 
@@ -129,6 +158,17 @@ struct Parsed {
     output: Option<PathBuf>,
     removed: Vec<(u64, u64)>,
     policy: JoinPolicy,
+    render: Option<RenderOptions>,
+}
+
+/// The platform's renderer for an editable recording's export (plan 087): macOS only.
+fn renderer() -> std::result::Result<Box<dyn Renderer>, ExportError> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(Box::new(crate::mac::render::MacRenderer))
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(ExportError { code: "unsupported", detail: "an editable recording is exported on macOS only".into() })
 }
 
 fn parse(request: ExportRequest) -> Result<Parsed> {
@@ -145,7 +185,11 @@ fn parse(request: ExportRequest) -> Result<Parsed> {
         Some("keyFrame") => JoinPolicy::KeyFrame,
         Some(other) => return Err(failure("invalid_range", format!("join {other}"))),
     };
-    Ok(Parsed { source: PathBuf::from(request.source), output: request.output.map(PathBuf::from), removed, policy })
+    let render = request.render.map(|render| RenderOptions {
+        camera: render.camera.map(|c| Layout { width: c.width, height: c.height, rounding: c.rounding, x: c.x, y: c.y, mirror: c.mirror }.clamped()),
+        gains: render.volumes_db.iter().map(|&db| gain_factor(db)).collect(),
+    });
+    Ok(Parsed { source: PathBuf::from(request.source), output: request.output.map(PathBuf::from), removed, policy, render })
 }
 
 /// The re-encoded pictures' `avcC` learned for each recording this worker has planned, by its path, size and
@@ -160,6 +204,13 @@ impl Task for InspectTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         let request = self.0.take().expect("an inspect runs once");
+        // An editable recording (plan 087) is rendered: every kept picture is encoded again, so its plan needs no codec.
+        let file = std::fs::File::open(&request.source).map_err(|e| reject(ExportError::read(&e)))?;
+        let index = source::read(&file).map_err(|e| reject(e.into()))?;
+        if index.description.is_some() {
+            let plan = render::render_plan(&index, &request.removed).map_err(reject)?;
+            return Ok(plan_view(facts(&index), &plan, false, index.description.clone()));
+        }
         let mut codecs = codecs().map_err(reject)?;
         let key = std::fs::metadata(&request.source).ok().map(|m| {
             let modified = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
@@ -170,7 +221,7 @@ impl Task for InspectTask {
         if let (Some(key), Some(avcc)) = (key, known) {
             self.1.lock().unwrap().insert(key, avcc);
         }
-        Ok(plan_view(facts(&index), &plan, false))
+        Ok(plan_view(facts(&index), &plan, false, None))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
@@ -230,14 +281,24 @@ impl Task for RunTask {
     fn compute(&mut self) -> Result<Self::Output> {
         let request = self.request.take().expect("an export runs once");
         let output = request.output.ok_or_else(|| failure("invalid_range", "an export needs its output path"))?;
-        let mut codecs = codecs().map_err(reject)?;
         let progress = self.progress.clone();
         let mut report = move |fraction: f64| {
             progress.call(fraction, ThreadsafeFunctionCallMode::NonBlocking);
         };
+        if let Some(options) = request.render.as_ref() {
+            let mut renderer = renderer().map_err(reject)?;
+            let done = render::export(&request.source, &output, &request.removed, options, renderer.as_mut(), &mut report, &self.cancel).map_err(reject)?;
+            return Ok(ExportResult {
+                plan: plan_view(done.source, &done.plan, false, done.description),
+                bytes: done.bytes as f64,
+                reencoded_frames: done.frames as u32,
+                reencoded_packets: 0,
+            });
+        }
+        let mut codecs = codecs().map_err(reject)?;
         let done = remux::export(&request.source, &output, &request.removed, request.policy, codecs.as_mut(), &mut report, &self.cancel).map_err(reject)?;
         Ok(ExportResult {
-            plan: plan_view((done.timescale, done.source_duration, done.frames), &done.plan, done.second_description),
+            plan: plan_view((done.timescale, done.source_duration, done.frames), &done.plan, done.second_description, None),
             bytes: done.bytes as f64,
             reencoded_frames: done.reencoded_frames as u32,
             reencoded_packets: done.reencoded_packets as u32,

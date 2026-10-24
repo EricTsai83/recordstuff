@@ -53,11 +53,16 @@ impl<O: Output> SessionMuxer<O> {
     /// Any tracks, in file order (plan 087's editable recording: the screen, each sound, the camera); H.264 tracks are
     /// pushed with `push_video_to`, AAC ones with `push_audio_to`.
     pub fn with_tracks(out: O, tracks: Vec<TrackConfig>) -> io::Result<Self> {
+        Self::with_metadata(out, tracks, None)
+    }
+
+    /// As `with_tracks`, with an editable recording's description in the movie's `udta` (plan 087).
+    pub fn with_metadata(out: O, tracks: Vec<TrackConfig>, metadata: Option<Vec<u8>>) -> io::Result<Self> {
         let muxed = tracks
             .iter()
             .map(|track| Muxed { timescale: track.timescale, video: matches!(track.codec, Codec::H264 { .. }), held: None, pending: Pending::default() })
             .collect();
-        Ok(Self { mp4: HybridMp4::create(out, tracks)?, tracks: muxed })
+        Ok(Self { mp4: HybridMp4::create_with_metadata(out, tracks, metadata)?, tracks: muxed })
     }
 
     pub fn bytes_written(&self) -> u64 {

@@ -33,6 +33,8 @@ pub use camera::{CAMERA_FIRST_FRAME_NS, CAMERA_SILENT_NS, CameraAges, CameraCont
 pub use diagnostics::Diagnostics;
 pub use frame_log::FrameLog;
 use mixer::Mixer;
+/// The soft limit above -1 dBFS a loud mix or a raised volume goes through (mixer.rs), for the rendered export's mix too.
+pub(crate) use mixer::limit;
 
 const PREPARED: u8 = 0;
 const RECORDING: u8 = 1;
@@ -110,6 +112,12 @@ pub struct Levels {
     pub system: f32,
     /// The microphone, when the session records one.
     pub microphone: Option<f32>,
+}
+
+/// A volume in dB as the linear factor a sample is multiplied by: silence at or below `SILENT_GAIN_DB`, at most
+/// `MAX_GAIN_DB` (D21); the rendered export's volumes (plan 087) are the same faders'.
+pub fn gain_factor(db: f64) -> f32 {
+    if !db.is_finite() || db <= SILENT_GAIN_DB { 0.0 } else { 10f64.powf(db.min(MAX_GAIN_DB) / 20.0) as f32 }
 }
 
 /// An input's volume at or below this is silence (D21), the bottom of its fader.
@@ -543,6 +551,8 @@ pub struct Shared<P: Platform> {
     camera_track: Mutex<Option<VideoSpec>>,
     /// Whether the camera track's encoder failed, told once.
     camera_track_failed: AtomicBool,
+    /// The editable recording's description (plan 087), which the file's header holds.
+    metadata: Mutex<Option<Vec<u8>>>,
     meters: Meters,
     /// The stage figures, when the development switch asks for them (plan 083, diagnostics.rs).
     diagnostics: Option<Arc<Diagnostics>>,
@@ -997,6 +1007,7 @@ impl<P: Platform> Core<P> {
             camera: Mutex::new(None),
             camera_track: Mutex::new(None),
             camera_track_failed: AtomicBool::new(false),
+            metadata: Mutex::new(None),
             meters: Meters::default(),
             diagnostics: Diagnostics::from_env().map(Arc::new),
         });
@@ -1029,6 +1040,11 @@ impl<P: Platform> Core<P> {
         *self.shared.camera_track.lock().unwrap() = Some(spec);
     }
 
+    /// The editable recording's description (plan 087), in the file's header; before `record`.
+    pub fn metadata(&self, metadata: Vec<u8>) {
+        *self.shared.metadata.lock().unwrap() = Some(metadata);
+    }
+
     /// Whether the level meters are watched (plan 075, D19): levels are gathered and told only then.
     pub fn watch_levels(&self, watching: bool) {
         self.shared.meters.watched.store(watching, Ordering::Release);
@@ -1043,9 +1059,8 @@ impl<P: Platform> Core<P> {
     /// Sets system audio's and the microphone's volumes, in dB, from their next sound on (D21); at or below
     /// `SILENT_GAIN_DB` an input is silent. The meters show the levels after them.
     pub fn set_gains(&self, system_db: f64, microphone_db: f64) {
-        let factor = |db: f64| if !db.is_finite() || db <= SILENT_GAIN_DB { 0.0 } else { 10f64.powf(db.min(MAX_GAIN_DB) / 20.0) as f32 };
-        self.shared.meters.system_gain.store(factor(system_db).to_bits(), Ordering::Release);
-        self.shared.meters.microphone_gain.store(factor(microphone_db).to_bits(), Ordering::Release);
+        self.shared.meters.system_gain.store(gain_factor(system_db).to_bits(), Ordering::Release);
+        self.shared.meters.microphone_gain.store(gain_factor(microphone_db).to_bits(), Ordering::Release);
     }
 
     /// Encodes the newest frame at every slot the screen leaves empty, instead of once a second (plan 075: a camera is
@@ -1160,7 +1175,8 @@ impl<P: Platform> Core<P> {
         let events = self.shared.events.clone();
         let diagnostics = self.shared.diagnostics.clone();
         let camera = self.shared.camera_track.lock().unwrap().clone();
-        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: config, camera, diagnostics }, move |event| match event {
+        let metadata = self.shared.metadata.lock().unwrap().clone();
+        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: config, camera, metadata, diagnostics }, move |event| match event {
             WriterEvent::Progress { bytes } => events.progress(bytes),
             WriterEvent::Failed(failure) => events.write_failed(failure),
         })

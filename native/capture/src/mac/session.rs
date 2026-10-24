@@ -37,6 +37,7 @@ use super::{CaptureError, Unsent, host_ns, now_ns};
 use crate::camera_layout::{PREVIEW_ENCODER_FPS, PreviewView};
 use crate::core::preview::{PreviewControl, PreviewStep, next_due};
 use crate::core::{self, AudioEncode, CHANNELS, Core, Platform, SAMPLE_RATE, Source, SystemAudio, VideoEncode};
+use crate::editable::{Description, Sound};
 use crate::pacing::{INTERVAL_ENV, Pacer};
 
 pub use crate::core::{Events, Finished, Finishing, PrepareRequest, Prepared, Stopped};
@@ -510,6 +511,17 @@ impl Session {
             }
             None => None,
         };
+        if request.editable {
+            // What each sound track holds, in the file's order (core's `route`), and the camera's first place.
+            let sounds = match (system_input, microphone_input) {
+                (Some(_), Some(_)) => vec![Sound::System, Sound::Microphone],
+                (Some(_), None) => vec![Sound::System],
+                (None, Some(_)) => vec![Sound::Microphone],
+                (None, None) => vec![Sound::Silent],
+            };
+            let camera = camera_track.as_ref().and(camera_request.as_ref()).map(|wanted| wanted.layout);
+            core.metadata(Description { sounds, camera }.to_bytes());
+        }
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);

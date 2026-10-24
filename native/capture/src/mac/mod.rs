@@ -9,6 +9,7 @@ pub mod edit;
 pub mod hal;
 pub mod meter;
 pub mod microphone;
+pub mod render;
 pub mod session;
 pub mod video;
 
