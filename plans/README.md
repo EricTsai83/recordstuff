@@ -33,12 +33,12 @@ Added 2026-10-22 at the maintainer's request; reshaped on 2026-10-23, when the e
 
 ### Baselines
 
-Every comparison is against figures taken on the same bundle and workload, never against an older round's. 083's [pipeline baseline](../docs/system-design/tooling.md#pipeline-baseline) is the starting point; these plans retake parts of it and the tooling guide is updated at each one's closure, so later plans read the newest figures:
+Compare against the newest recorded figures (2026-10-24, at the maintainer's request): the tooling guide's [pipeline baseline](../docs/system-design/tooling.md#pipeline-baseline), which each plan updates at its closure, is the before. A plan measures before changing anything only what no recorded figure covers (a new workload), and takes an existing figure again only when the machine, macOS, Electron or the workload changed, or when its after result falls within the day-to-day drift of a gate (about a point of CPU, plan 084's record); otherwise it measures after once, at closure. These plans' own measurements:
 
-| Plan | Takes before changing anything | Retakes at closure |
+| Plan | Measures first (no recorded figure covers it) | Measures at closure |
 | --- | --- | --- |
 | 085 | a streaming copy of the same files by the export worker on the same volume (no clone or link) | the remux's rate, memory and cancel time |
-| 087 | the direct mode's R with the same camera and audio inputs, and `matrix long`; a frozen 1080p30 reference recording for the rendered export | the editable mode's ceilings; export speed, memory and cancel time |
+| 087 | a frozen 1080p30 reference recording for the rendered export; the direct mode's R and `matrix long` only with camera or audio inputs no recorded figure covers | the editable mode's ceilings; export speed, memory and cancel time |
 
 ### Reference evidence
 
