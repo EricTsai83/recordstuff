@@ -791,4 +791,26 @@ mod tests {
         std::fs::remove_file(&plain).unwrap();
         std::fs::remove_file(&source).unwrap();
     }
+
+    /// Plan 087's recovery: a recording that ended without its stop (a crash, a full disk) is left fragmented, every
+    /// track's whole fragments kept; it is read, rendered and exported as a finished one is, up to what was written.
+    #[test]
+    fn an_interrupted_editable_recording_renders_what_it_holds() {
+        let file = editable_recording(2, false);
+        let index = source::read(&file).unwrap();
+        assert!(index.fragmented && index.camera.is_some() && index.second_audio.is_some() && index.description.is_some());
+        let plan = render_plan(&index, &[]).unwrap();
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let path = temp("interrupted");
+        let options = RenderOptions { camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
+        let (_, frames) =
+            render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &AtomicBool::new(false))
+                .unwrap();
+        assert_eq!(frames, 60);
+        let calls = calls.lock().unwrap();
+        assert!(calls.composed.iter().all(|(screen, camera)| camera.as_deref() == Some(&[4, screen[1]][..])));
+        let parsed = parse(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(!parsed.tracks[0].fragmented, "the export is finished, a plain file");
+        std::fs::remove_file(&path).unwrap();
+    }
 }
