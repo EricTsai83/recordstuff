@@ -28,6 +28,7 @@ use objc2_screen_capture_kit::{
 
 use super::audio::AacEncoder;
 use super::camera::CameraCapture;
+use super::camera_track::{self, CameraTrack};
 use super::compositor::Compositor;
 use super::content::{self, describe};
 use super::microphone::MicrophoneCapture;
@@ -413,6 +414,13 @@ pub struct Session {
     camera: Option<Arc<CameraCapture>>,
     compositor: Option<Arc<Compositor>>,
     preview: Option<Preview>,
+    /// The camera's own track of an editable recording (plan 087), made at `prepare`, and while recording.
+    camera_track: Option<CameraTrack>,
+    camera_recording: Option<camera_track::Running>,
+    /// Whether the user hides the camera (D13): the editable recording's camera track is black meanwhile.
+    camera_hidden: Arc<AtomicBool>,
+    editable: bool,
+    frame_rate: u32,
     core: Core<Mac>,
 }
 
@@ -464,6 +472,7 @@ impl Session {
             .open(&request.path)
             .map_err(|e| CaptureError::new("capture_start_failed", format!("recording file could not be opened: {e}")))?;
         let core = Core::<Mac>::new(events, request.frame_rate, request.audio_bitrate, inputs, file);
+        core.separate_sound(request.editable);
         let frame_log = core.log_frames(&request.path);
         if let Some(input) = microphone_input {
             core.watch_microphone(input);
@@ -484,18 +493,32 @@ impl Session {
             compositor = Some(Arc::new(made));
             core.watch_camera(opened.clone());
             camera = Some(opened);
-            core.encode_every_slot(true);
+            // An editable recording's screen is the screen alone, at today's pace for a still screen; the camera has
+            // its own track.
+            if !request.editable {
+                core.encode_every_slot(true);
+            }
             mark("camera start");
         }
+        let camera_track = match camera.as_ref().filter(|_| request.editable) {
+            Some(_) => {
+                let bitrate = camera_track::bitrate(request.width, request.height, request.video_bitrate);
+                let track = CameraTrack::new(&core.shared(), request.frame_rate, bitrate)?;
+                core.camera_track(track.spec.clone());
+                mark("camera track");
+                Some(track)
+            }
+            None => None,
+        };
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =
             (request.width, request.height, request.frame_rate, request.video_bitrate, request.audio_bitrate);
-        let encoding_compositor = compositor.clone();
+        let encoding_compositor = compositor.clone().filter(|_| !request.editable);
         let composition = Composition::new(core.shared().events(), camera.as_ref().map(|camera| camera.feed.clone()));
         let diagnostics = core.shared().diagnostics();
-        let encoders = core.make_encoders(move |sink| {
+        let encoders = core.make_encoders(move |sink, tracks| {
             let encoder = VideoEncoder::new(width, height, frame_rate, video_bitrate, sink)?;
-            let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
+            let audio = (0..tracks).map(|_| AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)).collect::<Result<Vec<_>, _>>()?;
             Ok((Video { encoder, compositor: encoding_compositor, composition, diagnostics }, audio))
         })?;
 
@@ -524,7 +547,19 @@ impl Session {
         if let (Some(audio_filter), Some(input)) = (audio_filter.as_ref(), system_input) {
             streams.push(Stream::new(audio_filter, &audio_only_config(), core.shared(), false, Some(input), "sound")?);
         }
-        let mut session = Session { streams, microphone: None, camera, compositor: compositor.clone(), preview: None, core };
+        let mut session = Session {
+            streams,
+            microphone: None,
+            camera,
+            compositor: compositor.clone(),
+            preview: None,
+            camera_track,
+            camera_recording: None,
+            camera_hidden: Arc::new(AtomicBool::new(false)),
+            editable: request.editable,
+            frame_rate: request.frame_rate,
+            core,
+        };
         for (index, stream) in session.streams.iter().enumerate() {
             let what = if index == 0 { "starting capture" } else { "starting the sound's capture" };
             if let Err(error) = stream.start(what) {
@@ -592,6 +627,13 @@ impl Session {
                 .into_iter()
                 .chain(session.microphone.as_ref().and_then(|microphone| microphone.note.clone()))
                 .chain(camera_note)
+                .chain(request.editable.then(|| {
+                    format!(
+                        "editable recording (plan 087 prototype): {} sound track(s){}",
+                        session.core.sound_tracks(),
+                        if session.camera_track.is_some() { ", the camera on its own track" } else { "" }
+                    )
+                }))
                 .chain(frame_log.map(|path| format!("per-frame log: {}", path.display())))
                 .collect(),
             timings: format!("{}; total {} ms", timings.join(", "), began.elapsed().as_millis()),
@@ -606,7 +648,12 @@ impl Session {
         let Some(compositor) = self.compositor.as_ref() else { return false };
         compositor.set_layout(layout);
         compositor.set_hidden(hidden);
-        self.core.encode_every_slot(!hidden);
+        // An editable recording's screen never holds the camera: its own track goes black while it is hidden.
+        if self.editable {
+            self.camera_hidden.store(hidden, Ordering::Release);
+        } else {
+            self.core.encode_every_slot(!hidden);
+        }
         eprintln!("camera: layout {:?}, {}", compositor.layout(), if hidden { "hidden" } else { "shown" });
         true
     }
@@ -670,7 +717,11 @@ impl Session {
 
     /// Starts the file at this moment: the newest frame is its first, a key frame at time zero.
     pub fn record(&mut self) -> Result<(), CaptureError> {
-        self.core.record()
+        self.core.record()?;
+        if let (Some(track), Some(camera)) = (self.camera_track.as_ref(), self.camera.as_ref()) {
+            self.camera_recording = Some(track.start(self.core.shared(), camera.feed.clone(), self.frame_rate, self.camera_hidden.clone())?);
+        }
+        Ok(())
     }
 
     /// Stops capture and the encoders; the file is finished in the background (`Finishing::wait`).
@@ -693,6 +744,11 @@ impl Session {
         if let Some(preview) = self.preview.take() {
             preview.stop();
         }
+        // Before the core ends the file: every camera sample reaches the writer first.
+        if let Some(recording) = self.camera_recording.take() {
+            recording.stop();
+        }
+        self.camera_track = None;
         if let Some(camera) = self.camera.take() {
             // The capture host's stderr reaches main's log; the core closes the camera in `halted`, below.
             eprintln!("camera: at the stop {}", camera.state());
@@ -818,3 +874,7 @@ mod preview_test {
         assert!(length + 4 <= first.data.len());
     }
 }
+
+#[cfg(test)]
+#[path = "editable_bench.rs"]
+mod editable_bench;

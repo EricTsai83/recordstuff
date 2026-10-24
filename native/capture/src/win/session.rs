@@ -175,6 +175,10 @@ pub struct Session {
 
 impl Session {
     pub fn prepare(request: PrepareRequest, events: Arc<dyn Events>) -> Result<(Session, Prepared), CaptureError> {
+        // Plan 087's editable recording is a macOS prototype: refused here rather than recorded as today's.
+        if request.editable {
+            return Err(CaptureError::new("capture_start_failed", "the editable recording (plan 087's prototype) is macOS only"));
+        }
         com();
         let began = Instant::now();
         let mut lap = began;
@@ -221,12 +225,12 @@ impl Session {
         // Which H.264 encoder records and why (plan 078 step 4), for the log.
         let encoder_note = Arc::new(std::sync::Mutex::new(None::<String>));
         let note = encoder_note.clone();
-        let encoders = core.make_encoders(move |sink| {
+        let encoders = core.make_encoders(move |sink, tracks| {
             com();
             let video = H264Encoder::new(encoder_gpu, width, height, frame_rate, video_bitrate, sink)?;
             *note.lock().unwrap() = Some(video.description.clone());
             let video = Video { encoder: video, compositor: encoder_compositor };
-            let audio = AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)?;
+            let audio = (0..tracks).map(|_| AacEncoder::new(SAMPLE_RATE, CHANNELS, audio_bitrate)).collect::<Result<Vec<_>, _>>()?;
             Ok((video, audio))
         })?;
 

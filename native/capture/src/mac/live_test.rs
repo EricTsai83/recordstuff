@@ -86,6 +86,7 @@ fn record(name: &str, source: Source, audio: AudioRequest) -> Option<(Prepared, 
         source,
         audio,
         camera: None,
+        editable: false,
     };
     let (mut session, prepared) = match Session::prepare(request, heard.clone()) {
         Ok(prepared) => prepared,

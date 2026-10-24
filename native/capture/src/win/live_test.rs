@@ -180,6 +180,7 @@ fn record(name: &str, source: Source, audio: AudioRequest, (width, height): (u32
         source,
         audio,
         camera: None,
+        editable: false,
     };
     eprintln!("{name}: preparing {width}x{height}");
     let (mut session, prepared) = match Session::prepare(request, heard.clone()) {

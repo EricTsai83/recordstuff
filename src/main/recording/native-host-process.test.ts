@@ -407,6 +407,8 @@ describe("developmentCapture", () => {
       source: { kind: "apps", pids: [5, 6] }, audio: { system: "apps", pids: [5], microphone: false },
     });
     expect(developmentCapture({ RECORDSTUFF_CAPTURE_AUDIO: "off" })).toEqual({ audio: { system: "off", microphone: false } });
+    expect(developmentCapture({ RECORDSTUFF_CAPTURE_EDITABLE: "1" })).toEqual({ editable: true });
+    for (const value of ["0", "true", "", "yes"]) expect(developmentCapture({ RECORDSTUFF_CAPTURE_EDITABLE: value })).toEqual({});
     for (const value of ["window:", "area:1,2,3", "apps:x", "display", "window:-1"]) {
       expect(developmentCapture({ RECORDSTUFF_CAPTURE_SOURCE: value })).toEqual({});
     }
@@ -414,6 +416,20 @@ describe("developmentCapture", () => {
 });
 
 describe("NativeHost", () => {
+  it("asks the engine for the editable recording only under its development switch, and logs it (plan 087)", async () => {
+    const today = await prepared();
+    expect(Object.keys(today.engine.prepare.mock.calls[0]![0])).not.toContain("editable");
+
+    const port = new Port();
+    const fake = fakeEngine();
+    const logs: string[] = [];
+    new NativeHost(port, fake.factory, (line) => logs.push(line), undefined, { editable: true });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native });
+    await flush();
+    expect(fake.engine.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ editable: true }));
+    expect(logs.some((line) => line.startsWith("development capture: editable recording"))).toBe(true);
+  });
+
   describe("the microphone (plan 074)", () => {
     const start = (port: Port, microphone?: NativeStart["microphone"]) =>
       port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, ...(microphone ? { microphone } : {}) } });

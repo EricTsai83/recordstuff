@@ -367,8 +367,15 @@ fn write_moov(w: &mut BoxWriter, tracks: &[TrackState], plain: bool) {
     }
     w.zeros(24).u32(tracks.len() as u32 + 1);
     w.close(mvhd);
-    for track in tracks {
-        write_trak(w, track, plain, timescale);
+    // A movie with more than one track of a kind (plan 087's editable recording): the first of each kind is the one
+    // players present; the others are its alternates, disabled, so no player lays the camera over the screen or plays
+    // the microphone's track beside the mixed one. Today's movies, one of each kind, keep group 0 and every track on.
+    let kind = |track: &TrackState| matches!(track.config.codec, Codec::H264 { .. });
+    for (index, track) in tracks.iter().enumerate() {
+        let shared = tracks.iter().filter(|other| kind(other) == kind(track)).count() > 1;
+        let first = !tracks[..index].iter().any(|other| kind(other) == kind(track));
+        let group = if shared { if kind(track) { 1 } else { 2 } } else { 0 };
+        write_trak(w, track, plain, timescale, group, first);
     }
     if !plain {
         let mvex = w.open(b"mvex");
@@ -382,17 +389,18 @@ fn write_moov(w: &mut BoxWriter, tracks: &[TrackState], plain: bool) {
     w.close(moov);
 }
 
-fn write_trak(w: &mut BoxWriter, track: &TrackState, plain: bool, movie_timescale: u32) {
+/// `group` is the track's alternate group (0 for none); a track not `enabled` is in the movie but not presented.
+fn write_trak(w: &mut BoxWriter, track: &TrackState, plain: bool, movie_timescale: u32, group: u16, enabled: bool) {
     let (video, width, height) = match &track.config.codec {
         Codec::H264 { width, height, .. } => (true, *width, *height),
         Codec::Aac { .. } => (false, 0, 0),
     };
     let trak = w.open(b"trak");
-    // Enabled and in the movie.
-    let tkhd = w.open_full(b"tkhd", 1, 0x3);
+    // In the movie, and enabled unless it is an alternate.
+    let tkhd = w.open_full(b"tkhd", 1, if enabled { 0x3 } else { 0x2 });
     w.u64(0).u64(0).u32(track.id).u32(0);
     w.u64(if plain { track.duration_in(movie_timescale) } else { 0 });
-    w.zeros(8).u16(0).u16(0).u16(if video { 0 } else { 0x0100 }).u16(0);
+    w.zeros(8).u16(0).u16(group).u16(if video { 0 } else { 0x0100 }).u16(0);
     for value in UNITY_MATRIX {
         w.u32(value);
     }

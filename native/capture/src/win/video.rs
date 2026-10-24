@@ -314,7 +314,7 @@ pub(crate) fn encode_pictures(
         match item {
             Media::VideoFormat { avcc: record, .. } => avcc = Some(record),
             Media::Video { data, sync, .. } => samples.push((data, sync)),
-            Media::Audio { .. } => {}
+            Media::Audio { .. } | Media::Camera { .. } => {}
         }
     }
     Ok((avcc.ok_or("the H.264 encoder produced no parameter sets")?, samples))

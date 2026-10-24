@@ -24,21 +24,28 @@ const SYNC_INTERVAL: Duration = Duration::from_secs(5);
 const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 /// Encoded media waiting for the disk beyond this fails the recording instead of filling memory with it.
 pub const BACKLOG_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
+/// Camera samples kept for a file whose header is not written yet (plan 087) beyond this fail the recording: the
+/// screen's first frame comes milliseconds after the camera's, so only a screen encoder that never answers reaches it.
+pub const EARLY_CAMERA_LIMIT_BYTES: u64 = 8 * 1024 * 1024;
 
 pub enum Media {
     /// The encoder's configuration, sent once before its first sample.
     VideoFormat { avcc: Vec<u8>, width: u16, height: u16 },
     /// An encoded video sample captured at `pts_ns` host time.
     Video { data: Vec<u8>, pts_ns: u64, sync: bool },
-    /// One AAC packet of `AAC_FRAMES` frames; packets are consecutive from the start of the recording.
-    Audio { data: Vec<u8> },
+    /// One AAC packet of `AAC_FRAMES` frames of sound track `track` (0 is the first, today's only one); each track's
+    /// packets are consecutive from the start of the recording.
+    Audio { data: Vec<u8>, track: usize },
+    /// An encoded sample of the camera's own track (plan 087's editable recording) captured at `pts_ns` host time;
+    /// its configuration is `WriterConfig::camera`.
+    Camera { data: Vec<u8>, pts_ns: u64, sync: bool },
 }
 
 impl Media {
     fn len(&self) -> u64 {
         match self {
             Media::VideoFormat { avcc, .. } => avcc.len() as u64,
-            Media::Video { data, .. } | Media::Audio { data } => data.len() as u64,
+            Media::Video { data, .. } | Media::Audio { data, .. } | Media::Camera { data, .. } => data.len() as u64,
         }
     }
 }
@@ -46,9 +53,9 @@ impl Media {
 enum Command {
     /// With when it was handed over, while the session keeps figures (plan 083).
     Media(Media, Option<Instant>),
-    /// Write what is pending and make the file plain; video lasts until `video_end_ns`, and the audio track presents
-    /// `audio_frames` frames after the encoder's priming.
-    Finish { video_end_ns: u64, audio_frames: Option<u64>, reply: Sender<Result<FinishReport, WriteFailure>> },
+    /// Write what is pending and make the file plain; video lasts until `video_end_ns`, and the n-th sound track
+    /// presents `audio_frames[n]` frames after its encoder's priming.
+    Finish { video_end_ns: u64, audio_frames: Vec<Option<u64>>, reply: Sender<Result<FinishReport, WriteFailure>> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,11 +79,24 @@ pub struct AudioSpec {
     pub bitrate: u32,
 }
 
+/// A video track's configuration known before its first sample: the camera's (plan 087), whose encoder made it at
+/// `prepare`, so the file's header can hold it however late the camera's first frame comes.
+#[derive(Clone)]
+pub struct VideoSpec {
+    pub avcc: Vec<u8>,
+    pub width: u16,
+    pub height: u16,
+}
+
 pub struct WriterConfig {
     pub file: File,
     /// Host time of the recording's start; video times count from it.
     pub t0_ns: u64,
-    pub audio: Option<AudioSpec>,
+    /// The sound tracks, after the picture's in the file: today one, the inputs mixed; an editable recording one per
+    /// input (plan 087). Empty is a recording without sound.
+    pub audio: Vec<AudioSpec>,
+    /// The camera's own track, last in the file (plan 087's editable recording); absent in today's recordings.
+    pub camera: Option<VideoSpec>,
     /// The session's stage figures, when the development switch asks for them (plan 083).
     pub diagnostics: Option<Arc<Diagnostics>>,
 }
@@ -132,8 +152,9 @@ impl MediaSender {
         let _ = self.commands.send(Command::Media(media, queued));
     }
 
-    /// Asks the writer to finish the file; the answer arrives on the returned receiver.
-    pub fn finish(&self, video_end_ns: u64, audio_frames: Option<u64>) -> Receiver<Result<FinishReport, WriteFailure>> {
+    /// Asks the writer to finish the file; the answer arrives on the returned receiver. `audio_frames` holds each
+    /// sound track's presented frames, in order.
+    pub fn finish(&self, video_end_ns: u64, audio_frames: Vec<Option<u64>>) -> Receiver<Result<FinishReport, WriteFailure>> {
         let (reply, result) = channel();
         let _ = self.commands.send(Command::Finish { video_end_ns, audio_frames, reply });
         result
@@ -159,10 +180,16 @@ pub fn spawn(config: WriterConfig, events: impl Fn(WriterEvent) + Send + Sync + 
 struct State {
     file: Option<File>,
     t0_ns: u64,
-    audio: Option<AudioSpec>,
+    audio: Vec<AudioSpec>,
+    camera: Option<VideoSpec>,
     muxer: Option<SessionMuxer<File>>,
-    /// Audio packets that arrived before the video's configuration, which the file's header needs.
-    early_audio: Vec<Vec<u8>>,
+    /// Audio packets, with their sound track, that arrived before the video's configuration, which the file's header
+    /// needs.
+    early_audio: Vec<(usize, Vec<u8>)>,
+    /// Camera samples that arrived before it (plan 087): its encoder runs beside the screen's, so the camera's first
+    /// key frame can come first.
+    early_camera: Vec<(Vec<u8>, u64, bool)>,
+    early_camera_bytes: u64,
     failed: Option<WriteFailure>,
     media_since_progress: bool,
 }
@@ -173,8 +200,11 @@ fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(Writer
         file: Some(config.file),
         t0_ns: config.t0_ns,
         audio: config.audio,
+        camera: config.camera,
         muxer: None,
         early_audio: Vec::new(),
+        early_camera: Vec::new(),
+        early_camera_bytes: 0,
         failed: None,
         media_since_progress: false,
     };
@@ -211,7 +241,7 @@ fn run(config: WriterConfig, receiver: Receiver<Command>, events: &dyn Fn(Writer
                         }
                         Err(failure)
                     }
-                    None => state.finish(video_end_ns, audio_frames),
+                    None => state.finish(video_end_ns, &audio_frames),
                 };
                 let _ = reply.send(outcome);
                 return;
@@ -252,7 +282,7 @@ impl State {
                 }
                 let Some(file) = self.file.take() else { return Ok(()) };
                 let video = TrackConfig { codec: Codec::H264 { avcc, width, height }, timescale: VIDEO_TIMESCALE, skip: 0 };
-                let audio = self.audio.as_ref().map(|spec| TrackConfig {
+                let audio = self.audio.iter().map(|spec| TrackConfig {
                     codec: Codec::Aac {
                         config: spec.config.clone(),
                         sample_rate: spec.sample_rate,
@@ -263,9 +293,19 @@ impl State {
                     timescale: spec.sample_rate,
                     skip: spec.priming,
                 });
-                let mut muxer = SessionMuxer::new(file, video, audio).map_err(|e| failure(&e, "header write failed"))?;
-                for packet in self.early_audio.drain(..) {
-                    muxer.push_audio(packet, AAC_FRAMES).map_err(|e| failure(&e, "write failed"))?;
+                let camera = self.camera.as_ref().map(|spec| TrackConfig {
+                    codec: Codec::H264 { avcc: spec.avcc.clone(), width: spec.width, height: spec.height },
+                    timescale: VIDEO_TIMESCALE,
+                    skip: 0,
+                });
+                let tracks = std::iter::once(video).chain(audio).chain(camera).collect();
+                let mut muxer = SessionMuxer::with_tracks(file, tracks).map_err(|e| failure(&e, "header write failed"))?;
+                for (track, packet) in self.early_audio.drain(..) {
+                    muxer.push_audio_to(1 + track, packet, AAC_FRAMES).map_err(|e| failure(&e, "write failed"))?;
+                }
+                for (data, pts_ns, sync) in self.early_camera.drain(..) {
+                    let pts = ticks(pts_ns.saturating_sub(self.t0_ns), VIDEO_TIMESCALE);
+                    muxer.push_video_to(1 + self.audio.len(), data, pts, sync).map_err(|e| failure(&e, "write failed"))?;
                 }
                 self.muxer = Some(muxer);
             }
@@ -274,10 +314,38 @@ impl State {
                 let pts = ticks(pts_ns.saturating_sub(self.t0_ns), VIDEO_TIMESCALE);
                 muxer.push_video(data, pts, sync).map_err(|e| failure(&e, "write failed"))?;
             }
-            Media::Audio { data } => match self.muxer.as_mut() {
-                Some(muxer) => muxer.push_audio(data, AAC_FRAMES).map_err(|e| failure(&e, "write failed"))?,
-                None => self.early_audio.push(data),
-            },
+            Media::Audio { data, track } => {
+                if track >= self.audio.len() {
+                    return Err(WriteFailure {
+                        code: "output_write_failed",
+                        detail: format!("sound for track {track} of a recording with {}", self.audio.len()),
+                    });
+                }
+                match self.muxer.as_mut() {
+                    Some(muxer) => muxer.push_audio_to(1 + track, data, AAC_FRAMES).map_err(|e| failure(&e, "write failed"))?,
+                    None => self.early_audio.push((track, data)),
+                }
+            }
+            Media::Camera { data, pts_ns, sync } => {
+                if self.camera.is_none() {
+                    return Err(WriteFailure { code: "output_write_failed", detail: "a camera sample for a recording without a camera track".into() });
+                }
+                // Before the screen's first frame the file has no header yet: kept until it has, within a bound.
+                let Some(muxer) = self.muxer.as_mut() else {
+                    self.early_camera_bytes += data.len() as u64;
+                    if self.early_camera_bytes > EARLY_CAMERA_LIMIT_BYTES {
+                        self.early_camera.clear();
+                        return Err(WriteFailure {
+                            code: "output_write_failed",
+                            detail: format!("early camera limit {EARLY_CAMERA_LIMIT_BYTES} bytes exceeded before the screen's first frame"),
+                        });
+                    }
+                    self.early_camera.push((data, pts_ns, sync));
+                    return Ok(());
+                };
+                let pts = ticks(pts_ns.saturating_sub(self.t0_ns), VIDEO_TIMESCALE);
+                muxer.push_video_to(1 + self.audio.len(), data, pts, sync).map_err(|e| failure(&e, "write failed"))?;
+            }
         }
         Ok(())
     }
@@ -292,7 +360,7 @@ impl State {
         events(WriterEvent::Failed(failure));
     }
 
-    fn finish(&mut self, video_end_ns: u64, audio_frames: Option<u64>) -> Result<FinishReport, WriteFailure> {
+    fn finish(&mut self, video_end_ns: u64, audio_frames: &[Option<u64>]) -> Result<FinishReport, WriteFailure> {
         if let Some(failure) = &self.failed {
             return Err(failure.clone());
         }
@@ -301,7 +369,7 @@ impl State {
             return Ok(FinishReport { bytes: 0, fragmented: None });
         };
         let end = ticks(video_end_ns.saturating_sub(self.t0_ns), VIDEO_TIMESCALE);
-        let (report, _file) = muxer.finish(end, audio_frames).map_err(|e| failure(&e, "finish failed"))?;
+        let (report, _file) = muxer.finish_tracks(end, audio_frames).map_err(|e| failure(&e, "finish failed"))?;
         Ok(report)
     }
 }
@@ -330,18 +398,18 @@ mod tests {
         let spec = AudioSpec { config: vec![0x11, 0x90], priming: 0, sample_rate: 48_000, channels: 2, bitrate: 256_000 };
         let events = Arc::new(Mutex::new(Vec::new()));
         let seen = events.clone();
-        let writer = spawn(WriterConfig { file, t0_ns: t0, audio: Some(spec), diagnostics: None }, move |event| {
+        let writer = spawn(WriterConfig { file, t0_ns: t0, audio: vec![spec], camera: None, diagnostics: None }, move |event| {
             seen.lock().unwrap().push(matches!(event, WriterEvent::Failed(_)));
         })
         .unwrap();
         let send = |media| writer.sender.send(media);
-        send(Media::Audio { data: vec![1; 8] });
+        send(Media::Audio { data: vec![1; 8], track: 0 });
         send(Media::VideoFormat { avcc: avcc(), width: 640, height: 360 });
         for n in 0..60u64 {
             send(Media::Video { data: vec![n as u8; 20], pts_ns: t0 + n * 33_333_333, sync: n % 30 == 0 });
         }
-        send(Media::Audio { data: vec![2; 8] });
-        let result = writer.sender.finish(t0 + 2 * crate::timing::NANOS_PER_SECOND, None);
+        send(Media::Audio { data: vec![2; 8], track: 0 });
+        let result = writer.sender.finish(t0 + 2 * crate::timing::NANOS_PER_SECOND, vec![None]);
         let report = result.recv().unwrap().unwrap();
         writer.thread.join().unwrap();
         assert_eq!(report.fragmented, None);
@@ -359,10 +427,76 @@ mod tests {
     }
 
     #[test]
+    fn an_editable_recording_writes_each_sound_and_the_camera_on_their_own_tracks() {
+        let path = temp("editable");
+        let t0 = 10 * crate::timing::NANOS_PER_SECOND;
+        let spec = || AudioSpec { config: vec![0x11, 0x90], priming: 2112, sample_rate: 48_000, channels: 2, bitrate: 256_000 };
+        let camera = VideoSpec { avcc: avcc(), width: 1280, height: 720 };
+        let writer =
+            spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: t0, audio: vec![spec(), spec()], camera: Some(camera), diagnostics: None }, |_| {})
+                .unwrap();
+        let send = |media| writer.sender.send(media);
+        // The microphone's sound and the camera's first frame, a key frame, before the screen's first frame (their
+        // encoders run side by side): both are kept.
+        send(Media::Audio { data: vec![2; 8], track: 1 });
+        send(Media::Camera { data: vec![9; 4], pts_ns: t0, sync: true });
+        send(Media::VideoFormat { avcc: avcc(), width: 640, height: 360 });
+        for n in 0..30u64 {
+            send(Media::Video { data: vec![1; 20], pts_ns: t0 + n * 33_333_333, sync: n == 0 });
+            if n > 0 {
+                send(Media::Camera { data: vec![3; 10], pts_ns: t0 + n * 33_333_333, sync: false });
+            }
+        }
+        send(Media::Audio { data: vec![1; 8], track: 0 });
+        send(Media::Audio { data: vec![2; 8], track: 1 });
+        let report = writer.sender.finish(t0 + crate::timing::NANOS_PER_SECOND, vec![Some(1024), Some(2048)]).recv().unwrap().unwrap();
+        writer.thread.join().unwrap();
+        assert_eq!(report.fragmented, None);
+        let parsed = parse(&std::fs::read(&path).unwrap()).unwrap();
+        let counts: Vec<usize> = parsed.tracks.iter().map(|t| t.samples.len()).collect();
+        assert_eq!(counts, [30, 1, 2, 30]);
+        assert!(parsed.tracks[2].samples.iter().all(|s| s.data == [2; 8]));
+        let camera = &parsed.tracks[3].samples;
+        assert!(camera[0].sync && camera[0].data == [9; 4] && camera[1..].iter().all(|s| s.data == [3; 10] && !s.sync));
+        assert_eq!(parsed.tracks[3].duration, 90_000);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn camera_samples_kept_before_the_screen_s_first_frame_are_bounded() {
+        let path = temp("early-camera");
+        let camera = VideoSpec { avcc: avcc(), width: 1280, height: 720 };
+        let writer =
+            spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: Vec::new(), camera: Some(camera), diagnostics: None }, |_| {}).unwrap();
+        // A screen encoder that never answers: the camera's samples pile up until the bound.
+        let sample = (EARLY_CAMERA_LIMIT_BYTES / 4 + 1) as usize;
+        for n in 0..4u64 {
+            writer.sender.send(Media::Camera { data: vec![0; sample], pts_ns: n, sync: n == 0 });
+        }
+        let error = writer.sender.finish(10, Vec::new()).recv().unwrap().unwrap_err();
+        writer.thread.join().unwrap();
+        assert_eq!(error.code, "output_write_failed");
+        assert!(error.detail.starts_with("early camera limit"), "{}", error.detail);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn sound_for_a_track_the_recording_lacks_fails_it() {
+        let path = temp("no-track");
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: Vec::new(), camera: None, diagnostics: None }, |_| {}).unwrap();
+        writer.sender.send(Media::VideoFormat { avcc: avcc(), width: 2, height: 2 });
+        writer.sender.send(Media::Audio { data: vec![1], track: 0 });
+        let error = writer.sender.finish(1, Vec::new()).recv().unwrap().unwrap_err();
+        writer.thread.join().unwrap();
+        assert_eq!(error.code, "output_write_failed");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
     fn finishing_without_video_writes_nothing() {
         let path = temp("empty");
-        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: None }, |_| {}).unwrap();
-        let result = writer.sender.finish(0, None);
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: Vec::new(), camera: None, diagnostics: None }, |_| {}).unwrap();
+        let result = writer.sender.finish(0, Vec::new());
         assert_eq!(result.recv().unwrap().unwrap().bytes, 0);
         writer.thread.join().unwrap();
         assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
@@ -374,7 +508,7 @@ mod tests {
         let path = temp("backlog");
         let failures = Arc::new(Mutex::new(Vec::new()));
         let seen = failures.clone();
-        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: None }, move |event| {
+        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: Vec::new(), camera: None, diagnostics: None }, move |event| {
             if let WriterEvent::Failed(failure) = event {
                 seen.lock().unwrap().push(failure);
             }
@@ -394,7 +528,7 @@ mod tests {
         writer.sender.backlog.store(BACKLOG_LIMIT_BYTES - 10, Ordering::Release);
         writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 15 * 33_333_333, sync: true });
         writer.sender.send(Media::Video { data: vec![0; 11], pts_ns: 16 * 33_333_333, sync: true });
-        let error = writer.sender.finish(1, None).recv().unwrap().unwrap_err();
+        let error = writer.sender.finish(1, Vec::new()).recv().unwrap().unwrap_err();
         writer.thread.join().unwrap();
         assert_eq!(error.code, "output_write_failed");
         assert!(error.detail.starts_with("writer backlog limit"));
@@ -410,12 +544,16 @@ mod tests {
     fn with_figures_kept_every_piece_of_media_is_timed_from_its_hand_over_to_its_write() {
         let path = temp("figures");
         let diagnostics = Arc::new(Diagnostics::default());
-        let writer = spawn(WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: None, diagnostics: Some(diagnostics.clone()) }, |_| {}).unwrap();
+        let writer = spawn(
+            WriterConfig { file: File::create(&path).unwrap(), t0_ns: 0, audio: Vec::new(), camera: None, diagnostics: Some(diagnostics.clone()) },
+            |_| {},
+        )
+        .unwrap();
         writer.sender.send(Media::VideoFormat { avcc: avcc(), width: 640, height: 360 });
         for n in 0..10u64 {
             writer.sender.send(Media::Video { data: vec![n as u8; 20], pts_ns: n * 33_333_333, sync: n == 0 });
         }
-        writer.sender.finish(10 * 33_333_333, None).recv().unwrap().unwrap();
+        writer.sender.finish(10 * 33_333_333, Vec::new()).recv().unwrap().unwrap();
         writer.thread.join().unwrap();
         assert_eq!(diagnostics.write_wait.count(), 11);
         assert_eq!(diagnostics.write.count(), 11);
@@ -441,7 +579,7 @@ mod tests {
         let file = File::open(&path).unwrap();
         let failures = Arc::new(Mutex::new(Vec::new()));
         let seen = failures.clone();
-        let writer = spawn(WriterConfig { file, t0_ns: 0, audio: None, diagnostics: None }, move |event| {
+        let writer = spawn(WriterConfig { file, t0_ns: 0, audio: Vec::new(), camera: None, diagnostics: None }, move |event| {
             if let WriterEvent::Failed(failure) = event {
                 seen.lock().unwrap().push(failure);
             }
@@ -449,7 +587,7 @@ mod tests {
         .unwrap();
         writer.sender.send(Media::VideoFormat { avcc: avcc(), width: 2, height: 2 });
         writer.sender.send(Media::Video { data: vec![1], pts_ns: 0, sync: true });
-        let result = writer.sender.finish(1, None);
+        let result = writer.sender.finish(1, Vec::new());
         let error = result.recv().unwrap().unwrap_err();
         writer.thread.join().unwrap();
         assert_eq!(error.code, "output_write_failed");

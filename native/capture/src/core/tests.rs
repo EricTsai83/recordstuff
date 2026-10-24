@@ -175,10 +175,20 @@ impl Rig {
     }
 
     fn with_inputs(name: &str, inputs: usize) -> Self {
+        Self::made(name, inputs, false)
+    }
+
+    /// Plan 087's editable recording: each input on a sound track of its own.
+    fn editable(name: &str, inputs: usize) -> Self {
+        Self::made(name, inputs, true)
+    }
+
+    fn made(name: &str, inputs: usize, separate: bool) -> Self {
         let path = std::env::temp_dir().join(format!("recordstuff-core-{name}-{}.mp4", std::process::id()));
         let file = File::create(&path).unwrap();
         let heard = Arc::new(Heard::default());
         let core = Core::<Fake>::new(heard.clone(), 30, 192_000, inputs, file);
+        core.separate_sound(separate);
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
         let audio_fail = Arc::new(AtomicBool::new(false));
@@ -187,9 +197,9 @@ impl Rig {
         let loudest = Arc::new(AtomicU32::new(0));
         let (e, f, a, c, d, l) = (encoded.clone(), fail.clone(), audio_fail.clone(), camera.clone(), composed.clone(), loudest.clone());
         let made = core
-            .make_encoders(move |sink| {
+            .make_encoders(move |sink, tracks| {
                 let video = FakeVideo { sink, encoded: e, format_sent: AtomicBool::new(false), fail: f, camera: c, composed: d };
-                Ok((video, FakeAudio { fail: a, loudest: l, ..FakeAudio::default() }))
+                Ok((video, (0..tracks).map(|_| FakeAudio { fail: a.clone(), loudest: l.clone(), ..FakeAudio::default() }).collect()))
             })
             .unwrap();
         Core::<Fake>::encoders_made(made).unwrap();
@@ -324,7 +334,7 @@ fn the_file_starts_with_the_newest_frame_as_a_key_frame_and_both_tracks_end_at_t
     let feeding = Arc::new(AtomicBool::new(true));
     let feeder = {
         let (shared, feeding) = (rig.shared.clone(), feeding.clone());
-        let mut next = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(0)).unwrap();
+        let mut next = rig.shared.audio.lock().unwrap().mixers.first().map(|m| m.delivered(0)).unwrap();
         let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
         std::thread::spawn(move || {
             while feeding.load(Ordering::Acquire) {
@@ -459,7 +469,7 @@ fn a_second_input_that_stops_delivering_holds_the_track_back_only_for_the_mixing
         std::thread::sleep(Duration::from_millis(2));
     }
     // The track went on past where the second input stopped: up to the clock less the latency, at least.
-    let mixed = rig.shared.audio.lock().unwrap().mixed();
+    let mixed = rig.shared.audio.lock().unwrap().mixed(0);
     assert!(mixed > 24_000, "only {mixed} frames mixed");
     let (_, stopped, _) = rig.stop();
     assert_eq!(stopped.late_audio_frames, [0, 0]);
@@ -496,14 +506,14 @@ fn a_microphone_that_stops_delivering_is_told_and_taken_again_when_its_sound_com
     rig.shared.lose_microphone("unplugged".into());
     assert_eq!(rig.heard.microphone_lost.lock().unwrap().len(), 1);
     // Its sound comes back: told once, and taken from where it is, the gap silence.
-    let delivered = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap();
+    let delivered = rig.shared.audio.lock().unwrap().mixers.first().map(|m| m.delivered(1)).unwrap();
     let at = t0 + next * NANOS_PER_SECOND / 48_000;
     rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
     rig.shared.sound(1, at + 10_000_000, 480, |_, _| 0.5).unwrap();
     let resumed = rig.heard.microphone_resumed.lock().unwrap().clone();
     assert_eq!(resumed.len(), 1, "{resumed:?}");
     assert!(resumed[0].starts_with("the microphone delivered sound again after 2."), "{resumed:?}");
-    assert!(rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap() > delivered);
+    assert!(rig.shared.audio.lock().unwrap().mixers.first().map(|m| m.delivered(1)).unwrap() > delivered);
     // Stopping again is told again.
     rig.shared.lose_microphone("unplugged".into());
     assert_eq!(rig.heard.microphone_lost.lock().unwrap().len(), 2);
@@ -582,9 +592,9 @@ fn switching_the_microphone_counts_its_silence_from_the_switch() {
     }
     assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "{:?}", rig.heard.microphone_lost.lock().unwrap());
     // The new one's sound is taken from where it is, the gap silence.
-    let delivered = rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap();
+    let delivered = rig.shared.audio.lock().unwrap().mixers.first().map(|m| m.delivered(1)).unwrap();
     rig.shared.sound(1, t0 + next * NANOS_PER_SECOND / 48_000, 480, |_, _| 0.5).unwrap();
-    assert!(rig.shared.audio.lock().unwrap().mixer.as_ref().map(|m| m.delivered(1)).unwrap() > delivered);
+    assert!(rig.shared.audio.lock().unwrap().mixers.first().map(|m| m.delivered(1)).unwrap() > delivered);
     assert!(rig.heard.microphone_resumed.lock().unwrap().is_empty());
     let (_, _, _) = rig.stop();
     assert!(rig.heard.failures.lock().unwrap().is_empty(), "{:?}", rig.heard.failures.lock().unwrap());
@@ -1342,4 +1352,95 @@ fn composing_again_is_the_camera_s_return_only_while_it_delivers_a_picture() {
     assert_eq!(resumed(&heard).len(), 1);
     feed.deliver(2, 9 * NANOS_PER_SECOND, 9 * NANOS_PER_SECOND, &heard);
     assert_eq!(resumed(&heard).len(), 2);
+}
+
+/// Plan 087's editable recording: each input's sound on a track of its own, every track as long as the video, one
+/// input's silence not holding another's track back or shifting it.
+#[test]
+fn an_editable_recording_keeps_each_input_on_its_own_track_to_the_stop() {
+    let mut rig = Rig::editable("editable-sound", 2);
+    rig.core.watch_microphone(1);
+    assert_eq!(rig.core.sound_tracks(), 2);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    // System sound throughout; the microphone for 300 ms, then nothing.
+    let mut next = 0u64;
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_millis(1_300) {
+        while t0 + (next + 480) * NANOS_PER_SECOND / 48_000 <= Fake::now_ns() {
+            let at = t0 + next * NANOS_PER_SECOND / 48_000;
+            rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+            if began.elapsed() < Duration::from_millis(300) {
+                rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+            }
+            next += 480;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    {
+        let audio = rig.shared.audio.lock().unwrap();
+        // The system's track follows its sound; the microphone's goes on with the clock past its silence.
+        assert!(audio.mixed(0) > 48_000, "system: {} frames", audio.mixed(0));
+        assert!(audio.mixed(1) > 24_000, "microphone: {} frames", audio.mixed(1));
+    }
+    let (_, stopped, _) = rig.stop();
+    // One entry per input, as today's single mixer reports them.
+    assert_eq!(stopped.late_audio_frames, [0, 0]);
+    let file = rig.file();
+    assert_eq!(file.tracks.len(), 3);
+    let video_ms = file.tracks[0].duration as f64 * 1000.0 / f64::from(file.tracks[0].timescale);
+    for track in &file.tracks[1..] {
+        let audio_ms = track.edit.expect("an edit list skips the priming").0 as f64 * 1000.0 / 48_000.0;
+        assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
+    }
+    let presented: Vec<(bool, u16)> = file.tracks.iter().map(|t| (t.enabled, t.alternate_group)).collect();
+    assert_eq!(presented, [(true, 0), (true, 2), (false, 2)]);
+}
+
+#[test]
+fn an_editable_recording_with_one_input_has_today_s_one_track() {
+    let rig = Rig::editable("editable-one", 1);
+    assert_eq!(rig.core.sound_tracks(), 1);
+}
+
+/// The camera's own track (plan 087): its first frame at the recording's start, then each newer one at its capture,
+/// nothing before the recording or from the stop on; its samples land on the file's last track.
+#[test]
+fn the_camera_track_starts_with_the_recording_and_ends_at_the_stop() {
+    let mut rig = Rig::new("camera-track");
+    rig.core.camera_track(crate::writer::VideoSpec { avcc: vec![1, 100, 0, 40, 0xff, 0xe0, 0], width: 32, height: 18 });
+    assert_eq!(rig.shared.camera_pts(Fake::now_ns(), None), None, "not recording yet");
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let sink = rig.shared.camera_track_sink();
+    let captured = t0 + 40_000_000;
+    assert_eq!(rig.shared.camera_pts(captured, None), Some((t0, true)));
+    sink.media(Media::Video { data: vec![7; 5], pts_ns: t0, sync: true });
+    assert_eq!(rig.shared.camera_pts(captured, Some(captured)), None, "the same frame again");
+    assert_eq!(rig.shared.camera_pts(captured + 33_000_000, Some(captured)), Some((captured + 33_000_000, false)));
+    sink.media(Media::Video { data: vec![8; 5], pts_ns: captured + 33_000_000, sync: false });
+    rig.capture(Duration::from_millis(200), Duration::from_micros(33_333), true);
+    let (stop_ns, _, _) = rig.stop();
+    assert_eq!(rig.shared.camera_pts(stop_ns - 1, Some(captured)), None, "after the stop");
+    let file = rig.file();
+    let camera = file.tracks.last().unwrap();
+    assert_eq!(camera.samples.len(), 2);
+    assert!(camera.samples[0].sync && camera.samples[0].data == [7; 5]);
+    assert!(!camera.enabled && camera.alternate_group == 1);
+    // Ends with the screen.
+    assert_eq!(camera.duration, file.tracks[0].duration);
+}
+
+#[test]
+fn a_camera_track_encoder_failure_loses_the_camera_once_and_not_the_recording() {
+    let rig = Rig::new("camera-track-failure");
+    let sink = rig.shared.camera_track_sink();
+    sink.failed("the session broke".into());
+    sink.failed("again".into());
+    assert_eq!(*rig.heard.camera_lost.lock().unwrap(), ["the camera's own track: the session broke"]);
+    assert!(rig.heard.failures.lock().unwrap().is_empty());
 }

@@ -28,7 +28,7 @@ pub mod preview;
 
 use crate::pacing::Pacer;
 use crate::timing::NANOS_PER_SECOND;
-use crate::writer::{self, AudioSpec, Media, WriteFailure, WriterConfig, WriterEvent};
+use crate::writer::{self, AudioSpec, Media, VideoSpec, WriteFailure, WriterConfig, WriterEvent};
 pub use camera::{CAMERA_FIRST_FRAME_NS, CAMERA_SILENT_NS, CameraAges, CameraControl, CameraFeed};
 pub use diagnostics::Diagnostics;
 pub use frame_log::FrameLog;
@@ -199,7 +199,7 @@ impl VideoSink for PreviewSink {
                 let Some((avcc, width, height)) = self.format.lock().unwrap().clone() else { return };
                 self.events.preview(PreviewChunk { width, height, data, key: sync, timestamp_us: pts_ns / 1000, description: sync.then_some(avcc) });
             }
-            Media::Audio { .. } => {}
+            Media::Audio { .. } | Media::Camera { .. } => {}
         }
     }
 
@@ -325,6 +325,9 @@ pub struct PrepareRequest {
     pub audio: AudioRequest,
     /// The camera composed into the frames (plan 075); absent is none.
     pub camera: Option<CameraRequest>,
+    /// Plan 087's editable recording (step 1's prototype, a development switch): the screen without the camera, each
+    /// sound input on a track of its own and the camera on its own track, in one file.
+    pub editable: bool,
 }
 
 /// Which camera and where its bubble is (plan 075): main's setting and its layout on the recorded display.
@@ -437,11 +440,15 @@ struct VideoState<P: Platform> {
 }
 
 struct AudioState<A> {
-    encoder: Option<A>,
-    /// Made at `record`, when the track's start is known.
-    mixer: Option<Mixer>,
+    /// One per sound track, in the file's order: today one, every input mixed into it; an editable recording's one
+    /// per input (plan 087). Empty until made, and again once finished or released.
+    encoders: Vec<A>,
+    /// One per sound track, made at `record`, when the tracks' start is known.
+    mixers: Vec<Mixer>,
     /// How many inputs the platform feeds: system audio, chosen apps' audio, the microphone.
     inputs: usize,
+    /// Each input on a sound track of its own (plan 087's editable recording) rather than mixed.
+    separate: bool,
     priming: u32,
     scratch: Vec<f32>,
 }
@@ -452,10 +459,20 @@ impl<A: AudioEncode> AudioState<A> {
         target.store(frames, Ordering::Release);
     }
 
-    /// Mixes the track up to `until` into the encoder; returns the packets it made.
-    fn advance(&mut self, until: u64) -> Result<Vec<Vec<u8>>, String> {
+    /// How many sound tracks the recording has: one unless each of several inputs has its own.
+    fn tracks(&self) -> usize {
+        if self.separate && self.inputs > 1 { self.inputs } else { 1 }
+    }
+
+    /// The track `input` is on, and which of that track's mixer's inputs it is.
+    fn route(&self, input: usize) -> (usize, usize) {
+        if self.tracks() > 1 { (input, 0) } else { (0, input) }
+    }
+
+    /// Mixes `track` up to `until` into its encoder; returns the packets it made.
+    fn advance(&mut self, track: usize, until: u64) -> Result<Vec<Vec<u8>>, String> {
         let mut packets = Vec::new();
-        let (Some(mixer), Some(encoder)) = (self.mixer.as_mut(), self.encoder.as_mut()) else { return Ok(packets) };
+        let (Some(mixer), Some(encoder)) = (self.mixers.get_mut(track), self.encoders.get_mut(track)) else { return Ok(packets) };
         if mixer.mix(until, &mut self.scratch) == 0 {
             return Ok(packets);
         }
@@ -464,8 +481,13 @@ impl<A: AudioEncode> AudioState<A> {
         Ok(packets)
     }
 
-    fn mixed(&self) -> u64 {
-        self.mixer.as_ref().map_or(0, Mixer::mixed)
+    fn mixed(&self, track: usize) -> u64 {
+        self.mixers.get(track).map_or(0, Mixer::mixed)
+    }
+
+    /// Whether every track has its mixer and its encoder.
+    fn ready_to_mix(&self) -> bool {
+        !self.mixers.is_empty() && self.mixers.len() == self.encoders.len()
     }
 }
 
@@ -517,6 +539,10 @@ pub struct Shared<P: Platform> {
     every_slot: AtomicBool,
     /// The camera composed into the frames (plan 075): judged on the refresh thread, closed when capture ends.
     camera: Mutex<Option<Arc<dyn CameraControl>>>,
+    /// The camera's own track's configuration (plan 087's editable recording), which the file's header holds.
+    camera_track: Mutex<Option<VideoSpec>>,
+    /// Whether the camera track's encoder failed, told once.
+    camera_track_failed: AtomicBool,
     meters: Meters,
     /// The stage figures, when the development switch asks for them (plan 083, diagnostics.rs).
     diagnostics: Option<Arc<Diagnostics>>,
@@ -783,12 +809,13 @@ impl<P: Platform> Shared<P> {
         // After `stop`, sound only up to it: the track ends where the video does. `audio_target` is only changed under
         // this lock, so a buffer is cut by the target in force while it is placed.
         let target = self.audio_target.load(Ordering::Acquire);
-        let Some(mixer) = audio.mixer.as_mut() else { return Ok(()) };
+        let (track, slot) = audio.route(input);
+        let Some(mixer) = audio.mixers.get_mut(track) else { return Ok(()) };
         // Input frame n is what played at t0 + n / rate; the file's edit list skips the encoder's priming, so sound at
         // presentation time t is what played at t0 + t.
-        mixer.add(input, pts, frames, sample, target);
+        mixer.add(slot, pts, frames, sample, target);
         let until = mixer.ready().min(target);
-        let packets = match audio.advance(until) {
+        let packets = match audio.advance(track, until) {
             Ok(packets) => packets,
             // The encoder's failure is the recording's, whichever input's sound reached it first: a microphone's
             // caller would take an error for the microphone's own and tell it lost.
@@ -802,7 +829,7 @@ impl<P: Platform> Shared<P> {
         // Sent under the audio lock: packets carry no time, so the writer's order is the track's, and another input
         // or the clock must not send theirs in between.
         for data in packets {
-            self.send(Media::Audio { data });
+            self.send(Media::Audio { data, track });
         }
         Ok(())
     }
@@ -823,15 +850,39 @@ impl<P: Platform> Shared<P> {
     fn sound_clock(&self, now_ns: u64) {
         let mut audio = self.audio.lock().unwrap();
         let target = self.audio_target.load(Ordering::Acquire);
-        let Some(limit) = audio.mixer.as_ref().map(|mixer| mixer.clock_limit(now_ns).min(target)) else { return };
-        match audio.advance(limit) {
-            // Under the audio lock, as in `sound`.
-            Ok(packets) => packets.into_iter().for_each(|data| self.send(Media::Audio { data })),
-            Err(detail) => {
-                drop(audio);
-                self.fail(detail);
+        for track in 0..audio.mixers.len() {
+            let limit = audio.mixers[track].clock_limit(now_ns).min(target);
+            match audio.advance(track, limit) {
+                // Under the audio lock, as in `sound`.
+                Ok(packets) => packets.into_iter().for_each(|data| self.send(Media::Audio { data, track })),
+                Err(detail) => {
+                    drop(audio);
+                    self.fail(detail);
+                    return;
+                }
             }
         }
+    }
+
+    /// The time a camera frame captured at `captured_ns` takes in the camera's own track (plan 087), after the one at
+    /// `last` (None before its first): the first is at the recording's start, so the track starts with the screen's,
+    /// and later ones at their capture; None while not recording, at or after the stop, or for a frame not newer than
+    /// the last. Returns the time and whether it is the track's first.
+    pub fn camera_pts(&self, captured_ns: u64, last: Option<u64>) -> Option<(u64, bool)> {
+        if !self.recording() || captured_ns >= self.stop_ns.load(Ordering::Acquire) {
+            return None;
+        }
+        match last {
+            None => Some((self.t0_ns.load(Ordering::Acquire), true)),
+            Some(last) if captured_ns > last => Some((captured_ns, false)),
+            Some(_) => None,
+        }
+    }
+
+    /// The sink of the camera's own track's encoder (plan 087): its samples go to the file's camera track. Its failure
+    /// loses the camera, told once, not the recording.
+    pub fn camera_track_sink(self: &Arc<Self>) -> Arc<dyn VideoSink> {
+        Arc::new(CameraTrackSink { shared: self.clone() })
     }
 
     fn has_frame(&self) -> bool {
@@ -888,6 +939,26 @@ impl<P: Platform> VideoSink for Shared<P> {
     }
 }
 
+/// Where the camera's own track's encoder hands its samples (plan 087's editable recording).
+struct CameraTrackSink<P: Platform> {
+    shared: Arc<Shared<P>>,
+}
+
+impl<P: Platform> VideoSink for CameraTrackSink<P> {
+    fn media(&self, media: Media) {
+        // The configuration is the file's already (`Core::camera_track`), made at `prepare`.
+        if let Media::Video { data, pts_ns, sync } = media {
+            self.shared.send(Media::Camera { data, pts_ns, sync });
+        }
+    }
+
+    fn failed(&self, detail: String) {
+        if !self.shared.camera_track_failed.swap(true, Ordering::AcqRel) {
+            self.shared.events.camera_lost(format!("the camera's own track: {detail}"));
+        }
+    }
+}
+
 /// The platform-independent half of a session; the platform's `Session` owns one beside its capture.
 pub struct Core<P: Platform> {
     shared: Arc<Shared<P>>,
@@ -907,7 +978,7 @@ impl<P: Platform> Core<P> {
             failed: AtomicBool::new(false),
             failure: Mutex::new(None),
             video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0 }),
-            audio: Mutex::new(AudioState { encoder: None, mixer: None, inputs: audio_inputs, priming: 0, scratch: Vec::new() }),
+            audio: Mutex::new(AudioState { encoders: Vec::new(), mixers: Vec::new(), inputs: audio_inputs, separate: false, priming: 0, scratch: Vec::new() }),
             writer: Mutex::new(None),
             frames_seen: AtomicU64::new(0),
             frame_rate,
@@ -924,6 +995,8 @@ impl<P: Platform> Core<P> {
             frame_log: Mutex::new(None),
             every_slot: AtomicBool::new(false),
             camera: Mutex::new(None),
+            camera_track: Mutex::new(None),
+            camera_track_failed: AtomicBool::new(false),
             meters: Meters::default(),
             diagnostics: Diagnostics::from_env().map(Arc::new),
         });
@@ -938,6 +1011,22 @@ impl<P: Platform> Core<P> {
     /// The camera composed into this session's frames (plan 075): judged while recording and closed with the session.
     pub fn watch_camera(&self, camera: Arc<dyn CameraControl>) {
         *self.shared.camera.lock().unwrap() = Some(camera);
+    }
+
+    /// Puts each sound input on a track of its own instead of mixing them (plan 087's editable recording); before
+    /// `make_encoders`, which then makes one encoder per track.
+    pub fn separate_sound(&self, on: bool) {
+        self.shared.audio.lock().unwrap().separate = on;
+    }
+
+    /// How many sound tracks the recording has, and so how many encoders `make_encoders` asks for.
+    pub fn sound_tracks(&self) -> usize {
+        self.shared.audio.lock().unwrap().tracks()
+    }
+
+    /// The camera's own track (plan 087's editable recording), last in the file; before `record`.
+    pub fn camera_track(&self, spec: VideoSpec) {
+        *self.shared.camera_track.lock().unwrap() = Some(spec);
     }
 
     /// Whether the level meters are watched (plan 075, D19): levels are gathered and told only then.
@@ -990,21 +1079,26 @@ impl<P: Platform> Core<P> {
     }
 
     /// Makes the encoders on their own thread, so a platform can start capture meanwhile: until `record` capture only
-    /// keeps the newest frame, so nothing needs them before then. `make` gets the sink for encoded video.
+    /// keeps the newest frame, so nothing needs them before then. `make` gets the sink for encoded video and how many
+    /// sound tracks need an encoder, and returns that many.
     pub fn make_encoders(
         &self,
-        make: impl FnOnce(Arc<dyn VideoSink>) -> Result<(P::Video, P::Audio), CaptureError> + Send + 'static,
+        make: impl FnOnce(Arc<dyn VideoSink>, usize) -> Result<(P::Video, Vec<P::Audio>), CaptureError> + Send + 'static,
     ) -> Result<JoinHandle<Result<(), CaptureError>>, CaptureError> {
         let shared = self.shared.clone();
+        let tracks = self.sound_tracks();
         std::thread::Builder::new()
             .name("recordstuff-encoders".into())
             .spawn(move || -> Result<(), CaptureError> {
                 let sink: Arc<dyn VideoSink> = shared.clone();
-                let (video, audio) = make(sink)?;
+                let (video, audio) = make(sink, tracks)?;
+                if audio.len() != tracks {
+                    return Err(CaptureError::new("capture_start_failed", format!("{} audio encoders for {tracks} sound tracks", audio.len())));
+                }
                 shared.video.lock().unwrap().encoder = Some(video);
                 let mut state = shared.audio.lock().unwrap();
-                state.priming = audio.priming();
-                state.encoder = Some(audio);
+                state.priming = audio[0].priming();
+                state.encoders = audio;
                 Ok(())
             })
             .map_err(|e| CaptureError::new("capture_start_failed", format!("encoder thread: {e}")))
@@ -1015,6 +1109,7 @@ impl<P: Platform> Core<P> {
         handle.join().unwrap_or_else(|_| Err(CaptureError::new("capture_start_failed", "making the encoders failed")))
     }
 
+    /// The first sound track's encoder priming; every track's encoder is alike.
     pub fn priming(&self) -> u32 {
         self.shared.audio.lock().unwrap().priming
     }
@@ -1042,20 +1137,30 @@ impl<P: Platform> Core<P> {
         self.shared.t0_ns.store(t0, Ordering::Release);
         let config = {
             let mut audio = self.shared.audio.lock().unwrap();
-            // Before the phase lets sound in, which it does only once the first frame is encoded.
-            audio.mixer = Some(Mixer::new(SAMPLE_RATE, t0, audio.inputs, AUDIO_TOLERANCE_FRAMES, MIX_LATENCY_FRAMES));
-            let encoder = audio.encoder.as_ref().ok_or_else(|| CaptureError::new("capture_start_failed", "prepared without an audio encoder"))?;
-            AudioSpec {
-                config: encoder.audio_specific_config(),
-                priming: encoder.priming(),
-                sample_rate: SAMPLE_RATE,
-                channels: CHANNELS as u16,
-                bitrate: self.audio_bitrate,
+            let tracks = audio.tracks();
+            if audio.encoders.len() != tracks {
+                return Err(CaptureError::new("capture_start_failed", "prepared without an audio encoder"));
             }
+            // Before the phase lets sound in, which it does only once the first frame is encoded. Separate tracks each
+            // take one input; a single track mixes them all.
+            let inputs = if tracks > 1 { 1 } else { audio.inputs };
+            audio.mixers = (0..tracks).map(|_| Mixer::new(SAMPLE_RATE, t0, inputs, AUDIO_TOLERANCE_FRAMES, MIX_LATENCY_FRAMES)).collect();
+            audio
+                .encoders
+                .iter()
+                .map(|encoder| AudioSpec {
+                    config: encoder.audio_specific_config(),
+                    priming: encoder.priming(),
+                    sample_rate: SAMPLE_RATE,
+                    channels: CHANNELS as u16,
+                    bitrate: self.audio_bitrate,
+                })
+                .collect()
         };
         let events = self.shared.events.clone();
         let diagnostics = self.shared.diagnostics.clone();
-        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: Some(config), diagnostics }, move |event| match event {
+        let camera = self.shared.camera_track.lock().unwrap().clone();
+        let writer = writer::spawn(WriterConfig { file, t0_ns: t0, audio: config, camera, diagnostics }, move |event| match event {
             WriterEvent::Progress { bytes } => events.progress(bytes),
             WriterEvent::Failed(failure) => events.write_failed(failure),
         })
@@ -1117,20 +1222,26 @@ impl<P: Platform> Core<P> {
         let deadline = began + DRAIN_TIMEOUT;
         loop {
             let mut audio = self.shared.audio.lock().unwrap();
-            if audio.mixer.is_none() || audio.encoder.is_none() {
+            if !audio.ready_to_mix() {
                 return (0.0, 0);
             }
-            let ready = audio.mixer.as_ref().map_or(0, Mixer::ready).min(target);
-            let mut packets = audio.advance(ready).unwrap_or_default();
-            let missing = target.saturating_sub(audio.mixed());
+            let mut packets = Vec::new();
+            for track in 0..audio.mixers.len() {
+                let ready = audio.mixers[track].ready().min(target);
+                packets.extend(audio.advance(track, ready).unwrap_or_default().into_iter().map(|data| (track, data)));
+            }
+            // The track furthest from the stop: the frames still missing that the drain waits for.
+            let missing = (0..audio.mixers.len()).map(|track| target.saturating_sub(audio.mixed(track))).max().unwrap_or(0);
             let done = missing == 0 || Instant::now() >= deadline;
             if done {
                 // What has not arrived by now is silence.
-                packets.extend(audio.advance(target).unwrap_or_default());
+                for track in 0..audio.mixers.len() {
+                    packets.extend(audio.advance(track, target).unwrap_or_default().into_iter().map(|data| (track, data)));
+                }
             }
             // Under the audio lock, as in `Shared::sound`.
-            for data in packets {
-                self.shared.send(Media::Audio { data });
+            for (track, data) in packets {
+                self.shared.send(Media::Audio { data, track });
             }
             drop(audio);
             if done {
@@ -1170,23 +1281,26 @@ impl<P: Platform> Core<P> {
             video.last = None;
         }
         let mut packets = Vec::new();
-        let mut audio_frames = None;
+        let mut audio_frames = Vec::new();
         let (late_audio_frames, audio_corrections, limited_audio_samples);
         {
             let mut audio = self.shared.audio.lock().unwrap();
-            let mixed = audio.mixed();
-            if let Some(mut encoder) = audio.encoder.take()
-                && mixed > 0
-            {
-                let _ = encoder.finish(&mut |packet| packets.push(packet));
-                audio_frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
+            let encoders = std::mem::take(&mut audio.encoders);
+            for (track, mut encoder) in encoders.into_iter().enumerate() {
+                let mut frames = None;
+                if audio.mixed(track) > 0 {
+                    let _ = encoder.finish(&mut |packet| packets.push((track, packet)));
+                    frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
+                }
+                audio_frames.push(frames);
             }
-            late_audio_frames = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::late);
-            audio_corrections = audio.mixer.as_ref().map_or_else(Vec::new, Mixer::corrections);
-            limited_audio_samples = audio.mixer.as_ref().map_or(0, Mixer::limited);
+            // Per input, in their order: one mixer's inputs, or each track's one.
+            late_audio_frames = audio.mixers.iter().flat_map(Mixer::late).collect();
+            audio_corrections = audio.mixers.iter().flat_map(Mixer::corrections).collect();
+            limited_audio_samples = audio.mixers.iter().map(Mixer::limited).sum();
         }
-        for data in packets {
-            self.shared.send(Media::Audio { data });
+        for (track, data) in packets {
+            self.shared.send(Media::Audio { data, track });
         }
         let frame_lead_ms = frame_lead_ms(
             self.shared.lead_sum_us.load(Ordering::Relaxed),
@@ -1207,7 +1321,7 @@ impl<P: Platform> Core<P> {
     pub fn release(&self) {
         self.shared.close_camera();
         self.shared.video.lock().unwrap().encoder.take();
-        self.shared.audio.lock().unwrap().encoder.take();
+        self.shared.audio.lock().unwrap().encoders.clear();
     }
 
     pub fn frames_seen(&self) -> u64 {

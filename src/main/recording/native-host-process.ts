@@ -64,7 +64,7 @@ interface NativeCapture {
   prepare(options: {
     displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
     videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
-    source?: CaptureSource; audio?: AudioOptions; camera?: CameraOptions;
+    source?: CaptureSource; audio?: AudioOptions; camera?: CameraOptions; editable?: boolean;
   }): Promise<PreparedInfo>;
   record(): void;
   stop(): Promise<StopReport>;
@@ -129,14 +129,18 @@ const WRITE_CODES: readonly string[] = ["disk_full", "output_write_failed"];
 const NUMBER_LIST = /^\d+(,\d+)*$/;
 const numbers = (text: string): number[] => text.split(",").map(Number);
 
+/** What the development switches choose; absent fields record as today. */
+export interface DevelopmentCapture { source?: CaptureSource; audio?: AudioOptions; editable?: true }
+
 /**
  * Step 4's development switches, until a later plan's pickers choose: `RECORDSTUFF_CAPTURE_SOURCE` is `window:<id>`,
  * `area:<x>,<y>,<width>,<height>` (the display's pixels) or `apps:<pid>,…`, and `RECORDSTUFF_CAPTURE_AUDIO` is `off`
- * or `apps:<pid>,…`. Anything else, or nothing, records as today. The microphone is the user's setting (plan 074), which
- * `start` carries and these switches keep.
+ * or `apps:<pid>,…`. `RECORDSTUFF_CAPTURE_EDITABLE=1` is plan 087's editable recording prototype (macOS): the screen
+ * without the camera, each sound input and the camera on tracks of their own. Anything else, or nothing, records as
+ * today. The microphone is the user's setting (plan 074), which `start` carries and these switches keep.
  */
-export function developmentCapture(env: Record<string, string | undefined>): { source?: CaptureSource; audio?: AudioOptions } {
-  const result: { source?: CaptureSource; audio?: AudioOptions } = {};
+export function developmentCapture(env: Record<string, string | undefined>): DevelopmentCapture {
+  const result: DevelopmentCapture = {};
   const [kind, value = ""] = (env["RECORDSTUFF_CAPTURE_SOURCE"] ?? "").split(":", 2);
   if (kind === "window" && /^\d+$/.test(value)) result.source = { kind: "window", windowId: Number(value) };
   if (kind === "area" && NUMBER_LIST.test(value) && numbers(value).length === 4) {
@@ -147,6 +151,7 @@ export function developmentCapture(env: Record<string, string | undefined>): { s
   const [audio, pids = ""] = (env["RECORDSTUFF_CAPTURE_AUDIO"] ?? "").split(":", 2);
   if (audio === "off") result.audio = { system: "off", microphone: false };
   if (audio === "apps" && NUMBER_LIST.test(pids)) result.audio = { system: "apps", pids: numbers(pids), microphone: false };
+  if (env["RECORDSTUFF_CAPTURE_EDITABLE"] === "1") result.editable = true;
   return result;
 }
 
@@ -205,7 +210,7 @@ export class NativeHost {
     /** A line for main's log: the host's stdout reaches it as `capture host: …`. */
     private readonly log: (line: string) => void = (line) => console.log(line),
     private readonly now: () => number = () => performance.now(),
-    private readonly development: { source?: CaptureSource; audio?: AudioOptions } = {},
+    private readonly development: DevelopmentCapture = {},
     /** The prototype's switch: the preview is watched from the start, for its page. */
     private readonly cameraPreview = false,
     /** Plan 083's development switch, `RECORDSTUFF_DIAGNOSTICS=1`: each session's figures are logged once it ends. */
@@ -538,6 +543,7 @@ export class NativeHost {
       const chosen = this.development.source;
       const audio = this.audio(native);
       if (chosen || this.development.audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
+      if (this.development.editable) this.log("development capture: editable recording (plan 087 prototype): the screen, each sound and the camera on tracks of their own");
       const source = chosen
         ? await this.capture.probe(native.displayId, native.displayPoint, chosen)
         : await this.capture.probe(native.displayId, native.displayPoint);
@@ -550,6 +556,7 @@ export class NativeHost {
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
         ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
         ...(native.camera ? { camera: { ...native.camera, preview: this.cameraPreview } } : {}),
+        ...(this.development.editable ? { editable: true } : {}),
       });
       this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
         `${prepared.timings ? ` (${prepared.timings})` : ""}`);

@@ -19,6 +19,9 @@ pub struct Track {
     pub track_duration: u64,
     /// The single edit: segment duration (movie timescale) and media time.
     pub edit: Option<(u64, i64)>,
+    /// The tkhd's enabled flag and alternate group.
+    pub enabled: bool,
+    pub alternate_group: u16,
     pub fragmented: bool,
     pub stss: Option<Vec<u32>>,
     /// The `stsd` entries' four-character codes.
@@ -96,9 +99,11 @@ pub fn parse(data: &[u8]) -> Result<Mp4, String> {
     let mut tracks: BTreeMap<u32, Track> = BTreeMap::new();
     for trak in moov_children.iter().filter(|b| b.kind == "trak") {
         let parts = inside(data, trak);
-        let (v, _, at) = full(data, child(&parts, "tkhd").ok_or("no tkhd")?);
+        let (v, flags, at) = full(data, child(&parts, "tkhd").ok_or("no tkhd")?);
         let id = u32_at(data, at + if v == 1 { 16 } else { 8 });
         let track_duration = if v == 1 { u64_at(data, at + 24) } else { u64::from(u32_at(data, at + 16)) };
+        let group_at = at + if v == 1 { 42 } else { 30 };
+        let alternate_group = u16::from_be_bytes(data[group_at..group_at + 2].try_into().unwrap());
         let edit = child(&parts, "edts").map(|edts| {
             let (_, _, at) = full(data, child(&inside(data, edts), "elst").expect("edts without elst"));
             assert_eq!(u32_at(data, at), 1, "one edit");
@@ -110,7 +115,8 @@ pub fn parse(data: &[u8]) -> Result<Mp4, String> {
             if v == 1 { (u32_at(data, at + 16), u64_at(data, at + 20)) } else { (u32_at(data, at + 8), u64::from(u32_at(data, at + 12))) };
         let minf = inside(data, child(&mdia, "minf").ok_or("no minf")?);
         let stbl = inside(data, child(&minf, "stbl").ok_or("no stbl")?);
-        let mut track = Track { id, timescale, duration, movie_duration, track_duration, edit, fragmented, ..Default::default() };
+        let mut track =
+            Track { id, timescale, duration, movie_duration, track_duration, edit, enabled: flags & 1 != 0, alternate_group, fragmented, ..Default::default() };
         let stsd = child(&stbl, "stsd").ok_or("no stsd")?;
         let (_, _, at) = full(data, stsd);
         track.descriptions = boxes(data, at + 4, stsd.end).iter().map(|b| b.kind.clone()).collect();

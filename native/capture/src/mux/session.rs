@@ -6,8 +6,9 @@
 
 use std::io;
 
-use super::mp4::{FinishReport, HybridMp4, Output, Sample, TrackConfig};
+use super::mp4::{Codec, FinishReport, HybridMp4, Output, Sample, TrackConfig};
 
+/// Today's recording: the picture first, then its sound.
 pub const VIDEO_TRACK: usize = 0;
 pub const AUDIO_TRACK: usize = 1;
 
@@ -29,21 +30,34 @@ struct Pending {
     ticks: u64,
 }
 
+/// One track's samples not yet in a fragment; a video track also holds its newest sample until the next one says how
+/// long it lasted.
+struct Muxed {
+    timescale: u32,
+    video: bool,
+    held: Option<Held>,
+    pending: Pending,
+}
+
 pub struct SessionMuxer<O: Output> {
     mp4: HybridMp4<O>,
-    video_timescale: u32,
-    audio_timescale: Option<u32>,
-    held: Option<Held>,
-    video: Pending,
-    audio: Pending,
+    tracks: Vec<Muxed>,
 }
 
 impl<O: Output> SessionMuxer<O> {
+    /// Today's recording: `video`, then `audio` when it has sound.
     pub fn new(out: O, video: TrackConfig, audio: Option<TrackConfig>) -> io::Result<Self> {
-        let video_timescale = video.timescale;
-        let audio_timescale = audio.as_ref().map(|a| a.timescale);
-        let tracks = std::iter::once(video).chain(audio).collect();
-        Ok(Self { mp4: HybridMp4::create(out, tracks)?, video_timescale, audio_timescale, held: None, video: Pending::default(), audio: Pending::default() })
+        Self::with_tracks(out, std::iter::once(video).chain(audio).collect())
+    }
+
+    /// Any tracks, in file order (plan 087's editable recording: the screen, each sound, the camera); H.264 tracks are
+    /// pushed with `push_video_to`, AAC ones with `push_audio_to`.
+    pub fn with_tracks(out: O, tracks: Vec<TrackConfig>) -> io::Result<Self> {
+        let muxed = tracks
+            .iter()
+            .map(|track| Muxed { timescale: track.timescale, video: matches!(track.codec, Codec::H264 { .. }), held: None, pending: Pending::default() })
+            .collect();
+        Ok(Self { mp4: HybridMp4::create(out, tracks)?, tracks: muxed })
     }
 
     pub fn bytes_written(&self) -> u64 {
@@ -54,69 +68,91 @@ impl<O: Output> SessionMuxer<O> {
         self.mp4.sync()
     }
 
-    /// A video sample presented at `pts` ticks from the start of the recording. A time at or before the previous
-    /// sample's (which the encoder does not produce) is moved just after it, so durations stay positive.
+    /// A video sample of the first track, presented at `pts` ticks from the start of the recording.
     pub fn push_video(&mut self, data: Vec<u8>, pts: u64, sync: bool) -> io::Result<()> {
+        self.push_video_to(VIDEO_TRACK, data, pts, sync)
+    }
+
+    /// A video sample of `track` presented at `pts` ticks from the start of the recording. A time at or before the
+    /// previous sample's (which the encoder does not produce) is moved just after it, so durations stay positive.
+    pub fn push_video_to(&mut self, track: usize, data: Vec<u8>, pts: u64, sync: bool) -> io::Result<()> {
+        let muxed = &mut self.tracks[track];
+        assert!(muxed.video, "video pushed to a sound track");
         let mut pts = pts;
-        if let Some(held) = self.held.take() {
+        let mut flush = false;
+        if let Some(held) = muxed.held.take() {
             if pts <= held.pts {
                 pts = held.pts + 1;
             }
             let duration = clamp_duration(pts - held.pts);
-            self.video.ticks += u64::from(duration);
-            self.video.samples.push(Owned { data: held.data, duration, sync: held.sync });
-            if sync && self.video.ticks >= u64::from(self.video_timescale) {
-                self.flush(VIDEO_TRACK)?;
-            }
+            muxed.pending.ticks += u64::from(duration);
+            muxed.pending.samples.push(Owned { data: held.data, duration, sync: held.sync });
+            flush = sync && muxed.pending.ticks >= u64::from(muxed.timescale);
         }
-        self.held = Some(Held { data, pts, sync });
-        Ok(())
+        muxed.held = Some(Held { data, pts, sync });
+        if flush { self.flush(track) } else { Ok(()) }
     }
 
-    /// One audio packet lasting `duration` ticks; packets are consecutive.
+    /// One audio packet of the first sound track lasting `duration` ticks; packets are consecutive.
     pub fn push_audio(&mut self, data: Vec<u8>, duration: u32) -> io::Result<()> {
-        let timescale = self.audio_timescale.expect("audio pushed to a recording without an audio track");
-        self.audio.ticks += u64::from(duration);
-        self.audio.samples.push(Owned { data, duration, sync: true });
-        if self.audio.ticks >= u64::from(timescale) {
-            self.flush(AUDIO_TRACK)?;
-        }
-        Ok(())
+        let track = self.tracks.iter().position(|muxed| !muxed.video).expect("audio pushed to a recording without an audio track");
+        self.push_audio_to(track, data, duration)
     }
 
-    /// Writes what is pending and makes the file plain. The last video sample lasts until `video_end` ticks. A last
-    /// sample at or after the end is left out, unless it is the only one (then it lasts a thirtieth of a second):
-    /// ScreenCaptureKit stamps a frame with when it is shown, which can be a few milliseconds after it is handed
-    /// over, so a frame received before the stop can be stamped after it. Nothing refers to the last frame (the
-    /// encoder does not reorder), so leaving it out is safe. The audio track presents `audio_frames` after its priming.
-    pub fn finish(mut self, video_end: u64, audio_frames: Option<u64>) -> io::Result<(FinishReport, O)> {
-        let written = self.mp4.sample_count(VIDEO_TRACK) + self.video.samples.len();
-        if self.held.as_ref().is_some_and(|held| held.pts >= video_end && written > 0) {
-            self.held = None;
-        }
-        if let Some(held) = self.held.take() {
-            let duration = if video_end > held.pts { clamp_duration(video_end - held.pts) } else { (self.video_timescale / 30).max(1) };
-            self.video.samples.push(Owned { data: held.data, duration, sync: held.sync });
-        }
-        self.flush(VIDEO_TRACK)?;
-        if self.audio_timescale.is_some() {
-            self.flush(AUDIO_TRACK)?;
-            if let Some(frames) = audio_frames {
-                self.mp4.set_presented(AUDIO_TRACK, frames);
+    /// One audio packet of `track` lasting `duration` ticks; packets are consecutive.
+    pub fn push_audio_to(&mut self, track: usize, data: Vec<u8>, duration: u32) -> io::Result<()> {
+        let muxed = &mut self.tracks[track];
+        assert!(!muxed.video, "audio pushed to a video track");
+        muxed.pending.ticks += u64::from(duration);
+        muxed.pending.samples.push(Owned { data, duration, sync: true });
+        if muxed.pending.ticks >= u64::from(muxed.timescale) { self.flush(track) } else { Ok(()) }
+    }
+
+    /// Today's recording's `finish_tracks`: its one sound track presents `audio_frames`.
+    pub fn finish(self, video_end: u64, audio_frames: Option<u64>) -> io::Result<(FinishReport, O)> {
+        self.finish_tracks(video_end, &[audio_frames])
+    }
+
+    /// Writes what is pending and makes the file plain. The last sample of each video track lasts until `video_end`
+    /// ticks. A last sample at or after the end is left out, unless it is the only one (then it lasts a thirtieth of a
+    /// second): ScreenCaptureKit stamps a frame with when it is shown, which can be a few milliseconds after it is
+    /// handed over, so a frame received before the stop can be stamped after it. Nothing refers to the last frame (the
+    /// encoder does not reorder), so leaving it out is safe. The n-th sound track presents `audio_frames[n]` after its
+    /// priming, when given.
+    pub fn finish_tracks(mut self, video_end: u64, audio_frames: &[Option<u64>]) -> io::Result<(FinishReport, O)> {
+        let mut sound = 0;
+        for track in 0..self.tracks.len() {
+            if self.tracks[track].video {
+                let written = self.mp4.sample_count(track) + self.tracks[track].pending.samples.len();
+                let muxed = &mut self.tracks[track];
+                if muxed.held.as_ref().is_some_and(|held| held.pts >= video_end && written > 0) {
+                    muxed.held = None;
+                }
+                if let Some(held) = muxed.held.take() {
+                    let duration = if video_end > held.pts { clamp_duration(video_end - held.pts) } else { (muxed.timescale / 30).max(1) };
+                    muxed.pending.samples.push(Owned { data: held.data, duration, sync: held.sync });
+                }
+                self.flush(track)?;
+            } else {
+                self.flush(track)?;
+                if let Some(frames) = audio_frames.get(sound).copied().flatten() {
+                    self.mp4.set_presented(track, frames);
+                }
+                sound += 1;
             }
         }
         self.mp4.finish()
     }
 
     /// Writes what is pending and syncs, leaving the file fragmented: for a recording that ends without finishing, so
-    /// what it already holds is kept. The held video sample, whose end is unknown, lasts a thirtieth of a second.
+    /// what it already holds is kept. A held video sample, whose end is unknown, lasts a thirtieth of a second.
     pub fn abandon(mut self) -> io::Result<()> {
-        if let Some(held) = self.held.take() {
-            self.video.samples.push(Owned { data: held.data, duration: (self.video_timescale / 30).max(1), sync: held.sync });
-        }
-        self.flush(VIDEO_TRACK)?;
-        if self.audio_timescale.is_some() {
-            self.flush(AUDIO_TRACK)?;
+        for track in 0..self.tracks.len() {
+            let muxed = &mut self.tracks[track];
+            if let Some(held) = muxed.held.take() {
+                muxed.pending.samples.push(Owned { data: held.data, duration: (muxed.timescale / 30).max(1), sync: held.sync });
+            }
+            self.flush(track)?;
         }
         self.mp4.sync()
     }
@@ -128,7 +164,7 @@ impl<O: Output> SessionMuxer<O> {
     }
 
     fn flush(&mut self, track: usize) -> io::Result<()> {
-        let pending = std::mem::take(if track == VIDEO_TRACK { &mut self.video } else { &mut self.audio });
+        let pending = std::mem::take(&mut self.tracks[track].pending);
         let samples: Vec<Sample> = pending.samples.iter().map(|s| Sample { data: &s.data, duration: s.duration, sync: s.sync }).collect();
         self.mp4.write_fragment(track, &samples)
     }
@@ -215,5 +251,45 @@ mod tests {
         muxer.push_audio(vec![1; 4], 1024).unwrap();
         let (_, out) = muxer.finish(3000, None).unwrap();
         assert_eq!(parse(&out).unwrap().tracks[1].samples.len(), 48);
+    }
+
+    #[test]
+    fn an_editable_recording_holds_each_track_apart_with_the_first_of_each_kind_presented() {
+        // Plan 087's prototype: the screen, the system's sound, the microphone's, the camera.
+        let tracks = vec![video_config(), audio_config(), audio_config(), video_config()];
+        let mut muxer = SessionMuxer::with_tracks(Vec::new(), tracks).unwrap();
+        for n in 0..31u64 {
+            muxer.push_video_to(0, vec![1; 3], n * 3000, n % 30 == 0).unwrap();
+            // The camera's frames on their own clock, a little after the screen's; its first at the start, as the
+            // engine stamps it (a track's first sample is presented at zero whatever its time).
+            muxer.push_video_to(3, vec![4; 2], if n == 0 { 0 } else { 1000 + n * 3000 }, n % 30 == 0).unwrap();
+        }
+        for _ in 0..48 {
+            muxer.push_audio_to(1, vec![2; 4], 1024).unwrap();
+        }
+        for _ in 0..47 {
+            muxer.push_audio_to(2, vec![3; 4], 1024).unwrap();
+        }
+        let (report, out) = muxer.finish_tracks(31 * 3000, &[Some(48 * 1024), Some(47 * 1024)]).unwrap();
+        assert_eq!(report.fragmented, None);
+        let parsed = parse(&out).unwrap();
+        let counts: Vec<usize> = parsed.tracks.iter().map(|t| t.samples.len()).collect();
+        assert_eq!(counts, [31, 48, 47, 31]);
+        assert!(parsed.tracks[1].samples.iter().all(|s| s.data == [2; 4]) && parsed.tracks[2].samples.iter().all(|s| s.data == [3; 4]));
+        assert!(parsed.tracks[3].samples.iter().all(|s| s.data == [4; 2]));
+        // Both video tracks end at the stop.
+        assert_eq!((parsed.tracks[0].duration, parsed.tracks[3].duration), (93_000, 93_000));
+        let presented: Vec<(bool, u16)> = parsed.tracks.iter().map(|t| (t.enabled, t.alternate_group)).collect();
+        assert_eq!(presented, [(true, 1), (true, 2), (false, 2), (false, 1)]);
+    }
+
+    #[test]
+    fn today_s_recording_keeps_every_track_presented_and_in_no_group() {
+        let mut muxer = SessionMuxer::new(Vec::new(), video_config(), Some(audio_config())).unwrap();
+        muxer.push_video(vec![9], 0, true).unwrap();
+        muxer.push_audio(vec![1; 4], 1024).unwrap();
+        let (_, out) = muxer.finish(3000, None).unwrap();
+        let presented: Vec<(bool, u16)> = parse(&out).unwrap().tracks.iter().map(|t| (t.enabled, t.alternate_group)).collect();
+        assert_eq!(presented, [(true, 0), (true, 0)]);
     }
 }

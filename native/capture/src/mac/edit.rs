@@ -303,7 +303,7 @@ impl Codecs for MacCodecs {
             match media {
                 Media::VideoFormat { avcc: record, .. } => avcc = Some(record),
                 Media::Video { data, sync, .. } => samples.push((data, sync)),
-                Media::Audio { .. } => {}
+                Media::Audio { .. } | Media::Camera { .. } => {}
             }
         }
         if samples.len() != durations.len() {

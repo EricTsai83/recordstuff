@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod camera;
+pub mod camera_track;
 pub mod compositor;
 pub mod content;
 pub mod edit;
