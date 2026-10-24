@@ -1,6 +1,6 @@
 ---
 name: claude-implement-with-gpt6-1-sol-review
-description: Implement a plan or scoped change with Claude, verify it, obtain a read-only Codex GPT-6.1 Sol review at medium reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report every finding and final disposition in the user's language alongside a purpose-led per-file summary. Use for end-to-end implementation requests that require Claude implementation with GPT-6.1 Sol or cross-model review. Fall back to an independent Claude review when Codex is unavailable and disclose the reason.
+description: Implement a plan or scoped change with Claude, verify it, obtain a read-only Codex GPT-6.1 Sol review at medium reasoning, immediately surface every reviewer finding before review-driven fixes, validate and fix confirmed findings, then report in the user's language, opening with a plain-language summary of the problem solved, the results and their tradeoffs, followed by every finding and final disposition and a purpose-led per-file summary. Use for end-to-end implementation requests that require Claude implementation with GPT-6.1 Sol or cross-model review. Fall back to an independent Claude review when Codex is unavailable and disclose the reason.
 ---
 
 # Claude Implement with GPT-6.1 Sol Review
@@ -18,7 +18,7 @@ Claude owns implementation, final technical judgment, fixes, verification, and r
 7. Validate every finding; accept only concrete correctness, regression, security, requirement, or meaningful test-coverage issues.
 8. Present Claude's acceptance or rejection decisions, then fix accepted findings and rerun affected checks. Reject style-only, speculative, or false-positive findings.
 9. If fixes are material, run one final pass with the same reviewer. Maximum: two review passes. Repeat the immediate disclosure for that pass.
-10. Report the result in the user's language (see Language) using the format below. Include every usable finding returned by every review pass, even when it was rejected or already fixed.
+10. Report the result in the user's language (see Language) using the format below, opening with the plain-language summary (`白話總結`). Include every usable finding returned by every review pass, even when it was rejected or already fixed.
 
 ## Language
 
@@ -133,6 +133,18 @@ After fallback, use Claude for remaining passes and count them toward the two-pa
 Write explanations, headings and labels in the user's language (see Language); preserve commands, identifiers, paths and model names. Lead with outcomes, not chronology. Use exactly these sections:
 
 ```markdown
+## 白話總結
+
+**要解決什麼問題**：用一般人看得懂的話說明原本的狀況、為什麼需要處理，以及這次要回答的問題或補上的能力。
+
+**做了什麼**：2–4 點，每點一句，說明做了哪些事，不列檔名或函式名。
+
+**得到什麼結果**：用數字或可觀察的現象說明結果，並和目標或預算對照；需要比較時用一個小表格。說明哪些是實測、哪些是估算或尚未驗證。
+
+**取捨（tradeoff）**：這次的做法換到了什麼、付出了什麼代價或放棄了什麼（例如效能、檔案大小、複雜度、相容性、驗證範圍），以及考慮過但沒採用的做法和原因。
+
+**需要你決定的事**：逐項列出需要使用者決定或執行的事，每項說明不同選擇的後果；沒有就寫「目前不需要你決定任何事」。
+
 ## 實作結果
 
 - 第一點先說明本次開發要解決的使用者／系統問題、原本缺少的能力，以及完成後具備的能力。
@@ -173,6 +185,8 @@ Write explanations, headings and labels in the user's language (see Language); p
 
 **現在需要你處理的 action**：逐項列出；沒有則寫「目前不需要你採取任何 action」。
 ```
+
+Write `白話總結` for a reader who has not followed the work and does not read code: no file paths, function names, internal plan or decision codes (such as D1) or unexplained jargon; explain a necessary technical term in a few words the first time it appears. Keep it short (about 15–30 lines) and consistent with the detailed sections that follow, which remain the authoritative record; it adds the plain-language view and does not replace them. Always state at least one real tradeoff; when the change has no meaningful one, say what was given up or kept out of scope instead of omitting the part.
 
 Build `檔案摘要` from starting status and final diff. Include every task-owned source, test, support, config, documentation, deletion, rename, and review fix; exclude pre-existing user changes. Create one subsection per path and list each path exactly once.
 
