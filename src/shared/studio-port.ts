@@ -17,8 +17,11 @@ export { STUDIO_ACTIVE_MS, STUDIO_FPS, STUDIO_RATES, STUDIO_RESTING_FPS, STUDIO_
  */
 export const STUDIO_PREVIEW_RATES = ["off", "power", "standard", "smooth"] as const;
 export type StudioPreviewRate = (typeof STUDIO_PREVIEW_RATES)[number];
-/** What the preview shows (plan 092, D3): the composed picture, or the screen without the camera; never the recording's. */
-export const STUDIO_VIEWS = ["composed", "screen"] as const;
+/**
+ * What the preview shows (plan 092, D3; plan 094, D1): the composed picture, the screen without the camera, or the camera
+ * alone, enlarged at the bubble's shape; never the recording's.
+ */
+export const STUDIO_VIEWS = ["composed", "screen", "camera"] as const;
 export type StudioView = (typeof STUDIO_VIEWS)[number];
 /** The choice as stored: the rate and the view. */
 export interface StudioPreviewSettings { rate: StudioPreviewRate; view: StudioView }

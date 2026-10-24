@@ -4,7 +4,7 @@
  * still a group main offers and answers (settings-model.ts), chosen the same way as anywhere in Settings.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { isStudioPreviewRate, isStudioView, type StudioPreviewRate } from "../../../shared/studio-port";
+import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { AudioLines, Camera, CameraOff, Eye, EyeOff, FlipHorizontal2, MonitorPlay, Radio, Square } from "lucide-react";
@@ -348,7 +348,7 @@ function PreviewPanel({ rate }: { rate: SettingsGroup }) {
  */
 function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup | undefined): PreviewShown {
   const chosen: StudioPreviewRate = rate && isStudioPreviewRate(model.committed(rate)) ? model.committed(rate) as StudioPreviewRate : "off";
-  const viewChosen = view && isStudioView(model.committed(view)) ? model.committed(view) as "composed" | "screen" : "composed";
+  const viewChosen = view && isStudioView(model.committed(view)) ? model.committed(view) as StudioView : "composed";
   // One pacer from the Studio's opening, told each rate chosen, so what the pointer did before a choice still counts.
   const pacer = useRef<StudioPacer | undefined>(undefined);
   useEffect(() => {

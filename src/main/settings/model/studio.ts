@@ -9,7 +9,9 @@ import type { AppAction, AppContext } from "../../app/ui-model";
 import { studioAudioGroups } from "./audio";
 import { cameraPreviewGroup, cameraShapeGroups } from "./camera";
 import { type Group, group, switchChoices } from "./group";
-import { DEFAULT_STUDIO_PREVIEW, STUDIO_PREVIEW_RATES, STUDIO_VIEWS, type StudioPreviewRate } from "../../../shared/studio-port";
+import { DEFAULT_STUDIO_PREVIEW, STUDIO_PREVIEW_RATES, STUDIO_VIEWS, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
+
+const VIEW_LABELS: Record<StudioView, PlainMessageKey> = { composed: "Composed", screen: "Screen", camera: "Camera" };
 
 const RATE_LABELS: Record<StudioPreviewRate, [PlainMessageKey, PlainMessageKey]> = {
   off: ["Off", "No preview: the Studio adds no work and opens no camera."],
@@ -29,7 +31,7 @@ function studioPreviewGroups(ctx: AppContext): Group[] {
     id, label: t(RATE_LABELS[id][0], language), description: t(RATE_LABELS[id][1], language), enabled: true, checked: id === chosen.rate,
     action: { setStudioPreview: { rate: id } } as AppAction })));
   const view = group("studioPreviewView", t("Preview view", language), true, STUDIO_VIEWS.map((id) => ({
-    id, label: t(id === "composed" ? "Composed" : "Screen", language), enabled: true, checked: id === chosen.view,
+    id, label: t(VIEW_LABELS[id], language), enabled: true, checked: id === chosen.view,
     action: { setStudioPreview: { view: id } } as AppAction })));
   return [rate, { ...view, control: "segmented" }];
 }

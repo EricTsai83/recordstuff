@@ -176,6 +176,10 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
     : missing === "lost" ? t("The camera dropped out. Reconnecting…", language) : undefined) : hidden ? t("Live preview is off.", language) : !camera.enabled ? t("Turn on Camera to see it here.", language)
     : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
     : undefined;
+  // What the Studio's Camera view (plan 094) says when it has no camera to enlarge: why, in a session's picture too.
+  const cameraStatus = !showing ? status
+    : !camera.session ? (camera.enabled ? t("The camera joins from the next recording.", language) : t("Turn on Camera to see it here.", language))
+    : camera.session.hidden ? t("The camera is hidden from the recording.", language) : status;
   const id = `${x},${y}`;
   // The name the camera has now, which the page matches to its own list; the stored label may be an older one.
   const chosen = camera.device && camera.devices?.find((device) => device.id === camera.device?.id);
@@ -195,6 +199,7 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
       x, y,
       ...(named ? { camera: named } : {}),
       ...(status ? { status } : {}),
+      ...(cameraStatus ? { cameraStatus } : {}),
     },
   };
 }

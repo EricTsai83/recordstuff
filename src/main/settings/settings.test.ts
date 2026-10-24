@@ -892,7 +892,7 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
   it("keeps the Studio's preview off until a rate is chosen, and remembers the rate and the view (plan 092)", async () => {
     expect(defaultSettings("/a").studioPreview).toEqual({ rate: "off", view: "composed" });
     expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { studioPreview: { rate: "off" } }, warnings: [] });
-    for (const bad of ["standard", { rate: "fast", view: "composed" }, { rate: "standard" }, { rate: "standard", view: "camera" }]) {
+    for (const bad of ["standard", { rate: "fast", view: "composed" }, { rate: "standard" }, { rate: "standard", view: "selfie" }]) {
       expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: bad })), JSON.stringify(bad))
         .toMatchObject({ settings: { studioPreview: { rate: "off", view: "composed" } }, warnings: ["studioPreview is invalid: the Recording Studio's preview is off"] });
     }
@@ -902,7 +902,10 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
     expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ studioPreview: { rate: "smooth", view: "screen" } });
     expect(store().studioPreview).toEqual({ rate: "smooth", view: "screen" });
     await expect(s.setStudioPreview({ rate: "fast" })).rejects.toThrow("unsupported Studio preview");
-    await expect(s.setStudioPreview({ view: "camera" })).rejects.toThrow("unsupported Studio preview");
+    await expect(s.setStudioPreview({ view: "selfie" })).rejects.toThrow("unsupported Studio preview");
+    await s.setStudioPreview({ view: "camera" });
+    expect(store().studioPreview, "plan 094's Camera view is kept").toEqual({ rate: "smooth", view: "camera" });
+    await s.setStudioPreview({ view: "screen" });
     await expect(s.setStudioPreview({})).rejects.toThrow("unsupported Studio preview");
     await s.setStudioPreview({ rate: "off" });
     expect(store().studioPreview).toEqual({ rate: "off", view: "screen" });

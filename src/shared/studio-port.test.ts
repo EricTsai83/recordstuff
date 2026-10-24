@@ -21,13 +21,15 @@ describe("the Recording Studio's port (plan 081)", () => {
   it("takes from the page only the views the Studio offers, and refuses another (plan 092, D3)", () => {
     expect(isStudioViewMessage({ type: "view", view: "composed" })).toBe(true);
     expect(isStudioViewMessage({ type: "view", view: "screen" })).toBe(true);
-    for (const view of ["camera", "", 1, undefined]) expect(isStudioViewMessage({ type: "view", view }), String(view)).toBe(false);
+    expect(isStudioViewMessage({ type: "view", view: "camera" })).toBe(true);
+    for (const view of ["Camera", "", 1, undefined]) expect(isStudioViewMessage({ type: "view", view }), String(view)).toBe(false);
     expect(isStudioViewMessage({ type: "rate", fps: 10 })).toBe(false);
   });
 
   it("reads a stored rate choice only whole (plan 092)", () => {
     expect(isStudioPreviewSettings({ rate: "off", view: "screen" })).toBe(true);
-    for (const bad of [{ rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "camera" }, [], null]) {
+    expect(isStudioPreviewSettings({ rate: "power", view: "camera" })).toBe(true);
+    for (const bad of [{ rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "selfie" }, [], null]) {
       expect(isStudioPreviewSettings(bad), JSON.stringify(bad)).toBe(false);
     }
   });

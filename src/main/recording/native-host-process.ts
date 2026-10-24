@@ -80,7 +80,7 @@ interface NativeCapture {
   setCameraPreview?(watching: boolean): boolean;
   /** Plan 081, D1: the preview's frames a second; false without a preview. */
   setPreviewRate?(fps: number): boolean;
-  /** What the preview shows (plan 092, D3): `composed` or `screen`. */
+  /** What the preview shows (plan 092, D3; plan 094): `composed`, `screen` or `camera`. */
   setPreviewView?(view: string): boolean;
   /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
   watchLevels?(watching: boolean): boolean;

@@ -138,6 +138,8 @@ export interface CameraPreviewView {
   camera?: string;
   /** What the stage says without a picture. */
   status?: string;
+  /** What the Studio's Camera view (plan 094) says without a camera to show: lost, not ready, hidden or not in the session. */
+  cameraStatus?: string;
 }
 export interface RecordingResultView {
   id: string;

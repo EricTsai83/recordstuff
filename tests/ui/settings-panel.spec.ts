@@ -952,6 +952,51 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
   await expect.poll(calls, { message: "S145 back to Composed" }).toEqual([["studioPreviewView", "composed"]]);
   await expect.poll(opened, { message: "S145 the composed view opens the camera in the bubble" }).toBe(1);
+
+  // S145 the Camera view (plan 094): the camera alone, at the bubble's shape and rounding, enlarged and centred, with
+  // nothing to place; before a session the page's own camera, not a second one; without a camera, why.
+  await clearCalls();
+  await page.getByRole("radio", { name: "Camera" }).or(page.getByRole("button", { name: "Camera", exact: true })).first().click();
+  await expect.poll(calls, { message: "S145 Camera asks main" }).toEqual([["studioPreviewView", "camera"]]);
+  await expect(page.getByRole("application", { name: "Preview" }), "S145 nothing to drag in the Camera view").toHaveCount(0);
+  const enlarged = () => page.locator(".studio-stage .camera-preview").evaluate((box) => {
+    const stage = box.querySelector<HTMLElement>(".camera-preview-stage")!, bubble = box.querySelector<HTMLElement>(".camera-preview-bubble")!;
+    const inner = stage.getBoundingClientRect(), drawn = bubble.getBoundingClientRect();
+    const left = drawn.left - inner.left - stage.clientLeft, top = drawn.top - inner.top - stage.clientTop;
+    return { ratio: drawn.width / drawn.height, meets: Math.min(Math.abs(drawn.width - stage.clientWidth), Math.abs(drawn.height - stage.clientHeight)),
+      centred: Math.max(Math.abs(left * 2 + drawn.width - stage.clientWidth), Math.abs(top * 2 + drawn.height - stage.clientHeight)),
+      rounding: parseFloat(getComputedStyle(bubble).borderTopLeftRadius) / Math.min(drawn.width, drawn.height) };
+  });
+  // The default bubble: 21% by 28% of a 1080-pixel side, 227 × 302 pixels, rounded 15% of half its shorter side.
+  await expect.poll(async () => {
+    const m = await enlarged();
+    return { shape: Math.abs(m.ratio - 227 / 302) < 0.01, meets: m.meets <= 1, centred: m.centred <= 1, rounding: Math.abs(m.rounding - 0.075) < 0.005 };
+  }, { message: "S145 the bubble's shape and rounding, enlarged and centred" }).toEqual({ shape: true, meets: true, centred: true, rounding: true });
+  await page.waitForTimeout(500);
+  expect(await opened(), "S145 the Camera view enlarges the camera already open, opening no second one").toBe(1);
+  const said = page.locator(".studio-stage .camera-preview-status");
+  for (const [session, text] of [[{ hidden: true }, "The camera is hidden from the recording."], [{ hidden: false, state: "lost" }, "The camera dropped out. Reconnecting…"],
+    [undefined, "The camera joins from the next recording."]] as const) {
+    await host.evaluate((h, session) => {
+      h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+      const { session: _session, ...camera } = h.state.cameraContext!.camera!;
+      h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: true }, camera: { ...camera, ...(session ? { session } : {}) } };
+      h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+    }, session);
+    await expect(page.getByRole("application", { name: "Preview" }), `S145 nothing to drag in a session's Camera view: ${text}`).toHaveCount(0);
+    await expect(page.locator(".studio-stage .camera-preview-bubble"), `S145 the engine's picture is the camera: ${text}`).toHaveCount(0);
+    await expect(said, `S145 the Camera view says why it has no camera: ${text}`).toHaveText(text);
+  }
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    const { studio: _studio, ...ctx } = h.state.cameraContext!;
+    h.state.cameraContext = { ...ctx, camera: { enabled: false, available: true, access: "granted" } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect(said, "S145 without a camera the Camera view says why").toHaveText("Turn on Camera to see it here.");
+  await clearCalls();
+  await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
+  await expect.poll(calls, { message: "S145 Composed again" }).toEqual([["studioPreviewView", "composed"]]);
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
 

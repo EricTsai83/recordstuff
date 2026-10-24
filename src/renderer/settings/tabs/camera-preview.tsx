@@ -10,7 +10,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
-import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
+import { bubbleRadius, bubbleRect, cameraViewRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
 import { previewDecoder } from "../../lib/preview-decoder";
 import { translate } from "../../../shared/i18n";
 import { usePendingValue } from "../../lib/use-pending-value";
@@ -130,7 +130,8 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
 
 /**
  * What the Recording Studio chose to show (plan 092): with the preview off, nothing is drawn and no camera opened, the
- * stage keeping its frame and the bubble to place; the Screen view leaves the camera out.
+ * stage keeping its frame and the bubble to place; the Screen view leaves the camera out; the Camera view (plan 094)
+ * shows the camera alone, enlarged at the bubble's shape and rounding, with nothing to place.
  */
 export interface PreviewShown {
   off: boolean;
@@ -151,6 +152,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   const size = useSize(stage);
   const off = shown?.off === true;
   const screenOnly = shown?.view === "screen";
+  const cameraOnly = shown?.view === "camera" && !off;
   // Before a session the camera itself opens in the bubble only for the composed picture the preview shows.
   const failed = useLiveCamera(video, preview.mode === "live" && inSight && !off && !screenOnly, preview.camera);
   const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight && !off);
@@ -160,6 +162,11 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   const shape: CameraLayout = { ...preview.bubble, positions: [] };
   const bubble = bubbleRect(shape, position, Math.max(1, size.width), Math.max(1, size.height));
   const radius = bubbleRadius(shape, bubble);
+  // The Camera view's bubble: the recorded display's, enlarged to the largest of its shape the stage fits, as the
+  // engine draws it (camera_view_params), its rounding scaled with it.
+  const recorded = bubbleRect(shape, position, preview.display.width, preview.display.height);
+  const enlarged = cameraViewRect(recorded.width, recorded.height, Math.max(1, size.width), Math.max(1, size.height));
+  const enlargedRadius = bubbleRadius(shape, recorded) * enlarged.width / recorded.width;
   // Centred on the bubble and kept inside the stage, whose edge would clip it from the pointer.
   const grow = (size: number, room: number): number => Math.min(Math.max(size, HANDLE_MIN), Math.max(size, room));
   const inside = (at: number, size: number, room: number): number => Math.min(Math.max(at, 0), Math.max(0, room - size));
@@ -207,7 +214,14 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   };
 
   const live = preview.mode === "live" && !failed && !off && !screenOnly;
+  // In the Camera view the engine's picture is the camera itself; before a session the bubble holds the page's own.
+  const draggable = preview.composed && !cameraOnly;
+  const showsBubble = cameraOnly ? preview.composed && preview.mode !== "recording" : preview.composed;
+  const box = cameraOnly ? { left: enlarged.x, top: enlarged.y, width: enlarged.width, height: enlarged.height, borderRadius: enlargedRadius }
+    : { left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius };
+  // The Camera view says why it has no camera at once: that is about the camera, not the engine's first frame.
   const status = off ? undefined : failed ? model.text("The camera could not be shown here.")
+    : cameraOnly ? preview.cameraStatus
     : preview.mode === "recording" && !drawing ? undefined
     : screenOnly && preview.mode !== "recording" ? undefined : preview.status;
   return (
@@ -218,11 +232,11 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
         style={{ aspectRatio: `${preview.display.width} / ${preview.display.height}`, ["--preview-ratio" as string]: preview.display.width / preview.display.height }}
       >
         <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true" />
-        {preview.composed && <div
+        {showsBubble && <div
           className="camera-preview-bubble"
           data-live={live || undefined}
           aria-hidden="true"
-          style={{ left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius }}
+          style={box}
         >
           <video
             ref={setVideo}
@@ -235,7 +249,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
           />
         </div>}
         {/* What is dragged: the bubble, or a target of at least HANDLE_MIN pixels centred on it when it is drawn smaller. */}
-        {preview.composed && <div
+        {draggable && <div
           id={id}
           className="camera-preview-handle"
           role="application"
@@ -251,7 +265,8 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
           onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}
           onKeyDown={onKeyDown}
         />}
-        {status && !(statusOutside && preview.mode === "recording") && <p className="camera-preview-status">{status}</p>}
+        {/* The Studio says a session's camera in its line of controls; the Camera view, being that camera, says it here too. */}
+        {status && !(statusOutside && preview.mode === "recording" && !cameraOnly) && <p className="camera-preview-status">{status}</p>}
       </div>
       <span id={`${id}-position`} className="sr-only">
         {translate("{x}% from the left, {y}% from the top", model.view?.language, { x: Math.round(position.x * 100), y: Math.round(position.y * 100) })}

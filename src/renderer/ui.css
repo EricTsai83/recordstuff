@@ -912,6 +912,14 @@
     outline: 1.5px dashed var(--display-ink);
     outline-offset: -1.5px;
   }
+  /* The Camera view (plan 094) shows the camera alone on the picture's own background, which the engine's surround
+     matches; the bubble is that camera's frame, not something placed, so it has no shadow or outline. */
+  .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-stage {
+    background: var(--display-bezel);
+  }
+  .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-bubble {
+    box-shadow: none;
+  }
   .camera-preview-handle:focus-visible {
     box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--ring);
   }
@@ -932,7 +940,8 @@
   }
   /* While recording, what the camera is doing when it gives no picture (plan 090): Live preview's glass pill, centred
      at the picture's foot, so one short line reads over any screen in either theme. */
-  .camera-preview[data-mode="recording"] .camera-preview-status {
+  .camera-preview[data-mode="recording"] .camera-preview-status,
+  .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-status {
     inset: auto 0 10px;
     width: fit-content;
     max-width: calc(100% - 20px);

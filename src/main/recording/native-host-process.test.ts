@@ -169,13 +169,14 @@ describe("the camera (plan 075)", () => {
     first.say("rate");
     first.say({ type: "view", view: "screen" });
     first.say({ type: "view", view: "camera" });
+    first.say({ type: "view", view: "selfie" });
     port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
     first.say({ type: "rate", fps: 10 });
     first.say({ type: "view", view: "composed" });
     second.say({ type: "rate", fps: 10 });
     second.say({ type: "view", view: "composed" });
     expect(setPreviewRate.mock.calls).toEqual([[5], [15], [10]]);
-    expect(setPreviewView.mock.calls).toEqual([["screen"], ["composed"]]);
+    expect(setPreviewView.mock.calls).toEqual([["screen"], ["camera"], ["composed"]]);
   });
 
   it("forwards the engine's camera loss and return for the session", async () => {
