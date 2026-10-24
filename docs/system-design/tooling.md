@@ -244,7 +244,18 @@ Power saving costs what the Studio did before 092, watched and worked in alike, 
 
 The larger stage alone cost nothing measurable: at 640 both rates are within the before rows' spread (Standard's D18 failure, over 8 points, is 092's and unchanged). The 960-pixel stream (D3, the maintainer's choice of 2026-10-24 after the measurements and a side-by-side look, in which 640 already aliased stripes and blurred coloured text on a 1× display) costs about nothing at Power saving (+0.2 and −0.8 points against 640, within the spread) and 2.8 / 2.6 points at Standard, where Studio and Live preview draw 10 frames a second; Live preview costs 2–3 points more at either rate. Per frame the engine's preview compose went from p50 1.4 to 2.3 ms and its encode from 4.6 to 6.7 ms, and the page's decode and draw from p50 1.9–2.8 to 3.8–4.6 ms. Every run delivered every preview frame it made (551 a minute in L, 908 or 1,812 in three S recordings at 5 or 10 a second; 0 missed, 0 gate drops). Smooth at 960 was not measured; at 15 frames a second it can be expected to cost about half as much again as Standard's increase. A 1080 × 1920 portrait display's stream is 960 × 1706 (640 × 1136 before), larger than a landscape one's, and was seen working (`095-r10-shot-960-portrait`) but not measured.
 
-**Budgets for the open plans (094, 095, 084, 085, 087).** Measured against the same workloads with `--diagnostics`, until a plan measures its own; the plans that retake parts of this baseline, and when, are listed in the plan index's [baselines](../../plans/README.md#baselines):
+**The Studio's Camera view, measured by plan 094** (2026-10-24; a signed bundle built by `pnpm start:app` from `98e08c63` with 094's changes, the same machine, displays and moving material, the camera composed (the iPhone's Continuity Camera, the lid closed), the Studio window 1043 × 758 on the BL2480T, a 1× display, all four runs back to back in one round; `pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --studio-rate <power|standard> --studio-view <composed|camera> --repeat 3 --minutes 1`, at 30 fps only; reports `2026-10-24T03-28-46-740Z-cpu`, `03-39-03-631Z-cpu`, `03-49-05-152Z-cpu` and `04-17-14-833Z-cpu`, local only). Unlike 092's and 095's rows these compose the camera, so they are the rows 084 measures a camera-composing Studio against. Points over R are against the median R of the same run (R 11.5–13.3%).
+
+| Rate, view | CPU S, median (3 recordings) | Over R | L |
+| --- | --- | --- | --- |
+| Power saving, Composed | 21.0% (20.6–21.6) | 7.7 points | 17.9% |
+| Power saving, Camera | 19.1% (17.5–19.1) | 7.0 points | 16.0% |
+| Standard, Composed | 22.5% (22.3–24.0) | 10.9 points | 16.6% |
+| Standard, Camera | 21.9% (21.3–22.8) | 10.0 points | 16.5% |
+
+The Camera view, which reads no screen, costs no more than the Composed control beside it at either rate (0.6–1.9 points less in S, within or below the control's spread), which was its gate. Standard's D18 failure (over 8 points) is 092's and holds for both views. The page's decode and draw timings were not taken (no `--diagnostics`), nor Smooth or 60 fps.
+
+**Budgets for the open plans (084, 085, 087).** Measured against the same workloads with `--diagnostics`, until a plan measures its own; the plans that retake parts of this baseline, and when, are listed in the plan index's [baselines](../../plans/README.md#baselines):
 
 - Recording CPU stays within this section's spread of its median (and `CPU_BUDGET`); an optimization counts only when it improves the median by more than that spread and at least 10%, with the recording's integrity checks unchanged.
 - Queues stay bounded as now: no encoder drop, frames waiting for the encoder at most 4, the writer's backlog under 1 MB at Standard quality.
