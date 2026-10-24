@@ -52,12 +52,13 @@ describe("edit records", () => {
   it("keep the last whole revision when a write fails", async () => {
     await store.save(await record([[0, 10]], 1));
     const file = store.fileFor(recording);
-    // The folder made read-only: the next write cannot create its temporary file.
-    fs.chmodSync(path.dirname(file), 0o500);
+    // A folder where the temporary file goes: the next write cannot create it, on every platform
+    // (a read-only folder does not stop writes on Windows).
+    fs.mkdirSync(`${file}.tmp`);
     try {
       await expect(store.save(await record([[0, 20]], 2))).rejects.toThrow();
     } finally {
-      fs.chmodSync(path.dirname(file), 0o700);
+      fs.rmdirSync(`${file}.tmp`);
     }
     const loaded = await store.load(recording, await sourceIdentity(recording));
     expect(loaded.kind === "ok" && loaded.record.revision).toBe(1);
