@@ -268,25 +268,38 @@ export function syncPreviewAudio(): void {
   if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
 }
 
+/** Scene changes being saved, one after another, and how many are waiting. */
+let sceneSaves: Promise<unknown> = Promise.resolve();
+let scenesWaiting = 0;
+
 /**
  * The scene changes: while `commit` is false it is a draft (the bubble dragged, a slider moving), shown and heard at
- * once; once committed it is saved, one change for Undo.
+ * once; once committed it is saved, one change for Undo. The controls stay usable while a change saves (a key held on
+ * a slider, a disabled control would lose the keyboard's focus): committed changes queue and save in turn, each against
+ * the revision the one before brought, and the draft stays shown until the last is saved.
  */
-export async function changeScene(next: EditScene, commit: boolean): Promise<boolean> {
+export function changeScene(next: EditScene, commit: boolean): Promise<boolean> {
   const editor = editorView();
-  if (!editor?.editable || editor.state !== "ready" || editor.export.phase === "exporting") return false;
+  if (!editor?.editable || editor.state !== "ready" || editor.export.phase === "exporting") return Promise.resolve(false);
   sceneDraft = next;
   syncPreviewAudio();
   draw();
-  if (!commit) return true;
-  const before: EditState = { removed: copy(editor.removed), scene: editor.editable.scene };
-  undoStack.push(before);
-  const saved = await save(editor.removed, next);
-  sceneDraft = undefined;
-  if (!saved) undoStack.pop();
-  syncPreviewAudio();
-  draw();
-  return saved;
+  if (!commit) return Promise.resolve(true);
+  scenesWaiting++;
+  const run = sceneSaves.then(async () => {
+    const now = editorView();
+    if (!now?.editable || now.state !== "ready" || now.export.phase === "exporting") return false;
+    undoStack.push({ removed: copy(now.removed), scene: now.editable.scene });
+    const saved = await save(now.removed, next);
+    if (!saved) undoStack.pop();
+    return saved;
+  }).finally(() => {
+    if (--scenesWaiting === 0) sceneDraft = undefined;
+    syncPreviewAudio();
+    draw();
+  });
+  sceneSaves = run.catch(() => false);
+  return run;
 }
 
 const copy = (ranges: readonly EditRange[]): EditRange[] => ranges.map(([from, to]): EditRange => [from, to]);

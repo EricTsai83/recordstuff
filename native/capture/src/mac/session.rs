@@ -641,7 +641,7 @@ impl Session {
                 .chain(camera_note)
                 .chain(request.editable.then(|| {
                     format!(
-                        "editable recording (plan 087 prototype): {} sound track(s){}",
+                        "editable recording: {} sound track(s){}",
                         session.core.sound_tracks(),
                         if session.camera_track.is_some() { ", the camera on its own track" } else { "" }
                     )

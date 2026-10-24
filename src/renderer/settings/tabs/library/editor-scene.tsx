@@ -65,7 +65,9 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = model.editorScene(editor);
   const camera = scene?.camera;
-  const busy = model.editorSaving || editor.export.phase === "exporting";
+  // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
+  // keep the keyboard's focus.
+  const busy = editor.export.phase === "exporting";
   // The second sound plays beside the recording whether or not a camera is shown.
   const sound = editable?.preview.secondSound
     ? <audio key={editable.preview.secondSound} ref={model.attachPreviewSound} src={editable.preview.secondSound} crossOrigin="anonymous" preload="auto" hidden />
@@ -190,7 +192,9 @@ export function EditorSceneControls({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = editable && model.editorScene(editor);
   if (!editable || !scene) return null;
-  const busy = model.editorSaving || editor.export.phase === "exporting";
+  // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
+  // keep the keyboard's focus.
+  const busy = editor.export.phase === "exporting";
   const change = (next: EditScene, commit: boolean): void => { void model.changeScene(next, commit); };
   const camera = scene.camera;
   const sounds = new Set<EditableSound>(editable.sounds);

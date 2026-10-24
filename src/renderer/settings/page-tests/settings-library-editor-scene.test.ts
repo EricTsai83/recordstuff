@@ -78,21 +78,25 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   video.dispatchEvent(new Event("volumechange"));
   expect(sound.muted).toBe(true);
 
-  // An arrow key moves it a step and saves the scene with the cuts as they are.
+  // An arrow key moves it a step and saves the scene with the cuts as they are; a second, pressed while the first
+  // saves, is kept, and saved after it against the revision it brought (a held key, found by plan 087's desktop round).
   bubble.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 0, scene: { ...START, camera: { ...START.camera!, x: 0.96 } } }));
-
-  // Saved: shown where it was moved, the controls free again.
-  await vi.waitFor(() => expect(document.getElementById("editor-camera")!.getAttribute("aria-label")).toContain("96% across"));
-  await vi.waitFor(() => expect(document.getElementById("editor-camera-shown")!.hasAttribute("data-disabled")).toBe(false));
+  bubble.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+  await vi.waitFor(() => expect(choices.filter((c) => c.action === "save")).toEqual([
+    { action: "save", removed: [], revision: 0, scene: { ...START, camera: { ...START.camera!, x: 0.96 } } },
+    { action: "save", removed: [], revision: 1, scene: { ...START, camera: { ...START.camera!, x: 0.95 } } },
+  ]));
+  // The controls were never disabled meanwhile, so the keyboard's focus stays where it was.
+  expect(document.getElementById("editor-camera-shown")!.hasAttribute("data-disabled")).toBe(false);
+  await vi.waitFor(() => expect(document.getElementById("editor-camera")!.getAttribute("aria-label")).toContain("95% across"));
 
   // Hidden: saved, and the bubble goes.
   click(document.getElementById("editor-camera-shown")!);
-  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 1, scene: { camera: { x: 0.96, shown: false } } }));
+  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 2, scene: { camera: { x: 0.95, shown: false } } }));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).toBeNull());
 
   // ⌘Z brings the shown camera back.
   document.getElementById("editor-undo")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 2, scene: { camera: { x: 0.96, shown: true } } }));
+  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 3, scene: { camera: { x: 0.95, shown: true } } }));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).not.toBeNull());
 });
