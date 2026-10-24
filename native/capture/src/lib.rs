@@ -176,7 +176,7 @@ pub struct PrepareOptions {
     pub source: Option<CaptureSource>,
     pub audio: Option<AudioOptions>,
     pub camera: Option<CameraOptions>,
-    /// Plan 087's editable recording, step 1's prototype (a development switch, macOS): the screen without the camera,
+    /// Plan 087's editable recording (the Editable recordings setting, macOS): the screen without the camera,
     /// each sound input and the camera on tracks of their own, in one file. Absent is today's recording.
     pub editable: Option<bool>,
 }

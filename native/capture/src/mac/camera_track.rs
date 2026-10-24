@@ -1,4 +1,4 @@
-//! The camera's own track (plan 087's editable recording, step 1's prototype): instead of being composed into the
+//! The camera's own track (plan 087's editable recording): instead of being composed into the
 //! screen's frames, the camera's newest frame is encoded at its capture time by an encoder of its own into the file's
 //! last track, so an editor can place it later. Its encoder is made at `prepare` and given one black frame there, whose
 //! sample is dropped: the file's header, written with the screen's first frame, needs the track's parameter sets

@@ -2,9 +2,9 @@
 
 [English](../../system-design/editing.md) | [繁體中文](editing.md)
 
-來源：剪輯畫面在 main 的[擁有者](../../../src/main/editing/editing.ts)、[剪輯紀錄](../../../src/main/editing/edit-store.ts)、匯出 worker 的[監管](../../../src/main/editing/export-host.ts)與[程序](../../../src/main/editing/export-process.ts)、[共用契約](../../../src/shared/editing.ts)、頁面的 [controller](../../../src/renderer/settings/controller/editor.ts) 與[對話框](../../../src/renderer/settings/tabs/library/editor.tsx)；引擎中的[來源讀取](../../../native/capture/src/edit/source.rs)、[剪輯規劃](../../../native/capture/src/edit/plan.rs)、[remux](../../../native/capture/src/edit/remux.rs)、[JavaScript 介面](../../../native/capture/src/export_api.rs)，以及 [macOS](../../../native/capture/src/mac/edit.rs) 與 [Windows](../../../native/capture/src/win/edit.rs) 的平台 codec。
+來源：剪輯畫面在 main 的[擁有者](../../../src/main/editing/editing.ts)、[剪輯紀錄](../../../src/main/editing/edit-store.ts)、匯出 worker 的[監管](../../../src/main/editing/export-host.ts)與[程序](../../../src/main/editing/export-process.ts)、[共用契約](../../../src/shared/editing.ts)、頁面的 [controller](../../../src/renderer/settings/controller/editor.ts) 與[對話框](../../../src/renderer/settings/tabs/library/editor.tsx)；引擎中的[來源讀取](../../../native/capture/src/edit/source.rs)、[剪輯規劃](../../../native/capture/src/edit/plan.rs)、[remux](../../../native/capture/src/edit/remux.rs)、[JavaScript 介面](../../../native/capture/src/export_api.rs)，以及 [macOS](../../../native/capture/src/mac/edit.rs) 與 [Windows](../../../native/capture/src/win/edit.rs) 的平台 codec。可編輯錄影（plan 087）另加[共用的描述與場景](../../../src/shared/editable.ts)、頁面的[相機與音量](../../../src/renderer/settings/tabs/library/editor-scene.tsx)、引擎的[描述](../../../native/capture/src/editable.rs)、[算繪匯出](../../../native/capture/src/edit/render.rs)與其 [macOS 部分](../../../native/capture/src/mac/render.rs)。
 
-Plan 085 加入剪輯階段的第一個切片：錄影分頁中錄影的選單提供「剪輯…」，開啟剪輯畫面；可以移除錄影的任何部分（開頭、結尾或中間，數量不限），「匯出」把保留的片段寫成錄影旁的新檔案。剪輯會被記住，再次開啟時回到上次的狀態。錄影本身從不改變。錄影不受影響：這裡的一切都不在錄影期間執行，一般存檔也完全不依賴它。
+Plan 085 加入剪輯階段的第一個切片：錄影分頁中錄影的選單提供「剪輯…」，開啟剪輯畫面；可以移除錄影的任何部分（開頭、結尾或中間，數量不限），「匯出」把保留的片段寫成錄影旁的新檔案。剪輯會被記住，再次開啟時回到上次的狀態。錄影本身從不改變。錄影不受影響：這裡的一切都不在錄影期間執行，一般存檔也完全不依賴它。Plan 087 加入第二個切片：開啟「可編輯錄影」錄下的錄影會把相機與每個聲音輸入分開保存，因此剪輯畫面也能擺放相機與調整音量（[可編輯錄影](#可編輯錄影)）。
 
 ## 原始錄影從不被寫入
 
@@ -47,11 +47,11 @@ worker 是獨立的 `utilityProcess`（服務名稱 `RecordStuff Export`），�
 
 ## 剪輯紀錄
 
-剪輯是 `userData/edits/<錄影路徑的 hash>.json` 中的 version 1 JSON 紀錄（plan 085，D3），而不是儲存位置裡的 sidecar（它的子資料夾是錄影分頁的分類）。紀錄包含錄影的身分（路徑、大小、修改時間，以及前後各 1 MiB 的 SHA-256）、影片的 timescale、以該 timescale 表示的移除範圍（已排序、不重疊的整數對，最多 256 個）與 revision。錄影只被參照，從不複製。
+剪輯是 `userData/edits/<錄影路徑的 hash>.json` 中的 JSON 紀錄（plan 085，D3），而不是儲存位置裡的 sidecar（它的子資料夾是錄影分頁的分類）。紀錄包含錄影的身分（路徑、大小、修改時間，以及前後各 1 MiB 的 SHA-256）、影片的 timescale、以該 timescale 表示的移除範圍（已排序、不重疊的整數對，最多 256 個）與 revision；version 2（plan 087）加入可編輯錄影的場景，且只為這種錄影寫入，所以其他剪輯仍是 version 1，前一版也讀得懂。錄影只被參照，從不複製。
 
 - **單一寫入者**：main，single-instance lock 讓它對每位使用者唯一；寫入依序排隊。
 - **原子寫入**：暫存檔、fsync、rename，再 fsync 資料夾（`writeFileAtomic` 的 `syncDirectory`；Windows 沒有可 flush 的資料夾 handle，由 NTFS journal 保證 rename），所以失敗或中斷的寫入會留下上一個完整的 revision。
-- **有上限且從不重設**：超過 64 KiB、格式錯誤、範圍重疊或版本較新的紀錄被回報為無法讀取，並原樣保留；畫面會說明並提供「捨棄剪輯」，由使用者明確選擇。在 version 2 出現之前不建立 migration 框架。
+- **有上限且從不重設**：超過 64 KiB、格式錯誤、範圍重疊或版本較新的紀錄被回報為無法讀取，並原樣保留；畫面會說明並提供「捨棄剪輯」，由使用者明確選擇。兩個版本都逐欄位讀取；沒有 migration 框架。
 - **過期**：紀錄的身分與該路徑上的檔案不再相符時即為過期：畫面說明錄影已變動，並提供捨棄。不會刪除使用者的任何檔案。
 - **改名或搬移**：在錄影分頁中改名或移到分類的錄影，若仍是同一個檔案，剪輯會跟著移動；在 Finder 中搬移的錄影則把剪輯留在原處。
 - **Revision**：每次儲存都註明它所修改的 revision；基於較舊 revision 的修改會被拒絕。
@@ -89,9 +89,23 @@ worker 是獨立的 `utilityProcess`（服務名稱 `RecordStuff Export`），�
 
 錄影分頁上方的對話框：正式的播放器，下方是錄影各片段的時間軸，依長度並排，保留的片段帶色調、移除的片段為斜線，並顯示播放位置。點按片段即可選取（每個片段都是以時間與狀態命名的按鈕）；「分割」（S）在播放位置切開時間軸而不移除任何內容；「移除片段」或「保留片段」（Delete）切換選取片段的狀態；「還原」（⌘Z / Ctrl+Z）撤回上一次變更。每次變更立刻儲存，回來時已對齊到影格。預覽播放的就是匯出會包含的內容（依引擎的規劃）：顯示到移除範圍內、或片段延後到 key frame 接續之前的影格，會跳到匯出接續的位置，或在被移除的結尾開始處暫停。匯出會顯示進度與「取消匯出」，完成後顯示發布的名稱與「在 Finder 中顯示」（Windows 為「開啟資料夾」），失敗時說明原因並提供「再匯出一次」。過期或無法讀取的剪輯、無法剪輯的檔案、已經不在的錄影，各有自己的狀態。支援英文與繁體中文。
 
+## 可編輯錄影
+
+Plan 087。錄影設定中的「可編輯錄影」（macOS，預設關閉，錄影中鎖定；Windows 在引擎支援前隱藏）把畫面、相機與每個聲音輸入分開錄下，錄完後可以移動、縮放或隱藏相機泡泡，並分別設定系統聲音與麥克風的音量，再匯出成一般 MP4。關閉時錄影與以往相同；舊錄影無法取回它從未保存的內容。
+
+**檔案。** 一個 MP4，即引擎的 hybrid fragmented 檔案：單獨的畫面（H.264）、第一條聲音軌、兩個輸入都錄時的第二條聲音軌，以及錄相機時 1280×720 的相機軌（H.264）。每種只有第一條軌啟用；第二條聲音與相機是停用的 alternate，所以在匯出前任何播放器都只顯示畫面與第一條聲音。每個聲音輸入在共用時鐘上有自己的單輸入 mixer，所以沒有送來聲音的輸入錄成靜音，絕不位移；相機軌從錄影開始起算，相機隱藏時為黑畫面。`moov/udta/rsed` 中的 JSON 描述（最多 4 KiB，version 1）說明檔案可編輯、每條聲音軌是哪個輸入，以及錄影開始時泡泡的位置；main 逐欄位檢查它（[shared](../../../src/shared/editable.ts)），沒有有效描述的檔案視為一般錄影。錄影分頁讀取其他資訊時一併讀取這個 box，在卡片上標示「可編輯」。中斷的可編輯錄影可以開啟，並算繪其中已有的內容；留空的相機或第二聲音軌視為不存在。
+
+**場景。** 剪輯為整段錄影加入一個場景，沒有 keyframe：泡泡的位置（同工作室的相機版面：剩餘空間的比例）、寬與高（短邊的比例，縮放時保持形狀）、是否顯示，以及系統聲音與麥克風在工作室百分比刻度上的音量，套用在已錄下的內容上（100% 即維持原樣，因為錄影時設定的音量已在軌中）。圓角與鏡像維持錄影時的設定。場景從錄影留下泡泡的位置開始，每條軌 100%，存在剪輯紀錄的 version 2。拖曳、方向鍵（Shift 為較大步幅）或滑桿會立刻更新預覽，結束時儲存；儲存依序排隊，所以控制項保有焦點，每次都是「還原」可以和剪輯一起撤回的一步。只有匯出期間控制項不可用。
+
+**預覽。** 剪輯畫面開啟時，worker 把相機與第二聲音軌複製成 `userData/edits/preview` 中各自的檔案（保持錄影時鐘、原樣、不重新編碼），在該畫面開啟期間以 `recordstuff-media://preview/<generation>/<track>` 提供，畫面關閉時與啟動時移除。頁面讓它們與正式播放器同步播放：跟隨播放、暫停、跳轉、速率，以及略過的移除片段。泡泡依場景的位置與大小、錄影的圓角與鏡像畫在播放器上。聲音經過 Web Audio，用匯出的方式混音：各自套用音量、加總、經過引擎的 soft limit（同一條曲線，[audio-volume](../../../src/shared/audio-volume.ts) 的 `softLimit`），再套用播放器的音量與靜音，所以聽到的就是匯出的。無法複製的軌（損毀的檔案）不出現在預覽中；相機的話也從場景中移除，並記錄在 log。媒體 scheme 回應 `access-control-allow-origin: *`，讓 Web Audio 能讀取。
+
+**算繪匯出。** 畫面改變時沒有東西能直接複製，所以可編輯錄影的匯出一律算繪，即使沒有剪輯（[render.rs](../../../native/capture/src/edit/render.rs)）：每個保留的畫面影格與該時間的相機影格（在它之前或同時最後擷取的一張）由 VideoToolbox 解碼，由錄影自己的 Metal compositor 依場景的泡泡合成（隱藏時不合成，也不解碼相機），再由錄影的 H.264 encoder 以非即時模式、來源的 level 重新編碼；聲音軌每次解碼一秒（提早兩個 packet，同剪輯的規則），以場景的音量經過引擎的 limiter 混音，在移除範圍切開，只在接點加 5 ms raised-cosine 淡入淡出，編碼成一條 AAC 軌。影格保留自己的時間，在移除範圍處接攏，所以和剪輯不同，接點不必等 key frame。上限：一個讀取區段、最多 8 個進行中的影格（encoder 停滯 10 秒即失敗）、每條軌一秒的聲音與一個 fragment；每個影格都檢查取消。輸出只有一條畫面軌與一條聲音軌，沿用 085 的發布流程；來源從不被寫入。Windows 沒有 renderer，會拒絕。
+
 ## 量測
 
 `pnpm bench:export`（plan 085 的 gate，2026-10-24，M1 Pro，APFS，來源在 page cache 中；[紀錄](../verification/history-2026-10.md#plan-085-結案--2026-10-24)）：在 64 MiB、2 GiB 與兩小時 60 fps 的來源上，切點落在 key frame 的 remux 速率分別是同一個 worker 串流複製的 0.60、0.80 與 0.83 倍（gate ≥ 0.5）；兩個位於 GOP 中間的接點在全新 worker 中增加 330–430 ms；取消後 p95 2 ms 內結束（gate 1 秒）。匯出期間 worker 自身的記憶體比載入引擎後閒置的 utilityProcess（65 MiB）多 26–38 MiB（絕對峰值 92–104 MiB）；plan 的 64 MiB gate 以這個增量計算，因為閒置程序本身就已超過（維護者 2026-10-24 的決定）。一段真實的 60 秒 1080p60 錄影，含兩個 smart cut 接點時匯出需 575 ms，切點在 key frame 時需 73 ms，複製同一檔案為 60 ms。
+
+Plan 087 的算繪匯出（被 ignore 的 `render_bench` 測試，2026-10-25，合成的 20 秒 1080p30 可編輯錄影，含 720p 相機與兩個音調，release build）：合成相機並混合兩條聲音時為即時的 6.3 倍，取消在 30–34 ms 內結束（gate：至少即時，取消 p95 在 2 秒內）。在 App 中，一段真實的 10 秒 1080×1920 60 fps 可編輯錄影，相機移動、麥克風 50%，約 3.5 秒算繪完成；匯出檔在 QuickTime 中播放正常，聲音與畫面相差 10 ms 內。可編輯錄影本身的成本見[工具指南](tooling.md#匯出基準測試)與 plan 087 的[紀錄](../verification/history-2026-10.md#plan-087-第一步可編輯錄影的成本--2026-10-24)。
 
 ## 限制
 
@@ -99,3 +113,4 @@ worker 是獨立的 `utilityProcess`（服務名稱 `RecordStuff Export`），�
 - level 低於 3.0（低 bit rate 的小範圍錄影）的錄影，因為 VideoToolbox 可設定的最低 High level 是 3.0，重新編碼的參數集會不同，GOP 中間的接點因此從 key frame 接續。
 - 匯出的檔案可以再剪輯；只有含第二個 sample description 的檔案（只由播放器檢查的 fixture 產生）不能。
 - 剪輯會跟著在錄影分頁中改名或搬移的錄影，不會跟著在 Finder 中改名的錄影。
+- 可編輯錄影只支援 macOS。4:3 的相機會被拉伸到 16:9 的軌。場景是整段錄影一個位置；沒有分段擺放、不錄滑鼠事件、沒有自動縮放（plan 087 的 D1）。算繪匯出會重新編碼每個影格，所以比剪輯的複製慢，畫面也是第二代編碼。
