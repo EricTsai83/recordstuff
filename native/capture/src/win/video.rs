@@ -273,8 +273,59 @@ struct Transform {
     frame_bytes: u32,
 }
 
+/// An `avcC` record and the samples encoded with it, each with whether it is a key frame.
+pub(crate) type Encoded = (Vec<u8>, Vec<(Vec<u8>, bool)>);
+
+/// Encodes NV12 pictures already in memory (tightly packed), the first a key frame, with the recording's settings at
+/// the H.264 level `level` (`level_idc`): an export's re-encoded pictures (plan 085). Returns the `avcC` record and one
+/// sample per picture.
+pub(crate) fn encode_pictures(
+    width: u32,
+    height: u32,
+    frame_rate: u32,
+    bitrate: u32,
+    level: Option<u8>,
+    pictures: impl Iterator<Item = Result<(Vec<u8>, u64), String>>,
+) -> Result<Encoded, String> {
+    struct Collect(Mutex<(Vec<Media>, Option<String>)>);
+    impl VideoSink for Collect {
+        fn media(&self, media: Media) {
+            self.0.lock().unwrap().0.push(media);
+        }
+        fn failed(&self, detail: String) {
+            self.0.lock().unwrap().1.get_or_insert(detail);
+        }
+    }
+    let transform = Transform::with_level(width, height, frame_rate, bitrate, level).map_err(|e| e.detail)?;
+    let collect = Arc::new(Collect(Mutex::new((Vec::new(), None))));
+    let (done, _flushed) = channel();
+    let jobs = pictures
+        .enumerate()
+        .map(|(n, picture)| picture.map(|(data, pts_ns)| Job::Frame { data, pts_ns, key_frame: n == 0 }))
+        .chain(std::iter::once(Ok(Job::Flush(done))));
+    transform.run(jobs, collect.clone(), width, height);
+    let (media, failure) = std::mem::take(&mut *collect.0.lock().unwrap());
+    if let Some(failure) = failure {
+        return Err(failure);
+    }
+    let mut avcc = None;
+    let mut samples = Vec::new();
+    for item in media {
+        match item {
+            Media::VideoFormat { avcc: record, .. } => avcc = Some(record),
+            Media::Video { data, sync, .. } => samples.push((data, sync)),
+            Media::Audio { .. } => {}
+        }
+    }
+    Ok((avcc.ok_or("the H.264 encoder produced no parameter sets")?, samples))
+}
+
 impl Transform {
     fn new(width: u32, height: u32, frame_rate: u32, bitrate: u32) -> Result<Self, CaptureError> {
+        Self::with_level(width, height, frame_rate, bitrate, None)
+    }
+
+    fn with_level(width: u32, height: u32, frame_rate: u32, bitrate: u32, level: Option<u8>) -> Result<Self, CaptureError> {
         super::media_foundation()?;
         let fail = super::failing;
         let transform: IMFTransform = unsafe { CoCreateInstance(&CLSID_MSH264EncoderMFT, None, CLSCTX_INPROC_SERVER) }
@@ -315,6 +366,10 @@ impl Transform {
                 output.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)?;
                 output.SetUINT32(&MF_MT_AVG_BITRATE, bitrate)?;
                 output.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High.0 as u32)?;
+                // eAVEncH264VLevel's values are level_idc.
+                if let Some(level) = level {
+                    output.SetUINT32(&MF_MT_MPEG2_LEVEL, u32::from(level))?;
+                }
                 transform.SetOutputType(0, &output, 0)
             }
         })()

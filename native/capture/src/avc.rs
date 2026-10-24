@@ -80,6 +80,27 @@ pub fn decoder_config(sps: &[u8], pps: &[u8]) -> Vec<u8> {
     record
 }
 
+/// The first SPS and PPS of an `AVCDecoderConfigurationRecord` (one each is what `decoder_config` and VideoToolbox
+/// write), for a decoder that takes them apart (plan 085's export).
+pub fn record_parameter_sets(avcc: &[u8]) -> Option<(&[u8], &[u8])> {
+    if avcc.first() != Some(&1) || avcc.get(5)? & 0x1f == 0 {
+        return None;
+    }
+    let sps_len = usize::from(u16::from_be_bytes(avcc.get(6..8)?.try_into().ok()?));
+    let sps = avcc.get(8..8 + sps_len)?;
+    let at = 8 + sps_len;
+    if avcc.get(at)? & 0x1f == 0 {
+        return None;
+    }
+    let pps_len = usize::from(u16::from_be_bytes(avcc.get(at + 1..at + 3)?.try_into().ok()?));
+    let pps = avcc.get(at + 3..at + 3 + pps_len)?;
+    // An empty parameter set is a damaged record: no decoder takes it.
+    if sps.is_empty() || pps.is_empty() {
+        return None;
+    }
+    Some((sps, pps))
+}
+
 /// Back to Annex B, for a decoder (plan 078's self-test of a hardware encoder): `sample`'s length-prefixed NAL units
 /// after start codes, preceded by the parameter sets of `avcc` (a `decoder_config` record) when asked.
 pub fn annex_b(avcc: &[u8], sample: &[u8], with_parameter_sets: bool) -> Option<Vec<u8>> {
@@ -163,6 +184,16 @@ mod tests {
     fn the_main_profile_has_no_format_extension() {
         let sps = [0x67, 77, 0, 31, 0xab];
         assert_eq!(decoder_config(&sps, &PPS_UNIT).len(), 6 + 2 + sps.len() + 1 + 2 + PPS_UNIT.len());
+    }
+
+    #[test]
+    fn a_record_gives_back_its_parameter_sets() {
+        let record = decoder_config(&SPS_UNIT, &PPS_UNIT);
+        assert_eq!(record_parameter_sets(&record), Some((&SPS_UNIT[..], &PPS_UNIT[..])));
+        assert_eq!(record_parameter_sets(&record[..10]), None);
+        assert_eq!(record_parameter_sets(&[]), None);
+        // Counts of one each but empty sets.
+        assert_eq!(record_parameter_sets(&[1, 0x64, 0, 0x28, 0xff, 0xe1, 0, 0, 1, 0, 0]), None);
     }
 
     #[test]

@@ -18,10 +18,12 @@ use objc2_core_video::{
 };
 use objc2_video_toolbox::{
     VTCompressionSession, VTEncodeInfoFlags, VTSessionSetProperty, kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_AverageBitRate,
-    kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ExpectedFrameRate, kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
-    kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime, kVTCompressionPropertyKey_TransferFunction,
-    kVTCompressionPropertyKey_YCbCrMatrix, kVTEncodeFrameOptionKey_ForceKeyFrame, kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel,
-    kVTProfileLevel_H264_High_AutoLevel,
+    kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ExpectedFrameRate, kVTCompressionPropertyKey_H264EntropyMode,
+    kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime,
+    kVTCompressionPropertyKey_TransferFunction, kVTCompressionPropertyKey_YCbCrMatrix, kVTEncodeFrameOptionKey_ForceKeyFrame, kVTH264EntropyMode_CAVLC,
+    kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel, kVTProfileLevel_H264_High_3_0, kVTProfileLevel_H264_High_3_1, kVTProfileLevel_H264_High_3_2,
+    kVTProfileLevel_H264_High_4_0, kVTProfileLevel_H264_High_4_1, kVTProfileLevel_H264_High_4_2, kVTProfileLevel_H264_High_5_0, kVTProfileLevel_H264_High_5_1,
+    kVTProfileLevel_H264_High_5_2, kVTProfileLevel_H264_High_AutoLevel,
 };
 
 use super::{CaptureError, host_ns};
@@ -44,6 +46,39 @@ pub struct VideoEncoder {
 unsafe impl Send for VideoEncoder {}
 unsafe impl Sync for VideoEncoder {}
 
+/// How an encoder is set up: a recording's (`RECORDING`), the camera preview's, or an export's re-encoded pictures.
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderOptions {
+    pub real_time: bool,
+    pub baseline: bool,
+    /// The H.264 level as `level_idc` (40 is 4.0); none lets the encoder choose, as a recording does.
+    pub level: Option<u8>,
+    /// CAVLC instead of CABAC: only for a fixture that needs parameter sets differing from a recording's (plan 085).
+    pub cavlc: bool,
+}
+
+impl EncoderOptions {
+    pub const RECORDING: Self = Self { real_time: true, baseline: false, level: None, cavlc: false };
+}
+
+/// High profile at `level_idc`, as the export's re-encoded pictures take the source's level (plan 085).
+fn high_profile(level: Option<u8>) -> &'static CFString {
+    unsafe {
+        match level {
+            Some(30) => kVTProfileLevel_H264_High_3_0,
+            Some(31) => kVTProfileLevel_H264_High_3_1,
+            Some(32) => kVTProfileLevel_H264_High_3_2,
+            Some(40) => kVTProfileLevel_H264_High_4_0,
+            Some(41) => kVTProfileLevel_H264_High_4_1,
+            Some(42) => kVTProfileLevel_H264_High_4_2,
+            Some(50) => kVTProfileLevel_H264_High_5_0,
+            Some(51) => kVTProfileLevel_H264_High_5_1,
+            Some(52) => kVTProfileLevel_H264_High_5_2,
+            _ => kVTProfileLevel_H264_High_AutoLevel,
+        }
+    }
+}
+
 fn set(session: &VTCompressionSession, key: &CFString, value: &CFType) -> Result<(), CaptureError> {
     let status = unsafe { VTSessionSetProperty(session, key, Some(value)) };
     if status == 0 { Ok(()) } else { Err(CaptureError::new("capture_start_failed", format!("encoder property {key} refused: {status}"))) }
@@ -51,17 +86,24 @@ fn set(session: &VTCompressionSession, key: &CFString, value: &CFType) -> Result
 
 impl VideoEncoder {
     pub fn new(width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
-        Self::with_profile(width, height, frame_rate, bitrate, false, sink)
+        Self::with_options(width, height, frame_rate, bitrate, EncoderOptions::RECORDING, sink)
     }
 
     /// The camera preview's stream (plan 075, D17): Constrained Baseline, whose decoders output each frame as it comes.
     /// With High a decoder cannot know that frames are never reordered and holds several back first: WebCodecs' showed
     /// the preview 397 ms late at 15 fps (2026-10-17).
     pub fn for_preview(width: u32, height: u32, frame_rate: u32, bitrate: u32, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
-        Self::with_profile(width, height, frame_rate, bitrate, true, sink)
+        Self::with_options(width, height, frame_rate, bitrate, EncoderOptions { baseline: true, ..EncoderOptions::RECORDING }, sink)
     }
 
-    fn with_profile(width: u32, height: u32, frame_rate: u32, bitrate: u32, baseline: bool, sink: Arc<dyn VideoSink>) -> Result<Self, CaptureError> {
+    pub fn with_options(
+        width: u32,
+        height: u32,
+        frame_rate: u32,
+        bitrate: u32,
+        options: EncoderOptions,
+        sink: Arc<dyn VideoSink>,
+    ) -> Result<Self, CaptureError> {
         let callback = Arc::into_raw(Arc::new(Callback { sink, format_sent: AtomicBool::new(false) }));
         let mut session: *mut VTCompressionSession = null_mut();
         let status = unsafe {
@@ -84,10 +126,13 @@ impl VideoEncoder {
         };
         let encoder = Self { session: unsafe { CFRetained::from_raw(session) }, callback: callback.cast() };
         let s = &encoder.session;
-        set(s, unsafe { kVTCompressionPropertyKey_RealTime }, CFBoolean::new(true))?;
+        set(s, unsafe { kVTCompressionPropertyKey_RealTime }, CFBoolean::new(options.real_time))?;
         set(s, unsafe { kVTCompressionPropertyKey_AllowFrameReordering }, CFBoolean::new(false))?;
-        let profile = if baseline { unsafe { kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel } } else { unsafe { kVTProfileLevel_H264_High_AutoLevel } };
+        let profile = if options.baseline { unsafe { kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel } } else { high_profile(options.level) };
         set(s, unsafe { kVTCompressionPropertyKey_ProfileLevel }, profile)?;
+        if options.cavlc {
+            set(s, unsafe { kVTCompressionPropertyKey_H264EntropyMode }, unsafe { kVTH264EntropyMode_CAVLC })?;
+        }
         set(s, unsafe { kVTCompressionPropertyKey_AverageBitRate }, &CFNumber::new_i64(i64::from(bitrate)))?;
         set(s, unsafe { kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration }, &CFNumber::new_f64(1.0))?;
         set(s, unsafe { kVTCompressionPropertyKey_ExpectedFrameRate }, &CFNumber::new_i32(frame_rate as i32))?;

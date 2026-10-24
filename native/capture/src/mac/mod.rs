@@ -4,6 +4,7 @@ pub mod audio;
 pub mod camera;
 pub mod compositor;
 pub mod content;
+pub mod edit;
 pub mod hal;
 pub mod meter;
 pub mod microphone;
@@ -34,6 +35,8 @@ pub fn now_ns() -> u64 {
     host_ns(unsafe { CMClock::host_time_clock().time() })
 }
 
+#[cfg(test)]
+mod edit_test;
 #[cfg(test)]
 mod live_test;
 #[cfg(test)]

@@ -8,6 +8,7 @@ pub mod audio;
 pub mod camera;
 pub mod capture;
 pub mod compositor;
+pub mod edit;
 pub mod hardware;
 mod mft;
 pub mod session;

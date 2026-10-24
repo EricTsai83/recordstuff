@@ -21,6 +21,8 @@ pub struct Track {
     pub edit: Option<(u64, i64)>,
     pub fragmented: bool,
     pub stss: Option<Vec<u32>>,
+    /// The `stsd` entries' four-character codes.
+    pub descriptions: Vec<String>,
     pub samples: Vec<ParsedSample>,
 }
 
@@ -28,6 +30,8 @@ pub struct ParsedSample {
     pub data: Vec<u8>,
     pub decode_time: u64,
     pub sync: bool,
+    /// The sample description, 1-based.
+    pub description: u32,
 }
 
 struct Box_ {
@@ -107,6 +111,9 @@ pub fn parse(data: &[u8]) -> Result<Mp4, String> {
         let minf = inside(data, child(&mdia, "minf").ok_or("no minf")?);
         let stbl = inside(data, child(&minf, "stbl").ok_or("no stbl")?);
         let mut track = Track { id, timescale, duration, movie_duration, track_duration, edit, fragmented, ..Default::default() };
+        let stsd = child(&stbl, "stsd").ok_or("no stsd")?;
+        let (_, _, at) = full(data, stsd);
+        track.descriptions = boxes(data, at + 4, stsd.end).iter().map(|b| b.kind.clone()).collect();
         if let Some(stss) = child(&stbl, "stss") {
             let (_, _, at) = full(data, stss);
             track.stss = Some((0..u32_at(data, at) as usize).map(|n| u32_at(data, at + 4 + n * 4)).collect());
@@ -135,7 +142,8 @@ fn read_plain(data: &[u8], stbl: &[Box_], track: &mut Track) -> Result<(), Strin
     let (_, _, at) = full(data, child(stbl, "stsz").ok_or("no stsz")?);
     let sizes: Vec<u32> = (0..u32_at(data, at + 4) as usize).map(|n| u32_at(data, at + 8 + n * 4)).collect();
     let (_, _, at) = full(data, child(stbl, "stsc").ok_or("no stsc")?);
-    let stsc: Vec<(u32, u32)> = (0..u32_at(data, at) as usize).map(|n| (u32_at(data, at + 4 + n * 12), u32_at(data, at + 8 + n * 12))).collect();
+    let stsc: Vec<(u32, u32, u32)> =
+        (0..u32_at(data, at) as usize).map(|n| (u32_at(data, at + 4 + n * 12), u32_at(data, at + 8 + n * 12), u32_at(data, at + 12 + n * 12))).collect();
     let offsets: Vec<u64> = if let Some(stco) = child(stbl, "stco") {
         let (_, _, at) = full(data, stco);
         (0..u32_at(data, at) as usize).map(|n| u64::from(u32_at(data, at + 4 + n * 4))).collect()
@@ -150,12 +158,12 @@ fn read_plain(data: &[u8], stbl: &[Box_], track: &mut Track) -> Result<(), Strin
     let mut time = 0u64;
     for (chunk, &offset) in offsets.iter().enumerate() {
         let number = chunk as u32 + 1;
-        let per_chunk = stsc.iter().rev().find(|(first, _)| *first <= number).ok_or("chunk without stsc")?.1;
+        let &(_, per_chunk, description) = stsc.iter().rev().find(|(first, _, _)| *first <= number).ok_or("chunk without stsc")?;
         let mut at = offset as usize;
         for _ in 0..per_chunk {
             let size = sizes[sample] as usize;
             let sync = track.stss.as_ref().is_none_or(|s| s.contains(&(sample as u32 + 1)));
-            track.samples.push(ParsedSample { data: data[at..at + size].to_vec(), decode_time: time, sync });
+            track.samples.push(ParsedSample { data: data[at..at + size].to_vec(), decode_time: time, sync, description });
             time += u64::from(durations[sample]);
             at += size;
             sample += 1;
@@ -175,6 +183,7 @@ fn read_fragment(data: &[u8], moof: &Box_, tracks: &mut BTreeMap<u32, Track>) ->
             return Err("only default-base-is-moof is read".into());
         }
         let track = tracks.get_mut(&u32_at(data, at)).ok_or("fragment of an unknown track")?;
+        let description = if flags & 0x02 != 0 { u32_at(data, at + 4) } else { 1 };
         let (v, _, at) = full(data, child(&parts, "tfdt").ok_or("no tfdt")?);
         let mut time = if v == 1 { u64_at(data, at) } else { u64::from(u32_at(data, at)) };
         let trun = child(&parts, "trun").ok_or("no trun")?;
@@ -190,7 +199,12 @@ fn read_fragment(data: &[u8], moof: &Box_, tracks: &mut BTreeMap<u32, Track>) ->
             if position + size > data.len() {
                 return Err("sample past the end of the file".into());
             }
-            track.samples.push(ParsedSample { data: data[position..position + size].to_vec(), decode_time: time, sync: sample_flags & 0x1_0000 == 0 });
+            track.samples.push(ParsedSample {
+                data: data[position..position + size].to_vec(),
+                decode_time: time,
+                sync: sample_flags & 0x1_0000 == 0,
+                description,
+            });
             position += size;
             time += u64::from(duration);
         }

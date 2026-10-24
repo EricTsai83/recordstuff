@@ -132,6 +132,11 @@ struct TrackState {
     /// One chunk per fragment: where its samples start in the file and how many there are.
     chunk_offsets: Vec<u64>,
     chunk_counts: Vec<u32>,
+    /// Each chunk's sample description, 1-based: 2 is `alternate`.
+    chunk_descriptions: Vec<u32>,
+    /// A second sample description (plan 085): an export's re-encoded pictures whose parameter sets differ from the
+    /// source's, in the same track.
+    alternate: Option<Codec>,
     /// The decode time the next fragment starts at.
     decode_end: u64,
     /// Ticks after `skip` that hold captured sound, when known: the rest is the encoder's padding.
@@ -163,8 +168,15 @@ pub struct HybridMp4<O: Output> {
 
 impl<O: Output> HybridMp4<O> {
     /// Writes the initialization segment for `tracks`, in order (track IDs 1, 2, ...).
-    pub fn create(mut out: O, tracks: Vec<TrackConfig>) -> io::Result<Self> {
+    pub fn create(out: O, tracks: Vec<TrackConfig>) -> io::Result<Self> {
+        Self::create_with_alternate(out, tracks, None)
+    }
+
+    /// As `create`, with a second sample description for one track (plan 085): `(track, codec)`, used by the
+    /// fragments written with `write_fragment_described(track, _, 2)`.
+    pub fn create_with_alternate(mut out: O, tracks: Vec<TrackConfig>, alternate: Option<(usize, Codec)>) -> io::Result<Self> {
         assert!(!tracks.is_empty(), "a movie needs a track");
+        let mut alternate = alternate;
         let tracks: Vec<TrackState> = tracks
             .into_iter()
             .enumerate()
@@ -176,6 +188,8 @@ impl<O: Output> HybridMp4<O> {
                 syncs: None,
                 chunk_offsets: Vec::new(),
                 chunk_counts: Vec::new(),
+                chunk_descriptions: Vec::new(),
+                alternate: alternate.take_if(|(track, _)| *track == index).map(|(_, codec)| codec),
                 decode_end: 0,
                 presented: None,
             })
@@ -200,6 +214,12 @@ impl<O: Output> HybridMp4<O> {
         self.tracks[track].decode_end
     }
 
+    /// What has been written, for tests that read an unfinished file.
+    #[cfg(test)]
+    pub fn output(&self) -> &O {
+        &self.out
+    }
+
     pub fn sample_count(&self, track: usize) -> usize {
         self.tracks[track].sizes.len()
     }
@@ -210,7 +230,13 @@ impl<O: Output> HybridMp4<O> {
 
     /// Appends one fragment of `track` (0-based) holding `samples`, in one write. An empty list writes nothing.
     pub fn write_fragment(&mut self, track: usize, samples: &[Sample<'_>]) -> io::Result<()> {
+        self.write_fragment_described(track, samples, 1)
+    }
+
+    /// As `write_fragment`, the samples using sample description `description` (1, or 2 for the track's alternate).
+    pub fn write_fragment_described(&mut self, track: usize, samples: &[Sample<'_>], description: u32) -> io::Result<()> {
         assert!(!self.finished, "write_fragment after finish");
+        assert!(description == 1 || description == 2 && self.tracks[track].alternate.is_some(), "no sample description {description}");
         if samples.is_empty() {
             return Ok(());
         }
@@ -222,9 +248,12 @@ impl<O: Output> HybridMp4<O> {
         w.u32(self.sequence);
         w.close(mfhd);
         let traf = w.open(b"traf");
-        // default-base-is-moof: data offsets count from this moof's first byte.
-        let tfhd = w.open_full(b"tfhd", 0, 0x02_0000);
+        // default-base-is-moof: data offsets count from this moof's first byte; the description only when not the first.
+        let tfhd = w.open_full(b"tfhd", 0, 0x02_0000 | if description == 1 { 0 } else { 0x00_0002 });
         w.u32(state.id);
+        if description != 1 {
+            w.u32(description);
+        }
         w.close(tfhd);
         let tfdt = w.open_full(b"tfdt", 1, 0);
         w.u64(state.decode_end);
@@ -265,6 +294,7 @@ impl<O: Output> HybridMp4<O> {
         let state = &mut self.tracks[track];
         state.chunk_offsets.push(media_at);
         state.chunk_counts.push(samples.len() as u32);
+        state.chunk_descriptions.push(description);
         for sample in samples {
             let number = state.sizes.len() as u32 + 1;
             state.sizes.push(sample.data.len() as u32);
@@ -409,7 +439,7 @@ fn write_trak(w: &mut BoxWriter, track: &TrackState, plain: bool, movie_timescal
     w.close(dinf);
 
     let stbl = w.open(b"stbl");
-    write_stsd(w, &track.config.codec);
+    write_stsd(w, &track.config.codec, track.alternate.as_ref());
     if plain {
         write_sample_tables(w, track);
     } else {
@@ -428,9 +458,17 @@ fn write_trak(w: &mut BoxWriter, track: &TrackState, plain: bool, movie_timescal
     w.close(trak);
 }
 
-fn write_stsd(w: &mut BoxWriter, codec: &Codec) {
+fn write_stsd(w: &mut BoxWriter, codec: &Codec, alternate: Option<&Codec>) {
     let stsd = w.open_full(b"stsd", 0, 0);
-    w.u32(1);
+    w.u32(if alternate.is_some() { 2 } else { 1 });
+    write_sample_entry(w, codec);
+    if let Some(alternate) = alternate {
+        write_sample_entry(w, alternate);
+    }
+    w.close(stsd);
+}
+
+fn write_sample_entry(w: &mut BoxWriter, codec: &Codec) {
     match codec {
         Codec::H264 { avcc, width, height } => {
             let avc1 = w.open(b"avc1");
@@ -457,7 +495,6 @@ fn write_stsd(w: &mut BoxWriter, codec: &Codec) {
             w.close(mp4a);
         }
     }
-    w.close(stsd);
 }
 
 /// ISO/IEC 14496-1 descriptors: an `ES_Descriptor` holding the decoder configuration and the AAC config.
@@ -516,17 +553,17 @@ fn write_sample_tables(w: &mut BoxWriter, track: &TrackState) {
         w.close(stss);
     }
 
-    // stsc names a chunk only where its sample count changes from the one before.
-    let mut entries: Vec<(u32, u32)> = Vec::new();
-    for (index, &count) in track.chunk_counts.iter().enumerate() {
-        if entries.last().is_none_or(|&(_, previous)| previous != count) {
-            entries.push((index as u32 + 1, count));
+    // stsc names a chunk only where its sample count or description changes from the one before.
+    let mut entries: Vec<(u32, u32, u32)> = Vec::new();
+    for (index, (&count, &description)) in track.chunk_counts.iter().zip(&track.chunk_descriptions).enumerate() {
+        if entries.last().is_none_or(|&(_, previous, described)| previous != count || described != description) {
+            entries.push((index as u32 + 1, count, description));
         }
     }
     let stsc = w.open_full(b"stsc", 0, 0);
     w.u32(entries.len() as u32);
-    for (first, count) in entries {
-        w.u32(first).u32(count).u32(1);
+    for (first, count, description) in entries {
+        w.u32(first).u32(count).u32(description);
     }
     w.close(stsc);
 
@@ -741,6 +778,28 @@ pub(crate) mod tests {
         let parsed = parse(&out).unwrap();
         assert_eq!(parsed.tracks[0].stss, Some(vec![1, 4]));
         assert_eq!(parsed.tracks[1].stss, None);
+    }
+
+    #[test]
+    fn an_alternate_description_is_named_by_its_fragments_and_chunks() {
+        let other = Codec::H264 { avcc: vec![1, 0x64, 0, 0x28, 0xff, 0xe1, 0, 4, 0x67, 0x64, 0, 0x28, 1, 0, 2, 0x68, 0xef], width: 1920, height: 1080 };
+        let mut mp4 = HybridMp4::create_with_alternate(Vec::new(), vec![video_config(), audio_config()], Some((0, other))).unwrap();
+        let data = [0u8; 4];
+        let three: Vec<Sample> = (0..3).map(|n| Sample { data: &data, duration: 3000, sync: n == 0 }).collect();
+        mp4.write_fragment(0, &three).unwrap();
+        mp4.write_fragment_described(0, &three, 2).unwrap();
+        mp4.write_fragment(0, &three[..2]).unwrap();
+        mp4.write_fragment(1, &[Sample { data: &data, duration: 1024, sync: true }]).unwrap();
+        let fragmented = parse(&mp4.out).unwrap();
+        let described: Vec<u32> = fragmented.tracks[0].samples.iter().map(|s| s.description).collect();
+        assert_eq!(described, [1, 1, 1, 2, 2, 2, 1, 1]);
+        assert_eq!(fragmented.tracks[0].descriptions, ["avc1", "avc1"]);
+        assert_eq!(fragmented.tracks[1].descriptions, ["mp4a"]);
+        let (_, out) = mp4.finish().unwrap();
+        let plain = parse(&out).unwrap();
+        let described: Vec<u32> = plain.tracks[0].samples.iter().map(|s| s.description).collect();
+        assert_eq!(described, [1, 1, 1, 2, 2, 2, 1, 1]);
+        assert_eq!(plain.tracks[0].descriptions, ["avc1", "avc1"]);
     }
 
     #[test]

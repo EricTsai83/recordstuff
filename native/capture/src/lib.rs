@@ -8,6 +8,8 @@
 //! A failure rejects with a message `code|detail`, where `code` is one of the capture host's error codes.
 
 pub mod core;
+pub mod edit;
+mod export_api;
 pub mod mux;
 pub mod pacing;
 pub mod timing;
