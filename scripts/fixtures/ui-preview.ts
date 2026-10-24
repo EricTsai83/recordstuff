@@ -204,6 +204,10 @@ async function run(): Promise<void> {
       studioPreview = { rate: "power", view: "screen" };
       await show(window, "studio");
       await shoot(window, `studio-recording-screen-${lang}-${scheme}.png`, `the Studio while recording, Power saving, the Screen view · ${lang} · ${scheme}`, { state: "recording-screen" });
+      // The Camera view (plan 094): the camera alone at the bubble's shape on the stage's grey, the picture clipped to it.
+      studioPreview = { rate: "power", view: "camera" };
+      await show(window, "studio");
+      await shoot(window, `studio-recording-camera-${lang}-${scheme}.png`, `the Studio while recording, Power saving, the Camera view · ${lang} · ${scheme}`, { state: "recording-camera" });
       studioPreview = { rate: "power", view: "composed" };
       await show(window, "studio");
       await shoot(window, `studio-recording-${lang}-${scheme}.png`, `the Studio while recording · ${lang} · ${scheme}`, { state: "recording" });

@@ -231,7 +231,9 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
         className="camera-preview-stage"
         style={{ aspectRatio: `${preview.display.width} / ${preview.display.height}`, ["--preview-ratio" as string]: preview.display.width / preview.display.height }}
       >
-        <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true" />
+        {/* In the Camera view the engine's picture is clipped to the camera it draws, so the stage's grey is around it. */}
+        <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true"
+          style={cameraOnly ? { clipPath: `inset(${enlarged.y}px ${size.width - enlarged.x - enlarged.width}px ${size.height - enlarged.y - enlarged.height}px ${enlarged.x}px round ${enlargedRadius}px)` } : undefined} />
         {showsBubble && <div
           className="camera-preview-bubble"
           data-live={live || undefined}

@@ -912,12 +912,12 @@
     outline: 1.5px dashed var(--display-ink);
     outline-offset: -1.5px;
   }
-  /* The Camera view (plan 094) shows the camera alone on the picture's own background, which the engine's surround
-     matches; the bubble is that camera's frame, not something placed, so it has no shadow or outline. */
+  /* The Camera view (plan 094) shows the camera alone on the stage's own grey, with no display drawn around it
+     (2026-10-24, at the maintainer's request: a dark display inside the grey read as a frame in a frame); the engine's
+     picture is clipped to the camera (camera-preview.tsx), so its surround is never seen. */
   .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-stage {
-    background: var(--display-bezel);
-  }
-  .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-bubble {
+    border-color: transparent;
+    background: transparent;
     box-shadow: none;
   }
   .camera-preview-handle:focus-visible {
@@ -972,6 +972,7 @@
     padding-bottom: 12px;
   }
   .studio-stage {
+    position: relative;
     flex: 1 1 0;
     min-height: var(--studio-stage-floor);
     display: grid;
@@ -1126,8 +1127,25 @@
   }
   .studio-toggles {
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 6px;
+  }
+  /* Said in the camera's head while a recording runs, in place of a line under it, so the panel keeps its height. */
+  .studio-lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+    margin-inline-start: auto;
+    font-size: 11px;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  .studio-lock svg {
+    flex: none;
+    width: 12px;
+    height: 12px;
   }
   .studio-toggle[aria-pressed="true"] {
     color: var(--primary);
@@ -1153,18 +1171,37 @@
     flex: 1;
     min-width: 0;
   }
-  /* Each input's level in the line of controls (plan 095, D2): short and in segments, a reading of the sound, unlike
-     the fader's long track, with its mute. */
-  .studio-quick-audio .audio-meter {
-    width: auto;
-    gap: 2px;
+  /* Each input in the Audio panel (2026-10-24): its name, then its level now with its mute, then, under a rule, the
+     volume it is recorded at; a caption names each line, one column wide, so the meter and the fader line up. */
+  .studio-channel-head > span {
+    font-weight: 600;
   }
-  .studio-quick-audio .audio-meter-track {
-    flex: none;
-    width: 64px;
+  .studio-channel-row {
+    display: grid;
+    grid-template-columns: 5em minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+  }
+  .studio-channel-fader {
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+  .studio-channel-caption {
+    color: var(--muted-foreground);
+  }
+  /* The level in segments, a reading of the sound, unlike the fader's long track. */
+  .studio-channel .audio-meter {
+    width: auto;
+  }
+  .studio-channel .audio-meter-track {
     height: 8px;
     border-radius: 0;
     mask: repeating-linear-gradient(90deg, var(--mask-opaque) 0 5px, transparent 5px 7px);
+  }
+  .audio-meter-mute[aria-pressed="true"] {
+    color: var(--primary);
+    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
   }
   .studio-channel .slider-setting {
     width: 100%;
@@ -1180,6 +1217,24 @@
     align-items: center;
     gap: 6px 12px;
   }
+  /* A Live preview's start or failure, over the foot of the stage rather than a line under it, which would shrink the
+     picture while it is said (2026-10-24). */
+  .studio-stage-note {
+    position: absolute;
+    inset: auto 0 10px;
+    width: fit-content;
+    max-width: calc(100% - 20px);
+    margin: 0 auto;
+    padding: 5px 10px;
+    border: 1px solid var(--studio-live-edge);
+    border-radius: 999px;
+    background: var(--studio-live-glass);
+    backdrop-filter: blur(8px);
+    color: var(--studio-live-ink-on);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+  }
   .studio-controls > .studio-note,
   .studio-controls > .studio-failure {
     flex-basis: 100%;
@@ -1189,6 +1244,32 @@
     align-items: center;
     gap: 10px;
     font-size: 12px;
+  }
+  /* Start as wide as Stop with its time, so the line does not move as a recording starts (2026-10-24). */
+  .studio-record > button {
+    min-width: 9.5rem;
+  }
+  /* The view's menu: as wide whichever picture it names. */
+  .studio-view {
+    min-width: 8.75rem;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .studio-view > svg:first-child {
+    width: 14px;
+    height: 14px;
+    color: var(--muted-foreground);
+  }
+  .studio-view-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .studio-view-option > svg {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    flex: none;
   }
   /* What is pressed often, at the end of the line of controls (plan 095, D2): the levels and mutes and the camera's
      showing while recording, the view and Live preview, wrapping under Start in a narrow window. */

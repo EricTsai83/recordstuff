@@ -632,9 +632,11 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   const system = page.getByRole("button", { name: "Mute System audio" });
   await page.getByRole("slider", { name: "Microphone volume" }).scrollIntoViewIfNeeded();
   await expect(page.getByRole("slider", { name: "Microphone volume" }), "S133 the microphone's fader while its switch is on").toBeVisible();
-  // Between recordings there is no level to show and nothing to mute: no meter, no mute (2026-10-22).
-  await expect(system, "S133 between recordings there is nothing to mute").toHaveCount(0);
-  await expect(page.getByRole("meter"), "S133 nor a level to show").toHaveCount(0);
+  // Between recordings there is no level to show and nothing to mute, but each input's meter and mute keep their place
+  // in the Audio panel, at silence and unavailable, so nothing moves as a recording starts (2026-10-24).
+  await expect(system, "S133 between recordings there is nothing to mute").toBeDisabled();
+  await expect(page.locator(".studio-panels").getByRole("meter"), "S133 each meter in its place, at silence").toHaveCount(2);
+  await expect(page.getByRole("meter", { name: "System audio" }), "S133 at the floor").toHaveAttribute("aria-valuenow", "-60");
   await page.waitForTimeout(200);
   expect(await host.evaluate(h => [...h.levelWatches]), "S133 no levels are asked for between recordings").toEqual([]);
 
@@ -643,7 +645,8 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
     h.state.cameraContext = { ...h.state.cameraContext!, audioSession: { systemMuted: false, microphone: { muted: false } } };
     h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
   });
-  await expect(system, "S133 a recording's mute, beside its input's name").toBeEnabled();
+  await expect(system, "S133 a recording's mute, under its input's name").toBeEnabled();
+  await expect(page.locator(".studio-panels").getByRole("button", { name: "Mute System audio" }), "S133 in the Audio panel").toBeVisible();
   await expect(page.getByRole("meter", { name: "Microphone" }), "S133 and each input's meter").toBeVisible();
   await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 a recording's meter in sight asks for levels" }).toEqual([true]);
   await host.evaluate(h => h.pushLevels({ system: 0.5, microphone: 0.1 }));
@@ -934,11 +937,22 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S144 the recording's picture is asked for once on" }).toEqual([true]);
   await expect(page.locator(".camera-preview-picture"), "S144 and takes the stage").toBeVisible();
 
-  // S145 the view: segments in the line of controls over the stage (plan 095), switched while watching; the Screen view
-  // before a session opens no camera.
-  await expect(page.locator(".studio-controls").getByRole("group", { name: "Preview view" }), "S145 in the line of controls").toBeVisible();
+  // S145 the view: a menu in the line of controls over the stage (2026-10-24, three segments until then), named by the
+  // picture it shows, every choice saying what it shows; switched while watching; the Screen view before a session
+  // opens no camera.
+  const view = page.locator(".studio-controls").getByRole("combobox", { name: "Preview view" });
+  const chooseView = async (name: string): Promise<void> => { await view.click(); await page.getByRole("option", { name: new RegExp(`^${name}`) }).click(); };
+  await expect(view, "S145 in the line of controls").toBeVisible();
+  await expect(view, "S145 named by the picture it shows").toHaveText(/As recorded/);
+  await expect(view, "S145 described by what it shows").toHaveAccessibleDescription("The screen and the camera, as the recording has them.");
+  await view.click();
+  for (const [name, line] of [["As recorded", "The screen and the camera, as the recording has them."], ["Screen only", "No camera; its bubble is an outline"],
+    ["Camera only", "The camera enlarged, to check framing, light and focus."]] as const) {
+    await expect(page.getByRole("option", { name: new RegExp(`^${name}`) }), `S145 ${name} with its line`).toContainText(line);
+  }
+  await page.keyboard.press("Escape");
   await clearCalls();
-  await page.getByRole("radio", { name: "Screen" }).or(page.getByRole("button", { name: "Screen", exact: true })).first().click();
+  await chooseView("Screen only");
   await expect.poll(calls, { message: "S145 Screen asks main" }).toEqual([["studioPreviewView", "screen"]]);
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -949,14 +963,14 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   await page.waitForTimeout(500);
   expect(await opened(), "S145 the Screen view opens no camera").toBe(0);
   await clearCalls();
-  await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
+  await chooseView("As recorded");
   await expect.poll(calls, { message: "S145 back to Composed" }).toEqual([["studioPreviewView", "composed"]]);
   await expect.poll(opened, { message: "S145 the composed view opens the camera in the bubble" }).toBe(1);
 
   // S145 the Camera view (plan 094): the camera alone, at the bubble's shape and rounding, enlarged and centred, with
   // nothing to place; before a session the page's own camera, not a second one; without a camera, why.
   await clearCalls();
-  await page.getByRole("radio", { name: "Camera" }).or(page.getByRole("button", { name: "Camera", exact: true })).first().click();
+  await chooseView("Camera only");
   await expect.poll(calls, { message: "S145 Camera asks main" }).toEqual([["studioPreviewView", "camera"]]);
   await expect(page.getByRole("application", { name: "Preview" }), "S145 nothing to drag in the Camera view").toHaveCount(0);
   const enlarged = () => page.locator(".studio-stage .camera-preview").evaluate((box) => {
@@ -995,7 +1009,7 @@ test("S143–S145 the Studio's preview panel: Off by default with no camera open
   });
   await expect(said, "S145 without a camera the Camera view says why").toHaveText("Turn on Camera to see it here.");
   await clearCalls();
-  await page.getByRole("radio", { name: "Composed" }).or(page.getByRole("button", { name: "Composed", exact: true })).first().click();
+  await chooseView("As recorded");
   await expect.poll(calls, { message: "S145 Composed again" }).toEqual([["studioPreviewView", "composed"]]);
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
@@ -1053,6 +1067,14 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   // Dragged on a large stage, the bubble is let go of where the recording composes it.
   await show("landscape");
   await host.evaluate(h => h.setSize(1440, 900));
+  // Measured once the window's new size has been laid out: a stage read mid-resize sent the drag to a stale middle.
+  let lastBox = "";
+  await expect.poll(async () => {
+    const now = JSON.stringify([await page.locator(".camera-preview-stage").boundingBox(), await page.getByRole("application", { name: "Preview" }).boundingBox()]);
+    const still = now === lastBox;
+    lastBox = now;
+    return still;
+  }, { message: "S146 the large stage is laid out", intervals: [100] }).toBe(true);
   const bubble = page.getByRole("application", { name: "Preview" });
   const stage = (await page.locator(".camera-preview-stage").boundingBox())!, from = (await bubble.boundingBox())!;
   await clearCalls();
@@ -1062,16 +1084,32 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   await page.mouse.up();
   await expect.poll(async () => (await calls()).map(([group, choice]) => [group, ...String(choice).split(",").map(Number)]), { message: "S146 dragged to the middle of a large stage" })
     .toEqual([["cameraPreview", expect.closeTo(0.5, 1), expect.closeTo(0.5, 1)]]);
-  // While recording, each input's mute and level, the camera's showing, the view and Live preview are in the line of
-  // controls over the stage, in sight without scrolling at the default size.
+  // The view and Live preview are in the line of controls over the stage; each input's mute and level and the camera's
+  // showing are in their panels (2026-10-24), all in sight without scrolling at the default size.
   await show("landscape", true);
   await host.evaluate(h => h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]));
-  const controls = page.locator(".studio-controls");
-  for (const control of [controls.getByRole("button", { name: "Mute System audio" }), controls.getByRole("button", { name: "Mute Microphone" }),
-    controls.getByRole("meter", { name: "Microphone" }), controls.getByRole("button", { name: "Show camera in recording" }),
-    controls.getByRole("group", { name: "Preview view" }), controls.getByRole("switch", { name: "Live preview" })]) {
-    await expect(control, "S146 in the line of controls, in sight").toBeInViewport();
+  const controls = page.locator(".studio-controls"), panels = page.locator(".studio-panels");
+  for (const control of [controls.getByRole("combobox", { name: "Preview view" }), controls.getByRole("switch", { name: "Live preview" }),
+    panels.getByRole("button", { name: "Mute System audio" }), panels.getByRole("button", { name: "Mute Microphone" }),
+    panels.getByRole("meter", { name: "Microphone" }), panels.getByRole("button", { name: "Show camera in recording" })]) {
+    await expect(control, "S146 in sight").toBeInViewport();
   }
+  await expect(controls.getByRole("button", { name: /Mute|Show camera/ }), "S146 nothing joins the line of controls as a recording starts").toHaveCount(0);
+  // Nothing moves as a recording starts or a Live preview is said to be starting (2026-10-24, at the maintainer's
+  // request): the line of controls, the picture and the panels keep their places and sizes.
+  const places = () => page.evaluate(() => [".studio-controls", ".studio-stage .camera-preview-stage", ".studio-panels"].map((selector) => {
+    const box = document.querySelector(selector)!.getBoundingClientRect();
+    return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
+  }));
+  const during = await places();
+  await show("landscape", false);
+  await expect.poll(places, { message: "S146 between recordings everything is where it is during one" }).toEqual(during);
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!, studio: { showing: false, preview: { live: false } } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await expect(page.locator(".studio-stage-note"), "S146 a Live preview starting is said over the stage").toHaveText("Starting preview…");
+  expect(await places(), "S146 over the stage, which keeps its size").toEqual(during);
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
 

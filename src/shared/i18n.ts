@@ -571,7 +571,17 @@ export const ZH_TW = {
   "10 fps all the time.": "固定每秒 10 格。",
   "15 fps all the time; uses the most power.": "固定每秒 15 格，最耗電。",
   "Preview view": "預覽畫面",
-  Composed: "合成",
+  // The view, a menu in the line of controls whose every choice says what it shows (2026-10-24).
+  "As recorded": "錄影畫面",
+  "Screen only": "只看螢幕",
+  "Camera only": "只看相機",
+  "The screen and the camera, as the recording has them.": "螢幕加上相機，跟錄下來的一樣。",
+  "No camera; its bubble is an outline you can still drag.": "不顯示相機，泡泡變成外框，仍可拖曳。",
+  "The camera enlarged, to check framing, light and focus.": "放大相機，檢查取景、光線與對焦。",
+  // Short in English, where the head's line is narrow; the panel's note says the rest to assistive technology.
+  Locked: "錄影中鎖定",
+  Level: "即時音量",
+  Recorded: "錄製音量",
   "Collapse sidebar": "收合側邊欄",
   "Expand sidebar": "展開側邊欄",
   "System audio": "系統聲音",

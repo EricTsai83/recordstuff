@@ -134,6 +134,10 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
   }, [track, cover, source, off]);
 }
 
+/**
+ * An input's level and its mute, in the Audio panel (2026-10-24): the mute says Mute in words beside its icon, the same
+ * width muted or not, its state the button's pressed look; assistive technology hears what a press does.
+ */
 export function AudioMeter({ group, source, muted, disabled, describedBy }: {
   group: SettingsGroup; source: "system" | "microphone"; muted: boolean; disabled: boolean; describedBy: string | undefined;
 }) {
@@ -161,15 +165,17 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
       </div>
       <Button
         id={id}
-        variant="ghost"
-        size="icon-sm"
+        variant="outline"
+        size="sm"
+        className="audio-meter-mute"
         disabled={disabled}
         aria-pressed={muted}
         aria-label={translate(muted ? "Unmute {label}" : "Mute {label}", language, { label: group.label })}
         aria-describedby={describedBy}
         onClick={() => void model.choose(group.id, muted ? "unmute" : "mute", id)}
       >
-        <Icon />
+        <Icon aria-hidden="true" />
+        <span aria-hidden="true">{translate("Mute", language)}</span>
       </Button>
     </div>
   );

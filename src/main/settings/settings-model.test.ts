@@ -486,11 +486,15 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(settingsAction(idle, on(), "studioPreviewRate", "off")).toEqual({ setStudioPreview: { rate: "off" } });
     expect(settingsAction(idle, on(), "studioPreviewRate", "turbo")).toBeUndefined();
     const view = group(recording, standard, "studioPreviewView");
-    expect(view).toMatchObject({ control: "segmented", enabled: true, choices: [{ id: "composed", label: "Composed", checked: false }, { id: "screen", label: "Screen", checked: true }, { id: "camera", label: "Camera", checked: false }] });
+    expect(view).toMatchObject({ enabled: true, choices: [
+      { id: "composed", label: "As recorded", description: "The screen and the camera, as the recording has them.", checked: false },
+      { id: "screen", label: "Screen only", description: "No camera; its bubble is an outline you can still drag.", checked: true },
+      { id: "camera", label: "Camera only", description: "The camera enlarged, to check framing, light and focus.", checked: false }] });
+    expect(view?.control, "a menu, as the rate is").toBe("menu");
     expect(settingsAction(idle, on(), "studioPreviewView", "screen")).toEqual({ setStudioPreview: { view: "screen" } });
     expect(settingsAction(recording, standard, "studioPreviewView", "camera"), "094's Camera view").toEqual({ setStudioPreview: { view: "camera" } });
     expect(settingsAction(idle, on(), "studioPreviewView", "selfie")).toBeUndefined();
-    expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewView")?.choices.map((c) => c.label)).toEqual(["合成", "螢幕", "相機"]);
+    expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewView")?.choices.map((c) => c.label)).toEqual(["錄影畫面", "只看螢幕", "只看相機"]);
     expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewRate")?.choices.map((c) => c.label)).toEqual(["關閉", "省電", "標準", "流暢"]);
   });
 
