@@ -688,7 +688,7 @@ export class Editing {
         const failure = cause instanceof ExportFailure ? cause : undefined;
         this.deps.log(`editing: the export of ${open.path} ${failure?.code === "cancelled" ? "was cancelled" : `failed: ${String(cause)}`}`);
         const stopped = failure?.code === "cancelled" || run.cancelled || (cause as NodeJS.ErrnoException).code === "ECANCELED";
-        outcome = stopped ? { phase: "idle" } : { phase: "failed", message: this.failureText(failure, "export") };
+        outcome = stopped ? { phase: "idle" } : { phase: "failed", message: this.failureText(failure, "export", Boolean(render)) };
       }
       await this.journal((entries) => entries.filter((entry) => !settledPaths.includes(entryPath(entry)))).catch((cause: unknown) => this.deps.log(`editing: the export journal could not be written: ${String(cause)}`));
       this.exportRun = undefined;
@@ -774,7 +774,7 @@ export class Editing {
   }
 
   /** What the view says about a failed inspection or export, by its code. */
-  private failureText(failure: ExportFailure | undefined, during: "inspect" | "export"): string {
+  private failureText(failure: ExportFailure | undefined, during: "inspect" | "export", rendered = false): string {
     const language = this.deps.language();
     const t = (key: PlainMessageKey): string => translate(key, language);
     switch (failure?.code) {
@@ -787,7 +787,7 @@ export class Editing {
       case "export_worker_crashed": case "export_worker_unresponsive":
         return during === "inspect" ? t("the export process stopped. Close the editor and try again.") : t("The export process stopped. The recording is unchanged; export again.");
       case "export_engine_missing": return t("the export engine could not be loaded.");
-      case "encode_failed": return t("The export failed while encoding a join. The recording is unchanged; export again.");
+      case "encode_failed": return t(rendered ? "The export failed while encoding. The recording is unchanged; export again." : "The export failed while encoding a join. The recording is unchanged; export again.");
       default: return during === "inspect" ? t("it could not be read.") : t("The export failed. The recording is unchanged; export again.");
     }
   }

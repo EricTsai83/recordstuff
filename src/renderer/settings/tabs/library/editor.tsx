@@ -12,6 +12,7 @@ import { ControlTooltip } from "../../../components/control-tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { Player } from "../../../player/player";
 import * as model from "../../settings-controller";
+import { EditorCamera, EditorSceneControls } from "./editor-scene";
 
 /**
  * Follows the preview's position to draw the playhead: on each frame shown while it plays, and on each seek. Nothing
@@ -111,6 +112,8 @@ export function EditorDialog() {
               meta={[phrases([item.day, item.time], language), item.duration, item.size].filter(Boolean).join(" · ")}
               language={language}
               videoRef={model.attachEditorVideo}
+              // Its sound goes through Web Audio at an editable recording's volumes (plan 087), which needs CORS.
+              crossOrigin="anonymous"
               onDoubleClick={() => undefined}
               fullScreen={() => undefined}
               trailing={null}
@@ -130,6 +133,7 @@ export function EditorDialog() {
               }
             />
           )}
+          {item && editor?.state === "ready" && editor.editable && <EditorCamera editor={editor} />}
         </div>
         {item && <EditorPanel />}
         <p id="editor-feedback" className="sr-only" role="status" aria-live="polite">
@@ -227,6 +231,7 @@ function EditorPanel() {
         </span>
         <ExportControls />
       </div>
+      <EditorSceneControls editor={editor} />
       {(editor.notes.length > 0 || editor.saveFailure || (editor.blocked && editor.export.phase !== "exporting")) && (
         <ul className="editor-notes">
           {editor.saveFailure && <li className="editor-failure" role="alert">{editor.saveFailure}</li>}
@@ -279,7 +284,7 @@ function ExportControls() {
         </>
       )}
       {state.phase === "failed" && <span className="editor-failure" role="alert">{state.message}</span>}
-      <ControlTooltip label={editor.blocked ?? model.text("Write the kept parts to a new file beside the recording")}>
+      <ControlTooltip label={editor.blocked ?? model.text(editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
         <Button
           id="editor-export"
           size="sm"

@@ -42,6 +42,8 @@ interface PlayerProps {
   onMetadata?: (video: HTMLVideoElement) => void;
   /** The full-screen page's larger controls; `trailing` sizes its own button to match. */
   large?: boolean;
+  /** Fetched with CORS, so its sound can go through Web Audio (the edit view's volumes, plan 087). */
+  crossOrigin?: "anonymous";
 }
 interface MediaView {
   playing: boolean;
@@ -82,6 +84,7 @@ export function Player({
   fullScreen,
   onMetadata,
   large = false,
+  crossOrigin,
 }: PlayerProps) {
   const video = useRef<HTMLVideoElement>(null),
     root = useRef<HTMLDivElement>(null),
@@ -362,6 +365,7 @@ export function Player({
           ref={assignVideo}
           id={id === "video" ? "video" : undefined}
           src={source || undefined}
+          crossOrigin={crossOrigin}
           playsInline
           disablePictureInPicture
           tabIndex={-1}

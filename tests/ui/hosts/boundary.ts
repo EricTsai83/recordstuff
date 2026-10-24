@@ -115,13 +115,17 @@ export class TestTray extends EventEmitter {
  * to 15 fps frames of the test clips (tests/ui/media), and an export that copies the recording into the file main
  * reserved after reporting progress, unless cancelled first. The page, main's edit records, publication and the
  * listing are production's; the cut itself is the engine's, checked by its own tests (native/capture/src/edit).
+ *
+ * An editable recording (plan 087) is a clip with `<clip>.editable.json` beside it, its description: its plan carries
+ * it, `extract` copies the clip as the preview's camera or second sound (it has a picture and sound to play), and a
+ * rendered export's request is recorded as `exportWorker:render`.
  */
 function exportWorker(record: (kind: string, detail?: unknown) => void): EventEmitter {
   const frame = 6000;
   const snap = (ticks: number): number => Math.round(ticks / frame) * frame;
   const child = new EventEmitter();
   let running: { id: number; timer: ReturnType<typeof setTimeout> } | undefined;
-  type Request = { source: string; output?: string; removed: Array<{ from: number; to: number }> };
+  type Request = { source: string; output?: string; removed: Array<{ from: number; to: number }>; render?: unknown; track?: string };
   const plan = async (request: Request) => {
     const duration = snap(((await mp4Duration(request.source)) ?? 8) * 90_000);
     const removed = request.removed.map(({ from, to }) => ({ from: snap(from), to: Math.min(duration, snap(to)) })).filter(({ from, to }) => to > from);
@@ -135,7 +139,9 @@ function exportWorker(record: (kind: string, detail?: unknown) => void): EventEm
       at = Math.max(at, range.to);
     }
     if (at < duration) parts.push({ requested: at, start: at, stop: duration, outStart: out, fellBack: false, reencoded: false });
-    return { timescale: 90_000, duration, outputDuration: duration - gone, frames: duration / frame, removed, dropped: [], parts, secondDescription: false, hasAudio: true };
+    const marker = `${request.source}.editable.json`;
+    const editable = fs.existsSync(marker) ? fs.readFileSync(marker, "utf8") : undefined;
+    return { timescale: 90_000, duration, outputDuration: duration - gone, frames: duration / frame, removed, dropped: [], parts, secondDescription: false, hasAudio: true, ...(editable ? { editable } : {}) };
   };
   const send = (message: unknown): void => { setImmediate(() => child.emit("message", message)); };
   Object.assign(child, {
@@ -152,8 +158,13 @@ function exportWorker(record: (kind: string, detail?: unknown) => void): EventEm
       if (message.type === "inspect" && request) {
         void plan(request).then((made) => send(made ? { type: "inspected", id, plan: made } : { type: "failed", id, code: "nothing_kept", detail: "every frame is removed" }));
       }
+      if (message.type === "extract" && request?.output && id !== undefined) {
+        fs.copyFileSync(request.source, request.output, fs.constants.COPYFILE_EXCL);
+        send({ type: "extracted", id, bytes: fs.statSync(request.output).size });
+      }
       if (message.type === "export" && request?.output && id !== undefined) {
         const output = request.output;
+        if (request.render) record("exportWorker:render", request.render);
         void plan(request).then((made) => {
           fs.copyFileSync(request.source, output, fs.constants.COPYFILE_EXCL);
           send({ type: "progress", id, fraction: 0.5 });

@@ -1,11 +1,17 @@
 /**
  * The edit view (plan 085): which recording is being cut, the timeline's parts, the selection and Undo. Main owns the
  * edit (the removed ranges it saved, snapped to frames by the engine) and the export; the page keeps only what has
- * not been saved: where the timeline was split without removing anything, the selected part, and the ranges each
+ * not been saved: where the timeline was split without removing anything, the selected part, and the edits each
  * change replaced, for Undo. Every change is saved at once, as one choice on `recordingEdit:<id>`.
+ *
+ * An editable recording (plan 087) also has a scene: the camera's place, size and visibility, and each input's
+ * volume. While the bubble is dragged or a slider moves, the page shows a draft of it; letting go saves it, one change
+ * for Undo. Its preview plays the recording (the screen with its first sound) with the camera's and the second sound's
+ * own tracks beside it, kept to the recording's time, and each sound through a gain at its volume.
  */
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
+import type { EditableSound, EditScene } from "../../../shared/editable";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, view } from "./core";
 import { forgetMenu } from "./library";
@@ -16,8 +22,12 @@ export let editorVideo: HTMLVideoElement | null = null;
 let splits: number[] = [];
 /** The selected part, by where it starts. */
 export let selectedFrom: number | undefined;
-/** The removed ranges each saved change replaced, newest last. */
-const undoStack: EditRange[][] = [];
+/** An edit as Undo restores it: its cuts, and an editable recording's scene. */
+interface EditState { removed: EditRange[]; scene?: EditScene }
+/** The edits each saved change replaced, newest last. */
+const undoStack: EditState[] = [];
+/** The scene shown while the bubble is dragged or a slider moves, until it is let go and saved. */
+let sceneDraft: EditScene | undefined;
 /** A change being saved: further edits wait for its answer, which brings the revision they change. */
 export let editorSaving = false;
 let frameCallback: number | undefined;
@@ -79,6 +89,7 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   splits = [];
   selectedFrom = undefined;
   undoStack.length = 0;
+  sceneDraft = undefined;
   draw();
   // Refused (another recording's export runs): the view closes and says so.
   if (!(await send({ action: "open" })) && editingItem === item && !editorView()) {
@@ -99,6 +110,7 @@ export function closeEditor(restore = true): void {
   splits = [];
   selectedFrom = undefined;
   undoStack.length = 0;
+  sceneDraft = undefined;
   draw();
   void window.settings.choose(`recordingEdit:${item.id}`, { action: "close" } satisfies EditorChoice).then((result) => render(result.view), () => undefined);
   if (restore) focus(`clip-${item.id}-open`);
@@ -112,10 +124,117 @@ export function forgetEditor(ids: ReadonlySet<string>): void {
 export function attachEditorVideo(video: HTMLVideoElement | null): void {
   if (editorVideo && frameCallback !== undefined) editorVideo.cancelVideoFrameCallback(frameCallback);
   frameCallback = undefined;
+  if (editorVideo) for (const [name, listener] of followers) editorVideo.removeEventListener(name, listener);
   editorVideo = video;
   // Chromium has it; a page test's DOM may not.
   if (video && typeof video.requestVideoFrameCallback === "function") watchFrames(video);
+  if (video) for (const [name, listener] of followers) video.addEventListener(name, listener);
 }
+
+/** An editable recording's camera and second sound (plan 087), played beside the recording for its preview. */
+let previewCamera: HTMLVideoElement | null = null;
+let previewSound: HTMLAudioElement | null = null;
+/** How far a follower may drift from the recording before it is put back to its time. */
+const DRIFT_SECONDS = 0.12;
+
+export function attachPreviewCamera(video: HTMLVideoElement | null): void {
+  previewCamera = video;
+  if (video) follow(video);
+}
+
+export function attachPreviewSound(audio: HTMLAudioElement | null): void {
+  previewSound = audio;
+  if (audio) {
+    follow(audio);
+    applyVolumes();
+  }
+}
+
+/** Puts `media` where the recording is, playing or not as it is. */
+function follow(media: HTMLMediaElement): void {
+  const main = editorVideo;
+  if (!main || !Number.isFinite(main.currentTime)) return;
+  if (Math.abs(media.currentTime - main.currentTime) > DRIFT_SECONDS) media.currentTime = main.currentTime;
+  media.playbackRate = main.playbackRate;
+  if (main.paused && !media.paused) media.pause();
+  else if (!main.paused && media.paused) void media.play().catch(() => undefined);
+}
+
+function followAll(): void {
+  for (const media of [previewCamera, previewSound]) if (media) follow(media);
+}
+
+/** The recording's events its followers take. */
+const followers: Array<[string, () => void]> = [
+  ["play", () => { resumeAudio(); followAll(); }],
+  ["pause", followAll], ["seeked", followAll], ["ratechange", followAll], ["timeupdate", followAll],
+];
+
+/** Each sound's gain, through Web Audio: a volume may raise it above its element's 100% (to 600%, as the Studio's). */
+let audio: { context: AudioContext; gains: Map<HTMLMediaElement, GainNode> } | undefined;
+
+function gainFor(media: HTMLMediaElement): GainNode | undefined {
+  if (typeof AudioContext !== "function") return undefined;
+  audio ??= { context: new AudioContext(), gains: new Map() };
+  let gain = audio.gains.get(media);
+  if (!gain) {
+    gain = audio.context.createGain();
+    audio.context.createMediaElementSource(media).connect(gain).connect(audio.context.destination);
+    audio.gains.set(media, gain);
+  }
+  return gain;
+}
+
+function resumeAudio(): void {
+  if (audio?.context.state === "suspended") void audio.context.resume().catch(() => undefined);
+}
+
+/** The scene shown now: the draft being moved, or the one saved. */
+export function editorScene(editor: EditorView): EditScene | undefined {
+  return sceneDraft ?? editor.editable?.scene;
+}
+
+/** A sound's volume in `scene`, as a gain. */
+export function soundGain(scene: EditScene, sound: EditableSound | undefined): number {
+  const percent = sound === "microphone" ? scene.volumes.microphone : sound === "system" ? scene.volumes.system : 100;
+  return percent / 100;
+}
+
+/** Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. */
+function applyVolumes(): void {
+  const editor = editorView();
+  const scene = editor && editorScene(editor);
+  if (!editor?.editable || !scene) return;
+  const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[editorVideo, editor.editable.sounds[0]], [previewSound, editor.editable.sounds[1]]];
+  for (const [media, sound] of pairs) {
+    if (!media) continue;
+    const gain = gainFor(media);
+    if (gain) gain.gain.value = soundGain(scene, sound);
+  }
+}
+
+/**
+ * The scene changes: while `commit` is false it is a draft (the bubble dragged, a slider moving), shown and heard at
+ * once; once committed it is saved, one change for Undo.
+ */
+export async function changeScene(next: EditScene, commit: boolean): Promise<boolean> {
+  const editor = editorView();
+  if (!editor?.editable || editor.state !== "ready" || editor.export.phase === "exporting") return false;
+  sceneDraft = next;
+  applyVolumes();
+  draw();
+  if (!commit) return true;
+  const before: EditState = { removed: copy(editor.removed), scene: editor.editable.scene };
+  undoStack.push(before);
+  const saved = await save(editor.removed, next);
+  sceneDraft = undefined;
+  if (!saved) undoStack.pop();
+  applyVolumes();
+  draw();
+  return saved;
+}
+
+const copy = (ranges: readonly EditRange[]): EditRange[] => ranges.map(([from, to]): EditRange => [from, to]);
 
 /**
  * While the preview plays, each frame shown is checked: one in a removed range jumps to where that range ends, so the
@@ -177,7 +296,7 @@ export async function toggleSelected(): Promise<void> {
   const part = selectedPart(editor);
   if (!part) return;
   const removed = part.removed ? subtract(editor.removed, part) : normalizeRanges([...editor.removed, [part.from, part.to]]);
-  undoStack.push(editor.removed.map(([from, to]): EditRange => [from, to]));
+  undoStack.push({ removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}) });
   const saved = await save(removed);
   if (!saved) undoStack.pop();
   else announce(translate(part.removed ? "Kept {from} to {to}" : "Removed {from} to {to}", view?.language, {
@@ -203,17 +322,19 @@ export async function undoEdit(): Promise<void> {
   if (!editor || editor.state !== "ready" || editorSaving || editor.export.phase === "exporting") return;
   const previous = undoStack.pop();
   if (!previous) return;
-  if (await save(previous)) announce(translate("Undone", view?.language));
-  else undoStack.push(previous);
+  if (await save(previous.removed, previous.scene)) {
+    applyVolumes();
+    announce(translate("Undone", view?.language));
+  } else undoStack.push(previous);
 }
 
-async function save(removed: EditRange[]): Promise<boolean> {
+async function save(removed: EditRange[], scene?: EditScene): Promise<boolean> {
   const editor = editorView();
   if (!editor) return false;
   editorSaving = true;
   draw();
   try {
-    return await send({ action: "save", removed, revision: editor.revision });
+    return await send({ action: "save", removed, revision: editor.revision, ...(scene ? { scene } : {}) });
   } finally {
     editorSaving = false;
     draw();
@@ -230,6 +351,7 @@ export function cancelExport(): Promise<boolean> {
 
 export function discardEdit(): Promise<boolean> {
   undoStack.length = 0;
+  sceneDraft = undefined;
   splits = [];
   return send({ action: "discard" });
 }

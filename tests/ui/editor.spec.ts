@@ -134,3 +134,83 @@ test("the preview skips removed parts, Undo takes a removal back, and a cancelle
   await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
   expect(fs.readdirSync(folder)).toEqual([path.basename(clip)]);
 });
+
+/**
+ * An editable recording (plan 087): the camera's bubble over the production player, holding the camera's preview
+ * track and placed where the recording left it; dragged to the opposite corner and its microphone turned down, saved by
+ * main as a version-2 edit; the recording itself and the preview still play through the CORS-enabled scheme; and the
+ * export is asked for rendered, with the camera where it was dragged and the volumes in dB.
+ */
+test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  const bubble = page.locator("#editor-camera");
+  await expect(bubble).toBeVisible();
+  await expect(bubble.locator("video")).toHaveAttribute("src", /^recordstuff-media:\/\/preview\/\d+\/camera$/);
+  await expect(page.locator(".editor-overlay audio")).toHaveAttribute("src", /\/secondSound$/);
+
+  // The picture as drawn, and the bubble near its top-right corner, as the recording left it.
+  const picture = await read<{ left: number; top: number; width: number; height: number }>(page, `(() => {
+    const video = document.querySelector("#editor .pc video");
+    const box = video.getBoundingClientRect();
+    const scale = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
+    const width = video.videoWidth * scale, height = video.videoHeight * scale;
+    return { left: box.left + (box.width - width) / 2, top: box.top + (box.height - height) / 2, width, height }; })()`);
+  const before = (await bubble.boundingBox())!;
+  expect(before.x + before.width).toBeGreaterThan(picture.left + picture.width * 0.95);
+  expect(before.y).toBeLessThan(picture.top + picture.height * 0.1);
+
+  // The recording plays, its sound fetched with CORS for the volumes, and the camera's track follows it.
+  expect(await read<string>(page, `document.querySelector("#editor .pc video").crossOrigin`)).toBe("anonymous");
+  await page.locator("#editor .pc video").evaluate(async (el) => { (el as HTMLVideoElement).muted = true; await (el as HTMLVideoElement).play(); });
+  expect(await eventually(async () => (await read<number>(page, `document.querySelector("#editor-camera video").currentTime`)) > 0.3)).toBe(true);
+  await page.locator("#editor .pc video").evaluate((el) => (el as HTMLVideoElement).pause());
+
+  // Dragged to the bottom-left corner: main saves the scene with it there.
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(picture.left + 2, picture.top + picture.height - 2, { steps: 8 });
+  await page.mouse.up();
+  const edits = path.join(path.dirname(path.dirname(folder)), "userData", "edits");
+  const record = (): Record<string, any> => {
+    const file = fs.readdirSync(edits).find((name) => name.endsWith(".json") && name !== "exports-in-flight.json");
+    return file ? JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")) : {};
+  };
+  expect(await eventually(() => record().scene?.camera?.x === 0 && record().scene?.camera?.y === 1)).toBe(true);
+  expect(record()).toMatchObject({ version: 2, scene: { camera: { width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } } });
+  const after = (await bubble.boundingBox())!;
+  expect(after.x).toBeLessThan(picture.left + 2);
+  expect(after.y + after.height).toBeGreaterThan(picture.top + picture.height - 2);
+
+  // The microphone a step down with the keyboard.
+  const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
+  await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
+  await microphone.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(microphone).toHaveAttribute("aria-valuetext", "95%");
+  expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
+
+  // The scene's row stays inside the window, each control readable and large enough to hit.
+  const problems = await read<string[]>(page, `(() => {
+    const out = [];
+    const panel = document.querySelector(".editor-panel");
+    if (panel.scrollWidth > panel.clientWidth + 1) out.push("the panel overflows sideways");
+    for (const el of panel.querySelectorAll(".editor-scene [role=switch], .editor-scene [data-slot=slider-thumb], .editor-scene-value, .editor-scene label")) {
+      const box = el.getBoundingClientRect();
+      if (box.right > innerWidth || box.bottom > innerHeight || box.left < 0) out.push((el.id || el.className) + " outside the window");
+      if (getComputedStyle(el).visibility === "hidden") out.push((el.id || el.className) + " hidden");
+      if (parseFloat(getComputedStyle(el).fontSize) < 12) out.push((el.id || el.className) + " text under 12 px");
+    }
+    return out; })()`);
+  expect(problems).toEqual([]);
+
+  // Export: rendered, with no cut, the camera where it was dragged in the recording's shape.
+  await page.locator("#editor-export").click();
+  await expect(page.locator(".editor-done")).toBeVisible({ timeout: 5000 });
+  const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera: Record<string, number | boolean>; volumesDb: number[] };
+  expect(render.camera).toEqual({ width: 0.2, height: 0.3, rounding: 0.15, x: 0, y: 1, mirror: false });
+  expect(render.volumesDb[0]).toBe(0);
+  expect(render.volumesDb[1]).toBeCloseTo(20 * Math.log10(0.95), 6);
+  await page.keyboard.press("Escape");
+});

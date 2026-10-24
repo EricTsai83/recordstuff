@@ -37,9 +37,12 @@ import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderPr
 export const MEDIA_SCHEME = "recordstuff-media";
 /**
  * What the scheme is registered with before ready, by the app and by the Settings fixture alike: standard and
- * streaming, so <video> can fetch byte ranges, and allowed by the page's CSP as a secure origin.
+ * streaming, so <video> can fetch byte ranges, and allowed by the page's CSP as a secure origin. CORS-enabled (plan
+ * 087), with every file answered as readable by any page (`fileResponse`), so the edit view's media, fetched with
+ * `crossOrigin="anonymous"`, can be played through Web Audio at the volumes the edit sets; a request without CORS, as
+ * every other player's, is served as before.
  */
-export const MEDIA_SCHEME_PRIVILEGES = { standard: true, secure: true, stream: true, supportFetchAPI: true } as const;
+export const MEDIA_SCHEME_PRIVILEGES = { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } as const;
 export type RecordingFileAction = "reveal" | "open" | "trash" | "drag";
 export const RECORDING_FILE_ACTIONS: readonly RecordingFileAction[] = ["reveal", "open", "trash", "drag"];
 

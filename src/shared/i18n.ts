@@ -662,6 +662,13 @@ export const ZH_TW = {
   "the export engine could not be loaded.": "無法載入匯出引擎。",
   "The export failed while encoding a join. The recording is unchanged; export again.": "編碼接點時匯出失敗。原始錄影沒有變動，請再匯出一次。",
   "The export failed. The recording is unchanged; export again.": "匯出失敗。原始錄影沒有變動，請再匯出一次。",
+  // An editable recording's camera and sound in the edit view (plan 087).
+  "Camera and sound": "相機與聲音",
+  "Camera size": "相機大小",
+  "Camera: {x}% across, {y}% down. Drag it, or use the arrow keys, to move it.": "相機：水平 {x}%、垂直 {y}%。可拖曳或用方向鍵移動。",
+  "Preparing the camera…": "正在準備相機…",
+  "Write the recording with the camera and sound set here to a new file beside it": "依這裡設定的相機與聲音，在錄影旁寫出一個新檔案",
+  "The export failed while encoding. The recording is unchanged; export again.": "編碼時匯出失敗。原始錄影沒有變動，請再匯出一次。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */
   or: "或",
 } as const;

@@ -35,6 +35,8 @@ export async function fileResponse(file: string, type: string, request: Request)
     status: range ? 206 : 200,
     headers: {
       "content-type": type, "accept-ranges": "bytes", "content-length": String(size === 0 ? 0 : end - start + 1),
+      // Readable by the app's own pages through Web Audio (the edit view, plan 087); the scheme serves only its files.
+      "access-control-allow-origin": "*",
       ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}),
     },
   });
