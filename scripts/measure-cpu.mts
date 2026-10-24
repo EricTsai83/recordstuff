@@ -61,6 +61,8 @@
  * Live preview with the pointer, so Power saving is at 10 there either way. `--studio-rate off|power|standard|smooth`
  * (plan 092, D1; default `power`, the Studio as it was before the choice) seeds the Studio's preview rate in
  * settings.json, restored with the other seeded keys: under `off` S and L show no preview, only the meters.
+ * `--studio-view composed|screen|camera` (plan 094; default `composed`) seeds its view the same way, so the Camera view
+ * and its Composed control are measured back to back on one bundle.
  *
  * Plan 091's isolating switches, each a development switch passed with `open --env` (launchd's copy is refused above):
  * `--audio off` records without sound (`RECORDSTUFF_CAPTURE_AUDIO=off`, native-host-process.ts `developmentCapture`,
@@ -120,7 +122,7 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate off|power|standard|smooth] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate off|power|standard|smooth] [--studio-view composed|screen|camera] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
@@ -130,6 +132,9 @@ let studioActive = false;
 /** Plan 092: the Studio's preview rate, seeded for the round. */
 const STUDIO_RATES = ["off", "power", "standard", "smooth"] as const;
 let studioRate: (typeof STUDIO_RATES)[number] | undefined;
+/** Plan 094: the Studio's preview view, seeded for the round. */
+const STUDIO_VIEWS = ["composed", "screen", "camera"] as const;
+let studioView: (typeof STUDIO_VIEWS)[number] | undefined;
 /** What each rate shows while the Studio is only looked at, and while the pointer is on it. */
 const STUDIO_RATE_FPS = { off: [0, 0], power: [5, 10], standard: [10, 10], smooth: [15, 15] } as const;
 let diagnostics = false;
@@ -159,6 +164,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--studio") studio = true;
   else if (arg === "--studio-active") studioActive = true;
   else if (arg === "--studio-rate" && STUDIO_RATES.includes(argv[i + 1] as (typeof STUDIO_RATES)[number])) studioRate = argv[++i] as (typeof STUDIO_RATES)[number];
+  else if (arg === "--studio-view" && STUDIO_VIEWS.includes(argv[i + 1] as (typeof STUDIO_VIEWS)[number])) studioView = argv[++i] as (typeof STUDIO_VIEWS)[number];
   else if (arg === "--diagnostics") diagnostics = true;
   else if (arg === "--material" && (argv[i + 1] === "moving" || argv[i + 1] === "still")) materialKind = argv[++i] as keyof typeof MATERIALS;
   else if (arg === "--profile") profileProcesses = true;
@@ -172,8 +178,9 @@ if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 |
 if (camera !== undefined && (!skipSettings || !skipPlayback || /[\s]/.test(camera))) { console.error(usage); process.exit(2); }
 // The Studio's window stays open between its scenarios and C's or P's, whose role contracts do not allow its services.
 if (studio && (skipRecording || !skipSettings || !skipPlayback)) { console.error(usage); process.exit(2); }
-if ((studioActive || studioRate !== undefined) && !studio) { console.error(usage); process.exit(2); }
+if ((studioActive || studioRate !== undefined || studioView !== undefined) && !studio) { console.error(usage); process.exit(2); }
 const shownRate = studioRate ?? "power";
+const shownView = studioView ?? "composed";
 const MATERIAL = MATERIALS[materialKind];
 cameraPreview = camera !== undefined && cameraPreviewOn({ RECORDSTUFF_CAMERA_PROTOTYPE: camera });
 
@@ -266,8 +273,8 @@ function seed(frameRate: 30 | 60): void {
   const device = camera === undefined ? undefined : /(?:^|,)\s*device\s*=\s*([^,]+)/.exec(camera)?.[1]?.trim();
   // Without `--camera` the switch is held off, so no recording or Studio of the round opens a camera.
   const cameraSettings = camera === undefined ? { camera: false } : { camera: true, ...(device ? { cameraDevice: { id: device, label: device } } : {}) };
-  // `--studio`: the preview at the round's rate (plan 092), composed; the last rate shown is kept as the app keeps it.
-  const studioSettings = studio ? { studioPreview: { rate: shownRate, view: "composed" } } : {};
+  // `--studio`: the preview at the round's rate (plan 092) and view (plan 094); the last shown is kept as the app keeps it.
+  const studioSettings = studio ? { studioPreview: { rate: shownRate, view: shownView } } : {};
   writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality, ...cameraSettings, ...studioSettings });
   seeded = true;
 }
@@ -888,7 +895,7 @@ async function main(): Promise<number> {
     : errored ? `ERROR: ${runError instanceof Error ? runError.message : String(runError)}`
     : outcome === "fail" ? `FAIL${accessibility ? `; later blocked (${accessibility.message})` : ""}`
     : accessibility ? `BLOCKED (${accessibility.message})` : "PASS";
-  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, studio, studioActive, studioRate: studio ? shownRate : null, material: materialKind, audio: audioOff ? "off" : "on", captureInterval: frameInterval ? "frame" : "quarter", diagnostics, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "report.json"), `${JSON.stringify({ result, options: { minutes, repeat, fps60: with60, skipRecording, skipSettings, skipPlayback, camera: camera ?? null, studio, studioActive, studioRate: studio ? shownRate : null, studioView: studio ? shownView : null, material: materialKind, audio: audioOff ? "off" : "on", captureInterval: frameInterval ? "frame" : "quarter", diagnostics, profile: profileProcesses }, environment, scenarios, recordings, cleanup, events }, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, "report.md"), renderReport(result, environment, scenarios, recordings, cleanup));
   console.log(`Report ${path.relative(REPO_ROOT, dir)}/report.md`);
   console.log(result);
