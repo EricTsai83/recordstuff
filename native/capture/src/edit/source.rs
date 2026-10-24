@@ -364,8 +364,11 @@ pub fn read(source: &dyn ReadAt) -> Result<SourceIndex> {
     let video = video.ok_or_else(|| ReadError::unsupported("no video track"))?;
     let video = video_track(video)?;
     let audio = audio.map(|a| audio_track(a, movie_timescale)).transpose()?;
-    let camera = camera.map(video_track).transpose()?;
-    let second_audio = second_audio.map(|a| audio_track(a, movie_timescale)).transpose()?;
+    // A recording that ended without its stop may hold no fragment of the camera or the second sound yet, though its
+    // header names them: what it does hold, the screen and its sound, is kept (plan 087's recovery), the empty track
+    // left out.
+    let camera = camera.filter(|t| !t.samples.is_empty()).map(video_track).transpose()?;
+    let second_audio = second_audio.filter(|t| !t.samples.is_empty()).map(|a| audio_track(a, movie_timescale)).transpose()?;
     for samples in [Some(&video.samples), audio.as_ref().map(|a| &a.samples), camera.as_ref().map(|c| &c.samples), second_audio.as_ref().map(|a| &a.samples)]
         .into_iter()
         .flatten()
@@ -912,5 +915,25 @@ pub(crate) mod tests {
         let (_, file) = mp4.finish().unwrap();
         let error = read(&file).unwrap_err();
         assert!(error.detail.contains("not an editable recording"), "{}", error.detail);
+    }
+
+    #[test]
+    fn an_interrupted_editable_recording_whose_camera_wrote_nothing_yet_keeps_its_screen_and_sound() {
+        // Codex's review of plan 087: the screen's and the sounds' first fragments written, the camera's not yet.
+        let audio = TrackConfig { skip: 2112, ..audio_config() };
+        let description = crate::editable::Description {
+            sounds: vec![crate::editable::Sound::System, crate::editable::Sound::Microphone],
+            camera: Some(crate::camera_layout::Layout::default()),
+        };
+        let mut mp4 =
+            HybridMp4::create_with_metadata(Vec::new(), vec![video_config(), audio.clone(), audio, video_config()], Some(description.to_bytes())).unwrap();
+        let screen: Vec<Vec<u8>> = (0..30).map(|n| vec![1, n as u8]).collect();
+        mp4.write_fragment(0, &screen.iter().enumerate().map(|(n, d)| Sample { data: d, duration: 3000, sync: n == 0 }).collect::<Vec<_>>()).unwrap();
+        let sound = vec![vec![2u8; 9]; 47];
+        mp4.write_fragment(1, &sound.iter().map(|d| Sample { data: d, duration: 1024, sync: true }).collect::<Vec<_>>()).unwrap();
+        let file = mp4.output().clone();
+        let index = read(&file).unwrap();
+        assert_eq!(index.video.times.len(), 30);
+        assert!(index.audio.is_some() && index.camera.is_none() && index.second_audio.is_none() && index.description.is_some());
     }
 }

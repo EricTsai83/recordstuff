@@ -12,6 +12,7 @@
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
 import type { EditableSound, EditScene } from "../../../shared/editable";
+import { softLimit } from "../../../shared/audio-volume";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, view } from "./core";
 import { forgetMenu } from "./library";
@@ -134,55 +135,91 @@ export function attachEditorVideo(video: HTMLVideoElement | null): void {
 /** An editable recording's camera and second sound (plan 087), played beside the recording for its preview. */
 let previewCamera: HTMLVideoElement | null = null;
 let previewSound: HTMLAudioElement | null = null;
-/** How far a follower may drift from the recording before it is put back to its time. */
+/** How far a follower may drift from the playing recording before it is put back to its time. */
 const DRIFT_SECONDS = 0.12;
 
 export function attachPreviewCamera(video: HTMLVideoElement | null): void {
   previewCamera = video;
-  if (video) follow(video);
+  if (video) follow(video, true);
 }
 
-export function attachPreviewSound(audio: HTMLAudioElement | null): void {
-  previewSound = audio;
-  if (audio) {
-    follow(audio);
-    applyVolumes();
+export function attachPreviewSound(media: HTMLAudioElement | null): void {
+  // A view's element goes with its view: its sound graph is released, so none is kept for an element no longer shown.
+  if (previewSound && previewSound !== media) release(previewSound);
+  previewSound = media;
+  if (media) {
+    follow(media, true);
+    syncPreviewAudio();
   }
 }
 
-/** Puts `media` where the recording is, playing or not as it is. */
-function follow(media: HTMLMediaElement): void {
+/**
+ * Puts `media` where the recording is, playing or not as it is, at its rate and with its mute and volume (the player's
+ * own controls). `exact` after a seek or when it joins; while playing it is moved back only once it drifts.
+ */
+function follow(media: HTMLMediaElement, exact: boolean): void {
   const main = editorVideo;
   if (!main || !Number.isFinite(main.currentTime)) return;
-  if (Math.abs(media.currentTime - main.currentTime) > DRIFT_SECONDS) media.currentTime = main.currentTime;
+  const drift = Math.abs(media.currentTime - main.currentTime);
+  if (exact ? drift > 0.001 : drift > DRIFT_SECONDS) media.currentTime = main.currentTime;
   media.playbackRate = main.playbackRate;
+  media.muted = main.muted;
+  media.volume = main.volume;
   if (main.paused && !media.paused) media.pause();
   else if (!main.paused && media.paused) void media.play().catch(() => undefined);
 }
 
-function followAll(): void {
-  for (const media of [previewCamera, previewSound]) if (media) follow(media);
+function followAll(exact: boolean): void {
+  for (const media of [previewCamera, previewSound]) if (media) follow(media, exact);
 }
 
 /** The recording's events its followers take. */
 const followers: Array<[string, () => void]> = [
-  ["play", () => { resumeAudio(); followAll(); }],
-  ["pause", followAll], ["seeked", followAll], ["ratechange", followAll], ["timeupdate", followAll],
+  ["play", () => { resumeAudio(); followAll(true); }],
+  ["pause", () => followAll(true)], ["seeked", () => followAll(true)], ["ratechange", () => followAll(false)],
+  ["volumechange", () => followAll(false)], ["timeupdate", () => followAll(false)],
 ];
 
-/** Each sound's gain, through Web Audio: a volume may raise it above its element's 100% (to 600%, as the Studio's). */
-let audio: { context: AudioContext; gains: Map<HTMLMediaElement, GainNode> } | undefined;
+/**
+ * The preview's sound (plan 087): each element through a gain at its track's volume, summed, then through the export's
+ * soft limit (core's `limit`, as a wave shaper), so a loud or raised mix sounds as the export will. Created once; each
+ * element's source can be made only once, so an element's nodes live as long as it is shown, and are released after.
+ */
+let audio: { context: AudioContext; mix: AudioNode; nodes: Map<HTMLMediaElement, { source: AudioNode; gain: GainNode }> } | undefined;
+/** The span of sums the limiter's curve covers: past it a sum is as limited as full scale is. */
+const LIMIT_SPAN = 8;
 
 function gainFor(media: HTMLMediaElement): GainNode | undefined {
   if (typeof AudioContext !== "function") return undefined;
-  audio ??= { context: new AudioContext(), gains: new Map() };
-  let gain = audio.gains.get(media);
-  if (!gain) {
-    gain = audio.context.createGain();
-    audio.context.createMediaElementSource(media).connect(gain).connect(audio.context.destination);
-    audio.gains.set(media, gain);
+  if (!audio) {
+    const context = new AudioContext();
+    // Scaled into the shaper's -1…1 and out again by its curve, which is the limit of the sums -LIMIT_SPAN…LIMIT_SPAN.
+    const into = context.createGain();
+    into.gain.value = 1 / LIMIT_SPAN;
+    const shaper = context.createWaveShaper();
+    shaper.curve = Float32Array.from({ length: 4096 }, (_, n) => softLimit((n / 4095 * 2 - 1) * LIMIT_SPAN));
+    into.connect(shaper).connect(context.destination);
+    audio = { context, mix: into, nodes: new Map() };
   }
-  return gain;
+  let nodes = audio.nodes.get(media);
+  if (!nodes) {
+    const source = audio.context.createMediaElementSource(media);
+    const gain = audio.context.createGain();
+    source.connect(gain).connect(audio.mix);
+    nodes = { source, gain };
+    audio.nodes.set(media, nodes);
+  }
+  return nodes.gain;
+}
+
+/** Stops a follower that left and lets its nodes go. */
+function release(media: HTMLMediaElement): void {
+  media.pause();
+  const nodes = audio?.nodes.get(media);
+  if (!nodes) return;
+  nodes.source.disconnect();
+  nodes.gain.disconnect();
+  audio!.nodes.delete(media);
 }
 
 function resumeAudio(): void {
@@ -200,11 +237,18 @@ export function soundGain(scene: EditScene, sound: EditableSound | undefined): n
   return percent / 100;
 }
 
-/** Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. */
-function applyVolumes(): void {
+/**
+ * Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. Any other
+ * recording plays as it is: the edit view's player keeps its element, and so its gain, from one recording to the next.
+ */
+export function syncPreviewAudio(): void {
   const editor = editorView();
   const scene = editor && editorScene(editor);
-  if (!editor?.editable || !scene) return;
+  if (!editor?.editable || !scene) {
+    const kept = editorVideo && audio?.nodes.get(editorVideo);
+    if (kept) kept.gain.gain.value = 1;
+    return;
+  }
   const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[editorVideo, editor.editable.sounds[0]], [previewSound, editor.editable.sounds[1]]];
   for (const [media, sound] of pairs) {
     if (!media) continue;
@@ -221,7 +265,7 @@ export async function changeScene(next: EditScene, commit: boolean): Promise<boo
   const editor = editorView();
   if (!editor?.editable || editor.state !== "ready" || editor.export.phase === "exporting") return false;
   sceneDraft = next;
-  applyVolumes();
+  syncPreviewAudio();
   draw();
   if (!commit) return true;
   const before: EditState = { removed: copy(editor.removed), scene: editor.editable.scene };
@@ -229,7 +273,7 @@ export async function changeScene(next: EditScene, commit: boolean): Promise<boo
   const saved = await save(editor.removed, next);
   sceneDraft = undefined;
   if (!saved) undoStack.pop();
-  applyVolumes();
+  syncPreviewAudio();
   draw();
   return saved;
 }
@@ -323,7 +367,7 @@ export async function undoEdit(): Promise<void> {
   const previous = undoStack.pop();
   if (!previous) return;
   if (await save(previous.removed, previous.scene)) {
-    applyVolumes();
+    syncPreviewAudio();
     announce(translate("Undone", view?.language));
   } else undoStack.push(previous);
 }

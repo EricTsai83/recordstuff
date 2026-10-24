@@ -52,3 +52,17 @@ export function volumeFromDb(db: number): number {
   if (db <= SILENT_GAIN_DB) return 0;
   return Math.min(AUDIO_VOLUME_MAX, Math.round(100 * 10 ** (db / 20) / AUDIO_VOLUME_STEP) * AUDIO_VOLUME_STEP);
 }
+
+/** -1 dBFS: where the engine's soft limit begins (native/capture/src/core/mixer.rs `LIMIT_THRESHOLD`). */
+const LIMIT_THRESHOLD = 0.8912509;
+
+/**
+ * The engine's soft limit of a mix or a raised input (mixer.rs `limit`): unchanged up to -1 dBFS, approaching full
+ * scale above it without reaching it. The edit view's preview mixes through it (plan 087), as the export does.
+ */
+export function softLimit(sum: number): number {
+  const level = Math.abs(sum);
+  if (level <= LIMIT_THRESHOLD) return sum;
+  const room = 1 - LIMIT_THRESHOLD;
+  return Math.sign(sum) * Math.min(LIMIT_THRESHOLD + room * Math.tanh((level - LIMIT_THRESHOLD) / room), 1 - 2 ** -24);
+}

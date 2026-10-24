@@ -78,6 +78,8 @@ export function EditorDialog() {
   const editor = model.editorView();
   const language = model.view?.language ?? "en";
   const exporting = editor?.export.phase === "exporting";
+  // Every view drawn: an editable recording's gains at its scene, any other recording's at unity (plan 087).
+  useEffect(() => model.syncPreviewAudio());
   return (
     <Dialog
       open={Boolean(model.editingItem)}

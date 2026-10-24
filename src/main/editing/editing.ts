@@ -379,8 +379,19 @@ export class Editing {
     return fileResponse(file, track === "camera" ? "video/mp4" : "audio/mp4", request);
   }
 
-  /** Copies the open editable recording's camera and second sound for its preview, each told when it is ready. */
+  /**
+   * Copies the open editable recording's camera and second sound for its preview, each told when it is ready. Once it
+   * ends, however it ends, a worker it kept busy for a view since closed goes (Codex's review of plan 087).
+   */
   private async preparePreview(open: Open, generation: number): Promise<void> {
+    try {
+      await this.copyPreviewTracks(open, generation);
+    } finally {
+      if (!this.open && !this.exportRun) this.deps.runner.closeIdle();
+    }
+  }
+
+  private async copyPreviewTracks(open: Open, generation: number): Promise<void> {
     const editable = open.editable;
     if (!editable) return;
     const tracks = PREVIEW_TRACKS.filter((track) => (track === "camera" ? editable.description.camera !== null : editable.description.sounds.length > 1));
@@ -398,6 +409,12 @@ export class Editing {
       } catch (cause) {
         this.deps.log(`editing: the preview's ${track} of ${open.path} could not be made: ${String(cause)}`);
         await fs.promises.rm(file, { force: true }).catch(() => undefined);
+        // A recording that ended before its camera wrote anything has none to place (the engine's reader leaves the
+        // empty track out): the view offers no bubble rather than waiting for one.
+        if (track === "camera" && cause instanceof ExportFailure && cause.code === "unsupported" && this.open === open) {
+          editable.description = { ...editable.description, camera: null };
+          this.deps.changed();
+        }
         continue;
       }
       // Closed or opened again meanwhile: the file is this view's no longer.

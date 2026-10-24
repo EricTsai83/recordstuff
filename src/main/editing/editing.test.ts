@@ -577,6 +577,31 @@ describe("an editable recording (plan 087)", () => {
     expect(ctx.worker.extract).not.toHaveBeenCalled();
   });
 
+  it("ends a worker kept busy by the preview of a view closed meanwhile, and offers no bubble for a camera that wrote nothing", async () => {
+    let finish!: () => void;
+    const worker = runner(undefined, DESCRIPTION);
+    worker.extract.mockImplementation(async ({ track }) => {
+      if (track === "camera") await new Promise<void>((resolve) => { finish = resolve; });
+      throw new ExportFailure("unsupported", `the recording has no ${track} track`);
+    });
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    await vi.waitFor(() => expect(worker.extract).toHaveBeenCalled());
+    // Closed while the camera is still being copied: the worker stays for that request, then goes.
+    ctx.editing.choose("rec", { action: "close" });
+    const closed = worker.calls.closeIdle;
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(worker.calls.closeIdle).toBe(closed + 1);
+
+    // Opened again: the camera's track holds nothing (an interrupted recording), so the view has no camera to place.
+    worker.extract.mockImplementation(async ({ track }) => { throw new ExportFailure("unsupported", `the recording has no ${track} track`); });
+    await ctx.editing.choose("rec", { action: "open" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ctx.editing.view()!.editable).not.toHaveProperty("camera");
+    expect(ctx.editing.view()!.editable!.scene).not.toHaveProperty("camera");
+  });
+
   it("removes the preview tracks a crash left at the next launch", async () => {
     const folder = path.join(dir, "userData", "edits", "preview");
     fs.mkdirSync(folder, { recursive: true });

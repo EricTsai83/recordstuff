@@ -67,6 +67,17 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   expect(bubble.querySelector("video")!.style.transform).toBe("scaleX(-1)");
   expect(document.querySelector<HTMLAudioElement>(".editor-overlay audio")!.getAttribute("src")).toBe("recordstuff-media://preview/1/secondSound");
 
+  // Its followers go where the recording goes: a seek of a single frame moves the camera exactly, and the player's mute
+  // reaches the second sound (Codex's review of plan 087).
+  const camera = bubble.querySelector("video")!;
+  const sound = document.querySelector<HTMLAudioElement>(".editor-overlay audio")!;
+  video.currentTime = 2.0333;
+  video.dispatchEvent(new Event("seeked"));
+  expect([camera.currentTime, sound.currentTime]).toEqual([2.0333, 2.0333]);
+  video.muted = true;
+  video.dispatchEvent(new Event("volumechange"));
+  expect(sound.muted).toBe(true);
+
   // An arrow key moves it a step and saves the scene with the cuts as they are.
   bubble.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 0, scene: { ...START, camera: { ...START.camera!, x: 0.96 } } }));

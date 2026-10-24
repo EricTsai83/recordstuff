@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import bounds from "./audio-volume.bounds.json";
-import { AUDIO_VOLUME_MAX, MAX_GAIN_DB, SILENT_GAIN_DB, isAudioVolume, isGainDb, isVolume, volumeDb, volumeFromDb } from "./audio-volume";
+import { AUDIO_VOLUME_MAX, MAX_GAIN_DB, SILENT_GAIN_DB, isAudioVolume, isGainDb, isVolume, volumeDb, volumeFromDb, softLimit } from "./audio-volume";
 
 describe("audio volume (plan 075, D21)", () => {
   it("is a whole percent from silent to 600%", () => {
@@ -26,5 +26,18 @@ describe("audio volume (plan 075, D21)", () => {
   it("has the bounds the engine applies (audio-volume.bounds.json, also read by native/capture/src/core/mod.rs)", () => {
     expect([SILENT_GAIN_DB, AUDIO_VOLUME_MAX]).toEqual([bounds.silentGainDb, bounds.maxVolumePercent]);
     for (const { percent, db } of bounds.volumes) expect(volumeDb(percent), `${percent}%`).toBeCloseTo(db, 12);
+  });
+});
+
+describe("the engine's soft limit, as the edit view's preview mixes through it (plan 087)", () => {
+  it("leaves a sum up to -1 dBFS as it is and brings a louder one under full scale, keeping its sign", () => {
+    expect(softLimit(0.5)).toBe(0.5);
+    expect(softLimit(-0.89)).toBe(-0.89);
+    expect(softLimit(1.2)).toBeGreaterThan(0.95);
+    expect(softLimit(1.2)).toBeLessThan(1);
+    expect(softLimit(-6)).toBeCloseTo(-1, 6);
+    expect(softLimit(-6)).toBeGreaterThan(-1);
+    // Continuous at the threshold: no step where the curve begins.
+    expect(softLimit(0.8912510) - softLimit(0.8912508)).toBeLessThan(1e-6);
   });
 });
