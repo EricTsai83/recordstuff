@@ -14,12 +14,21 @@ export function codecFrom(description: Uint8Array): string | undefined {
   return `avc1.${hex(description[1]!)}${hex(description[2]!)}${hex(description[3]!)}`;
 }
 
-/** Whether a message is a chunk the page can decode. */
+/** The largest chunk taken (plan 084): a 960-pixel key frame is tens of kilobytes; anything near this is not a preview's. */
+export const PREVIEW_MAX_CHUNK_BYTES = 4 * 1024 * 1024;
+/** The largest `avcC` record taken: it holds one sequence and one picture parameter set. */
+export const PREVIEW_MAX_DESCRIPTION_BYTES = 4096;
+/** The largest side taken, in pixels. */
+const PREVIEW_MAX_SIDE = 16_384;
+
+/** Whether a message is a chunk the page can decode: whole, numbered, and of a preview's size (plan 084). */
 export function isPreviewMessage(value: unknown): value is PreviewMessage {
   const m = value as Partial<PreviewMessage> | null;
-  return !!m && typeof m === "object" && Number.isInteger(m.width) && Number.isInteger(m.height) && m.data instanceof Uint8Array
-    && typeof m.key === "boolean" && typeof m.timestamp === "number" && typeof m.n === "number" && typeof m.sent === "number"
-    && (m.description === undefined || m.description instanceof Uint8Array);
+  const side = (n: unknown): boolean => Number.isInteger(n) && (n as number) > 0 && (n as number) <= PREVIEW_MAX_SIDE;
+  return !!m && typeof m === "object" && side(m.width) && side(m.height)
+    && m.data instanceof Uint8Array && m.data.byteLength > 0 && m.data.byteLength <= PREVIEW_MAX_CHUNK_BYTES
+    && typeof m.key === "boolean" && Number.isFinite(m.timestamp) && Number.isSafeInteger(m.n) && (m.n as number) > 0 && Number.isFinite(m.sent)
+    && (m.description === undefined || (m.description instanceof Uint8Array && m.description.byteLength <= PREVIEW_MAX_DESCRIPTION_BYTES));
 }
 
 /**

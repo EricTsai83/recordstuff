@@ -62,7 +62,11 @@
  * (plan 092, D1; default `power`, the Studio as it was before the choice) seeds the Studio's preview rate in
  * settings.json, restored with the other seeded keys: under `off` S and L show no preview, only the meters.
  * `--studio-view composed|screen|camera` (plan 094; default `composed`) seeds its view the same way, so the Camera view
- * and its Composed control are measured back to back on one bundle.
+ * and its Composed control are measured back to back on one bundle. `--studio-stall <at>,<for>` (plan 084, seconds)
+ * launches the bundle with `RECORDSTUFF_STUDIO_STALL`, so the Studio's page holds its thread for `for` seconds once it
+ * has held a session's port for `at`; each S recording then notes, for the capture process and each renderer, its
+ * memory just before the stall and the most it reached after. Use it with `--diagnostics` for the preview's figures;
+ * its CPU figures are not a baseline. `--studio-memory` notes the same at 15 s without a stall, as its control.
  *
  * Plan 091's isolating switches, each a development switch passed with `open --env` (launchd's copy is refused above):
  * `--audio off` records without sound (`RECORDSTUFF_CAPTURE_AUDIO=off`, native-host-process.ts `developmentCapture`,
@@ -100,6 +104,7 @@ import { parseSessionRecord } from "./lib/runner/session-records.mts";
 import { percentile } from "./lib/verification/stats.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
 import { DIAGNOSTICS_ENV } from "../src/shared/pipeline-histogram.ts";
+import { STUDIO_STALL_ENV, studioStallOf } from "../src/shared/studio-stall.ts";
 import { formatSession, mergeSessions, parsePipelineLog, summarizeSession, type PipelineSession, type SessionSummary } from "./lib/verification/pipeline-report.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { SETTINGS_SHORTCUT } from "../src/shared/hotkey.ts";
@@ -122,7 +127,7 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate off|power|standard|smooth] [--studio-view composed|screen|camera] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate off|power|standard|smooth] [--studio-view composed|screen|camera] [--studio-stall <at>,<for>] [--studio-memory] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
@@ -135,6 +140,10 @@ let studioRate: (typeof STUDIO_RATES)[number] | undefined;
 /** Plan 094: the Studio's preview view, seeded for the round. */
 const STUDIO_VIEWS = ["composed", "screen", "camera"] as const;
 let studioView: (typeof STUDIO_VIEWS)[number] | undefined;
+/** Plan 084: the Studio page's stall, as `RECORDSTUFF_STUDIO_STALL` takes it. */
+let studioStall: string | undefined;
+/** Plan 084: each S recording's memory noted as under `--studio-stall`, at 15 s, without a stall. */
+let studioMemory = false;
 /** What each rate shows while the Studio is only looked at, and while the pointer is on it. */
 const STUDIO_RATE_FPS = { off: [0, 0], power: [5, 10], standard: [10, 10], smooth: [15, 15] } as const;
 let diagnostics = false;
@@ -165,6 +174,8 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--studio-active") studioActive = true;
   else if (arg === "--studio-rate" && STUDIO_RATES.includes(argv[i + 1] as (typeof STUDIO_RATES)[number])) studioRate = argv[++i] as (typeof STUDIO_RATES)[number];
   else if (arg === "--studio-view" && STUDIO_VIEWS.includes(argv[i + 1] as (typeof STUDIO_VIEWS)[number])) studioView = argv[++i] as (typeof STUDIO_VIEWS)[number];
+  else if (arg === "--studio-stall" && studioStallOf(argv[i + 1])) studioStall = argv[++i];
+  else if (arg === "--studio-memory") studioMemory = true;
   else if (arg === "--diagnostics") diagnostics = true;
   else if (arg === "--material" && (argv[i + 1] === "moving" || argv[i + 1] === "still")) materialKind = argv[++i] as keyof typeof MATERIALS;
   else if (arg === "--profile") profileProcesses = true;
@@ -178,7 +189,7 @@ if (!(minutes > 0 && minutes <= 60) || !Number.isInteger(repeat) || repeat < 1 |
 if (camera !== undefined && (!skipSettings || !skipPlayback || /[\s]/.test(camera))) { console.error(usage); process.exit(2); }
 // The Studio's window stays open between its scenarios and C's or P's, whose role contracts do not allow its services.
 if (studio && (skipRecording || !skipSettings || !skipPlayback)) { console.error(usage); process.exit(2); }
-if ((studioActive || studioRate !== undefined || studioView !== undefined) && !studio) { console.error(usage); process.exit(2); }
+if ((studioActive || studioRate !== undefined || studioView !== undefined || studioStall !== undefined || studioMemory) && !studio) { console.error(usage); process.exit(2); }
 const shownRate = studioRate ?? "power";
 const shownView = studioView ?? "composed";
 const MATERIAL = MATERIALS[materialKind];
@@ -226,7 +237,8 @@ async function launch(): Promise<{ pid: number; run: string; recordingKey: strin
   const from = log.end();
   launchIssued = true;
   const env = [...(camera === undefined ? [] : [`RECORDSTUFF_CAMERA_PROTOTYPE=${camera}`]), ...(diagnostics ? [`${DIAGNOSTICS_ENV}=1`] : []),
-    ...(audioOff ? ["RECORDSTUFF_CAPTURE_AUDIO=off"] : []), ...(frameInterval ? ["RECORDSTUFF_CAPTURE_INTERVAL=frame"] : [])];
+    ...(audioOff ? ["RECORDSTUFF_CAPTURE_AUDIO=off"] : []), ...(frameInterval ? ["RECORDSTUFF_CAPTURE_INTERVAL=frame"] : []),
+    ...(studioStall === undefined ? [] : [`${STUDIO_STALL_ENV}=${studioStall}`])];
   await command("open", [...env.flatMap((value) => ["--env", value]), "-a", BUNDLE], AbortSignal.timeout(15_000));
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
   // Each wait is bounded by the launch's shared 60 s rather than its own default.
@@ -429,6 +441,24 @@ async function main(): Promise<number> {
     const problem = await closeMaterial();
     if (problem) fail(problem);
   };
+  /**
+   * Plan 084: the capture process's and each renderer's memory just before the page's stall and the most it reached
+   * after, from the sampler's samples since the recording started (the port joins as it does, give or take its start).
+   */
+  const noteStallMemory = (fps: 30 | 60, started: number): void => {
+    const stall = studioStallOf(studioStall) ?? { atMs: 15_000 };
+    const wanted = [...readRoleTree(appPid)].filter(([, role]) => role === "renderer" || role === "utility:node");
+    const samples = sampler!.samples.filter((sample) => sample.at >= started);
+    const parts = wanted.map(([pid, role]) => {
+      const of = (sample: (typeof samples)[number]): number | undefined => sample.procs.find((p) => p.pid === pid)?.resident_bytes;
+      const before = samples.filter((sample) => sample.at < started + stall.atMs).map(of).filter((n) => n !== undefined).at(-1);
+      const after = samples.filter((sample) => sample.at >= started + stall.atMs).map(of).filter((n) => n !== undefined);
+      return `${role} ${pid} ${before === undefined ? "?" : mb(before)} → peak ${after.length ? mb(Math.max(...after)) : "?"}`;
+    });
+    note(studioStall === undefined
+      ? `memory at ${fps} fps (no stall): at 15 s and its peak after: ${parts.join("; ")}`
+      : `stall at ${fps} fps (${studioStall}): memory before the stall and its peak after: ${parts.join("; ")}`);
+  };
   const record = async (fps: 30 | 60, withStudio = false): Promise<void> => {
     const from = log.end();
     // Set before the key goes out, so cleanup settles a recording that the key may have started.
@@ -439,6 +469,7 @@ async function main(): Promise<number> {
     const profiling = profileAfter(`${withStudio ? "S" : "R"}${fps}`, 25_000);
     await sleep(RECORDING_SECONDS * 1000);
     await profiling;
+    if (withStudio && (studioStall !== undefined || studioMemory)) noteStallMemory(fps, started);
     // A session that already ended must not get the key: on an idle app it starts a new recording.
     const ended = recordingOutcome(log.since(from).lines.map((line) => line.text));
     if (ended.settled) {

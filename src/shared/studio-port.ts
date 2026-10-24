@@ -7,6 +7,7 @@
 import { PIPELINE_SCHEMA, isHistogramJson, type HistogramJson } from "./pipeline-histogram";
 
 import { STUDIO_FPS, STUDIO_RATES, STUDIO_SMOOTH_FPS, type StudioFps } from "./studio-rates";
+import { STUDIO_STALL_MAX_MS } from "./studio-stall";
 
 export { STUDIO_ACTIVE_MS, STUDIO_FPS, STUDIO_RATES, STUDIO_RESTING_FPS, STUDIO_SMOOTH_FPS, type StudioFps } from "./studio-rates";
 
@@ -44,6 +45,16 @@ export interface StudioRateMessage { type: "rate"; fps: StudioFps }
 /** What the preview shows (plan 092, D3), from a key frame: from the page. */
 export interface StudioViewMessage { type: "view"; view: StudioView }
 
+/**
+ * The last preview chunk the page is done with, by its number (`PreviewMessage.n`): drawn, or dropped by the page
+ * (plan 084). From the page, at most once a chunk; the capture host posts no more than a few chunks beyond it.
+ */
+export interface StudioDrawnMessage {
+  type: "drawn"; through: number;
+  /** The page dropped its decoder (a gap, a decoding error, a decoder fallen behind) and takes nothing until a key frame. */
+  key?: true;
+}
+
 const isLevel = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 16;
 
 export function isStudioLevels(value: unknown): value is StudioLevelsMessage {
@@ -54,6 +65,20 @@ export function isStudioLevels(value: unknown): value is StudioLevelsMessage {
 export function isStudioRate(value: unknown): value is StudioRateMessage {
   const m = value as Partial<StudioRateMessage> | null;
   return !!m && typeof m === "object" && m.type === "rate" && STUDIO_RATES.includes(m.fps as StudioFps);
+}
+
+/**
+ * The preview chunks posted and not yet acknowledged that the capture host allows (plan 084, preview-delivery.ts), and
+ * the most the page keeps waiting to be drawn or in its decoder's queue (preview-decoder.ts): a page drawing at 15 a
+ * second answers well within three. A single chunk larger than the bytes' limit still goes when none is outstanding.
+ */
+export const PREVIEW_OUTSTANDING_CHUNKS = 3;
+export const PREVIEW_OUTSTANDING_BYTES = 512 * 1024;
+
+export function isStudioDrawn(value: unknown): value is StudioDrawnMessage {
+  const m = value as Partial<StudioDrawnMessage> | null;
+  return !!m && typeof m === "object" && m.type === "drawn" && typeof m.through === "number" && Number.isSafeInteger(m.through) && m.through >= 0
+    && (m.key === undefined || m.key === true);
 }
 
 export function isStudioViewMessage(value: unknown): value is StudioViewMessage {
@@ -77,8 +102,14 @@ export interface StudioDiagnosticsRequest { type: "diagnostics"; everyMs: number
 export interface StudioPreviewDiagnostics {
   type: "previewDiagnostics"; schema: typeof PIPELINE_SCHEMA;
   received: number; drawn: number; missed: number; notDecoded: number;
+  /** The most chunks waiting in `pending` and in the decoder's queue at once (plan 084). */
+  pendingHigh: number; decodingHigh: number;
+  /** The most of the page's JavaScript heap in use when a chunk came, in bytes (plan 084); 0 where Chromium does not say. */
+  heapHigh: number;
   restarts: { codec: number; error: number };
   port: HistogramJson; decode: HistogramJson;
+  /** From the first chunk received over a second after it was sent to the first drawn within one (plan 084). */
+  recover: HistogramJson;
 }
 
 export function isStudioDiagnosticsRequest(value: unknown): value is StudioDiagnosticsRequest {
@@ -90,6 +121,16 @@ export function isStudioPreviewDiagnostics(value: unknown): value is StudioPrevi
   const m = value as Partial<StudioPreviewDiagnostics> | null;
   const count = (n: unknown): boolean => typeof n === "number" && Number.isInteger(n) && n >= 0;
   return !!m && typeof m === "object" && m.type === "previewDiagnostics" && m.schema === PIPELINE_SCHEMA
-    && count(m.received) && count(m.drawn) && count(m.missed) && count(m.notDecoded)
-    && !!m.restarts && count(m.restarts.codec) && count(m.restarts.error) && isHistogramJson(m.port) && isHistogramJson(m.decode);
+    && count(m.received) && count(m.drawn) && count(m.missed) && count(m.notDecoded) && count(m.pendingHigh) && count(m.decodingHigh) && count(m.heapHigh)
+    && !!m.restarts && count(m.restarts.codec) && count(m.restarts.error) && isHistogramJson(m.port) && isHistogramJson(m.decode) && isHistogramJson(m.recover);
+}
+
+export { STUDIO_STALL_ENV, STUDIO_STALL_MAX_MS, studioStallOf } from "./studio-stall";
+
+/** The capture process asks the page to stall (plan 084's development switch, studio-stall.ts). */
+export interface StudioStallRequest { type: "stall"; ms: number }
+
+export function isStudioStallRequest(value: unknown): value is StudioStallRequest {
+  const m = value as Partial<StudioStallRequest> | null;
+  return !!m && typeof m === "object" && m.type === "stall" && typeof m.ms === "number" && Number.isInteger(m.ms) && m.ms > 0 && m.ms <= STUDIO_STALL_MAX_MS;
 }

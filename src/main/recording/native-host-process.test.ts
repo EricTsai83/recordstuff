@@ -157,7 +157,7 @@ describe("the camera (plan 075)", () => {
     const studioPort = () => {
       let listener: ((message: { data: unknown }) => void) | undefined;
       return { started: false, postMessage() {}, close() {}, start() { this.started = true; },
-        on(_event: "message", next: (message: { data: unknown }) => void) { listener = next; },
+        on(event: string, next: (message: { data: unknown }) => void) { if (event === "message") listener = next; },
         say(data: unknown) { listener?.({ data }); } };
     };
     const first = studioPort(), second = studioPort();
@@ -225,6 +225,159 @@ describe("the camera's preview (plan 075)", () => {
     expect(second.posted[1]).not.toHaveProperty("description");
     // The port's message is not the capture protocol's: nothing answers it.
     expect(port.sent.filter((m) => m.type !== "ready")).toEqual([]);
+  });
+
+  /** A Studio port the page answers on, and whose page can go. */
+  const answeringPort = () => {
+    const listeners: Record<string, ((message: { data: unknown }) => void) | undefined> = {};
+    return { posted: [] as { n?: number; key?: boolean; type?: string }[], postMessage(m: unknown) { this.posted.push(m as never); }, close() {}, start() {},
+      on(event: string, next: (message: { data: unknown }) => void) { listeners[event] = next; },
+      say(data: unknown) { listeners["message"]?.({ data }); }, gone() { listeners["close"]?.({ data: undefined }); },
+      chunks() { return this.posted.filter((m) => m.n !== undefined).map((m) => `${m.n}${m.key ? "k" : ""}`); } };
+  };
+  const delta: PreviewFrame = { ...frame, key: false, description: null };
+
+  it("posts at most three chunks the page has not drawn, then holds deltas until a key frame it asks for once the page catches up (plan 084)", () => {
+    const port = new Port();
+    const { engine, send } = withPreview();
+    const requestPreviewKey = vi.fn(() => true);
+    new NativeHost(port, { ...engine, requestPreviewKey }, () => undefined);
+    const studio = answeringPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+    // A new port's page starts at a key frame: deltas before it are not posted.
+    send(delta);
+    send(frame);
+    send(delta);
+    send(delta);
+    // Three outstanding: the page stalled.
+    send(delta);
+    send(frame);
+    expect(studio.chunks()).toEqual(["1k", "2", "3"]);
+    expect(requestPreviewKey).not.toHaveBeenCalled();
+    // The page drew the first: below the limit, but the stream has a gap, so a key frame is asked for, once.
+    studio.say({ type: "drawn", through: 1 });
+    studio.say({ type: "drawn", through: 1 });
+    expect(requestPreviewKey).toHaveBeenCalledTimes(1);
+    send(delta);
+    send(frame);
+    // Two still outstanding and the key frame make three again: the delta after it is held.
+    send(delta);
+    expect(studio.chunks()).toEqual(["1k", "2", "3", "4k"]);
+    studio.say({ type: "drawn", through: 4 });
+    expect(requestPreviewKey).toHaveBeenCalledTimes(2);
+    send(frame);
+    send(delta);
+    expect(studio.chunks()).toEqual(["1k", "2", "3", "4k", "5k", "6"]);
+    // Malformed acknowledgements are refused.
+    studio.say({ type: "drawn", through: -1 });
+    studio.say({ type: "drawn", through: "6" });
+    send(delta);
+    expect(studio.chunks()).toHaveLength(7);
+    expect(requestPreviewKey).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds beyond 512 KiB outstanding, but posts a single larger chunk when none is (plan 084)", () => {
+    const port = new Port();
+    const { engine, send } = withPreview();
+    new NativeHost(port, { ...engine, requestPreviewKey: () => true }, () => undefined);
+    const studio = answeringPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+    send({ ...frame, data: new Uint8Array(600 * 1024) });
+    send(delta);
+    expect(studio.chunks()).toEqual(["1k"]);
+    studio.say({ type: "drawn", through: 1 });
+    send({ ...frame, data: new Uint8Array(300 * 1024) });
+    // 600 KiB would be outstanding: held, and the stream waits for a key frame.
+    send({ ...delta, data: new Uint8Array(300 * 1024) });
+    send(delta);
+    expect(studio.chunks()).toEqual(["1k", "2k"]);
+    studio.say({ type: "drawn", through: 2 });
+    send({ ...frame, data: new Uint8Array(200 * 1024) });
+    send({ ...delta, data: new Uint8Array(200 * 1024) });
+    send({ ...delta, data: new Uint8Array(111 * 1024) });
+    expect(studio.chunks()).toEqual(["1k", "2k", "3k", "4", "5"]);
+  });
+
+  it("asks for a key frame at once when the page dropped its decoder, and again every two frame times until one is posted (plan 084)", () => {
+    vi.useFakeTimers();
+    try {
+      const port = new Port();
+      const { engine, send } = withPreview();
+      const requestPreviewKey = vi.fn(() => true);
+      new NativeHost(port, { ...engine, requestPreviewKey }, () => undefined);
+      const studio = answeringPort();
+      port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+      studio.say({ type: "rate", fps: 15 });
+      send(frame);
+      send(delta);
+      // A decoding error: the page is done with both and waits for a key frame; the deltas after are not posted.
+      studio.say({ type: "drawn", through: 2, key: true });
+      expect(requestPreviewKey).toHaveBeenCalledTimes(1);
+      send(delta);
+      expect(studio.chunks()).toEqual(["1k", "2"]);
+      // napi's gate dropped the key frame asked for: asked again two frame times later, and again.
+      vi.advanceTimersByTime(132);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(2);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(134);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(3);
+      send(frame);
+      vi.advanceTimersByTime(10_000);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(3);
+      expect(studio.chunks()).toEqual(["1k", "2", "3k"]);
+      // A malformed flag is refused whole.
+      studio.say({ type: "drawn", through: 3, key: false });
+      expect(requestPreviewKey).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops asking for a key frame once the preview is not watched, which the engine answers false (plan 084)", () => {
+    vi.useFakeTimers();
+    try {
+      const port = new Port();
+      const { engine, send } = withPreview();
+      let watched = true;
+      const requestPreviewKey = vi.fn(() => watched);
+      new NativeHost(port, { ...engine, requestPreviewKey }, () => undefined);
+      const studio = answeringPort();
+      port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+      send(frame);
+      studio.say({ type: "drawn", through: 1, key: true });
+      expect(requestPreviewKey).toHaveBeenCalledTimes(1);
+      // The Studio's preview turned Off while the meters keep the port.
+      watched = false;
+      vi.advanceTimersByTime(200);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(60_000);
+      expect(requestPreviewKey).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("posts nothing more once the page's end closed, and starts afresh on a new port (plan 084)", () => {
+    const port = new Port();
+    const { engine, send } = withPreview();
+    new NativeHost(port, { ...engine, requestPreviewKey: () => true }, () => undefined);
+    const first = answeringPort(), second = answeringPort();
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [first]);
+    send(frame);
+    send(delta);
+    first.gone();
+    send(frame);
+    expect(first.chunks()).toEqual(["1k", "2"]);
+    port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
+    // Nothing is outstanding on the new port, whatever the old page left undrawn.
+    for (const f of [frame, delta, delta]) send(f);
+    expect(second.chunks()).toEqual(["3k", "4", "5"]);
+    // An older page's close is not the new one's.
+    first.gone();
+    send(delta);
+    expect(second.chunks()).toHaveLength(3);
   });
 
   it("takes the engine's preview frames in any case, which the engine makes only while main says they are watched (step 7)", async () => {
@@ -713,11 +866,11 @@ describe("the pipeline's figures (plan 083)", () => {
   const studioPort = () => {
     let listener: ((message: { data: unknown }) => void) | undefined;
     return { posted: [] as unknown[], postMessage(m: unknown) { this.posted.push(m); }, close() {}, start() {},
-      on(_event: "message", next: (message: { data: unknown }) => void) { listener = next; },
+      on(event: string, next: (message: { data: unknown }) => void) { if (event === "message") listener = next; },
       say(data: unknown) { listener?.({ data }); } };
   };
-  const page = { type: "previewDiagnostics", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, restarts: { codec: 1, error: 0 },
-    port: { n: 9, sum: 9000, max: 2000, b: { 39: 9 } }, decode: { n: 8, sum: 16_000, max: 3000, b: { 44: 8 } } };
+  const page = { type: "previewDiagnostics", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, pendingHigh: 2, decodingHigh: 1, heapHigh: 9, restarts: { codec: 1, error: 0 },
+    port: { n: 9, sum: 9000, max: 2000, b: { 39: 9 } }, decode: { n: 8, sum: 16_000, max: 3000, b: { 44: 8 } }, recover: { n: 0, sum: 0, max: 0, b: {} } };
 
   it("logs nothing and asks the page for nothing without the development switch", async () => {
     const port = new Port();
@@ -767,8 +920,9 @@ describe("the pipeline's figures (plan 083)", () => {
     studio.say({ ...page, received: 1 });
     const lines = logs.filter((line) => line.startsWith("diagnostics: ")).map((line) => JSON.parse(line.slice("diagnostics: ".length)) as Record<string, unknown>);
     expect(lines).toEqual([
-      { kind: "page", session: "s1", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, restarts: { codec: 1, error: 0 }, port: page.port, decode: page.decode },
-      { kind: "engine", schema: 1, session: "s1", outcome: "finished", host: { previewForwarded: 2, previewWithoutPort: 1 }, engine: JSON.parse(engineFigures) },
+      { kind: "page", session: "s1", schema: 1, received: 9, drawn: 8, missed: 1, notDecoded: 1, pendingHigh: 2, decodingHigh: 1, heapHigh: 9, restarts: { codec: 1, error: 0 }, port: page.port, decode: page.decode, recover: page.recover },
+      { kind: "engine", schema: 1, session: "s1", outcome: "finished", host: { previewForwarded: 2, previewWithoutPort: 1, previewForwardedBytes: 2,
+        previewHeld: 0, previewKeyRequests: 0, previewOutstandingHigh: 2, previewOutstandingBytesHigh: 2 }, engine: JSON.parse(engineFigures) },
       expect.objectContaining({ kind: "page", session: "s1", received: 1 }),
     ]);
   });
@@ -803,6 +957,46 @@ describe("the pipeline's figures (plan 083)", () => {
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(20_000);
       expect(outcomes()).toEqual(["running", "running", "cancelled"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("the Studio's stall switch (plan 084)", () => {
+  const studioPort = () => ({ posted: [] as unknown[], postMessage(m: unknown) { this.posted.push(m); }, close() {}, start() {}, on() {} });
+
+  it("asks each port's page to stall once, at the time the switch says, and never a port that was replaced", () => {
+    vi.useFakeTimers();
+    try {
+      const port = new Port();
+      const logs: string[] = [];
+      new NativeHost(port, fakeEngine().engine, (line) => logs.push(line), undefined, {}, false, false, { atMs: 15_000, forMs: 30_000 });
+      const first = studioPort(), second = studioPort();
+      port.deliver({ type: PREVIEW_PORT_MESSAGE }, [first]);
+      vi.advanceTimersByTime(10_000);
+      port.deliver({ type: PREVIEW_PORT_MESSAGE }, [second]);
+      vi.advanceTimersByTime(14_999);
+      expect([first.posted, second.posted]).toEqual([[], []]);
+      vi.advanceTimersByTime(1);
+      expect([first.posted, second.posted]).toEqual([[], [{ type: "stall", ms: 30_000 }]]);
+      vi.advanceTimersByTime(60_000);
+      expect(second.posted).toHaveLength(1);
+      expect(logs).toContainEqual(expect.stringContaining("studio: the page asked to stall for 30000 ms"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks nothing without the switch", () => {
+    vi.useFakeTimers();
+    try {
+      const port = new Port();
+      new NativeHost(port, fakeEngine().engine, () => undefined);
+      const studio = studioPort();
+      port.deliver({ type: PREVIEW_PORT_MESSAGE }, [studio]);
+      vi.advanceTimersByTime(600_000);
+      expect(studio.posted).toEqual([]);
     } finally {
       vi.useRealTimers();
     }

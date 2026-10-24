@@ -349,6 +349,12 @@ impl Session {
         true
     }
 
+    /// A key frame at the preview's next frame time (plan 084): the Studio's page caught up after chunks were dropped.
+    /// False without a preview, or while it is not watched.
+    pub fn request_preview_key(&self) -> bool {
+        self.preview.as_ref().is_some_and(|preview| preview.control.request_key())
+    }
+
     /// Whether the inputs' levels are told (plan 075, D19).
     pub fn watch_levels(&self, watching: bool) -> bool {
         self.core.watch_levels(watching);

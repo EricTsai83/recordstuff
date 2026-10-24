@@ -86,19 +86,84 @@ it("keeps the preview's figures only once the capture process asks, reports them
     port.say({ ...chunk, sent: 990, n: 2 });
     // Chunk 3 never came.
     port.say({ ...chunk, sent: 996, n: 4 });
+    feed.previewFigures.queued(2, 1);
+    feed.previewFigures.queued(1, 3);
     feed.previewFigures.drawn(998, 1_000);
     vi.advanceTimersByTime(5000);
-    expect(port.posted[2]).toEqual(expect.objectContaining({ type: "previewDiagnostics", schema: 1, received: 2, drawn: 1, missed: 1,
+    expect(port.posted[2]).toEqual(expect.objectContaining({ type: "previewDiagnostics", schema: 1, received: 2, drawn: 1, missed: 1, pendingHigh: 2, decodingHigh: 3,
       port: expect.objectContaining({ n: 2, max: 10_000 }), decode: expect.objectContaining({ n: 1, max: 2000 }) }));
     feed.previewFigures.restarted("error");
     stop();
-    // Let go: what was kept since goes with the port, and nothing more is reported.
-    expect(port.posted[3]).toEqual(expect.objectContaining({ received: 0, restarts: { codec: 0, error: 1 } }));
+    // Let go: the chunks received are done with (plan 084), what was kept since goes with the port, and nothing more is
+    // reported.
+    expect(port.posted[3]).toEqual({ type: "drawn", through: 4 });
+    expect(port.posted[4]).toEqual(expect.objectContaining({ received: 0, restarts: { codec: 0, error: 1 } }));
     expect(port.closed).toBe(true);
     vi.advanceTimersByTime(10_000);
-    expect(port.posted).toHaveLength(4);
+    expect(port.posted).toHaveLength(5);
     expect(feed.previewFigures.keeping).toBe(false);
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("holds its thread for the stall the capture process asks for, and takes no malformed request (plan 084)", async () => {
+  const feed = await import("./studio-feed");
+  const stop = feed.onLevels(() => undefined);
+  const port = fakePort();
+  give(port);
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => (now += 100));
+  port.say({ type: "stall", ms: 0 });
+  expect(now).toBe(0);
+  port.say({ type: "stall", ms: 1000 });
+  // Read once to set the end, then until it passed: about 1000 ms of the fake clock.
+  expect(now).toBeGreaterThanOrEqual(1100);
+  expect(now).toBeLessThanOrEqual(1300);
+  stop();
+});
+
+it("tells the capture process the last chunk done with, once each, on this port only, and at once when no preview draws (plan 084)", async () => {
+  const feed = await import("./studio-feed");
+  const stopLevels = feed.onLevels(() => undefined);
+  const stopPreview = feed.onPreview({ chunk: () => undefined, joined: () => undefined });
+  const first = fakePort(), second = fakePort();
+  give(first);
+  const drawn = (port: Port) => port.posted.filter((m) => (m as { type?: string }).type === "drawn");
+  feed.previewDone(2);
+  feed.previewDone(2);
+  feed.previewDone(1);
+  feed.previewDone(3);
+  // A dropped decoder is told even with nothing new done.
+  feed.previewDone(3, true);
+  expect(drawn(first)).toEqual([{ type: "drawn", through: 2 }, { type: "drawn", through: 3 }, { type: "drawn", through: 3, key: true }]);
+  first.say({ ...chunk, n: 5 });
+  give(second);
+  // A new port counts from nothing.
+  feed.previewDone(1);
+  expect(drawn(second)).toEqual([{ type: "drawn", through: 1 }]);
+  second.say({ ...chunk, n: 7 });
+  // The preview let go while the meters keep the port: what it received is done with, and so is what comes after.
+  stopPreview();
+  second.say({ ...chunk, n: 8 });
+  expect(drawn(second)).toEqual([{ type: "drawn", through: 1 }, { type: "drawn", through: 7 }, { type: "drawn", through: 8 }]);
+  expect(drawn(first)).toHaveLength(3);
+  stopLevels();
+});
+
+it("times a stalled page's catching up, from its first stale chunk to its first fresh frame drawn (plan 084)", async () => {
+  const feed = await import("./studio-feed");
+  const figures = feed.previewFigures;
+  figures.start();
+  figures.received({ ...chunk, sent: 0, n: 1 }, 30_000);
+  figures.received({ ...chunk, sent: 100, n: 2 }, 30_010);
+  // Old frames drawn while catching up are not the end of it.
+  figures.drawn(30_000, 30_020, 0);
+  figures.received({ ...chunk, sent: 30_100, n: 3 }, 30_101);
+  figures.drawn(30_101, 30_105, 30_100);
+  // A fresh frame with nothing stale before it times nothing.
+  figures.drawn(30_200, 30_205, 30_200);
+  const taken = figures.take();
+  expect(taken.recover).toEqual(expect.objectContaining({ n: 1, max: 105_000 }));
+  figures.stop();
 });

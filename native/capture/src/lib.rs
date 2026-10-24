@@ -643,6 +643,21 @@ impl NativeCapture {
         }
     }
 
+    /// A key frame at the preview's next frame time (plan 084): the Studio's page caught up after the capture host
+    /// dropped chunks it could not take. Answers false without a preview or while it is not watched, when nothing is
+    /// asked.
+    #[napi]
+    pub fn request_preview_key(&self) -> Result<bool> {
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            Ok(self.session.lock().unwrap().as_ref().is_some_and(|session| session.request_preview_key()))
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            Ok(false)
+        }
+    }
+
     /// Whether the inputs' levels are told (plan 075, D19): `levels` events 10 times a second while sound is read.
     #[napi]
     pub fn watch_levels(&self, watching: bool) -> Result<bool> {

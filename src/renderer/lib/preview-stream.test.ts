@@ -22,6 +22,14 @@ describe("isPreviewMessage", () => {
     expect(isPreviewMessage({ ...chunk, key: "yes" })).toBe(false);
     expect(isPreviewMessage(null)).toBe(false);
   });
+
+  it("refuses a malformed or oversized chunk (plan 084)", () => {
+    for (const bad of [{ data: new Uint8Array(0) }, { data: new Uint8Array(4 * 1024 * 1024 + 1) }, { description: new Uint8Array(4097) },
+      { width: 0 }, { height: 16_385 }, { width: 1.5 }, { n: 0 }, { n: 1.5 }, { n: undefined }, { timestamp: Number.NaN }, { sent: "2" }]) {
+      expect(isPreviewMessage({ ...chunk, ...bad }), JSON.stringify(Object.keys(bad))).toBe(false);
+    }
+    expect(isPreviewMessage({ ...chunk, data: new Uint8Array(4 * 1024 * 1024), description: new Uint8Array(4096) })).toBe(true);
+  });
 });
 
 describe("previewStats", () => {

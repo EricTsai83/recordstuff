@@ -16,7 +16,7 @@ import { translate } from "../../../shared/i18n";
 import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
 import { frameDrawn } from "./frame-clock";
-import { onPreview, previewFigures } from "./studio-feed";
+import { onPreview, previewDone, previewFigures } from "./studio-feed";
 import type { StudioView } from "../../../shared/studio-port";
 
 /** A key's step, as a fraction of the free space: 1%, or 10% with Shift. */
@@ -111,9 +111,11 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
     // Once: a state set for every frame drawn renders the page 10 times a second for nothing.
     let seen = false;
     const decoder = previewDecoder(canvas, {
-      drawn: (_message, received) => { if (previewFigures.keeping) previewFigures.drawn(received, Date.now()); frameDrawn(); if (!seen) { seen = true; setDrawing(true); } },
+      drawn: (message, received) => { if (previewFigures.keeping) previewFigures.drawn(received, Date.now(), message.sent); frameDrawn(); if (!seen) { seen = true; setDrawing(true); } },
       skipped: () => previewFigures.notDecoded(),
       restarted: (cause) => previewFigures.restarted(cause),
+      queued: (pending, decoding) => previewFigures.queued(pending, decoding),
+      done: previewDone,
     });
     if (!decoder) return;
     // On the Studio's port, which the meters' levels share (plan 081).

@@ -10,8 +10,9 @@
  */
 import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
 import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
-import { isStudioPreviewDiagnostics, isStudioRate, isStudioViewMessage, STUDIO_DIAGNOSTICS_MS, type StudioDiagnosticsRequest } from "../../shared/studio-port";
+import { isStudioDrawn, isStudioPreviewDiagnostics, isStudioRate, isStudioViewMessage, STUDIO_DIAGNOSTICS_MS, STUDIO_STALL_ENV, studioStallOf, type StudioDiagnosticsRequest, type StudioStallRequest } from "../../shared/studio-port";
 import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogram";
+import { PreviewDelivery } from "./preview-delivery";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 
 interface ProbeResult { width: number; height: number }
@@ -82,6 +83,8 @@ interface NativeCapture {
   setPreviewRate?(fps: number): boolean;
   /** What the preview shows (plan 092, D3; plan 094): `composed`, `screen` or `camera`. */
   setPreviewView?(view: string): boolean;
+  /** Plan 084: a key frame at the preview's next frame time; false without a preview or while it is not watched. */
+  requestPreviewKey?(): boolean;
   /** Plan 075, D19: whether the inputs' levels are told, and which inputs are muted. */
   watchLevels?(watching: boolean): boolean;
   setMuted?(system: boolean, microphone: boolean): boolean;
@@ -101,12 +104,14 @@ interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => vo
 
 /**
  * The Recording Studio's port (studio-port.ts): a `MessagePortMain` main hands over to Settings or the prototype's
- * page (plan 075); preview chunks and levels go out on it, the page's rate comes back.
+ * page (plan 075); preview chunks and levels go out on it, the page's rate, view and what it drew come back.
  */
 export interface PreviewPort {
   postMessage(message: unknown): void;
   close(): void;
   on?(event: "message", listener: (message: { data: unknown }) => void): void;
+  /** Electron's `MessagePortMain` says when the page's end closed: the page is gone. */
+  on?(event: "close", listener: () => void): void;
   start?(): void;
 }
 
@@ -174,6 +179,13 @@ export class NativeHost {
   private accessCheck: Promise<void> | undefined;
   private previewPort: PreviewPort | undefined;
   private previewFrames = 0;
+  /** What the page has not yet said it is done with, and the bound on it (plan 084). */
+  private readonly delivery = new PreviewDelivery(() => this.capture.requestPreviewKey?.() ?? false);
+  /** The bytes of the preview chunks forwarded, and their count at the session's start (plan 084). */
+  private previewBytes = 0;
+  private previewBytesBefore = 0;
+  /** Plan 084's development switch: the page's stall due on the port that holds it now. */
+  private stallTimer: ReturnType<typeof setTimeout> | undefined;
   /** Preview chunks the engine gave while no page held a port, and `previewFrames` at the last figures (plan 083). */
   private previewWithoutPort = 0;
   private previewFramesBefore = 0;
@@ -198,6 +210,8 @@ export class NativeHost {
     private readonly cameraPreview = false,
     /** Plan 083's development switch, `RECORDSTUFF_DIAGNOSTICS=1`: each session's figures are logged once it ends. */
     private readonly diagnostics = false,
+    /** Plan 084's development switch (`RECORDSTUFF_STUDIO_STALL`): each port's page is asked to stall once. */
+    private readonly stall?: { atMs: number; forMs: number },
   ) {
     if (typeof engine === "function") this.engine = engine((event) => this.event(event));
     // Frames come only while main says the preview is watched, or from the start under the prototype's switch.
@@ -207,9 +221,20 @@ export class NativeHost {
         this.previewPort?.close();
         const studio = ports?.[0];
         this.previewPort = studio;
+        this.delivery.joined();
+        // The page went (its window closed or it let the port go): nothing more is posted to it.
+        studio?.on?.("close", () => {
+          if (studio !== this.previewPort) return;
+          this.previewPort = undefined;
+          this.delivery.joined();
+        });
         // The page's rate and view for the preview (plan 092, D1, D3); the page says both on each port it is given.
         studio?.on?.("message", ({ data }) => {
           if (studio !== this.previewPort) return;
+          if (isStudioDrawn(data)) {
+            this.delivery.acknowledged(data.through, data.key === true);
+            return;
+          }
           if (isStudioPreviewDiagnostics(data)) {
             // Logged as it comes, whichever session it covers: the page's port outlives none of them.
             const { type: _type, ...figures } = data;
@@ -221,15 +246,31 @@ export class NativeHost {
             return;
           }
           if (!isStudioRate(data)) return;
+          this.delivery.rate(data.fps);
           this.log(`studio: preview at ${data.fps} a second${this.capture.setPreviewRate?.(data.fps) ? "" : " (no preview in this session)"}`);
         });
         studio?.start?.();
         if (this.diagnostics) studio?.postMessage({ type: "diagnostics", everyMs: STUDIO_DIAGNOSTICS_MS } satisfies StudioDiagnosticsRequest);
+        this.stallLater(studio);
         return;
       }
       this.handle(data);
     });
     this.send({ type: "ready" });
+  }
+
+  /** Asks the page on `studio` to stall once, `stall.atMs` from now, if the development switch says so (plan 084). */
+  private stallLater(studio: PreviewPort | undefined): void {
+    if (this.stallTimer !== undefined) clearTimeout(this.stallTimer);
+    this.stallTimer = undefined;
+    const stall = this.stall;
+    if (!stall || !studio) return;
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = undefined;
+      if (studio !== this.previewPort) return;
+      this.log(`studio: the page asked to stall for ${stall.forMs} ms (development switch); ${this.previewFrames} preview chunks forwarded so far`);
+      studio.postMessage({ type: "stall", ms: stall.forMs } satisfies StudioStallRequest);
+    }, stall.atMs);
   }
 
   /** Forwards a preview chunk to the preview page, when main gave one; dropped otherwise. */
@@ -238,7 +279,11 @@ export class NativeHost {
       this.previewWithoutPort += 1;
       return;
     }
+    const bytes = frame.data.byteLength + (frame.description?.byteLength ?? 0);
+    // Beyond what the page has drawn by a few chunks, none is posted (plan 084): numbered only once posted.
+    if (!this.delivery.admit(this.previewFrames + 1, bytes, frame.key)) return;
     this.previewFrames += 1;
+    this.previewBytes += bytes;
     this.previewPort.postMessage({
       width: frame.width, height: frame.height, data: frame.data, key: frame.key, timestamp: frame.timestamp,
       ...(frame.description ? { description: frame.description } : {}), sent: Date.now(), n: this.previewFrames,
@@ -479,6 +524,8 @@ export class NativeHost {
     this.lastSessionId = sessionId;
     // Counted per session, as the engine's figures are.
     this.previewFramesBefore = this.previewFrames;
+    this.previewBytesBefore = this.previewBytes;
+    this.delivery.restart();
     this.previewWithoutPort = 0;
     this.stopSnapshots();
     let capture: CaptureReport;
@@ -625,7 +672,8 @@ export class NativeHost {
     } catch (cause) {
       this.log(`diagnostics: the engine's figures could not be read: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
-    const host = { previewForwarded: this.previewFrames - this.previewFramesBefore, previewWithoutPort: this.previewWithoutPort };
+    const host = { previewForwarded: this.previewFrames - this.previewFramesBefore, previewWithoutPort: this.previewWithoutPort,
+      previewForwardedBytes: this.previewBytes - this.previewBytesBefore, ...this.delivery.counts };
     this.log(`diagnostics: ${JSON.stringify({ kind: "engine", schema: PIPELINE_SCHEMA, session: sessionId, outcome, host, engine })}`);
   }
 
@@ -687,7 +735,7 @@ if (parentPort) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const engine = require(addonPath) as EngineModule;
     new NativeHost(parentPort, (onEvent) => new engine.NativeCapture(onEvent), undefined, undefined, developmentCapture(process.env), cameraPreviewOn(process.env),
-      process.env[DIAGNOSTICS_ENV] === "1");
+      process.env[DIAGNOSTICS_ENV] === "1", studioStallOf(process.env[STUDIO_STALL_ENV]));
   } catch (cause) {
     // Main hears no `ready` and reports the start failure; the reason goes to its log through stderr.
     const message = cause instanceof Error ? cause.message : String(cause);

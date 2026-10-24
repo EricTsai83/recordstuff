@@ -15,6 +15,8 @@ struct State {
     view: PreviewView,
     /// A new watcher or view: the next frame comes at once, and as a key frame.
     key: bool,
+    /// The page caught up after chunks were dropped (plan 084): the next frame, at its time, is a key frame.
+    key_next: bool,
     /// A new rate: the next frame comes at once, and the schedule starts again from it.
     restart: bool,
 }
@@ -53,7 +55,7 @@ pub fn next_due(due: Instant, made: Instant, interval: Duration) -> Instant {
 impl PreviewControl {
     pub fn new(watching: bool) -> Self {
         Self {
-            state: Mutex::new(State { stopped: false, watching, fps: PREVIEW_FPS, view: PreviewView::Composed, key: true, restart: false }),
+            state: Mutex::new(State { stopped: false, watching, fps: PREVIEW_FPS, view: PreviewView::Composed, key: true, key_next: false, restart: false }),
             changed: Condvar::new(),
         }
     }
@@ -93,6 +95,15 @@ impl PreviewControl {
         });
     }
 
+    /// A key frame at the next frame's time (plan 084): the page that fell behind draws again from it rather than from
+    /// the encoder's next periodic one, up to a second later. Wakes nothing, so it adds no frame to the rate. False, and
+    /// nothing asked, while unwatched: no frame is made then, and watching again starts at a key frame anyway.
+    pub fn request_key(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        state.key_next |= state.watching;
+        state.watching
+    }
+
     pub fn view(&self) -> PreviewView {
         self.state.lock().unwrap().view
     }
@@ -114,7 +125,7 @@ impl PreviewControl {
             }
             let now = Instant::now();
             if state.key || state.restart || now >= due {
-                let key = std::mem::take(&mut state.key);
+                let key = std::mem::take(&mut state.key) | std::mem::take(&mut state.key_next);
                 state.restart = false;
                 return PreviewStep::Frame { key, view: state.view, interval: interval(state.fps) };
             }
@@ -214,6 +225,19 @@ mod tests {
         assert!(frame(control.wait(Instant::now())).0);
         control.owe_key();
         assert!(frame(control.wait(Instant::now() + Duration::from_secs(60))).0);
+    }
+
+    #[test]
+    fn a_key_frame_requested_comes_at_the_next_frame_time_not_sooner() {
+        let control = Arc::new(PreviewControl::new(true));
+        assert!(frame(control.wait(Instant::now())).0);
+        let due = Instant::now() + Duration::from_millis(30);
+        assert!(control.request_key());
+        assert!(frame(control.wait(due)).0, "the next frame is a key frame");
+        assert!(Instant::now() >= due, "at its time: the request wakes nothing");
+        assert!(!frame(control.wait(Instant::now())).0, "once");
+        control.watch(false);
+        assert!(!control.request_key(), "unwatched: nothing asked");
     }
 
     #[test]

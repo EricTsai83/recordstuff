@@ -5,25 +5,28 @@
 import { CAMERA_PREVIEW_PORT_CHANNEL as CHANNEL } from "../../shared/camera-preview";
 import { isPreviewMessage, previewStats } from "../lib/preview-stream";
 import { previewDecoder } from "../lib/preview-decoder";
+import type { StudioDrawnMessage } from "../../shared/studio-port";
 
 function start(canvas: HTMLCanvasElement, status: HTMLElement): void {
   const stats = previewStats();
+  let port: MessagePort | undefined;
   const decoder = previewDecoder(canvas, {
     drawn: (message, received) => { status.textContent = stats.add(message, Date.now(), received); },
     status: (text) => { status.textContent = text; },
+    // What it drew or dropped, so the capture process posts more (plan 084).
+    done: (through, needsKey) => port?.postMessage({ type: "drawn", through, ...(needsKey ? { key: true } : {}) } satisfies StudioDrawnMessage),
   });
   if (!decoder) {
     status.textContent = "WebCodecs is not available";
     return;
   }
-  let port: MessagePort | undefined;
   window.addEventListener("message", (event) => {
     // Only the preload's own post, from this window; a new port replaces the last one.
     if (event.source !== window || event.data !== CHANNEL || !event.ports[0]) return;
     port?.close();
+    decoder.reset();
     port = event.ports[0];
     stats.reset();
-    decoder.reset();
     status.textContent = "Joined to the capture process; waiting for a key frame…";
     port.onmessage = (chunk) => { if (isPreviewMessage(chunk.data)) decoder.decode(chunk.data); };
     port.start();

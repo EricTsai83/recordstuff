@@ -5,7 +5,7 @@
  * once nothing listens, as main lets the session go then; the next listener's watching brings a new one.
  */
 import { SETTINGS_CHANNELS, type StudioLevels } from "../../../shared/settings-panel";
-import { isStudioDiagnosticsRequest, isStudioLevels, STUDIO_FPS, type StudioRateMessage, type StudioView, type StudioViewMessage } from "../../../shared/studio-port";
+import { isStudioDiagnosticsRequest, isStudioLevels, isStudioStallRequest, STUDIO_FPS, type StudioDrawnMessage, type StudioRateMessage, type StudioView, type StudioViewMessage } from "../../../shared/studio-port";
 import { PreviewDiagnostics } from "../../lib/preview-diagnostics";
 import { isPreviewMessage, type PreviewMessage } from "../../lib/preview-stream";
 
@@ -18,6 +18,11 @@ let port: MessagePort | undefined;
 let fps: StudioRateMessage["fps"] = STUDIO_FPS;
 let view: StudioView = "composed";
 let listening = false;
+/** Plan 084's stall: kept, so the hold's loop is not optimized away. */
+export let held = 0;
+/** The last preview chunk received on this port, and the last the capture process was told done with (plan 084). */
+let received = 0;
+let acknowledged = 0;
 /** The preview's figures (plan 083), kept and reported on the port only once the capture process asked for them. */
 export const previewFigures = new PreviewDiagnostics();
 let reporting: ReturnType<typeof setInterval> | undefined;
@@ -39,6 +44,8 @@ function joined(event: MessageEvent): void {
   stopReporting();
   const joinedPort = event.ports[0];
   port = joinedPort;
+  received = 0;
+  acknowledged = 0;
   previewFigures.joined();
   port.onmessage = (message) => {
     const data: unknown = message.data;
@@ -48,7 +55,21 @@ function joined(event: MessageEvent): void {
     } else if (isPreviewMessage(data)) {
       // The clock is read only while figures are kept (plan 083: off, nothing is timed).
       if (previewFigures.keeping) previewFigures.received(data, Date.now());
+      received = Math.max(received, data.n);
       for (const listener of previews) listener.chunk(data);
+      // No preview to draw it: done with it at once, or the capture process would stop posting.
+      if (previews.size === 0) previewDone(data.n);
+    } else if (isStudioStallRequest(data)) {
+      // Plan 084's development switch, which the capture process alone sends: the page's thread held as a stalled
+      // renderer's would be, the chunks queueing in the port meanwhile. The clock is read only every 100,000 turns, so
+      // the hold itself allocates next to nothing that the stalled page's own garbage collection would have to free.
+      const until = performance.now() + data.ms;
+      let spins = 0;
+      for (;;) {
+        for (let i = 0; i < 100_000; i += 1) spins = (spins + i) | 0;
+        if (performance.now() >= until) break;
+      }
+      held = spins;
     } else if (isStudioDiagnosticsRequest(data) && reporting === undefined) {
       previewFigures.start();
       reporting = setInterval(() => joinedPort.postMessage(previewFigures.take()), data.everyMs);
@@ -83,7 +104,23 @@ function release(): void {
 export function onPreview(listener: PreviewListener): () => void {
   previews.add(listener);
   listen();
-  return () => { previews.delete(listener); release(); };
+  return () => {
+    previews.delete(listener);
+    // The meters may keep the port: whatever came for the preview is done with.
+    if (previews.size === 0) previewDone(received);
+    release();
+  };
+}
+
+/**
+ * The preview's decoder is done with every chunk up to `through`, drawn or dropped (plan 084): told on the port, once
+ * for each new last, so the capture process posts only a few chunks beyond what the page drew; and whenever the decoder
+ * was dropped (`needsKey`), so the capture process asks the engine for a key frame at once.
+ */
+export function previewDone(through: number, needsKey = false): void {
+  if (!port || (through <= acknowledged && !needsKey)) return;
+  acknowledged = Math.max(acknowledged, through);
+  port.postMessage({ type: "drawn", through, ...(needsKey ? { key: true } : {}) } satisfies StudioDrawnMessage);
 }
 
 /** Listens for the levels; returns the call that stops. Main is asked for them apart (watchLevels). */

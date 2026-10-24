@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStudioDiagnosticsRequest, isStudioLevels, isStudioPreviewDiagnostics, isStudioPreviewSettings, isStudioRate, isStudioViewMessage, STUDIO_RATES } from "./studio-port";
+import { isStudioDiagnosticsRequest, isStudioDrawn, isStudioLevels, isStudioPreviewDiagnostics, isStudioPreviewSettings, isStudioRate, isStudioStallRequest, isStudioViewMessage, STUDIO_RATES, studioStallOf } from "./studio-port";
 
 describe("the Recording Studio's port (plan 081)", () => {
   it("takes levels from the capture process, with or without the microphone's", () => {
@@ -40,14 +40,31 @@ describe("the Recording Studio's port (plan 081)", () => {
   });
 
   it("takes the page's figures only whole and of this schema (plan 083)", () => {
-    const figures = { type: "previewDiagnostics", schema: 1, received: 3, drawn: 2, missed: 0, notDecoded: 1, restarts: { codec: 1, error: 0 },
-      port: { n: 3, sum: 3000, max: 1000, b: { 39: 3 } }, decode: { n: 2, sum: 4000, max: 2000, b: { 43: 2 } } };
+    const figures = { type: "previewDiagnostics", schema: 1, received: 3, drawn: 2, missed: 0, notDecoded: 1, pendingHigh: 1, decodingHigh: 0, heapHigh: 0, restarts: { codec: 1, error: 0 },
+      port: { n: 3, sum: 3000, max: 1000, b: { 39: 3 } }, decode: { n: 2, sum: 4000, max: 2000, b: { 43: 2 } }, recover: { n: 0, sum: 0, max: 0, b: {} } };
     expect(isStudioPreviewDiagnostics(figures)).toBe(true);
     expect(isStudioPreviewDiagnostics({ ...figures, schema: 2 })).toBe(false);
     expect(isStudioPreviewDiagnostics({ ...figures, missed: -1 })).toBe(false);
+    expect(isStudioPreviewDiagnostics({ ...figures, pendingHigh: undefined })).toBe(false);
     expect(isStudioPreviewDiagnostics({ ...figures, restarts: { codec: 1 } })).toBe(false);
     expect(isStudioPreviewDiagnostics({ ...figures, port: { n: 1 } })).toBe(false);
     // Neither levels nor a rate is taken for figures.
     expect(isStudioPreviewDiagnostics({ type: "levels", system: 0.5 })).toBe(false);
+  });
+
+  it("reads the stall switch only whole and bounded, and takes only a bounded stall request (plan 084)", () => {
+    expect(studioStallOf("15,30")).toEqual({ atMs: 15_000, forMs: 30_000 });
+    expect(studioStallOf(" 0.5 , 2.25 ")).toEqual({ atMs: 500, forMs: 2250 });
+    for (const bad of [undefined, "", "30", "15,0", "15,121", "601,5", "-1,5", "a,b", "15,30,1"]) expect(studioStallOf(bad), String(bad)).toBeUndefined();
+    expect(isStudioStallRequest({ type: "stall", ms: 30_000 })).toBe(true);
+  });
+
+  it("takes the page's acknowledgement only whole: a chunk number and, when its decoder was dropped, the key frame flag (plan 084)", () => {
+    expect(isStudioDrawn({ type: "drawn", through: 0 })).toBe(true);
+    expect(isStudioDrawn({ type: "drawn", through: 12, key: true })).toBe(true);
+    for (const bad of [{ through: -1 }, { through: 1.5 }, { through: "3" }, { through: 3, key: false }, { through: 3, key: 1 }]) {
+      expect(isStudioDrawn({ type: "drawn", ...bad }), JSON.stringify(bad)).toBe(false);
+    }
+    for (const ms of [0, -1, 1.5, 120_001, "30000"]) expect(isStudioStallRequest({ type: "stall", ms }), String(ms)).toBe(false);
   });
 });

@@ -22,8 +22,14 @@ export interface PagePart {
   /** Reports merged: one every 5 s while the page showed the preview, and its last at the port's release. */
   reports: number;
   received: number; drawn: number; missed: number; notDecoded: number;
+  /** The most chunks waiting to be drawn and in the decoder's queue at once (plan 084); 0 in figures from before it. */
+  pendingHigh: number; decodingHigh: number;
+  /** The page's JavaScript heap's most in use, bytes; 0 in figures from before it. */
+  heapHigh: number;
   restarts: { codec: number; error: number };
   port: HistogramJson; decode: HistogramJson;
+  /** A stalled page's catching up (plan 084); empty in figures from before it. */
+  recover: HistogramJson;
 }
 
 export interface PipelineSession {
@@ -34,7 +40,8 @@ export interface PipelineSession {
   at?: string;
   stages: Record<string, HistogramJson>;
   counts: Record<string, number>;
-  host?: { previewForwarded: number; previewWithoutPort: number };
+  /** The capture host's counts: those of plan 083 and, from plan 084, its delivery's (`…High` are high-water marks). */
+  host?: { previewForwarded: number; previewWithoutPort: number } & Record<string, number>;
   page?: PagePart;
 }
 
@@ -69,15 +76,19 @@ function isPageFigures(value: Record<string, unknown>): value is Record<string, 
 }
 
 function emptyPage(): PagePart {
-  return { reports: 0, received: 0, drawn: 0, missed: 0, notDecoded: 0, restarts: { codec: 0, error: 0 }, port: emptyHistogram(), decode: emptyHistogram() };
+  return { reports: 0, received: 0, drawn: 0, missed: 0, notDecoded: 0, pendingHigh: 0, decodingHigh: 0, heapHigh: 0, restarts: { codec: 0, error: 0 }, port: emptyHistogram(), decode: emptyHistogram(), recover: emptyHistogram() };
 }
 
-function addPage(into: PagePart, page: Omit<PagePart, "reports">, reports = 1): PagePart {
+function addPage(into: PagePart, page: Omit<PagePart, "reports" | "pendingHigh" | "decodingHigh" | "heapHigh" | "recover"> & Partial<PagePart>, reports = 1): PagePart {
+  const high = (n: unknown): number => typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0;
   return {
     reports: into.reports + reports,
     received: into.received + page.received, drawn: into.drawn + page.drawn, missed: into.missed + page.missed, notDecoded: into.notDecoded + page.notDecoded,
+    pendingHigh: Math.max(into.pendingHigh, high(page.pendingHigh)), decodingHigh: Math.max(into.decodingHigh, high(page.decodingHigh)),
+    heapHigh: Math.max(into.heapHigh, high(page.heapHigh)),
     restarts: { codec: into.restarts.codec + page.restarts.codec, error: into.restarts.error + page.restarts.error },
     port: mergeHistograms(into.port, page.port), decode: mergeHistograms(into.decode, page.decode),
+    recover: isHistogramJson(page.recover) ? mergeHistograms(into.recover, page.recover) : into.recover,
   };
 }
 
@@ -126,13 +137,20 @@ export function parsePipelineLog(lines: readonly string[]): PipelineReport {
   return { schema: PIPELINE_REPORT_SCHEMA, sessions: [...sessions.values()], problems };
 }
 
+/** Two hosts' counts as one: added, high-water marks (`…High`) at their highest. */
+function addHost(into: PipelineSession["host"], host: NonNullable<PipelineSession["host"]>): NonNullable<PipelineSession["host"]> {
+  const merged: NonNullable<PipelineSession["host"]> = { ...(into ?? { previewForwarded: 0, previewWithoutPort: 0 }) };
+  for (const [key, n] of Object.entries(host)) merged[key] = /High$/.test(key) ? Math.max(merged[key] ?? 0, n) : (merged[key] ?? 0) + n;
+  return merged;
+}
+
 /** Several sessions as one, for a scenario run more than once: histograms and counts added, high-water marks at their highest. */
 export function mergeSessions(name: string, sessions: readonly PipelineSession[]): PipelineSession {
   const merged: PipelineSession = { session: name, stages: {}, counts: {} };
   for (const s of sessions) {
     for (const [stage, h] of Object.entries(s.stages)) merged.stages[stage] = mergeHistograms(merged.stages[stage] ?? emptyHistogram(), h);
     for (const [key, n] of Object.entries(s.counts)) merged.counts[key] = /_high/.test(key) ? Math.max(merged.counts[key] ?? 0, n) : (merged.counts[key] ?? 0) + n;
-    if (s.host) merged.host = { previewForwarded: (merged.host?.previewForwarded ?? 0) + s.host.previewForwarded, previewWithoutPort: (merged.host?.previewWithoutPort ?? 0) + s.host.previewWithoutPort };
+    if (s.host) merged.host = addHost(merged.host, s.host);
     if (s.page) merged.page = addPage(merged.page ?? emptyPage(), s.page, s.page.reports);
   }
   return merged;
@@ -144,7 +162,7 @@ export interface SessionSummary {
   stages: Record<string, HistogramSummary>;
   counts: Record<string, number>;
   host?: PipelineSession["host"];
-  page?: Omit<PagePart, "port" | "decode"> & { port: HistogramSummary; decode: HistogramSummary };
+  page?: Omit<PagePart, "port" | "decode" | "recover"> & { port: HistogramSummary; decode: HistogramSummary; recover: HistogramSummary };
 }
 
 export function summarizeSession(session: PipelineSession): SessionSummary {
@@ -154,7 +172,8 @@ export function summarizeSession(session: PipelineSession): SessionSummary {
     ...(session.outcome ? { outcome: session.outcome } : {}),
     stages, counts: session.counts,
     ...(session.host ? { host: session.host } : {}),
-    ...(session.page ? { page: { ...session.page, port: summarizeHistogram(session.page.port), decode: summarizeHistogram(session.page.decode) } } : {}),
+    ...(session.page ? { page: { ...session.page, port: summarizeHistogram(session.page.port), decode: summarizeHistogram(session.page.decode),
+      recover: summarizeHistogram(session.page.recover) } } : {}),
   };
 }
 
@@ -173,13 +192,18 @@ export function formatSession(summary: SessionSummary): string {
   if (summary.page) {
     row("page: port (wall clock)", summary.page.port);
     row("page: decode and draw", summary.page.decode);
+    row("page: recovery after a stall", summary.page.recover);
   }
   out.push("");
   const counts = Object.entries(summary.counts).map(([key, n]) => `${key} ${n}`);
-  if (summary.host) counts.push(`host preview_forwarded ${summary.host.previewForwarded}`, `host preview_without_port ${summary.host.previewWithoutPort}`);
+  if (summary.host) {
+    const snake = (key: string): string => key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    counts.push(...Object.entries(summary.host).map(([key, n]) => `host ${snake(key)} ${n}`));
+  }
   if (summary.page) {
     const p = summary.page;
     counts.push(`page received ${p.received}`, `page drawn ${p.drawn}`, `page missed ${p.missed}`, `page not_decoded ${p.notDecoded}`,
+      `page pending_high ${p.pendingHigh}`, `page decoding_high ${p.decodingHigh}`, `page heap_high ${p.heapHigh}`,
       `page restarts codec ${p.restarts.codec} error ${p.restarts.error}`, `page reports ${p.reports}`);
   }
   if (counts.length) out.push(`Counts: ${counts.join(", ")}.`, "");

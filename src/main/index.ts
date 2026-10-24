@@ -5,6 +5,7 @@
  */
 import { createPreferenceActions } from "./settings/preferences";
 import { DEFAULT_AUDIO_VOLUME } from "../shared/audio-volume";
+import { DIAGNOSTICS_ENV } from "../shared/pipeline-histogram";
 import { createHistoryQuit, createQuitFeedback } from "./app/quit-feedback";
 import { QuitStatus } from "./app/quit-status";
 import { installQuitCoordinator } from "./app/quit-coordinator";
@@ -158,6 +159,8 @@ function resourcesDir(): string {
 // Global shortcuts register by physical key; this must precede app ready and every registration.
 const disabledFeatures = physicalHotkeyFeatures(app.commandLine.getSwitchValue("disable-features"), process.platform);
 if (disabledFeatures) app.commandLine.appendSwitch("disable-features", disabledFeatures);
+// Plan 083's development switch: the Studio page's JavaScript heap figure (plan 084) read exactly rather than in buckets.
+if (process.env[DIAGNOSTICS_ENV] === "1") app.commandLine.appendSwitch("enable-precise-memory-info");
 
 // Register before any asynchronous cleanup wait can let Electron become ready.
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
