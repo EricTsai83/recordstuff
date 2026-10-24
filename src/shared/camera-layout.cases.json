@@ -195,5 +195,12 @@
   {"camera":[1280,720],"bubble":[100,200],"crop":{"x":460,"y":0,"width":360,"height":720}},
   {"camera":[1920,1080],"bubble":[400,100],"crop":{"x":0,"y":300,"width":1920,"height":480}},
   {"camera":[640,480],"bubble":[300,300],"crop":{"x":80,"y":0,"width":480,"height":480}}
+ ],
+ "views": [
+  {"bubble":[227,302],"stage":[960,540],"rect":{"x":277.05298,"y":0,"width":405.89404,"height":540}},
+  {"bubble":[648,108],"stage":[960,540],"rect":{"x":0,"y":190,"width":960,"height":160}},
+  {"bubble":[216,216],"stage":[540,960],"rect":{"x":0,"y":210,"width":540,"height":540}},
+  {"bubble":[100,100],"stage":[617,347],"rect":{"x":135,"y":0,"width":347,"height":347}},
+  {"bubble":[227,302],"stage":[617.5,347.25],"rect":{"x":178.243791,"y":0,"width":261.012417,"height":347.25}}
  ]
 }

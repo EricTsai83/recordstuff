@@ -303,12 +303,12 @@ impl Compositor {
 
     /// The frame to encode in place of `screen`, at `at_ns` host time.
     pub fn compose(&self, screen: &Frame, at_ns: u64) -> Result<Frame, String> {
-        self.render(screen, &self.full, Some(at_ns), true)
+        self.render(screen, &self.full, Some(at_ns), None)
     }
 
     /// The picture of `screen` at preview size in `view` (plan 092, D3), for the preview's encoder.
     pub fn preview(&self, screen: &Frame, view: PreviewView) -> Result<Frame, String> {
-        self.render(screen, &self.preview, None, view.shows_camera())
+        self.render(screen, &self.preview, None, Some(view))
     }
 
     /// The camera's age in the frames composed so far, for the log.
@@ -316,18 +316,23 @@ impl Compositor {
         self.ages.summary()
     }
 
-    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `camera`: whether
-    /// the camera may be drawn, which only the preview's Screen view refuses (plan 092, D3).
-    fn render(&self, screen: &Frame, target: &Mutex<Target>, at_ns: Option<u64>, camera: bool) -> Result<Frame, String> {
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `view`: the
+    /// preview's (plan 092, D3; plan 094), none for the recording, which is always the composed picture.
+    fn render(&self, screen: &Frame, target: &Mutex<Target>, at_ns: Option<u64>, view: Option<PreviewView>) -> Result<Frame, String> {
         let mut target = target.lock().unwrap();
         let gpu = &self.gpu.0;
-        // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone.
-        let camera = if self.hidden() || !camera { None } else { self.camera.latest() };
+        // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone, or in the
+        // Camera view the surround alone.
+        let camera = if self.hidden() || !view.is_none_or(PreviewView::shows_camera) { None } else { self.camera.latest() };
         if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
             self.ages.record(at_ns, *captured_ns);
         }
         let camera = camera.map(|(frame, _)| frame);
-        let params = camera_layout::compose_params(&self.layout(), self.size, target.size, camera.as_ref().map(|frame| frame.0.image));
+        let image = camera.as_ref().map(|frame| frame.0.image);
+        let params = match view {
+            Some(view) => view.params(&self.layout(), self.size, target.size, image),
+            None => camera_layout::compose_params(&self.layout(), self.size, target.size, image),
+        };
         let output = target.output(&gpu.device)?;
         let output_luma = target_view(&gpu.device, &output, DXGI_FORMAT_R8_UNORM).map_err(|e| format!("the output's luma: {e}"))?;
         let output_chroma = target_view(&gpu.device, &output, DXGI_FORMAT_R8G8_UNORM).map_err(|e| format!("the output's chroma: {e}"))?;
@@ -595,6 +600,33 @@ mod tests {
         let full = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, 1280, 720), 0).unwrap(), 1280, 720);
         assert!(near(full[710 * 1280 + 1270], BRIGHT), "the recording keeps the camera {}", full[710 * 1280 + 1270]);
         assert!(near(shown(PreviewView::Composed), BRIGHT), "Composed: the camera again");
+    }
+
+    #[test]
+    fn the_camera_view_enlarges_the_camera_over_the_surround_in_the_preview_only() {
+        let gpu = gpu();
+        let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
+        let (compositor, feed) = compositor(&gpu, layout, 1280, 720);
+        deliver(&gpu.0, &feed, |_, _| BRIGHT, (200, 60));
+        let data = nv12(1280, 720, |_, _| DARK, (128, 128));
+        let preview = read(&gpu.0, &compositor.preview(&screen(&gpu.0, &data, 1280, 720), PreviewView::Camera).unwrap(), 960, 540);
+        let at = |x: usize, y: usize| preview[y * 960 + x];
+        let [sy, scb, scr] = camera_layout::CAMERA_VIEW_SURROUND;
+        // 540 × 540 from x = 210: the camera inside, the surround on both sides, the screen nowhere.
+        assert!(near(at(480, 270), BRIGHT) && near(at(215, 5), BRIGHT) && near(at(744, 534), BRIGHT), "{} {} {}", at(480, 270), at(215, 5), at(744, 534));
+        assert!(near(at(100, 270), sy) && near(at(860, 270), sy), "surround {} {}", at(100, 270), at(860, 270));
+        let chroma_at = |x: usize, y: usize| (preview[960 * 540 + y * 960 + x * 2], preview[960 * 540 + y * 960 + x * 2 + 1]);
+        let (cb, cr) = chroma_at(240, 135);
+        assert!(near(cb, 200) && near(cr, 60), "the camera's colour {cb} {cr}");
+        let (cb, cr) = chroma_at(20, 135);
+        assert!(cb.abs_diff(scb) <= 2 && cr.abs_diff(scr) <= 2, "the surround's colour {cb} {cr}");
+        // The recording in between is the composed picture: the screen, the bubble where it was placed.
+        let full = read(&gpu.0, &compositor.compose(&screen(&gpu.0, &data, 1280, 720), 0).unwrap(), 1280, 720);
+        assert!(near(full[710 * 1280 + 1270], BRIGHT) && near(full[10 * 1280 + 10], DARK), "the recording is unchanged");
+        // Hidden, the Camera view is the surround alone.
+        compositor.set_hidden(true);
+        let hidden = read(&gpu.0, &compositor.preview(&screen(&gpu.0, &data, 1280, 720), PreviewView::Camera).unwrap(), 960, 540);
+        assert!(near(hidden[270 * 960 + 480], sy), "hidden {}", hidden[270 * 960 + 480]);
     }
 
     #[test]

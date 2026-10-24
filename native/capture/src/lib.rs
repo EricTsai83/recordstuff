@@ -627,8 +627,8 @@ impl NativeCapture {
         }
     }
 
-    /// What the preview shows (plan 092, D3): `composed` or `screen`, from a key frame made at once; the recording is
-    /// always the composed picture. Answers false without a preview or for another view.
+    /// What the preview shows (plan 092, D3; plan 094): `composed`, `screen` or `camera`, from a key frame made at once;
+    /// the recording is always the composed picture. Answers false without a preview or for another view.
     #[napi]
     pub fn set_preview_view(&self, view: String) -> Result<bool> {
         #[cfg(any(target_os = "macos", windows))]

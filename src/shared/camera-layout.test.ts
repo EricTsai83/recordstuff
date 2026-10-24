@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import cases from "./camera-layout.cases.json";
 import {
   CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, DEFAULT_CAMERA_LAYOUT, DEFAULT_CAMERA_POSITION, MAX_POSITIONS, PRIMARY_DISPLAY_KEY,
-  bubbleRadius, bubbleRect, cameraCrop, cameraPosition, copyCameraLayout, insideBubble, isCameraLayout, positionFromRect,
+  bubbleRadius, bubbleRect, cameraCrop, cameraViewRect, cameraPosition, copyCameraLayout, insideBubble, isCameraLayout, positionFromRect,
   previewSize, withPosition, type CameraLayout,
 } from "./camera-layout";
 import { RESOLUTION_CAPS, fitWithinCap } from "./quality";
@@ -23,6 +23,22 @@ describe("the cases the engine checks too (camera-layout.cases.json)", () => {
       const crop = cameraCrop(c.camera[0]!, c.camera[1]!, c.bubble[0]!, c.bubble[1]!);
       for (const key of ["x", "y", "width", "height"] as const) expect(crop[key]).toBeCloseTo(c.crop[key], 9);
     }
+    expect(cases.views.length).toBeGreaterThan(3);
+    for (const c of cases.views) {
+      const rect = cameraViewRect(c.bubble[0]!, c.bubble[1]!, c.stage[0]!, c.stage[1]!);
+      for (const key of ["x", "y", "width", "height"] as const) expect(rect[key], `camera view ${JSON.stringify(c)}`).toBeCloseTo(c.rect[key], 5);
+    }
+  });
+
+  it("keep the Camera view at the bubble's shape, meeting the stage on one axis", () => {
+    for (const [bw, bh, sw, sh] of [[227, 302, 960, 540], [648, 108, 960, 540], [10, 10, 3, 7]] as const) {
+      const rect = cameraViewRect(bw, bh, sw, sh);
+      expect(rect.width / rect.height).toBeCloseTo(bw / bh, 9);
+      expect(Math.min(Math.abs(rect.width - sw), Math.abs(rect.height - sh))).toBeCloseTo(0, 9);
+      expect(rect.x * 2 + rect.width).toBeCloseTo(sw, 9);
+      expect(rect.y * 2 + rect.height).toBeCloseTo(sh, 9);
+    }
+    expect(cameraViewRect(0, 10, 100, 50)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
   });
 
   it("include a position that lands on half a pixel, where both languages round up", () => {

@@ -113,7 +113,7 @@ pub fn preview_size(width: u32, height: u32) -> (u32, u32) {
 }
 
 /// The compositor's kernels' parameters, laid out as `Params` in shaders/compose.wgsl, which every platform's compositor
-/// passes as they are (64 bytes: Direct3D 11's constant buffers come in 16-byte rows).
+/// passes as they are (80 bytes: Direct3D 11's constant buffers come in 16-byte rows).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ComposeParams {
@@ -126,7 +126,11 @@ pub struct ComposeParams {
     pub mirror: f32,
     pub camera_on: f32,
     pub camera_601: f32,
-    _padding: [f32; 2],
+    /// 0 draws `surround` in place of the screen (plan 094's Camera view).
+    pub screen_on: f32,
+    _padding: f32,
+    /// The colour around the camera when the screen is not drawn: video-range Y, Cb and Cr in 0–1, then unused.
+    pub surround: [f32; 4],
 }
 
 /// A camera frame as the compositor reads it: its size, and whether its YCbCr is BT.601's.
@@ -149,8 +153,15 @@ pub fn compose_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera
         bubble_size: [bubble.width as f32, bubble.height as f32],
         radius: (layout.radius(&full) * sx.min(sy)) as f32,
         mirror: if layout.mirror { 1.0 } else { 0.0 },
+        screen_on: 1.0,
         ..ComposeParams::default()
     };
+    with_camera(&mut params, &full, camera);
+    params
+}
+
+/// The camera's crop of the full-size bubble `full`, the same in every view, so the Camera view frames what is recorded.
+fn with_camera(params: &mut ComposeParams, full: &Rect, camera: Option<CameraImage>) {
     if let Some(camera) = camera {
         let (cw, ch) = (camera.width, camera.height);
         let crop = camera_crop(cw, ch, full.width, full.height);
@@ -159,6 +170,43 @@ pub fn compose_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera
         params.camera_on = 1.0;
         params.camera_601 = if camera.bt601 { 1.0 } else { 0.0 };
     }
+}
+
+/// The Camera view's rectangle (plan 094, D1) for a bubble of `width` × `height` in a `frame_width` × `frame_height`
+/// stage: the largest of the bubble's shape that fits, centred. Not rounded to whole pixels, as the page draws it at
+/// CSS pixels; src/shared/camera-layout.ts `cameraViewRect` is the same formula, checked against the same cases.
+pub fn camera_view_rect(width: f64, height: f64, frame_width: f64, frame_height: f64) -> Rect {
+    if width <= 0.0 || height <= 0.0 || frame_width <= 0.0 || frame_height <= 0.0 {
+        return Rect { x: 0.0, y: 0.0, width: frame_width.max(0.0), height: frame_height.max(0.0) };
+    }
+    let scale = (frame_width / width).min(frame_height / height);
+    let (w, h) = (width * scale, height * scale);
+    Rect { x: (frame_width - w) / 2.0, y: (frame_height - h) / 2.0, width: w, height: h }
+}
+
+/// The Camera view's surround: the Studio's picture background, `--display-bezel` (oklch(0.18 0.004 56), sRGB about
+/// 19, 17, 16) in BT.709 video range, so the letterbox around the camera is the stage's own colour.
+pub const CAMERA_VIEW_SURROUND: [u8; 3] = [31, 127, 129];
+
+/// The preview's parameters in the Camera view (plan 094, D1): the bubble of a `size` recording, at its own shape and
+/// rounding, enlarged to the largest it fits in the `out` preview and centred, the camera cropped as the recording crops
+/// it and sampled from its full frame; the screen not drawn, the rest `CAMERA_VIEW_SURROUND`. The recording's
+/// `compose_params` are not touched by it.
+pub fn camera_view_params(layout: &Layout, size: (u32, u32), out: (u32, u32), camera: Option<CameraImage>) -> ComposeParams {
+    let full = layout.bubble(size.0, size.1);
+    let view = camera_view_rect(full.width, full.height, f64::from(out.0), f64::from(out.1));
+    let scale = view.width / full.width;
+    let [y, cb, cr] = CAMERA_VIEW_SURROUND.map(|code| f32::from(code) / 255.0);
+    let mut params = ComposeParams {
+        out_size: [out.0 as f32, out.1 as f32],
+        bubble_origin: [view.x as f32, view.y as f32],
+        bubble_size: [view.width as f32, view.height as f32],
+        radius: (layout.radius(&full) * scale) as f32,
+        mirror: if layout.mirror { 1.0 } else { 0.0 },
+        surround: [y, cb, cr, 0.0],
+        ..ComposeParams::default()
+    };
+    with_camera(&mut params, &full, camera);
     params
 }
 
@@ -178,12 +226,13 @@ pub fn preview_rate(fps: u32) -> Option<u32> {
     PREVIEW_RATES.contains(&fps).then_some(fps)
 }
 
-/// What the preview shows (plan 092, D3): the composed picture, or the screen without the camera. Only the preview:
-/// the recording is always the composed picture.
+/// What the preview shows (plan 092, D3; plan 094, D1): the composed picture, the screen without the camera, or the
+/// camera alone, enlarged. Only the preview: the recording is always the composed picture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PreviewView {
     Composed,
     Screen,
+    Camera,
 }
 
 impl PreviewView {
@@ -191,13 +240,22 @@ impl PreviewView {
         match value {
             "composed" => Some(Self::Composed),
             "screen" => Some(Self::Screen),
+            "camera" => Some(Self::Camera),
             _ => None,
         }
     }
 
     /// Whether the camera is drawn in this view's preview.
     pub fn shows_camera(self) -> bool {
-        self == Self::Composed
+        self != Self::Screen
+    }
+
+    /// The kernels' parameters for this view's preview of `out` pixels from a `size` recording.
+    pub fn params(self, layout: &Layout, size: (u32, u32), out: (u32, u32), camera: Option<CameraImage>) -> ComposeParams {
+        match self {
+            Self::Camera => camera_view_params(layout, size, out, camera),
+            Self::Composed | Self::Screen => compose_params(layout, size, out, camera),
+        }
     }
 }
 
@@ -318,8 +376,60 @@ mod tests {
         assert!(PREVIEW_RATES.contains(&PREVIEW_FPS) && PREVIEW_RATES.iter().all(|&fps| fps <= PREVIEW_ENCODER_FPS));
         assert_eq!(PreviewView::parse("composed"), Some(PreviewView::Composed));
         assert_eq!(PreviewView::parse("screen"), Some(PreviewView::Screen));
-        assert_eq!(PreviewView::parse("camera"), None);
-        assert!(PreviewView::Composed.shows_camera() && !PreviewView::Screen.shows_camera());
+        assert_eq!(PreviewView::parse("camera"), Some(PreviewView::Camera));
+        assert_eq!(PreviewView::parse("Camera"), None);
+        assert!(PreviewView::Composed.shows_camera() && !PreviewView::Screen.shows_camera() && PreviewView::Camera.shows_camera());
+    }
+
+    const CAMERA: CameraImage = CameraImage { width: 1280, height: 720, bt601: false };
+
+    #[test]
+    fn the_camera_view_is_the_bubble_s_shape_enlarged_and_centred() {
+        // The default portrait 3:4 bubble of a 1920 × 1080 recording, 227 × 302, in its 960 × 540 preview.
+        let layout = Layout::default();
+        let full = layout.bubble(1920, 1080);
+        let params = camera_view_params(&layout, (1920, 1080), (960, 540), Some(CAMERA));
+        let [w, h] = params.bubble_size.map(f64::from);
+        assert!((h - 540.0).abs() < 1e-3, "as tall as the preview: {h}");
+        assert!((w / h - full.width / full.height).abs() < 1e-6, "the bubble's own shape: {w}x{h}");
+        assert!((f64::from(params.bubble_origin[0]) - (960.0 - w) / 2.0).abs() < 1e-3 && params.bubble_origin[1].abs() < 1e-3, "centred");
+        let scale = h / full.height;
+        assert!((f64::from(params.radius) - layout.radius(&full) * scale).abs() < 1e-3, "the same rounding, scaled");
+        // The camera is cropped as the recording crops it, from its full frame, and the screen is not drawn.
+        let recorded = compose_params(&layout, (1920, 1080), (1920, 1080), Some(CAMERA));
+        assert_eq!((params.crop_origin, params.crop_size), (recorded.crop_origin, recorded.crop_size));
+        assert_eq!((params.camera_on, params.screen_on, params.mirror), (1.0, 0.0, 0.0));
+        assert_eq!(params.surround[..3], CAMERA_VIEW_SURROUND.map(|code| f32::from(code) / 255.0));
+        // A wide bubble meets the preview's sides; mirroring follows the layout.
+        let wide = Layout { width: 0.6, height: 0.1, mirror: true, ..Layout::default() };
+        let params = camera_view_params(&wide, (1920, 1080), (960, 540), None);
+        assert!((params.bubble_size[0] - 960.0).abs() < 1e-3 && params.bubble_origin[0].abs() < 1e-3, "{params:?}");
+        assert_eq!((params.camera_on, params.mirror), (0.0, 1.0), "without a camera frame only the surround");
+    }
+
+    #[test]
+    fn the_recording_s_parameters_do_not_follow_the_view() {
+        let layout = Layout { width: 0.3, height: 0.2, rounding: 0.5, x: 0.2, y: 0.8, mirror: true };
+        let recorded = compose_params(&layout, (1920, 1080), (1920, 1080), Some(CAMERA));
+        assert_eq!(recorded.screen_on, 1.0, "the recording draws the screen");
+        for view in [PreviewView::Composed, PreviewView::Screen, PreviewView::Camera] {
+            let _preview = view.params(&layout, (1920, 1080), (960, 540), Some(CAMERA));
+            assert_eq!(compose_params(&layout, (1920, 1080), (1920, 1080), Some(CAMERA)), recorded, "{view:?}");
+        }
+        assert_eq!(
+            PreviewView::Composed.params(&layout, (1920, 1080), (960, 540), Some(CAMERA)),
+            compose_params(&layout, (1920, 1080), (960, 540), Some(CAMERA))
+        );
+        assert_eq!(
+            PreviewView::Camera.params(&layout, (1920, 1080), (960, 540), Some(CAMERA)),
+            camera_view_params(&layout, (1920, 1080), (960, 540), Some(CAMERA))
+        );
+    }
+
+    #[test]
+    fn the_parameters_fill_whole_constant_buffer_rows() {
+        assert_eq!(size_of::<ComposeParams>(), 80);
+        assert_eq!(size_of::<ComposeParams>() % 16, 0);
     }
 
     #[test]
@@ -361,6 +471,14 @@ mod tests {
             let (w, h) = (preview["frame"][0].as_u64().unwrap() as u32, preview["frame"][1].as_u64().unwrap() as u32);
             let expected = (preview["preview"]["width"].as_u64().unwrap() as u32, preview["preview"]["height"].as_u64().unwrap() as u32);
             assert_eq!(preview_size(w, h), expected, "preview of {w}x{h}");
+        }
+        for view in cases["views"].as_array().unwrap() {
+            let (b, s) = (&view["bubble"], &view["stage"]);
+            let got = camera_view_rect(number(&b[0]), number(&b[1]), number(&s[0]), number(&s[1]));
+            let e = &view["rect"];
+            for (got, want) in [(got.x, &e["x"]), (got.y, &e["y"]), (got.width, &e["width"]), (got.height, &e["height"])] {
+                assert!((got - number(want)).abs() < 1e-6, "camera view {view}");
+            }
         }
         for crop in cases["crops"].as_array().unwrap() {
             let c = &crop["camera"];

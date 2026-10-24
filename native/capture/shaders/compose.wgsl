@@ -5,7 +5,8 @@
 // the bubble's coverage, which is anti-aliased over one pixel of the luma plane.
 //
 // The output may be smaller than the screen's frame (the preview): the screen is sampled at the output's pixel
-// centres, which at the same size reads each pixel exactly.
+// centres, which at the same size reads each pixel exactly. The preview's Camera view (plan 094) draws no screen: the
+// bubble, enlarged, over a plain surround.
 
 struct Params {
     // The output's luma size in pixels.
@@ -24,6 +25,11 @@ struct Params {
     camera_on: f32,
     // 1 when the camera's frame is BT.601 YCbCr, which is converted to the output's BT.709 before it is blended.
     camera_601: f32,
+    // 0 draws `surround` where the screen would be (the Camera view).
+    screen_on: f32,
+    _padding: f32,
+    // Video-range Y, Cb and Cr in 0–1 around the camera when the screen is not drawn.
+    surround: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -112,7 +118,10 @@ fn luma(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let p = vec2<f32>(f32(id.x), f32(id.y)) + vec2<f32>(0.5, 0.5);
-    var y = bilinear(screen_y, p / params.out_size).r;
+    var y = params.surround.x;
+    if (params.screen_on > 0.5) {
+        y = bilinear(screen_y, p / params.out_size).r;
+    }
     let c = coverage(p);
     if (c > 0.0) {
         y = mix(y, camera_luma(camera_at(p)), c);
@@ -128,7 +137,10 @@ fn chroma(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     // The chroma sample's centre in luma pixels.
     let p = (vec2<f32>(f32(id.x), f32(id.y)) + vec2<f32>(0.5, 0.5)) * 2.0;
-    var uv = bilinear(screen_uv, p / params.out_size).rg;
+    var uv = params.surround.yz;
+    if (params.screen_on > 0.5) {
+        uv = bilinear(screen_uv, p / params.out_size).rg;
+    }
     let c = chroma_coverage(p);
     if (c > 0.0) {
         uv = mix(uv, camera_chroma(camera_at(p)), c);

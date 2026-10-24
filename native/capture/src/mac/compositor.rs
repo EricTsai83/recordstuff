@@ -228,29 +228,41 @@ impl Compositor {
         self.preview_size
     }
 
-    /// The kernels' parameters for an output of `out` pixels, the bubble placed as on the full-size frame.
-    fn params(&self, out: (u32, u32), camera: Option<&CVImageBuffer>) -> Params {
+    /// The kernels' parameters for an output of `out` pixels in `view`: the recording's, the bubble placed as on the
+    /// full-size frame, without one.
+    fn params(&self, out: (u32, u32), camera: Option<&CVImageBuffer>, view: Option<PreviewView>) -> Params {
         let camera = camera.map(|camera| CameraImage {
             width: CVPixelBufferGetWidth(camera) as u32,
             height: CVPixelBufferGetHeight(camera) as u32,
             bt601: is_601(camera),
         });
-        camera_layout::compose_params(&self.layout(), self.size, out, camera)
+        match view {
+            Some(view) => view.params(&self.layout(), self.size, out, camera),
+            None => camera_layout::compose_params(&self.layout(), self.size, out, camera),
+        }
     }
 
-    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `camera`: whether
-    /// the camera may be drawn, which only the preview's Screen view refuses (plan 092, D3).
-    fn render(&self, screen: &CVImageBuffer, pool: &Pool, out: (u32, u32), at_ns: Option<u64>, camera: bool) -> Result<CFRetained<CVPixelBuffer>, String> {
+    /// `at_ns`: the recording's frame's host time, whose camera's age is kept; none for the preview. `view`: the
+    /// preview's (plan 092, D3; plan 094), none for the recording, which is always the composed picture.
+    fn render(
+        &self,
+        screen: &CVImageBuffer,
+        pool: &Pool,
+        out: (u32, u32),
+        at_ns: Option<u64>,
+        view: Option<PreviewView>,
+    ) -> Result<CFRetained<CVPixelBuffer>, String> {
         autoreleasepool(|_| {
-            // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone.
-            let camera = if self.hidden() || !camera { None } else { self.camera.latest() };
+            // Nothing while the camera is lost (D12) or hidden (D13), or in the Screen view: the screen alone, or in
+            // the Camera view the surround alone.
+            let camera = if self.hidden() || !view.is_none_or(PreviewView::shows_camera) { None } else { self.camera.latest() };
             if let (Some(at_ns), Some((_, captured_ns))) = (at_ns, camera.as_ref()) {
                 self.ages.record(at_ns, *captured_ns);
             }
             let camera = camera.map(|(image, _)| image.0);
             let output = pool.buffer()?;
             screen.propagate_attachments(&output);
-            self.gpu.compose(screen, camera.as_deref(), &output, &self.params(out, camera.as_deref()))?;
+            self.gpu.compose(screen, camera.as_deref(), &output, &self.params(out, camera.as_deref(), view))?;
             Ok(output)
         })
     }
@@ -258,12 +270,12 @@ impl Compositor {
     /// The frame to encode in place of `screen`, at `at_ns` host time. Each call drains its own autorelease pool: it
     /// runs on the engine's threads, which have none.
     pub fn compose(&self, screen: &CVImageBuffer, at_ns: u64) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.pool, self.size, Some(at_ns), true)
+        self.render(screen, &self.pool, self.size, Some(at_ns), None)
     }
 
     /// The picture of `screen` at preview size in `view` (plan 092, D3), for the preview's encoder.
     pub fn preview(&self, screen: &CVImageBuffer, view: PreviewView) -> Result<CFRetained<CVPixelBuffer>, String> {
-        self.render(screen, &self.preview_pool, self.preview_size, None, view.shows_camera())
+        self.render(screen, &self.preview_pool, self.preview_size, None, Some(view))
     }
 
     /// The camera's age in the frames composed so far, for the log.
@@ -459,6 +471,49 @@ mod tests {
     }
 
     #[test]
+    fn the_camera_view_enlarges_the_camera_over_the_surround_in_the_preview_only() {
+        // A square bubble in the bottom-right corner of the recording, square in the middle of the Camera view.
+        let layout = Layout { width: 0.3, height: 0.3, rounding: 0.0, x: 1.0, y: 1.0, mirror: false };
+        let camera = Arc::new(camera::Feed::default());
+        let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
+        deliver(&camera, coloured(128, 72, |_, _| BRIGHT, (200, 60)));
+        let screen = buffer(1280, 720, |_, _| DARK);
+        let preview = compositor.preview(&screen, PreviewView::Camera).unwrap();
+        let data = nv12_bytes(&preview, 960, 540).unwrap();
+        let at = |x: usize, y: usize| data[y * 960 + x];
+        let [sy, scb, scr] = camera_layout::CAMERA_VIEW_SURROUND;
+        // 540 × 540 from x = 210: the camera inside, the surround on both sides, the screen nowhere.
+        assert!(near(at(480, 270), BRIGHT) && near(at(215, 5), BRIGHT) && near(at(744, 534), BRIGHT), "{} {} {}", at(480, 270), at(215, 5), at(744, 534));
+        assert!(near(at(100, 270), sy) && near(at(860, 270), sy), "surround {} {}", at(100, 270), at(860, 270));
+        let chroma_at = |x: usize, y: usize| (data[960 * 540 + y * 960 + x * 2], data[960 * 540 + y * 960 + x * 2 + 1]);
+        let (cb, cr) = chroma_at(240, 135);
+        assert!(near(cb, 200) && near(cr, 60), "the camera's colour {cb} {cr}");
+        let (cb, cr) = chroma_at(20, 135);
+        assert!(cb.abs_diff(scb) <= 2 && cr.abs_diff(scr) <= 2, "the surround's colour {cb} {cr}");
+        // The recording in between is the composed picture: the screen, the bubble where it was placed.
+        let full = nv12_bytes(&compositor.compose(&screen, 0).unwrap(), 1280, 720).unwrap();
+        assert!(near(full[710 * 1280 + 1270], BRIGHT) && near(full[10 * 1280 + 10], DARK), "the recording is unchanged");
+        // Hidden, the Camera view is the surround alone.
+        compositor.set_hidden(true);
+        let hidden = nv12_bytes(&compositor.preview(&screen, PreviewView::Camera).unwrap(), 960, 540).unwrap();
+        assert!(near(hidden[270 * 960 + 480], sy), "hidden {}", hidden[270 * 960 + 480]);
+    }
+
+    #[test]
+    fn the_camera_view_keeps_the_bubble_s_rounding() {
+        let layout = Layout { width: 0.3, height: 0.3, rounding: 1.0, x: 0.0, y: 0.0, mirror: false };
+        let camera = Arc::new(camera::Feed::default());
+        let compositor = Compositor::new(1280, 720, layout, camera.clone()).unwrap();
+        deliver(&camera, buffer(128, 72, |_, _| BRIGHT));
+        let data = nv12_bytes(&compositor.preview(&buffer(1280, 720, |_, _| DARK), PreviewView::Camera).unwrap(), 960, 540).unwrap();
+        let at = |x: usize, y: usize| data[y * 960 + x];
+        let sy = camera_layout::CAMERA_VIEW_SURROUND[0];
+        // A circle of radius 270 centred at (480, 270): its edges are the camera, its square's corners the surround.
+        assert!(near(at(480, 3), BRIGHT) && near(at(213, 270), BRIGHT), "{} {}", at(480, 3), at(213, 270));
+        assert!(near(at(215, 5), sy) && near(at(744, 534), sy), "corners {} {}", at(215, 5), at(744, 534));
+    }
+
+    #[test]
     fn the_camera_s_colour_fills_its_bubble_and_the_screen_s_stays_outside() {
         let layout = Layout { width: 0.5, height: 0.5, rounding: 0.0, x: 0.5, y: 0.5, mirror: false };
         let (compositor, camera) = compositor(layout);
@@ -642,7 +697,7 @@ mod lost_test {
         let compositor = Compositor::new(320, 180, layout, feed.clone()).unwrap();
         let screen = test_frame(320, 180);
         feed.deliver(camera::Image(test_frame(128, 72)), 1, 1, &Quiet);
-        assert_eq!(compositor.params((320, 180), feed.latest().map(|(image, _)| image.0).as_deref()).camera_on, 1.0);
+        assert_eq!(compositor.params((320, 180), feed.latest().map(|(image, _)| image.0).as_deref(), None).camera_on, 1.0);
         feed.lose("gone".into(), true, &Quiet);
         assert!(feed.latest().is_none());
         // Composing goes on with the screen alone.

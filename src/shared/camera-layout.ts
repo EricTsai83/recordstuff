@@ -157,6 +157,18 @@ export function cameraCrop(cameraWidth: number, cameraHeight: number, width: num
   return { x: (cameraWidth - cropWidth) / 2, y: (cameraHeight - cropHeight) / 2, width: cropWidth, height: cropHeight };
 }
 
+/**
+ * The Studio's Camera view (plan 094, D1): a bubble of `width` × `height` enlarged to the largest of its own shape that
+ * fits a `frameWidth` × `frameHeight` stage, centred; fractional, as it is drawn at CSS pixels. The engine's
+ * `camera_view_rect` is the same formula, checked against the same cases.
+ */
+export function cameraViewRect(width: number, height: number, frameWidth: number, frameHeight: number): Rect {
+  if (width <= 0 || height <= 0 || frameWidth <= 0 || frameHeight <= 0) return { x: 0, y: 0, width: Math.max(0, frameWidth), height: Math.max(0, frameHeight) };
+  const scale = Math.min(frameWidth / width, frameHeight / height);
+  const w = width * scale, h = height * scale;
+  return { x: (frameWidth - w) / 2, y: (frameHeight - h) / 2, width: w, height: h };
+}
+
 /** The preview's size for a `width` × `height` output: CAMERA_PREVIEW_WIDTH wide or the output's own, even. */
 export function previewSize(width: number, height: number): { width: number; height: number } {
   if (width <= 0 || height <= 0) return { width: 2, height: 2 };
