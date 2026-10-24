@@ -2,7 +2,7 @@
 
 [English](085-editing-gate-and-trim.md) | [繁體中文](085-editing-gate-and-trim.zh-TW.md)
 
-Status: planned; not started. Created: 2026-10-22 as "Recoverable, versioned editing projects"; reshaped on 2026-10-23 at the maintainer's request into the first vertical slice of the editing phase: one user-visible capability (cut and export) end to end, instead of storage infrastructure that delivered nothing until two later plans. D1 was answered the same day: this slice is wanted, and cuts may remove any part, not only the head and tail; 087 is decided only once this slice is in use (086, styling, was removed the same day). Hard dependencies: 083 (closed). Seventh in the queue, after 084. Execute in order under the [plan index](README.md) and the [series contract](README.md#glide-inspired-evolution-083087). This task writes the plan only; nothing below has been implemented or verified.
+Status: planned; not started. Created: 2026-10-22 as "Recoverable, versioned editing projects"; reshaped on 2026-10-23 at the maintainer's request into the first vertical slice of the editing phase: one user-visible capability (cut and export) end to end, instead of storage infrastructure that delivered nothing until two later plans. D1 was answered the same day: this slice is wanted, and cuts may remove any part, not only the head and tail; 087 is decided only once this slice is in use (086, styling, was removed the same day). Hard dependencies: 083 (closed). Next in the queue: 084, before it, closed on 2026-10-24. Execute in order under the [plan index](README.md) and the [series contract](README.md#glide-inspired-evolution-083087). This task writes the plan only; nothing below has been implemented or verified.
 
 ## Goal and decision
 

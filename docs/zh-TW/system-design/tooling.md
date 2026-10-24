@@ -99,6 +99,7 @@ pnpm measure:cpu -- --fps 60 --repeat 3                  # baseline 回合：兩
 pnpm measure:cpu -- --camera preview=0 --skip-settings --skip-playback --studio --fps 60 --minutes 2   # 相機：R、S（錄影工作室顯示錄影）與 L（即時預覽）；plan 075
 pnpm measure:cpu -- --skip-settings --skip-playback --fps 60 --minutes 1 --diagnostics   # 每段錄影的管線數據（plan 083）；旁邊再跑一次不加 --diagnostics，可得它的成本
 pnpm diagnose:pipeline -- --last 3                       # 從 App 的 log 讀最近幾個工作階段的管線數據（plan 083）
+pnpm measure:cpu -- --skip-settings --skip-playback --studio --studio-rate standard --studio-stall 15,30 --diagnostics --minutes 1   # 每個 port 接上 15 秒後讓錄影工作室頁面停住 30 秒（plan 084；改用 --studio-memory 則是不停住的對照）；其 CPU 數字不作 baseline
 pnpm measure:cpu -- --skip-settings --skip-playback --fps 60 --minutes 1 --repeat 3 --profile --audio off   # 單獨隔離一個原因：不錄聲音（或 --capture-interval frame）；plan 091
 pnpm diagnose:profile -- docs/verification/measurements/<run>   # 擷取程序 profile 的 CPU 依原因、執行緒與函式庫拆分（plan 091）
 pnpm measure:thumbnails                                  # 在隱藏的 view host 以數百支真實影片比較錄影檔縮圖的並行上限與快取；需要 out/；約 2 分鐘
@@ -149,7 +150,9 @@ Plan 083 逐階段量測一個工作階段的時間花在哪裡，和逐影格 l
 | `write_wait`、`write` | 媒體交給 writer 到被取走；封裝並寫入它 | `writer_pending_high` 與 `writer_backlog_high_bytes` 是佇列的最高水位；超過 64 MiB 的上限會讓錄影失敗 |
 | `preview_compose`、`preview_encode` | 預覽畫面（macOS）；它送出到 chunk 產生 | `preview_chunks` 是產生數；`preview_gate_sent` 與 `preview_gate_dropped` 是 napi 兩個在途上限的閘門在 JavaScript 執行緒前放行或丟棄的 chunk |
 
-capture host 在工作階段進行中每 5 秒、結束時再一次讀取這些數據（`NativeCapture.diagnostics()`，從工作階段開始累計），每次記一行 `capture host: diagnostics: {"kind":"engine",…}`，含工作階段、`running` 或結束方式（`finished`、`writeError`、`cancelled`、`failed`），以及它自己轉送給錄影工作室的預覽 chunk 數和沒有頁面持有 port 時收到的數量。錄影工作室顯示預覽時，host 在 Studio 的 port 上向頁面要求數據，頁面每 5 秒回報一次，放開 port 時再報一次（`{"kind":"page",…}`；[preview-diagnostics.ts](../../../src/renderer/lib/preview-diagnostics.ts)）：收到、畫出、從未收到（編號出現缺口）與收到但未解碼的 chunk 數；因編解碼器或錯誤而重啟 decoder 的次數；port 延遲，即 capture 程序送出時的 `Date.now()` 到頁面收到時的 `Date.now()`，兩個程序共用同一個系統時鐘、以整數毫秒計，時鐘跳動會干擾它；以及解碼加上畫進 canvas 的時間，畫進 canvas 還不等於螢幕已顯示。不保留任何畫面、裝置名稱或輸入文字。
+capture host 在工作階段進行中每 5 秒、結束時再一次讀取這些數據（`NativeCapture.diagnostics()`，從工作階段開始累計），每次記一行 `capture host: diagnostics: {"kind":"engine",…}`，含工作階段、`running` 或結束方式（`finished`、`writeError`、`cancelled`、`failed`），以及它自己的計數：轉送給錄影工作室的預覽 chunk 數與其 bytes、沒有頁面持有 port 時收到的數量，以及 plan 084 起有界傳遞擋下的數量（`previewHeld`）、向引擎要求的 key frame 數（`previewKeyRequests`）與同時未確認的最多 chunk 數和 bytes（`previewOutstandingHigh`、`previewOutstandingBytesHigh`；見[錄影設計](recording.md#相機)）。錄影工作室顯示預覽時，host 在 Studio 的 port 上向頁面要求數據，頁面每 5 秒回報一次，放開 port 時再報一次（`{"kind":"page",…}`；[preview-diagnostics.ts](../../../src/renderer/lib/preview-diagnostics.ts)）：收到、畫出、從未收到（編號出現缺口）與收到但未解碼的 chunk 數；同時等待繪製與在 decoder 自己佇列中的最多 chunk 數（`pendingHigh`、`decodingHigh`，plan 084），以及 chunk 到達時頁面 JavaScript heap 的最高使用量（`heapHigh`，bytes；開關開啟時 main 以 `--enable-precise-memory-info` 啟動 Chromium，否則這個數字是粗略且有快取的級距）；因編解碼器或錯誤而重啟 decoder 的次數；port 延遲，即 capture 程序送出時的 `Date.now()` 到頁面收到時的 `Date.now()`，兩個程序共用同一個系統時鐘、以整數毫秒計，時鐘跳動會干擾它；以及解碼加上畫進 canvas 的時間，畫進 canvas 還不等於螢幕已顯示；還有停住的頁面趕上的時間（`recover`，plan 084），從它收到第一個送出超過一秒的 chunk，到它畫出第一個送出後一秒內的影格。不保留任何畫面、裝置名稱或輸入文字。
+
+第二個開發開關 `RECORDSTUFF_STUDIO_STALL=<at>,<for>`（秒，[studio-stall.ts](../../../src/shared/studio-stall.ts)，plan 084）讓「頁面什麼都不畫」可以重現：錄影工作室頁面持有 port `at` 秒後，capture host 在 port 上要求它把 main thread 卡住 `for` 秒（最多 120），就像 renderer 卡住或一次很長的垃圾回收；它每 100,000 圈才讀一次時鐘，所以卡住本身幾乎不配置記憶體（第一版每圈都讀，自己的垃圾讓 renderer 多長了約 30 MB，見 plan 084 的紀錄）。main、capture 程序與被錄的 App 都照常運作；沒有開關時頁面永遠不會被要求停住。`pnpm measure:cpu -- --studio --studio-stall <at>,<for>` 以此開關啟動 bundle，並為每段 S 錄影記下 capture 程序與每個 renderer 在停住前的記憶體與之後的最高值；`--studio-memory` 則在不停住的情況下於 15 秒記下同樣的數字作為對照。頁面空轉期間佔用一個核心，所以這類執行的 CPU 數字不作 baseline。
 
 一個工作階段的最後一行就是它的全部：主程序以結束 capture 程序的方式結束即時預覽，此時不會記下結束方式，所以它的數據是最後一次 5 秒快照的數據。`pnpm diagnose:pipeline -- [<log>…] [--session <id>]… [--last N] [--json <file>]` 讀取 App 的 log（預設為封存檔與目前的檔案），印出每個工作階段各階段的次數、平均、p50、p95、最大值與計數；[pipeline-report.mts](../../../scripts/lib/verification/pipeline-report.mts) 以相加 bucket 的方式合併直方圖，多次執行不需原始樣本就能合併，報告格式為 `recordstuff.pipeline-diagnostics/1`，拒收其他 schema 的數據。`pnpm measure:cpu -- --diagnostics` 以這個開關啟動 bundle，把數據依錄影與情境加進報告，若某段錄影或即時預覽沒有引擎那一行就判為失敗；launchd 持有這個開關而沒加 `--diagnostics` 時拒絕執行。`RECORDSTUFF_DIAGNOSTICS=1 pnpm matrix -- quick` 會把它傳給開發版 App。開關本身的成本與得到的 baseline 見[管線 baseline](#管線-baseline)。
 
@@ -254,11 +257,23 @@ Plan 083 在 2026-10-23 的量測回合（M1 Pro 參考機，macOS 26.6.2，闔�
 
 不讀取螢幕的「相機」畫面在兩種速率下都不比旁邊量的「合成」對照貴（S 低 0.6–1.9 點，在對照的變動範圍內或更低），符合它的門檻。「標準」的 D18 失敗（超過 8 點）是 092 既有的，兩種畫面皆然。頁面的解碼與繪製時間沒有量（未加 `--diagnostics`），「流暢」與 60 fps 也沒有量。
 
-**未完成計畫（084、085、087）使用的預算。** 在各計畫量測自己的工作之前，以 `--diagnostics` 在相同負載下對照；哪些計畫在何時重量這份 baseline 的哪些部分，列在計畫索引的 [baseline](../../../plans/README.zh-TW.md#baseline)：
+**錄影工作室的有界傳遞，由 plan 084 量測**（2026-10-24；以 `pnpm start:app` 從 `b32c53b3` 建置的簽章 bundle：改動前只有停住開關與其數據，改動後加上 084 的上限；同一台機器、同樣的螢幕與動態素材，未合成相機，錄影工作室視窗 1043 × 758 放在 BL2480T；`pnpm measure:cpu -- --skip-settings --skip-playback --studio --studio-rate <rate> --studio-stall 15,30 --diagnostics --minutes 1`，30 fps；報告 `084-r1-before-power` 至 `084-r14-stall-smooth-quiet`，僅存在本機）。每個 port 接上 15 秒後讓頁面停住 30 秒，S（錄影中）與 L（即時預覽）各一次：
+
+| 速率（S / L 每秒張數） | 改動前：頁面積壓的 chunk | 改動前：renderer | 改動後：最多未確認 | 改動後：renderer | 改動後：回到最新畫面（S / L） |
+| --- | --- | --- | --- | --- | --- |
+| 省電（5 / 10） | 150 / 300（約 8 MB） | 265 → 345 MB | 3 個 chunk、209 KB | 310 → 327 MB | 25 / 103 ms |
+| 標準（10 / 10） | 300 / 301 | 276 → 350 MB | 3 個 chunk、177 KB | 310 → 324 MB | 54 / 101 ms |
+| 流暢（15 / 15） | 450 / 450 | 271 → 356 MB | 3 個 chunk、125 KB | 294 → 322 MB | 23 / 46 ms |
+
+改動前，停住期間產生的每個 chunk 都被送出並積壓（頁面的 `pending` 與 decoder 佇列達到上表的數量，port 延遲 30 秒），頁面在停住後把它們全部畫完。改動後，host 擋下超過上限的部分（每次停住 147–447 個），只要求一次 key frame，頁面在兩個預覽 tick 加上解碼的時間內畫出最新畫面（門檻：每秒 5／10／15 張時為 408／208／141 ms）；頁面等待繪製的 chunk 從未超過 3 個。renderer 兩欄所用的停住方式不同：改動前與第一輪改動後用的是每圈都讀時鐘的迴圈，它自己的垃圾多出約 30 MB（改動後用它：+48 至 +52 MB；同一迴圈在預覽關閉時：+0）；上表改動後的數字用每 100,000 圈才讀一次時鐘的迴圈。剩下的 14–28 MB 是頁面恢復那一刻的 JavaScript heap（加上 `--enable-precise-memory-info`：約 70 → 98 MB），5 秒內就被回收到比停住前更低；不停住時，renderer 在同一分鐘內是 288 → 293 MB（`--studio-memory`），停住前的水準在各次執行間介於 285–310 MB。capture 程序在停住期間前後都增加 7–10 MB。一段經歷停住的錄影通過 `pnpm verify --sync`（0 掉格，A/V −19 ms）。
+
+改動後跟得上的頁面，對照 095 在 960 的數據（`--fps 60 --repeat 3 --diagnostics`，報告 `084-r7-after-power` 與 `084-r8-after-standard`）：省電 S 在 30／60 fps 為 17.8%／21.6%，高於 R 8.2／6.6 點（095：16.8%／20.4%，6.8／5.2），L 為 15.2%／14.9%；標準 S 為 22.0%／24.9%，高於 R 11.6／10.4 點（095：22.6%／26.4%，12.0／11.6），L 為 16.0%／15.8%。沒有擋下任何 chunk，也沒有要求 key frame（0 held、0 次要求），產生的每個影格都畫出（0 缺漏、0 閘門丟棄；L 每分鐘 550–551 張，S 906–907 或 1,811–1,813 張），解碼加繪製 p95 為 6.7–9.2 ms。確認訊息是省電兩倍的標準落在 095 的數據內；省電的 S 比另一天量的 095 高約 1 點，確認訊息（每秒 5 則小訊息）無法解釋，因此視為輪次之間的漂移。
+
+**未完成計畫（085、087）使用的預算。** 在各計畫量測自己的工作之前，以 `--diagnostics` 在相同負載下對照；哪些計畫在何時重量這份 baseline 的哪些部分，列在計畫索引的 [baseline](../../../plans/README.zh-TW.md#baseline)：
 
 - 錄影 CPU 維持在本節的中位數加上其範圍內（以及 `CPU_BUDGET`）；優化只有在中位數改善超過該範圍且至少 10%、錄影完整性檢查不變時才算數。
 - 佇列維持現在的上限：編碼器不丟幀，等待編碼器的影格最多 4 個，Standard 品質下 writer 積壓低於 1 MB。
-- 預覽送出它產生的全部：跟得上的頁面 0 缺漏、0 閘門丟棄，port 的 p95 最多 1 ms，解碼加繪製的 p95 在 960 像素時最多 10 ms（plan 095 的 D3 接受較大串流的 7.7–9.2 ms 之前，640 時為 6 ms）；084 以這些標準量測慢的 consumer。
+- 預覽送出它產生的全部：跟得上的頁面 0 缺漏、0 閘門丟棄、0 held，port 的 p95 最多 1 ms，解碼加繪製的 p95 在 960 像素時最多 10 ms（plan 095 的 D3 接受較大串流的 7.7–9.2 ms 之前，640 時為 6 ms）；停住的頁面最多 3 個 chunk、512 KiB 未確認，恢復後在兩個預覽 tick 加上解碼的時間內出現最新畫面（plan 084）。
 - 記憶體：有預覽時 capture 程序最多約 110 MB（有相機時 113 MB），錄影工作室的 renderer 約 270 MB；新增的成本與任何節省分開報告。
 - 編輯計畫（085 與 087）的預算在各自量測前都是暫定；它們的成本屬於新功能，以這些 baseline 判定，不藏在 baseline 裡。
 
