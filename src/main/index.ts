@@ -353,6 +353,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     } } : {}),
     // D6: only ScreenCaptureKit can leave the system's chrome out.
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
+    // Plan 087: the engine records editable files on macOS only.
+    editable: () => process.platform === "darwin" && settings.editableRecording,
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
     // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
@@ -568,7 +570,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
-    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, editableRecording: settings.editableRecording, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(devices.microphones ? { devices: devices.microphones } : {}), ...(access ? { access } : {}),

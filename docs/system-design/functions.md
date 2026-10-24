@@ -132,7 +132,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | event | While a session exists: `progress` → `progress`; `writeError` with a known code → `writeError`; `microphoneLost` / `microphoneResumed` → the same host messages (plan 074); `captureError` → `error` (unknown codes as capture_failed) |
 | fail / send | Send `error` / post a HostMessage |
 | engineFailure | Split the engine's `code\|detail` rejection; anything else is capture_start_failed with the message |
-| developmentCapture | Read `RECORDSTUFF_CAPTURE_SOURCE` (`window:<id>`, `area:x,y,w,h`, `apps:<pid>,…`), `RECORDSTUFF_CAPTURE_AUDIO` (`off`, `apps:<pid>,…`) and `RECORDSTUFF_CAPTURE_EDITABLE` (`1`: plan 087's editable recording prototype, macOS); anything else records the display with all system audio, as today |
+| developmentCapture | Read `RECORDSTUFF_CAPTURE_SOURCE` (`window:<id>`, `area:x,y,w,h`, `apps:<pid>,…`) and `RECORDSTUFF_CAPTURE_AUDIO` (`off`, `apps:<pid>,…`); anything else records the display with all system audio |
 
 ## Native engine
 

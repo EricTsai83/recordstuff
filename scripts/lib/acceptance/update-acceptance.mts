@@ -64,7 +64,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
@@ -117,7 +117,8 @@ export function assertLockContract(s: LockSnapshot): void {
     // Turning the countdown off disables its sound control even when idle.
     const countdownOff = s.settings.groups.find(g => g.id === "countdown")?.choices.some(c => c.checked && c.id === "0");
     // Hide taskbar on Windows is unavailable at all times, and says why in its note (plan 076, D6).
-    const unavailable = group.id === "hideSystemUi" && group.note !== undefined;
+    // Shown unavailable with why on Windows, where the engine cannot (hideSystemUi, D6; editableRecording, plan 087).
+    const unavailable = (group.id === "hideSystemUi" || group.id === "editableRecording") && group.note !== undefined;
     // The input device follows the microphone's switch even when idle (plan 074).
     const microphoneOff = s.settings.groups.find(g => g.id === "microphone")?.choices.some(c => c.checked && c.id === "off");
     const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !(group.id === "microphoneDevice" && microphoneOff) && !unavailable;

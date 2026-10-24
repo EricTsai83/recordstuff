@@ -80,6 +80,7 @@ export const Clip = memo(function Clip({
                   item.time,
                   item.duration,
                   item.size,
+                  item.editable,
                 ].filter((part): part is string => Boolean(part)),
                 language,
               ),
@@ -130,10 +131,10 @@ export const Clip = memo(function Clip({
               </span>
             </ControlTooltip>
             <span className="clip-meta">
-              {[item.time, item.size].join(" · ")}
+              {[item.time, item.size, item.editable].filter(Boolean).join(" · ")}
             </span>
             <span className="clip-detail">
-              {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
+              {[item.time, item.duration, item.size, item.editable].filter(Boolean).join(" · ")}
             </span>
           </span>
         </Button>

@@ -87,6 +87,8 @@ export type AppAction =
   | { setCountdown: CountdownSeconds }
   | { setCountdownSound: boolean }
   | { setHideSystemUi: boolean }
+  /** Plan 087: editable recordings, macOS only. */
+  | { setEditableRecording: boolean }
   | { setMicrophone: boolean }
   /** The Camera switch (plan 075, D10). */
   | { setCamera: boolean }
@@ -164,6 +166,8 @@ export interface AppContext {
   displayFailure?: DisplayFailure;
   /** The stored D6 switch (plan 076): macOS recordings leave out the menu bar and Dock; absent is off. */
   hideSystemUi?: boolean;
+  /** The stored switch for editable recordings (plan 087); absent is off. */
+  editableRecording?: boolean;
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
   /** The camera (plan 075); absent is off and not shown. */

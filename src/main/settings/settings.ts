@@ -61,6 +61,11 @@ export interface Settings {
   display: DisplayPreference;
   /** Whether macOS recordings leave out the menu bar, the Dock, desktop icons and widgets (plan 076, D6); off by default. */
   hideSystemUi: boolean;
+  /**
+   * Whether macOS recordings are editable (plan 087): the screen, each sound and the camera on tracks of their own, so
+   * the camera's place and the volumes are chosen after recording and an export renders them; off by default.
+   */
+  editableRecording: boolean;
   /** Seconds before capture begins; 0 is Off (plan 040). */
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
@@ -137,6 +142,8 @@ export function defaultSettings(outputDir: string): Settings {
     display: DEFAULT_DISPLAY_PREFERENCE,
     // Off: an update must not change what existing recordings show, and what is on screen is what users expect.
     hideSystemUi: false,
+    // Off: an ordinary recording plays everywhere as it was recorded; an editable one needs an export first.
+    editableRecording: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     microphone: false,
@@ -228,6 +235,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
   const hideSystemUi = field("hideSystemUi", isBoolean, defaults.hideSystemUi, `hideSystemUi is not a boolean: using ${defaults.hideSystemUi ? "on" : "off"}`);
+  const editableRecording = field("editableRecording", isBoolean, defaults.editableRecording, `editableRecording is not a boolean: using ${defaults.editableRecording ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
@@ -249,7 +257,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryPreviewSound = field("libraryPreviewSound", isBoolean, defaults.libraryPreviewSound, `libraryPreviewSound is not a boolean: using ${defaults.libraryPreviewSound ? "on" : "off"}`);
   const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
-  return { settings: { appearance, display, hideSystemUi, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
+  return { settings: { appearance, display, hideSystemUi, editableRecording, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
@@ -299,6 +307,13 @@ export class SettingsStore {
   setHideSystemUi(enabled: boolean): Promise<void> {
     if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported hide system UI: ${JSON.stringify(enabled)}`));
     return this.save((current) => ({ ...current, hideSystemUi: enabled }));
+  }
+
+  get editableRecording(): boolean { return this.settings.editableRecording; }
+
+  setEditableRecording(enabled: boolean): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported editable recording: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, editableRecording: enabled }));
   }
 
   get outputDir(): string {

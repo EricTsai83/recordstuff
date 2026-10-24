@@ -150,6 +150,21 @@ export function hideSystemUiGroup(ctx: AppContext, enabled: boolean): Group {
 }
 
 /**
+ * Plan 087: editable recordings keep the screen, each sound and the camera on tracks of their own, so Edit… chooses
+ * the camera's place and the volumes after recording. Off by default; macOS only, shown unavailable elsewhere.
+ */
+export function editableRecordingGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  if (ctx.platform !== "darwin") {
+    return { ...group("editableRecording", t("Editable recordings", language), false, switchChoices(language, false, (value) => ({ setEditableRecording: value }))),
+      note: t("Editable recordings are available on macOS only.", language) };
+  }
+  return { ...group("editableRecording", t("Editable recordings", language), enabled,
+    switchChoices(language, ctx.editableRecording ?? false, (value) => ({ setEditableRecording: value }))),
+  info: t("Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Other apps show the screen with system audio until you export it from Edit….", language) };
+}
+
+/**
  * The countdown's tick (plan 046): disabled while the countdown is Off, which
  * keeps the stored value, and locked with the other recording settings.
  */

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
-import { mp4Duration } from "./mp4-duration";
+import { mp4Duration, mp4Facts } from "./mp4-duration";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-mp4-"));
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -13,11 +13,11 @@ const box = (type: string, ...parts: Buffer[]): Buffer => { const body = Buffer.
 const fullBox = (type: string, version: number, flags: number, ...parts: Buffer[]): Buffer =>
   box(type, Buffer.from([version, (flags >> 16) & 255, (flags >> 8) & 255, flags & 255]), ...parts);
 const zeros = (n: number): Buffer => Buffer.alloc(n);
-/** A movie with one track of `timescale`, whose fragments default to `defaultDuration` ticks (trex). */
-const moov = (timescale: number, defaultDuration = 0): Buffer => box("moov",
+/** A movie with one track of `timescale`, whose fragments default to `defaultDuration` ticks (trex), and `extra` boxes. */
+const moov = (timescale: number, defaultDuration = 0, ...extra: Buffer[]): Buffer => box("moov",
   fullBox("mvhd", 0, 0, zeros(8), u32(1000), u32(0), zeros(80)),
   box("trak", fullBox("tkhd", 0, 3, zeros(8), u32(1), zeros(68)), box("mdia", fullBox("mdhd", 0, 0, zeros(8), u32(timescale), u32(0), zeros(4)))),
-  box("mvex", fullBox("trex", 0, 0, u32(1), u32(1), u32(defaultDuration), u32(0), u32(0))));
+  box("mvex", fullBox("trex", 0, 0, u32(1), u32(1), u32(defaultDuration), u32(0), u32(0))), ...extra);
 /** A fragment starting at `base` ticks: per-sample durations in trun, or `count` samples of the default. */
 const fragment = (base: number, samples: number[] | { count: number; tfhdDefault?: number }): Buffer => {
   const tfhd = Array.isArray(samples) || samples.tfhdDefault === undefined ? fullBox("tfhd", 0, 0, u32(1)) : fullBox("tfhd", 0, 0x8, u32(1), u32(samples.tfhdDefault));
@@ -27,6 +27,17 @@ const fragment = (base: number, samples: number[] | { count: number; tfhdDefault
   return Buffer.concat([box("moof", fullBox("mfhd", 0, 0, u32(1)), box("traf", tfhd, fullBox("tfdt", 1, 0, Buffer.alloc(4), u32(base)), trun)), box("mdat", zeros(64))]);
 };
 const write = (name: string, ...parts: Buffer[]): string => { const file = path.join(dir, name); fs.writeFileSync(file, Buffer.concat(parts)); return file; };
+
+describe("an editable recording's mark (plan 087)", () => {
+  it("is RecordStuff's description in the movie's udta, and nothing else", async () => {
+    const description = box("udta", box("rsed", Buffer.from('{"version":1,"sounds":["system"],"camera":null}')));
+    expect(await mp4Facts(write("editable.mp4", box("ftyp", zeros(8)), moov(90000, 0, description), fragment(0, [3000, 3000]))))
+      .toEqual({ seconds: expect.closeTo(6000 / 90000, 6), editable: true });
+    expect(await mp4Facts(write("other-udta.mp4", moov(90000, 0, box("udta", box("meta", zeros(4)))), fragment(0, [3000])))).toMatchObject({ editable: false });
+    expect(await mp4Facts(write("plain.mp4", moov(90000), fragment(0, [3000])))).toMatchObject({ editable: false });
+    expect(await mp4Facts(write("nothing.mp4", Buffer.from("no movie")))).toEqual({ editable: false });
+  });
+});
 
 describe("mp4Duration", () => {
   it("ends at the last fragment's start plus its samples, from per-sample, tfhd or trex durations", async () => {

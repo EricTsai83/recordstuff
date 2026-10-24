@@ -51,6 +51,7 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
+        ...(file.editable ? { editable: t("Editable", language) } : {}),
       };
     }),
     ...(library.folders?.length ? { folders: library.folders.map(({ name, empty }) => ({ name, empty })) } : {}),

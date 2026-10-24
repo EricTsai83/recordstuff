@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { watch as watchFolder, type Dirent, type FSWatcher } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { mp4Duration } from "./mp4-duration";
+import { mp4Facts } from "./mp4-duration";
 import { errnoCode } from "../lib/errors";
 import { mapLimited } from "../lib/map-limited";
 import { retryWhileHeldOpen } from "../lib/held-open";
@@ -55,6 +55,8 @@ export interface RecordingFile {
   recordedAt: number;
   /** Seconds, once read; a file whose boxes do not say has none. */
   duration?: number;
+  /** An editable recording (plan 087), once its boxes are read. */
+  editable?: true;
   /** Changes whenever the file does, so a cached thumbnail is never shown for new content. */
   version: string;
   /** The subfolder it is in, by name; absent for one directly in the output folder. */
@@ -199,7 +201,7 @@ export function fileId(filePath: string): string {
 
 export class RecordingsLibrary {
   private current: LibraryState;
-  private durations = new Map<string, { version: string; seconds: number | undefined }>();
+  private durations = new Map<string, { version: string; seconds: number | undefined; editable: boolean }>();
   /** `made` once the picture exists: only then does it belong to the bytes rather than to a path still to be read. */
   private thumbnails = new Map<string, Thumbnail>();
   /** Thumbnails being made, at most `THUMBNAILS_AT_ONCE`, and the ones waiting their turn, newest last. */
@@ -321,6 +323,7 @@ export class RecordingsLibrary {
           id: fileId(filePath), path: filePath, name, size: stat.size, version,
           recordedAt: stampedTime(name) ?? (stat.birthtimeMs || stat.mtimeMs),
           ...(known?.version === version && known.seconds !== undefined ? { duration: known.seconds } : {}),
+          ...(known?.version === version && known.editable ? { editable: true as const } : {}),
           ...(folder === undefined ? {} : { folder }),
         };
       }).sort((a, b) => b.recordedAt - a.recordedAt || a.name.localeCompare(b.name) || (a.folder ?? "").localeCompare(b.folder ?? ""));
@@ -444,9 +447,9 @@ export class RecordingsLibrary {
     let published = now();
     for (const [index, file] of missing.entries()) {
       if (run !== this.lengthsRun) return;
-      const seconds = await mp4Duration(file.path);
+      const { seconds, editable } = await mp4Facts(file.path);
       if (generation !== this.generation) return;
-      this.durations.set(file.path, { version: file.version, seconds });
+      this.durations.set(file.path, { version: file.version, seconds, editable });
       if (index < missing.length - 1 && now() - published >= LENGTHS_PUBLISH_MS) {
         this.publishLengths();
         published = now();
@@ -457,8 +460,9 @@ export class RecordingsLibrary {
 
   private publishLengths(): void {
     this.current = { ...this.current, files: this.current.files.map(file => {
-      const seconds = this.durations.get(file.path);
-      return seconds?.version === file.version && seconds.seconds !== undefined ? { ...file, duration: seconds.seconds } : file;
+      const known = this.durations.get(file.path);
+      if (known?.version !== file.version) return file;
+      return { ...file, ...(known.seconds !== undefined ? { duration: known.seconds } : {}), ...(known.editable ? { editable: true as const } : {}) };
     }) };
     this.deps.changed();
   }

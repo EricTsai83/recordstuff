@@ -130,14 +130,13 @@ const NUMBER_LIST = /^\d+(,\d+)*$/;
 const numbers = (text: string): number[] => text.split(",").map(Number);
 
 /** What the development switches choose; absent fields record as today. */
-export interface DevelopmentCapture { source?: CaptureSource; audio?: AudioOptions; editable?: true }
+export interface DevelopmentCapture { source?: CaptureSource; audio?: AudioOptions }
 
 /**
  * Step 4's development switches, until a later plan's pickers choose: `RECORDSTUFF_CAPTURE_SOURCE` is `window:<id>`,
  * `area:<x>,<y>,<width>,<height>` (the display's pixels) or `apps:<pid>,…`, and `RECORDSTUFF_CAPTURE_AUDIO` is `off`
- * or `apps:<pid>,…`. `RECORDSTUFF_CAPTURE_EDITABLE=1` is plan 087's editable recording prototype (macOS): the screen
- * without the camera, each sound input and the camera on tracks of their own. Anything else, or nothing, records as
- * today. The microphone is the user's setting (plan 074), which `start` carries and these switches keep.
+ * or `apps:<pid>,…`. Anything else, or nothing, records as today. The microphone is the user's setting (plan 074),
+ * which `start` carries and these switches keep; so are editable recordings (plan 087, `native.editable`).
  */
 export function developmentCapture(env: Record<string, string | undefined>): DevelopmentCapture {
   const result: DevelopmentCapture = {};
@@ -151,7 +150,6 @@ export function developmentCapture(env: Record<string, string | undefined>): Dev
   const [audio, pids = ""] = (env["RECORDSTUFF_CAPTURE_AUDIO"] ?? "").split(":", 2);
   if (audio === "off") result.audio = { system: "off", microphone: false };
   if (audio === "apps" && NUMBER_LIST.test(pids)) result.audio = { system: "apps", pids: numbers(pids), microphone: false };
-  if (env["RECORDSTUFF_CAPTURE_EDITABLE"] === "1") result.editable = true;
   return result;
 }
 
@@ -543,7 +541,7 @@ export class NativeHost {
       const chosen = this.development.source;
       const audio = this.audio(native);
       if (chosen || this.development.audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
-      if (this.development.editable) this.log("development capture: editable recording (plan 087 prototype): the screen, each sound and the camera on tracks of their own");
+      if (native.editable) this.log("editable recording (plan 087): the screen, each sound and the camera on tracks of their own");
       const source = chosen
         ? await this.capture.probe(native.displayId, native.displayPoint, chosen)
         : await this.capture.probe(native.displayId, native.displayPoint);
@@ -556,7 +554,7 @@ export class NativeHost {
         ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
         ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
         ...(native.camera ? { camera: { ...native.camera, preview: this.cameraPreview } } : {}),
-        ...(this.development.editable ? { editable: true } : {}),
+        ...(native.editable ? { editable: true } : {}),
       });
       this.log(`timing: probe ${Math.round(probed - began)} ms, prepare ${Math.round(this.now() - probed)} ms` +
         `${prepared.timings ? ` (${prepared.timings})` : ""}`);

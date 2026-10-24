@@ -74,6 +74,7 @@ describe("settingsView", () => {
       "hideSystemUi",
       "outputFolder",
       "fileName",
+      "editableRecording",
       "countdown",
       "countdownSound",
       "microphone",
@@ -198,7 +199,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "source", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "source", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
   });
 });
 
@@ -780,7 +781,23 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "countdown", "countdownSound", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
+  });
+});
+
+describe("editable recordings (plan 087)", () => {
+  it("is a switch with the source and output, off until turned on, unavailable while recording and on Windows", () => {
+    expect(group(idle, context, "editableRecording")).toMatchObject({ label: "Editable recordings", control: "switch", tab: "recording", section: "source", enabled: true });
+    expect(group(idle, context, "editableRecording")?.info).toContain("Edit… can place the camera and set the volumes");
+    expect(checked(idle, context, "editableRecording")).toBe("off");
+    expect(checked(idle, { ...context, editableRecording: true }, "editableRecording")).toBe("on");
+    expect(settingsAction(idle, context, "editableRecording", "on")).toEqual({ setEditableRecording: true });
+    expect(settingsAction(idle, { ...context, editableRecording: true }, "editableRecording", "off")).toEqual({ setEditableRecording: false });
+    expect(group({ type: "recording", startedAt: new Date().toISOString() }, context, "editableRecording")?.enabled).toBe(false);
+    expect(group(idle, { ...context, language: "zh-TW" }, "editableRecording")?.label).toBe("可編輯錄影");
+    const windows = { ...context, platform: "win32" as const, editableRecording: true };
+    expect(group(idle, windows, "editableRecording")).toMatchObject({ enabled: false, note: "Editable recordings are available on macOS only." });
+    expect(settingsAction(idle, windows, "editableRecording", "on")).toBeUndefined();
   });
 });
 
@@ -970,7 +987,7 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
     ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["systemAudio", "meter", "studioAudio"], ["systemGain", "slider", "studioAudio"], ["studioControls", "menu", "studioControls"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
@@ -1402,6 +1419,11 @@ describe("the Recordings tab", () => {
     ]);
     expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
     expect(settingsView(idle, library({ files: [files[0]!] })).library!.summary).toBe("1 recording · 180 MB");
+  });
+  it("says which recordings are editable (plan 087), in the view's language", () => {
+    const marked = [{ ...files[0]!, editable: true as const }, files[1]!];
+    expect(settingsView(idle, library({ files: marked })).library!.items.map(item => item.editable)).toEqual(["Editable", undefined]);
+    expect(settingsView(idle, { ...library({ files: marked }), language: "zh-TW" }).library!.items[0]!.editable).toBe("可編輯");
   });
   it("names each recording's subfolder and lists the folders the library offers (plan 071)", () => {
     const view = settingsView(idle, library({

@@ -132,7 +132,7 @@
 | `event(event)` | 有 session 時：`progress` → `progress`；代碼已知的 `writeError` → `writeError`；`microphoneLost`／`microphoneResumed` → 同名的 host 訊息（plan 074）；`captureError` → `error`（未知代碼為 capture_failed） |
 | `fail` / `send` | 送 `error`／發 HostMessage |
 | `engineFailure(cause)` | 拆開引擎 `code\|detail` 形式的 reject；其他形式為帶原訊息的 capture_start_failed |
-| `developmentCapture(env)` | 讀 `RECORDSTUFF_CAPTURE_SOURCE`（`window:<id>`、`area:x,y,w,h`、`apps:<pid>,…`）、`RECORDSTUFF_CAPTURE_AUDIO`（`off`、`apps:<pid>,…`）與 `RECORDSTUFF_CAPTURE_EDITABLE`（`1`：plan 087 的可編輯錄影原型，macOS）；其他值都照現在的方式錄整個螢幕與全部系統聲音 |
+| `developmentCapture(env)` | 讀 `RECORDSTUFF_CAPTURE_SOURCE`（`window:<id>`、`area:x,y,w,h`、`apps:<pid>,…`）與 `RECORDSTUFF_CAPTURE_AUDIO`（`off`、`apps:<pid>,…`）；其他值都錄整個螢幕與全部系統聲音 |
 
 ## 原生引擎 — native/capture
 

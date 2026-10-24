@@ -32,7 +32,7 @@ export interface ActionDeps {
   log(line: string): void;
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
-  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "setUpdates" | "notifications" | "setNotifications"
+  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "editableRecording" | "setEditableRecording" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setStudioPreview" | "setAppearance"
     | "studioPreview" | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
@@ -115,6 +115,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         locked: true,
         write: () => settings.setHideSystemUi(action.setHideSystemUi),
         applied: () => log(`settings: hide menu bar and Dock ${settings.hideSystemUi ? "on" : "off"}`),
+      });
+    } else if ("setEditableRecording" in action) {
+      // The engine records editable files on macOS only (plan 087); Windows shows the switch unavailable.
+      if (deps.platform !== "darwin") return;
+      await deps.savePreference("editable recording", {
+        locked: true,
+        write: () => settings.setEditableRecording(action.setEditableRecording),
+        applied: () => log(`settings: editable recordings ${settings.editableRecording ? "on" : "off"}`),
       });
     } else if ("setMicrophone" in action) {
       const turningOn = action.setMicrophone && !settings.microphone;

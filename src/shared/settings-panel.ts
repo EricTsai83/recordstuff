@@ -203,6 +203,8 @@ export interface LibraryItemView {
   video: string;
   /** The output folder's subfolder it is in (plan 071); absent for one in the output folder itself (Not in a folder). */
   folder?: string;
+  /** Localized "Editable" for an editable recording (plan 087), once its boxes are read; absent otherwise. */
+  editable?: string;
 }
 /** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
 export interface LibraryFolderView {

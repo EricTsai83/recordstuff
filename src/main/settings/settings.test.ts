@@ -166,7 +166,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -274,7 +274,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -294,7 +294,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -348,7 +348,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -448,7 +448,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -714,6 +714,26 @@ describe("countdown sound (plan 046)", () => {
     expect(store().countdownSound).toBe(true);
     await expect(first.setCountdownSound("off" as never)).rejects.toThrow("unsupported countdown sound");
     expect(store().countdownSound).toBe(true);
+  });
+});
+
+describe("editable recordings (plan 087)", () => {
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("reads a file written before the field existed as off, silently, and a non-boolean as off with a warning", () => {
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { editableRecording: false }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...current, editableRecording: "yes" }))).toMatchObject({
+      settings: { editableRecording: false }, warnings: ["editableRecording is not a boolean: using off"],
+    });
+  });
+
+  it("saves the switch with the other fields, and refuses a non-boolean", async () => {
+    const first = store();
+    await first.setEditableRecording(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, editableRecording: true });
+    expect(store().editableRecording).toBe(true);
+    await expect(first.setEditableRecording(1 as never)).rejects.toThrow("unsupported editable recording");
+    expect(store().editableRecording).toBe(true);
   });
 });
 

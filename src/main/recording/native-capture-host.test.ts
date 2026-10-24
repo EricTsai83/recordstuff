@@ -217,6 +217,17 @@ describe("NativeCaptureHost", () => {
       native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101], hideSystemUi: true } }]);
   });
 
+  it("asks for an editable recording only while the setting is on (plan 087)", async () => {
+    let editable = true;
+    const ctx = setup(undefined, { editable: () => editable });
+    const child = await started(ctx);
+    expect(child.sent[0]).toMatchObject({ type: "start", native: { editable: true } });
+    editable = false;
+    const off = setup(undefined, { editable: () => editable });
+    const sent = (await started(off)).sent[0];
+    expect(sent?.type === "start" && sent.native).not.toHaveProperty("editable");
+  });
+
   it("posts the session's microphone choice with start, and none when the recorder gave none (plan 074)", async () => {
     const ctx = setup();
     const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { microphone: { enabled: true, deviceId: "usb-mic" } });

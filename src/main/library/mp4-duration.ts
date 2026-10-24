@@ -39,9 +39,14 @@ const uint = (data: Buffer, at: number, wide: boolean): number => wide ? Number(
 
 interface Track { timescale: number; defaultDuration: number }
 
-/** Each track's timescale and fragment default duration, and the movie's own length when it states one. */
-function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number } {
+/**
+ * Each track's timescale and fragment default duration, the movie's own length when it states one, and whether it is
+ * an editable recording (plan 087): its `udta` holds RecordStuff's `rsed` description.
+ */
+function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number; editable: boolean } {
   const top = children(data);
+  const udta = find(top, "udta");
+  const editable = udta !== undefined && find(inside(data, udta), "rsed") !== undefined;
   const tracks = new Map<number, Track>();
   let seconds: number | undefined;
   const mvhd = find(top, "mvhd");
@@ -71,7 +76,7 @@ function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number } {
     const track = tracks.get(data.readUInt32BE(at));
     if (track) track.defaultDuration = data.readUInt32BE(at + 8);
   }
-  return { tracks, ...(seconds === undefined ? {} : { seconds }) };
+  return { tracks, editable, ...(seconds === undefined ? {} : { seconds }) };
 }
 
 /** Where a fragment ends, in seconds: the longest of its tracks. */
@@ -107,6 +112,11 @@ function fragmentEnd(data: Buffer, tracks: Map<number, Track>): number | undefin
 
 /** The playing time in seconds, or undefined for a file whose boxes do not say. Never throws. */
 export async function mp4Duration(filePath: string): Promise<number | undefined> {
+  return (await mp4Facts(filePath)).seconds;
+}
+
+/** What the Recordings tab reads of a file's boxes: its playing time, if they say, and whether it is editable. */
+export async function mp4Facts(filePath: string): Promise<{ seconds?: number; editable: boolean }> {
   let handle: fs.FileHandle | undefined;
   try {
     handle = await fs.open(filePath, "r");
@@ -134,13 +144,13 @@ export async function mp4Duration(filePath: string): Promise<number | undefined>
       if (type === "moof" && boxSize <= 16 << 20) lastMoof = { at: at + headerSize, size: boxSize - headerSize };
       at += boxSize;
     }
-    if (!moov) return undefined;
-    const { tracks, seconds } = movie(moov);
+    if (!moov) return { editable: false };
+    const { tracks, seconds, editable } = movie(moov);
     const fragment = lastMoof ? fragmentEnd(await read(lastMoof.at, lastMoof.size), tracks) : undefined;
     const result = fragment ?? seconds;
-    return result !== undefined && Number.isFinite(result) && result > 0 ? result : undefined;
+    return result !== undefined && Number.isFinite(result) && result > 0 ? { seconds: result, editable } : { editable };
   } catch {
-    return undefined;
+    return { editable: false };
   } finally {
     await handle?.close().catch(() => {});
   }

@@ -81,6 +81,8 @@ export interface NativeStart {
   microphone?: MicrophoneChoice;
   /** Compose the camera into the frames (plan 075); absent is off. */
   camera?: CameraChoice;
+  /** Plan 087: record editable (the screen, each sound and the camera on tracks of their own; macOS); absent is off. */
+  editable?: boolean;
 }
 
 /**
@@ -243,7 +245,8 @@ function isNativeStart(value: unknown): value is NativeStart {
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
     typeof value["hideSystemUi"] === "boolean" &&
     (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"])) &&
-    (value["camera"] === undefined || isCameraChoice(value["camera"]));
+    (value["camera"] === undefined || isCameraChoice(value["camera"])) &&
+    (value["editable"] === undefined || typeof value["editable"] === "boolean");
 }
 
 function isEngineFileReport(value: unknown): value is EngineFileReport {
