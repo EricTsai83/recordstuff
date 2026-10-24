@@ -6,7 +6,7 @@ For why recording no longer uses Chromium's capture, see [Why recording left Chr
 
 ## Processes and responsibilities
 
-The application has a main process; a capture `utilityProcess` that exists only during a recording attempt and loads the native engine; a settings renderer that exists only while the settings window is open; a countdown overlay renderer that exists only while a countdown runs; and a fullscreen video renderer that exists only while a recording plays over the screen. Electron also creates GPU/helper processes; this is not a claim about the number of operating-system processes.
+The application has a main process; a capture `utilityProcess` that exists only during a recording attempt and loads the native engine; a settings renderer that exists only while the settings window is open; a countdown overlay renderer that exists only while a countdown runs; a fullscreen video renderer that exists only while a recording plays over the screen; and an export `utilityProcess` that exists only while a recording's edit view is open or its export runs and loads the same engine ([cutting a recording](editing.md)). Electron also creates GPU/helper processes; this is not a claim about the number of operating-system processes.
 
 ```mermaid
 flowchart LR
@@ -64,6 +64,8 @@ Inside the capture process, the Rust module (`native/capture`, built into `recor
 | `main/recording/native-host-process.ts` | Loading the engine, the host side of the protocol, output size and bit rate from the quality snapshot, mapping engine failures to protocol codes | Folder, name, deadlines or publication |
 | `main/recording/capture-exclusion.ts` | Marking RecordStuff's windows excluded from capture on Windows while an attempt runs | When an attempt begins or ends |
 | `main/recording/engine-file-writer.ts` / `file-writer.ts` | Reserving the temporary file, waiting for the engine's outcome and publishing it, keeping a partial / publication, write-error classification and the folder check | UI state or media bytes |
+| `main/editing/editing.ts` / `edit-store.ts` | The edit view's state, admission, an export's temporary file, journal and publication / edit records in userData ([cutting a recording](editing.md)) | Media bytes, which stay in the export worker |
+| `main/editing/export-host.ts` / `export-process.ts` | The export `utilityProcess`: readiness, pings, message validation, the 1 s cancel bound / loading the engine and serving one request at a time | Names, publication or edit records |
 | `native/capture` (Rust) | Capture, frame pacing, audio alignment and mixing, H.264/AAC encoding, the hybrid MP4, writing and finishing the file, the write backlog bound | The file's name, publication, sentinel, history or any state beyond one session |
 | `main/settings/settings.ts` | Committed settings and serialized saves | A running session's quality snapshot |
 | `main/menus/tray-model.ts` / `tray.ts` | Pure projection of the tray's flat command menu / native presentation | Preferences, or a separate recording state machine |
@@ -152,6 +154,10 @@ There is no per-sample acknowledgement or backpressure over the port: media neve
 | settings.json | Electron userData | Across restarts; current internal app name is lowercase recordstuff |
 | `.recording.mp4` | User-selected folder | Created empty by main, written by the engine; active recording or preserved partial file |
 | `.mp4` | Same folder | Successfully finished and published recording |
+| Edit records | Electron userData `edits/<hash of the path>.json` | Version 1, written atomically by main until discarded; kept read-only when unreadable ([cutting a recording](editing.md#edit-records)) |
+| Exports in flight | Electron userData `edits/exports-in-flight.json` | The paths of temporary export files, journalled before each is created; removed at the next launch if a crash left them |
+| `.<name>.recordstuff-export-<id>.part` | Beside the recording | An export being written by the export worker; removed on any failure |
+| `<name> (edited).mp4` | Beside the recording | A published export, never over an existing name |
 | recordstuff.log | Electron logs directory | Rotation above 5 MiB, three archives |
 | Measurement Markdown/JSON | docs/verification/measurements | Local development evidence; gitignored and excluded from the packaged app |
 

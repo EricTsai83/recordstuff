@@ -14,6 +14,7 @@
 | [目錄結構](repository.md) | 每個目錄放什麼、命名與翻譯慣例，以及結構由什麼維持 |
 | [錄影為何離開 Chromium 的 WebRTC 擷取](webrtc.md) | 設計紀錄：Chromium 路徑用什麼錄影、量測到的限制，以及原生引擎為何取代它 |
 | [錄影管線](recording.md) | 開始、編碼、分段傳輸、停止、失敗與檔案保存如何運作 |
+| [剪輯錄影](editing.md) | 剪輯畫面、剪輯紀錄、匯出 worker、畫面與聲音的 smart cut、發布與 admission |
 | [桌面功能](desktop.md) | 選單、通知、權限、設定與 log 的細節 |
 | [函式設計索引](functions.md) | 各原始碼模組的函式／方法、輸入輸出、副作用與協作關係 |
 | [網站、App 與更新 feed 交付](delivery.md) | 流程圖、部署負責者、token 需求與發布邊界 |

@@ -45,6 +45,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | `display/` | Which screen a recording uses (`display-source.ts`), and the display each attempt records, main's refusal reason and the display diagnostic (`display-media.ts`) |
 | `permission/` | Screen-recording permission detection and its notices |
 | `library/` | The recordings on disk: the Recordings tab's library, MP4 duration, the output folder and the full-screen video window |
+| `editing/` | Cutting a recording (plan 085): the edit view's owner (`editing.ts`), edit records (`edit-store.ts`), the export worker's supervisor (`export-host.ts`) and the worker itself (`export-process.ts`) |
 | `shortcuts/` | Global shortcut registration: the recording key and the Settings key |
 | `app/` | App-wide vocabulary and lifecycle: the action and context both interfaces share (`ui-model.ts`), quitting and its feedback, Windows session end, reopening, uncaught faults, local data cleanup and update checks |
 | `settings/` | Preferences and their window: the persisted store, preference side effects, the panel model, the window and its saved size |
@@ -74,6 +75,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | `pacing.rs`, `timing.rs` | The frame-rate grid (`Pacer`); the session clock and sample-counted audio placement (`AudioAligner`) |
 | `writer.rs` | The writer thread that owns the file and the muxer, its sync, progress, backlog bound and error classification |
 | `mux/` | ISO BMFF boxes (`boxes.rs`), the hybrid MP4 (`mp4.rs`), a recording's fragmenting (`session.rs`) and a test-only reader (`parse.rs`) |
+| `edit/`, `export_api.rs` | Cutting a recording (plan 085): the bounded reader of the engine's own MP4 (`source.rs`), the cut plan and sound layout (`plan.rs`), the remux (`remux.rs`); the N-API `NativeExport` class the export worker loads |
 | `avc.rs`, `aac.rs`, `nv12.rs` | H.264 Annex B to MP4 form, the AAC AudioSpecificConfig, BGRA to NV12 on the CPU |
 | `mac/` | macOS only: ScreenCaptureKit session and content filters, VideoToolbox, AudioToolbox, the AVFoundation microphone |
 | `win/` | Windows only: Windows.Graphics.Capture, Media Foundation H.264 and AAC, WASAPI sound |
@@ -85,12 +87,12 @@ Inside the crate, dependencies point one way by convention, not by a test: `timi
 Imports between folders point one way, so a folder's place in this order is its contract:
 
 ```text
-main:      lib ← recording, display, permission, library, shortcuts ← app ← settings ← menus ← actions ← index.ts
+main:      lib ← recording, display, permission, library, shortcuts, editing ← app ← settings ← menus ← actions ← index.ts
 renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← entry points
 ```
 
-- **Feature folders** (`recording/`, `display/`, `permission/`, `library/`, `shortcuts/`) import only `lib/`, `src/shared/` and themselves, never each other. When two of them need the same thing, it moves down into `lib/` or `src/shared/`, or `index.ts` connects them.
+- **Feature folders** (`recording/`, `display/`, `permission/`, `library/`, `shortcuts/`, `editing/`) import only `lib/`, `src/shared/` and themselves, never each other. When two of them need the same thing, it moves down into `lib/` or `src/shared/`, or `index.ts` connects them.
 - **`app/`** may use the feature folders. `settings/` may also use `app/`, `menus/` may also use `settings/`, and `actions/` may use all of them. Nothing imports upward.
 - **Nothing imports `index.ts`.** It is the composition root; what an action does lives in `actions/`, so the root only builds and wires. The update and controlled acceptance runners patch a copy of it by text anchors, which is one more reason it stays at the top of `src/main/`.
 - **Renderer pages do not import one another.** What two pages share lives in `player/`, `components/` or `lib/`. Only tests import `testing/`. `camera-preview/`, plan 075 step 2's measurement page behind its development switch, imports only `src/shared/`.

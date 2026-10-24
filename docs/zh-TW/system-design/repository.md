@@ -45,6 +45,7 @@
 | `display/` | 錄影使用哪個螢幕（`display-source.ts`），以及每次嘗試錄的螢幕、main 的拒絕原因與螢幕診斷（`display-media.ts`） |
 | `permission/` | 螢幕錄影權限偵測與其通知 |
 | `library/` | 磁碟上的錄影檔：錄影檔分頁的資料庫、MP4 長度、輸出資料夾與全螢幕影片視窗 |
+| `editing/` | 剪輯錄影（plan 085）：剪輯畫面的擁有者（`editing.ts`）、剪輯紀錄（`edit-store.ts`）、匯出 worker 的監管（`export-host.ts`）與 worker 本身（`export-process.ts`） |
 | `shortcuts/` | 全域快捷鍵註冊：錄影鍵與設定鍵 |
 | `app/` | App 層級的語彙與生命週期：兩個介面共用的 action 與 context（`ui-model.ts`）、結束與其回饋、Windows 工作階段結束、再次開啟、未捕捉的錯誤、本機資料清除與更新檢查 |
 | `settings/` | 偏好設定與其視窗：持久化 store、偏好設定的副作用、面板模型、視窗與其記住的大小 |
@@ -74,6 +75,7 @@
 | `pacing.rs`、`timing.rs` | 影格率格線（`Pacer`）；session 時鐘與以樣本數放置聲音（`AudioAligner`） |
 | `writer.rs` | 持有檔案與 muxer 的 writer 執行緒，及其 sync、進度、積壓上限與錯誤分類 |
 | `mux/` | ISO BMFF box（`boxes.rs`）、hybrid MP4（`mp4.rs`）、錄影的分段（`session.rs`），以及只給測試用的讀取器（`parse.rs`） |
+| `edit/`、`export_api.rs` | 剪輯錄影（plan 085）：引擎自己 MP4 的有上限讀取器（`source.rs`）、剪輯規劃與聲音配置（`plan.rs`）、remux（`remux.rs`）；匯出 worker 載入的 N-API `NativeExport` class |
 | `avc.rs`、`aac.rs`、`nv12.rs` | H.264 Annex B 轉 MP4 形式、AAC 的 AudioSpecificConfig、在 CPU 上做 BGRA 轉 NV12 |
 | `mac/` | 僅 macOS：ScreenCaptureKit session 與 content filter、VideoToolbox、AudioToolbox、AVFoundation 麥克風 |
 | `win/` | 僅 Windows：Windows.Graphics.Capture、Media Foundation H.264 與 AAC、WASAPI 聲音 |
@@ -85,12 +87,12 @@ Crate 內的依賴依慣例朝單一方向，沒有測試強制：`timing` ← `
 資料夾之間的匯入只朝一個方向，因此資料夾在這個順序中的位置就是它的契約：
 
 ```text
-main:      lib ← recording, display, permission, library, shortcuts ← app ← settings ← menus ← actions ← index.ts
+main:      lib ← recording, display, permission, library, shortcuts, editing ← app ← settings ← menus ← actions ← index.ts
 renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← 入口檔
 ```
 
-- **功能資料夾**（`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`）只匯入 `lib/`、`src/shared/` 與自己，彼此不互相匯入。兩者需要同一樣東西時，把它移到 `lib/` 或 `src/shared/`，或由 `index.ts` 接起來。
+- **功能資料夾**（`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`、`editing/`）只匯入 `lib/`、`src/shared/` 與自己，彼此不互相匯入。兩者需要同一樣東西時，把它移到 `lib/` 或 `src/shared/`，或由 `index.ts` 接起來。
 - **`app/`** 可以使用功能資料夾。`settings/` 還可以使用 `app/`，`menus/` 還可以使用 `settings/`，`actions/` 則可以使用以上全部。沒有任何匯入往上走。
 - **沒有任何模組匯入 `index.ts`。** 它是 composition root；action 實際做的事放在 `actions/`，因此它只負責建立與接線。更新與受控驗收 runner 會依文字錨點修改它的副本，這也是它留在 `src/main/` 頂層的原因之一。
 - **Renderer 頁面彼此不互相匯入。** 兩個頁面共用的東西放在 `player/`、`components/` 或 `lib/`。只有測試會匯入 `testing/`。`camera-preview/` 是計畫 075 步驟 2 以開發用開關啟用的量測頁面，只匯入 `src/shared/`。

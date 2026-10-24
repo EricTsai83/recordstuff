@@ -14,6 +14,7 @@ Updated: 2026-09-21. These documents describe the current implementation and rep
 | [Repository layout](repository.md) | What each directory holds, the naming and translation conventions, and what enforces the structure |
 | [Why recording left Chromium's WebRTC capture](webrtc.md) | Design record: what the Chromium path recorded with, its measured limits, and why the native engine replaced it |
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
+| [Cutting a recording](editing.md) | The edit view, edit records, the export worker, the smart cut of pictures and sound, publication and admission |
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
 | [Function reference](functions.md) | Named functions and methods, contracts, side effects, and collaborators |
 | [Website, App, and update-feed delivery](delivery.md) | Flow diagrams, deployment ownership, token requirements, and release boundaries |

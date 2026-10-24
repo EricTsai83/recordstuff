@@ -195,6 +195,27 @@ Rust 測試放在程式碼旁（`core/tests.rs`、`#[cfg(test)]` 模組、`pipel
 | `RecordingsLibrary.handle(request)` | `recordstuff-media:` 的 handler：只為已列出的 id 提供可依 byte range 讀取的 `video/<id>` 與 `thumb/<id>`，其餘一律 404 |
 | `mp4Duration(path)` | 只讀 box 算出秒數：分段檔取最後一個 `tfdt` 加上其 sample 時長，否則用 `mvhd`；box 沒有資訊時為 undefined；不拋出 |
 
+## 剪輯錄影 — main/editing
+
+[main/editing](../../../src/main/editing) 負責剪輯畫面、剪輯紀錄與匯出（plan 085，[設計](editing.md)）；[native/capture/src/edit](../../../native/capture/src/edit) 負責剪輯。
+
+| 函式／方法 | 契約 |
+| --- | --- |
+| sourceIdentity / sameSource | 透過唯讀 handle 讀取錄影的路徑、大小、修改時間，以及前後各 1 MiB 的 SHA-256；四者皆相等才算相同 |
+| parseRecord | 逐欄檢查 version 1 剪輯紀錄，範圍須已排序且不重疊；其他情況回傳原因，從不猜測 |
+| EditStore.load / save / discard / moved | 依身分判斷某路徑的剪輯（`none`、`ok`、`stale` 或 `unreadable`，原樣保留）；依序、原子且 sync 資料夾的儲存；只移除紀錄；把紀錄帶到仍是同一檔案、已改名或搬移的錄影 |
+| Editing.choose | 對列出錄影的一個剪輯畫面動作：open（身分、紀錄、引擎的規劃）、close、save（由引擎對齊，並比對顯示中的 revision）、export、cancel、discard、reveal |
+| Editing.view | 在地化的剪輯畫面，含匯出無法使用的原因、退回與捨去片段的說明，以及匯出的階段 |
+| Editing.yieldToCapture / shutdown | 錄影或即時預覽開始時取消進行中的匯出；結束 App 時取消並等它結束，再結束 worker |
+| publish | 以絕不取代的 hard link，或不支援 hard link 時以獨佔佔位檔再 rename，把完成的暫存匯出發布為旁邊第一個空著的 `<name> (edited…).mp4` |
+| removeLeftovers | 啟動時移除 journal 中名稱屬於匯出的暫存檔，然後清空 journal |
+| ExportHost.inspect / export / cancel / closeIdle / close | 送給匯出 worker 的請求，首次使用時 fork；cancel 先要求，`CANCEL_BOUND_MS`（1 秒）後結束 worker；當機或漏回兩次 pong 會讓進行中的工作失敗 |
+| ExportWorker | worker 端：一次一個請求、只回報進行中匯出的進度、以引擎的 `code\|detail` 作為失敗原因、benchmark 的複製只在開關打開時提供 |
+| source::read | 引擎寫出的 MP4 索引（plain 或 fragmented），每個大小使用前都檢查；其他檔案回傳有代碼的原因（`unsupported`、`malformed`、`read_failed`） |
+| plan::plan | 移除範圍對齊到影格；保留的片段各自複製、重新編碼到下一個 key frame，或從 key frame 接續；聲音的 skip、視窗，以及各片段移到來源 packet 格線上的位移 |
+| remux::prepare / export / inspect | 由重新編碼的參數集決定接點規則（從第一個接點的 run 學得並由匯出沿用，或為畫面從一張畫面學一次）；匯出到必須不存在的檔案；不寫入的規劃 |
+| remux::remux | 依規劃複製與重新編碼，把聲音交錯寫到每個 fragment 的時間，最後讓檔案成為 plain；在 fragment 之間可取消 |
+
 ## 設定、品質與協定
 
 [SettingsStore](../../../src/main/settings/settings.ts)：

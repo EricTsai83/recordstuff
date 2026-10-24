@@ -6,7 +6,7 @@
 
 ## 程序與責任
 
-應用層分成 main；只在錄影嘗試期間存在、載入原生引擎的擷取 `utilityProcess`；只在設定視窗開啟期間存在的設定 renderer；只在倒數期間存在的倒數 overlay renderer；以及只在錄影檔全螢幕播放期間存在的全螢幕影片 renderer。Electron 自身還會建立 GPU／helper 等程序；層數不等於作業系統看到的 PID 數。
+應用層分成 main；只在錄影嘗試期間存在、載入原生引擎的擷取 `utilityProcess`；只在設定視窗開啟期間存在的設定 renderer；只在倒數期間存在的倒數 overlay renderer；只在錄影檔全螢幕播放期間存在的全螢幕影片 renderer；以及只在錄影的剪輯畫面開啟或其匯出進行時存在、載入同一個引擎的匯出 `utilityProcess`（[剪輯錄影](editing.md)）。Electron 自身還會建立 GPU／helper 等程序；層數不等於作業系統看到的 PID 數。
 
 ```mermaid
 flowchart LR
@@ -64,6 +64,8 @@ Tray、選單與通知全在 main，使用原生 Electron API。設定面板是�
 | `main/recording/native-host-process.ts` | 載入引擎、協定的 host 端、由品質快照決定輸出尺寸與位元率、把引擎失敗對應到協定代碼 | 不管資料夾、檔名、期限或發布 |
 | `main/recording/capture-exclusion.ts` | Windows 上，嘗試期間把 RecordStuff 的視窗標為不被擷取 | 不決定嘗試何時開始或結束 |
 | `main/recording/engine-file-writer.ts` / `file-writer.ts` | 預留暫存檔、等待引擎結果並發布、保留部分檔案／發布、寫入錯誤分類與資料夾檢查 | 不決定 UI 狀態，也不碰媒體 bytes |
+| `main/editing/editing.ts`／`edit-store.ts` | 剪輯畫面的狀態、admission、匯出的暫存檔、journal 與發布／userData 中的剪輯紀錄（[剪輯錄影](editing.md)） | 不碰媒體位元組，它們留在匯出 worker 內 |
+| `main/editing/export-host.ts`／`export-process.ts` | 匯出 `utilityProcess`：就緒、ping、訊息驗證、1 秒的取消時限／載入引擎並一次處理一個請求 | 不管檔名、發布或剪輯紀錄 |
 | `native/capture`（Rust） | 擷取、畫格節奏、聲音對齊與混音、H.264／AAC 編碼、hybrid MP4、寫入並完成檔案、寫入積壓上限 | 不管檔名、發布、sentinel、歷史，或單一 session 以外的任何狀態 |
 | `main/settings/settings.ts` | 已提交設定、序列化保存佇列 | 不修改正在錄影的設定快照 |
 | `main/menus/tray-model.ts` / `tray.ts` | Tray 扁平指令選單的純投影／原生圖示與通知 | 不放偏好設定，也不另建錄影狀態機 |
@@ -152,6 +154,10 @@ Parent port 上沒有逐樣本 ACK 或背壓：媒體從不經過它。引擎內
 | `settings.json` | `app.getPath('userData')` | 跨重啟保存；現有 App 名稱對應小寫 `recordstuff` |
 | `.recording.mp4` | 使用者指定資料夾 | 由 main 建立為空檔、由引擎寫入；錄影中的檔案，失敗時可保留 |
 | `.mp4` | 同一資料夾 | 正常完成並發布的錄影 |
+| 剪輯紀錄 | Electron userData `edits/<路徑的 hash>.json` | version 1，由 main 原子寫入直到被捨棄；無法讀取時以唯讀保留（[剪輯錄影](editing.md#剪輯紀錄)） |
+| 進行中的匯出 | Electron userData `edits/exports-in-flight.json` | 匯出暫存檔的路徑，在建立前記入；若當機留下，於下次啟動移除 |
+| `.<name>.recordstuff-export-<id>.part` | 錄影旁 | 匯出 worker 正在寫入的匯出；任何失敗都會移除 |
+| `<name> (edited).mp4` | 錄影旁 | 已發布的匯出，絕不覆寫既有檔名 |
 | `recordstuff.log` | `app.getPath('logs')` | 5 MiB 輪替、3 個舊檔 |
 | 量測 Markdown／JSON | `docs/verification/measurements/` | 本機開發證據；已 gitignore，不隨 App 發行 |
 

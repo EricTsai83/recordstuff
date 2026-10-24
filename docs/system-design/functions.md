@@ -195,6 +195,27 @@ Rust tests live beside the code (`core/tests.rs`, `#[cfg(test)]` modules, `pipel
 | RecordingsLibrary.handle | The `recordstuff-media:` handler: `video/<id>` with byte ranges and `thumb/<id>` for listed ids only; anything else is 404 |
 | mp4Duration | Seconds from the boxes alone: a fragmented file's last `tfdt` plus its samples' durations, otherwise `mvhd`; undefined when the boxes do not say; never throws |
 
+## Cutting a recording
+
+[main/editing](../../src/main/editing) owns the edit view, edit records and exports (plan 085, [design](editing.md)); [native/capture/src/edit](../../native/capture/src/edit) cuts.
+
+| Function/method | Contract |
+| --- | --- |
+| sourceIdentity / sameSource | A recording's path, size, modification time and SHA-256 of its first and last MiB, read through a read-only handle; equality of all four |
+| parseRecord | A version-1 edit record checked field by field, ranges sorted and apart; a reason for anything else, never a guess |
+| EditStore.load / save / discard / moved | The edit for a path judged against an identity (`none`, `ok`, `stale` or `unreadable`, kept as found); an atomic, ordered save with a folder sync; removal of the record only; carrying a record to a renamed or moved recording that is still the same file |
+| Editing.choose | One edit-view action for a listed recording: open (identity, record, the engine's plan), close, save (snapped by the engine, against the revision shown), export, cancel, discard, reveal |
+| Editing.view | The localized edit view, with why Export is unavailable, fallback and dropped-part notes, and the export's phase |
+| Editing.yieldToCapture / shutdown | Cancel a running export for a starting recording or Live preview; cancel it and wait for its end at quit, then end the worker |
+| publish | Publish a finished temporary export as the first free `<name> (edited…).mp4` beside it, by a never-replacing hard link or, without hard links, an exclusive placeholder renamed over |
+| removeLeftovers | At launch, remove the journalled temporary exports whose names are an export's own, then empty the journal |
+| ExportHost.inspect / export / cancel / closeIdle / close | Requests to the export worker, forked on first use; cancel asks, then ends the worker after `CANCEL_BOUND_MS` (1 s); a crash or two missed pongs fail what is in flight |
+| ExportWorker | The worker's side: one request at a time, progress for the running export only, the engine's `code\|detail` as the failure, the benchmark's copy only behind its switch |
+| source::read | The index of an MP4 the engine wrote, plain or fragmented, every size checked before use; a coded reason (`unsupported`, `malformed`, `read_failed`) for anything else |
+| plan::plan | Removed ranges snapped to frames; the kept parts, each copied, re-encoded to its next key frame or resumed at a key frame; the sound's skip, windows and per-part nudge onto the source's packet grid |
+| remux::prepare / export / inspect | The join rule from the re-encoded parameter sets (learned from the first join's run, which the export reuses, or once from one picture for the view); the export into a file that must not exist; the plan without writing |
+| remux::remux | Copy and re-encode by the plan, interleaving sound up to each fragment's time, and finish the file plain; cancel between fragments |
+
 ## Settings, quality, language, and protocol
 
 [main/settings/settings.ts](../../src/main/settings/settings.ts):
