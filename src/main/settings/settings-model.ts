@@ -111,6 +111,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     title: APP_NAME,
     status: settingsStatus(state, ctx),
     ...(ctx.library ? { library: libraryView(ctx, now, format)! } : {}),
+    ...(ctx.editor ? { editor: ctx.editor } : {}),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note. A quit
     // needs none: the status card's own title already says it, and the hint sits right under that title.
     hint: quitting || unlocked ? "" : t("Recording in progress; only language, appearance and icon click can change.", language),

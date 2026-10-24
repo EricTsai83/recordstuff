@@ -12,8 +12,8 @@ export const UI_GROUPS = {
   states: ["settings-matrix.spec.ts", "settings-results.spec.ts", "settings-failure-affordance.spec.ts"],
   /** Settings changed through the page and kept by the app: the panel, its components, preferences, reset and notification help. */
   settings: ["settings-panel.spec.ts", "components.spec.ts", "settings-segments.spec.ts", "settings-reset.spec.ts", "settings-notification-help.spec.ts"],
-  /** The app beyond Settings: the player, the shortcut, the library, the undo toast, window actions and the countdown. */
-  app: ["player.spec.ts", "shortcut-integration.spec.ts", "settings-library-performance.spec.ts", "toast.spec.ts", "window-actions.spec.ts", "countdown.spec.ts"],
+  /** The app beyond Settings: the player, the edit view, the shortcut, the library, the undo toast, window actions and the countdown. */
+  app: ["player.spec.ts", "editor.spec.ts", "shortcut-integration.spec.ts", "settings-library-performance.spec.ts", "toast.spec.ts", "window-actions.spec.ts", "countdown.spec.ts"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type UiGroup = keyof typeof UI_GROUPS;

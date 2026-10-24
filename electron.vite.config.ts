@@ -79,6 +79,8 @@ export default defineConfig({
           index: resolve(__dirname, "src/main/index.ts"),
           // The native engine's capture host, run in a utilityProcess (plan 076).
           "native-host-process": resolve(__dirname, "src/main/recording/native-host-process.ts"),
+          // The export worker that cuts a recording (plan 085), in a utilityProcess of its own.
+          "export-process": resolve(__dirname, "src/main/editing/export-process.ts"),
         },
       },
     },

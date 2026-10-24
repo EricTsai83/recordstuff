@@ -16,7 +16,7 @@ import { Preferences } from "./tabs/preferences";
 import { Studio } from "./tabs/studio";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
-import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog } from "./tabs/library";
+import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog, EditorDialog } from "./tabs/library";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
 
@@ -434,6 +434,7 @@ export function SettingsApp() {
       <RenameDialog />
       <FolderDialog />
       <PlayerDialog />
+      <EditorDialog />
       <ToastHost />
       <ZoomToast />
     </TooltipProvider>

@@ -15,6 +15,7 @@ import { Clip } from "./library/clip";
 // The tab's parts live under library/; these are what Settings imports, as before the split.
 export { LibraryHead, LibrarySummary } from "./library/head";
 export { FolderDialog, PlayerDialog, RenameDialog } from "./library/dialogs";
+export { EditorDialog } from "./library/editor";
 
 export function Library() {
   const library = model.view?.library,

@@ -6,6 +6,7 @@
  * id back. Ids identify a setting, not an action, so nothing the renderer
  * sends can describe work main did not already offer.
  */
+import type { EditorChoice, EditorView } from "./editing";
 import type { FullScreenChoice, PlaybackState } from "./video-player";
 import type { Language } from "./i18n";
 import type { ErrorCode, RecordingState } from "./state";
@@ -235,6 +236,8 @@ export interface LibraryView {
 export interface SettingsView {
   revision?: number;
   library?: LibraryView;
+  /** The edit view, while a recording is being edited (plan 085). */
+  editor?: EditorView;
   status?: SettingsStatus;
   recordingResultsRemaining?: number;
   recordingResults?: RecordingResultView[];
@@ -342,7 +345,7 @@ export interface SettingsBridge {
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
   /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts), its new name or folder, or a folder action. */
-  choose(group: string, choice: string | FullScreenChoice | RenameChoice | MoveChoice | FolderChoice): Promise<SettingsChoiceResult>;
+  choose(group: string, choice: string | FullScreenChoice | RenameChoice | MoveChoice | FolderChoice | EditorChoice): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
   /** RecordStuff was hidden (⌘H); main says so before the window goes out of sight. The preload always offers it. */
   onHidden?(callback: () => void): () => void;

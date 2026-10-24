@@ -1,9 +1,9 @@
 /**
  * A recording's card or list row: its thumbnail and hover preview, its title and details, and its menu (open,
- * reveal, rename, move to a category, Move to Trash), the same as a context menu and a ⋯ button.
+ * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, Scissors } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -255,6 +255,13 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
       >
         <FileText />
         <span className="menu-label">{t("Rename…")}</span>
+      </Item>
+      <Item
+        id={`${prefix}-edit`}
+        onClick={() => void model.openEditor(item)}
+      >
+        <Scissors />
+        <span className="menu-label">{t("Edit…")}</span>
       </Item>
       {targets.length > 0 && (
         <Sub>

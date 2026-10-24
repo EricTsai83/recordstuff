@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = path.resolve(".");
 const SRC = path.join(ROOT, "src");
 const SCRIPTS = path.join(ROOT, "scripts");
-const MAIN_FEATURES = ["main/recording", "main/display", "main/permission", "main/library", "main/shortcuts"];
+const MAIN_FEATURES = ["main/recording", "main/display", "main/permission", "main/library", "main/shortcuts", "main/editing"];
 const RENDERER_SHARED = ["renderer/player", "renderer/components", "renderer/lib", "shared"];
 /** Stands for every area under `src/`: the developer tools may load any of it, and nothing in `src/` loads them. */
 const ANY_SRC = "src";

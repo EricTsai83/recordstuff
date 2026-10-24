@@ -19,7 +19,6 @@
  * out of main, and an attempt's process is never asked. `openMonitor` (plan 079) forks one that lives while Settings is
  * open, following the device list and reading the input level meter's device.
  */
-import { StringDecoder } from "node:string_decoder";
 import { utilityProcess, type UtilityProcess } from "electron";
 import { recordedPosition } from "../../shared/camera-layout";
 import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
@@ -28,6 +27,7 @@ import type { QualitySettings } from "../../shared/quality";
 import { volumeDb, type AudioVolume } from "../../shared/audio-volume";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
+import { pipeLines } from "../lib/pipe-lines";
 
 export interface NativeCaptureHostOptions {
   /** The built native-host-process.js. */
@@ -104,22 +104,7 @@ export function cameraChoice(camera: SessionCamera, display: string): CameraChoi
   return { ...(camera.deviceId ? { deviceId: camera.deviceId } : {}), width, height, rounding, x, y, mirror };
 }
 
-/**
- * Calls `onLine` with each non-blank, trimmed line of a process's output. Pipe chunks end anywhere: a line that spans
- * two of them stays one line and a character split between them is decoded whole (the engine's timing lines are read
- * back by the frame diagnostics). The unfinished last line is given when the stream ends.
- */
-export function pipeLines(stream: NodeJS.EventEmitter, onLine: (line: string) => void): void {
-  const decoder = new StringDecoder("utf8");
-  let pending = "";
-  const take = (text: string, final: boolean): void => {
-    const lines = (pending + text).split("\n");
-    pending = final ? "" : lines.pop()!;
-    for (const line of lines) if (line.trim()) onLine(line.trim());
-  };
-  stream.on("data", (chunk: Buffer) => take(decoder.write(chunk), false));
-  stream.once("end", () => take(decoder.end(), true));
-}
+export { pipeLines } from "../lib/pipe-lines";
 
 export class NativeCaptureHost implements RecorderHost {
   private child: UtilityProcess | undefined;

@@ -188,7 +188,7 @@ async function checkOverlays(page: Page, testInfo: TestInfo, lang: "en" | "zh-TW
   const fromRightClick = await menuState("clip-context-menu");
   await page.keyboard.press("Escape");
   await expect(page.locator("#clip-context-menu")).toBeHidden();
-  const expectedItems = [translate("Show in Finder", lang), translate("Open", lang), translate("Rename…", lang),
+  const expectedItems = [translate("Show in Finder", lang), translate("Open", lang), translate("Rename…", lang), translate("Edit…", lang),
     // The fixture holds a folder (plan 071), so the card can move there.
     translate("Move to", lang), translate("Move to Trash", lang)];
   expect.soft(fromButton.open && JSON.stringify(fromButton.items) === JSON.stringify(expectedItems) && fromButton.fits

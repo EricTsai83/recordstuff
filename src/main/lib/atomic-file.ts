@@ -15,6 +15,11 @@ import path from "node:path";
 export interface AtomicWriteOptions {
   /** Permission bits for a newly created file. */
   mode?: number;
+  /**
+   * Also flush the folder after the rename, so the new name itself survives a power loss (plan 085's edit records).
+   * Windows has no folder handle to flush; NTFS journals the rename.
+   */
+  syncDirectory?: boolean;
 }
 
 /** Ordered chunks are encoded about 1 MiB per write, so a large file never needs one long main-thread encode. */
@@ -35,11 +40,18 @@ export async function writeFileAtomic(file: string, content: string | readonly s
     open = false;
     await handle.close();
     await fs.promises.rename(temporary, file);
+    if (options.syncDirectory && process.platform !== "win32") await syncFolder(path.dirname(file));
   } catch (error) {
     if (open) await handle.close().catch(() => undefined);
     await fs.promises.unlink(temporary).catch(() => undefined);
     throw error;
   }
+}
+
+/** Flushes a folder's entries (a rename or unlink in it) to disk. */
+export async function syncFolder(dir: string): Promise<void> {
+  const folder = await fs.promises.open(dir, "r");
+  try { await folder.sync(); } finally { await folder.close(); }
 }
 
 /** For synchronous callers; today only the verification scripts, since the app's own writes all use `writeFileAtomic`. */

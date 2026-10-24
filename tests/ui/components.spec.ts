@@ -581,7 +581,7 @@ test("context menu opens at the pointer, shares file actions, and restores focus
   const menu = page.locator("#clip-context-menu");
   await expect(menu).toBeVisible();
   const mac = process.platform === "darwin";
-  const actions = [mac ? "Show in Finder" : "Open folder", "Open", "Rename…", mac ? "Move to Trash" : "Move to Recycle Bin"];
+  const actions = [mac ? "Show in Finder" : "Open folder", "Open", "Rename…", "Edit…", mac ? "Move to Trash" : "Move to Recycle Bin"];
   await expect(menu.getByRole("menuitem")).toHaveCount(actions.length);
   expect((await menu.getByRole("menuitem").allTextContents()).map(text => text.trim()).sort()).toEqual([...actions].sort());
   await expect(page.locator("#clip-a-more")).toHaveAttribute("aria-expanded", "false");

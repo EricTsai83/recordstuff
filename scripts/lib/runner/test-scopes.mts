@@ -55,6 +55,13 @@ export const TEST_SCOPES: readonly TestScope[] = [
       { file: "player.spec.ts", tags: ["@library"] }, { file: "settings-matrix.spec.ts", tags: ["@library"] }],
   },
   {
+    name: "editing",
+    covers: "cutting a recording (plan 085): the edit view and its timeline, the edit records, the export worker and its supervision, publication and admission; the engine's reader, cut plan and remux",
+    unit: [`${PAGE}settings-library-editor.test.ts`, "src/main/editing/", "src/shared/editing.test.ts", "src/renderer/settings/controller/editor.test.ts"],
+    ui: [{ file: "editor.spec.ts" }],
+    native: ["edit::"],
+  },
+  {
     name: "failures",
     covers: "the Failures tab and troubleshooting: history, acknowledgement, rows and their details",
     unit: [`${PAGE}settings-failures.test.ts`, "src/main/recording/recording-result"],

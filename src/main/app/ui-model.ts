@@ -8,6 +8,7 @@
  * other's menu. Every action either interface can raise ends at the single
  * handler in index.ts, which re-checks the recording state before acting.
  */
+import type { EditorView } from "../../shared/editing";
 import type { CameraLayout } from "../../shared/camera-layout";
 import type { AudioVolume } from "../../shared/audio-volume";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
@@ -184,6 +185,8 @@ export interface AppContext {
   homeDir: string;
   /** The output folder's videos for the Recordings tab; absent before the first listing. */
   library?: LibraryState;
+  /** The edit view, while a recording is being edited (plan 085). */
+  editor?: EditorView;
   /** The running app's version, shown beside the credit in Settings. */
   version?: string;
   quality: QualitySettings;

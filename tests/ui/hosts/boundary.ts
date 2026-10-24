@@ -16,6 +16,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import type * as ElectronModule from "electron";
+import { mp4Duration } from "../../../src/main/library/mp4-duration";
 import type { BrowserWindow as BrowserWindowType, BrowserWindowConstructorOptions, Menu, NotificationConstructorOptions } from "electron";
 
 type Electron = typeof ElectronModule;
@@ -109,6 +110,67 @@ export class TestTray extends EventEmitter {
  * `violationsFile`: each violation is also appended there as it happens, so the Playwright fixture reads it even when
  * the app quit itself or hung before teardown could ask (fixtures.ts `tearDown`).
  */
+/**
+ * The export worker (plan 085) without the native engine, which the background suite's builds leave out: plans snapped
+ * to 15 fps frames of the test clips (tests/ui/media), and an export that copies the recording into the file main
+ * reserved after reporting progress, unless cancelled first. The page, main's edit records, publication and the
+ * listing are production's; the cut itself is the engine's, checked by its own tests (native/capture/src/edit).
+ */
+function exportWorker(record: (kind: string, detail?: unknown) => void): EventEmitter {
+  const frame = 6000;
+  const snap = (ticks: number): number => Math.round(ticks / frame) * frame;
+  const child = new EventEmitter();
+  let running: { id: number; timer: ReturnType<typeof setTimeout> } | undefined;
+  type Request = { source: string; output?: string; removed: Array<{ from: number; to: number }> };
+  const plan = async (request: Request) => {
+    const duration = snap(((await mp4Duration(request.source)) ?? 8) * 90_000);
+    const removed = request.removed.map(({ from, to }) => ({ from: snap(from), to: Math.min(duration, snap(to)) })).filter(({ from, to }) => to > from);
+    const gone = removed.reduce((sum, range) => sum + range.to - range.from, 0);
+    if (gone >= duration) return undefined;
+    // The kept parts between the removed ranges, as the engine plans them (every cut on a key frame here).
+    const parts: Array<{ requested: number; start: number; stop: number; outStart: number; fellBack: boolean; reencoded: boolean }> = [];
+    let at = 0, out = 0;
+    for (const range of [...removed].sort((a, b) => a.from - b.from)) {
+      if (range.from > at) { parts.push({ requested: at, start: at, stop: range.from, outStart: out, fellBack: false, reencoded: false }); out += range.from - at; }
+      at = Math.max(at, range.to);
+    }
+    if (at < duration) parts.push({ requested: at, start: at, stop: duration, outStart: out, fellBack: false, reencoded: false });
+    return { timescale: 90_000, duration, outputDuration: duration - gone, frames: duration / frame, removed, dropped: [], parts, secondDescription: false, hasAudio: true };
+  };
+  const send = (message: unknown): void => { setImmediate(() => child.emit("message", message)); };
+  Object.assign(child, {
+    stdout: new EventEmitter(), stderr: new EventEmitter(),
+    postMessage: (message: { type: string; id?: number; request?: Request }) => {
+      record("exportWorker:postMessage", message.type);
+      const { id, request } = message;
+      if (message.type === "ping") send({ type: "pong", id });
+      if (message.type === "cancel" && running) {
+        clearTimeout(running.timer);
+        send({ type: "failed", id: running.id, code: "cancelled", detail: "the export was cancelled" });
+        running = undefined;
+      }
+      if (message.type === "inspect" && request) {
+        void plan(request).then((made) => send(made ? { type: "inspected", id, plan: made } : { type: "failed", id, code: "nothing_kept", detail: "every frame is removed" }));
+      }
+      if (message.type === "export" && request?.output && id !== undefined) {
+        const output = request.output;
+        void plan(request).then((made) => {
+          fs.copyFileSync(request.source, output, fs.constants.COPYFILE_EXCL);
+          send({ type: "progress", id, fraction: 0.5 });
+          // Long enough for a test to see the progress and cancel it.
+          running = { id, timer: setTimeout(() => {
+            running = undefined;
+            send({ type: "exported", id, result: { plan: made, bytes: fs.statSync(output).size, reencodedFrames: 0, reencodedPackets: 0 } });
+          }, 600) };
+        });
+      }
+    },
+    kill: () => { record("exportWorker:kill"); if (running) clearTimeout(running.timer); setImmediate(() => child.emit("exit", 0)); return true; },
+  });
+  send({ type: "ready" });
+  return child;
+}
+
 export function createBoundary(electron: Electron, options: { trashDir: string; violationsFile?: string; platform?: NodeJS.Platform }): Boundary {
   const calls: AdapterCall[] = [];
   const violations: Violation[] = [];
@@ -310,6 +372,7 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
     utilityProcess: {
       fork: (modulePath: string) => {
         record("utilityProcess:fork", path.basename(modulePath));
+        if (path.basename(modulePath) === "export-process.js") return exportWorker(record);
         const child = Object.assign(new EventEmitter(), {
           stdout: new EventEmitter(), stderr: new EventEmitter(),
           postMessage: (message: { type?: string }) => {

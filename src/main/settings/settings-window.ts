@@ -23,6 +23,7 @@ import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } f
 import { translate } from "../../shared/i18n";
 import { ZOOM_KEYS } from "../../shared/shortcut-catalog";
 import { isFullScreenChoice, type FullScreenChoice } from "../../shared/video-player";
+import { isEditorChoice, type EditorChoice } from "../../shared/editing";
 import type { VideoFullScreen } from "../library/video-fullscreen";
 import type { AppAction, AppContext } from "../app/ui-model";
 
@@ -94,6 +95,8 @@ export interface SettingsWindowOptions {
   rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem }>;
   /** Moves a listed recording into a listed folder, or with `null` into the output folder (recordings-library.ts `move`). */
   move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem }>;
+  /** The edit view's actions for a listed recording (plan 085): resolves whether the action took effect. */
+  edit?: (id: string, choice: EditorChoice) => Promise<boolean>;
   /** The Recordings tab's folder actions (recordings-library.ts): the folder made or renamed, or why not. */
   folders?: {
     create: (name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
@@ -254,6 +257,8 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingFile:") && isRenameChoice(choice)) return this.applyRename(group, choice, window);
       if (typeof group === "string" && group.startsWith("recordingFile:") && isMoveChoice(choice)) return this.applyMove(group, choice, window);
       if (group === "libraryFolder") return this.applyFolder(choice, window);
+      // The edit view (plan 085): files, never preferences; an export answers once started and reports by the view.
+      if (typeof group === "string" && group.startsWith("recordingEdit:")) return this.applyEdit(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
       if (typeof group === "string" && group.startsWith("recordingFile:")) return this.applyFile(group, choice, window);
       // The Recordings tab's layout and Undo: no recording lock, no shortcut capture, nothing to wait behind.
@@ -652,6 +657,23 @@ export class SettingsWindow {
       : outcome.problem === "exists" ? translate("A recording with this name is already in that category.", view.language)
         : fileNameProblemText(outcome.problem, view.language);
     return this.deliver({ view, applied: false, failure }, recipient);
+  }
+
+  /**
+   * An edit view action for a listed recording (plan 085). The id must be listed now, except for closing the view,
+   * which a recording that went away may still need; the ranges are checked again by main and the engine.
+   */
+  private async applyEdit(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const id = group.slice("recordingEdit:".length);
+    const listed = this.options.context().library?.files.some(file => file.id === id) === true;
+    const closing = isEditorChoice(choice) && choice.action === "close";
+    if (!isEditorChoice(choice) || !this.options.edit || recipient.isDestroyed() || (!listed && !closing) || (this.quitStarted() && !closing)) {
+      this.log(`settings window: refused ${JSON.stringify({ group, choice: isEditorChoice(choice) ? choice.action : choice })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false, failure: translate("Could not complete this action. Try again.", view.language) }, recipient);
+    }
+    const applied = await this.options.edit(id, choice);
+    return this.deliver({ view: this.view(), applied }, recipient);
   }
 
   /** The Recordings tab's folder actions (plan 071): names are checked and folders resolved by the library, never trusted. */

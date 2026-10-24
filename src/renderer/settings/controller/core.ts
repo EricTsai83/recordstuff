@@ -54,6 +54,7 @@ import {
   settlingEscape,
 } from "./player";
 import { disposeInfo, forgetInfo, hideInfo } from "./info";
+import { closeEditor, editingItem, editorVideo, editorView, forgetEditor } from "./editor";
 import { dismissToast, disposeToast, toastState } from "./toast";
 
 declare global {
@@ -142,14 +143,16 @@ const isRecoveryControl = (id: string): boolean =>
 export const focus = (id: string | undefined): void => {
   if (id) document.getElementById(id)?.focus({ preventScroll: true });
 };
+/** Where announcements are said: inside the open dialog, the player's or the edit view's, else the page's. */
+const liveRegion = (): string => (playingItem ? "player-feedback" : editingItem ? "editor-feedback" : "feedback");
 export const announced = (): string =>
   (
-    document.getElementById(playingItem ? "player-feedback" : "feedback")
+    document.getElementById(liveRegion())
       ?.textContent ?? feedbackText
   ).replace(/ $/, "");
 export function announce(value: string): void {
   const current =
-    document.getElementById(playingItem ? "player-feedback" : "feedback")
+    document.getElementById(liveRegion())
       ?.textContent ?? feedbackText;
   feedbackText =
     value && current.replace(/ $/, "") === value
@@ -452,6 +455,7 @@ function reconcile(
   }
   const ids = new Set(next.library?.items.map((item) => item.id));
   if (playingItem && !ids.has(playingItem.id)) closePlayer(false);
+  forgetEditor(ids);
   forgetMissingItems(ids);
   takeShown(next.library);
   forgetMissingFolder(next.library);
@@ -617,6 +621,15 @@ export function start(): () => void {
       closePlayer();
       return;
     }
+    // The edit view closes, except while it exports: its Cancel export comes first.
+    if (event.key === "Escape" && editingItem) {
+      event.preventDefault();
+      if (editorView()?.export.phase !== "exporting") {
+        markEscapeClosed();
+        closeEditor();
+      }
+      return;
+    }
     if (event.key === "Escape" && folderDialog) {
       event.preventDefault();
       cancelFolderDialog();
@@ -666,7 +679,11 @@ export function start(): () => void {
     if (shortcutGroup()?.capturing || arming) void capture(false);
   });
   cleanups.push(window.settings.onChanged(render));
-  const hidden = window.settings.onHidden?.(playerHidden);
+  // Nothing sounds from a window out of sight: the player and the edit view's preview pause.
+  const hidden = window.settings.onHidden?.(() => {
+    playerHidden();
+    editorVideo?.pause();
+  });
   if (hidden) cleanups.push(hidden);
   let disposed = false;
   void window.settings

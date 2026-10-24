@@ -83,6 +83,9 @@ import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 import { formatFileName } from "../shared/file-name";
+import { EditStore } from "./editing/edit-store";
+import { ExportHost } from "./editing/export-host";
+import { Editing } from "./editing/editing";
 
 /** The saved language, read where it is needed; the default until the settings are loaded. One source, nothing to copy. */
 let appLanguage: () => Language = () => DEFAULT_LANGUAGE;
@@ -385,6 +388,35 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     log,
   });
 
+  // Cutting a recording (plan 085): the edit view's state and its export, in a worker process of its own that loads
+  // the same engine. Exports a crash left unfinished are removed first; recording always wins over an export.
+  const editsDir = path.join(app.getPath("userData"), "edits");
+  const exportJournal = path.join(editsDir, "exports-in-flight.json");
+  const editing = new Editing({
+    store: new EditStore(editsDir),
+    runner: new ExportHost({
+      entryPath: path.join(__dirname, "export-process.js"),
+      addonPath: path.join(__dirname, "../native/recordstuff-capture.node").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+      log,
+    }),
+    find: (id) => library.find(id),
+    blocked: () => {
+      if (quitInProgress()) return "quitting";
+      if (!preferencesUnlocked(recorder.state)) return "recording";
+      if (recorder.preview) return "preview";
+      if (recorder.mediaPending) return "saving";
+      return undefined;
+    },
+    language: () => settings.language,
+    changed: () => settingsWindow.refresh(),
+    published: () => { void library.refresh(); },
+    reveal: (file) => shell.showItemInFolder(file),
+    journal: exportJournal,
+    log,
+  });
+  // What a crash left, in the journal's own queue: an export started meanwhile is journalled after it.
+  void editing.removeLeftovers();
+
   // One file per in-flight session; any left at launch belongs to a process that ended while recording.
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
   const recorder = new Recorder({
@@ -424,7 +456,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       notify: code => permissionNotices.failed(code),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
-    onSessionStart: (sessionId) => displayMedia.begin(sessionId),
+    onSessionStart: (sessionId) => { editing.yieldToCapture(); displayMedia.begin(sessionId); },
     mapHostError: (code) => displayMedia.explain(code),
     log,
   });
@@ -560,6 +592,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     homeDir: os.homedir(),
     version: app.getVersion(),
     library: library.state,
+    ...(() => { const editor = editing.view(); return editor ? { editor } : {}; })(),
     quality: quality(),
     countdown: countdownSeconds(),
     countdownSound: countdownSound(),
@@ -622,8 +655,20 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
-    rename: (id, name) => library.rename(id, name),
-    move: (id, folder) => library.move(id, folder),
+    rename: async (id, name) => {
+      const from = library.find(id)?.path;
+      const outcome = await library.rename(id, name);
+      // The edit view and the recording's edit follow it (plan 085).
+      if ("id" in outcome && from) { const to = library.find(outcome.id)?.path; if (to) editing.moved(from, to); }
+      return outcome;
+    },
+    move: async (id, folder) => {
+      const from = library.find(id)?.path;
+      const outcome = await library.move(id, folder);
+      if ("id" in outcome && from) { const to = library.find(outcome.id)?.path; if (to) editing.moved(from, to); }
+      return outcome;
+    },
+    edit: (id, choice) => editing.choose(id, choice),
     folders: {
       create: name => library.createFolder(name),
       // A category renamed or deleted here keeps or drops its favorite and the remembered choice with it (2026-10-09).
@@ -1027,6 +1072,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       cleanupPromptOpen = clearData.confirming;
       if (cleanupPromptOpen) return false;
       quit.begin();
+      // An export is cancelled and its unfinished file removed, within the worker's cancel bound (plan 085).
+      await editing.shutdown();
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
       quit.metadata();
