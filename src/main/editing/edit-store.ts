@@ -1,5 +1,5 @@
 /**
- * Where edits live (plan 085, D3): one small version-1 JSON record per edited recording in userData, never beside the
+ * Where edits live (plan 085, D3): one small JSON record per edited recording in userData, never beside the
  * recording, whose folder's subfolders are the Recordings tab's categories (plan 071). The recording is referenced,
  * never copied: by its path (the record's file name is a hash of it) and an identity (size, modification time and a
  * SHA-256 of its first and last MiB) that says whether the record still describes the same file.
@@ -15,8 +15,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { MAX_EDIT_RANGES, normalizeRanges, type EditRange } from "../../shared/editing";
+import { isEditScene, type EditScene } from "../../shared/editable";
 
-export const EDIT_RECORD_VERSION = 1;
+/**
+ * The newest record this version writes. Version 1 (plan 085) holds the cuts; version 2 (plan 087) adds an editable
+ * recording's scene, and is written only for one with a scene, so every other edit stays readable by a version that
+ * knows only 1. Both are read; a newer one is unreadable, as before.
+ */
+export const EDIT_RECORD_VERSION = 2;
 /** The largest record read: 256 ranges take about 10 KB. */
 export const EDIT_RECORD_LIMIT = 64 * 1024;
 /** How much of each end of a recording its identity hashes. */
@@ -32,12 +38,20 @@ export interface SourceIdentity {
 }
 
 export interface EditRecord {
-  version: typeof EDIT_RECORD_VERSION;
+  version: 1 | 2;
   source: SourceIdentity;
   /** The video's timescale the ranges count in. */
   timescale: number;
   removed: EditRange[];
   revision: number;
+  /** An editable recording's camera and volumes (plan 087): version 2 only. */
+  scene?: EditScene;
+}
+
+/** A record of the cuts and, when given, the scene: version 2 with a scene, 1 without. */
+export function editRecord(fields: { source: SourceIdentity; timescale: number; removed: EditRange[]; revision: number; scene?: EditScene | undefined }): EditRecord {
+  const { scene, ...rest } = fields;
+  return scene ? { version: 2, ...rest, scene } : { version: 1, ...rest };
 }
 
 export type LoadedEdit =
@@ -81,25 +95,28 @@ function isIdentity(value: unknown): value is SourceIdentity {
     && typeof v["mtimeMs"] === "number" && Number.isFinite(v["mtimeMs"]) && typeof v["hash"] === "string" && /^[0-9a-f]{64}$/.test(v["hash"]);
 }
 
-/** A version-1 record, checked field by field: anything else is unreadable, never guessed at. */
+/** A version-1 or version-2 record, checked field by field: anything else is unreadable, never guessed at. */
 export function parseRecord(text: string): EditRecord | { reason: string } {
   let value: unknown;
   try { value = JSON.parse(text); } catch { return { reason: "the edit is not valid JSON" }; }
   if (typeof value !== "object" || value === null) return { reason: "the edit is not an object" };
   const v = value as Record<string, unknown>;
-  if (v["version"] !== EDIT_RECORD_VERSION) {
+  if (v["version"] !== 1 && v["version"] !== 2) {
     return { reason: typeof v["version"] === "number" && v["version"] > EDIT_RECORD_VERSION ? `the edit was saved by a newer version (${v["version"]})` : "the edit has no known version" };
   }
+  const version = v["version"];
   const removed = v["removed"];
   const ranges = Array.isArray(removed) && removed.length <= MAX_EDIT_RANGES
     && removed.every((r) => Array.isArray(r) && r.length === 2 && Number.isSafeInteger(r[0]) && Number.isSafeInteger(r[1]) && r[0] >= 0 && r[0] < r[1]);
   if (!isIdentity(v["source"]) || !Number.isSafeInteger(v["timescale"]) || (v["timescale"] as number) <= 0 || !ranges
     || !Number.isSafeInteger(v["revision"]) || (v["revision"] as number) < 0) {
-    return { reason: "the edit's fields are not what version 1 writes" };
+    return { reason: `the edit's fields are not what version ${version} writes` };
   }
+  if (version === 2 && !isEditScene(v["scene"])) return { reason: "the edit's scene is not what version 2 writes" };
   const sorted = normalizeRanges(removed as EditRange[]);
   if (JSON.stringify(sorted) !== JSON.stringify(removed)) return { reason: "the edit's ranges overlap or are out of order" };
-  return { version: EDIT_RECORD_VERSION, source: v["source"], timescale: v["timescale"] as number, removed: sorted, revision: v["revision"] as number };
+  const fields = { source: v["source"], timescale: v["timescale"] as number, removed: sorted, revision: v["revision"] as number };
+  return version === 2 ? { version, ...fields, scene: v["scene"] as EditScene } : { version, ...fields };
 }
 
 export class EditStore {

@@ -13,14 +13,22 @@
  * **Admission.** One export at a time, and none while a recording or a Live preview runs, or one is being saved;
  * a session that starts during an export (the recording always wins) cancels it, and quit cancels it within the
  * worker's cancel bound.
+ *
+ * **An editable recording (plan 087)** describes itself through the engine's plan: its edit also holds a scene (the
+ * camera's place and size, whether it is shown, each input's volume), and its export is rendered rather than
+ * remuxed, so it can be exported with no cut at all. While its view is open, its camera and second sound are copied
+ * into files of their own in userData (`edits/preview`) for the page to play beside the recording; they are removed
+ * when the view closes, and any left by a crash at the next launch.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { translate, type Language, type PlainMessageKey } from "../../shared/i18n";
-import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan } from "../../shared/editing";
-import { EDIT_RECORD_VERSION, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
+import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type PreviewTrack } from "../../shared/editing";
+import { defaultScene, exportRender, fitScene, parseEditableDescription, type EditableDescription, type EditScene } from "../../shared/editable";
+import { fileResponse } from "../lib/file-response";
+import { editRecord, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
 import { ExportFailure } from "./export-host";
 
 /** Why an export cannot start now. */
@@ -29,7 +37,9 @@ export type ExportBlock = "recording" | "preview" | "saving" | "quitting";
 /** What the export needs of the worker's supervisor (export-host.ts). */
 export interface ExportRunner {
   inspect(request: { source: string; removed: Array<{ from: number; to: number }> }): Promise<ExportPlan>;
-  export(request: { source: string; output: string; removed: Array<{ from: number; to: number }> }, progress: (fraction: number) => void): Promise<{ plan: ExportPlan; bytes: number }>;
+  export(request: ExportRequest & { output: string }, progress: (fraction: number) => void): Promise<{ plan: ExportPlan; bytes: number }>;
+  /** Plan 087: an editable recording's camera or second sound copied into `output` for the preview. */
+  extract(request: { source: string; track: PreviewTrack; output: string }): Promise<number>;
   cancel(): void;
   closeIdle(): void;
   close(): void;
@@ -50,6 +60,8 @@ export interface EditingDeps {
   reveal(file: string): void;
   /** In userData: the paths of exports in flight, removed at the next launch if a crash left them. */
   journal: string;
+  /** In userData: the folder of an editable recording's preview tracks (plan 087), which only this class writes. */
+  previewDir: string;
   log(message: string): void;
   /** File operations, for fault injection in tests. */
   files?: Partial<PublicationFiles>;
@@ -267,7 +279,13 @@ interface Open {
   plan?: ExportPlan;
   saveFailure?: string;
   export: EditorExport;
+  /** An editable recording's description, and its preview tracks once copied (plan 087). */
+  editable?: { description: EditableDescription; preview: Partial<Record<PreviewTrack, string>> };
 }
+
+/** The preview tracks' URLs: `recordstuff-media://preview/<generation>/<track>`, served by `previewResponse`. */
+const PREVIEW_HOST = "preview";
+const PREVIEW_TRACKS: readonly PreviewTrack[] = ["camera", "secondSound"];
 
 /** An export from Export to its end: `started` once the worker has it; until then a cancel only stops it starting. */
 interface ExportRun { part: string; promise: Promise<void>; cancelled: boolean; started: boolean }
@@ -323,11 +341,91 @@ export class Editing {
       revision: open.record?.revision ?? 0,
       notes,
       outputSeconds: (plan?.outputDuration ?? 0) / timescale,
-      exportable: open.state === "ready" && !block && !this.exportRun && (open.record?.removed.length ?? 0) > 0,
+      exportable: open.state === "ready" && !block && !this.exportRun && this.exportableEdit(open),
       ...(block ? { blocked: block } : {}),
       export: open.export,
       ...(open.saveFailure ? { saveFailure: open.saveFailure } : {}),
+      ...(open.editable && open.state === "ready" ? { editable: this.editableView(open, open.editable) } : {}),
     };
+  }
+
+  private editableView(open: Open, editable: NonNullable<Open["editable"]>): NonNullable<EditorView["editable"]> {
+    const { description, preview } = editable;
+    const urls: Partial<Record<PreviewTrack, string>> = {};
+    for (const track of PREVIEW_TRACKS) if (preview[track]) urls[track] = `recordstuff-media://${PREVIEW_HOST}/${this.generation}/${track}`;
+    return {
+      sounds: description.sounds,
+      ...(description.camera ? { camera: { rounding: description.camera.rounding, mirror: description.camera.mirror } } : {}),
+      scene: this.sceneOf(open, description),
+      preview: urls,
+    };
+  }
+
+  /** The open editable recording's scene: as saved, or where the recording left everything. */
+  private sceneOf(open: Open, description: EditableDescription): EditScene {
+    return open.record?.scene ? fitScene(open.record.scene, description) : defaultScene(description);
+  }
+
+  /**
+   * The open view's preview track a page asks for (plan 087), as a media response; undefined for any other address,
+   * which the recordings library answers. Only the tracks of the view open now, by its generation, are served.
+   */
+  previewResponse(request: Request): Promise<Response> | undefined {
+    const url = new URL(request.url);
+    if (url.host !== PREVIEW_HOST) return undefined;
+    const [generation, track] = url.pathname.replace(/^\//, "").split("/");
+    const file = this.open?.editable?.preview[track as PreviewTrack];
+    if (request.method !== "GET" || generation !== String(this.generation) || !file) return Promise.resolve(new Response(null, { status: 404 }));
+    return fileResponse(file, track === "camera" ? "video/mp4" : "audio/mp4", request);
+  }
+
+  /** Copies the open editable recording's camera and second sound for its preview, each told when it is ready. */
+  private async preparePreview(open: Open, generation: number): Promise<void> {
+    const editable = open.editable;
+    if (!editable) return;
+    const tracks = PREVIEW_TRACKS.filter((track) => (track === "camera" ? editable.description.camera !== null : editable.description.sounds.length > 1));
+    if (!tracks.length) return;
+    try { await fs.promises.mkdir(this.deps.previewDir, { recursive: true }); } catch (cause) {
+      this.deps.log(`editing: no preview folder: ${String(cause)}`);
+      return;
+    }
+    const stem = createHash("sha256").update(open.path).digest("hex").slice(0, 16);
+    for (const track of tracks) {
+      const file = path.join(this.deps.previewDir, `${stem}-${generation}-${track}.mp4`);
+      try {
+        await fs.promises.rm(file, { force: true });
+        await this.deps.runner.extract({ source: open.path, track, output: file });
+      } catch (cause) {
+        this.deps.log(`editing: the preview's ${track} of ${open.path} could not be made: ${String(cause)}`);
+        await fs.promises.rm(file, { force: true }).catch(() => undefined);
+        continue;
+      }
+      // Closed or opened again meanwhile: the file is this view's no longer.
+      if (this.open !== open || this.generation !== generation) {
+        await fs.promises.rm(file, { force: true }).catch(() => undefined);
+        return;
+      }
+      editable.preview[track] = file;
+      this.deps.changed();
+    }
+  }
+
+  /** Removes the preview tracks of a view that closed. */
+  private dropPreview(open: Open | undefined): void {
+    for (const file of Object.values(open?.editable?.preview ?? {})) {
+      void fs.promises.rm(file, { force: true }).catch((cause: unknown) => this.deps.log(`editing: could not remove ${file}: ${String(cause)}`));
+    }
+    if (open?.editable) open.editable.preview = {};
+  }
+
+  /** At launch: preview tracks a crash left, removed with their folder, which holds nothing else. */
+  async removePreviews(): Promise<void> {
+    await fs.promises.rm(this.deps.previewDir, { recursive: true, force: true }).catch((cause: unknown) => this.deps.log(`editing: preview tracks not removed: ${String(cause)}`));
+  }
+
+  /** Whether the open edit has anything to export: a cut, or for an editable recording always (it is rendered). */
+  private exportableEdit(open: Open): boolean {
+    return open.editable !== undefined || (open.record?.removed.length ?? 0) > 0;
   }
 
   private blockReason(): string | undefined {
@@ -346,7 +444,7 @@ export class Editing {
     switch (choice.action) {
       case "open": return this.openEditor(id);
       case "close": this.close(id); return true;
-      case "save": return this.save(id, choice.removed, choice.revision);
+      case "save": return this.save(id, choice.removed, choice.revision, choice.scene);
       case "export": return this.startExport(id);
       case "cancelExport": return this.cancelExport(id);
       case "discard": return this.discard(id);
@@ -391,7 +489,13 @@ export class Editing {
       open = current();
       if (!open) return this.abandoned();
       open.plan = plan;
-      open.record = loaded.kind === "ok" ? loaded.record : { version: EDIT_RECORD_VERSION, source: identity, timescale: plan.timescale, removed: [], revision: 0 };
+      open.record = loaded.kind === "ok" ? loaded.record : editRecord({ source: identity, timescale: plan.timescale, removed: [], revision: 0 });
+      if (plan.editable !== undefined && plan.editable !== null) {
+        const description = parseEditableDescription(plan.editable);
+        if (!description) throw new ExportFailure("malformed", `its editable description could not be read: ${plan.editable.slice(0, 200)}`);
+        open.editable = { description, preview: {} };
+        void this.preparePreview(open, generation);
+      }
       open.state = "ready";
     } catch (cause) {
       open = current();
@@ -430,22 +534,23 @@ export class Editing {
     if (this.open?.id !== id) return;
     // An export goes on to its end with the view closed; its outcome is in the log and the listing.
     if (this.exportRun) return;
+    this.dropPreview(this.open);
     this.open = undefined;
     this.generation++;
     this.deps.runner.closeIdle();
     this.deps.changed();
   }
 
-  private save(id: string, requested: EditRange[], revision: number): Promise<boolean> {
+  private save(id: string, requested: EditRange[], revision: number, scene?: EditScene): Promise<boolean> {
     // A save asked for after Export would change the edit the export takes: refused. One asked for before it runs
     // first, and the export waits for it.
     if (this.exportRun) return Promise.resolve(false);
-    const run = this.saving.then(() => this.saveNow(id, requested, revision));
+    const run = this.saving.then(() => this.saveNow(id, requested, revision, scene));
     this.saving = run.then(() => undefined, () => undefined);
     return run;
   }
 
-  private async saveNow(id: string, requested: EditRange[], revision: number): Promise<boolean> {
+  private async saveNow(id: string, requested: EditRange[], revision: number, scene?: EditScene): Promise<boolean> {
     const open = this.open;
     if (!open || open.id !== id || open.state !== "ready" || !open.record || !open.identity || this.exportRun?.started) return false;
     if (revision !== open.record.revision) return false;
@@ -465,7 +570,10 @@ export class Editing {
     }
     if (this.open !== open) return this.abandoned();
     const snapped: EditRange[] = plan.removed.map(({ from, to }) => [from, to]);
-    const record: EditRecord = { version: EDIT_RECORD_VERSION, source: open.identity, timescale: plan.timescale, removed: snapped, revision: open.record.revision + 1 };
+    // An editable recording's scene: the one given, else the one saved, else where the recording left everything.
+    const description = open.editable?.description;
+    const nextScene = description ? (scene ? fitScene(scene, description) : this.sceneOf(open, description)) : undefined;
+    const record = editRecord({ source: open.identity, timescale: plan.timescale, removed: snapped, revision: open.record.revision + 1, scene: nextScene });
     try {
       await this.deps.store.save(record);
     } catch (cause) {
@@ -495,6 +603,7 @@ export class Editing {
     }
     this.deps.log(`editing: discarded the edit of ${open.path}`);
     // Opened again from nothing.
+    this.dropPreview(open);
     this.open = undefined;
     return this.openEditor(id);
   }
@@ -502,7 +611,7 @@ export class Editing {
   private async startExport(id: string): Promise<boolean> {
     const open = this.open;
     if (!open || open.id !== id || open.state !== "ready" || !open.record || this.exportRun) return false;
-    if (this.deps.blocked() || open.record.removed.length === 0) return false;
+    if (this.deps.blocked() || !this.exportableEdit(open)) return false;
     const title = open.name.replace(/\.[^.]+$/, "");
     const part = path.join(path.dirname(open.path), partName(title));
     // Claimed before the first wait, so a second Export, a starting recording or quit all see it.
@@ -515,10 +624,12 @@ export class Editing {
     };
     // After the saves already asked for: the export takes the edit as saved, never one a save is replacing.
     await this.saving;
-    if (this.open !== open || open.state !== "ready" || !open.record || run.cancelled || this.deps.blocked() || open.record.removed.length === 0) return refuse();
+    if (this.open !== open || open.state !== "ready" || !open.record || run.cancelled || this.deps.blocked() || !this.exportableEdit(open)) return refuse();
     if (!(await this.stillSame(open))) return refuse();
     if (run.cancelled || this.deps.blocked()) return refuse();
     const removed = open.record.removed.map(([from, to]) => ({ from, to }));
+    const description = open.editable?.description;
+    const render = description ? exportRender(description, this.sceneOf(open, description)) : undefined;
     try {
       await this.journal((entries) => [...entries, part]);
     } catch (cause) {
@@ -532,7 +643,7 @@ export class Editing {
     }
     run.started = true;
     open.export = { phase: "exporting", progress: 0, cancelling: false };
-    this.deps.log(`editing: exporting ${open.path} without ${removed.length} range(s) into ${part}`);
+    this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
     this.deps.changed();
     let lastShown = 0;
     const reserved: string[] = [];
@@ -540,7 +651,7 @@ export class Editing {
       let outcome: EditorExport;
       let settledPaths: string[] = [];
       try {
-        const result = await this.deps.runner.export({ source: open.path, output: part, removed }, (fraction) => {
+        const result = await this.deps.runner.export({ source: open.path, output: part, removed, ...(render ? { render } : {}) }, (fraction) => {
           if (open.export.phase !== "exporting" || fraction - lastShown < 0.01) return;
           lastShown = fraction;
           open.export = { ...open.export, progress: fraction };

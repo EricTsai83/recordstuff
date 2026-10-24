@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EditorView, ExportPlan } from "../../shared/editing";
+import type { EditorView, ExportPlan, ExportRequest } from "../../shared/editing";
 import { EditStore } from "./edit-store";
 import { ExportFailure } from "./export-host";
 
@@ -17,7 +17,10 @@ let source: string;
 let sourceHash: string;
 const hash = (file: string): string => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 
-function planFor(removed: Array<{ from: number; to: number }>): ExportPlan {
+/** An editable recording's description (plan 087), as the engine writes it. */
+const DESCRIPTION = JSON.stringify({ version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: true } });
+
+function planFor(removed: Array<{ from: number; to: number }>, editable?: string): ExportPlan {
   // Snapped to whole frames of 3000 ticks, as the engine does.
   const snap = (t: number): number => Math.round(t / 3000) * 3000;
   const snapped = removed.map(({ from, to }) => ({ from: snap(from), to: snap(to) })).filter(({ from, to }) => to > from);
@@ -26,17 +29,22 @@ function planFor(removed: Array<{ from: number; to: number }>): ExportPlan {
   return {
     timescale: 90_000, duration: 900_000, outputDuration: 900_000 - gone, frames: 300, removed: snapped, dropped: [],
     parts: [{ requested: 0, start: 0, stop: 900_000, outStart: 0, fellBack: false, reencoded: false }], secondDescription: false, hasAudio: true,
+    ...(editable ? { editable } : {}),
   };
 }
 
 /** A worker double: an export writes its file part way, then ends as `outcome` says. */
-function runner(outcome: () => Promise<void> | void = () => undefined) {
+function runner(outcome: () => Promise<void> | void = () => undefined, editable?: string) {
   const calls = { cancel: 0, closeIdle: 0, close: 0 };
   let cancelled: (() => void) | undefined;
   return {
     calls,
-    inspect: vi.fn(async ({ removed }: { removed: Array<{ from: number; to: number }> }) => planFor(removed)),
-    export: vi.fn(async ({ output, removed }: { output: string; removed: Array<{ from: number; to: number }> }, progress: (f: number) => void) => {
+    inspect: vi.fn(async ({ removed }: { removed: Array<{ from: number; to: number }> }) => planFor(removed, editable)),
+    extract: vi.fn(async ({ track, output }: { source: string; track: string; output: string }) => {
+      fs.writeFileSync(output, `the ${track}`, { flag: "wx" });
+      return 9;
+    }),
+    export: vi.fn(async ({ output, removed }: ExportRequest & { output: string }, progress: (f: number) => void) => {
       // The worker creates its file only if it does not exist.
       fs.writeFileSync(output, "half an export", { flag: "wx" });
       progress(0.5);
@@ -68,6 +76,7 @@ function setup(overrides: Partial<Deps> = {}, worker = runner()) {
     published: (file) => published.push(file),
     reveal: () => undefined,
     journal: path.join(dir, "userData", "edits", "exports-in-flight.json"),
+    previewDir: path.join(dir, "userData", "edits", "preview"),
     log: (line) => logs.push(line),
     ...overrides,
   });
@@ -478,5 +487,101 @@ describe("leftovers at launch", () => {
 
   it("are nothing without a journal", async () => {
     expect(await removeLeftovers(path.join(dir, "missing.json"), () => undefined)).toBe(0);
+  });
+});
+
+describe("an editable recording (plan 087)", () => {
+  const previews = (): string[] => (fs.existsSync(path.join(dir, "userData", "edits", "preview")) ? fs.readdirSync(path.join(dir, "userData", "edits", "preview")).sort() : []);
+  const record = (): Record<string, unknown> => {
+    const edits = path.join(dir, "userData", "edits");
+    const file = fs.readdirSync(edits).find((name) => name.endsWith(".json") && name !== "exports-in-flight.json")!;
+    return JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")) as Record<string, unknown>;
+  };
+  const ready = async (ctx: ReturnType<typeof setup>): Promise<void> => {
+    for (let n = 0; n < 100 && Object.keys(ctx.editing.view()?.editable?.preview ?? {}).length < 2; n++) await new Promise((resolve) => setTimeout(resolve, 2));
+  };
+
+  it("opens where the recording left the camera and the volumes, can be exported with no cut, and prepares its preview", async () => {
+    const ctx = setup({}, runner(undefined, DESCRIPTION));
+    await ctx.editing.choose("rec", { action: "open" });
+    await ready(ctx);
+    const view = ctx.editing.view()!;
+    expect(view).toMatchObject({ state: "ready", removed: [], exportable: true });
+    expect(view.editable).toMatchObject({
+      sounds: ["system", "microphone"],
+      camera: { rounding: 0.15, mirror: true },
+      scene: { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } },
+    });
+    // Its camera and its second sound, copied for the page; served only at this view's addresses.
+    const { camera, secondSound } = view.editable!.preview;
+    expect(camera).toMatch(/^recordstuff-media:\/\/preview\/\d+\/camera$/);
+    expect(secondSound).toMatch(/\/secondSound$/);
+    expect(previews()).toHaveLength(2);
+    const response = await ctx.editing.previewResponse(new Request(camera!))!;
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("the camera");
+    expect((await ctx.editing.previewResponse(new Request(camera!.replace(/preview\/\d+/, "preview/999")))!).status).toBe(404);
+    expect(ctx.editing.previewResponse(new Request("recordstuff-media://video/rec"))).toBeUndefined();
+    // Closed, its preview goes.
+    ctx.editing.choose("rec", { action: "close" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(previews()).toEqual([]);
+  });
+
+  it("saves the scene with the cuts as a version-2 edit, keeps it across saves of cuts alone, and exports it rendered", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    const scene = { camera: { x: 0, y: 1, width: 0.25, height: 0.25, shown: true }, volumes: { system: 0, microphone: 200 } };
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 0, scene })).toBe(true);
+    expect(record()).toMatchObject({ version: 2, scene, revision: 1 });
+    // A cut alone keeps the scene.
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [[90_000, 180_000]], revision: 1 })).toBe(true);
+    expect(ctx.editing.view()!.editable!.scene).toEqual(scene);
+    ctx.editing.choose("rec", { action: "close" });
+    await ctx.editing.choose("rec", { action: "open" });
+    expect(ctx.editing.view()!.editable!.scene).toEqual(scene);
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    const request = worker.export.mock.calls[0]![0];
+    // The bubble where the edit put it, in the recording's shape; the system's sound silent, the microphone's doubled.
+    expect(request.render).toEqual({ camera: { width: 0.25, height: 0.25, rounding: 0.15, x: 0, y: 1, mirror: true }, volumesDb: [-60, 20 * Math.log10(2)] });
+    expect(request.removed).toEqual([{ from: 90_000, to: 180_000 }]);
+    expect(ctx.published).toHaveLength(1);
+  });
+
+  it("leaves a hidden camera out of the export", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    const scene = { camera: { x: 0.5, y: 0.5, width: 0.2, height: 0.3, shown: false }, volumes: { system: 100, microphone: 100 } };
+    await ctx.editing.choose("rec", { action: "save", removed: [], revision: 0, scene });
+    await ctx.editing.choose("rec", { action: "export" });
+    await settled(ctx.editing);
+    expect(worker.export.mock.calls[0]![0].render).toEqual({ volumesDb: [0, 0] });
+  });
+
+  it("shows a recording whose description cannot be read as one that cannot be edited", async () => {
+    const ctx = setup({}, runner(undefined, JSON.stringify({ version: 9, sounds: [] })));
+    await ctx.editing.choose("rec", { action: "open" });
+    expect(ctx.editing.view()).toMatchObject({ state: "unsupported", exportable: false });
+    expect(ctx.editing.view()!.editable).toBeUndefined();
+  });
+
+  it("keeps an ordinary recording's edit at version 1, with no scene and no preview", async () => {
+    const ctx = setup();
+    await editedOnce(ctx);
+    expect(record()).toMatchObject({ version: 1 });
+    expect(record()).not.toHaveProperty("scene");
+    expect(ctx.editing.view()!.editable).toBeUndefined();
+    expect(ctx.worker.extract).not.toHaveBeenCalled();
+  });
+
+  it("removes the preview tracks a crash left at the next launch", async () => {
+    const folder = path.join(dir, "userData", "edits", "preview");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "abc-3-camera.mp4"), "left");
+    await setup().editing.removePreviews();
+    expect(fs.existsSync(folder)).toBe(false);
   });
 });

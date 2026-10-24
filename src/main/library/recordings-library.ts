@@ -23,14 +23,15 @@
  * move every waiting file at once.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, watch as watchFolder, type Dirent, type FSWatcher } from "node:fs";
+import { watch as watchFolder, type Dirent, type FSWatcher } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { mp4Duration } from "./mp4-duration";
 import { errnoCode } from "../lib/errors";
 import { mapLimited } from "../lib/map-limited";
 import { retryWhileHeldOpen } from "../lib/held-open";
+import { fileResponse } from "../lib/file-response";
+export { parseRange } from "../lib/file-response";
 import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
 
 export const MEDIA_SCHEME = "recordstuff-media";
@@ -191,22 +192,6 @@ function fileVersion(stat: { size: number; mtimeMs: number }): string {
 /** Stable for a path, so the page keeps a card, its focus and its thumbnail across refreshes. */
 export function fileId(filePath: string): string {
   return createHash("sha256").update(filePath).digest("hex").slice(0, 20);
-}
-
-/** `bytes=start-end`, `bytes=start-` or `bytes=-suffix` within `size`; null for a range that cannot be served. */
-export function parseRange(header: string | null, size: number): { start: number; end: number } | null | undefined {
-  if (!header) return undefined;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  // An empty file has no byte to serve, whichever form the range takes.
-  if (!match || (!match[1] && !match[2]) || size === 0) return null;
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    if (suffix === 0) return null;
-    return { start: Math.max(0, size - suffix), end: size - 1 };
-  }
-  const start = Number(match[1]);
-  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
-  return start <= end && start < size ? { start, end } : null;
 }
 
 export class RecordingsLibrary {
@@ -862,19 +847,6 @@ export class RecordingsLibrary {
       });
     }
     if (url.host !== "video") return new Response(null, { status: 404 });
-    let size: number;
-    try { size = (await fs.stat(file.path)).size; } catch { return new Response(null, { status: 404 }); }
-    const type = /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4";
-    const range = parseRange(request.headers.get("range"), size);
-    if (range === null) return new Response(null, { status: 416, headers: { "content-range": `bytes */${size}` } });
-    const { start, end } = range ?? { start: 0, end: size - 1 };
-    const body = size === 0 ? null : Readable.toWeb(createReadStream(file.path, { start, end })) as ReadableStream<Uint8Array>;
-    return new Response(body, {
-      status: range ? 206 : 200,
-      headers: {
-        "content-type": type, "accept-ranges": "bytes", "content-length": String(size === 0 ? 0 : end - start + 1),
-        ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}),
-      },
-    });
+    return fileResponse(file.path, /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4", request);
   }
 }

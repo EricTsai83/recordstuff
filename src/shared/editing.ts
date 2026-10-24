@@ -8,6 +8,8 @@
  * record stores them; the view also gives seconds for the page's player.
  */
 
+import { EDITABLE_DESCRIPTION_LIMIT, isEditScene, isExportRender, type EditableSound, type EditScene, type ExportRender } from "./editable";
+
 /** A removed range, `[from, to)` in the video's timescale. */
 export type EditRange = [number, number];
 
@@ -28,6 +30,8 @@ export interface ExportPlan {
   dropped: Array<{ from: number; to: number }>;
   secondDescription: boolean;
   hasAudio: boolean;
+  /** An editable recording's description as the engine read it (plan 087; editable.ts parses it); absent otherwise. */
+  editable?: string | null;
 }
 
 export interface ExportResult {
@@ -42,7 +46,12 @@ export interface ExportRequest {
   source: string;
   output?: string;
   removed: Array<{ from: number; to: number }>;
+  /** An editable recording's rendered export (plan 087): the camera's place and the volumes. */
+  render?: ExportRender;
 }
+
+/** An editable recording's track the edit view plays beside it (plan 087): the camera, or its second sound. */
+export type PreviewTrack = "camera" | "secondSound";
 
 /** Why an export or an inspection failed, as the engine and the worker name it. */
 export type ExportFailureCode =
@@ -66,7 +75,9 @@ export type ExportMainMessage =
   | { type: "cancel" }
   | { type: "ping"; id: number }
   /** `pnpm bench:export`'s speed reference, served only under `EXPORT_BENCH_ENV`; main never sends it. */
-  | { type: "copy"; id: number; request: { source: string; output: string } };
+  | { type: "copy"; id: number; request: { source: string; output: string } }
+  /** Copies an editable recording's track into a file of its own for the edit view's preview (plan 087). */
+  | { type: "extract"; id: number; request: { source: string; track: PreviewTrack; output: string } };
 
 /** The worker serves `copy` only with this set to `1` (`pnpm bench:export`). */
 export const EXPORT_BENCH_ENV = "RECORDSTUFF_EXPORT_BENCH";
@@ -78,7 +89,8 @@ export type ExportHostMessage =
   | { type: "progress"; id: number; fraction: number }
   | { type: "exported"; id: number; result: ExportResult }
   | { type: "failed"; id: number; code: ExportFailureCode; detail: string }
-  | { type: "copied"; id: number; bytes: number };
+  | { type: "copied"; id: number; bytes: number }
+  | { type: "extracted"; id: number; bytes: number };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isCount = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -93,7 +105,8 @@ function isPlan(value: unknown): value is ExportPlan {
     && Array.isArray(v["dropped"]) && v["dropped"].every(isSpan)
     && Array.isArray(v["parts"]) && v["parts"].every((p) => isRecord(p) && isTime(p["requested"]) && isTime(p["start"]) && isTime(p["stop"])
       && isTime(p["outStart"]) && typeof p["fellBack"] === "boolean" && typeof p["reencoded"] === "boolean")
-    && typeof v["secondDescription"] === "boolean" && typeof v["hasAudio"] === "boolean";
+    && typeof v["secondDescription"] === "boolean" && typeof v["hasAudio"] === "boolean"
+    && (v["editable"] === undefined || v["editable"] === null || (typeof v["editable"] === "string" && v["editable"].length <= EDITABLE_DESCRIPTION_LIMIT));
 }
 
 /** Every message the worker may send; main drops anything else. */
@@ -110,7 +123,7 @@ export function isExportHostMessage(value: unknown): value is ExportHostMessage 
         && isCount(result["reencodedFrames"]) && isCount(result["reencodedPackets"]);
     }
     case "failed": return isCount(value["id"]) && isExportFailureCode(value["code"]) && typeof value["detail"] === "string";
-    case "copied": return isCount(value["id"]) && isTime(value["bytes"]);
+    case "copied": case "extracted": return isCount(value["id"]) && isTime(value["bytes"]);
     default: return false;
   }
 }
@@ -121,12 +134,15 @@ export function isExportMainMessage(value: unknown): value is ExportMainMessage 
   const request = value["request"];
   const isRequest = isRecord(request) && typeof request["source"] === "string"
     && (request["output"] === undefined || typeof request["output"] === "string")
-    && Array.isArray(request["removed"]) && request["removed"].length <= MAX_EDIT_RANGES && request["removed"].every(isSpan);
+    && Array.isArray(request["removed"]) && request["removed"].length <= MAX_EDIT_RANGES && request["removed"].every(isSpan)
+    && (request["render"] === undefined || isExportRender(request["render"]));
   switch (value["type"]) {
     case "inspect": case "export": return isCount(value["id"]) && isRequest;
     case "cancel": return true;
     case "ping": return isCount(value["id"]);
     case "copy": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string";
+    case "extract": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string"
+      && (request["track"] === "camera" || request["track"] === "secondSound");
     default: return false;
   }
 }
@@ -168,6 +184,22 @@ export interface EditorView {
   export: EditorExport;
   /** A save that did not take effect, localized. */
   saveFailure?: string;
+  /** An editable recording's own part of the view (plan 087); absent for any other recording. */
+  editable?: EditorEditable;
+}
+
+/** What the edit view needs of an editable recording: what it holds, the scene as saved and the preview's tracks. */
+export interface EditorEditable {
+  /** The file's sound tracks, in order: the recording itself plays the first. */
+  sounds: EditableSound[];
+  /** The bubble's shape as recorded; absent without a camera track. */
+  camera?: { rounding: number; mirror: boolean };
+  scene: EditScene;
+  /**
+   * The preview's other tracks, as media URLs the page plays beside the recording (`recordstuff-media://preview/…`),
+   * once made: the camera, and the second sound. Absent while they are made, or when they could not be.
+   */
+  preview: { camera?: string; secondSound?: string };
 }
 
 export type EditorExport =
@@ -179,7 +211,8 @@ export type EditorExport =
 export type EditorChoice =
   | { action: "open" }
   | { action: "close" }
-  | { action: "save"; removed: EditRange[]; revision: number }
+  /** The cuts, and for an editable recording its scene (plan 087), replacing the saved ones. */
+  | { action: "save"; removed: EditRange[]; revision: number; scene?: EditScene }
   | { action: "export" }
   | { action: "cancelExport" }
   | { action: "discard" }
@@ -192,7 +225,8 @@ export function isEditorChoice(value: unknown): value is EditorChoice {
     case "save": {
       const removed = value["removed"];
       return isCount(value["revision"]) && Array.isArray(removed) && removed.length <= MAX_EDIT_RANGES
-        && removed.every((range) => Array.isArray(range) && range.length === 2 && isCount(range[0]) && isCount(range[1]) && range[0] < range[1]);
+        && removed.every((range) => Array.isArray(range) && range.length === 2 && isCount(range[0]) && isCount(range[1]) && range[0] < range[1])
+        && (value["scene"] === undefined || isEditScene(value["scene"]));
     }
     default: return false;
   }

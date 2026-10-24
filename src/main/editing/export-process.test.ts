@@ -12,18 +12,20 @@ function setup(engine: Partial<{ inspect(r: ExportRequest): Promise<ExportPlan>;
   let listener: ((message: { data: unknown }) => void) | undefined;
   const requests: Array<ExportRequest & { join?: string }> = [];
   let cancelled = 0;
+  const extracts: string[] = [];
   const worker = new ExportWorker(
     { on: (_event, handler) => { listener = handler; }, postMessage: (message) => sent.push(message as ExportHostMessage) },
     {
       inspect: async (request) => { requests.push(request); return engine.inspect ? engine.inspect(request) : plan; },
       run: async (request) => { requests.push(request); return engine.run ? engine.run(request) : { plan, bytes: 1, reencodedFrames: 0, reencodedPackets: 0 }; },
       cancel: () => { cancelled++; },
+      extract: async (source, track, output) => { extracts.push(`${source}:${track}>${output}`); if (track === "camera" && source === "/broken.mp4") throw new Error("unsupported|the recording has no camera track"); return 7; },
     },
     join,
   );
   const post = (data: unknown): void => listener!({ data });
   const settled = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-  return { worker, sent, post, requests, settled, cancels: () => cancelled };
+  return { worker, sent, post, requests, settled, cancels: () => cancelled, extracts };
 }
 
 describe("the export worker", () => {
@@ -78,6 +80,21 @@ describe("the export worker", () => {
   });
 });
 
+describe("a preview track's extraction (plan 087)", () => {
+  it("is served in turn, and its failure is the engine's", async () => {
+    const { post, sent, settled, extracts } = setup();
+    post({ type: "extract", id: 3, request: { source: "/a.mp4", track: "secondSound", output: "/p/a-sound.mp4" } });
+    post({ type: "extract", id: 4, request: { source: "/broken.mp4", track: "camera", output: "/p/b-camera.mp4" } });
+    post({ type: "extract", id: 5, request: { source: "/a.mp4", track: "speaker", output: "/p/x.mp4" } });
+    await settled();
+    await settled();
+    expect(extracts).toEqual(["/a.mp4:secondSound>/p/a-sound.mp4", "/broken.mp4:camera>/p/b-camera.mp4"]);
+    expect(sent).toContainEqual({ type: "extracted", id: 3, bytes: 7 });
+    expect(sent).toContainEqual({ type: "failed", id: 4, code: "unsupported", detail: "the recording has no camera track" });
+    expect(sent.some((m) => "id" in m && m.id === 5)).toBe(false);
+  });
+});
+
 describe("the speed reference's copy", () => {
   it("is served only when the benchmark switch is on", async () => {
     const copies: string[] = [];
@@ -87,7 +104,7 @@ describe("the speed reference's copy", () => {
       new ExportWorker(
         { on: (_event, handler) => { listener = handler; }, postMessage: (message) => sent.push(message as ExportHostMessage) },
         { inspect: async () => plan, run: async () => ({ plan, bytes: 1, reencodedFrames: 0, reencodedPackets: 0 }), cancel: () => undefined,
-          streamCopy: async (source, output) => { copies.push(`${source}>${output}`); return 42; } },
+          streamCopy: async (source, output) => { copies.push(`${source}>${output}`); return 42; }, extract: async () => 0 },
         undefined,
         bench,
       );

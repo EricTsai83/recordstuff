@@ -1,18 +1,22 @@
 /**
  * The export worker (plan 085): the entry of the Electron `utilityProcess` main forks while a recording is being
  * edited (export-host.ts). It loads the native engine, whose path is its first argument, and serves `inspect` (the
- * plan for an edit, without writing) and `export` (the remux into a file main reserved, which must not exist), one
- * at a time, over the parent port; `cancel` stops a running export at its next fragment. Frame bytes never leave
+ * plan for an edit, without writing), `export` (the remux, or an editable recording's render, into a file main
+ * reserved, which must not exist) and `extract` (an editable recording's camera or second sound copied into a file
+ * of its own for the edit view's preview, plan 087), one at a time, over the parent port; `cancel` stops a running
+ * export at its next fragment. Frame bytes never leave
  * this process: main hears only plans, progress and results. A crash in native code ends this process only; main
  * sees it exit and removes the export's unfinished file. The recording is opened read-only by the engine.
  */
-import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult } from "../../shared/editing";
+import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
 
 interface NativeExport {
   inspect(request: ExportRequest & { join?: string }): Promise<ExportPlan>;
   run(request: ExportRequest & { join?: string }): Promise<ExportResult>;
   cancel(): void;
   streamCopy?(source: string, output: string): Promise<number>;
+  /** Plan 087: an editable recording's track copied into a file of its own, for the edit view's preview. */
+  extract(source: string, track: PreviewTrack, output: string): Promise<number>;
 }
 
 interface EngineModule {
@@ -60,6 +64,15 @@ export class ExportWorker {
       case "cancel": this.engine.cancel(); return;
       case "inspect": case "export": {
         const run = this.queue.then(() => this.serve(message));
+        this.queue = run.catch(() => undefined);
+        return;
+      }
+      case "extract": {
+        const { id, request } = message;
+        const run = this.queue.then(async () => {
+          try { this.send({ type: "extracted", id, bytes: await this.engine.extract(request.source, request.track, request.output) }); }
+          catch (cause) { this.send({ type: "failed", id, ...failureOf(cause) }); }
+        });
         this.queue = run.catch(() => undefined);
         return;
       }

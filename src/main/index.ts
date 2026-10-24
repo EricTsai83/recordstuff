@@ -263,7 +263,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // The library's media protocol lives on the default session, and using that session makes Electron start a renderer
   // ahead of time, which then idles. Nothing else uses the session until a window opens, so the protocol is registered
   // as the first window is made, before it loads anything (plan 076, step 4). Nothing may use it at launch.
-  app.once("browser-window-created", () => protocol.handle(MEDIA_SCHEME, request => library.handle(request)));
+  // An editable recording's preview tracks (plan 087) are the edit view's own; every other address is the library's.
+  let editingPreview: ((request: Request) => Promise<Response> | undefined) | undefined;
+  app.once("browser-window-created", () => protocol.handle(MEDIA_SCHEME, request => editingPreview?.(request) ?? library.handle(request)));
   appLanguage = () => settings.language;
   log(
     `start: ${APP_NAME} ${app.getVersion()}; run ${runId}; electron ${process.versions.electron}; ` +
@@ -412,10 +414,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     published: () => { void library.refresh(); },
     reveal: (file) => shell.showItemInFolder(file),
     journal: exportJournal,
+    previewDir: path.join(editsDir, "preview"),
     log,
   });
   // What a crash left, in the journal's own queue: an export started meanwhile is journalled after it.
   void editing.removeLeftovers();
+  void editing.removePreviews();
+  editingPreview = (request) => editing.previewResponse(request);
 
   // One file per in-flight session; any left at launch belongs to a process that ended while recording.
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);

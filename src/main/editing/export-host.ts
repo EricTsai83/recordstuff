@@ -6,7 +6,7 @@
  * are bounded however the engine is doing; main then removes the export's unfinished file.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult } from "../../shared/editing";
+import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
 import { pipeLines } from "../lib/pipe-lines";
 
 /** A failed inspection or export: the engine's code, or the worker's own. */
@@ -33,7 +33,7 @@ export interface ExportHostOptions {
 export const CANCEL_BOUND_MS = 1000;
 
 interface Pending {
-  kind: "inspect" | "export";
+  kind: "inspect" | "export" | "extract";
   /** Posted to the worker; until then it waits for the worker to be ready, and a cancel ends it there. */
   sent: boolean;
   resolve: (value: unknown) => void;
@@ -63,6 +63,11 @@ export class ExportHost {
   /** The engine's plan for an edit, without writing anything. */
   inspect(request: ExportRequest): Promise<ExportPlan> {
     return this.request("inspect", request) as Promise<ExportPlan>;
+  }
+
+  /** Copies an editable recording's `track` into `output`, which must not exist, for the edit view's preview (plan 087). */
+  extract(request: { source: string; track: PreviewTrack; output: string }): Promise<number> {
+    return this.request("extract", request) as Promise<number>;
   }
 
   /** Exports into `request.output`, which must not exist; `progress` hears the fraction done. */
@@ -105,7 +110,7 @@ export class ExportHost {
   }
 
   /** A request is pending from now on, while the worker starts too, so cancel and quit reach it there. */
-  private request(kind: "inspect" | "export", request: ExportRequest, progress?: (fraction: number) => void): Promise<unknown> {
+  private request(kind: Pending["kind"], request: ExportRequest | { source: string; track: PreviewTrack; output: string }, progress?: (fraction: number) => void): Promise<unknown> {
     const id = this.nextId++;
     const settled = new Promise((resolve, reject) => {
       this.pending.set(id, { kind, sent: false, resolve, reject, ...(progress ? { progress } : {}) });
@@ -122,7 +127,7 @@ export class ExportHost {
         pending.sent = true;
         this.missedPongs = 0;
         this.pingTimer ??= setInterval(() => this.ping(), this.options.pingIntervalMs ?? 2000);
-        this.post({ type: kind, id, request });
+        this.post({ type: kind, id, request } as ExportMainMessage);
       },
       (cause: unknown) => this.settle(id, cause instanceof ExportFailure ? cause : new ExportFailure("export_engine_missing", String(cause))),
     );
@@ -175,6 +180,7 @@ export class ExportHost {
       case "progress": this.pending.get(message.id)?.progress?.(message.fraction); return;
       case "inspected": this.settle(message.id, undefined, message.plan); return;
       case "exported": this.settle(message.id, undefined, message.result); return;
+      case "extracted": this.settle(message.id, undefined, message.bytes); return;
       case "failed": this.settle(message.id, new ExportFailure(message.code, message.detail)); return;
     }
   }

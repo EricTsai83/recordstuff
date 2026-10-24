@@ -70,7 +70,7 @@ describe("edit records", () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     for (const [text, reason] of [
       ["{ not json", /not valid JSON/],
-      [JSON.stringify({ version: 2, removed: [] }), /newer version \(2\)/],
+      [JSON.stringify({ version: 3, removed: [] }), /newer version \(3\)/],
       [JSON.stringify({ version: 1, removed: "all" }), /fields/],
       [JSON.stringify({ ...{ version: 1, timescale: 90_000, revision: 1, source: { path: recording, size: 1, mtimeMs: 1, hash: "a".repeat(64) } }, removed: [[20, 30], [10, 25]] }), /overlap or are out of order/],
     ] as const) {
@@ -110,9 +110,15 @@ describe("edit records", () => {
 });
 
 describe("a record's parsing", () => {
-  it("takes version 1 only, with every field checked", () => {
+  it("takes version 1, and version 2 with an editable recording's scene (plan 087), with every field checked", () => {
     const source = { path: "/a.mp4", size: 10, mtimeMs: 5, hash: "f".repeat(64) };
     expect(parseRecord(JSON.stringify({ version: 1, source, timescale: 90_000, removed: [[1, 2]], revision: 0 }))).toEqual({ version: 1, source, timescale: 90_000, removed: [[1, 2]], revision: 0 });
+    const scene = { camera: { x: 0.5, y: 1, width: 0.2, height: 0.3, shown: false }, volumes: { system: 100, microphone: 250 } };
+    expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 3, scene }))).toEqual({ version: 2, source, timescale: 90_000, removed: [], revision: 3, scene });
+    // Version 2 needs its scene, a whole one; version 1's has none to keep.
+    expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 3 }))).toHaveProperty("reason");
+    expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 3, scene: { ...scene, volumes: { system: 700, microphone: 0 } } }))).toHaveProperty("reason");
+    expect(parseRecord(JSON.stringify({ version: 1, source, timescale: 90_000, removed: [], revision: 0, scene }))).not.toHaveProperty("scene");
     expect(parseRecord(JSON.stringify({ version: 1, source: { ...source, hash: "x" }, timescale: 90_000, removed: [], revision: 0 }))).toHaveProperty("reason");
     expect(parseRecord(JSON.stringify({ version: 1, source, timescale: 90_000, removed: [[2, 1]], revision: 0 }))).toHaveProperty("reason");
   });

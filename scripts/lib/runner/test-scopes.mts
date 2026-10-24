@@ -56,10 +56,10 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "editing",
-    covers: "cutting a recording (plan 085): the edit view and its timeline, the edit records, the export worker and its supervision, publication and admission; the engine's reader, cut plan and remux",
-    unit: [`${PAGE}settings-library-editor.test.ts`, "src/main/editing/", "src/shared/editing.test.ts", "src/renderer/settings/controller/editor.test.ts"],
+    covers: "cutting a recording (plan 085) and an editable recording's camera and volumes (plan 087): the edit view and its timeline, the edit records, the export worker and its supervision, publication and admission; the engine's reader, cut plan, remux and rendered export, and the editable recording's description",
+    unit: [`${PAGE}settings-library-editor.test.ts`, "src/main/editing/", "src/shared/editing.test.ts", "src/shared/editable.test.ts", "src/renderer/settings/controller/editor.test.ts"],
     ui: [{ file: "editor.spec.ts" }],
-    native: ["edit::"],
+    native: ["edit::", "editable::"],
   },
   {
     name: "failures",

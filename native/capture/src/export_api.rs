@@ -268,6 +268,27 @@ impl Task for CopyTask {
     }
 }
 
+/// Copies an editable recording's camera or second sound into a file of its own for the edit view's preview (plan 087).
+pub struct ExtractTask {
+    source: PathBuf,
+    output: PathBuf,
+    which: render::Extract,
+}
+
+impl Task for ExtractTask {
+    type Output = f64;
+    type JsValue = f64;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let bytes = render::extract(&self.source, &self.output, self.which, &AtomicBool::new(false)).map_err(reject)?;
+        Ok(bytes as f64)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
 pub struct RunTask {
     request: Option<Parsed>,
     cancel: Arc<AtomicBool>,
@@ -342,6 +363,18 @@ impl NativeExport {
     #[napi(ts_return_type = "Promise<number>")]
     pub fn stream_copy(&self, source: String, output: String) -> AsyncTask<CopyTask> {
         AsyncTask::new(CopyTask { source: PathBuf::from(source), output: PathBuf::from(output) })
+    }
+
+    /// Copies `source`'s `track` (`camera` or `secondSound`) into `output`, which must not exist, as it is: the edit
+    /// view plays it beside the recording (plan 087). The bytes written.
+    #[napi(ts_return_type = "Promise<number>")]
+    pub fn extract(&self, source: String, track: String, output: String) -> Result<AsyncTask<ExtractTask>> {
+        let which = match track.as_str() {
+            "camera" => render::Extract::Camera,
+            "secondSound" => render::Extract::SecondSound,
+            other => return Err(failure("invalid_range", format!("no track {other:?} to extract"))),
+        };
+        Ok(AsyncTask::new(ExtractTask { source: PathBuf::from(source), output: PathBuf::from(output), which }))
     }
 
     /// Stops the running export at its next fragment; it then rejects with `cancelled`.
