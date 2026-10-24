@@ -34,6 +34,7 @@
 | `pnpm acceptance:recipe` | 逐階段執行驗證配方，相同輸入只建置一次，並寫出計時報告（[詳見](#驗證配方與計時)） |
 | `pnpm acceptance:studio` | 啟動 bundle，錄影工作室放在測試素材旁：在其他 App 在前景時以三種方式各按一次「即時預覽」，只移動游標、不點擊地移到錄影工作室上再移開，並在錄影工作室開始的錄影中以「即時預覽」隱藏與顯示畫面，以 App 的 log 與存下的檔案判定（plan 082；[說明](#錄影工作室驗收)） |
 | `pnpm acceptance:capture-settings` | 在單色素材上以相機的預設與已儲存泡泡錄影，並以系統聲音 100%、50%、600% 與 0% 錄影，判定畫格中泡泡的位置與形狀，以及每個檔案相對 100% 的音量（2026-10-22；[說明](#錄影設定驗收)） |
+| `pnpm acceptance:editor` | 開相機錄一段可編輯錄影，再在 App 的剪輯畫面中拖曳泡泡、縮放、隱藏後按「還原」、把麥克風調到 50% 並匯出；判定每一步後的剪輯紀錄，以及匯出畫格與相機軌、畫面軌的比對（plan 087 的後續，2026-10-25；[說明](#剪輯畫面驗收)） |
 | `pnpm native:input` | 不是 runner：在引導式實機回合中，由執行者一次一個指令操作執行中的 bundle（依標題列出並點擊視窗元素、在其視窗內點擊或捲動、送出它註冊的快捷鍵），每次輸出一行標為執行者輸入的 JSON（2026-10-23；[詳見](#執行者輸入)） |
 | `pnpm acceptance:tray` | 對執行中的 bundle：以 CoreGraphics 點擊與按鍵、輔助使用的 press 操作真正的狀態列項目與選單；雙語比對 idle、倒數與錄影選單和正式 model，並涵蓋開始與停止、左鍵開啟選單、三種取消、以鍵盤到「開啟 RecordStuff」與結束；保存選單截圖供視覺檢視（[說明](#tray-驗收)） |
 | pnpm acceptance:notification | 對 /Applications 裡的 App（可用 `--install` 在本次換成 dist 的建置）：錄影、透過輔助使用按下「已儲存」橫幅、判定 RecordStuff 是否在最前面、設定視窗聚焦並開在該檔的「錄影檔」（2026-10-04；之前為 Finder），每個 Finder 狀態連點多次，預設英文；報告寫到 docs/verification/measurements |
@@ -545,6 +546,15 @@ pnpm acceptance:capture-settings -- --skip-volume # 另有 --skip-camera、--out
 ```
 
 2026-10-22。確認相機版面與音量在錄影檔裡的實際效果，這是單元測試與背景套件看不到的。先建置並結束 bundle。每個案例 runner 都會把該案例的設定寫進使用者的設定（不倒數、主螢幕），啟動 bundle，透過 System Events 按下已註冊的快捷鍵錄影、停止、等待存檔後結束 App。**相機**：以 `scripts/camera-material.html`（全螢幕單一洋紅色）為素材，錄兩次：新的泡泡（沒有儲存版面，因此是 `DEFAULT_CAMERA_LAYOUT`）與已儲存的泡泡（左下角附近的圓形，位置記在主螢幕）。每次錄影取中間的一格，相機畫面必須出現在 `bubbleRect` 算出的位置，每一邊差距 3 px 內、內部填滿、四角依 `insideBubble` 的方式呈圓角，其他地方都是素材（`scripts/lib/acceptance/capture-settings.mts`）；這兩格存成 `camera-default.png` 與 `camera-saved.png` 供人檢視。相機使用使用者自己的選擇；沒有送出任何畫面的相機（休眠的 iPhone、闔上的螢幕）會讓該案例記為 blocked。**音量**：以 `scripts/test-material.html` 的嗶聲為素材，系統聲音依序設為 100%、50%、600% 與 0%。host 必須記錄 `volumeDb` 算出的增益（`audio: system … dB`），每個檔案的峰值與 100% 的差距必須等於該增益（誤差 1 dB 內）；0% 必須無聲（≤ −70 dBFS）。實際聽感仍由人判斷。設定檔會先複製成 `settings.before.json`，結束時逐位元組還原；錄影檔留在輸出資料夾。報告寫在 `docs/verification/measurements/<time>-capture-settings-acceptance/`。結束代碼依共用的順序。
+
+### 剪輯畫面驗收
+
+```bash
+pnpm acceptance:editor                 # 用真實輸入剪輯並匯出一段可編輯錄影
+pnpm acceptance:editor -- --secondary  # 在副螢幕錄影與剪輯；另有 --no-microphone、--out <dir>
+```
+
+2026-10-25，plan 087 的後續。確認剪輯畫面在真實輸入下對可編輯錄影的效果，這是背景套件的替身 host 看不到的：真實引擎的預覽軌、CoreGraphics 指標事件、算繪匯出。先建置並結束 bundle。Runner 把「可編輯錄影」、相機、麥克風（除非 `--no-microphone`）與不倒數寫進使用者的設定，把 `scripts/test-material.html` 全螢幕開在要錄的螢幕上（主螢幕，或加 `--secondary` 時的副螢幕，App 視窗也會移過去），啟動 bundle，以已註冊的快捷鍵錄 12 秒。相機沒有送出影格時，該回合判為 blocked。錄影存檔後就關閉素材：剪輯不需要它，而它的全螢幕 Space 會讓移到該螢幕的視窗從輔助使用樹中消失。接著由 Tray 的「顯示最後一段錄影」、卡片的「更多動作」與「剪輯…」開啟剪輯畫面，每一步都依 `userData/edits` 中的剪輯紀錄判定（[editor-acceptance.mts](../../../scripts/lib/acceptance/editor-acceptance.mts)）：泡泡拖到左下附近後，紀錄的位置須在 0.03 以內；點一下大小滑桿再用方向鍵往下 5 格，須存成小 5 個百分點且形狀不變；關閉「顯示相機」須存成隱藏、泡泡離開畫面，按「還原」須恢復且保留縮放；用方向鍵把麥克風滑桿調到 50%，須存成 50 且滑桿保有鍵盤焦點。匯出須記錄相機顯示與場景音量的算繪，並發布只有一條畫面軌與一條聲音軌、與錄影等長的 `<name> (edited).mp4`；其中間畫格在泡泡內須與相機軌的畫面（依合成方式裁切、鏡像）相關（r ≥ 0.6），泡泡外須與畫面軌相符（平均亮度差 ≤ 6）。相機畫面太平而無法辨識時（鏡頭被遮住），這項不判定，回合為 blocked。每一步後的截圖（`1-opened.png` … `7-exported.png`）與比對的三張畫格會保留給人檢視；預覽的聲音聽起來如何不判定。設定檔會逐位元組還原；錄影、匯出檔與剪輯紀錄保留。報告：`docs/verification/measurements/<time>-editor-acceptance/`。結束碼依共用順序。
 
 ### 執行者輸入
 

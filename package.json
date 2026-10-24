@@ -70,6 +70,7 @@
     "acceptance:tray": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-tray.mts",
     "acceptance:studio": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-studio.mts",
     "acceptance:capture-settings": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-capture-settings.mts",
+    "acceptance:editor": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-editor.mts",
     "native:input": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/native-input.mts",
     "test:ui": "playwright test --project=background",
     "test:scope": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-scope.mts",

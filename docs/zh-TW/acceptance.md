@@ -57,6 +57,7 @@ pnpm verify -- /absolute/path/recording.mp4 --test-material --json /absolute/pat
 | 播放 | `pnpm acceptance:playback -- <檔案>` 驅動 QuickTime Player（[播放檢查](system-design/tooling.md#播放檢查)） | 案例要求時點擊播放器自身的控制項；聽感 |
 | 錄影中的相機泡泡與輸入音量 | `pnpm acceptance:capture-settings` 在單色素材上錄預設與已儲存的泡泡，並以四種音量錄系統聲音，判定畫格中泡泡的位置、填滿與圓角，以及每個檔案相對 100% 的音量（[錄影設定驗收](system-design/tooling.md#錄影設定驗收)） | `camera-default.png` 與 `camera-saved.png` 中的相機畫面本身；聽感 |
 | 錄影中隱藏錄影工作室的畫面 | `pnpm acceptance:studio` 從錄影工作室開始錄影，關閉再開啟「即時預覽」，停止後判定 log 與存下的檔案（[錄影工作室驗收](system-design/tooling.md#錄影工作室驗收)） | 錄影工作室畫出的內容，由 `picture-shown.png` 與 `picture-hidden.png` 判讀 |
+| 剪輯可編輯錄影：拖曳、縮放、隱藏並恢復相機、調整音量、匯出 | `pnpm acceptance:editor` 開相機錄影，以 CoreGraphics 指標事件與按鍵操作剪輯畫面，判定每一步後的剪輯紀錄，以及匯出畫格與相機軌、畫面軌的比對（[剪輯畫面驗收](system-design/tooling.md#剪輯畫面驗收)） | 預覽畫出的樣子（看截圖）；聽起來如何（由維護者判斷） |
 | 引導式實機回合中沒有 runner 涵蓋的操作：錄影中變更設定或輸入、維護者處理硬體時開始或停止錄影 | 無；由執行者透過 `pnpm native:input` 操作受測 bundle，報告標為執行者輸入（[執行者輸入](system-design/tooling.md#執行者輸入)） | 硬體與「系統設定」操作由維護者執行 |
 | 延後退出通知 | `pnpm acceptance:quit-dialog -- --language <en 或 zh-TW>` 檢查簽章 fixture 的生命週期、送達事件，並透過輔助使用確認本輪恰有一則橫幅、文字為本輪語言（[引導式通知驗收](system-design/tooling.md#引導式延期退出通知驗收)） | 橫幅是否可見、可讀、未截斷 |
 | Tray 選單：雙語的 idle、倒數與錄影選單、開始錄影、停止、取消錄影、第二次點擊、左鍵開啟選單、以鍵盤選「開啟 RecordStuff」與結束 RecordStuff | `pnpm acceptance:tray` 右鍵點擊真正的狀態列項目，把每個選單和正式 model 比對，並判讀 log 與資料夾（[Tray 驗收](system-design/tooling.md#tray-驗收)） | 截圖上的外觀、對齊與可讀性；needsPermission 選單（需撤銷權限）；狀態改變後才選的「開始錄影」，macOS 不讓腳本輸入排出這個順序。Computer Use 無法存取純 tray 的程序（`-10005 timeoutReached`，見 [033 的回合](verification/history-2026-09.md#plan-033-結案--2026-09-26)） |

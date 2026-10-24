@@ -117,14 +117,14 @@ export function sessionBelongsTo(lines: readonly string[], pid: string): boolean
 
 /** `[2026-09-19T15:35:23.663Z] …` → the timestamp, or undefined. */
 
-/** Shared fullscreen/autoplay setup; callers own the profile and process lifetime. */
-export function materialOpenArgs(file: string, profile: string): string[] {
+/** Shared fullscreen/autoplay setup; callers own the profile and process lifetime. `position`, the window's top-left in global points, picks the display (the primary's by default). */
+export function materialOpenArgs(file: string, profile: string, position: { x: number; y: number } = { x: 0, y: 0 }): string[] {
   const url = pathToFileURL(file);
   url.searchParams.set("auto", "1");
   return [
     "-na", "Google Chrome", "--args", `--user-data-dir=${profile}`, `--app=${url.href}`,
     // Chrome can ignore --kiosk alone when another Chrome instance is running.
-    "--start-fullscreen", "--kiosk", "--window-position=0,0",
+    "--start-fullscreen", "--kiosk", `--window-position=${Math.round(position.x)},${Math.round(position.y)}`,
     "--autoplay-policy=no-user-gesture-required", "--no-first-run",
     "--no-default-browser-check", "--disable-features=Translate",
   ];

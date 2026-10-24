@@ -235,9 +235,12 @@ export function overallPeak(file: string, parse: (stderr: string) => number | un
   return peak;
 }
 
-/** One frame at `seconds` as `rgb24`, and a PNG of it at `png` for a person to look at. */
-export function frameRgb(file: string, seconds: number, width: number, height: number, png: string): { width: number; height: number; data: Buffer } {
-  const at = ["-hide_banner", "-loglevel", "error", "-ss", seconds.toFixed(3), "-i", file, "-frames:v", "1"];
+/**
+ * One frame at `seconds` as `rgb24`, and a PNG of it at `png` for a person to look at. `stream` picks a video track by
+ * its index among the file's video tracks (`0:v:<stream>`), disabled ones included; without it, FFmpeg's default.
+ */
+export function frameRgb(file: string, seconds: number, width: number, height: number, png: string, stream?: number): { width: number; height: number; data: Buffer } {
+  const at = ["-hide_banner", "-loglevel", "error", "-ss", seconds.toFixed(3), "-i", file, ...(stream === undefined ? [] : ["-map", `0:v:${stream}`]), "-frames:v", "1"];
   const raw = spawnSync("ffmpeg", [...at, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: MAX_BUFFER, timeout: mediaTimeout(), killSignal: "SIGKILL" });
   if (raw.error) throw (raw.error as NodeJS.ErrnoException).code === "ENOENT" ? new ToolMissingError("ffmpeg") : new MeasurementError(`ffmpeg: ${raw.error.message}`);
   if (raw.status !== 0 || raw.stdout.length !== width * height * 3) {
