@@ -45,6 +45,7 @@
     "measure:thumbnails": "playwright test --project=measure",
     "bench:publication": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-publication.mts",
     "bench:export": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-export.mts",
+    "bench:editable": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bench-editable.mts",
     "dist:mac": "node scripts/start-app.mjs --dmg",
     "dist:win": "electron-vite build && electron-builder --win nsis --x64 --publish never",
     "audio:quality": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/audio-quality.mts",
