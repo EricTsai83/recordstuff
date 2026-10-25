@@ -181,7 +181,7 @@ export function PlayerDialog() {
         // The player's stage: as wide as the window allows at 16:9, black in both themes, below the title bar on macOS.
         // The backdrop only darkens; ui.css blurs the page under it (#root), which costs nothing per video frame.
         overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
-        className="player aspect-video rounded-[14px] shadow-player ring-0 w-[min(calc(100vw-48px),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
+        className="player aspect-video rounded-[14px] shadow-player ring-0 w-[min(calc(100vw-2*var(--dialog-margin)),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.playerVideo}
