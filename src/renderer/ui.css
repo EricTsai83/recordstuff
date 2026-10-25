@@ -2686,8 +2686,8 @@
   }
   /* White with a dark edge and a cap (2026-10-25): seen over any picture of the strip, and unlike a selected part's ring. */
   .editor-playhead {
-    width: 2px;
-    margin-left: -1px;
+    width: 3px;
+    margin-left: -1.5px;
     background: var(--media-foreground);
     box-shadow: 0 0 0 1px var(--media-scrim);
   }

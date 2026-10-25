@@ -362,6 +362,23 @@ export function seekTo(seconds: number): void {
   if (editorVideo) editorVideo.currentTime = seconds;
 }
 
+/** Plays the preview, or pauses it. */
+export function togglePlayback(): void {
+  if (!editorVideo) return;
+  if (editorVideo.paused) void editorVideo.play().catch(() => undefined);
+  else editorVideo.pause();
+}
+
+/** Moves the paused playhead by `frames` frames and `seconds` seconds, onto a frame start. */
+export function stepPlayhead(frames: number, seconds: number): void {
+  const editor = editorView();
+  if (!editor || !editorVideo) return;
+  editorVideo.pause();
+  const rate = Math.max(1, editor.frameRate);
+  const frame = Math.round(editorVideo.currentTime * rate) + frames + Math.round(seconds * rate);
+  seekTo(Math.min(editor.seconds, Math.max(0, frame / rate)));
+}
+
 /** Selects the part at `from` (the video's timescale) and moves the playhead to its start. */
 export function selectPart(part: TimelinePart, seek = true): void {
   selectedFrom = part.from;

@@ -117,6 +117,19 @@ function editorKey(event: React.KeyboardEvent): void {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  // On the timeline, as in other editors: Space plays or pauses, and ← → step a frame (Shift, a second). A part is a
+  // button, which Space would otherwise press.
+  const onTimeline = target.closest(".editor-timeline") !== null;
+  if (onTimeline && event.key === " ") {
+    event.preventDefault();
+    model.togglePlayback();
+    return;
+  }
+  if (onTimeline && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    event.preventDefault();
+    model.stepPlayhead((event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 0 : 1), event.shiftKey ? (event.key === "ArrowLeft" ? -1 : 1) : 0);
+    return;
+  }
   if (key === "s") {
     event.preventDefault();
     model.splitAtPlayhead();
@@ -147,8 +160,10 @@ export function EditorDialog() {
         keepMounted
         id="editor"
         overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
-        // As wide as the window allows with the timeline under a 16:9 picture.
-        className="editor flex w-[min(calc(100vw-48px),calc((100dvh-232px)*16/9))] max-w-none flex-col gap-0 overflow-hidden rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none darwin:top-[calc(50%+24px)]"
+        // As wide as the window allows with the panel under a 16:9 picture: the timeline, its ruler and hint, the actions,
+        // and an editable recording's camera and sound controls, which need more of the height (known from the card before
+        // the view arrives, so the dialog does not change its size as it opens).
+        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-320px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-260px)*16/9))]"} max-w-none flex-col gap-0 overflow-hidden rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none darwin:top-[calc(50%+24px)]`}
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.editorVideo}
@@ -218,7 +233,10 @@ function rulerTime(seconds: number, step: number): string {
 }
 
 /** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
-interface TimelineGesture { pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" }
+interface TimelineGesture { pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge }
+/** A trim handle's width, and how far beyond it a press still takes hold of it, in CSS pixels. */
+const TRIM_HANDLE = 12;
+const TRIM_REACH = 6;
 
 function EditorPanel() {
   const editor = model.editorView();
@@ -277,6 +295,7 @@ function EditorPanel() {
     if (held.mode === "click" && Math.abs(clientX - held.startX) > 4) held.mode = "range";
     if (held.mode === "scrub") placeAt(ticks);
     else if (held.mode === "range") model.selectRange(held.start, ticks);
+    else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks);
   };
   const trim = model.shownTrim(editor);
   const range = model.rangeSelection;
@@ -307,23 +326,8 @@ function EditorPanel() {
         aria-valuetext={at(value / editor.timescale)}
         aria-disabled={busy || undefined}
         style={{ left: percent(value) }}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          if (busy || event.button !== 0) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          model.moveTrim(edge, value);
-        }}
-        onPointerMove={(event) => {
-          const ticks = event.currentTarget.parentElement && ticksAt(event.currentTarget.parentElement, event.clientX);
-          if (event.currentTarget.hasPointerCapture(event.pointerId) && ticks !== undefined && ticks !== null) model.moveTrim(edge, ticks);
-        }}
-        onPointerUp={(event) => {
-          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const ticks = event.currentTarget.parentElement && ticksAt(event.currentTarget.parentElement, event.clientX);
-          if (ticks !== undefined && ticks !== null) model.moveTrim(edge, ticks);
-          void model.commitTrim();
-        }}
-        onPointerCancel={() => void model.commitTrim()}
+        // The timeline's own press takes hold of it (2026-10-25: a handle following the pointer by itself did not move
+        // under a real pointer in a hands-on round, where the timeline's drags did).
         onKeyDown={(event) => {
           const next = step(event);
           if (next === undefined || busy) return;
@@ -347,6 +351,18 @@ function EditorPanel() {
           if (busy || event.button !== 0 || ticks === undefined) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           const box = event.currentTarget.getBoundingClientRect();
+          const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
+          // A trim handle, pressed or pressed beside: the start's reaches in from its edge, the end's back from its.
+          const handle = (event.target as HTMLElement).closest?.(".editor-trim")?.getAttribute("data-edge");
+          const edge: model.TrimEdge | undefined = handle === "start" || handle === "end" ? handle
+            : event.clientX >= xOf(trim.start) - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_HANDLE + TRIM_REACH ? "start"
+            : event.clientX <= xOf(trim.end) + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_HANDLE - TRIM_REACH ? "end" : undefined;
+          if (edge) {
+            gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge };
+            document.getElementById(`editor-trim-${edge}`)?.focus({ preventScroll: true });
+            model.moveTrim(edge, trim[edge]);
+            return;
+          }
           const now = model.editorVideo?.currentTime ?? time;
           const playheadX = box.left + Math.min(1, now / Math.max(editor.seconds, 0.001)) * box.width;
           const onPlayhead = Math.abs(event.clientX - playheadX) <= 6;
@@ -359,9 +375,13 @@ function EditorPanel() {
           follow(event.currentTarget, event.pointerId, event.clientX);
           const held = gesture.current, ticks = ticksAt(event.currentTarget, event.clientX);
           if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) placeAt(ticks);
+          if (held?.pointer === event.pointerId && (held.mode === "start" || held.mode === "end")) void model.commitTrim();
           gesture.current = null;
         }}
-        onPointerCancel={() => { gesture.current = null; }}
+        onPointerCancel={() => {
+          if (gesture.current?.mode === "start" || gesture.current?.mode === "end") void model.commitTrim();
+          gesture.current = null;
+        }}
       >
         {editingSource && <TimelineStrip source={editingSource} />}
         {parts.map((part) => {
@@ -398,7 +418,12 @@ function EditorPanel() {
           <span key={mark} style={{ left: `${(mark / Math.max(editor.seconds, 0.001)) * 100}%` }}>{rulerTime(mark, ruler.step)}</span>
         ))}
       </div>
-      {untouched && <p className="editor-hint text-muted-foreground">{model.text("Drag either end of the timeline to trim it, or drag across it to choose what to remove.")}</p>}
+      <p className="editor-hint text-muted-foreground">
+        {/* How to cut until something is cut, then the keys: one line either way. */}
+        {untouched
+          ? model.text("Drag either end of the timeline to trim it, or drag across it to choose what to remove.")
+          : translate("Space play or pause · ← → a frame · S split · Delete remove · {undo} undo", language, { undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z" })}
+      </p>
       <div className="editor-actions">
         <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
           <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>

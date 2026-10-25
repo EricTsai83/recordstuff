@@ -47,6 +47,8 @@ async function openEditor(parts = 1): Promise<void> {
   await page.locator("#clip-menu-edit").click();
   await expect(page.locator("#editor[data-open]")).toHaveCount(1);
   await expect(page.locator(".editor-part")).toHaveCount(parts);
+  // Measured once the dialog has finished opening: positions taken while it grows in are not where it settles.
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
 }
 
 async function seek(seconds: number): Promise<void> {
@@ -134,7 +136,8 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await expect(page.locator(".editor-range")).toHaveCount(0);
   await page.locator("#editor-split").click();
   await expect(page.locator(".editor-part")).toHaveCount(2);
-  await expect(page.locator(".editor-hint")).toHaveCount(0);
+  // Once something is cut, the hint names the keys instead.
+  await expect(page.locator(".editor-hint")).toHaveText("Space play or pause · ← → a frame · S split · Delete remove · ⌘Z undo");
   await expect(page.locator("#editor-feedback")).toHaveText(/^Split at 0:0(5\.[89]|6\.[01])$/);
   await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]|6\.[01])$/);
 
@@ -151,6 +154,17 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     el.dispatchEvent(new KeyboardEvent("keydown", { key: "ㄋ", code: "KeyS", bubbles: true, cancelable: true }));
   });
   await expect(page.locator(".editor-part")).toHaveCount(3);
+
+  // On the timeline, ← → step a frame and Space plays and pauses, as in other editors; Space does not press the part.
+  const before = await time();
+  await page.locator(".editor-part").first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(time).toBeGreaterThan(before + 0.01);
+  expect(await time()).toBeLessThan(before + 0.1);
+  await page.keyboard.press("Space");
+  await expect.poll(() => video.evaluate((el) => !(el as HTMLVideoElement).paused)).toBe(true);
+  await page.keyboard.press("Space");
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true);
 
   // The Remove button leaves the removed part selected, so the same button keeps it again.
   await page.mouse.click(box.x + box.width * 0.5, y);
@@ -172,9 +186,10 @@ test("the handles trim the start and the end, a drag across the timeline removes
   const seconds = async () => read<number>(page, "document.querySelector('#editor video').duration");
   const duration = await seconds();
 
-  // The start's handle dragged a quarter in: the first quarter is removed.
+  // The start's handle dragged a quarter in: the first quarter is removed. Pressed just beside the handle, as a pointer
+  // that does not quite land on its 12 px still takes hold of it.
   const start = (await page.locator("#editor-trim-start").boundingBox())!;
-  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.move(start.x + start.width + 4, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.25, y, { steps: 6 });
   await page.mouse.up();
@@ -208,6 +223,15 @@ test("the handles trim the start and the end, a drag across the timeline removes
     await expect(page.locator(".editor-part[data-removed]")).toHaveCount(left);
   }
   await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
+
+  // The end's handle dragged by the pointer, down at the handle and up far away with no move between (as a hands-on
+  // round's pointer did): the end is trimmed there.
+  const end = (await page.locator("#editor-trim-end").boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: end.x + end.width / 2, y, button: "left", buttons: 1, clickCount: 1 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x + box.width * 0.75, y, button: "left", buttons: 0, clickCount: 1 });
+  await expect(page.locator(".editor-part").last()).toHaveAttribute("data-removed", "true");
+  expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration * 0.75, 0);
 });
 
 test("the preview skips removed parts, Undo takes a removal back, and a cancelled export leaves nothing", async () => {

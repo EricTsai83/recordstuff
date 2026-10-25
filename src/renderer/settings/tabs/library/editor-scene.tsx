@@ -333,7 +333,7 @@ export function EditorSceneControls({ editor }: { editor: EditorView }) {
         <Button id="editor-scene-reset" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy || unchanged}
           onClick={() => { if (!busy && !unchanged) void model.resetScene(); }}>
           <RotateCcw />
-          {model.text("Reset")}
+          {model.text(camera ? "Reset camera and volumes" : "Reset volumes")}
         </Button>
       </ControlTooltip>
     </div>
