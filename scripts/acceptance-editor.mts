@@ -302,8 +302,20 @@ async function main(): Promise<number> {
     }
     await ax().enableWebAccessibility(appPid);
     const title = path.basename(source).replace(/\.[^.]+$/, "");
-    await click(await find("card menu", (e) => e.title === translate("More actions for {title}", language, { title })));
-    await click(await find("Edit… item", (e) => e.role === "AXMenuItem" && e.title === translate("Edit…", language)));
+    // The card's menu, tried again if its Edit… does not show (a card just listed can take the first press while it arrives).
+    const isEdit = (e: WindowElement): boolean => e.role === "AXMenuItem" && e.title === translate("Edit…", language);
+    let editItem: WindowElement | undefined;
+    for (let attempt = 1; attempt <= 3 && !editItem; attempt += 1) {
+      await click(await find("card menu", (e) => e.title === translate("More actions for {title}", language, { title })));
+      editItem = await find("Edit… item", isEdit, 4000).catch(() => undefined);
+      if (!editItem) {
+        await shot(`0-no-edit-item-${attempt}.png`);
+        note(`attempt ${attempt}: the card's menu showed no Edit…`);
+        await ax().key(KEY.escape);
+        await sleep(800);
+      }
+    }
+    await click(editItem ?? fail("no Edit… item in the card's menu after 3 tries"));
     const marker = "\u0001";
     const bubblePrefix = translate("Camera: {x}% across, {y}% down. Drag it, or use the arrow keys, to move it.", language, { x: marker, y: marker }).split(marker)[0]!;
     const isBubble = (e: WindowElement): boolean => e.role === "AXButton" && e.title.startsWith(bubblePrefix);
@@ -406,9 +418,10 @@ async function main(): Promise<number> {
       await sleep(1500);
       check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
 
-      // Skimming: on, the preview shows what is under the pointer, and goes back when it leaves; then off.
+      // Skimming: on, the preview shows what is under the pointer, and goes back when it leaves; then off. A pressed
+      // button reaches AX as a toggle (AXCheckBox) and the shortcuts' as a pop-up button: both are found by name.
       const playhead = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
-      await click(await find("Skimming button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Skimming", language))));
+      await click(await find("Skimming button", (e) => e.title.startsWith(translate("Skimming", language))));
       const over = Math.round(left + span * 0.85);
       await ax().move(over - 20, y);
       await sleep(200);
@@ -420,10 +433,10 @@ async function main(): Promise<number> {
       const back = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
       check({ check: "Skimming: the pointer over the timeline, then away", expected: `the preview at about ${(fullSeconds * 0.85).toFixed(1)} s, then back at ${playhead.toFixed(2)} s`,
         actual: `${skimmed.toFixed(2)} s, then ${back.toFixed(2)} s`, pass: Math.abs(skimmed - fullSeconds * 0.85) <= 0.6 && Math.abs(back - playhead) <= 0.05 });
-      await click(await find("Skimming button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Skimming", language))));
+      await click(await find("Skimming button", (e) => e.title.startsWith(translate("Skimming", language))));
 
       // The shortcuts, opened by a click on their button.
-      const keysButton = await find("shortcuts button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Keyboard shortcuts", language)));
+      const keysButton = await find("shortcuts button", (e) => e.title.startsWith(translate("Keyboard shortcuts", language)));
       await click(keysButton);
       await sleep(600);
       const listed = (await texts()).includes(translate("Editing shortcuts", language));
