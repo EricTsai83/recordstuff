@@ -202,9 +202,28 @@ export function EditorDialog() {
   );
 }
 
+/** The ruler's step: the first that puts no more than eight marks along the recording. */
+const RULER_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+function rulerMarks(seconds: number): { step: number; marks: number[] } {
+  const step = RULER_STEPS.find((candidate) => seconds / candidate <= 8) ?? RULER_STEPS[RULER_STEPS.length - 1]!;
+  const marks: number[] = [];
+  for (let mark = 0; mark < seconds - step / 4; mark += step) marks.push(+mark.toFixed(3));
+  return { step, marks };
+}
+/** A ruler mark's time: whole seconds as m:ss, tenths only while the step needs them. */
+function rulerTime(seconds: number, step: number): string {
+  if (step < 1) return model.clock(seconds);
+  const whole = Math.round(seconds), hours = Math.floor(whole / 3600), minutes = Math.floor((whole % 3600) / 60), rest = whole % 60;
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}` : `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+/** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
+interface TimelineGesture { pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" }
+
 function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
+  const gesture = useRef<TimelineGesture | null>(null);
   const language = model.view?.language ?? "en";
   if (!editor || editor.state === "loading") {
     return (
@@ -239,15 +258,83 @@ function EditorPanel() {
   const at = (seconds: number): string => model.clock(seconds);
   const removing = selected && !selected.removed;
   const editingSource = model.editingItem?.video;
-  // A press on the timeline puts the playhead where it is and selects the part there, and a drag scrubs (2026-10-25):
-  // Split then cuts wherever the maintainer chose, not only at a part's start.
-  const scrub = (element: HTMLElement, clientX: number): void => {
+  // 2026-10-25, after a hands-on walkthrough: a click on the timeline puts the playhead there and selects the part
+  // there; a drag across it chooses a range Remove takes out; a drag that starts on the playhead scrubs; and the handles
+  // at either end trim the recording's start and end. Split stays for cutting the timeline into parts by hand.
+  const ticksAt = (element: HTMLElement, clientX: number): number | undefined => {
     const box = element.getBoundingClientRect();
-    if (box.width <= 0) return;
-    const ticks = Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * editor.duration);
-    const part = parts.find((entry) => ticks >= entry.from && ticks < entry.to) ?? parts[parts.length - 1];
+    if (box.width <= 0) return undefined;
+    return Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * editor.duration);
+  };
+  const placeAt = (ticks: number): void => {
+    const part = model.partAt(parts, ticks);
     if (part) model.selectPart(part, false);
     model.seekTo(ticks / editor.timescale);
+  };
+  const follow = (element: HTMLElement, pointer: number, clientX: number): void => {
+    const held = gesture.current, ticks = ticksAt(element, clientX);
+    if (!held || held.pointer !== pointer || ticks === undefined) return;
+    if (held.mode === "click" && Math.abs(clientX - held.startX) > 4) held.mode = "range";
+    if (held.mode === "scrub") placeAt(ticks);
+    else if (held.mode === "range") model.selectRange(held.start, ticks);
+  };
+  const trim = model.shownTrim(editor);
+  const range = model.rangeSelection;
+  const ruler = rulerMarks(editor.seconds);
+  const untouched = editor.removed.length === 0 && parts.length === 1;
+  const trimHandle = (edge: model.TrimEdge) => {
+    const value = trim[edge];
+    const step = (event: React.KeyboardEvent): number | undefined => {
+      const by = (event.shiftKey ? 1 : 0.1) * editor.timescale;
+      if (event.key === "ArrowLeft" || event.key === "ArrowDown") return value - by;
+      if (event.key === "ArrowRight" || event.key === "ArrowUp") return value + by;
+      if (event.key === "Home") return 0;
+      if (event.key === "End") return editor.duration;
+      return undefined;
+    };
+    return (
+      <span
+        key={edge}
+        id={`editor-trim-${edge}`}
+        className="editor-trim"
+        data-edge={edge}
+        role="slider"
+        tabIndex={0}
+        aria-label={model.text(edge === "start" ? "Start of the export" : "End of the export")}
+        aria-valuemin={0}
+        aria-valuemax={+editor.seconds.toFixed(1)}
+        aria-valuenow={+(value / editor.timescale).toFixed(1)}
+        aria-valuetext={at(value / editor.timescale)}
+        aria-disabled={busy || undefined}
+        style={{ left: percent(value) }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          if (busy || event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          model.moveTrim(edge, value);
+        }}
+        onPointerMove={(event) => {
+          const ticks = event.currentTarget.parentElement && ticksAt(event.currentTarget.parentElement, event.clientX);
+          if (event.currentTarget.hasPointerCapture(event.pointerId) && ticks !== undefined && ticks !== null) model.moveTrim(edge, ticks);
+        }}
+        onPointerUp={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          const ticks = event.currentTarget.parentElement && ticksAt(event.currentTarget.parentElement, event.clientX);
+          if (ticks !== undefined && ticks !== null) model.moveTrim(edge, ticks);
+          void model.commitTrim();
+        }}
+        onPointerCancel={() => void model.commitTrim()}
+        onKeyDown={(event) => {
+          const next = step(event);
+          if (next === undefined || busy) return;
+          event.preventDefault();
+          event.stopPropagation();
+          model.moveTrim(edge, next);
+        }}
+        onKeyUp={(event) => { if (step(event) !== undefined) void model.commitTrim(); }}
+        onBlur={() => void model.commitTrim()}
+      />
+    );
   };
   return (
     <div className="editor-panel">
@@ -256,17 +343,25 @@ function EditorPanel() {
         role="group"
         aria-label={model.text("Timeline")}
         onPointerDown={(event) => {
-          if (busy || event.button !== 0) return;
+          const ticks = ticksAt(event.currentTarget, event.clientX);
+          if (busy || event.button !== 0 || ticks === undefined) return;
           event.currentTarget.setPointerCapture(event.pointerId);
-          scrub(event.currentTarget, event.clientX);
+          const box = event.currentTarget.getBoundingClientRect();
+          const now = model.editorVideo?.currentTime ?? time;
+          const playheadX = box.left + Math.min(1, now / Math.max(editor.seconds, 0.001)) * box.width;
+          const onPlayhead = Math.abs(event.clientX - playheadX) <= 6;
+          gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: onPlayhead ? "scrub" : "click" };
+          if (onPlayhead) placeAt(ticks);
         }}
-        onPointerMove={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event.currentTarget, event.clientX);
-        }}
+        onPointerMove={(event) => follow(event.currentTarget, event.pointerId, event.clientX)}
         // Where it is let go too: a drag whose moves did not come (a jump of the pointer) still ends there.
         onPointerUp={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event.currentTarget, event.clientX);
+          follow(event.currentTarget, event.pointerId, event.clientX);
+          const held = gesture.current, ticks = ticksAt(event.currentTarget, event.clientX);
+          if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) placeAt(ticks);
+          gesture.current = null;
         }}
+        onPointerCancel={() => { gesture.current = null; }}
       >
         {editingSource && <TimelineStrip source={editingSource} />}
         {parts.map((part) => {
@@ -293,19 +388,28 @@ function EditorPanel() {
         {editor.notes.map((note) => (
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
+        {range && <span className="editor-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
+        {trimHandle("start")}
+        {trimHandle("end")}
       </div>
+      <div className="editor-ruler" aria-hidden="true">
+        {ruler.marks.map((mark) => (
+          <span key={mark} style={{ left: `${(mark / Math.max(editor.seconds, 0.001)) * 100}%` }}>{rulerTime(mark, ruler.step)}</span>
+        ))}
+      </div>
+      {untouched && <p className="editor-hint text-muted-foreground">{model.text("Drag either end of the timeline to trim it, or drag across it to choose what to remove.")}</p>}
       <div className="editor-actions">
+        <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
+          <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
+            {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
+            {model.text(range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part")}
+          </Button>
+        </ControlTooltip>
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
           <Button id="editor-split" variant="outline" size="sm" aria-disabled={busy} onClick={() => { if (!busy) model.splitAtPlayhead(); }}>
             <Scissors />
             {model.text("Split")}
-          </Button>
-        </ControlTooltip>
-        <ControlTooltip label={model.text(removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
-          <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || !selected} onClick={() => { if (!busy && selected) void model.toggleSelected(); }}>
-            {removing || !selected ? <Trash2 /> : <RotateCcw />}
-            {model.text(removing || !selected ? "Remove part" : "Keep part")}
           </Button>
         </ControlTooltip>
         <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>

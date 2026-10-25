@@ -107,7 +107,7 @@ test("a part is split off and removed, kept by main across a reopen, and exporte
   await expect(page.locator(".clip")).toHaveCount(2);
 });
 
-test("a press on the timeline puts the playhead there, a drag scrubs, Split cuts where it was put, by S under any input method, and Undo takes a split back (2026-10-25)", async () => {
+test("a click on the timeline puts the playhead there, a drag from the playhead scrubs, Split cuts where it was put, by S under any input method, and Undo takes a split back (2026-10-25)", async () => {
   await openEditor();
   const video = page.locator("#editor video");
   await video.evaluate(async (el) => {
@@ -115,6 +115,7 @@ test("a press on the timeline puts the playhead there, a drag scrubs, Split cuts
     v.pause();
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
+  await expect(page.locator(".editor-hint")).toBeVisible();
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -122,14 +123,18 @@ test("a press on the timeline puts the playhead there, a drag scrubs, Split cuts
   await page.mouse.click(box.x + box.width * 0.25, y);
   await expect.poll(time).toBeGreaterThan(1.8);
   expect(await time()).toBeLessThan(2.2);
+  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(1\.[89]|2\.[01])$/);
+  // Dragged from the playhead, the playhead follows; no range is chosen.
   await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 6 });
   await page.mouse.up();
   await expect.poll(time).toBeGreaterThan(5.8);
   expect(await time()).toBeLessThan(6.2);
+  await expect(page.locator(".editor-range")).toHaveCount(0);
   await page.locator("#editor-split").click();
   await expect(page.locator(".editor-part")).toHaveCount(2);
+  await expect(page.locator(".editor-hint")).toHaveCount(0);
   await expect(page.locator("#editor-feedback")).toHaveText(/^Split at 0:0(5\.[89]|6\.[01])$/);
   await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]|6\.[01])$/);
 
@@ -153,6 +158,56 @@ test("a press on the timeline puts the playhead there, a drag scrubs, Split cuts
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("data-removed", "true");
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#editor-remove")).toHaveText("Keep part");
+});
+
+test("the handles trim the start and the end, a drag across the timeline removes what it chose, each a step Undo takes back (2026-10-25)", async () => {
+  await openEditor();
+  const box = (await page.locator(".editor-timeline").boundingBox())!;
+  const y = box.y + box.height / 2;
+  const edits = path.join(path.dirname(path.dirname(folder)), "userData", "edits");
+  const saved = (): number[][] => {
+    const file = fs.readdirSync(edits).find((name) => name.endsWith(".json") && name !== "exports-in-flight.json");
+    return file ? JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")).removed : [];
+  };
+  const seconds = async () => read<number>(page, "document.querySelector('#editor video').duration");
+  const duration = await seconds();
+
+  // The start's handle dragged a quarter in: the first quarter is removed.
+  const start = (await page.locator("#editor-trim-start").boundingBox())!;
+  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.25, y, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator(".editor-part").first()).toHaveAttribute("data-removed", "true");
+  await expect(page.locator("#editor-feedback")).toHaveText(/^The export starts at 0:0(1\.[89]|2\.[01])$/);
+  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", /^(1\.[89]|2(\.[01])?)$/);
+
+  // The end's handle, stepped from the keyboard: Shift+← takes a second off the end each press.
+  await page.locator("#editor-trim-end").focus();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(page.locator(".editor-part").last()).toHaveAttribute("data-removed", "true");
+  await expect(page.locator("#editor-feedback")).toHaveText(/^The export ends at /);
+  expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration - 1, 0);
+
+  // A drag across the middle chooses a range; Remove selection takes it out.
+  await page.mouse.move(box.x + box.width * 0.45, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, y, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator(".editor-range")).toHaveCount(1);
+  await expect(page.locator("#editor-remove")).toHaveText("Remove selection");
+  await page.locator("#editor-remove").click();
+  await expect(page.locator(".editor-range")).toHaveCount(0);
+  await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);
+  await expect(page.locator("#editor-feedback")).toHaveText(/^Removed 0:0(3\.[4-9]|4\.[0-9]) to 0:0(4\.[5-9]|5\.[0-2])$/);
+  expect(saved()).toHaveLength(3);
+
+  // Undo takes each back in turn, the trims included.
+  for (const left of [2, 1, 0]) {
+    await page.keyboard.press("Meta+z");
+    await expect(page.locator(".editor-part[data-removed]")).toHaveCount(left);
+  }
+  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
 });
 
 test("the preview skips removed parts, Undo takes a removal back, and a cancelled export leaves nothing", async () => {
