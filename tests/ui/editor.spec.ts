@@ -73,7 +73,7 @@ async function removeFrom(seconds: number, parts: number): Promise<void> {
 test("a part is split off and removed, kept by main across a reopen, and exported beside the recording", async () => {
   await openEditor();
   await removeFrom(3, 2);
-  await expect(page.locator(".editor-length")).toHaveText("Export length 0:03.0");
+  await expect(page.locator(".editor-length")).toHaveText("Export length 0:03.00");
   await expect(page.locator("#editor-feedback")).toHaveText("Removed 0:03.0 to 0:08.0");
 
   // The panel's controls stay inside the window, readable and large enough to hit.
@@ -118,7 +118,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
   await expect(page.locator(".editor-hint")).toContainText("Drag the ends to trim, or across the timeline to choose a range.");
-  await expect(page.locator("#editor-keys")).toHaveAccessibleName("Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo");
+  await expect(page.locator("#editor-keys")).toHaveAccessibleName("Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo · on a trim handle, ← → move its edge");
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -333,7 +333,7 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   // The lost hold is told at the next pointer event.
   await page.mouse.move(box.x - 90, y);
   await expect.poll(length).not.toBe(before);
-  await expect(page.locator(".editor-length")).toHaveText(`Export length ${await read<string>(page, "(() => { const d = document.querySelector('#editor .editor-stage video').duration; return (Math.floor(d / 60)) + ':' + (d % 60).toFixed(1).padStart(4, '0'); })()")}`);
+  await expect(page.locator(".editor-length")).toHaveText(`Export length ${await read<string>(page, "(() => { const d = document.querySelector('#editor .editor-stage video').duration; return (Math.floor(d / 60)) + ':' + (d % 60).toFixed(2).padStart(5, '0'); })()")}`);
   await page.mouse.up();
   expect(await value("start")).toBe(0);
 
@@ -341,7 +341,7 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await page.locator("#editor-keys").click();
   await expect(page.locator("#editor-keys-popup")).toBeVisible();
   await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
-  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(7);
+  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
 });
 
 test("with Skimming on, the preview shows the picture under the pointer and goes back to the playhead when it leaves; off, a move does nothing (2026-10-25)", async () => {

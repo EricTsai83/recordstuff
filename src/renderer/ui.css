@@ -2751,7 +2751,6 @@
   }
   .editor-keys {
     flex: none;
-    color: var(--muted-foreground);
   }
   .editor-keys-popup {
     width: auto;

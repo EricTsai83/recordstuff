@@ -350,8 +350,9 @@ function EditorPanel() {
   const shortcuts: Array<[string, PlainMessageKey]> = [
     [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split"],
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
+    ["← →", "On a trim handle: move its edge a frame, Shift a second"],
   ];
-  const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
+  const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo · on a trim handle, ← → move its edge", language, {
     undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
     redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
   });
@@ -525,7 +526,8 @@ function EditorPanel() {
             : translate("Playhead {time}", language, { time: precise(time) })}
         </span>
         <span className="editor-length">
-          {translate("Export length {length}", language, { length: at(editor.outputSeconds) })}
+          {/* To the hundredth, as the times beside it (a hands-on round). */}
+          {translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}
         </span>
       </div>
       {/* How to cut, kept in sight since the gestures cannot be seen until they are tried, and the keys behind a button
@@ -535,8 +537,9 @@ function EditorPanel() {
         {/* The keys, opened by a click as well as named to assistive technology (a hands-on round found a tooltip alone
             showed nothing on a click). */}
         <Popover>
-          <PopoverTrigger render={<Button variant="ghost" size="icon-sm" />} id="editor-keys" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+          <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-keys" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
             <Keyboard />
+            {model.text("Keyboard shortcuts")}
           </PopoverTrigger>
           <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup" finalFocus={false}>
             <p className="editor-keys-title">{model.text("Editing shortcuts")}</p>

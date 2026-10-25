@@ -63,7 +63,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [[270_000, 900_000]], revision: 0 }));
   await vi.waitFor(() => expect(parts()[1]).toEqual(["0:03.0 to 0:10.0, removed", true, true]));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Removed 0:03.0 to 0:10.0"));
-  expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:03.0");
+  expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:03.00");
   expect(document.querySelector("#editor-remove [data-shown]")!.textContent).toBe("Keep part");
 
   // ⌘Z takes it back.

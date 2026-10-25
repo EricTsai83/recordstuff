@@ -637,8 +637,9 @@ export const ZH_TW = {
   "Keyboard shortcuts": "快捷鍵",
   "Move over the timeline to preview; moving away returns to the playhead, and a click sets it.": "滑過時間軸即可預覽；移開後回到播放位置，按一下可設定播放位置。",
   "Drag the ends to trim, or across the timeline to choose a range.": "拖曳兩端修剪，或在時間軸上拖曳選取範圍。",
-  "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo":
-    "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",
+  "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo · on a trim handle, ← → move its edge":
+    "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做 · 在修剪把手上，←／→ 微調邊界",
+  "On a trim handle: move its edge a frame, Shift a second": "在修剪把手上：逐格微調邊界，Shift 一次一秒",
   "Selection {from}–{to} ({length})": "選取範圍 {from}–{to}（長度 {length}）",
   "Reset camera and volumes": "重設相機與音量",
   "Reset volumes": "重設音量",
