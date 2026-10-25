@@ -700,6 +700,11 @@ export const ZH_TW = {
   "Preparing the camera…": "正在準備相機…",
   // The edit view's camera and sound, refined 2026-10-25.
   "Sound": "聲音",
+  // The edit view's options and its export's toast (2026-10-26, the maintainer's choice of mockups).
+  "Options": "選項",
+  "Exported “{title}”": "已匯出「{title}」",
+  "Saved in the recording's folder.": "儲存在錄影檔的資料夾。",
+  "The export failed": "匯出失敗",
   "Drag to resize": "拖曳以調整大小",
   "Put the camera and the volumes back as recorded": "把相機與音量恢復成錄影時的樣子",
   "Redone": "已重做",

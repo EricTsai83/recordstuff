@@ -5,7 +5,8 @@
  * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, FolderOpen, Keyboard, Redo2, RefreshCw, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Keyboard, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -14,9 +15,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../
 import { Player } from "../../../player/player";
 import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
-import { Switch } from "../../../components/ui/switch";
+import { Toaster } from "../../../components/ui/sonner";
 import * as model from "../../settings-controller";
-import { EditorCamera, EditorSceneControls } from "./editor-scene";
+import { EditorCamera, EditorOptions } from "./editor-scene";
 
 /**
  * Follows the preview's position to draw the playhead: on each frame shown while it plays, and on each seek. Nothing
@@ -51,6 +52,67 @@ function usePlayhead(): number {
     };
   }, [video]);
   return time;
+}
+
+/** Whether the preview plays, for the toolbar's Play and Pause. */
+function usePlaying(): boolean {
+  const video = model.editorVideo;
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!video) return;
+    const show = (): void => setPlaying(!video.paused);
+    show();
+    for (const name of ["play", "pause", "ended", "emptied"]) video.addEventListener(name, show);
+    return () => { for (const name of ["play", "pause", "ended", "emptied"]) video.removeEventListener(name, show); };
+  }, [video]);
+  return playing;
+}
+
+/** The export's toasts' own Sonner list, drawn inside the edit view: the page's sits under the dialog. */
+const EXPORT_TOASTER = "editor-export";
+
+/**
+ * Says an export's outcome once it ends (2026-10-26, in place of words and buttons in the toolbar, the maintainer's
+ * choice): a toast over the edit view whose Play opens the new file in the player, or one saying why it failed. Only the
+ * export this view asked for is said (the controller's `exportWatched`), so reopening the view says nothing again, and a
+ * start that failed before it ran is said too.
+ */
+function useExportToast(): void {
+  const editor = model.editorView();
+  const outcome = editor?.export;
+  const watched = editor !== undefined && model.exportWatched === editor.id;
+  useEffect(() => {
+    if (!editor || !outcome || !watched || (outcome.phase !== "done" && outcome.phase !== "failed")) return;
+    model.exportSaid();
+    const id = `${EXPORT_TOASTER}-${editor.id}`;
+    if (outcome.phase === "done") {
+      const name = outcome.name;
+      toast(translate("Exported “{title}”", model.view?.language, { title: name.replace(/\.mp4$/i, "") }), {
+        toasterId: EXPORT_TOASTER,
+        id,
+        description: model.text("Saved in the recording's folder."),
+        duration: 8000,
+        className: "undo-toast editor-export-toast",
+        classNames: { title: "toast-title", description: "toast-description", actionButton: "toast-action" },
+        action: { label: model.text("Play"), onClick: () => void model.playExport(name, editor.id) },
+      });
+    } else {
+      toast(model.text("The export failed"), {
+        toasterId: EXPORT_TOASTER,
+        id,
+        description: outcome.message,
+        duration: 12000,
+        className: "undo-toast editor-export-toast",
+        classNames: { title: "toast-title", description: "toast-description" },
+      });
+    }
+    model.announce(outcome.message);
+  }, [outcome, watched, editor]);
+  // The view closing takes its toast with it; the page's own toasts (the Trash's) are left alone.
+  const open = Boolean(model.editingItem);
+  const shown = useRef<string | undefined>(undefined);
+  if (editor) shown.current = `${EXPORT_TOASTER}-${editor.id}`;
+  useEffect(() => { if (!open && shown.current) toast.dismiss(shown.current); }, [open]);
 }
 
 /** Resolves once `media` fires `event`, or rejects after `ms`: a picture the strip waits for never holds it up for long. */
@@ -152,11 +214,15 @@ export function EditorDialog() {
   const exporting = editor?.export.phase === "exporting";
   // Every view drawn: an editable recording's gains at its scene, any other recording's at unity (plan 087).
   useEffect(() => model.syncPreviewAudio());
+  useExportToast();
   return (
     <Dialog
       open={Boolean(model.editingItem)}
-      onOpenChange={(open) => {
-        if (!open) model.closeEditor();
+      onOpenChange={(open, details) => {
+        // Escape never closes it (2026-10-26): it lets go of a selection instead. An open popup inside takes it first.
+        if (open) return;
+        if (details.reason === "escape-key") model.escapeEditor();
+        else void model.closeEditor();
       }}
     >
       <DialogContent
@@ -190,6 +256,7 @@ export function EditorDialog() {
               videoRef={model.attachEditorVideo}
               // Its sound goes through Web Audio at an editable recording's volumes (plan 087), which needs CORS.
               crossOrigin="anonymous"
+              controls={false}
               onDoubleClick={() => undefined}
               fullScreen={() => undefined}
               trailing={null}
@@ -201,7 +268,7 @@ export function EditorDialog() {
                     id="editor-close"
                     aria-label={model.text("Close")}
                     aria-disabled={exporting}
-                    onClick={() => model.closeEditor()}
+                    onClick={() => void model.closeEditor()}
                   >
                     <X />
                   </Button>
@@ -210,6 +277,10 @@ export function EditorDialog() {
             />
           )}
           {item && editor?.state === "ready" && editor.editable && <EditorCamera editor={editor} />}
+          {/* Over the stage's foot, inside the dialog, so the dialog neither covers it nor takes its clicks as outside.
+              Only while the view is open: a second Sonner list drawn the rest of the time held the page's Trash toast
+              open after the pointer left it. */}
+          {model.editingItem && <Toaster id={EXPORT_TOASTER} hotkey={[]} position="bottom-right" visibleToasts={1} offset={12} />}
         </div>
         {item && <EditorPanel />}
         <p id="editor-feedback" className="sr-only" role="status" aria-live="polite">
@@ -255,6 +326,7 @@ const TRIM_REACH = 10;
 function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
+  const playing = usePlaying();
   const gesture = useRef<TimelineGesture | null>(null);
   /** The track of pictures and parts, whose width the recording's time spans; the handles stand outside it. */
   const track = useRef<HTMLDivElement | null>(null);
@@ -280,7 +352,7 @@ function EditorPanel() {
   // It goes back to the selected part, or the timeline.
   useEffect(() => {
     const active = document.activeElement;
-    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-scene-popup")) return;
+    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-options-popup")) return;
     const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
     target?.focus({ preventScroll: true });
   });
@@ -304,7 +376,7 @@ function EditorPanel() {
             </Button>
           )}
           <span className="editor-spacer" />
-          <Button id="editor-done" variant="outline" onClick={() => model.closeEditor()}>{model.text("Close")}</Button>
+          <Button id="editor-done" variant="outline" onClick={() => void model.closeEditor()}>{model.text("Close")}</Button>
         </div>
       </div>
     );
@@ -411,11 +483,17 @@ function EditorPanel() {
   return (
     <div className="editor-panel">
       {/* One row over the timeline (2026-10-25, the maintainer's choice of layouts, to simplify the view and give the
-          picture more of the height): the edits; the camera and the sound behind one named button (editor-scene.tsx);
-          where the playhead is and how long the export runs; the keys, with Skimming's switch; Export. An export's outcome
-          takes the free space before them, so nothing moves. The playhead's time is to the hundredth, so a frame's step
-          shows; a range being chosen or an edge being trimmed shows that instead. */}
+          picture more of the height): Play, as the picture has no controls of its own (2026-10-26); the edits; the
+          options behind one named button (editor-scene.tsx); where the playhead is and how long the export runs; the
+          keys against Export. An export's outcome is a toast (useExportToast), so nothing in the row moves. The playhead's
+          time is to the hundredth, so a frame's step shows; a range being chosen or an edge being trimmed shows that instead. */}
       <div className="editor-toolbar">
+        <ControlTooltip label={`${model.text(playing ? "Pause" : "Play")} (${model.text("Space")})`}>
+          <Button id="editor-play" variant="ghost" size="icon" aria-label={model.text(playing ? "Pause" : "Play")} onClick={() => model.togglePlayback()}>
+            {playing ? <Pause /> : <Play />}
+          </Button>
+        </ControlTooltip>
+        <span className="editor-divider" aria-hidden="true" />
         <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
           <Button id="editor-undo" variant="ghost" size="icon" aria-label={model.text("Undo")} aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
             <Undo2 />
@@ -437,7 +515,7 @@ function EditorPanel() {
             {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
           </Button>
         </ControlTooltip>
-        <EditorSceneControls editor={editor} />
+        <EditorOptions editor={editor} />
         <span className="editor-divider" aria-hidden="true" />
         <span className="editor-times text-muted-foreground">
           <span className="editor-position">
@@ -452,13 +530,7 @@ function EditorPanel() {
           {/* To the hundredth, as the times beside it (a hands-on round). */}
           <span className="editor-length">{translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}</span>
         </span>
-        <span className="editor-outcome">
-          {editor.export.phase === "done" ? (
-            <span className="editor-done" role="status" title={editor.export.message}>{editor.export.message}</span>
-          ) : editor.export.phase === "failed" ? (
-            <span className="editor-failure" role="alert" title={editor.export.message}>{editor.export.message}</span>
-          ) : null}
-        </span>
+        <span className="editor-spacer" />
         {/* The keys, opened by a click as well as named to assistive technology (a
             hands-on round found a tooltip alone showed nothing on a click). Beside Export, drawn as a key cap rather
             than as one of the edits' tools (2026-10-25, the maintainer's request). */}
@@ -469,14 +541,8 @@ function EditorPanel() {
               <Keyboard aria-hidden="true" />
             </PopoverTrigger>
           </ControlTooltip>
+          {/* The keys alone (2026-10-26: Skimming moved to Options), each key against what it does. */}
           <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup gap-0" finalFocus={false}>
-            {/* Skimming, on by default, switched here rather than by a toolbar icon few would read (2026-10-25, the
-                maintainer's choice). */}
-            <div className="editor-keys-option">
-              <label htmlFor="editor-skim">{model.text("Skimming")}</label>
-              <Switch id="editor-skim" checked={model.skimming} onCheckedChange={() => model.toggleSkimming()} />
-            </div>
-            <p className="editor-keys-note">{model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}</p>
             <p className="editor-keys-title">{model.text("Editing shortcuts")}</p>
             <dl>
               {shortcuts.map(([key, action]) => (
@@ -615,8 +681,8 @@ function ExportControls() {
   const editor = model.editorView();
   if (!editor) return null;
   const state = editor.export;
-  // Its outcome written before it, in the space that also takes its changes of width: the edits and the times, and the
-  // rows under them, stay where they are as an export starts, runs and ends (2026-10-25).
+  // At the row's end, after the free space, which takes its changes of width: the edits and the times, and the rows
+  // under them, stay where they are as an export starts, runs and ends (2026-10-25).
   if (state.phase === "exporting") {
     const percent = Math.round(state.progress * 100);
     return (
@@ -638,30 +704,21 @@ function ExportControls() {
       </span>
     );
   }
-  const again = state.phase === "failed" || state.phase === "done";
+  // Export only (2026-10-26): its outcome is a toast, so the button reads the same before an export and after one.
   return (
     <span className="editor-export">
-      {state.phase === "done" && (
-        // Once exported, finding the file is what comes next: the main button, Export again beside it as an icon.
-        <Button id="editor-reveal" size="sm" onClick={() => void model.revealExport()}>
-          <FolderOpen />
-          {model.text(model.platform() === "darwin" ? "Show in Finder" : "Open folder")}
-        </Button>
-      )}
-      <ControlTooltip label={editor.blocked ?? model.text(state.phase === "done" ? "Export again" : editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
+      <ControlTooltip label={editor.blocked ?? model.text(editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
         <Button
           id="editor-export"
-          size={state.phase === "done" ? "icon-sm" : "sm"}
-          variant={state.phase === "done" ? "outline" : "default"}
+          size="sm"
           // Not while a change is being saved: the export takes the edit as saved.
           aria-disabled={!editor.exportable || model.editorSaving}
           onClick={() => {
             if (editor.exportable && !model.editorSaving) void model.exportEdit();
           }}
         >
-          {/* Export again runs the export once more: not the ↺ of the camera and sound's Reset (2026-10-25). */}
-          {state.phase === "done" ? <RefreshCw /> : <Upload />}
-          <span className={state.phase === "done" ? "sr-only" : undefined}>{model.text(again ? "Export again" : "Export")}</span>
+          <Upload />
+          {model.text("Export")}
         </Button>
       </ControlTooltip>
     </span>

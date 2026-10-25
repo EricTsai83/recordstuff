@@ -44,6 +44,11 @@ interface PlayerProps {
   large?: boolean;
   /** Fetched with CORS, so its sound can go through Web Audio (the edit view's volumes, plan 087). */
   crossOrigin?: "anonymous";
+  /**
+   * The seek bar, play, volume and time along the picture's foot; the edit view leaves them out (2026-10-26, the
+   * maintainer's choice): its timeline seeks, its toolbar plays, and nothing is drawn over the picture but its title.
+   */
+  controls?: boolean;
 }
 interface MediaView {
   playing: boolean;
@@ -85,6 +90,7 @@ export function Player({
   onMetadata,
   large = false,
   crossOrigin,
+  controls = true,
 }: PlayerProps) {
   const video = useRef<HTMLVideoElement>(null),
     root = useRef<HTMLDivElement>(null),
@@ -456,7 +462,7 @@ export function Player({
             {close}
           </div>
         </div>
-        <div className="pc-bottom">
+        <div className="pc-bottom" hidden={!controls}>
           <div
             ref={seekArea}
             className="pc-seek-area"

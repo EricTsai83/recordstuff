@@ -8,11 +8,11 @@
  * Since 2026-10-25, at the maintainer's request: a click on the bubble selects it, drawing a handle on each corner of
  * its box that resizes it from the opposite corner (a lone badge with resize arrows on one corner was
  * in the way of the picture, and read as an expand button); the volumes' sliders put 100% in the
- * middle (the left end mutes), the controls sit behind one Camera and sound button in the toolbar, and Reset puts
- * everything back as recorded. A dragged bubble stays exactly where it is dropped, without snapping, as the Studio's (2026-10-22).
+ * middle (the left end mutes), the controls sit behind one Options button in the toolbar (since 2026-10-26, with
+ * Skimming), and Reset puts everything back as recorded. A dragged bubble stays exactly where it is dropped, without snapping, as the Studio's (2026-10-22).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
@@ -293,14 +293,43 @@ function VolumeRow({ id, label, value, disabled, set }: { id: string; label: str
 }
 
 /**
- * The scene's controls behind one named button in the toolbar (2026-10-25, the maintainer's choice of layouts: icons for
- * the camera, each sound and Reset were hard to tell apart): its popup lists them in words, the camera shown or hidden
- * (its size is the bubble's corner handles, or + and − on it), each input's volume, and Reset.
+ * The edit view's options behind one named button in the toolbar (2026-10-26, the maintainer's choice: what is set now
+ * and then gathered in one place, so the toolbar keeps to the edits): Skimming, for every recording, and an editable
+ * recording's scene in words, the camera shown or hidden (its size is the bubble's corner handles, or + and − on it),
+ * each input's volume, and Reset.
  */
-export function EditorSceneControls({ editor }: { editor: EditorView }) {
+export function EditorOptions({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = editable && model.editorScene(editor);
-  if (!editable || !scene) return null;
+  const name = model.text("Options");
+  return (
+    <>
+      <span className="editor-divider" aria-hidden="true" />
+      <Popover>
+        <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-options" className="editor-options-button">
+          <SlidersHorizontal aria-hidden="true" />
+          {name}
+        </PopoverTrigger>
+        <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={name}>
+          <div className="editor-options" role="group" aria-label={name}>
+            {/* Skimming, on by default (2026-10-25), and what it does under its switch. */}
+            <div className="editor-options-skim">
+              <div className="editor-scene-row">
+                <label htmlFor="editor-skim">{model.text("Skimming")}</label>
+                <Switch id="editor-skim" checked={model.skimming} aria-describedby="editor-skim-note" onCheckedChange={() => model.toggleSkimming()} />
+              </div>
+              <p id="editor-skim-note" className="editor-options-note">{model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}</p>
+            </div>
+            {editable && scene && <SceneControls editor={editor} editable={editable} scene={scene} />}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}
+
+/** An editable recording's camera and volumes, and Reset, in the options' popup. */
+function SceneControls({ editor, editable, scene }: { editor: EditorView; editable: NonNullable<EditorView["editable"]>; scene: EditScene }) {
   // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
   // keep the keyboard's focus.
   const busy = editor.export.phase === "exporting";
@@ -308,46 +337,34 @@ export function EditorSceneControls({ editor }: { editor: EditorView }) {
   const camera = scene.camera;
   const sounds = new Set<EditableSound>(editable.sounds);
   const unchanged = model.sameScene(scene, editable.recorded);
-  const name = model.text(camera ? "Camera and sound" : "Sound");
   return (
-    <>
-      <span className="editor-divider" aria-hidden="true" />
-      <Popover>
-        <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-scene-button" className="editor-scene-button">
-          {name}
-          <ChevronDown aria-hidden="true" />
-        </PopoverTrigger>
-        <PopoverContent side="top" align="start" id="editor-scene-popup" className="editor-scene-popup w-auto gap-0 p-3" aria-label={name}>
-          <div className="editor-scene" role="group" aria-label={name}>
-            {camera && (
-              <div className="editor-scene-row">
-                <label htmlFor="editor-camera-shown">{model.text("Show camera")}</label>
-                <Switch
-                  id="editor-camera-shown"
-                  checked={camera.shown}
-                  disabled={busy}
-                  onCheckedChange={(shown) => change({ ...scene, camera: { ...camera, shown } }, true)}
-                />
-              </div>
-            )}
-            {sounds.has("system") && (
-              <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
-                set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
-            )}
-            {sounds.has("microphone") && (
-              <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
-                set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
-            )}
-            <ControlTooltip label={model.text("Put the camera and the volumes back as recorded")}>
-              <Button id="editor-scene-reset" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy || unchanged}
-                onClick={() => { if (!busy && !unchanged) void model.resetScene(); }}>
-                <RotateCcw />
-                {model.text(camera ? "Reset camera and volumes" : "Reset volumes")}
-              </Button>
-            </ControlTooltip>
-          </div>
-        </PopoverContent>
-      </Popover>
-    </>
+    <div className="editor-scene" role="group" aria-label={model.text(camera ? "Camera and sound" : "Sound")}>
+      {camera && (
+        <div className="editor-scene-row">
+          <label htmlFor="editor-camera-shown">{model.text("Show camera")}</label>
+          <Switch
+            id="editor-camera-shown"
+            checked={camera.shown}
+            disabled={busy}
+            onCheckedChange={(shown) => change({ ...scene, camera: { ...camera, shown } }, true)}
+          />
+        </div>
+      )}
+      {sounds.has("system") && (
+        <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
+          set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
+      )}
+      {sounds.has("microphone") && (
+        <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
+          set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
+      )}
+      <ControlTooltip label={model.text("Put the camera and the volumes back as recorded")}>
+        <Button id="editor-scene-reset" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy || unchanged}
+          onClick={() => { if (!busy && !unchanged) void model.resetScene(); }}>
+          <RotateCcw />
+          {model.text(camera ? "Reset camera and volumes" : "Reset volumes")}
+        </Button>
+      </ControlTooltip>
+    </div>
   );
 }

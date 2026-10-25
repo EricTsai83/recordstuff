@@ -14,8 +14,9 @@ import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } f
 import type { EditableSound, EditScene } from "../../../shared/editable";
 import { softLimit } from "../../../shared/audio-volume";
 import { translate } from "../../../shared/i18n";
-import { announce, draw, focus, render, view } from "./core";
+import { announce, draw, focus, render, subscribe, view } from "./core";
 import { forgetMenu } from "./library";
+import { openPlayer, playingItem } from "./player";
 
 export let editingItem: LibraryItemView | undefined;
 export let editorVideo: HTMLVideoElement | null = null;
@@ -113,6 +114,7 @@ export function canRedo(): boolean {
 export async function openEditor(item: LibraryItemView): Promise<void> {
   forgetMenu();
   editingItem = item;
+  exportWatched = undefined;
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
@@ -137,16 +139,75 @@ let closing: LibraryItemView | undefined;
  * Closes the edit view, unless an export is running (it is cancelled first, or left to finish). A change still saving
  * (the X clicked straight after a cut) is waited for first: main drops a save whose view has closed.
  */
-export function closeEditor(restore = true): void {
+export function closeEditor(restore = true): Promise<void> {
   const item = editingItem;
-  if (!item || closing === item) return;
-  if (editorView()?.export.phase === "exporting") return;
+  if (!item || closing === item) return Promise.resolve();
+  if (editorView()?.export.phase === "exporting") return Promise.resolve();
   editorVideo?.pause();
   closing = item;
-  void saved().finally(() => {
+  return saved().finally(() => {
     closing = undefined;
     if (editingItem === item && editorView()?.export.phase !== "exporting") finishClose(item, restore);
   });
+}
+
+/**
+ * Escape in the edit view (2026-10-26, the maintainer's request: a key pressed so often while editing must not close
+ * it): it lets go of what is chosen, a range on the timeline or a part, and otherwise does nothing; the bubble's
+ * selection is the page's (editor-scene.tsx), let go by moving the focus. Called by the dialog's dismissal, which takes
+ * Escape before the page's keys see it. Returns whether it let go of anything.
+ */
+export function escapeEditor(): boolean {
+  if (!editingItem) return false;
+  // The bubble first while it has the focus, as that is what was last chosen.
+  if (document.activeElement?.id === "editor-camera") {
+    document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
+    return true;
+  }
+  if (rangeSelection) {
+    rangeSelection = undefined;
+    draw();
+    return true;
+  }
+  if (selectedFrom !== undefined) {
+    selectedFrom = undefined;
+    draw();
+    return true;
+  }
+  return false;
+}
+
+/** How long Play on the export's toast waits for the library to list the new file. */
+const LISTED_TIMEOUT_MS = 15_000;
+
+/**
+ * Play on the export's toast (2026-10-26): the edit view it was shown over closes, saving what waits, and the new file,
+ * beside the recording, plays in the player once the library lists it (main publishes it before it says the export is
+ * done; the listing follows). Opening another view or the player meanwhile drops the wait; a file still not listed after
+ * a while is said by name instead, with the library in sight.
+ */
+export async function playExport(name: string, from: string): Promise<void> {
+  const source = editingItem;
+  if (!source || source.id !== from) return;
+  const find = (): LibraryItemView | undefined => view?.library?.items.find((item) => item.name === name && item.folder === source.folder);
+  await closeEditor(false);
+  if (editingItem) return;
+  let item = find();
+  if (!item) {
+    item = await new Promise<LibraryItemView | undefined>((resolve) => {
+      const stop = subscribe(() => {
+        const found = find();
+        if (found || editingItem || playingItem) { clearTimeout(timer); stop(); resolve(found); }
+      });
+      const timer = setTimeout(() => { stop(); resolve(undefined); }, LISTED_TIMEOUT_MS);
+    });
+  }
+  if (editingItem || playingItem) return;
+  if (item) openPlayer(item);
+  else {
+    announce(translate("Exported as {name}.", view?.language, { name }));
+    focus(`clip-${source.id}-open`);
+  }
 }
 
 /** Settles once no change waits or saves, including one queued while the last was waited for. */
@@ -160,6 +221,7 @@ async function saved(): Promise<void> {
 
 function finishClose(item: LibraryItemView, restore: boolean): void {
   editingItem = undefined;
+  exportWatched = undefined;
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
@@ -704,8 +766,26 @@ async function save(removed: EditRange[], scene?: EditScene): Promise<boolean> {
   }
 }
 
-export function exportEdit(): Promise<boolean> {
-  return send({ action: "export" });
+/**
+ * The recording whose export's outcome the view says next (2026-10-26, as a toast): set once main answers Export with
+ * the export under way, or already ended (a start that failed goes straight to its failure, and a quick one may be done),
+ * so an outcome left from before, seen on reopening the view, is never said again.
+ */
+export let exportWatched: string | undefined;
+
+export async function exportEdit(): Promise<boolean> {
+  const id = editingItem?.id;
+  const applied = await send({ action: "export" });
+  const phase = editorView()?.export.phase;
+  // Refused, the export is not this one's, unless the refusal is a failure to start.
+  exportWatched = id && (phase === "exporting" || phase === "failed" || (phase === "done" && applied)) ? id : undefined;
+  draw();
+  return applied;
+}
+
+/** The outcome the view was watching for has been said. */
+export function exportSaid(): void {
+  exportWatched = undefined;
 }
 
 export function cancelExport(): Promise<boolean> {
@@ -718,10 +798,6 @@ export function discardEdit(): Promise<boolean> {
   sceneDraft = undefined;
   splits = [];
   return send({ action: "discard" });
-}
-
-export function revealExport(): Promise<boolean> {
-  return send({ action: "reveal" });
 }
 
 async function send(choice: EditorChoice): Promise<boolean> {

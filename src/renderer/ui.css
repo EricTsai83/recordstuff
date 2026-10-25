@@ -2805,9 +2805,10 @@
     box-shadow: inset 0 0 0 3px var(--primary), 0 0 0 1px var(--primary-foreground);
     pointer-events: none;
   }
+  /* The ruler's times under a band the playhead's mark has to itself (2026-10-26: the mark sat on the times). */
   .editor-ruler {
     position: relative;
-    height: 14px;
+    height: 20px;
     margin-inline: 12px;
     margin-top: -6px;
     overflow: hidden;
@@ -2818,7 +2819,7 @@
   }
   .editor-ruler span {
     position: absolute;
-    top: 0;
+    top: 6px;
     padding-left: 3px;
     border-left: 1px solid var(--border);
     white-space: nowrap;
@@ -2843,15 +2844,6 @@
     border-inline: 5px solid transparent;
     border-top: 6px solid var(--foreground);
   }
-  .editor-ruler-playhead::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -0.5px;
-    width: 1px;
-    height: 14px;
-    background: var(--foreground);
-  }
   /* The toolbar over the timeline: the edits, the times, the outcome taking what is left, then the keys (with Skimming) against Export. */
   .editor-toolbar {
     display: flex;
@@ -2870,49 +2862,28 @@
     gap: 12px;
     margin-inline-start: 4px;
   }
-  .editor-outcome {
-    display: flex;
-    flex: 1 1 0;
-    justify-content: flex-end;
-    min-width: 0;
-    margin-inline: 8px;
-  }
-  .editor-outcome > * {
-    overflow: hidden;
-    min-width: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* Skimming's switch at the top of the shortcuts' popup, what it does under it. */
-  .editor-keys-option {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    font-weight: 600;
-  }
-  .editor-keys-note {
-    max-width: 240px;
-    margin: 4px 0 14px;
-    color: var(--muted-foreground);
-  }
   .editor-keys-popup {
     width: auto;
     min-width: 200px;
+    max-width: 320px;
   }
   .editor-keys-title {
     margin: 0 0 6px;
     font-weight: 600;
   }
+  /* Each key beside what it does (2026-10-26): the keys in a column as wide as the widest, never broken across lines. */
   .editor-keys-popup dl {
     display: grid;
-    gap: 4px;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: 6px 12px;
     margin: 0;
   }
   .editor-keys-popup dl > div {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
+    display: contents;
+  }
+  .editor-keys-popup dt kbd {
+    white-space: nowrap;
   }
   .editor-keys-popup dd {
     margin: 0;
@@ -3005,8 +2976,11 @@
   }
   .editor-length,
   .editor-position,
+  /* As wide as 100% from the start, right-aligned (2026-10-26, the maintainer's request): 5% becoming 10% moved Cancel. */
   .editor-percent {
+    min-width: 5ch;
     font-variant-numeric: tabular-nums;
+    text-align: end;
     white-space: nowrap;
   }
   .editor-progress {
@@ -3155,14 +3129,31 @@
     font-size: var(--text-xs);
     text-align: center;
   }
-  /* The camera and the sound, behind one named button in the toolbar: a row each, in words, then Reset. */
-  .editor-scene-button svg {
-    opacity: 0.6;
+  /* The options behind one named button in the toolbar (2026-10-26): Skimming with what it does, then an editable
+     recording's camera and sound, a row each, in words, then Reset. */
+  .editor-options {
+    display: grid;
+    gap: 14px;
+    min-width: 260px;
+    max-width: 320px;
+  }
+  .editor-options-note {
+    margin: 4px 0 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    white-space: normal;
+  }
+  .editor-options-skim + .editor-scene {
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
   }
   .editor-scene {
     display: grid;
     gap: 10px;
-    min-width: 260px;
+  }
+  /* The export's toast (2026-10-26) over the stage's foot, inside the edit view rather than the window's corner. */
+  .editor-stage [data-sonner-toaster] {
+    position: absolute !important;
   }
   .editor-scene-row {
     display: flex;

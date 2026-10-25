@@ -54,7 +54,7 @@ import {
   settlingEscape,
 } from "./player";
 import { disposeInfo, forgetInfo, hideInfo } from "./info";
-import { closeEditor, editingItem, editorVideo, editorView, forgetEditor } from "./editor";
+import { editingItem, editorVideo, forgetEditor } from "./editor";
 import { dismissToast, disposeToast, toastState } from "./toast";
 
 declare global {
@@ -621,13 +621,10 @@ export function start(): () => void {
       closePlayer();
       return;
     }
-    // The edit view closes, except while it exports: its Cancel export comes first.
+    // The edit view never closes on Escape (2026-10-26, the maintainer's request): its dialog takes the key and lets go
+    // of a selection instead (escapeEditor, from the dialog's dismissal), and the window stays.
     if (event.key === "Escape" && editingItem) {
       event.preventDefault();
-      if (editorView()?.export.phase !== "exporting") {
-        markEscapeClosed();
-        closeEditor();
-      }
       return;
     }
     if (event.key === "Escape" && folderDialog) {

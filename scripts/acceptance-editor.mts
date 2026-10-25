@@ -14,9 +14,9 @@
  * - **Resize.** The bubble is clicked, which selects it, and − pressed 5 times (2026-10-25: the size slider went, its
  *   corner handles and + / − resize it); the record must save the bubble smaller by 5 points with its shape kept
  *   (`judgeResize`).
- * - **Hide and Undo.** Show camera, in the toolbar's Camera and sound popup, is switched off (the record says hidden and the bubble leaves the view), then Undo is
+ * - **Hide and Undo.** Show camera, in the toolbar's Options popup (2026-10-26, Camera and sound before), is switched off (the record says hidden and the bubble leaves the view), then Undo is
  *   pressed (shown again, the resize kept).
- * - **Volume.** In the toolbar's Camera and sound popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
+ * - **Volume.** In the toolbar's Options popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
  * - **Export.** Export is pressed; main must log the render with the camera shown and the volumes the scene gives, and
  *   publish `<name> (edited).mp4` (「（已剪輯）」 in Traditional Chinese), read from its log line. Its middle frame must hold the camera track's own picture where the scene put the
@@ -473,8 +473,8 @@ async function main(): Promise<number> {
     await shot("3-resized.png");
     const resized = scene?.camera ?? fail("the resize saved no camera");
 
-    // Hide, then Undo; the switch is in the popup the toolbar's Camera and sound button opens (2026-10-25).
-    await click(await find("Camera and sound button", (e) => e.title === translate("Camera and sound", language)));
+    // Hide, then Undo; the switch is in the popup the toolbar's Options button opens (2026-10-26).
+    await click(await find("Options button", (e) => e.title === translate("Options", language)));
     await sleep(400);
     before = revision();
     await click(await find("Show camera switch", (e) => e.role === "AXCheckBox" && e.title === translate("Show camera", language)));
@@ -497,7 +497,7 @@ async function main(): Promise<number> {
     if (microphone) {
       // The popup may have closed with the Undo click outside it.
       if (!(await elements()).some((e) => e.role === "AXSlider" && e.title === translate("Microphone", language))) {
-        await click(await find("Camera and sound button", (e) => e.title === translate("Camera and sound", language)));
+        await click(await find("Options button", (e) => e.title === translate("Options", language)));
         await sleep(400);
       }
       const slider = await find("Microphone slider", (e) => e.role === "AXSlider" && e.title === translate("Microphone", language));

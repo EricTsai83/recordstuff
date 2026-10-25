@@ -44,13 +44,14 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   await menu(document.getElementById("clip-a-more")!);
   click(document.getElementById("clip-menu-edit")!);
-  await vi.waitFor(() => expect(document.getElementById("editor-scene-button")).not.toBeNull());
+  await vi.waitFor(() => expect(document.getElementById("editor-options")).not.toBeNull());
 
-  // The controls, behind the toolbar's Camera and sound button: the camera shown, then a volume for each sound the
+  // The controls, behind the toolbar's Options button (2026-10-26, with Skimming): the camera shown, then a volume for each sound the
   // recording holds. The camera's size is its corner handles (2026-10-25: no slider).
-  expect(document.getElementById("editor-scene-button")!.textContent).toBe("Camera and sound");
-  click(document.getElementById("editor-scene-button")!);
-  await vi.waitFor(() => expect(document.querySelector("#editor-scene-popup .editor-scene")).not.toBeNull());
+  expect(document.getElementById("editor-options")!.textContent).toBe("Options");
+  click(document.getElementById("editor-options")!);
+  await vi.waitFor(() => expect(document.querySelector("#editor-options-popup .editor-scene")).not.toBeNull());
+  expect(document.getElementById("editor-skim")!.getAttribute("aria-checked")).toBe("true");
   expect(document.getElementById("editor-camera-shown")!.getAttribute("aria-checked")).toBe("true");
   expect(document.getElementById("editor-camera-size")).toBeNull();
   expect(document.getElementById("editor-volume-system")).not.toBeNull();
