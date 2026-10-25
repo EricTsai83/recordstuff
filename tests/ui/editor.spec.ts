@@ -118,7 +118,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
   await expect(page.locator(".editor-hint")).toContainText("Drag the ends to trim, or across the timeline to choose a range.");
-  await expect(page.locator("#editor-keys")).toHaveAccessibleName("Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo · on a trim handle, ← → move its edge");
+  await expect(page.locator("#editor-keys")).toHaveAccessibleName(`Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ${process.platform === "darwin" ? "⌘Z undo · ⇧⌘Z redo" : "Ctrl+Z undo · Ctrl+Y redo"} · on a trim handle, ← → move its edge`);
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -141,9 +141,9 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]\d|6\.[01]\d)$/);
 
   // Undo takes a split back and Redo makes it again, though a split is never saved.
-  await page.keyboard.press("Meta+z");
+  await page.keyboard.press("ControlOrMeta+z");
   await expect(page.locator(".editor-part")).toHaveCount(1);
-  await page.keyboard.press("Meta+Shift+z");
+  await page.keyboard.press("ControlOrMeta+Shift+z");
   await expect(page.locator(".editor-part")).toHaveCount(2);
 
   // S splits by the key's place: an input method such as Zhuyin reports another character for it.
@@ -176,7 +176,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   // splits merging it) leaves the focus in the view, so the next ⌘Z still undoes (a hands-on round lost it).
   await page.locator(".editor-part").nth(1).focus();
   for (const parts of [3, 2, 1]) {
-    await page.keyboard.press("Meta+z");
+    await page.keyboard.press("ControlOrMeta+z");
     await expect(page.locator(".editor-part")).toHaveCount(parts);
     await expect(page.locator(".editor-part[data-removed]")).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.getElementById("editor")?.contains(document.activeElement) ? "in" : `${document.activeElement?.tagName}#${document.activeElement?.id}`)).toBe("in");
@@ -235,7 +235,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
 
   // Undo takes each back in turn, the trims included.
   for (const left of [2, 1, 0]) {
-    await page.keyboard.press("Meta+z");
+    await page.keyboard.press("ControlOrMeta+z");
     await expect(page.locator(".editor-part[data-removed]")).toHaveCount(left);
   }
   await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
