@@ -7,11 +7,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FolderOpen, Keyboard, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
-import { phrases, translate } from "../../../../shared/i18n";
+import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { Player } from "../../../player/player";
+import { Kbd } from "../../../components/ui/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import * as model from "../../settings-controller";
 import { EditorCamera, EditorSceneControls } from "./editor-scene";
 
@@ -247,12 +249,29 @@ interface TimelineGesture {
 }
 /** A trim handle's width, and how far beyond it a press still takes hold of it, in CSS pixels. */
 const TRIM_HANDLE = 8;
-const TRIM_REACH = 8;
+const TRIM_REACH = 10;
 
 function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
   const gesture = useRef<TimelineGesture | null>(null);
+  /** The trim handle with the keyboard's focus, whose edge the times' row keeps saying. */
+  const [focusedEdge, setFocusedEdge] = useState<model.TrimEdge | undefined>(undefined);
+  // However a press ends, the gesture does: a release anywhere in the window, or the window losing the pointer.
+  useEffect(() => {
+    const end = (): void => {
+      const held = gesture.current;
+      if (!held) return;
+      gesture.current = null;
+      if (held.mode === "start" || held.mode === "end") void model.commitTrim();
+    };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("blur", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("blur", end);
+    };
+  }, []);
   // A change can take the focused part away (an Undo merging it, a removal joining it to its neighbour): focus then
   // falls to the page, outside the dialog, and the edit view's keys stop (2026-10-25, a hands-on round). It goes back to
   // the selected part, or the timeline.
@@ -323,13 +342,18 @@ function EditorPanel() {
     // The edge keeps its distance from the pointer: taken hold of in the middle of the bar, it does not jump there.
     else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks - (held.offset ?? 0));
   };
+  const mac = model.platform() === "darwin";
+  const shortcuts: Array<[string, PlainMessageKey]> = [
+    [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split"],
+    ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
+  ];
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
     undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
     redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
   });
   const trim = model.shownTrim(editor);
   // While a handle moves, the times' row says where the export will start or end, to the hundredth.
-  const trimming = model.trimming();
+  const trimming = model.trimming() ?? focusedEdge;
   const range = model.rangeSelection;
   const ruler = rulerMarks(editor.seconds);
   const trimHandle = (edge: model.TrimEdge) => {
@@ -368,7 +392,11 @@ function EditorPanel() {
           model.moveTrim(edge, next);
         }}
         onKeyUp={(event) => { if (step(event) !== undefined) void model.commitTrim(); }}
-        onBlur={() => void model.commitTrim()}
+        onFocus={() => setFocusedEdge(edge)}
+        onBlur={() => {
+          setFocusedEdge(undefined);
+          void model.commitTrim();
+        }}
       />
     );
   };
@@ -421,6 +449,14 @@ function EditorPanel() {
         }}
         onPointerCancel={() => {
           if (gesture.current?.mode === "start" || gesture.current?.mode === "end") void model.commitTrim();
+          gesture.current = null;
+        }}
+        // Let go outside the window, the press ends with no release here (a hands-on round, on a display the dialog
+        // filled): a handle so dragged stayed drawn where it was and never saved. The lost hold ends it as a release does.
+        onLostPointerCapture={(event) => {
+          const held = gesture.current;
+          if (held?.pointer !== event.pointerId) return;
+          if (held.mode === "start" || held.mode === "end") void model.commitTrim();
           gesture.current = null;
         }}
       >
@@ -482,17 +518,35 @@ function EditorPanel() {
           beside it: listed in full they took three lines of a small window. */}
       <div className="editor-hint">
         <span>{model.text("Drag the ends to trim, or across the timeline to choose a range.")}</span>
-        <ControlTooltip label={keys}>
-          <Button id="editor-keys" variant="ghost" size="icon-sm" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+        {/* The keys, opened by a click as well as named to assistive technology (a hands-on round found a tooltip alone
+            showed nothing on a click). */}
+        <Popover>
+          <PopoverTrigger render={<Button variant="ghost" size="icon-sm" />} id="editor-keys" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
             <Keyboard />
-          </Button>
-        </ControlTooltip>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup" finalFocus={false}>
+            <p className="editor-keys-title">{model.text("Editing shortcuts")}</p>
+            <dl>
+              {shortcuts.map(([key, action]) => (
+                <div key={action}>
+                  <dt><Kbd>{key}</Kbd></dt>
+                  <dd>{model.text(action)}</dd>
+                </div>
+              ))}
+            </dl>
+          </PopoverContent>
+        </Popover>
       </div>
       <div className="editor-actions">
         <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
           <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
             {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
-            {model.text(range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part")}
+            {/* As wide as its widest name, so the buttons after it stay put as its name changes (a hands-on round). */}
+            <span className="editor-swap">
+              {(["Remove selection", "Remove part", "Keep part"] as const).map((name) => (
+                <span key={name} data-shown={name === (range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part") || undefined}>{model.text(name)}</span>
+              ))}
+            </span>
           </Button>
         </ControlTooltip>
         <ControlTooltip label={model.text("Split at the playhead (S)")}>

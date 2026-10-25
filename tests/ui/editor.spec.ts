@@ -170,7 +170,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await page.locator("#editor-remove").click();
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("data-removed", "true");
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#editor-remove")).toHaveText("Keep part");
+  await expect(page.locator("#editor-remove")).toHaveAccessibleName("Keep part");
 
   // Undo from the keyboard while a part has the focus, again and again: a step that takes the focused part away (the
   // splits merging it) leaves the focus in the view, so the next ⌘Z still undoes (a hands-on round lost it).
@@ -223,7 +223,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await expect.poll(at).toBeGreaterThan(duration * 0.6 - 0.2);
   expect(await at()).toBeLessThan(duration * 0.6 + 0.2);
   await expect(page.locator(".editor-range")).toHaveCount(1);
-  await expect(page.locator("#editor-remove")).toHaveText("Remove selection");
+  await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove selection");
   // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
   expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
   await expect(page.locator(".editor-position")).toHaveText(/^Selection 0:0\d\.\d\d–0:0\d\.\d\d \(0:01\.\d\d\)$/);
@@ -301,13 +301,38 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await expect.poll(() => value("end")).toBeCloseTo(seconds, 1);
   await saved();
 
-  // From the keyboard, → moves the start a frame, Shift+→ a second.
+  // From the keyboard, → moves the start a frame, Shift+→ a second; while the handle has the focus, the times' row
+  // says where the export starts.
   await page.locator("#editor-trim-start").focus();
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => value("start")).toBeGreaterThan(0);
   expect(await value("start")).toBeLessThanOrEqual(0.1);
+  await expect(page.locator(".editor-position")).toHaveText(/^The export starts at 0:00\.0\d$/);
   await page.keyboard.press("Shift+ArrowRight");
   await expect.poll(() => value("start")).toBeGreaterThan(1);
+  await saved();
+
+  // Let go outside the window: the timeline loses its hold with no release, and the trim is saved all the same, the
+  // export length with it.
+  const length = () => page.locator(".editor-length").textContent();
+  const before = await length();
+  const grip = (await page.locator("#editor-trim-start").boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 80, y, { steps: 5 });
+  await page.evaluate(() => document.querySelector(".editor-timeline")!.releasePointerCapture(1));
+  // The lost hold is told at the next pointer event.
+  await page.mouse.move(box.x - 90, y);
+  await expect.poll(length).not.toBe(before);
+  await expect(page.locator(".editor-length")).toHaveText(`Export length ${await read<string>(page, "(() => { const d = document.querySelector('#editor .editor-stage video').duration; return (Math.floor(d / 60)) + ':' + (d % 60).toFixed(1).padStart(4, '0'); })()")}`);
+  await page.mouse.up();
+  expect(await value("start")).toBe(0);
+
+  // The keyboard button opens the shortcuts on a click, too.
+  await page.locator("#editor-keys").click();
+  await expect(page.locator("#editor-keys-popup")).toBeVisible();
+  await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
+  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(7);
 });
 
 test("with Skimming on, the preview shows the picture under the pointer and goes back to the playhead when it leaves; off, a move does nothing (2026-10-25)", async () => {

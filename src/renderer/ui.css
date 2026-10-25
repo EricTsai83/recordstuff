@@ -2720,6 +2720,37 @@
     flex: none;
     color: var(--muted-foreground);
   }
+  .editor-keys-popup {
+    width: auto;
+    min-width: 200px;
+  }
+  .editor-keys-title {
+    margin: 0 0 6px;
+    font-weight: 600;
+  }
+  .editor-keys-popup dl {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+  }
+  .editor-keys-popup dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .editor-keys-popup dd {
+    margin: 0;
+  }
+  /* A button's names stacked in one cell: it is as wide as the widest, and only the one shown is seen and read. */
+  .editor-swap {
+    display: inline-grid;
+  }
+  .editor-swap > span {
+    grid-area: 1 / 1;
+  }
+  .editor-swap > span:not([data-shown]) {
+    visibility: hidden;
+  }
   /* Skimming's state in words beside its name, and its button marked while on. */
   .editor-skim[aria-pressed="true"] {
     border-color: var(--primary);
