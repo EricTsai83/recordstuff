@@ -5,7 +5,7 @@
  * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FolderOpen, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { FolderOpen, Keyboard, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -163,7 +163,7 @@ export function EditorDialog() {
         // As wide as the window allows with the panel under a 16:9 picture: the timeline, its ruler and hint, the actions,
         // and an editable recording's camera and sound controls, which need more of the height (known from the card before
         // the view arrives, so the dialog does not change its size as it opens).
-        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-320px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-260px)*16/9))]"} max-w-none flex-col gap-0 overflow-hidden rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none darwin:top-[calc(50%+24px)]`}
+        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-330px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-270px)*16/9))]"} max-h-[calc(100dvh-72px)] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none darwin:top-[calc(50%+24px)]`}
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.editorVideo}
@@ -318,6 +318,10 @@ function EditorPanel() {
     }
     else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks);
   };
+  const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
+    undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
+    redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
+  });
   const trim = model.shownTrim(editor);
   const range = model.rangeSelection;
   const ruler = rulerMarks(editor.seconds);
@@ -449,13 +453,31 @@ function EditorPanel() {
         ))}
         <i className="editor-ruler-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} />
       </div>
-      {/* How to cut and the keys, kept in sight: the gestures cannot be seen until they are tried. */}
-      <p className="editor-hint text-muted-foreground">
-        {translate("Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · {undo} undo · {redo} redo", language, {
-          undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
-          redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
-        })}
-      </p>
+      {/* A row of its own for the times (2026-10-25): a range's longer readout among the buttons pushed Export onto a
+          new row and moved the picture. The playhead's time is to the hundredth, so a frame's step shows (the player's
+          own clock shows whole seconds); a range being chosen shows where it runs and how long it is instead. */}
+      <div className="editor-status text-muted-foreground">
+        <span className="editor-position">
+          {range
+            ? translate("Selection {from}–{to} ({length})", language, {
+              from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
+            })
+            : translate("Playhead {time}", language, { time: precise(time) })}
+        </span>
+        <span className="editor-length">
+          {translate("Export length {length}", language, { length: at(editor.outputSeconds) })}
+        </span>
+      </div>
+      {/* How to cut, kept in sight since the gestures cannot be seen until they are tried, and the keys behind a button
+          beside it: listed in full they took three lines of a small window. */}
+      <div className="editor-hint">
+        <span>{model.text("Drag the ends to trim, or across the timeline to choose a range.")}</span>
+        <ControlTooltip label={keys}>
+          <Button id="editor-keys" variant="ghost" size="icon-sm" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+            <Keyboard />
+          </Button>
+        </ControlTooltip>
+      </div>
       <div className="editor-actions">
         <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
           <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
@@ -481,25 +503,15 @@ function EditorPanel() {
             {model.text("Redo")}
           </Button>
         </ControlTooltip>
-        <ControlTooltip label={model.text("Show the picture under the pointer as it moves over the timeline")}>
-          <Button id="editor-skim" variant={model.skimming ? "secondary" : "outline"} size="sm" aria-pressed={model.skimming} onClick={() => model.toggleSkimming()}>
+        {/* Its state is written beside its name (2026-10-25): a filled button alone read as a hover. */}
+        <ControlTooltip label={model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}>
+          <Button id="editor-skim" variant="outline" size="sm" className="editor-skim" aria-pressed={model.skimming} onClick={() => model.toggleSkimming()}>
             <ScanEye />
             {model.text("Skimming")}
+            <span className="editor-skim-state" aria-hidden="true">{model.text(model.skimming ? "On" : "Off")}</span>
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
-        {/* The playhead's time to the hundredth, so a frame's step shows (the player's own clock shows whole seconds); a
-            range being chosen shows where it runs and how long it is instead. */}
-        <span className="editor-position text-muted-foreground">
-          {range
-            ? translate("Selection {from}–{to} ({length})", language, {
-              from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
-            })
-            : translate("Playhead {time}", language, { time: precise(time) })}
-        </span>
-        <span className="editor-length text-muted-foreground">
-          {translate("Export length {length}", language, { length: at(editor.outputSeconds) })}
-        </span>
         <ExportControls />
       </div>
       <EditorSceneControls editor={editor} />

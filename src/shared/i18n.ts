@@ -629,10 +629,12 @@ export const ZH_TW = {
   "Export length {length}": "匯出長度 {length}",
   "Playhead {time}": "播放位置 {time}",
   "Skimming": "滑過預覽",
-  "Show the picture under the pointer as it moves over the timeline": "滑鼠在時間軸上移動時，預覽顯示游標位置的畫面",
+  "Keyboard shortcuts": "快捷鍵",
+  "Move over the timeline to preview; moving away returns to the playhead, and a click sets it.": "滑過時間軸即可預覽；移開後回到播放位置，按一下可設定播放位置。",
+  "Drag the ends to trim, or across the timeline to choose a range.": "拖曳兩端修剪，或在時間軸上拖曳選取範圍。",
+  "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo":
+    "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",
   "Selection {from}–{to} ({length})": "選取範圍 {from}–{to}（長度 {length}）",
-  "Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · {undo} undo · {redo} redo":
-    "拖曳兩端修剪 · 拖曳選取範圍 · 空白鍵 播放／暫停 · ← → 逐格（Shift 一秒）· S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",
   "Reset camera and volumes": "重設相機與音量",
   "Reset volumes": "重設音量",
   "Start of the export": "匯出的開頭",

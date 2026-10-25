@@ -117,7 +117,8 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     v.pause();
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
-  await expect(page.locator(".editor-hint")).toHaveText("Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo");
+  await expect(page.locator(".editor-hint")).toContainText("Drag the ends to trim, or across the timeline to choose a range.");
+  await expect(page.locator("#editor-keys")).toHaveAccessibleName("Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo");
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -178,7 +179,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     await page.keyboard.press("Meta+z");
     await expect(page.locator(".editor-part")).toHaveCount(parts);
     await expect(page.locator(".editor-part[data-removed]")).toHaveCount(0);
-    expect(await page.evaluate(() => document.getElementById("editor")?.contains(document.activeElement) ?? false)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.getElementById("editor")?.contains(document.activeElement) ? "in" : `${document.activeElement?.tagName}#${document.activeElement?.id}`)).toBe("in");
   }
 });
 
@@ -212,6 +213,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await expect(page.locator("#editor-feedback")).toHaveText(/^The export ends at /);
   expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration - 1, 0);
 
+  const exportY = (await page.locator("#editor-export").boundingBox())!.y;
   // A drag across the middle chooses a range, the preview following its moving end; Remove selection takes it out.
   await page.mouse.move(box.x + box.width * 0.45, y);
   await page.mouse.down();
@@ -222,6 +224,8 @@ test("the handles trim the start and the end, a drag across the timeline removes
   expect(await at()).toBeLessThan(duration * 0.6 + 0.2);
   await expect(page.locator(".editor-range")).toHaveCount(1);
   await expect(page.locator("#editor-remove")).toHaveText("Remove selection");
+  // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
+  expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
   await expect(page.locator(".editor-position")).toHaveText(/^Selection 0:0\d\.\d\d–0:0\d\.\d\d \(0:01\.\d\d\)$/);
   await page.locator("#editor-remove").click();
   await expect(page.locator(".editor-range")).toHaveCount(0);
@@ -267,9 +271,11 @@ test("with Skimming on, the preview shows the picture under the pointer and goes
   expect(await time()).toBeLessThan(2.2);
   await expect(page.locator(".editor-skimmer")).toHaveCount(0);
 
+  await expect(page.locator("#editor-skim")).toHaveText("SkimmingOff");
   // On: the preview follows the pointer, with a skimmer line, and comes back to 2 s when the pointer leaves.
   await page.locator("#editor-skim").click();
   await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#editor-skim")).toHaveText("SkimmingOn");
   await page.mouse.move(box.x + box.width * 0.5, y, { steps: 4 });
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
   await expect.poll(time).toBeGreaterThan(5.8);

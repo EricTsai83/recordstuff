@@ -2691,8 +2691,51 @@
     border-inline: 5px solid transparent;
     border-top: 6px solid var(--foreground);
   }
+  .editor-ruler-playhead::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -0.5px;
+    width: 1px;
+    height: 14px;
+    background: var(--foreground);
+  }
+  .editor-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: -4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   .editor-hint {
-    margin: -4px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px 12px;
+    margin: -8px 0 -4px;
+  }
+  .editor-keys {
+    flex: none;
+    color: var(--muted-foreground);
+  }
+  /* Skimming's state in words beside its name, and its button marked while on. */
+  .editor-skim[aria-pressed="true"] {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .editor-skim-state {
+    min-width: 2.5em;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+    font-size: 12px;
+    text-align: center;
+  }
+  .editor-skim[aria-pressed="true"] .editor-skim-state {
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
   .editor-playhead,
   .editor-note-mark {
