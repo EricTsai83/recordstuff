@@ -899,12 +899,14 @@
     backdrop-filter: blur(14px) saturate(1.6);
     pointer-events: none;
   }
-  /* Shoulders on the bubble's foot, the head inside however flat the bubble; fading downwards, glass like it. */
+  /* Shoulders on the bubble's foot, sized by its height so the head's centre is a little above the middle (about 42% down)
+     however tall the bubble, the shoulders cut by its sides when narrow (2026-10-26, the maintainer's request); a very
+     narrow bubble caps it by width so the head still fits. Fading downwards, glass like it. */
   .camera-preview-figure {
     position: absolute;
     bottom: 0;
     left: 50%;
-    width: min(86cqw, 92cqh);
+    width: min(96cqh, 150cqw);
     height: auto;
     translate: -50% 0;
     fill: var(--camera-preview-figure);
