@@ -19,10 +19,20 @@ export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
   const result: Group = { ...group("microphone", t("Microphone", language), enabled,
     switchChoices(language, microphone.enabled, (value) => ({ setMicrophone: value }))),
   info: t("Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.", language) };
-  if (ctx.platform !== "darwin" || !microphone.enabled) return result;
-  if (microphone.access === "denied" || microphone.access === "restricted") {
+  if (ctx.platform !== "darwin") return result;
+  const refused = microphone.access === "denied" || microphone.access === "restricted";
+  // Off because macOS refused it (a refusal turns the switch off, 2026-10-26): said, with the pane that allows it,
+  // so it does not read as a preference turned off (native round of the same day).
+  if (!microphone.enabled && refused) {
+    result.note = t("macOS does not allow the microphone. Allow RecordStuff in System Settings to turn it on.", language);
+    result.noteKind = "status";
+    result.actions = [{ id: "openSettings", label: t("Open microphone settings…", language), enabled: true, checked: false,
+      action: "openMicrophoneSettings" satisfies AppAction }];
+  }
+  if (!microphone.enabled) return result;
+  if (refused) {
     result.diagnostics = [{ kind: "current", heading: t("Microphone access is off", language),
-      reason: t("Recording will not start while Microphone is on.", language),
+      reason: t("Recordings leave the microphone out until it is allowed.", language),
       guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.", language) }];
     result.actions = [{ id: "openSettings", label: t("Open microphone settings…", language), enabled: true, checked: false,
       action: "openMicrophoneSettings" satisfies AppAction }, relaunchChoice(language)];

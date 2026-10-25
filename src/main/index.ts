@@ -60,6 +60,7 @@ import { SessionSentinels, reportInterruptions } from "./recording/session-senti
 import { SavedNotification } from "./recording/saved-notification";
 import { CaptureNotices } from "./recording/capture-notices";
 import { PermissionNotices } from "./permission/permission-notices";
+import { accessRefused, settleInputAccess } from "./settings/input-access";
 import { holdEarlyReopens, watchReopen, type EarlyReopens, type ReopenWatcher } from "./app/reopen";
 import { holdSessionEnd } from "./app/session-end";
 import { SettingsStore } from "./settings/settings";
@@ -441,12 +442,16 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const device = autoRecord?.ok ? undefined : settings.microphoneDevice;
       const named = device ? devices.microphones?.find((candidate) => candidate.id === device.id)?.name ?? device.label
         : devices.microphones?.find((candidate) => candidate.default)?.name;
-      return { enabled: microphoneOn(), ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
+      // Refused by macOS (its switch is turned off at the next launch or press): left out, so the recording still starts.
+      const enabled = microphoneOn() && (autoRecord?.ok || !accessRefused(microphoneAccess()));
+      return { enabled, ...(device ? { deviceId: device.id } : {}), ...(named ? { label: named } : {}) };
     },
     // The camera (plan 075): the user's switch, shown and so honoured only where the camera is available (step 7, with
     // the Camera group's controls, removes the development switch); autorecord never records it.
     camera: () => {
-      if (autoRecord?.ok || !settings.camera || !cameraAvailable()) return undefined;
+      // On macOS only an allowed camera (review pass 2): the engine opens no other, and one never asked, left on by a
+      // guide finished mid-recording or a reset grant, would refuse the whole recording as camera_unavailable.
+      if (autoRecord?.ok || !settings.camera || !cameraAvailable() || (process.platform === "darwin" ? cameraAccess() !== "granted" : accessRefused(cameraAccess()))) return undefined;
       const device = settings.cameraDevice;
       return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
     },
@@ -543,6 +548,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   let previewFailure: ErrorCode | undefined;
   /** Whether the Recording Studio is open in a window in sight, which a Live preview lasts as long as. */
   let studioOpen = false;
+  /**
+   * The first-launch guide (2026-10-26): open at launch on macOS until finished or set aside, so it comes back after
+   * macOS's Quit & Reopen for the screen's grant; General opens it again. Autorecord never shows it.
+   */
+  let onboardingOpen = process.platform === "darwin" && !autoRecord?.ok && !settings.onboardingDone;
   /** The recording whose picture Live preview was switched off for (2026-10-21); the next session shows its own again. */
   let pictureHiddenFor: string | undefined;
   const pictureHidden = (): boolean => pictureHiddenFor !== undefined && pictureHiddenFor === recorder.previewSessionId && !recorder.preview;
@@ -619,6 +629,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     notifications: settings.notifications,
     settingsShortcut: shortcuts.settingsStatus,
     hotkey: { ...settings.hotkey, registered: shortcuts.registered },
+    ...(onboardingOpen ? { onboarding: { open: true as const } } : {}),
     ...quit.context(),
     ...savingContext(),
     ...(errorBoxHeld ? { errorBoxHeld } : {}),
@@ -877,6 +888,22 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   const actionHandler = createActionHandler({
     studioOpen: () => studioOpen,
+    onboarding: {
+      open: () => { onboardingOpen = true; settingsWindow.show(); refreshUi(); },
+      // Saved before it closes (review F3): a guide that could not be saved stays open, and the press says it failed.
+      finish: async () => {
+        try {
+          if (!settings.onboardingDone) await settings.setOnboardingDone(true);
+        } catch (cause) {
+          log(`settings: saving the guide as done failed: ${String(cause)}`);
+          return false;
+        }
+        onboardingOpen = false;
+        refreshUi();
+        return true;
+      },
+    },
+    inputAccess: (input) => input === "microphone" ? microphoneAccess() : cameraAccess(),
     editableOnce: () => {
       editableOnce = true;
       log("tray: this recording is editable");
@@ -1054,6 +1081,24 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   powerMonitor.on("resume", onResume);
   powerMonitor.on("unlock-screen", onUnlock);
 
+  // The microphone and the camera are on by default (2026-10-26), and macOS is asked for them only at the user's own
+  // press (the first-launch guide, or a switch turned on): at launch one it refused earlier is turned off, asking
+  // nothing. Autorecord keeps its own configuration.
+  if (!autoRecord?.ok) {
+    // Locked while recording: the refused input is left out of it all the same, and the next launch turns it off.
+    const turnedOff = (save: () => Promise<void>) => async (): Promise<boolean> => {
+      if (!preferencesUnlocked(recorder.state)) return false;
+      await save();
+      refreshUi();
+      return true;
+    };
+    void settleInputAccess([
+      { name: "microphone", enabled: () => settings.microphone, status: () => microphoneAccess(), turnOff: turnedOff(() => settings.setMicrophone(false)) },
+      { name: "camera", enabled: () => settings.camera && cameraAvailable(), status: () => cameraAccess(), turnOff: turnedOff(() => settings.setCamera(false)) },
+    ], log);
+  }
+  // A new install meets the guide in the main window, as nothing else shows at launch for a menu bar app.
+  if (onboardingOpen) settingsWindow.show();
   permission?.start();
   void reportInterruptions(sentinels, {
     restore: interrupted => recordingResults.restore(file => fs.stat(file), refreshUi, interrupted),

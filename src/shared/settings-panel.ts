@@ -237,8 +237,31 @@ export interface LibraryView {
   /** The category the tab last showed, when it is still listed: `{ folder: null }` for Uncategorized; absent for all. */
   shown?: { folder: string | null };
 }
+/**
+ * The first-launch guide (2026-10-26), while it is open: what each step stands at, which the page words. Its presses
+ * are the `onboarding` group's choices (settings-model.ts): `screen:open`, `screen:relaunch`, `<input>:on`, `<input>:off`,
+ * `<input>:allow`, `<input>:settings`, `finish` and `studio`.
+ */
+export interface OnboardingView {
+  /** Screen & System Audio Recording: allowed, not yet, or allowed but seen only after a relaunch. */
+  screen: "granted" | "needed" | "relaunch";
+  microphone: OnboardingInputView;
+  /** Absent where there is no camera to record. */
+  camera?: OnboardingInputView;
+  /** The recording shortcut as the keys read, absent while it is off or not registered. */
+  shortcut?: string;
+}
+export interface OnboardingInputView {
+  enabled: boolean;
+  /** macOS's answer: allowed, refused (only System Settings changes it), or not asked yet. */
+  access: "granted" | "denied" | "ask";
+  /** Recording settings are locked while a recording runs. */
+  locked: boolean;
+}
 export interface SettingsView {
   revision?: number;
+  /** The first-launch guide, while it is open. */
+  onboarding?: OnboardingView;
   library?: LibraryView;
   /** The edit view, while a recording is being edited (plan 085). */
   editor?: EditorView;

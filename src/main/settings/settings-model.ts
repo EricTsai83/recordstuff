@@ -30,6 +30,7 @@ import { libraryView } from "./model/library";
 import { countdownGroup, countdownSoundGroup, editableRecordingGroup, fileNameGroup, hideSystemUiGroup, outputFolderGroup, qualityGroups, screenGroup } from "./model/recording";
 import { STATUS_ACTIONS, settingsStatus } from "./model/status";
 import { studioGroups } from "./model/studio";
+import { onboardingAction, onboardingChecked, onboardingGuideGroup, onboardingView } from "./model/onboarding";
 
 // The model is split by tab under model/; these are its public API, as they were before the split.
 export { dayHeading, shortTime } from "./model/history";
@@ -68,6 +69,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     }))),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
+    ...onboardingGuideGroup(ctx),
     ...shortcutListGroups(ctx),
     // Troubleshooting: diagnostics stay visible, with destructive cleanup in a separate section.
     // Never locked: showing a file touches nothing a recording holds.
@@ -113,6 +115,7 @@ export function settingsView(state: RecordingState, ctx: AppContext): SettingsVi
     status: settingsStatus(state, ctx),
     ...(ctx.library ? { library: libraryView(ctx, now, format)! } : {}),
     ...(ctx.editor ? { editor: ctx.editor } : {}),
+    ...(() => { const onboarding = quitting ? undefined : onboardingView(state, ctx); return onboarding ? { onboarding } : {}; })(),
     // One line above the tabs: the lock covers General too, so it is not the Recording tab's own note. A quit
     // needs none: the status card's own title already says it, and the hint sits right under that title.
     hint: quitting || unlocked ? "" : t("Recording in progress; only language, appearance and icon click can change.", language),
@@ -149,6 +152,7 @@ export function settingsAction(
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }
   if (groupId === "recordingHistory") return choiceId === "reset" && ctx.historyFailed ? "resetFailureHistory" : undefined;
+  if (groupId === "onboarding") return onboardingAction(state, ctx, choiceId);
   // The Recordings tab's own choices: its layout, its previews' sound, and Undo while a recording waits to go to the Trash.
   if (groupId === "library") {
     if (choiceId === "undoTrash") return ctx.library?.trashed ? "undoTrash" : undefined;
@@ -204,6 +208,7 @@ export function settingsChecked(
 ): boolean {
   // The card's actions, like the tray's, are requests whose result the card itself then shows.
   if (groupId === "status") return true;
+  if (groupId === "onboarding") return onboardingChecked(ctx, choiceId);
   if (groupId === "library") {
     if (choiceId === "previewSound:on" || choiceId === "previewSound:off") return (ctx.libraryPreviewSound ?? false) === (choiceId === "previewSound:on");
     return choiceId === "undoTrash" || (ctx.libraryLayout ?? "grid") === choiceId;

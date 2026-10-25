@@ -615,6 +615,11 @@ export function start(): () => void {
           event.target.closest('[data-slot="select-content"], [data-window-actions], [data-folder-actions]')))
     )
       return;
+    // The first-launch guide's dialog takes Escape, which sets it aside (onboarding.tsx); the window stays.
+    if (event.key === "Escape" && view?.onboarding) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Escape" && playingItem) {
       event.preventDefault();
       markEscapeClosed();

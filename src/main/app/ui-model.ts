@@ -67,6 +67,15 @@ export type AppAction =
   | "hideStudioPicture"
   /** The main window at its Recording Studio tab (plan 075, D19). */
   | "openStudio"
+  /** The first-launch guide (2026-10-26): macOS asked for the microphone or the camera, at the guide's own button. */
+  | "askMicrophone"
+  | "askCamera"
+  /** The guide opened again, from General. */
+  | "showOnboarding"
+  /** The guide finished or set aside; `studio` then opens the Recording Studio. */
+  | { finishOnboarding: { then?: "studio" } }
+  /** The guide's own switches: the microphone's or the camera's saved on or off, never asking macOS (Allow asks). */
+  | { setOnboardingInput: { input: "microphone" | "camera"; enabled: boolean } }
   | "cancelCountdown"
   | "openOutputDir"
   | "changeOutputDir"
@@ -216,6 +225,8 @@ export interface AppContext {
   /** The category the tab last showed: absent for every recording, `null` for Uncategorized. */
   libraryShown?: string | null;
   hotkey: AppHotkey;
+  /** The first-launch guide is open (2026-10-26, macOS only); absent is closed. */
+  onboarding?: { open: true };
   settingsShortcut?: SettingsHotkeyStatus;
   updates: { state: UpdateState; enabled: boolean };
   /** The app's own switch. Electron cannot read the OS notification permission. */

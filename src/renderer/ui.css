@@ -1131,6 +1131,99 @@
   .studio-fields .number-setting-unit {
     padding-right: 5px;
   }
+  /* The first-launch guide (2026-10-26): one line to a step, its icon, name, badge and ⓘ, then where it stands with its
+     press at the end; what each is for is behind its ⓘ (the maintainer's choice of a sparse layout). */
+  .onboarding-steps {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .onboarding-step {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+  }
+  .onboarding-step:first-child {
+    border-top: 0;
+  }
+  .onboarding-step-icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    color: var(--primary);
+    background: color-mix(in oklch, var(--primary) 10%, transparent);
+  }
+  .onboarding-step-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .onboarding-step-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .onboarding-step-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .onboarding-badge {
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    background: var(--muted);
+  }
+  .onboarding-about {
+    margin-inline-start: -2px;
+    color: var(--muted-foreground);
+  }
+  .onboarding-about svg {
+    width: 14px;
+    height: 14px;
+  }
+  .onboarding-step-end {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .onboarding-note,
+  .onboarding-start {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .onboarding-footer {
+    align-items: center;
+  }
+  .onboarding-start {
+    margin-inline-end: auto;
+  }
+  .onboarding-failure {
+    margin: 0;
+    font-size: 12px;
+    color: var(--destructive-ink);
+  }
+  .onboarding-allowed {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .onboarding-allowed svg {
+    width: 14px;
+    height: 14px;
+    color: var(--success);
+  }
   /* The camera's head: its title and ?, then Mirror's icon beside the switch at the end. */
   .studio-head-end {
     display: flex;

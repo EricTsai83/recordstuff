@@ -86,6 +86,13 @@ export interface ActionDeps {
   askMicrophoneAccess(): Promise<boolean>;
   /** The same for the camera (plan 075). */
   askCameraAccess(): Promise<boolean>;
+  /**
+   * The first-launch guide (2026-10-26): shown in the main window, and closed for good once finished or set aside;
+   * `finish` saves that first and answers whether it did, the guide staying open when it did not (review F3).
+   */
+  onboarding: { open(): void; finish(): Promise<boolean> };
+  /** macOS's answer for the microphone or the camera now; undefined where there is none to read. */
+  inputAccess(input: "microphone" | "camera"): string | undefined;
   /** A windowless informational box, brought forward first. */
   showInfo(detail: string): Promise<void>;
   /** A warning with Cancel first and the named action second, brought forward first; answers the button pressed. */
@@ -97,7 +104,7 @@ export type ActionHandler = (action: AppAction) => Promise<boolean | void>;
 export function createActionHandler(deps: ActionDeps): ActionHandler {
   const { settings, recorder, library, tray, log } = deps;
 
-  async function setPreference(action: Exclude<AppAction, string | { recordingFile: unknown } | { recordingResult: unknown }>): Promise<void> {
+  async function setPreference(action: Exclude<AppAction, string | { recordingFile: unknown } | { recordingResult: unknown } | { finishOnboarding: unknown } | { setOnboardingInput: unknown }>): Promise<void> {
     if ("setDisplay" in action) {
       const before = JSON.stringify(settings.display);
       await deps.savePreference("display", {
@@ -133,9 +140,11 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         write: () => settings.setMicrophone(action.setMicrophone),
         applied: () => log(`settings: microphone ${settings.microphone ? "on" : "off"}`),
       });
-      // Saved even when refused: Settings then shows the denial with the pane that changes it (plan 074).
+      // Turned back off when refused (2026-10-26; saved on with the denial shown until then), so the next recording is not
+      // refused for it; the notice opens the pane that allows it.
       if (turningOn && settings.microphone && !(await deps.askMicrophoneAccess())) {
-        log("settings: microphone access is not allowed");
+        log("settings: microphone access is not allowed: turned off");
+        await deps.savePreference("microphone", { locked: true, write: () => settings.setMicrophone(false) });
         tray.notifyMicrophoneDenied();
       }
       deps.refresh();
@@ -146,9 +155,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         write: () => settings.setCamera(action.setCamera),
         applied: () => log(`settings: camera ${settings.camera ? "on" : "off"}`),
       });
-      // Saved even when refused, as the microphone: Settings shows the denial with the pane that changes it.
+      // Turned back off when refused, as the microphone.
       if (turningOn && settings.camera && !(await deps.askCameraAccess())) {
-        log("settings: camera access is not allowed");
+        log("settings: camera access is not allowed: turned off");
+        await deps.savePreference("camera", { locked: true, write: () => settings.setCamera(false) });
         tray.notifyCameraDenied();
       }
       deps.refresh();
@@ -298,6 +308,28 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         needsRelaunch: () => recorder.state.type === "needsPermission" && recorder.state.needsRelaunch,
       });
     }
+    if (typeof action !== "string" && "setOnboardingInput" in action) {
+      const { input, enabled } = action.setOnboardingInput;
+      await deps.savePreference(input, { locked: true,
+        write: () => input === "microphone" ? settings.setMicrophone(enabled) : settings.setCamera(enabled),
+        applied: () => log(`settings: ${input} ${enabled ? "on" : "off"} (setup guide)`) });
+      deps.refresh();
+      return;
+    }
+    if (typeof action !== "string" && "finishOnboarding" in action) {
+      // An input left on that macOS was never asked for goes off as the guide closes (review F1): a recording would
+      // otherwise take a camera it may not open, or ask for the microphone as it starts. Its switch asks when turned on.
+      if (deps.platform === "darwin" && deps.settled()) {
+        for (const input of ["microphone", "camera"] as const) {
+          if (!(input === "microphone" ? settings.microphone : settings.camera) || deps.inputAccess(input) !== "not-determined") continue;
+          log(`settings: ${input} off as the setup guide closed without asking macOS`);
+          await deps.savePreference(input, { locked: true, write: () => input === "microphone" ? settings.setMicrophone(false) : settings.setCamera(false) });
+        }
+      }
+      if (!await deps.onboarding.finish()) return false;
+      if (action.finishOnboarding.then === "studio") deps.settingsWindow.showStudio();
+      return true;
+    }
     if (typeof action !== "string") {
       await setPreference(action);
       return;
@@ -318,6 +350,26 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       case "openStudio":
         deps.settingsWindow.showStudio();
         return true;
+      case "showOnboarding":
+        if (deps.platform !== "darwin") return false;
+        deps.onboarding.open();
+        return true;
+      // The guide's Allow (2026-10-26): macOS's prompt follows the user's own press, and a refusal turns the switch off,
+      // as turning it on does. The guide's row shows the answer, so the request answers at once.
+      case "askMicrophone":
+      case "askCamera": {
+        if (deps.platform !== "darwin") return false;
+        const microphone = action === "askMicrophone";
+        if (!(microphone ? settings.microphone : settings.camera)) return false;
+        const allowed = await (microphone ? deps.askMicrophoneAccess() : deps.askCameraAccess());
+        if (!allowed) {
+          const name = microphone ? "microphone" : "camera";
+          log(`settings: ${name} access is not allowed: turned off`);
+          await deps.savePreference(name, { locked: true, write: () => microphone ? settings.setMicrophone(false) : settings.setCamera(false) });
+        }
+        deps.refresh();
+        return true;
+      }
       case "openSettings":
         deps.settingsWindow.show();
         return;

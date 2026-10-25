@@ -22,7 +22,7 @@ RecordStuff provides one macOS menu bar button: click to record one screen (the 
 | Appearance and notifications | System/Light/Dark appearance; app notifications can be disabled independently of macOS permission | [Desktop](desktop.md) |
 | Diagnostics | Reveal the log from every tray state | [Desktop](desktop.md) |
 
-Defaults are Standard, Source resolution, 30 fps and Hide menu bar and Dock off. Audio always requests AAC at 256 kbps (Windows' encoder takes at most 192 kbps). The microphone is off by default; turned on in Settings → Recording or the idle menu, it is mixed raw with system audio into the same track, and a start without microphone access is refused before the countdown ([recording](recording.md#audio)). There is no audio-quality selector. When nothing plays the recording holds silence, so an audio track does not prove that sound was playing.
+Defaults are Standard, Source resolution, 30 fps and Hide menu bar and Dock off. Audio always requests AAC at 256 kbps (Windows' encoder takes at most 192 kbps). The microphone and the camera are on by default since 2026-10-26 (an existing user keeps their switch; macOS is asked only at the user's press, in the first-launch guide a new install opens or as a switch is turned on, and one it refuses is turned off and left out of a start). The microphone is mixed raw with system audio into the same track; a start with it on and no usable input is refused before the countdown ([recording](recording.md#audio)). There is no audio-quality selector. When nothing plays the recording holds silence, so an audio track does not prove that sound was playing.
 
 ## Platform and delivery scope
 

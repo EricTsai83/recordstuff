@@ -71,7 +71,8 @@ describe("SettingsStore", () => {
     await fs.writeFile(filePath, original);
     const first = store();
     await first.resetOlderFormat();
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual(defaultSettings(DEFAULT));
+    // Every preference reset, the first-launch guide kept closed: the file belongs to an existing user (2026-10-26).
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ ...defaultSettings(DEFAULT), onboardingDone: true });
     expect(await fs.readFile(`${filePath}.reset-backup`, "utf8")).toBe(original);
     await first.setOutputDir("/new-choice");
     await first.setLanguage("zh-TW");
@@ -166,7 +167,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -257,7 +258,8 @@ describe("quality settings", () => {
       hotkey: { enabled: false, accelerator: "CommandOrControl+Shift+R" }, trayClick: "record" }));
     const s = store();
     await s.resetOlderFormat();
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual(defaultSettings(DEFAULT));
+    // Every preference reset, the first-launch guide kept closed: the file belongs to an existing user (2026-10-26).
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toEqual({ ...defaultSettings(DEFAULT), onboardingDone: true });
   });
 
   it("round-trips a full quality block and persists it in the current format", async () => {
@@ -274,7 +276,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -294,7 +296,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
   });
 
@@ -348,7 +350,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -448,7 +450,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -764,16 +766,16 @@ describe("hide menu bar and Dock (plan 076, D6)", () => {
 describe("microphone (plan 074)", () => {
   const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
 
-  it("reads a file written before the fields existed as off with the system default, silently", () => {
+  it("reads a file written before the fields existed as on (the default since 2026-10-26) with the system default, silently", () => {
     const parsed = parseSettings(JSON.stringify(current));
-    expect(parsed).toMatchObject({ settings: { microphone: false }, warnings: [] });
+    expect(parsed).toMatchObject({ settings: { microphone: true }, warnings: [] });
     expect(parsed?.settings).not.toHaveProperty("microphoneDevice");
   });
 
-  it("reads an invalid switch as off and an invalid device as the system default, with warnings", () => {
+  it("reads an invalid switch as the default, on, and an invalid device as the system default, with warnings", () => {
     const parsed = parseSettings(JSON.stringify({ ...current, microphone: "on", microphoneDevice: { id: "", label: "x" } }));
-    expect(parsed).toMatchObject({ settings: { microphone: false }, warnings: [
-      "microphone is not a boolean: using off", "microphoneDevice is invalid: using the system default input"] });
+    expect(parsed).toMatchObject({ settings: { microphone: true }, warnings: [
+      "microphone is not a boolean: using on", "microphoneDevice is invalid: using the system default input"] });
     expect(parsed?.settings).not.toHaveProperty("microphoneDevice");
     expect(parseSettings(JSON.stringify({ ...current, microphone: true, microphoneDevice: { id: "usb", label: "USB Mic", extra: 1 } })))
       .toMatchObject({ settings: { microphone: true, microphoneDevice: { id: "usb", label: "USB Mic" } }, warnings: [] });
@@ -794,12 +796,38 @@ describe("microphone (plan 074)", () => {
   });
 });
 
+describe("the first-launch guide (2026-10-26)", () => {
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("is not done on a new install, and done in every file written before it, silently", () => {
+    expect(store().onboardingDone).toBe(false);
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { onboardingDone: true }, warnings: [] });
+  });
+
+  it("is done for a file that is there but reset, unreadable or broken: only a missing file is a new install", async () => {
+    await fs.writeFile(filePath, JSON.stringify({ version: 3, outputDir: "/old" }));
+    expect(store().onboardingDone).toBe(true);
+    await fs.writeFile(filePath, "{ broken");
+    expect(store().onboardingDone).toBe(true);
+  });
+
+  it("reads an invalid value as done, with a warning, and saves and refuses as the other switches", async () => {
+    expect(parseSettings(JSON.stringify({ ...current, onboardingDone: "no" }))).toMatchObject({ settings: { onboardingDone: true },
+      warnings: ["onboardingDone is not a boolean: the guide stays closed"] });
+    const first = store();
+    await first.setOnboardingDone(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ onboardingDone: true });
+    expect(store().onboardingDone).toBe(true);
+    await expect(first.setOnboardingDone("yes" as never)).rejects.toThrow("unsupported onboarding state");
+  });
+});
+
 describe("camera (plan 075)", () => {
   const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
 
-  it("reads a file written before the fields existed as off with the default bubble and the system camera, silently", () => {
+  it("reads a file written before the fields existed as on (the default since 2026-10-26) with the default bubble and the system camera, silently", () => {
     const parsed = parseSettings(JSON.stringify(current));
-    expect(parsed).toMatchObject({ settings: { camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT }, warnings: [] });
+    expect(parsed).toMatchObject({ settings: { camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT }, warnings: [] });
     expect(parsed?.settings).not.toHaveProperty("cameraDevice");
   });
 
@@ -812,12 +840,14 @@ describe("camera (plan 075)", () => {
       .toMatchObject({ settings: { cameraLayout: kept, cameraDevice: { id: "cam", label: "Cam" } }, warnings: [] });
   });
 
-  it("saves the switch, reads an invalid one as off and refuses an invalid one", async () => {
-    expect(parseSettings(JSON.stringify({ ...current, camera: "on" }))).toMatchObject({ settings: { camera: false },
-      warnings: ["camera is not a boolean: using off"] });
+  it("saves the switch, reads an invalid one as the default, on, and refuses an invalid one", async () => {
+    expect(parseSettings(JSON.stringify({ ...current, camera: "on" }))).toMatchObject({ settings: { camera: true },
+      warnings: ["camera is not a boolean: using on"] });
     const first = store();
+    await first.setCamera(false);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ camera: false });
+    expect(store().camera).toBe(false);
     await first.setCamera(true);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ camera: true });
     expect(store().camera).toBe(true);
     await expect(first.setCamera("on" as never)).rejects.toThrow("unsupported camera");
     expect(store().camera).toBe(true);

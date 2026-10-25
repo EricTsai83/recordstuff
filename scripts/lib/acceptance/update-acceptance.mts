@@ -67,6 +67,8 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
+  // The first-launch guide's way back (2026-10-26): opening it changes nothing a recording holds; its inputs lock in it.
+  setupGuide: "available",
   // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
   studioControls: { lockedChoices: ["saving"] },
   systemAudio: "session", microphoneAudio: "session",
@@ -80,10 +82,10 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   "shortcutList:player": "available", "shortcutList:fullScreen": "available",
 };
 /**
- * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), and its
- * input level while it is on and allowed (plan 079, D1).
+ * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), its input
+ * level while it is on and allowed (plan 079, D1), and the setup guide's row on macOS only (2026-10-26).
  */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel"]);
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide"]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 
 /**

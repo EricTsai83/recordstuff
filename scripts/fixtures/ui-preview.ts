@@ -92,6 +92,8 @@ async function run(): Promise<void> {
   let studioPreview: AppContext["studioPreview"];
   /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
   let cameraState: "waiting" | "notReady" | "lost" | undefined;
+  /** The first-launch guide open (2026-10-26), with what macOS answered for the microphone and the camera. */
+  let guide: { microphone: NonNullable<AppContext["microphone"]>; camera: { enabled: boolean; access: "granted" | "denied" | "not-determined" } } | undefined;
   /** The display recorded: the landscape primary, or the portrait screen for the Studio's stage at its shape (plan 095). */
   let display: AppContext["display"] = { kind: "primary" };
   // A portrait screen beside a landscape primary, so the Screen row draws an arrangement (2026-10-08).
@@ -104,7 +106,9 @@ async function run(): Promise<void> {
     updates: { enabled: true, state: { kind: "idle" } }, display, displays: PREVIEW_DISPLAYS, library: libraryOverride ?? library.state, libraryLayout, recordingResults,
     // The camera as a Mac has it (available since plan 075 step 7), on with its default bubble, for the Studio's tab.
     camera: { enabled: true, available: true, access: "granted", layout: DEFAULT_CAMERA_LAYOUT, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }],
-      ...(state.type === "recording" ? { session: { hidden: false, ...(cameraState ? { state: cameraState } : {}) } } : {}) },
+      ...(state.type === "recording" ? { session: { hidden: false, ...(cameraState ? { state: cameraState } : {}) } } : {}),
+      ...(guide ? guide.camera : {}) },
+    ...(guide ? { onboarding: { open: true as const }, microphone: guide.microphone } : {}),
     audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio, ...(studioPreview ? { studioPreview } : {}),
     ...(state.type === "recording" ? { audioSession: { systemMuted: false } } : {}) });
   let entry = 0;
@@ -239,6 +243,21 @@ async function run(): Promise<void> {
       state = { type: "needsPermission", needsRelaunch: false };
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`, { state: "needsPermission" });
+      // The first-launch guide (2026-10-26), step by step as a new install meets it: the screen not allowed yet, allowed
+      // but waiting on a relaunch, then the microphone and the camera to ask for, one refused, and all set.
+      const ask = { enabled: true, access: "not-determined" as const };
+      for (const [name, screen, microphone, camera] of [
+        ["screen", { type: "needsPermission", needsRelaunch: false }, ask, ask],
+        ["relaunch", { type: "needsPermission", needsRelaunch: true }, ask, ask],
+        ["inputs", { type: "idle" }, ask, ask],
+        ["refused", { type: "idle" }, { enabled: true, access: "granted" }, { enabled: false, access: "denied" }],
+        ["ready", { type: "idle" }, { enabled: true, access: "granted" }, { enabled: true, access: "granted" }],
+      ] as const) {
+        state = screen; guide = { microphone, camera };
+        await show(window, "library");
+        await shoot(window, `onboarding-${name}-${lang}-${scheme}.png`, `the first-launch guide: ${name} · ${lang} · ${scheme}`, { state: `onboarding-${name}` });
+      }
+      guide = undefined;
       state = { type: "idle" };
       // The Recordings list (2026-10-05), then the grid again for the player below.
       libraryLayout = "list";

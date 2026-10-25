@@ -1,3 +1,4 @@
+import { DEFAULT_CAMERA_LAYOUT } from "../../shared/camera-layout";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_QUALITY } from "../../shared/quality";
 import { DEFAULT_HOTKEY, SETTINGS_SHORTCUT, type HotkeySettings } from "../../shared/hotkey";
@@ -779,6 +780,20 @@ it("reports save refusal rather than static screen help when recording starts", 
   expect(result).toHaveProperty("failure", "Could not apply this setting. Your current settings are shown.");
   expect(result.applied).toBe(false);
   expect(s.act).not.toHaveBeenCalled(); s.panel.destroy();
+});
+
+
+it("says why a camera or microphone switch macOS refuses went back off, not that a save failed (2026-10-26)", async () => {
+  const s = setup(); s.panel.show();
+  s.live.camera = { enabled: false, available: true, access: "denied", layout: DEFAULT_CAMERA_LAYOUT };
+  s.live.microphone = { enabled: false, access: "denied" };
+  const camera = await s.choose(s.event(), "camera", "on");
+  expect(camera).toMatchObject({ applied: false,
+    failure: "RecordStuff cannot use the camera. Allow it in System Settings → Privacy & Security → Camera." });
+  const microphone = await s.choose(s.event(), "microphone", "on");
+  expect(microphone).toMatchObject({ applied: false,
+    failure: "RecordStuff cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone." });
+  s.panel.destroy();
 });
 
 

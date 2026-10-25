@@ -22,6 +22,13 @@ export function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefine
   const result: Group = { ...group("camera", t("Camera", language), enabled,
     switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
   info: t("Shows your camera in the recording as a bubble.", language) };
+  // Off because macOS refused it, as the microphone's (native round, 2026-10-26).
+  if (!camera.enabled && ctx.platform === "darwin" && (camera.access === "denied" || camera.access === "restricted")) {
+    result.note = t("macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.", language);
+    result.noteKind = "status";
+    result.actions = [{ id: "openSettings", label: t("Open camera settings…", language), enabled: true, checked: false,
+      action: "openCameraSettings" satisfies AppAction }];
+  }
   if (!camera.enabled) return result;
   if (ctx.platform === "win32") {
     result.note = t("Windows records the camera only while desktop apps may use it in Settings → Privacy & security → Camera.", language);
@@ -29,13 +36,15 @@ export function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefine
       action: "openCameraSettings" satisfies AppAction }];
   } else if (ctx.platform === "darwin" && (camera.access === "denied" || camera.access === "restricted")) {
     result.diagnostics = [{ kind: "current", heading: t("Camera access is off", language),
-      reason: t("Recording will not start while Camera is on.", language),
+      reason: t("Recordings leave the camera out until it is allowed.", language),
       guidance: t("Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off.", language) }];
     result.actions = [{ id: "openSettings", label: t("Open camera settings…", language), enabled: true, checked: false,
       action: "openCameraSettings" satisfies AppAction }, relaunchChoice(language)];
   } else if (ctx.platform === "darwin" && camera.access === "not-determined") {
-    result.note = t("macOS asks for camera access when you next record.", language);
+    // The engine opens only an allowed camera and asks nothing (review pass 2), so this row asks, at the user's press.
+    result.note = t("macOS has not been asked about the camera yet; recordings leave it out until it is allowed.", language);
     result.noteKind = "status";
+    result.actions = [{ id: "allow", label: t("Allow camera…", language), enabled, checked: false, action: "askCamera" satisfies AppAction }];
   }
   return result;
 }

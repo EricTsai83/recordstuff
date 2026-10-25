@@ -45,6 +45,84 @@ function harness(overrides: Partial<ActionDeps> = {}) {
 }
 
 describe("createActionHandler", () => {
+  describe("the first-launch guide (2026-10-26)", () => {
+    function guideHarness(allowed: boolean, platform: NodeJS.Platform = "darwin") {
+      const settings = { language: "en", microphone: true, camera: true,
+        setMicrophone: vi.fn(async (on: boolean) => { settings.microphone = on; }), setCamera: vi.fn(async (on: boolean) => { settings.camera = on; }) };
+      const onboarding = { open: vi.fn(), finish: vi.fn(async () => true) };
+      const access: Record<string, string> = { microphone: "granted", camera: "granted" };
+      const settingsWindow = { show: vi.fn(), showStudio: vi.fn() };
+      const askMicrophoneAccess = vi.fn(async () => allowed), askCameraAccess = vi.fn(async () => allowed);
+      const ctx = harness({ platform, settings, onboarding, settingsWindow, askMicrophoneAccess, askCameraAccess, inputAccess: (input: string) => access[input],
+        savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+      return { ...ctx, settings, onboarding, settingsWindow, askMicrophoneAccess, askCameraAccess, access };
+    }
+
+    it("saves the guide's switches without asking macOS, also when one is turned back on (review F2)", async () => {
+      const ctx = guideHarness(true);
+      ctx.access.microphone = "not-determined";
+      await ctx.act({ setOnboardingInput: { input: "microphone", enabled: false } });
+      await ctx.act({ setOnboardingInput: { input: "microphone", enabled: true } });
+      await ctx.act({ setOnboardingInput: { input: "camera", enabled: false } });
+      expect(ctx.settings.setMicrophone.mock.calls).toEqual([[false], [true]]);
+      expect(ctx.settings.camera).toBe(false);
+      expect(ctx.askMicrophoneAccess).not.toHaveBeenCalled();
+      expect(ctx.askCameraAccess).not.toHaveBeenCalled();
+    });
+
+    it("turns off, as it closes, an input left on that macOS was never asked for, and keeps an allowed one (review F1)", async () => {
+      const ctx = guideHarness(true);
+      ctx.access.camera = "not-determined";
+      expect(await ctx.act({ finishOnboarding: {} })).toBe(true);
+      expect(ctx.settings.camera).toBe(false);
+      expect(ctx.settings.microphone).toBe(true);
+      expect(ctx.askCameraAccess).not.toHaveBeenCalled();
+      expect(ctx.deps.log).toHaveBeenCalledWith("settings: camera off as the setup guide closed without asking macOS");
+    });
+
+    it("stays open and says the press failed when the guide cannot be saved as done (review F3)", async () => {
+      const ctx = guideHarness(true);
+      ctx.onboarding.finish.mockResolvedValueOnce(false);
+      expect(await ctx.act({ finishOnboarding: { then: "studio" } })).toBe(false);
+      expect(ctx.settingsWindow.showStudio).not.toHaveBeenCalled();
+    });
+
+    it("asks macOS at Allow, keeps an allowed input on and turns a refused one off, answering at once either way", async () => {
+      const allowed = guideHarness(true);
+      expect(await allowed.act("askMicrophone")).toBe(true);
+      expect(allowed.askMicrophoneAccess).toHaveBeenCalledOnce();
+      expect(allowed.settings.microphone).toBe(true);
+      expect(allowed.deps.refresh).toHaveBeenCalled();
+      const refused = guideHarness(false);
+      expect(await refused.act("askCamera")).toBe(true);
+      expect(refused.settings.camera).toBe(false);
+      expect(refused.settings.setCamera.mock.calls).toEqual([[false]]);
+      expect(refused.deps.log).toHaveBeenCalledWith("settings: camera access is not allowed: turned off");
+    });
+
+    it("asks nothing for an input that is off, or anywhere but macOS", async () => {
+      const off = guideHarness(true);
+      off.settings.microphone = false;
+      expect(await off.act("askMicrophone")).toBe(false);
+      expect(off.askMicrophoneAccess).not.toHaveBeenCalled();
+      const windows = guideHarness(true, "win32");
+      expect(await windows.act("askCamera")).toBe(false);
+      expect(await windows.act("showOnboarding")).toBe(false);
+      expect(windows.askCameraAccess).not.toHaveBeenCalled();
+    });
+
+    it("opens the guide again, and finishes it, into the Recording Studio when asked", async () => {
+      const ctx = guideHarness(true);
+      expect(await ctx.act("showOnboarding")).toBe(true);
+      expect(ctx.onboarding.open).toHaveBeenCalledOnce();
+      expect(await ctx.act({ finishOnboarding: {} })).toBe(true);
+      expect(ctx.settingsWindow.showStudio).not.toHaveBeenCalled();
+      expect(await ctx.act({ finishOnboarding: { then: "studio" } })).toBe(true);
+      expect(ctx.onboarding.finish).toHaveBeenCalledTimes(2);
+      expect(ctx.settingsWindow.showStudio).toHaveBeenCalledOnce();
+    });
+  });
+
   it("makes only the recording Start editable recording begins editable, and only from idle (2026-10-25)", async () => {
     const editableOnce = vi.fn();
     const { deps, act } = harness({ editableOnce });
@@ -144,7 +222,7 @@ describe("createActionHandler", () => {
       return { ...ctx, settings, tray, askCameraAccess };
     }
 
-    it("asks for access when turned on, after saving, and keeps it on when refused, saying so", async () => {
+    it("asks for access when turned on, after saving, and turns it back off when refused, saying so", async () => {
       const allowed = cameraHarness(true);
       await allowed.act({ setCamera: true });
       expect(allowed.settings.camera).toBe(true);
@@ -153,7 +231,8 @@ describe("createActionHandler", () => {
       expect(allowed.deps.refresh).toHaveBeenCalled();
       const refused = cameraHarness(false);
       await refused.act({ setCamera: true });
-      expect(refused.settings.camera).toBe(true);
+      expect(refused.settings.camera).toBe(false);
+      expect(refused.settings.setCamera.mock.calls).toEqual([[true], [false]]);
       expect(refused.tray.notifyCameraDenied).toHaveBeenCalledOnce();
     });
 
@@ -273,7 +352,7 @@ describe("createActionHandler", () => {
       return { ...ctx, settings, tray, askMicrophoneAccess };
     }
 
-    it("asks for access when turned on, after saving, and keeps it on when refused, saying so", async () => {
+    it("asks for access when turned on, after saving, and turns it back off when refused, saying so", async () => {
       const allowed = microphoneHarness(true);
       await allowed.act({ setMicrophone: true });
       expect(allowed.settings.microphone).toBe(true);
@@ -283,7 +362,8 @@ describe("createActionHandler", () => {
 
       const refused = microphoneHarness(false);
       await refused.act({ setMicrophone: true });
-      expect(refused.settings.microphone).toBe(true);
+      expect(refused.settings.microphone).toBe(false);
+      expect(refused.settings.setMicrophone.mock.calls).toEqual([[true], [false]]);
       expect(refused.tray.notifyMicrophoneDenied).toHaveBeenCalledOnce();
     });
 

@@ -17,6 +17,7 @@ import { Studio } from "./tabs/studio";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
 import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog, EditorDialog } from "./tabs/library";
+import { OnboardingDialog } from "./onboarding";
 import { ToastHost } from "./undo-toast";
 import { useDarkClass } from "../lib/color-scheme";
 
@@ -435,6 +436,7 @@ export function SettingsApp() {
       <FolderDialog />
       <PlayerDialog />
       <EditorDialog />
+      <OnboardingDialog />
       <ToastHost />
       <ZoomToast />
     </TooltipProvider>

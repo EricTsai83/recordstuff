@@ -17,7 +17,7 @@ import type * as ElectronModule from "electron";
 import { createBoundary } from "./boundary";
 import { settled } from "./settle";
 import { RecordingResults } from "../../../src/main/recording/recording-result";
-import { settingsAction, settingsView } from "../../../src/main/settings/settings-model";
+import { settingsAction, settingsChecked, settingsView } from "../../../src/main/settings/settings-model";
 import { translate, type Language } from "../../../src/shared/i18n";
 import type { SettingsView } from "../../../src/shared/settings-panel";
 import type { RecordingState } from "../../../src/shared/state";
@@ -198,6 +198,12 @@ const state = {
   soundContext: undefined as AppContext | undefined,
   /** The Microphone rows' context (plan 074); a choice commits as main would and pushes the view. */
   microphoneContext: undefined as AppContext | undefined,
+  /** The first-launch guide's context (2026-10-26), and what macOS answers at its Allow. */
+  onboardingContext: undefined as AppContext | undefined,
+  onboardingState: { type: "idle" } as RecordingState,
+  onboardingAllows: true,
+  /** Saving the guide as done fails, as a full disk would (review pass 2). */
+  onboardingFinishFails: false,
   /** The recording state the Microphone rows are judged in (plan 079, D3: the input device while recording). */
   microphoneState: undefined as RecordingState | undefined,
   /** The Camera row's context (plan 075), as the microphone's. */
@@ -288,6 +294,30 @@ function installPanelHandlers(): void {
       const action = settingsAction({ type: "idle" }, state.soundContext, group, choice);
       if (typeof action === "object" && "setCountdownSound" in action) state.soundContext = { ...state.soundContext, countdownSound: action.setCountdownSound };
       return { view: settingsView({ type: "idle" }, state.soundContext), applied: action !== undefined };
+    }
+    // The guide's presses, as main acts on them: a switch saved, Allow answered by `onboardingAllows` (a refusal turns the
+    // switch off), and finishing closes it.
+    if (group === "onboarding" && state.onboardingContext) {
+      const context = state.onboardingContext;
+      const action = settingsAction(state.onboardingState, context, group, choice);
+      const input = (name: "microphone" | "camera", change: { enabled?: boolean; access?: string }): AppContext =>
+        ({ ...context, [name]: { ...context[name], ...change } }) as AppContext;
+      if (typeof action === "object" && "setOnboardingInput" in action) {
+        state.onboardingContext = input(action.setOnboardingInput.input, { enabled: action.setOnboardingInput.enabled });
+      }
+      if (action === "askMicrophone" || action === "askCamera") {
+        state.onboardingContext = input(action === "askMicrophone" ? "microphone" : "camera",
+          state.onboardingAllows ? { access: "granted" } : { access: "denied", enabled: false });
+      }
+      if (typeof action === "object" && "finishOnboarding" in action && state.onboardingFinishFails) {
+        return { view: settingsView(state.onboardingState, context), applied: false };
+      }
+      if (typeof action === "object" && "finishOnboarding" in action) {
+        const { onboarding: _closed, ...rest } = context;
+        state.onboardingContext = rest;
+      }
+      return { view: settingsView(state.onboardingState, state.onboardingContext), applied: action !== undefined
+        && settingsChecked(state.onboardingState, state.onboardingContext, group, choice) };
     }
     if ((group === "microphone" || group === "microphoneDevice") && state.microphoneContext) {
       const context = state.microphoneContext;

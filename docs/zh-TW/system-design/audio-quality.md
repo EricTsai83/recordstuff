@@ -249,7 +249,7 @@ Cap 的[音訊整合測試](https://github.com/CapSoftware/Cap/blob/17e17902691c
 | --- | --- | --- |
 | 系統音訊 | ScreenCaptureKit，設定為 48 kHz、2 聲道、32-bit float，並排除 RecordStuff 自己程序的聲音 | WASAPI process loopback：系統播放的所有聲音，但排除 RecordStuff 的程序樹，以 48 kHz 立體聲 float 開啟 |
 | 單一 App 的聲音（僅引擎與測試；尚無選擇器） | ScreenCaptureKit 依 App 篩選的聲音，格式相同 | 所選程序樹的 WASAPI process loopback |
-| 麥克風（plan 074；預設關閉） | AVFoundation（`AVCaptureSession`），由 OS 轉成 48 kHz 單聲道 float，在音軌的兩個聲道都聽得到；不做語音處理 | 所選或預設 endpoint 的 WASAPI capture，以 48 kHz 單聲道 float 加 `AUTOCONVERTPCM` 開啟，在兩個聲道都聽得到；不使用通訊用處理管線，串流也選擇不觸發 ducking |
+| 麥克風（plan 074；2026-10-26 起預設開啟） | AVFoundation（`AVCaptureSession`），由 OS 轉成 48 kHz 單聲道 float，在音軌的兩個聲道都聽得到；不做語音處理 | 所選或預設 endpoint 的 WASAPI capture，以 48 kHz 單聲道 float 加 `AUTOCONVERTPCM` 開啟，在兩個聲道都聽得到；不使用通訊用處理管線，串流也選擇不觸發 ducking |
 | 計時 | 每個輸入以樣本數放到 session 時鐘上（[timing.rs](../../../native/capture/src/timing.rs) 的 `AudioAligner`） | 相同 |
 | 混音 | [mixer.rs](../../../native/capture/src/core/mixer.rs)：各輸入以單位增益相加（系統音訊，開啟麥克風時再加上麥克風），只在兩個以上輸入相加超過 −1 dBFS 時軟性限幅 | 相同 |
 | 編碼 | 經 AudioToolbox 的 AAC-LC，使用品質設定的音訊碼率（256 kbps），輸入為 float | 經 Media Foundation 的 AAC-LC；它只接受 16-bit PCM、最高 192 kbps：float 樣本會先轉換，更高的設定會降為 192 kbps 並在 session 中發出警告 |

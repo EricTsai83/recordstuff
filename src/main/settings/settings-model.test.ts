@@ -93,6 +93,7 @@ describe("settingsView", () => {
       "appearance",
       "updateChecks",
       "updates",
+      "setupGuide",
       // Keyboard Shortcuts (plan 073): read-only lists, one per category.
       "shortcutList:global",
       "shortcutList:window",
@@ -239,10 +240,20 @@ describe("camera (plan 075)", () => {
     expect(settingsAction(idle, on({ access: "denied" }), "camera", "openSettings")).toBe("openCameraSettings");
     expect(group(idle, on({ access: "restricted" }), "camera")?.diagnostics).toHaveLength(1);
     expect(group(idle, on({ enabled: false, access: "denied" }), "camera")).not.toHaveProperty("diagnostics");
+    // Off because macOS refused it: said, with the pane that allows it (native round, 2026-10-26).
+    expect(group(idle, on({ enabled: false, access: "denied" }), "camera")).toMatchObject({ noteKind: "status",
+      note: "macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.",
+      actions: [{ id: "openSettings", label: "Open camera settings…" }] });
+    expect(settingsAction(idle, on({ enabled: false, access: "denied" }), "camera", "openSettings")).toBe("openCameraSettings");
+    expect(group(idle, on({ enabled: false, access: "not-determined" }), "camera")).not.toHaveProperty("note");
     expect(group(idle, on(), "camera")).not.toHaveProperty("diagnostics");
     expect(group(idle, on(), "camera")).not.toHaveProperty("actions");
+    // Never asked: recordings leave it out, and the row asks at the user's press (review pass 2).
     expect(group(idle, on({ access: "not-determined" }), "camera")).toMatchObject({ noteKind: "status",
-      note: "macOS asks for camera access when you next record." });
+      note: "macOS has not been asked about the camera yet; recordings leave it out until it is allowed.",
+      actions: [{ id: "allow", label: "Allow camera…", enabled: true }] });
+    expect(settingsAction(idle, on({ access: "not-determined" }), "camera", "allow")).toBe("askCamera");
+    for (const state of busy) expect(settingsAction(state, on({ access: "not-determined" }), "camera", "allow"), state.type).toBeUndefined();
     expect(group(idle, { ...on({ access: "denied" }), language: "zh-TW" }, "camera")?.diagnostics?.[0]?.guidance).toContain("隱私權與安全性 → 相機");
   });
 
@@ -561,6 +572,11 @@ describe("microphone (plan 074)", () => {
     expect(settingsAction(idle, on({ access: "denied" }), "microphone", "openSettings")).toBe("openMicrophoneSettings");
     expect(group(idle, on({ access: "restricted" }), "microphone")?.diagnostics).toHaveLength(1);
     expect(group(idle, { ...context, microphone: { enabled: false, access: "denied" } }, "microphone")).not.toHaveProperty("diagnostics");
+    // Off because macOS refused it: a status note and the pane, rather than nothing (native round, 2026-10-26).
+    expect(group(idle, { ...context, microphone: { enabled: false, access: "denied" } }, "microphone")).toMatchObject({ noteKind: "status",
+      note: "macOS does not allow the microphone. Allow RecordStuff in System Settings to turn it on.",
+      actions: [{ id: "openSettings", label: "Open microphone settings…" }] });
+    expect(denied.diagnostics?.[0]?.reason).toBe("Recordings leave the microphone out until it is allowed.");
     expect(group(idle, on(), "microphone")).not.toHaveProperty("diagnostics");
     expect(group(idle, on({ access: "not-determined" }), "microphone")).toMatchObject({ noteKind: "status",
       note: "macOS asks for microphone access when you next record." });
@@ -673,7 +689,7 @@ describe("recording locks every preference except the language", () => {
     expect(view.hint).toBe("Recording in progress; only language, appearance and icon click can change.");
     // The Recording Studio's controls stop or cancel what runs (D19).
     // The Recording Studio's controls stop or cancel what runs (D19); its faders change the sound from the next on (D21).
-    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "log", "about", "studioControls", "systemGain"].includes(entry.id) || entry.kind === "shortcutList");
+    for (const entry of view.groups) expect(entry.enabled, entry.id).toBe(["outputFolder", "trayClick", "language", "appearance", "setupGuide", "log", "about", "studioControls", "systemGain"].includes(entry.id) || entry.kind === "shortcutList");
     // The folder row keeps only Show in Finder: Change… waits for the session to end.
     expect(view.groups.find(entry => entry.id === "outputFolder")?.choices.map(choice => [choice.id, choice.enabled])).toEqual([["change", false], ["reveal", true]]);
     expect(settingsAction(state, context, "trayClick", "menu")).toEqual({ setTrayClick: "menu" });
@@ -1002,7 +1018,7 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "segmented", "display"],
-    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"],
+    ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["setupGuide", "menu", "setup"],
     ...["global", "window", "recordings", "player", "fullScreen"].map(category => [`shortcutList:${category}`, undefined, `shortcutList:${category}`]),
     ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
   ]);
@@ -1245,7 +1261,7 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
 
   it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
-    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "about"]);
+    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "setupGuide", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 
@@ -1254,12 +1270,12 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
       ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["systemAudio", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
-      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"],
+      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["setupGuide", "Getting started"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新", "開始使用",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });

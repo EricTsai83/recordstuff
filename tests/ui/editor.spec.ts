@@ -29,7 +29,8 @@ test.beforeEach(async ({ launchApp }) => {
   fs.copyFileSync(path.join(MEDIA, "landscape-8s.mp4"), clip);
   fs.utimesSync(clip, at, at);
   clipHash = sha(clip);
-  app = await launchApp({ data });
+  // A settings file, as an existing user has: with none the app is a new install and opens its first-launch guide.
+  app = await launchApp({ data, settings: {} });
   await app.evaluate(h => h.rightClickTray());
   const waiting = app.page("settings.html");
   await app.evaluate(h => h.clickTrayItem("^Open RecordStuff$"));

@@ -28,3 +28,20 @@ test("old settings reset once at startup and preferences chosen in the UI surviv
   expect((await fs.readdir(path.dirname(settingsFile))).filter(name => name.startsWith("settings.json.reset-backup"))).toEqual(["settings.json.reset-backup"]);
   await restarted.close();
 });
+
+// The first-launch guide (2026-10-26): a new install, with no settings file, opens the window with the guide over it;
+// finishing it saves it as done, so the next launch shows no window by itself. The background host allows the screen,
+// so the guide offers Done rather than Set up later, which both finish it.
+test("a new install opens the first-launch guide by itself, and Done closes it for good", async ({ launchApp }) => {
+  test.skip(process.platform !== "darwin", "the guide is macOS's only");
+  const first = await launchApp({ offline: true, settings: false });
+  const page = await first.page("settings.html");
+  const guide = page.getByRole("dialog", { name: "Welcome to RecordStuff" });
+  await expect(guide).toBeVisible();
+  await page.locator("#onboarding-done").click();
+  await expect(guide).toHaveCount(0);
+  const settingsFile = path.join(first.data, "userData/settings.json");
+  await expect.poll(async () => JSON.parse(await fs.readFile(settingsFile, "utf8").catch(() => "{}")).onboardingDone).toBe(true);
+  expect(JSON.parse(await fs.readFile(settingsFile, "utf8"))).toMatchObject({ microphone: true, camera: true });
+  await first.close();
+});

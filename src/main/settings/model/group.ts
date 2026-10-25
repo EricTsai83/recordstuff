@@ -52,6 +52,7 @@ const SECTIONS: Record<string, string> = {
   language: "display", appearance: "display",
   updateChecks: "updates", updates: "updates",
   log: "diagnostics", localData: "cleanup",
+  setupGuide: "setup",
 };
 const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   source: "Source and output",
@@ -65,6 +66,7 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   controls: "Controls and notifications",
   display: "Language and appearance",
   updates: "Updates",
+  setup: "Getting started",
   diagnostics: "Diagnostic tools",
   cleanup: "Reset and cleanup",
 };

@@ -1561,3 +1561,57 @@ for (const platform of ["darwin", "win32"] as const) {
     await expect(page.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
   });
 }
+
+test("S148 the first-launch guide: the screen's step, then Allow asks for each input, a refusal turns it off, Escape sets it aside, and General opens it again (2026-10-26)", { tag: "@general" }, async () => {
+  await host.evaluate(async h => {
+    h.theme("light"); await h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]);
+    h.state.onboardingState = { type: "needsPermission", needsRelaunch: false };
+    h.state.onboardingAllows = true;
+    h.state.onboardingContext = { ...h.baseContext(), onboarding: { open: true }, microphone: { enabled: true, access: "not-determined" },
+      camera: { enabled: true, available: true, access: "not-determined", layout: { width: 0.2, height: 0.3, rounding: 0.15, mirror: false, positions: [] } } };
+    h.push(h.settingsView(h.state.onboardingState, h.state.onboardingContext));
+  });
+  const guide = page.getByRole("dialog", { name: "Welcome to RecordStuff" });
+  await expect(guide, "S148 the guide opens over the window").toBeVisible();
+  await expect(page.locator("#onboarding-done"), "S148 nothing to finish before the screen is allowed").toHaveCount(0);
+  await expect(page.locator("#onboarding-microphone-allow"), "S148 the inputs wait for the screen").toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Camera" }), "S148 their switches too").toBeDisabled();
+  await clearCalls();
+  await clickAt(page, "#onboarding-screen-open", { scroll: false });
+  await expect.poll(calls, { message: "S148 the screen's step opens System Settings through main" }).toEqual([["onboarding", "screen:open"]]);
+  // The screen allowed: its step reads Allowed, and the way to begin recording is said.
+  await host.evaluate(h => { h.state.onboardingState = { type: "idle" }; h.push(h.settingsView(h.state.onboardingState, h.state.onboardingContext!)); });
+  await expect(guide.getByText("Not allowed ones turn off when you finish."), "S148 said while an input is still to allow").toBeVisible();
+  await clearCalls();
+  await clickAt(page, "#onboarding-microphone-allow", { scroll: false });
+  await expect.poll(calls, { message: "S148 Allow asks main, which asks macOS" }).toEqual([["onboarding", "microphone:allow"]]);
+  await expect(page.locator("#onboarding-microphone-allow"), "S148 an allowed input offers no Allow").toHaveCount(0);
+  await host.evaluate(h => { h.state.onboardingAllows = false; });
+  await clearCalls();
+  await clickAt(page, "#onboarding-camera-allow", { scroll: false });
+  await expect.poll(calls).toEqual([["onboarding", "camera:allow"]]);
+  await expect(page.getByRole("switch", { name: "Camera" }), "S148 a refused input is turned off").not.toBeChecked();
+  await expect(page.locator("#onboarding-camera-settings"), "S148 and offers System Settings").toBeVisible();
+  await expect(guide.getByText("Press ⇧⌘1 to start recording."), "S148 where recording begins, once nothing is left to allow").toBeVisible();
+  await clearCalls();
+  await page.getByRole("switch", { name: "Microphone" }).click();
+  await expect.poll(calls, { message: "S148 a switch is the same setting as Recording settings'" }).toEqual([["onboarding", "microphone:off"]]);
+  await expect(page.getByRole("switch", { name: "Microphone" })).not.toBeChecked();
+  // A guide that could not be saved as done stays open and says so inside it (review pass 2).
+  await host.evaluate(h => { h.state.onboardingFinishFails = true; });
+  await page.locator("#onboarding-done").click();
+  await expect(guide.getByRole("alert"), "S148 a failed Done is said in the guide").toHaveText("Could not apply this setting. Your current settings are shown.");
+  await expect(guide, "S148 and the guide stays").toBeVisible();
+  await host.evaluate(h => { h.state.onboardingFinishFails = false; });
+  await clearCalls();
+  await page.keyboard.press("Escape");
+  await expect.poll(calls, { message: "S148 Escape sets the guide aside" }).toEqual([["onboarding", "finish"]]);
+  await expect(guide, "S148 and it closes").toHaveCount(0);
+  // General's way back: a request main answers by opening the guide.
+  await host.evaluate(h => h.pushModel({ type: "idle" }));
+  await page.locator("#tab-general").click();
+  await clearCalls();
+  await page.getByRole("button", { name: "Open setup guide…" }).click();
+  await expect.poll(calls, { message: "S148 General opens the guide again" }).toEqual([["setupGuide", "open"]]);
+  await host.evaluate(h => { h.state.onboardingContext = undefined; });
+});

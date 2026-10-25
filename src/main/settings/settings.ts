@@ -70,13 +70,16 @@ export interface Settings {
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
   countdownSound: boolean;
-  /** Mix the microphone into the recording's track (plan 074); off by default, so no update starts recording a room. */
+  /**
+   * Mix the microphone into the recording's track (plan 074). On by default since 2026-10-26 (the maintainer's decision),
+   * turned off when macOS refuses it (input-access.ts); a settings file saves every field, so this reaches new installs only.
+   */
   microphone: boolean;
   /** The chosen input, by the id the engine listed and the name it had then; absent is the system default input. */
   microphoneDevice?: MicrophoneDevicePreference;
   /** System audio's and the microphone's volumes in percent (plan 075, D21; audio-volume.ts); 100 leaves them as they are. */
   audioVolume: AudioVolume;
-  /** Compose the camera into recordings (plan 075, D10); off by default, as the microphone. */
+  /** Compose the camera into recordings (plan 075, D10); on by default and turned off when refused, as the microphone. */
   camera: boolean;
   /** The camera bubble's size, rounding, mirror and position on each display (plan 075, D1–D3, D8; camera-layout.ts). */
   cameraLayout: CameraLayout;
@@ -96,6 +99,11 @@ export interface Settings {
   libraryFavorites: string[];
   /** The category the tab last showed (2026-10-09): absent for every recording, `null` for Uncategorized. */
   libraryShown?: string | null;
+  /**
+   * The first-launch guide was finished or set aside (2026-10-26): a new install starts without it, so the guide opens;
+   * a file written before the guide existed reads as done, so no existing user meets it.
+   */
+  onboardingDone: boolean;
 }
 
 interface MicrophoneDevicePreference {
@@ -146,9 +154,9 @@ export function defaultSettings(outputDir: string): Settings {
     editableRecording: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
-    microphone: false,
+    microphone: true,
     audioVolume: { ...DEFAULT_AUDIO_VOLUME },
-    camera: false,
+    camera: true,
     cameraLayout: copyCameraLayout(DEFAULT_CAMERA_LAYOUT),
     studioPreview: { ...DEFAULT_STUDIO_PREVIEW },
     // A new install opens the menu, as menu bar icons do; recording is one choice away or on the shortcut.
@@ -157,6 +165,7 @@ export function defaultSettings(outputDir: string): Settings {
     libraryLayout: "grid",
     libraryPreviewSound: false,
     libraryFavorites: [],
+    onboardingDone: false,
   };
 }
 
@@ -260,13 +269,15 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryPreviewSound = field("libraryPreviewSound", isBoolean, defaults.libraryPreviewSound, `libraryPreviewSound is not a boolean: using ${defaults.libraryPreviewSound ? "on" : "off"}`);
   const libraryFavorites = field("libraryFavorites", isFavorites, defaults.libraryFavorites, "libraryFavorites is invalid: using none");
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
+  // Absent in every file written before the guide: done, so only a new install, which has no file, sees it.
+  const onboardingDone = field("onboardingDone", isBoolean, true, "onboardingDone is not a boolean: the guide stays closed");
   return { settings: { appearance, display, hideSystemUi, editableRecording, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
     camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }),
     studioPreview: { rate: studioPreview.rate, view: studioPreview.view }, trayClick,
-    fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }) }, warnings };
+    fileNameTemplate, libraryLayout, libraryPreviewSound, libraryFavorites, ...(libraryShown === undefined ? {} : { libraryShown }), onboardingDone }, warnings };
 }
 
 export class SettingsStore {
@@ -444,6 +455,13 @@ export class SettingsStore {
 
   get libraryPreviewSound(): boolean { return this.settings.libraryPreviewSound; }
 
+  get onboardingDone(): boolean { return this.settings.onboardingDone; }
+
+  setOnboardingDone(done: boolean): Promise<void> {
+    if (typeof done !== "boolean") return Promise.reject(new Error(`unsupported onboarding state: ${JSON.stringify(done)}`));
+    return this.save((current) => ({ ...current, onboardingDone: done }));
+  }
+
   setLibraryPreviewSound(enabled: boolean): Promise<void> {
     if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported preview sound: ${JSON.stringify(enabled)}`));
     return this.save((current) => ({ ...current, libraryPreviewSound: enabled }));
@@ -570,7 +588,10 @@ export class SettingsStore {
   }
 
   private load(defaultOutputDir: string): Settings {
-    const fallback = defaultSettings(defaultOutputDir);
+    const defaults = defaultSettings(defaultOutputDir);
+    // Only a missing file is a new install: one that is there but unreadable, reset or newer belongs to an existing
+    // user, who never meets the first-launch guide (2026-10-26).
+    const fallback = { ...defaults, onboardingDone: true };
     let text: string;
     try {
       text = fs.readFileSync(this.filePath, "utf8");
@@ -578,8 +599,9 @@ export class SettingsStore {
       if (errnoCode(cause) !== "ENOENT") {
         this.log(`settings: cannot read ${this.filePath}: ${String(cause)}; using defaults`);
         this.unusableOnDisk = true;
+        return fallback;
       }
-      return fallback;
+      return defaults;
     }
     const parsed = parseSettings(text, this.platform);
     if (!parsed) {

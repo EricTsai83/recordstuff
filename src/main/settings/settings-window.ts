@@ -782,6 +782,9 @@ export class SettingsWindow {
       : action === "openNotificationSettings" ? translate("Could not open System Settings. Allow RecordStuff in System Settings → Notifications.", language)
       : action === "retryShortcuts" ? translate("The shortcut is still unavailable; another app may be using it.", language)
       : action === "openOutputDir" ? translate("Could not open the output folder", language)
+      // Turned back off because macOS refuses it (2026-10-26): says why and where to allow it, not a failed save.
+      : isTurningOn(action, "setCamera") ? translate("RecordStuff cannot use the camera. Allow it in System Settings → Privacy & Security → Camera.", language)
+      : isTurningOn(action, "setMicrophone") ? translate("RecordStuff cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.", language)
       : undefined;
     return this.deliver({
       view: this.view(),
@@ -793,4 +796,9 @@ export class SettingsWindow {
   private log(message: string): void {
     this.options.log?.(message);
   }
+}
+
+/** An action that turns the camera's or the microphone's switch on. */
+function isTurningOn(action: unknown, key: "setCamera" | "setMicrophone"): boolean {
+  return typeof action === "object" && action !== null && (action as Record<string, unknown>)[key] === true;
 }

@@ -493,7 +493,6 @@ export const ZH_TW = {
   "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.":
     "與系統音訊混成同一條音軌。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
   "Microphone access is off": "未允許取用麥克風",
-  "Recording will not start while Microphone is on.": "開啟「麥克風」時無法開始錄影。",
   "Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.":
     "請在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff，或關閉「麥克風」。",
   "Open microphone settings…": "開啟麥克風設定…",
@@ -520,15 +519,20 @@ export const ZH_TW = {
   "The microphone dropped out during the recording. Only system audio was recorded while it was out.":
     "錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。",
   "RecordStuff cannot use the microphone. Click to open System Settings.": "RecordStuff 無法使用麥克風。按一下以開啟系統設定。",
+  "RecordStuff cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.": "RecordStuff 無法使用麥克風。請到「系統設定 → 隱私權與安全性 → 麥克風」允許。",
   // The camera (plan 075).
   Camera: "相機",
   "Shows your camera in the recording as a bubble.": "以泡泡的形式在錄影中顯示你的相機畫面。",
   "Camera access is off": "未允許取用相機",
-  "Recording will not start while Camera is on.": "開啟「相機」時無法開始錄影。",
+  "Recordings leave the camera out until it is allowed.": "允許之前，錄影不會帶入相機。",
+  "Recordings leave the microphone out until it is allowed.": "允許之前，錄影不會帶入麥克風。",
+  "macOS does not allow the microphone. Allow RecordStuff in System Settings to turn it on.": "macOS 未允許使用麥克風。請先到系統設定允許 RecordStuff，才能開啟。",
+  "macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.": "macOS 未允許使用相機。請先到系統設定允許 RecordStuff，才能開啟。",
   "Allow RecordStuff in System Settings → Privacy & Security → Camera, or turn Camera off.":
     "請在「系統設定 → 隱私權與安全性 → 相機」中允許 RecordStuff，或關閉「相機」。",
   "Open camera settings…": "開啟相機設定…",
-  "macOS asks for camera access when you next record.": "下次錄影時，macOS 會詢問是否允許取用相機。",
+  "macOS has not been asked about the camera yet; recordings leave it out until it is allowed.": "尚未詢問 macOS 是否允許取用相機；允許之前，錄影不會帶入相機。",
+  "Allow camera…": "允許相機…",
   "Windows records the camera only while desktop apps may use it in Settings → Privacy & security → Camera.":
     "只有在「設定 → 隱私權與安全性 → 相機」允許桌面應用程式使用相機時，Windows 才會錄到相機畫面。",
   "The camera was unavailable, so recording did not start.": "相機無法使用，因此沒有開始錄影",
@@ -537,6 +541,7 @@ export const ZH_TW = {
   "Connect a camera and allow desktop apps in Settings → Privacy & security → Camera, or turn Camera off in Recording settings.":
     "請連接相機，並在「設定 → 隱私權與安全性 → 相機」中允許桌面應用程式存取；或在錄影設定中關閉「相機」。",
   "RecordStuff cannot use the camera. Click to open System Settings.": "RecordStuff 無法使用相機。按一下以開啟系統設定。",
+  "RecordStuff cannot use the camera. Allow it in System Settings → Privacy & Security → Camera.": "RecordStuff 無法使用相機。請到「系統設定 → 隱私權與安全性 → 相機」允許。",
   "Hide camera": "隱藏相機",
   "Camera device": "相機裝置",
   "Recordings use the system default camera until {label} is connected.": "{label} 連接前，錄影會使用系統預設的相機。",
@@ -714,6 +719,28 @@ export const ZH_TW = {
   "Redo (Ctrl+Y)": "重做 (Ctrl+Y)",
   "Write the recording with the camera and sound set here to a new file beside it": "依這裡設定的相機與聲音，在錄影旁寫出一個新檔案",
   "The export failed while encoding. The recording is unchanged; export again.": "編碼時匯出失敗。原始錄影沒有變動，請再匯出一次。",
+  // The first-launch guide (2026-10-26).
+  "Getting started": "開始使用",
+  "Setup guide": "設定指引",
+  "Open setup guide…": "開啟設定指引…",
+  "Screen recording, the microphone and the camera, step by step.": "逐步設定螢幕錄製、麥克風與相機。",
+  "Welcome to RecordStuff": "歡迎使用 RecordStuff",
+  "Screen recording": "螢幕錄製",
+  Required: "必要",
+  Optional: "選用",
+  "Lets RecordStuff record your screen and its sound. Turn RecordStuff on in System Settings; macOS may then ask you to quit and reopen it.": "讓 RecordStuff 錄下螢幕與它的聲音。請在系統設定中開啟 RecordStuff；之後 macOS 可能會要求結束並重新打開。",
+  Allowed: "已允許",
+  Allow: "允許",
+  "Mixes your voice with the system's sound in the recording.": "把你的聲音和系統聲音一起錄進影片。",
+  "Shows you in a bubble over the recording.": "在錄影畫面上以泡泡顯示你。",
+  "Start recording from the menu bar icon.": "從選單列圖示開始錄影。",
+  "Set up later": "稍後再設定",
+  "Allow these to start recording.": "允許以下項目就能開始錄影。",
+  "Not allowed": "未允許",
+  "Not allowed ones turn off when you finish.": "未允許的項目會在完成時關閉。",
+  "Press {keys} to start recording.": "按 {keys} 開始錄影。",
+  Done: "完成",
+  "Open Recording Studio": "開啟錄影工作室",
   /** Between a shortcut's alternatives, ⌘W or Esc. */
   or: "或",
 } as const;

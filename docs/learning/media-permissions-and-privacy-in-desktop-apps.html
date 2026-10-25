@@ -565,7 +565,9 @@ pre code .sh-prompt { color: #ff946e; font-weight: 400; }
 
 <h3>預設關閉，在情境中詢問</h3>
 
-<p>麥克風與相機都是預設關閉的設定。各有兩個開關，設定同一個值：設定視窗裡的開關，以及選單列閒置選單裡的「錄製麥克風」「錄製相機」勾選項目。打開時才請求，且只在 macOS 還沒問過時請求：</p>
+<p>（2026-10-26 更新：維護者改為兩者預設開啟，新安裝在首次啟動時開啟一個指引，先說明螢幕錄製、麥克風與相機各自的用途，只有在使用者按下「允許」時才觸發 macOS 的詢問，一次一個，被拒就把開關關掉；設定檔保存每個欄位，所以既有使用者保留原本的選擇。以下描述的是在此之前的做法，取捨表已一併更新。）</p>
+
+<p>麥克風與相機原本都是預設關閉的設定。各有兩個開關，設定同一個值：設定視窗裡的開關，以及選單列閒置選單裡的「錄製麥克風」「錄製相機」勾選項目。打開時才請求，且只在 macOS 還沒問過時請求：</p>
 
 <pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">/** The same for the camera (plan 075): asked when the Camera switch is turned on. */</span>
 <span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">askCameraAccess</span><span class="o">(</span>platform<span class="o">:</span> <span class="t">NodeJS</span><span class="o">.</span><span class="p">Platform</span> <span class="o">=</span> process<span class="o">.</span><span class="p">platform</span><span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>boolean<span class="o">&gt;</span> <span class="o">{</span>
@@ -631,8 +633,8 @@ pre code .sh-prompt { color: #ff946e; font-weight: 400; }
   <thead><tr><th>選擇</th><th>RecordStuff 選了</th><th>成立的條件</th><th>接受的代價</th><th>什麼會翻轉</th></tr></thead>
   <tbody>
     <tr><td>身分</td><td>固定的 reverse-DNS 識別碼與固定的自簽憑證，不公證</td><td>不付費的發佈管道；使用者願意手動放行一次</td><td>第一次開啟要手動放行；換憑證等於換 App</td><td>改用 Developer ID 與公證（DR 改為指向 Team ID，使用者要重新授權一次）</td></tr>
-    <tr><td>詢問時機</td><td>啟動時不問麥克風與相機；打開開關時問，否則在開始錄影時問</td><td>這兩個輸入是選用功能；有明確的開關</td><td>詢問可能出現在錄影流程中，倒數要等使用者回答</td><td>它們成為大多數使用者都會用的核心功能</td></tr>
-    <tr><td>預設</td><td>麥克風與相機預設關閉；被拒絕時開關仍保持開啟</td><td>既有使用者更新後，錄到的內容不能改變</td><td>想用的人要多打開一次</td><td>App 的主要用途就是錄這個輸入</td></tr>
+    <tr><td>詢問時機</td><td>新安裝在首次啟動指引中按「允許」時問（2026-10-26 起）；打開開關時問，否則在開始錄影時問</td><td>這兩個輸入是選用功能；有明確的開關</td><td>詢問可能出現在錄影流程中，倒數要等使用者回答</td><td>它們成為大多數使用者都會用的核心功能</td></tr>
+    <tr><td>預設</td><td>麥克風與相機預設開啟（2026-10-26 起；之前預設關閉）；被拒絕時開關會關掉；既有使用者保留已儲存的選擇</td><td>設定檔保存每個欄位，更新不會改變既有使用者錄到的內容</td><td>新使用者第一次啟動就會看到兩個詢問；錄到不想錄的聲音或畫面要重錄</td><td>使用者多半不想錄這兩個輸入</td></tr>
     <tr><td>被拒絕時</td><td>倒數前拒絕開始，提示卡附上直達面板的按鈕</td><td>使用者明確打開了這個輸入；錄影無法重來</td><td>多一次中斷</td><td>使用者偏好「先錄再說」，且能在事後補錄</td></tr>
     <tr><td>看不到新授權</td><td>拒絕提示卡旁提供「已經允許了？重新啟動」</td><td>主行程讀到舊答案；App 閒置</td><td>使用者要多按一次，App 會重啟</td><td>作業系統即時反映授權變更；或驗證了短命行程能讀到新狀態</td></tr>
     <tr><td>裝置生命週期</td><td>只在錄影與可見的預覽期間開啟；所有結束路徑都關閉</td><td>指示器是使用者唯一的即時證據</td><td>每次開始都要重新開啟裝置</td><td>開啟延遲大到影響開始時間，且使用者明確要求待命</td></tr>
