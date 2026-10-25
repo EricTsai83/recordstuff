@@ -893,7 +893,7 @@ test("S143–S145 the Studio's preview panel: Power saving by default, no camera
   const stage = page.locator(".studio-stage .camera-preview-stage");
   const rate = page.getByRole("combobox", { name: /Preview rate/ });
   await expect(rate, "S143 Power saving by default").toHaveText(/Power saving/);
-  await expect(stage.getByRole("button"), "S143 nothing over the empty stage to press").toHaveCount(0);
+  await expect(stage.getByRole("button").filter({ hasNotText: "Turn on preview" }), "S143 nothing over the empty stage to press but Turn on preview").toHaveCount(0);
   await page.waitForTimeout(500);
   expect(await opened(), "S143 opening the Studio opens no camera before Live preview").toBe(0);
   const bubble = page.getByRole("application", { name: "Preview" });
@@ -1014,7 +1014,11 @@ test("S147 Turn on preview over the stage while Live preview is off: shown only 
   await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
-    h.state.cameraContext = { ...h.baseContext(), camera: { enabled: false, available: true, access: "granted" } };
+    // The bubble in the middle of the display, under where the button shows.
+    h.state.cameraContext = { ...h.baseContext(),
+      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }],
+      camera: { enabled: false, available: true, access: "granted",
+        layout: { width: 0.21, height: 0.28, rounding: 0.15, mirror: false, positions: [{ display: "1", x: 0.5, y: 0.5 }] } } };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
   await page.locator("#tab-studio").click();
@@ -1031,11 +1035,35 @@ test("S147 Turn on preview over the stage while Live preview is off: shown only 
   await page.locator(".studio-stage .camera-preview-stage").hover({ position: { x: 12, y: 12 } });
   await expect.poll(shown, { message: "S147 shown with the pointer anywhere on the stage" }).toBe(true);
   expect(await places(), "S147 it moves nothing").toEqual(before);
+  // However narrow the picture, it stays inside it (a portrait display in a short window: the stage's floor).
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!,
+      displays: [{ id: "1", label: "Studio", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: true, x: 0, y: 0 }] };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+    h.setSize(1000, 480);
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const picture = document.querySelector(".studio-stage .camera-preview-stage")!.getBoundingClientRect();
+    const button = document.querySelector(".studio-stage-start > button")!.getBoundingClientRect();
+    return picture.width < 160 && button.left >= picture.left && button.right <= picture.right && button.top >= picture.top && button.bottom <= picture.bottom;
+  }), { message: "S147 inside a narrow portrait picture" }).toBe(true);
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!,
+      displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }] };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+    h.setSize(1000, 720);
+  });
+  // A bubble placed under it is still what the pointer takes there, so it drags from its middle too.
+  await expect.poll(() => page.evaluate(() => {
+    const handle = document.querySelector(".studio-stage [role=application]")!.getBoundingClientRect();
+    return document.elementFromPoint(handle.left + handle.width / 2, handle.top + handle.height / 2)?.getAttribute("role");
+  }), { message: "S147 the bubble stays over it" }).toBe("application");
   await page.mouse.move(5, 5);
   await start.focus();
   await expect.poll(shown, { message: "S147 shown with keyboard focus" }).toBe(true);
   await clearCalls();
-  await start.click();
+  // The bubble covers its middle here, so it is pressed by the keyboard, as it has focus.
+  await page.keyboard.press("Enter");
   await expect.poll(calls, { message: "S147 it turns Live preview on as the switch does" }).toEqual([["studioLive", "on"]]);
   await host.evaluate(h => {
     h.state.cameraContext = { ...h.state.cameraContext!, studio: { preview: { live: true }, showing: true } };

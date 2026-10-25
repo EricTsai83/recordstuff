@@ -359,7 +359,8 @@ function StageStart({ live }: { live: SettingsGroup }) {
   const id = `setting-${live.id}-stage`;
   return (
     <div className="studio-stage-start">
-      <Button id={id} variant="outline" className="h-9 gap-1.5 rounded-full px-4 text-sm"
+      {/* Kept inside a narrow portrait picture, which clips: its words wrap rather than run past it. */}
+      <Button id={id} variant="outline" className="h-auto min-h-9 max-w-[calc(100%-12px)] gap-1.5 rounded-full px-4 py-1.5 text-center text-sm whitespace-normal"
         onClick={() => void model.choose(live.id, "on", id)}>
         <Radio aria-hidden="true" />{model.text("Turn on preview")}
       </Button>
@@ -421,8 +422,8 @@ export function Studio() {
       <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}>
-          {live && shown.off && live.enabled && model.committed(live) !== "on" && <StageStart live={live} />}
           <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={live ? shown : undefined}
+            overlay={live && shown.off && live.enabled && model.committed(live) !== "on" ? <StageStart live={live} /> : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
           {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24). */}
           {live?.note && <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>}

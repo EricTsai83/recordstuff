@@ -9,7 +9,7 @@
  * the whole picture (D17), only while in sight, and the bubble is dragged over it unseen, with a word under the picture
  * when the camera gives none.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
 import { bubbleRadius, bubbleRect, cameraViewRect, positionFromRect, type CameraLayout, type CameraPosition } from "../../../shared/camera-layout";
 import { previewDecoder } from "../../lib/preview-decoder";
@@ -99,11 +99,13 @@ export interface PreviewShown {
   view: StudioView;
 }
 
-export function CameraPreview({ group, preview, disabled, describedBy, statusOutside, shown }: {
+export function CameraPreview({ group, preview, disabled, describedBy, statusOutside, shown, overlay }: {
   group: SettingsGroup; preview: CameraPreviewView; disabled: boolean; describedBy: string | undefined;
   /** The Studio says a session's status in its own line of controls (2026-10-23), not over the picture. */
   statusOutside?: boolean;
   shown?: PreviewShown | undefined;
+  /** Over the picture and under the bubble, which stays the one taking the pointer wherever it is placed. */
+  overlay?: ReactNode;
 }) {
   const id = `setting-${group.id}`;
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
@@ -192,6 +194,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
         <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true"
           style={cameraOnly ? { clipPath: `inset(${enlarged.y}px ${size.width - enlarged.x - enlarged.width}px ${size.height - enlarged.y - enlarged.height}px ${enlarged.x}px round ${enlargedRadius}px)` } : undefined} />
         {showsBubble && <div className="camera-preview-bubble" aria-hidden="true" style={box} />}
+        {overlay}
         {/* What is dragged: the bubble, or a target of at least HANDLE_MIN pixels centred on it when it is drawn smaller. */}
         {draggable && <div
           id={id}

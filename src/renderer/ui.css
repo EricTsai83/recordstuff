@@ -1232,17 +1232,13 @@
   }
   /* Turn on preview over the stage while Live preview is off (2026-10-25): glass, shown only while the pointer is on
      the stage or the button has focus, so the bare stage stays bare. Over the picture, so nothing moves. */
+  /* Inside the picture, before the bubble's handle, so the bubble stays over it wherever it is placed. */
   .studio-stage-start {
     position: absolute;
     inset: 0;
-    z-index: 1;
     display: grid;
     place-items: center;
     pointer-events: none;
-  }
-  /* The bubble stays over it, to be dragged wherever it is placed. */
-  .studio-stage .camera-preview-handle {
-    z-index: 2;
   }
   .studio-stage-start > button {
     pointer-events: auto;
