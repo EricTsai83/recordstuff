@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   BASELINES_PATH, CPU_BUDGET, CpuSampler, IDLE_ROLES, afterStudio, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles, judgeSettingsOpen, judgeSteadyState, parseSample,
   processRole, roleTreeFromPs, rolesFromPs, summarize, type Sample, type Summary,
@@ -224,8 +224,8 @@ describe("process roles and the idle contract (plan 049)", () => {
 describe("a sampler that stops on its own (review)", () => {
   it.skipIf(process.platform === "win32")("reports an early exit and a helper that could not start", async () => {
     const quits = new CpuSampler("/usr/bin/true", process.pid);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(quits.failure).toMatch(/^the CPU sampler exited early \(code 0\) after 0 sample\(s\)$/);
+    // Waited for rather than slept on: starting and ending a process can take longer than a fixed 300 ms under load.
+    await vi.waitFor(() => expect(quits.failure).toMatch(/^the CPU sampler exited early \(code 0\) after 0 sample\(s\)$/), { timeout: 5000 });
     await quits.stop();
     const missing = new CpuSampler(path.join(os.tmpdir(), "no-such-cpu-sampler"), process.pid);
     await missing.stop();

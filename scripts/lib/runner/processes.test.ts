@@ -1,4 +1,4 @@
-import { spawn, type SpawnSyncReturns } from "node:child_process";
+import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,7 +106,8 @@ describe.skipIf(process.platform === "win32")("interrupted build", () => {
     // A shell with a background grandchild: stopping pnpm alone would leave the child writing out/.
     const build = startBuild(process.cwd(), ["/bin/sh", "-c", "/bin/sleep 30 & /bin/sleep 30; wait"]);
     pid = build.child.pid;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Both sleeps are in the group before it is stopped, or a stop that missed the grandchild could still pass.
+    await vi.waitFor(() => expect(spawnSync("pgrep", ["-g", String(pid), "sleep"], { encoding: "utf8" }).stdout.trim().split("\n")).toHaveLength(2), { timeout: 5000 });
     expect(groupAlive(pid)).toBe(true);
     const lines: string[] = [];
     const exit = await interruptExitCode(name, async () => {

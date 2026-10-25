@@ -18,7 +18,9 @@ import { pairRecordingsWithLog } from "./verify.mts";
 class Host implements RecorderHost {
   private message: ((m: HostMessage) => void) | undefined;
   private failure: ((code: "capture_host_crashed" | "capture_host_unresponsive", detail: string) => void) | undefined;
-  async start(): Promise<void> {}
+  /** The sessions the recorder asked to capture: it asks once their writer is open and they await `prepared`. */
+  readonly started: string[] = [];
+  async start(sessionId: string): Promise<void> { this.started.push(sessionId); }
   record(sessionId: string): void { this.emit({ type: "started", sessionId }); }
   stop(): void {}
   onMessage(listener: (m: HostMessage) => void): void { this.message = listener; }
@@ -83,8 +85,7 @@ function app(options: { maxBytes: number; keep: number; slow: number[] }) {
     qualities.push({ videoQuality: "standard", resolutionCap: cap, frameRate: 30 });
     recorder.toggle();
     await vi.waitFor(() => expect(recorder.state.type).toBe("starting"));
-    await vi.waitFor(() => expect(recorder.sessionId).toBe(id));
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await vi.waitFor(() => expect(host.started).toContain(id));
     host.emit({ type: "prepared", sessionId: id, mimeType: "video/mp4", capture: REPORT(height) });
     // The engine writes the file itself and reports how much (plan 076).
     [...writers.values()].at(-1)!.bytes = 3;

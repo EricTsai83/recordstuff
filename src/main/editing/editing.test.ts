@@ -83,9 +83,12 @@ function setup(overrides: Partial<Deps> = {}, worker = runner()) {
   return { editing, worker, views, published, logs, block: (reason: typeof blocked) => { blocked = reason; } };
 }
 
-/** Waits for the export started by the last choice to settle. */
+/**
+ * Waits for the export started by the last choice to settle. Bounded by time, not by a count of 5 ms sleeps, which a
+ * loaded runner stretches and which gave up silently, leaving the next assertion to fail.
+ */
 async function settled(editing: InstanceType<typeof Editing>): Promise<void> {
-  for (let n = 0; n < 200 && editing.exporting; n++) await new Promise((resolve) => setTimeout(resolve, 5));
+  await vi.waitFor(() => expect(editing.exporting).toBe(false), { timeout: 5000, interval: 5 });
 }
 
 /** Files in the recording's folder, without the recording. */
@@ -513,7 +516,7 @@ describe("an editable recording (plan 087)", () => {
     return JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")) as Record<string, unknown>;
   };
   const ready = async (ctx: ReturnType<typeof setup>): Promise<void> => {
-    for (let n = 0; n < 100 && Object.keys(ctx.editing.view()?.editable?.preview ?? {}).length < 2; n++) await new Promise((resolve) => setTimeout(resolve, 2));
+    await vi.waitFor(() => expect(Object.keys(ctx.editing.view()?.editable?.preview ?? {}).length).toBeGreaterThanOrEqual(2), { timeout: 5000, interval: 5 });
   };
 
   it("opens where the recording left the camera and the volumes, can be exported with no cut, and prepares its preview", async () => {

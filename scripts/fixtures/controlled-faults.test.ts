@@ -84,12 +84,11 @@ describe("controlled acceptance faults", () => {
     deliver({ type: "prepared", sessionId: "A", mimeType: "video/mp4", capture: { videoBitsPerSecond: 1, audioBitsPerSecond: 1, warnings: [] } });
     await fs.writeFile(file!, new Uint8Array([1, 2, 3]));
     deliver({ type: "progress", sessionId: "A", bytes: 3 });
-    await pause(20);
+    await until(() => recorder.state.type === "recording");
     faults.set("write", "eio");
     deliver({ type: "progress", sessionId: "A", bytes: 3 });
     await until(() => faults.heldCounts.cleanup === 1);
-    await pause(50);
-    expect(recorder.state.type).toBe("idle");
+    await until(() => recorder.state.type === "idle" && results.all.length > 0);
     expect(results.all[0]).toMatchObject({ code: "output_write_failed", outcome: "pending", acknowledged: false });
 
     expect(faults.release("cleanup")).toBe(1);
@@ -106,9 +105,8 @@ describe("controlled acceptance faults", () => {
     const faults = new ControlledFaults(undefined, true);
     const storage = faults.storage(new RecordingResultStore(history, () => undefined));
     const results = new RecordingResults(storage, () => undefined, () => undefined, [60_000]);
-    await pause(20);
+    await until(() => faults.heldCounts["history-load"] === 1);
     expect(results.loading).toBe(true);
-    expect(faults.heldCounts["history-load"]).toBe(1);
     faults.release("history-load");
     await results.ready;
     await until(() => !results.busy);

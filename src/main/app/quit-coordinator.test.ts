@@ -1,6 +1,16 @@
 import { expect, it, vi } from "vitest";
 import { installQuitCoordinator } from "./quit-coordinator";
 
+/**
+ * Lets an admitted attempt finish: the coordinator yields once with setImmediate before it quits, and a 0 ms timer alone
+ * can run before that immediate, depending on the loop phase the test resumed in. An immediate queued from the timer runs
+ * after it.
+ */
+const settle = async (): Promise<void> => {
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setImmediate(resolve));
+};
+
 it("joins repeated quit requests, defers unsafe exit and admits only a safe retry", async () => {
   let listener!: (event: { preventDefault(): void }) => void;
   const preventDefault = vi.fn();
@@ -11,9 +21,9 @@ it("joins repeated quit requests, defers unsafe exit and admits only a safe retr
   installQuitCoordinator(app, { shutdown, pending, error: vi.fn() });
   listener({ preventDefault }); listener({ preventDefault });
   expect(shutdown).toHaveBeenCalledTimes(1);
-  release(false); await new Promise(resolve => setTimeout(resolve, 0));
+  release(false); await settle();
   expect(app.quit).not.toHaveBeenCalled(); expect(pending).toHaveBeenCalledOnce();
-  listener({ preventDefault }); release(true); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault }); release(true); await settle();
   expect(app.quit).toHaveBeenCalledOnce(); expect(shutdown).toHaveBeenCalledTimes(2);
   expect(preventDefault).toHaveBeenCalledTimes(3);
 });
@@ -24,9 +34,9 @@ it("registers relaunch only on safe admission and clears it after a deferral", a
   let safe = false;
   const relaunch = vi.fn();
   const coordinator = installQuitCoordinator(app, { shutdown: async () => safe, pending() {}, error() {}, relaunch });
-  coordinator.relaunch(); await new Promise(resolve => setTimeout(resolve, 0));
+  coordinator.relaunch(); await settle();
   expect(relaunch).not.toHaveBeenCalled();
-  safe = true; app.quit(); await new Promise(resolve => setTimeout(resolve, 0));
+  safe = true; app.quit(); await settle();
   expect(relaunch).not.toHaveBeenCalled();
 });
 
@@ -35,7 +45,7 @@ it("registers an admitted relaunch exactly once", async () => {
   const app = { on: (_: "before-quit", fn: typeof listener) => { listener = fn; }, quit: vi.fn(() => listener({ preventDefault() {} })) };
   const relaunch = vi.fn();
   const coordinator = installQuitCoordinator(app, { shutdown: async () => true, pending() {}, error() {}, relaunch });
-  coordinator.relaunch(); await new Promise(resolve => setTimeout(resolve, 0));
+  coordinator.relaunch(); await settle();
   expect(relaunch).toHaveBeenCalledOnce();
 });
 
@@ -50,16 +60,16 @@ it("runs the history phase only after media is safe, joins repeats and resumes a
   const coordinator = installQuitCoordinator(app, { shutdown, history, resume, joined, relaunch, pending, error: vi.fn() });
   coordinator.relaunch();
   expect(history).not.toHaveBeenCalled();
-  media(true); await new Promise(resolve => setTimeout(resolve, 0));
+  media(true); await settle();
   listener({ preventDefault() {} });
   expect(joined).toHaveBeenCalledOnce();
-  decide(false); await new Promise(resolve => setTimeout(resolve, 0));
+  decide(false); await settle();
   expect(order).toEqual(["media", "history"]);
   expect(resume).toHaveBeenCalledOnce(); expect(pending).not.toHaveBeenCalled();
   expect(app.quit).toHaveBeenCalledOnce(); expect(relaunch).not.toHaveBeenCalled();
   // A declined relaunch is not remembered by a later ordinary quit.
-  app.quit(); media(true); await new Promise(resolve => setTimeout(resolve, 0));
-  decide(true); await new Promise(resolve => setTimeout(resolve, 0));
+  app.quit(); media(true); await settle();
+  decide(true); await settle();
   expect(relaunch).not.toHaveBeenCalled(); expect(app.quit).toHaveBeenCalledTimes(3);
 });
 
@@ -70,9 +80,9 @@ it("unsafe media never reaches the history phase and a history error keeps the a
   const history = vi.fn(async () => { throw new Error("prompt failed"); });
   const pending = vi.fn(), resume = vi.fn(), error = vi.fn();
   installQuitCoordinator(app, { shutdown: async () => safe, history, pending, resume, error });
-  app.quit(); await new Promise(resolve => setTimeout(resolve, 0));
+  app.quit(); await settle();
   expect(history).not.toHaveBeenCalled(); expect(pending).toHaveBeenCalledOnce();
-  safe = true; app.quit(); await new Promise(resolve => setTimeout(resolve, 0));
+  safe = true; app.quit(); await settle();
   expect(error).toHaveBeenCalledOnce(); expect(resume).toHaveBeenCalledOnce();
   expect(pending).toHaveBeenCalledOnce(); expect(app.quit).toHaveBeenCalledTimes(2);
 });
@@ -111,10 +121,10 @@ it("runs the exit step only once exit is admitted, and a failing one still exits
   let exitAllowed = false;
   const exit = vi.fn(async () => { order.push("exit"); throw new Error("log gone"); });
   installQuitCoordinator(app, { shutdown: async () => true, history: async () => exitAllowed, resume() {}, pending() {}, error: vi.fn(), exit });
-  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault() {} }); await settle();
   expect(exit).not.toHaveBeenCalled();
   exitAllowed = true;
-  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault() {} }); await settle();
   expect(order).toEqual(["exit", "quit"]);
 });
 
@@ -126,7 +136,7 @@ it("lets the menu's Quit, chosen while a Relaunch waits on the same attempt, can
   const coordinator = installQuitCoordinator(app, { shutdown: () => new Promise<boolean>(resolve => { release = resolve; }), pending() {}, error() {}, relaunch });
   coordinator.relaunch();
   coordinator.quit();
-  release(true); await new Promise(resolve => setTimeout(resolve, 0));
+  release(true); await settle();
   expect(relaunch).not.toHaveBeenCalled();
   expect(app.quit).toHaveBeenCalledTimes(3);
 });
@@ -140,13 +150,13 @@ it("prepares destructive cleanup only after media/history admission, and refuses
   const beforeExit = vi.fn(async () => { order.push("prepare"); if (fail) throw new Error("helper failed"); });
   installQuitCoordinator(app, { shutdown: async () => safe, history: async () => { order.push("history"); return true; },
     beforeExit, resume, error, pending() {}, exit: async () => { order.push("flush"); } });
-  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault() {} }); await settle();
   expect(beforeExit).not.toHaveBeenCalled();
   safe = true;
-  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault() {} }); await settle();
   expect(order).toEqual(["history", "prepare"]);
   expect(error).toHaveBeenCalledOnce(); expect(resume).toHaveBeenCalledOnce(); expect(app.quit).not.toHaveBeenCalled();
   fail = false;
-  listener({ preventDefault() {} }); await new Promise(resolve => setTimeout(resolve, 0));
+  listener({ preventDefault() {} }); await settle();
   expect(order).toEqual(["history", "prepare", "history", "prepare", "flush", "quit"]);
 });
