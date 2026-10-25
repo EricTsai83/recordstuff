@@ -138,6 +138,10 @@
 }
 :root {
   --window-titlebar-height: 40px;
+  /* A full-height player or editor dialog keeps the same margin above and below; on macOS the space above also holds
+     the window controls, so the dialog sits that much lower. */
+  --dialog-margin: 36px;
+  --dialog-top-reserve: 0px;
   --settings-sidebar-width: 196px;
   --settings-content-top-gap: 32px;
   /* The permission card: a softly red-tinted tile with a hairline edge in the light theme, a graphite tile in the dark
@@ -297,6 +301,10 @@
   --shadow-spread: 0px;
   --shadow-opacity: 0.08;
   --shadow-color: #000000;
+}
+:root[data-platform="darwin"] {
+  --dialog-margin: 12px;
+  --dialog-top-reserve: var(--window-titlebar-height);
 }
 /* The page sets .dark from the appearance setting (System follows the OS); color-scheme on :root keeps native controls
    and system colours in step with it. */

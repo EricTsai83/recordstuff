@@ -165,7 +165,7 @@ export function EditorDialog() {
         // As wide as the window allows with the panel under a 16:9 picture: the timeline, its ruler and hint, the actions,
         // and an editable recording's camera and sound controls, which need more of the height (known from the card before
         // the view arrives, so the dialog does not change its size as it opens).
-        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-330px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-270px)*16/9))]"} max-h-[calc(100dvh-72px)] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none darwin:top-[calc(50%+24px)]`}
+        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve)-258px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve)-198px)*16/9))]"} max-h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]`}
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.editorVideo}
