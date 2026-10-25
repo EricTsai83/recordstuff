@@ -107,7 +107,8 @@ function editorKey(event: React.KeyboardEvent): void {
   const target = event.target as HTMLElement;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
   const command = model.platform() === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  const key = event.key.toLowerCase();
+  // By the key's place, not its character (2026-10-25): with an input method such as Zhuyin on, S reports no "s".
+  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
   const redo = command && !event.altKey && ((event.shiftKey && key === "z") || (model.platform() !== "darwin" && !event.shiftKey && key === "y"));
   if (redo || (command && !event.shiftKey && !event.altKey && key === "z")) {
     event.preventDefault();
@@ -116,7 +117,7 @@ function editorKey(event: React.KeyboardEvent): void {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (event.key === "s" || event.key === "S") {
+  if (key === "s") {
     event.preventDefault();
     model.splitAtPlayhead();
   } else if ((event.key === "Delete" || event.key === "Backspace") && target.closest(".editor-panel")) {
@@ -238,9 +239,35 @@ function EditorPanel() {
   const at = (seconds: number): string => model.clock(seconds);
   const removing = selected && !selected.removed;
   const editingSource = model.editingItem?.video;
+  // A press on the timeline puts the playhead where it is and selects the part there, and a drag scrubs (2026-10-25):
+  // Split then cuts wherever the maintainer chose, not only at a part's start.
+  const scrub = (element: HTMLElement, clientX: number): void => {
+    const box = element.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const ticks = Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * editor.duration);
+    const part = parts.find((entry) => ticks >= entry.from && ticks < entry.to) ?? parts[parts.length - 1];
+    if (part) model.selectPart(part, false);
+    model.seekTo(ticks / editor.timescale);
+  };
   return (
     <div className="editor-panel">
-      <div className="editor-timeline" role="group" aria-label={model.text("Timeline")}>
+      <div
+        className="editor-timeline"
+        role="group"
+        aria-label={model.text("Timeline")}
+        onPointerDown={(event) => {
+          if (busy || event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          scrub(event.currentTarget, event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event.currentTarget, event.clientX);
+        }}
+        // Where it is let go too: a drag whose moves did not come (a jump of the pointer) still ends there.
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event.currentTarget, event.clientX);
+        }}
+      >
         {editingSource && <TimelineStrip source={editingSource} />}
         {parts.map((part) => {
           const label = translate(part.removed ? "{from} to {to}, removed" : "{from} to {to}, kept", language, {
@@ -258,7 +285,8 @@ function EditorPanel() {
               aria-label={label}
               aria-pressed={selected?.from === part.from}
               disabled={busy}
-              onClick={() => model.selectPart(part)}
+              // The pointer's press already chose the place; Enter or Space selects the part from its start.
+              onClick={(event) => { if (event.detail === 0) model.selectPart(part); }}
             />
           );
         })}
@@ -293,6 +321,10 @@ function EditorPanel() {
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
+        {/* The playhead's time to the tenth, as Split and the parts say it: the player's own clock shows whole seconds. */}
+        <span className="editor-position text-muted-foreground">
+          {translate("Playhead {time}", language, { time: at(time) })}
+        </span>
         <span className="editor-length text-muted-foreground">
           {translate("Export length {length}", language, { length: at(editor.outputSeconds) })}
         </span>

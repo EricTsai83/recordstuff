@@ -23,8 +23,11 @@ export let editorVideo: HTMLVideoElement | null = null;
 let splits: number[] = [];
 /** The selected part, by where it starts. */
 export let selectedFrom: number | undefined;
-/** An edit as Undo restores it: its cuts, and an editable recording's scene. */
-interface EditState { removed: EditRange[]; scene?: EditScene }
+/**
+ * An edit as Undo restores it: its cuts, an editable recording's scene, and the timeline's splits (2026-10-25: a
+ * split is a step Undo takes back too, though it is the view's own and never saved).
+ */
+interface EditState { removed: EditRange[]; scene?: EditScene; splits: number[] }
 /** The edits each saved change replaced, newest last. */
 const undoStack: EditState[] = [];
 /** The edits Undo took back, newest last, which Redo makes again; a new change clears it. */
@@ -297,7 +300,7 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
   const run = sceneSaves.then(async () => {
     const now = editorView();
     if (!now?.editable || now.state !== "ready" || now.export.phase === "exporting") return false;
-    undoStack.push({ removed: copy(now.removed), scene: now.editable.scene });
+    undoStack.push(current(now));
     const saved = await save(now.removed, next);
     if (!saved) undoStack.pop();
     else redoStack.length = 0;
@@ -360,6 +363,8 @@ export function splitAtPlayhead(): void {
   if (!editor || editor.state !== "ready" || editor.export.phase === "exporting") return;
   const at = playhead(editor);
   if (at <= 0 || at >= editor.duration) return;
+  undoStack.push(current(editor));
+  redoStack.length = 0;
   splits = [...splits, at];
   selectedFrom = at;
   announce(translate("Split at {time}", view?.language, { time: clock(at / editor.timescale) }));
@@ -373,10 +378,13 @@ export async function toggleSelected(): Promise<void> {
   const part = selectedPart(editor);
   if (!part) return;
   const removed = part.removed ? subtract(editor.removed, part) : normalizeRanges([...editor.removed, [part.from, part.to]]);
-  undoStack.push({ removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}) });
+  undoStack.push(current(editor));
   const saved = await save(removed);
   if (!saved) undoStack.pop();
   else redoStack.length = 0;
+  // The part stays selected though main snapped its ends to frames: the part now holding its middle.
+  const after = saved ? editorView() : undefined;
+  if (after) selectedFrom = partAt(timelineParts(after), Math.round((part.from + part.to) / 2))?.from;
   if (saved) announce(translate(part.removed ? "Kept {from} to {to}" : "Removed {from} to {to}", view?.language, {
     from: clock(part.from / editor.timescale), to: clock(part.to / editor.timescale),
   }));
@@ -397,7 +405,7 @@ function subtract(ranges: readonly EditRange[], part: TimelinePart): EditRange[]
 
 /** The edit as it is now, as Undo and Redo keep it. */
 function current(editor: EditorView): EditState {
-  return { removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}) };
+  return { removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}), splits: [...splits] };
 }
 
 export async function undoEdit(): Promise<void> {
@@ -416,7 +424,16 @@ async function step(from: EditState[], to: EditState[], said: "Undone" | "Redone
   const next = from.pop();
   if (!next) return;
   const now = current(editor);
+  // A split alone changes nothing main keeps: it comes back or goes without a save.
+  if (JSON.stringify(next.removed) === JSON.stringify(now.removed) && sameScene(next.scene, now.scene)) {
+    splits = next.splits;
+    to.push(now);
+    announce(translate(said, view?.language));
+    draw();
+    return;
+  }
   if (await save(next.removed, next.scene)) {
+    splits = next.splits;
     to.push(now);
     syncPreviewAudio();
     announce(translate(said, view?.language));

@@ -70,7 +70,15 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 1 }));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Undone"));
+  // The split is a step of its own (2026-10-25): Undo takes it back without a save, and Redo makes it again.
+  expect(document.getElementById("editor-undo")?.getAttribute("aria-disabled")).toBe("false");
+  const saves = choices.length;
+  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(parts()).toHaveLength(1));
   expect(document.getElementById("editor-undo")?.getAttribute("aria-disabled")).toBe("true");
+  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(parts()).toHaveLength(2));
+  expect(choices.length).toBe(saves);
 
   // Removed again, then exported: progress, then main's outcome.
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[1]!);

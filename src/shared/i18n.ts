@@ -627,6 +627,7 @@ export const ZH_TW = {
   "Undo (⌘Z)": "還原 (⌘Z)",
   "Undo (Ctrl+Z)": "還原 (Ctrl+Z)",
   "Export length {length}": "匯出長度 {length}",
+  "Playhead {time}": "播放位置 {time}",
   "Export progress": "匯出進度",
   "Cancelling…": "正在取消…",
   "Cancel export": "取消匯出",

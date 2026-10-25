@@ -107,6 +107,54 @@ test("a part is split off and removed, kept by main across a reopen, and exporte
   await expect(page.locator(".clip")).toHaveCount(2);
 });
 
+test("a press on the timeline puts the playhead there, a drag scrubs, Split cuts where it was put, by S under any input method, and Undo takes a split back (2026-10-25)", async () => {
+  await openEditor();
+  const video = page.locator("#editor video");
+  await video.evaluate(async (el) => {
+    const v = el as HTMLVideoElement;
+    v.pause();
+    if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
+  });
+  const box = (await page.locator(".editor-timeline").boundingBox())!;
+  const y = box.y + box.height / 2;
+  const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
+  // The 8 s recording: a quarter of the way is 2 s, not the start of the one part there.
+  await page.mouse.click(box.x + box.width * 0.25, y);
+  await expect.poll(time).toBeGreaterThan(1.8);
+  expect(await time()).toBeLessThan(2.2);
+  await page.mouse.move(box.x + box.width * 0.25, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(time).toBeGreaterThan(5.8);
+  expect(await time()).toBeLessThan(6.2);
+  await page.locator("#editor-split").click();
+  await expect(page.locator(".editor-part")).toHaveCount(2);
+  await expect(page.locator("#editor-feedback")).toHaveText(/^Split at 0:0(5\.[89]|6\.[01])$/);
+  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]|6\.[01])$/);
+
+  // Undo takes a split back and Redo makes it again, though a split is never saved.
+  await page.keyboard.press("Meta+z");
+  await expect(page.locator(".editor-part")).toHaveCount(1);
+  await page.keyboard.press("Meta+Shift+z");
+  await expect(page.locator(".editor-part")).toHaveCount(2);
+
+  // S splits by the key's place: an input method such as Zhuyin reports another character for it.
+  await page.mouse.click(box.x + box.width * 0.25, y);
+  await expect.poll(time).toBeGreaterThan(1.8);
+  await page.locator("#editor-split").evaluate((el) => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "ㄋ", code: "KeyS", bubbles: true, cancelable: true }));
+  });
+  await expect(page.locator(".editor-part")).toHaveCount(3);
+
+  // The Remove button leaves the removed part selected, so the same button keeps it again.
+  await page.mouse.click(box.x + box.width * 0.5, y);
+  await page.locator("#editor-remove").click();
+  await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("data-removed", "true");
+  await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#editor-remove")).toHaveText("Keep part");
+});
+
 test("the preview skips removed parts, Undo takes a removal back, and a cancelled export leaves nothing", async () => {
   await openEditor();
   await removeFrom(3, 2);
