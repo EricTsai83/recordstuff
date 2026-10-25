@@ -1135,6 +1135,9 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   await show("landscape");
   await host.evaluate(h => h.setSize(1440, 900));
   // Measured once the window's new size has been laid out: a stage read mid-resize sent the drag to a stale middle.
+  // The page has its new width first: two equal reads of the old layout, before the resize reached it, once passed
+  // for a settled one on CI (2026-10-25), pressing where the bubble no longer was.
+  await expect.poll(() => page.evaluate(() => window.innerWidth), { message: "S146 the window has its large size" }).toBe(1440);
   let lastBox = "";
   await expect.poll(async () => {
     const now = JSON.stringify([await page.locator(".camera-preview-stage").boundingBox(), await page.getByRole("application", { name: "Preview" }).boundingBox()]);

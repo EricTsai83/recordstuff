@@ -302,9 +302,14 @@ fn median_interval(times: &[u64]) -> u64 {
 /// Runs a timing scenario up to three times and passes on the first attempt within its bound: one attempt on a busy
 /// machine (a CI runner, 2026-10-19: 84 and 126 ms where the bounds were 79 and 110) does not fail the test, while a
 /// regression that misses the bound every time still does. `attempt` gets its attempt's number for a fresh rig.
-fn within_one_of_three(what: &str, mut attempt: impl FnMut(usize) -> Result<(), String>) {
+fn within_one_of_three(what: &str, attempt: impl FnMut(usize) -> Result<(), String>) {
+    within_one_of(3, what, attempt);
+}
+
+/// `within_one_of_three` with `tries` attempts, for a bound a stalled runner can miss several times in a row.
+fn within_one_of(tries: usize, what: &str, mut attempt: impl FnMut(usize) -> Result<(), String>) {
     let mut misses = Vec::new();
-    for n in 0..3 {
+    for n in 0..tries {
         match attempt(n) {
             Ok(()) => return,
             Err(miss) => misses.push(miss),
@@ -1207,7 +1212,9 @@ fn showing_the_camera_again_after_a_still_screen_starts_at_the_current_slot_with
 
 #[test]
 fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
-    within_one_of_three("the next slot after showing the camera", |n| {
+    // Five tries: a CI runner stalled through three in a row (2026-10-25: 135, 144 and 186 ms, longer than the 100 ms wait
+    // a missed wake would end at), so no attempt there could tell a wake from a stall.
+    within_one_of(5, "the next slot after showing the camera", |n| {
         let mut rig = Rig::new(&format!("every-slot-wake-{n}"));
         rig.shared.frame(7, Fake::now_ns());
         rig.core.record().unwrap();
