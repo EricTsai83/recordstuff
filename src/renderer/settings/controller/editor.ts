@@ -502,6 +502,11 @@ export function trimmed(editor: EditorView, removed: readonly EditRange[] = edit
   return { start: head ? head[1] : 0, end: tail ? tail[0] : editor.duration };
 }
 
+/** The trim handle being moved, if one is. */
+export function trimming(): TrimEdge | undefined {
+  return trimDraft?.edge;
+}
+
 /** The trim handles as drawn: a handle being dragged where it is. */
 export function shownTrim(editor: EditorView): { start: number; end: number } {
   const now = trimmed(editor);
@@ -526,7 +531,8 @@ function trimRemoved(editor: EditorView, edge: TrimEdge, at: number): EditRange[
 /** Moves a trim handle while it is dragged or stepped, kept clear of the other one; the preview shows that frame. */
 export function moveTrim(edge: TrimEdge, ticks: number): void {
   const editor = editorView();
-  if (!editor || editor.state !== "ready" || editorSaving || editor.export.phase === "exporting") return;
+  // A save under way does not stop it (keys pressed in quick turn): the handle's own save waits for that one.
+  if (!editor || editor.state !== "ready" || editor.export.phase === "exporting") return;
   const now = trimmed(editor), gap = TRIM_GAP * editor.timescale;
   const at = Math.round(edge === "start" ? Math.max(0, Math.min(ticks, now.end - gap)) : Math.min(editor.duration, Math.max(ticks, now.start + gap)));
   trimDraft = { edge, at };
@@ -538,9 +544,10 @@ export function moveTrim(edge: TrimEdge, ticks: number): void {
 
 /** Saves where a trim handle was let go, as one change Undo takes back. */
 export async function commitTrim(): Promise<void> {
+  while (editorSaving) await saveDone;
   const draft = trimDraft;
   const editor = editorView();
-  if (!draft || !editor || editorSaving) {
+  if (!draft || !editor) {
     trimDraft = undefined;
     draw();
     return;
@@ -628,13 +635,18 @@ export function sameScene(a: EditScene | undefined, b: EditScene | undefined): b
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
+/** Settles when the save under way does. */
+let saveDone: Promise<unknown> = Promise.resolve();
+
 async function save(removed: EditRange[], scene?: EditScene): Promise<boolean> {
   const editor = editorView();
   if (!editor) return false;
   editorSaving = true;
   draw();
+  const sent = send({ action: "save", removed, revision: editor.revision, ...(scene ? { scene } : {}) });
+  saveDone = sent.catch(() => undefined);
   try {
-    return await send({ action: "save", removed, revision: editor.revision, ...(scene ? { scene } : {}) });
+    return await sent;
   } finally {
     editorSaving = false;
     draw();

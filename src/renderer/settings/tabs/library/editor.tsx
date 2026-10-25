@@ -240,10 +240,14 @@ function precise(seconds: number): string {
 }
 
 /** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
-interface TimelineGesture { pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge }
+interface TimelineGesture {
+  pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge;
+  /** For a trim handle: how far from its edge it was taken hold of, in the video's timescale, kept while it moves. */
+  offset?: number;
+}
 /** A trim handle's width, and how far beyond it a press still takes hold of it, in CSS pixels. */
-const TRIM_HANDLE = 12;
-const TRIM_REACH = 6;
+const TRIM_HANDLE = 8;
+const TRIM_REACH = 8;
 
 function EditorPanel() {
   const editor = model.editorView();
@@ -316,19 +320,23 @@ function EditorPanel() {
       model.editorVideo?.pause();
       model.seekTo(ticks / editor.timescale);
     }
-    else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks);
+    // The edge keeps its distance from the pointer: taken hold of in the middle of the bar, it does not jump there.
+    else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks - (held.offset ?? 0));
   };
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
     undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
     redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
   });
   const trim = model.shownTrim(editor);
+  // While a handle moves, the times' row says where the export will start or end, to the hundredth.
+  const trimming = model.trimming();
   const range = model.rangeSelection;
   const ruler = rulerMarks(editor.seconds);
   const trimHandle = (edge: model.TrimEdge) => {
     const value = trim[edge];
     const step = (event: React.KeyboardEvent): number | undefined => {
-      const by = (event.shiftKey ? 1 : 0.1) * editor.timescale;
+      // A frame, or a second with Shift, as ← → move the playhead on the timeline.
+      const by = event.shiftKey ? editor.timescale : editor.timescale / Math.max(1, editor.frameRate);
       if (event.key === "ArrowLeft" || event.key === "ArrowDown") return value - by;
       if (event.key === "ArrowRight" || event.key === "ArrowUp") return value + by;
       if (event.key === "Home") return 0;
@@ -346,15 +354,15 @@ function EditorPanel() {
         aria-label={model.text(edge === "start" ? "Start of the export" : "End of the export")}
         aria-valuemin={0}
         aria-valuemax={+editor.seconds.toFixed(1)}
-        aria-valuenow={+(value / editor.timescale).toFixed(1)}
-        aria-valuetext={at(value / editor.timescale)}
+        aria-valuenow={+(value / editor.timescale).toFixed(2)}
+        aria-valuetext={precise(value / editor.timescale)}
         aria-disabled={busy || undefined}
         style={{ left: percent(value) }}
         // The timeline's own press takes hold of it (2026-10-25: a handle following the pointer by itself did not move
         // under a real pointer in a hands-on round, where the timeline's drags did).
         onKeyDown={(event) => {
           const next = step(event);
-          if (next === undefined || busy) return;
+          if (next === undefined || editor.export.phase === "exporting") return;
           event.preventDefault();
           event.stopPropagation();
           model.moveTrim(edge, next);
@@ -384,7 +392,7 @@ function EditorPanel() {
             : event.clientX >= xOf(trim.start) - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_HANDLE + TRIM_REACH ? "start"
             : event.clientX <= xOf(trim.end) + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_HANDLE - TRIM_REACH ? "end" : undefined;
           if (edge) {
-            gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge };
+            gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge, offset: ticks - trim[edge] };
             document.getElementById(`editor-trim-${edge}`)?.focus({ preventScroll: true });
             model.moveTrim(edge, trim[edge]);
             return;
@@ -458,7 +466,9 @@ function EditorPanel() {
           own clock shows whole seconds); a range being chosen shows where it runs and how long it is instead. */}
       <div className="editor-status text-muted-foreground">
         <span className="editor-position">
-          {range
+          {trimming
+            ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
+            : range
             ? translate("Selection {from}–{to} ({length})", language, {
               from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
             })

@@ -204,7 +204,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await page.mouse.up();
   await expect(page.locator(".editor-part").first()).toHaveAttribute("data-removed", "true");
   await expect(page.locator("#editor-feedback")).toHaveText(/^The export starts at 0:0(1\.[89]|2\.[01])$/);
-  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", /^(1\.[89]|2(\.[01])?)$/);
+  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", /^(1\.[89]\d?|2(\.[01]\d?)?)$/);
 
   // The end's handle, stepped from the keyboard: Shift+← takes a second off the end each press.
   await page.locator("#editor-trim-end").focus();
@@ -248,6 +248,66 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x + box.width * 0.75, y, button: "left", buttons: 0, clickCount: 1 });
   await expect(page.locator(".editor-part").last()).toHaveAttribute("data-removed", "true");
   expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration * 0.75, 0);
+});
+
+test("a trim handle keeps its distance from the pointer, reaches the recording's very start and end, and steps a frame from the keyboard (2026-10-25)", async () => {
+  await openEditor();
+  const box = (await page.locator(".editor-timeline").boundingBox())!;
+  const y = box.y + box.height / 2;
+  const seconds = await read<number>(page, "document.querySelector('#editor .editor-stage video').duration");
+  const value = async (edge: string) => Number(await page.locator(`#editor-trim-${edge}`).getAttribute("aria-valuenow"));
+  const perPixel = seconds / box.width;
+  // Each drag saves; the next waits for the save, as the timeline takes no press while one is under way.
+  const saved = () => expect(page.locator("#editor-undo")).toHaveAttribute("aria-disabled", "false");
+
+  // Taken hold of in the middle of the bar and let go where it was pressed: the edge stays where it was.
+  const start = (await page.locator("#editor-trim-start").boundingBox())!;
+  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + start.width / 2 + 1, y);
+  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.up();
+  expect(await value("start")).toBe(0);
+
+  // Moved 100 px: the edge moves 100 px, not 100 px plus where the bar was pressed; the times' row says where it is.
+  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + start.width / 2 + 100, y, { steps: 5 });
+  await expect(page.locator(".editor-position")).toHaveText(/^The export starts at 0:0\d\.\d\d$/);
+  await page.mouse.up();
+  expect(await value("start")).toBeCloseTo(100 * perPixel, 1);
+  await saved();
+
+  // Dragged past the timeline's ends, the handles stop at the recording's very start and end.
+  const moved = (await page.locator("#editor-trim-start").boundingBox())!;
+  await page.mouse.move(moved.x + moved.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 80, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => value("start")).toBe(0);
+  await saved();
+  const end = (await page.locator("#editor-trim-end").boundingBox())!;
+  await page.mouse.move(end.x + end.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => value("end")).toBeLessThan(seconds * 0.75);
+  await saved();
+  const back = (await page.locator("#editor-trim-end").boundingBox())!;
+  await page.mouse.move(back.x + back.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 80, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => value("end")).toBeCloseTo(seconds, 1);
+  await saved();
+
+  // From the keyboard, → moves the start a frame, Shift+→ a second.
+  await page.locator("#editor-trim-start").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => value("start")).toBeGreaterThan(0);
+  expect(await value("start")).toBeLessThanOrEqual(0.1);
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => value("start")).toBeGreaterThan(1);
 });
 
 test("with Skimming on, the preview shows the picture under the pointer and goes back to the playhead when it leaves; off, a move does nothing (2026-10-25)", async () => {

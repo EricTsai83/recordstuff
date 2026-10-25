@@ -2608,13 +2608,14 @@
     cursor: default;
   }
   /* The trim handles (2026-10-25): bars at the kept recording's ends, the start's reaching in from its left edge and
-     the end's from its right, so either can be grabbed though they meet. */
+     the end's from its right, so either can be grabbed though they meet. 8 px drawn: the timeline takes hold of one
+     8 px beyond it too, so it is no harder to catch and hides less of the pictures. */
   .editor-trim {
     position: absolute;
     top: 0;
     bottom: 0;
     z-index: 4;
-    width: 12px;
+    width: 8px;
     background: var(--primary);
     cursor: ew-resize;
     touch-action: none;
