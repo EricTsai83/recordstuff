@@ -103,6 +103,8 @@ function fakeAx(): NativeAx & { calls: string[]; open: boolean } {
     async press(_pid: number, index: number) { ax.calls.push(`press ${items[index]!.title}`); ax.open = false; },
     async mouse(button: "left" | "right", x: number, y: number) { ax.calls.push(`${button} ${x},${y}`); if (button === "right") ax.open = true; },
     async move(x: number, y: number) { ax.calls.push(`move ${x},${y}`); },
+    async pointer(step: string, x: number, y: number) { ax.calls.push(`pointer ${step} ${x},${y}`); },
+    async texts() { return { texts: [] }; },
     async key(code: number) { ax.calls.push(`key ${code}`); if (code === 53) ax.open = false; },
     async scroll() { throw new Error("unused"); },
     async hit() { throw new Error("unused"); },

@@ -1,10 +1,11 @@
 /**
  * `pnpm acceptance:editor [-- --secondary] [--no-microphone] [--out <dir>]` (plan 087's follow-up, 2026-10-25): an
  * editable recording edited and exported on the packaged app with real input, macOS only; never shipped. Build and quit
- * the bundle first (`pnpm start:app`, then Quit). The runner saves Editable recordings, the camera and the microphone
- * on (`--no-microphone`: off) and no countdown over the user's settings, launches the bundle, opens the moving test
- * material full screen on the recorded display (the primary, or with `--secondary` the second, so the primary stays
- * free) and records 12 s with the registered shortcut. The camera is the user's own choice and must see something:
+ * the bundle first (`pnpm start:app`, then Quit). The runner saves Editable recordings off, the camera and the
+ * microphone on (`--no-microphone`: off) and no countdown over the user's settings, launches the bundle, opens the
+ * moving test material full screen on the recorded display (the primary, or with `--secondary` the second, so the
+ * primary stays free) and records 12 s, started by the tray's Start editable recording (2026-10-25: one recording
+ * editable with the setting off) and stopped by the registered shortcut. The camera is the user's own choice and must see something:
  * one that delivers no frame blocks the round. Then, in the app's own window, opened by the tray's Show last recording:
  *
  * - the card's More actions → Edit… opens the edit view, which must draw the camera's bubble;
@@ -21,6 +22,14 @@
  *   bubble and the screen track's everywhere else (`judgeComposite`); a camera too flat to recognise (a covered lens)
  *   leaves that check unjudged, which blocks the round rather than passing it. It must have one picture and one sound
  *   track and last as long as the recording.
+ *
+ * - **Timeline** (2026-10-25, held where a person holds it, which a Computer Use pointer could not): the start's trim
+ *   handle held a fifth in must show its time above it (the accent's red, `redShare`) and the readout there, and leave
+ *   the export shorter when let go with the label gone; dragged past the window's edge and let go there, it must save
+ *   the full export length again; a range held across the middle must show its span with the preview at its moving
+ *   end, and Delete remove it; with Skimming on, the pointer over the timeline must move the preview there and, moved
+ *   away, back; the shortcuts button must list the editing shortcuts on a click; and ⌘Z must take every change back.
+ * - **The next recording**, by the shortcut, must be plain again: the setting stayed off.
  *
  * Screenshots of the window after each step go beside the report for a person to judge what the preview draws; what
  * the preview sounds like is not judged. Recordings and the export stay in the output folder, the edit in userData.
@@ -41,12 +50,12 @@ import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeS
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { LogReader } from "./lib/runner/log-reader.mts";
 import { roundExit } from "./lib/runner/round-exit.mts";
-import { AccessibilityBlockedError, KEY, captureRect, centre, osascriptAx, type Frame, type WindowElement } from "./lib/runner/native-ax.mts";
+import { AccessibilityBlockedError, FLAG, KEY, captureRect, centre, osascriptAx, type Frame, type WindowElement } from "./lib/runner/native-ax.mts";
 import { nativeDrag } from "./lib/runner/native-drag.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
 import { frameRgb, hasTool, probe, requireMediaTimeout } from "./lib/verification/media-tools.mts";
-import { dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
+import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, redShare, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
 import type { Verdict } from "./lib/acceptance/capture-settings.mts";
 import { AUDIO_VOLUME_STEP, volumeDb } from "../src/shared/audio-volume.ts";
 import type { EditableDescription, EditScene } from "../src/shared/editable.ts";
@@ -211,9 +220,10 @@ async function main(): Promise<number> {
 
   try {
     // The case's settings over the user's: restored byte for byte at the end.
-    writeAppSettings({ ...original, editableRecording: true, camera: true, microphone, countdown: 0,
+    // Editable recordings off: the tray's Start editable recording makes the one recorded here editable (2026-10-25).
+    writeAppSettings({ ...original, editableRecording: false, camera: true, microphone, countdown: 0,
       display: secondary ? { kind: "display", id: target.id, label: target.label } : { kind: "primary" } });
-    note(`settings: Editable recordings, camera, microphone ${microphone ? "on" : "off"}, no countdown, recording ${secondary ? `${target.label} (${target.id})` : "the primary display"}`);
+    note(`settings: Editable recordings off (the tray's Start editable recording records), camera, microphone ${microphone ? "on" : "off"}, no countdown, recording ${secondary ? `${target.label} (${target.id})` : "the primary display"}`);
     launcher = spawn("open", materialOpenArgs(MATERIAL, profile, target.frame), { stdio: "ignore" });
     await sleep(5000);
     if (!materialPids().length) blocked("the test material did not open in Google Chrome");
@@ -245,8 +255,11 @@ async function main(): Promise<number> {
     await sleep(800);
     await ax().move(Math.round(target.frame.x + target.frame.width / 2), Math.round(target.frame.y + target.frame.height / 2));
     await sleep(800);
+    // Started by the tray's Start editable recording, with the setting off.
+    const tray = new TrayDriver(ax(), appPid, controller.signal, undefined, BUNDLE_ID());
     const pressFrom = log.end();
-    await command("osascript", ["-e", script], AbortSignal.timeout(10_000));
+    await tray.open();
+    await tray.select(translate("Start editable recording", language));
     await waitForLog(log, pressFrom, /state → recording/, "`state → recording`", controller.signal);
     const capture = await waitForRecord(log, pressFrom, (r): r is Extract<typeof r, { kind: "capture" }> => r.kind === "capture" && r.run === run, "the capture record", controller.signal);
     await sleep(SECONDS * 1000);
@@ -265,7 +278,7 @@ async function main(): Promise<number> {
     const videos = sourceInfo.streams.filter((s) => s.codec_type === "video");
     const screen = videos[0], cameraTrack = videos[1];
     const sourceDuration = Number(sourceInfo.format.duration);
-    check({ check: "Recording: an editable file", expected: `the screen and the camera apart, ${microphone ? 2 : 1} sound track(s), a description with a camera`,
+    check({ check: "Recording: an editable file from the tray's Start editable recording, the setting off", expected: `the screen and the camera apart, ${microphone ? 2 : 1} sound track(s), a description with a camera`,
       actual: `${videos.length} picture and ${sourceInfo.streams.filter((s) => s.codec_type === "audio").length} sound track(s), sounds ${description.sounds.join("/")}, camera ${description.camera ? "described" : "none"}`,
       pass: videos.length === 2 && description.camera !== null && description.sounds.length === (microphone ? 2 : 1) });
     if (!screen?.width || !screen.height || !cameraTrack?.width || !cameraTrack.height || !description.camera) fail("the recording is not one this round can edit");
@@ -275,7 +288,6 @@ async function main(): Promise<number> {
     await closeMaterial();
     note("test material closed: the edit needs none");
     // The window on Recordings with the newest take, then its card's More actions → Edit….
-    const tray = new TrayDriver(ax(), appPid, controller.signal, undefined, BUNDLE_ID());
     await tray.open();
     await tray.select(translate("Show last recording", language));
     for (const end = Date.now() + 10_000; !(await ax().windows(appPid)).windows.some((w) => w.title === WINDOW);) {
@@ -314,6 +326,117 @@ async function main(): Promise<number> {
       }
     };
     const revision = (): number => readScene()?.revision ?? -1;
+
+    /**
+     * The timeline with real input, held where a person holds it (2026-10-25: a Computer Use pointer could neither hold
+     * a drag nor move without pressing, so these ran only in the UI tests): a trim handle's time label and readout while
+     * held, a handle let go past the window saving with the full export length, a range's preview following its end,
+     * Skimming's hover and its way back, the shortcuts opened by a click, and every change undone.
+     */
+    const timeline = async (): Promise<void> => {
+      const M = "\u0001";
+      const texts = async (): Promise<string[]> => (await ax().texts(appPid, WINDOW)).texts.map((t) => t.text);
+      /** The first text starting as `text` does before its first placeholder, given as \u0001. */
+      const textStarting = async (text: string): Promise<string | undefined> => {
+        const prefix = text.split(M)[0]!;
+        return (await texts()).find((t) => t.startsWith(prefix));
+      };
+      const lengthText = translate("Export length {length}", language, { length: M });
+      const playheadText = translate("Playhead {time}", language, { time: M });
+      const removed = (): number => (fs.existsSync(recordFile) ? (JSON.parse(fs.readFileSync(recordFile, "utf8")) as { removed?: unknown[] }).removed?.length : 0) ?? 0;
+      const handle = async (edge: "start" | "end"): Promise<WindowElement> =>
+        find(`${edge} trim handle`, (e) => e.role === "AXSlider" && e.title === translate(edge === "start" ? "Start of the export" : "End of the export", language));
+      const window = (await ax().windows(appPid)).windows.find((w) => w.title === WINDOW)?.frame ?? fail("no window frame");
+      const startHandle = await handle("start"), endHandle = await handle("end");
+      const left = startHandle.frame.x + startHandle.frame.width, right = endHandle.frame.x, y = Math.round(startHandle.frame.y + startHandle.frame.height / 2);
+      const top = startHandle.frame.y, span = right - left;
+      const full = await textStarting(lengthText) ?? fail("no export length shown");
+      const fullSeconds = clockSeconds(full) ?? fail(`unreadable export length: ${full}`);
+      const labelRed = async (x: number, name: string): Promise<number> => {
+        const file = path.join(dir, name);
+        await command("screencapture", ["-x", "-R", [Math.round(x - 40), Math.round(top - 26), 80, 22].join(","), file], AbortSignal.timeout(10_000));
+        shots.push(name);
+        return redShare(frameRgb(file, 0, 80, 22, path.join(dir, `${name}.scaled.png`)));
+      };
+      const hold = async (from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> => {
+        await ax().pointer("down", from.x, from.y);
+        for (let i = 1; i <= 8; i++) { await ax().pointer("drag", Math.round(from.x + (to.x - from.x) * i / 8), Math.round(from.y + (to.y - from.y) * i / 8)); await sleep(30); }
+        await sleep(400);
+      };
+
+      // A trim handle held a fifth of the way in: its time above it and the readout say where the export starts.
+      const aim = Math.round(left + span * 0.2);
+      try {
+        await hold(centre(startHandle.frame), { x: aim, y });
+        const reading = await textStarting(translate("The export starts at {time}", language, { time: M }));
+        const red = await labelRed(aim, "8-trim-held-label.png");
+        await shot("8-trim-held.png");
+        const expected = fullSeconds * 0.2;
+        check({ check: "Trim: the start's handle held a fifth in", expected: `the readout and a time label above it at about ${expected.toFixed(2)} s`,
+          actual: `readout "${reading ?? "none"}", label red ${(red * 100).toFixed(0)}%`,
+          pass: reading !== undefined && Math.abs((clockSeconds(reading) ?? -1) - expected) <= 0.5 && red > 0.15 });
+      } finally { await ax().pointer("up", aim, y); }
+      await sleep(1200);
+      const afterRed = await labelRed(aim, "9-trim-released-label.png");
+      const trimmed = await textStarting(lengthText);
+      check({ check: "Trim: let go", expected: "the label gone and the export length shorter", actual: `label red ${(afterRed * 100).toFixed(0)}%, "${trimmed}"`,
+        pass: afterRed < 0.05 && (clockSeconds(trimmed ?? "") ?? fullSeconds) < fullSeconds - 1 });
+
+      // The handle dragged past the window's edge and let go there: back at the start, the full length saved.
+      const moved = await handle("start");
+      const outside = Math.round(window.x - 120);
+      try { await hold(centre(moved.frame), { x: outside, y }); } finally { await ax().pointer("up", outside, y); }
+      await sleep(1500);
+      const restored = await textStarting(lengthText);
+      check({ check: "Trim: let go outside the window", expected: `the full export length, ${full}`, actual: restored ?? "none", pass: restored === full });
+
+      // A range held across the middle: the preview follows the end being dragged; Delete removes it.
+      const before = removed();
+      const from = { x: Math.round(left + span * 0.4), y }, to = { x: Math.round(left + span * 0.6), y };
+      try {
+        await hold(from, to);
+        const selection = await textStarting(translate("Selection {from}–{to} ({length})", language, { from: M, to: M, length: M }));
+        const player = (await texts()).find((t) => /^\d+:\d{2} \/ \d+:\d{2}$/.test(t));
+        const shown = clockSeconds(player ?? "") ?? -1;
+        check({ check: "Range: held across the middle", expected: `a selection, the preview at about ${(fullSeconds * 0.6).toFixed(1)} s`,
+          actual: `"${selection ?? "none"}", player "${player ?? "none"}"`, pass: selection !== undefined && Math.abs(shown - fullSeconds * 0.6) <= 1.2 });
+      } finally { await ax().pointer("up", to.x, to.y); }
+      await sleep(400);
+      await ax().key(KEY.delete);
+      await sleep(1500);
+      check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
+
+      // Skimming: on, the preview shows what is under the pointer, and goes back when it leaves; then off.
+      const playhead = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
+      await click(await find("Skimming button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Skimming", language))));
+      const over = Math.round(left + span * 0.85);
+      await ax().move(over - 20, y);
+      await sleep(200);
+      await ax().move(over, y);
+      await sleep(800);
+      const skimmed = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
+      await ax().move(over, Math.round(top - 160));
+      await sleep(800);
+      const back = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
+      check({ check: "Skimming: the pointer over the timeline, then away", expected: `the preview at about ${(fullSeconds * 0.85).toFixed(1)} s, then back at ${playhead.toFixed(2)} s`,
+        actual: `${skimmed.toFixed(2)} s, then ${back.toFixed(2)} s`, pass: Math.abs(skimmed - fullSeconds * 0.85) <= 0.6 && Math.abs(back - playhead) <= 0.05 });
+      await click(await find("Skimming button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Skimming", language))));
+
+      // The shortcuts, opened by a click on their button.
+      const keysButton = await find("shortcuts button", (e) => e.role === "AXButton" && e.title.startsWith(translate("Keyboard shortcuts", language)));
+      await click(keysButton);
+      await sleep(600);
+      const listed = (await texts()).includes(translate("Editing shortcuts", language));
+      await shot("10-shortcuts.png");
+      check({ check: "Shortcuts: a click on their button", expected: "the editing shortcuts listed", actual: listed ? "listed" : "nothing opened", pass: listed });
+      await click(keysButton);
+
+      // Every change undone from the keyboard, the focus kept in the view throughout.
+      await click(await handle("end"));
+      for (let i = 0; i < 12 && removed() > 0; i++) { await ax().key(KEY.z, FLAG.command); await sleep(700); }
+      check({ check: "Undo: every timeline change taken back by ⌘Z", expected: "nothing removed", actual: `${removed()} removed`, pass: removed() === 0 });
+      await shot("11-undone.png");
+    };
 
     // Drag.
     const width = screen!.width!, height = screen!.height!;
@@ -407,8 +530,25 @@ async function main(): Promise<number> {
     const composite = judgeComposite(exported, screenFrame, cameraFrame, sceneLayout(placed, shape), placed);
     for (const verdict of composite.verdicts) check(verdict, verdict.judged);
 
+    await timeline();
+
     await click(await find("Close button", (e) => e.role === "AXButton" && e.title === translate("Close", language)));
     await sleep(500);
+
+    // The next recording, by the shortcut: plain again, the setting still off.
+    const nextFrom = log.end();
+    await command("osascript", ["-e", script], AbortSignal.timeout(10_000));
+    await waitForLog(log, nextFrom, /state → recording/, "`state → recording`", controller.signal);
+    const nextCapture = await waitForRecord(log, nextFrom, (r): r is Extract<typeof r, { kind: "capture" }> => r.kind === "capture" && r.run === run, "the second capture record", controller.signal);
+    await sleep(3000);
+    await command("osascript", ["-e", script], AbortSignal.timeout(10_000));
+    const nextEnd = await waitForRecord(log, nextCapture.next, (r): r is TerminalRecord => (r.kind === "saved" || r.kind === "failed") && r.run === run && r.session === nextCapture.record.session,
+      "the second save", controller.signal, 60_000);
+    const nextPath = nextEnd.record.kind === "saved" ? nextEnd.record.path : fail("the second recording was not saved");
+    files.push(nextPath);
+    const plainNext = readEditableDescription(fs.readFileSync(nextPath)) === undefined;
+    check({ check: "The next recording: plain again", expected: "no editable description, Editable recordings still off",
+      actual: plainNext ? "plain" : "editable", pass: plainNext });
   } catch (error) {
     runError = error;
   } finally {

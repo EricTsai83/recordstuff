@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bubbleRadius, bubbleRect, cameraCrop, insideBubble, type CameraLayout, type CameraPosition } from "../../../src/shared/camera-layout.ts";
 import type { RgbFrame } from "./capture-settings.mts";
-import { dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, sceneLayout } from "./editor-acceptance.mts";
+import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, redShare, sceneLayout } from "./editor-acceptance.mts";
 
 const box = (type: string, payload: Buffer): Buffer => {
   const head = Buffer.alloc(8);
@@ -109,5 +109,21 @@ describe("an export's frame", () => {
     const result = judgeComposite(composed(screen, dark, layout, placed), screen, dark, layout, placed);
     expect(result.verdicts[0]).toMatchObject({ judged: false, pass: false });
     expect(result.verdicts[1]!.pass).toBe(true);
+  });
+});
+
+describe("the edit view's texts and label", () => {
+  it("reads its clocks, to the hundredth or as the player's whole seconds", () => {
+    expect(clockSeconds("Export length 0:11.89")).toBeCloseTo(11.89, 5);
+    expect(clockSeconds("匯出從 1:02.50 開始")).toBeCloseTo(62.5, 5);
+    expect(clockSeconds("0:06 / 0:11")).toBe(6);
+    expect(clockSeconds("no time")).toBeUndefined();
+  });
+
+  it("finds the accent's red of a handle's time label, and none in grey or in other colours", () => {
+    const fill = (r: number, g: number, b: number): RgbFrame => ({ width: 4, height: 2, data: Buffer.from(Array.from({ length: 8 }, () => [r, g, b]).flat()) });
+    expect(redShare(fill(225, 29, 72))).toBe(1);
+    expect(redShare(fill(120, 120, 120))).toBe(0);
+    expect(redShare(fill(250, 200, 40))).toBe(0);
   });
 });

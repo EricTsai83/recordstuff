@@ -175,3 +175,20 @@ export function judgeComposite(output: RgbFrame, screen: RgbFrame, camera: RgbFr
   ];
   return { bubble, cameraSpread, ...(correlation === undefined ? {} : { correlation }), screenDifference, verdicts };
 }
+
+/** Seconds from the edit view's clock, `m:ss.ss` or `m:ss` (as the player shows it), or undefined. */
+export function clockSeconds(text: string): number | undefined {
+  const match = /(\d+):(\d{2}(?:\.\d+)?)/.exec(text);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : undefined;
+}
+
+/** The share of a picture's pixels that are the accent's red (the trim handle's time label), 0 to 1. */
+export function redShare(frame: RgbFrame): number {
+  let red = 0;
+  const pixels = frame.width * frame.height;
+  for (let i = 0; i < pixels; i++) {
+    const r = frame.data[i * 3]!, g = frame.data[i * 3 + 1]!, b = frame.data[i * 3 + 2]!;
+    if (r > 170 && g < 90 && b < 130 && r - g > 110) red++;
+  }
+  return pixels ? red / pixels : 0;
+}

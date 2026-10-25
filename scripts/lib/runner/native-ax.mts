@@ -16,6 +16,8 @@ import { command } from "./processes.mts";
  * `pasteboard-save <dir>` and `pasteboard-restore <manifest json>`.
  * `drag-events <event json>`, `release-mouse`, `move-mouse <x> <y>`, `screen-access` support native window dragging.
  * `scroll <x> <y> <deltas json>`, `hit <x> <y>` and `elements <pid> <title>` serve an executor's own input (`pnpm native:input`).
+ * `pointer down|drag|up <x> <y>` holds a drag a step at a time and `texts <pid> <title>` reads a window's static texts
+ * (`pnpm acceptance:editor`, which looks mid-drag).
  * Any failed AX call is reported as its AXError code rather than thrown, so the
  * caller can tell a missing permission (-25211) from an element that is gone.
  */
@@ -62,6 +64,17 @@ function run(argv) {
     delay(0.08);
     const point = $.CGEventGetLocation($.CGEventCreate($()));
     return out({ posted: true, point: { x: point.x, y: point.y }, leftDown: $.CGEventSourceButtonState(0, 0) });
+  }
+  if (cmd === 'pointer') {
+    // One step of a held left drag, so a runner can look between the steps (2026-10-25): 'down', 'drag' (moved while
+    // held) or 'up' at the point. A runner that presses must release, as nativeDrag's release-mouse does.
+    const type = a === 'down' ? 1 : a === 'up' ? 2 : 6;
+    const event = $.CGEventCreateMouseEvent($(), type, $.CGPointMake(Number(b), Number(c)), 0);
+    $.CGEventSetFlags(event, 0);
+    $.CGEventSetIntegerValueField(event, 1, 1); // kCGMouseEventClickState
+    $.CGEventPost(0, event);
+    delay(0.03);
+    return out({ posted: true });
   }
   if (cmd === 'mouse') {
     const right = a === 'right';
@@ -351,6 +364,25 @@ function run(argv) {
     walk(win, 0, false, '', undefined);
     return out({ frame, elements, overlays, webElements, visited, truncated });
   }
+  if (cmd === 'texts') {
+    // The text the titled window shows (2026-10-25): each static text's value with its frame, which elements leaves out.
+    const win = children(app, 'AXWindows').find(w => plain(raw(w, 'AXTitle')) === b);
+    if (!win) return out({ error: 'no window ' + b });
+    const texts = [];
+    let visited = 0;
+    const walk = (el, depth) => {
+      if (visited >= 20000 || depth > 120) return;
+      visited++;
+      if (plain(raw(el, 'AXRole')) === 'AXStaticText') {
+        const value = plain(raw(el, 'AXValue'));
+        const f = geometry(el);
+        if (typeof value === 'string' && value && f && f.width > 0 && f.height > 0) texts.push({ text: value, frame: f });
+      }
+      for (const child of children(el)) walk(child, depth + 1);
+    };
+    walk(win, 0);
+    return out({ texts });
+  }
   throw new Error('unknown command ' + cmd);
 }
 `;
@@ -499,7 +531,7 @@ export function parseAxResult<T>(output: string, what: string): T {
 }
 
 /** Key codes and CGEventFlags the runners post. */
-export const KEY = { escape: 53, left: 123, right: 124, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12, a: 0, c: 8 } as const;
+export const KEY = { escape: 53, left: 123, right: 124, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12, a: 0, c: 8, z: 6, delete: 51 } as const;
 export const FLAG = { command: 0x100000, shift: 0x20000, option: 0x80000 } as const;
 
 export interface NativeAx {
@@ -508,6 +540,10 @@ export interface NativeAx {
   mouse(button: "left" | "right", x: number, y: number): Promise<void>;
   /** Moves the pointer without a click, as a person does (plan 082: what hovering a window does). */
   move(x: number, y: number): Promise<void>;
+  /** One step of a held left drag (press, move while held, release), so the state between the steps can be read. */
+  pointer(step: "down" | "drag" | "up", x: number, y: number): Promise<void>;
+  /** The static texts the titled window shows, with their frames; read with web accessibility enabled. */
+  texts(pid: number, title: string): Promise<{ texts: Array<{ text: string; frame: Frame }> }>;
   key(code: number, flags?: number): Promise<void>;
   /** Scrolls `lines` whole lines over the point, positive towards the content's end. */
   scroll(x: number, y: number, lines: number): Promise<void>;
@@ -544,6 +580,8 @@ export function osascriptAx(signal: AbortSignal, timeoutMs = 10_000): NativeAx {
     press: async (pid, index) => { await run("menu item press", "press", pid, index); },
     mouse: async (button, x, y) => { await run(`${button} click`, "mouse", button, x, y); },
     move: async (x, y) => { await run("pointer move", "move-mouse", x, y); },
+    pointer: async (step, x, y) => { await run(`pointer ${step}`, "pointer", step, x, y); },
+    texts: (pid, title) => runFor<{ texts: Array<{ text: string; frame: Frame }> }>(60_000, "window texts", "texts", pid, title),
     key: async (code, flags = 0) => { await run(`key ${code}`, "key", code, flags); },
     scroll: async (x, y, lines) => { await run("scroll", "scroll", x, y, JSON.stringify(scrollDeltas(lines))); },
     hit: (x, y) => run<PointHit>("hit test", "hit", x, y),
