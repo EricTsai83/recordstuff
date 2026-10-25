@@ -312,7 +312,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
         </PopoverTrigger>
         <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={name}>
           <div className="editor-options" role="group" aria-label={name}>
-            {/* Skimming, on by default (2026-10-25), and what it does under its switch. */}
+            {/* Skimming, off by default (2026-10-26), and what it does under its switch. */}
             <div className="editor-options-skim">
               <div className="editor-scene-row">
                 <label htmlFor="editor-skim">{model.text("Skimming")}</label>

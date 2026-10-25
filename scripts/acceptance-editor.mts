@@ -28,7 +28,7 @@
  *   handle held a fifth in must show its time above it (the accent's red, `redShare`) and the readout there, and leave
  *   the export shorter when let go with the label gone; dragged past the window's edge and let go there, it must save
  *   the full export length again; a range held across the middle must show its span with the preview at its moving
- *   end, and Delete remove it; with Skimming on (its default), the pointer over the timeline must move the preview there and, moved
+ *   end, and Delete remove it; with Skimming switched on in Options (off by default), the pointer over the timeline must move the preview there and, moved
  *   away, back; the shortcuts button must list the editing shortcuts on a click; and ⌘Z must take every change back.
  * - **The next recording**, by the shortcut, must be plain again: the setting stayed off.
  *
@@ -419,8 +419,14 @@ async function main(): Promise<number> {
       await sleep(1500);
       check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
 
-      // Skimming, on by default (2026-10-25): the preview shows what is under the pointer, and goes back when it leaves.
-      // The shortcuts' button reaches AX as a pop-up button, found by name.
+      // Skimming, off by default (2026-10-26), switched on in Options: the preview shows what is under the pointer, and
+      // goes back when it leaves. The shortcuts' button reaches AX as a pop-up button, found by name.
+      await click(await find("Options button", (e) => e.title === translate("Options", language)));
+      await sleep(400);
+      await click(await find("Skimming switch", (e) => e.role === "AXCheckBox" && e.title === translate("Skimming", language)));
+      await sleep(300);
+      await ax().key(KEY.escape);
+      await sleep(400);
       const playhead = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
       const over = Math.round(left + span * 0.85);
       await ax().move(over - 20, y);

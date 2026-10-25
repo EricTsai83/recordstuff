@@ -357,8 +357,17 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await expect(page.locator("#editor-keys-popup #editor-skim")).toHaveCount(0);
 });
 
-test("Skimming, on by default, shows the picture under the pointer and goes back to the playhead when it leaves; switched off in Options, a move does nothing (2026-10-25)", async () => {
+test("Skimming, off by default (2026-10-26), leaves the preview alone; switched on in Options, it shows the picture under the pointer and goes back to the playhead when it leaves; switched off again, a move does nothing (2026-10-25)", async () => {
   await openEditor();
+  const skim = async (on: boolean) => {
+    await page.locator("#editor-options").click();
+    await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", String(!on));
+    await page.locator("#editor-skim").click();
+    await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", String(on));
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#editor-options-popup")).toHaveCount(0);
+    await expect(page.locator("#editor[data-open]")).toHaveCount(1);
+  };
   const video = page.locator("#editor .editor-stage video").first();
   await video.evaluate(async (el) => {
     const v = el as HTMLVideoElement;
@@ -371,6 +380,14 @@ test("Skimming, on by default, shows the picture under the pointer and goes back
   await page.mouse.click(box.x + box.width * 0.25, y);
   await page.mouse.move(box.x + box.width * 0.25, box.y - 60, { steps: 2 });
   await expect.poll(time).toBeGreaterThan(1.8);
+
+  // Off by default: a pointer passing over the timeline leaves the preview at 2 s.
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
+  await page.waitForTimeout(200);
+  expect(await time()).toBeLessThan(2.2);
+  await expect(page.locator(".editor-skimmer")).toHaveCount(0);
+  await page.mouse.move(box.x + box.width * 0.75, box.y - 60, { steps: 2 });
+  await skim(true);
 
   // On: the preview follows the pointer, with a skimmer line, and comes back to 2 s when the pointer leaves.
   await page.mouse.move(box.x + box.width * 0.5, y, { steps: 4 });
@@ -390,14 +407,8 @@ test("Skimming, on by default, shows the picture under the pointer and goes back
   expect(await time()).toBeGreaterThan(3.8);
   expect(await time()).toBeLessThan(4.2);
 
-  // Off, by its switch in Options (2026-10-26): a pointer passing over the timeline leaves the preview where it is.
-  await page.locator("#editor-options").click();
-  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", "true");
-  await page.locator("#editor-skim").click();
-  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", "false");
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#editor-options-popup")).toHaveCount(0);
-  await expect(page.locator("#editor[data-open]")).toHaveCount(1);
+  // Off again, by its switch in Options (2026-10-26): a pointer passing over the timeline leaves the preview where it is.
+  await skim(false);
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
   await page.waitForTimeout(200);
   expect(await time()).toBeLessThan(4.2);

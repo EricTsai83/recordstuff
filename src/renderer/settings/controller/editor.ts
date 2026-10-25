@@ -30,10 +30,10 @@ export let rangeSelection: EditRange | undefined;
 let trimDraft: { edge: TrimEdge; at: number } | undefined;
 /**
  * Skimming (2026-10-25, the maintainer's choice, as Final Cut Pro's): while on, the preview shows the picture under the
- * pointer as it moves over the timeline, and goes back to the playhead when it leaves. On by default since 2026-10-25,
- * as most editors' (the maintainer's choice); kept while the app runs.
+ * pointer as it moves over the timeline, and goes back to the playhead when it leaves. Off by default again since
+ * 2026-10-26, as Final Cut Pro's (the maintainer's choice); kept while the app runs.
  */
-export let skimming = true;
+export let skimming = false;
 /** Where the skimmer is, in the video's timescale, while the pointer skims. */
 export let skimAt: number | undefined;
 /** The playhead's time before the pointer began skimming, which it returns to; none once a press put it elsewhere. */

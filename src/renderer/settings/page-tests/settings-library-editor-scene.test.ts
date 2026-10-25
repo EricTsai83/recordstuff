@@ -51,7 +51,7 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   expect(document.getElementById("editor-options")!.textContent).toBe("Options");
   click(document.getElementById("editor-options")!);
   await vi.waitFor(() => expect(document.querySelector("#editor-options-popup .editor-scene")).not.toBeNull());
-  expect(document.getElementById("editor-skim")!.getAttribute("aria-checked")).toBe("true");
+  expect(document.getElementById("editor-skim")!.getAttribute("aria-checked")).toBe("false");
   expect(document.getElementById("editor-camera-shown")!.getAttribute("aria-checked")).toBe("true");
   expect(document.getElementById("editor-camera-size")).toBeNull();
   expect(document.getElementById("editor-volume-system")).not.toBeNull();
