@@ -526,8 +526,7 @@ describe("an editable recording (plan 087)", () => {
     expect(ctx.editing.previewResponse(new Request("recordstuff-media://video/rec"))).toBeUndefined();
     // Closed, its preview goes.
     ctx.editing.choose("rec", { action: "close" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(previews()).toEqual([]);
+    await vi.waitFor(() => expect(previews()).toEqual([]));
   });
 
   it("saves the scene with the cuts as a version-2 edit, keeps it across saves of cuts alone, and exports it rendered", async () => {
@@ -593,15 +592,16 @@ describe("an editable recording (plan 087)", () => {
     ctx.editing.choose("rec", { action: "close" });
     const closed = worker.calls.closeIdle;
     finish();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(worker.calls.closeIdle).toBe(closed + 1);
+    await vi.waitFor(() => expect(worker.calls.closeIdle).toBe(closed + 1));
 
     // Opened again: the camera's track holds nothing (an interrupted recording), so the view has no camera to place.
     worker.extract.mockImplementation(async ({ track }) => { throw new ExportFailure("unsupported", `the recording has no ${track} track`); });
     await ctx.editing.choose("rec", { action: "open" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(ctx.editing.view()!.editable).not.toHaveProperty("camera");
-    expect(ctx.editing.view()!.editable!.scene).not.toHaveProperty("camera");
+    // Waited for rather than slept on: a fixed 20 ms was not long enough on a Windows CI runner (2026-10-25).
+    await vi.waitFor(() => {
+      expect(ctx.editing.view()!.editable).not.toHaveProperty("camera");
+      expect(ctx.editing.view()!.editable!.scene).not.toHaveProperty("camera");
+    });
   });
 
   it("removes the preview tracks a crash left at the next launch", async () => {
