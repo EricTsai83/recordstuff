@@ -284,3 +284,35 @@ it("reads where a video is the one way both windows hand it over: an ended or pa
   ended = false; paused = true;
   expect(playbackOf(video).playing).toBe(false);
 });
+
+it("shows YouTube's loading spinner once a picture has been missing for a quarter second, while it loads or buffers, and never for a fast load", () => {
+  const { video, root } = setup();
+  let ready = 0;
+  Object.defineProperty(video, "readyState", { get: () => ready, configurable: true });
+  const spinner = root.querySelector<HTMLElement>(".pc-spinner")!;
+  expect(spinner.getAttribute("role")).toBe("status");
+  expect(spinner.getAttribute("aria-label")).toBe("Loading the video");
+  // A fast load: the picture is ready within the quarter second, so nothing shows.
+  flushSync(() => video.dispatchEvent(new Event("loadstart")));
+  vi.advanceTimersByTime(100);
+  ready = 4;
+  flushSync(() => video.dispatchEvent(new Event("loadeddata")));
+  vi.advanceTimersByTime(500);
+  expect(spinner.hidden).toBe(true);
+  // Buffering in playback: shown after a quarter second, gone when it plays on.
+  flushSync(() => video.dispatchEvent(new Event("waiting")));
+  vi.advanceTimersByTime(200);
+  expect(spinner.hidden).toBe(true);
+  flushSync(() => vi.advanceTimersByTime(100));
+  expect(spinner.hidden).toBe(false);
+  flushSync(() => video.dispatchEvent(new Event("playing")));
+  expect(spinner.hidden).toBe(true);
+  // A slow first load: no picture yet, shown until one is ready.
+  ready = 0;
+  flushSync(() => video.dispatchEvent(new Event("loadstart")));
+  flushSync(() => vi.advanceTimersByTime(300));
+  expect(spinner.hidden).toBe(false);
+  ready = 2;
+  flushSync(() => video.dispatchEvent(new Event("loadeddata")));
+  expect(spinner.hidden).toBe(true);
+});

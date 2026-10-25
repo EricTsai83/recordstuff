@@ -3272,6 +3272,33 @@
     margin-left: 12px;
     font-size: 16px;
   }
+  /* Loading or buffering (2026-10-25), as YouTube's: a white arc turning in the picture's middle. */
+  .pc-spinner {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .pc-spinner[hidden] {
+    display: none;
+  }
+  .pc-spinner > span {
+    width: 48px;
+    height: 48px;
+    border: 4px solid color-mix(in oklab, var(--media-foreground) 25%, transparent);
+    border-top-color: var(--media-foreground);
+    border-radius: 50%;
+    filter: drop-shadow(0 0 2px var(--media-scrim));
+    animation: pc-spin 0.9s linear infinite;
+  }
+  @keyframes pc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   @keyframes media-bezel {
     from {
       opacity: 1;
@@ -3567,6 +3594,10 @@
     .clip-scrub::before,
     .clip-preview > video {
       transition: none;
+    }
+    /* The spinner holds still: its ring says loading without turning. */
+    .pc-spinner > span {
+      animation: none;
     }
     /* The flashes hold still and leave when their time is up. */
     .pc-bezel,

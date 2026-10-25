@@ -107,7 +107,9 @@ export function Player({
     [peeking, setPeeking] = useState(false),
     peek = useRef<FramePeekHandle>(null),
     seekArea = useRef<HTMLDivElement>(null),
-    pointerX = useRef(0);
+    pointerX = useRef(0),
+    // Loading or buffering, as YouTube shows it (2026-10-25): a spinner in the middle while no picture is ready to show.
+    [loading, setLoading] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     ),
@@ -207,6 +209,29 @@ export function Player({
       el.load();
     };
   }, [sync, wake]);
+  // The spinner: once the recording has had no picture to show for a quarter of a second (a fast load never shows it),
+  // while it first loads, waits for data in playback, or seeks; gone as soon as a picture is ready.
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    let waiting = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = (event?: Event): void => {
+      if (event?.type === "waiting") waiting = true;
+      if (event && ["playing", "canplay", "seeked", "loadeddata", "emptied", "error"].includes(event.type)) waiting = false;
+      const pending = Boolean(el.getAttribute("src")) && !el.error && (el.readyState < 2 || el.seeking || waiting);
+      clearTimeout(timer);
+      if (!pending) setLoading(false);
+      else timer = setTimeout(() => setLoading(true), 250);
+    };
+    const types = ["loadstart", "waiting", "seeking", "seeked", "loadeddata", "canplay", "playing", "emptied", "error", "timeupdate"];
+    for (const type of types) el.addEventListener(type, check);
+    check();
+    return () => {
+      clearTimeout(timer);
+      for (const type of types) el.removeEventListener(type, check);
+    };
+  }, [source]);
   // The frame picture is placed where the pointer came in, before it moves again, and once more when the recording's
   // length is known if the pointer came in before it was.
   useEffect(() => {
@@ -375,6 +400,9 @@ export function Player({
             onDoubleClick();
           }}
         />
+        <div className="pc-spinner" role="status" aria-label={translate("Loading the video", language)} hidden={!loading}>
+          <span aria-hidden="true" />
+        </div>
         <div
           key={`bezel-${flash?.seq ?? 0}`}
           className="pc-bezel"

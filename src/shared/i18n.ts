@@ -629,6 +629,7 @@ export const ZH_TW = {
   "Export length {length}": "匯出長度 {length}",
   "Playhead {time}": "播放位置 {time}",
   "Skimming": "滑過預覽",
+  "Loading the video": "正在載入影片",
   "Editing shortcuts": "剪輯快捷鍵",
   "Space": "空白鍵",
   "Move a frame": "逐格移動",
