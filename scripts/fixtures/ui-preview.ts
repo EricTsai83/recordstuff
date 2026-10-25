@@ -88,7 +88,7 @@ async function run(): Promise<void> {
   let libraryOverride: LibraryState | undefined;
   /** The Recording Studio's picture (2026-10-22): between recordings none, during one shown or hidden by Live preview. */
   let studio: NonNullable<AppContext["studio"]> = { showing: false };
-  /** The Studio's preview rate and view (plan 092): absent is the default, Off, as the tabs are drawn. */
+  /** The Studio's preview rate and view (plan 092): absent is the default, Power saving, as the tabs are drawn. */
   let studioPreview: AppContext["studioPreview"];
   /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
   let cameraState: "waiting" | "notReady" | "lost" | undefined;
@@ -196,11 +196,12 @@ async function run(): Promise<void> {
       state = { type: "recording", startedAt: new Date().toISOString() };
       await show(window, "recording");
       await shoot(window, `recording-state-${lang}-${scheme}.png`, `recording in progress · ${lang} · ${scheme}`, { state: "recording" });
-      // The Studio during a recording with the preview off (plan 092's default), then on at Power saving: its picture
-      // shown, then hidden by Live preview (2026-10-21).
-      studio = { showing: true };
+      // The Studio during a recording with its picture hidden by Live preview (2026-10-25: the rate has no Off), then
+      // shown at Power saving in each view.
+      studio = { showing: false, pictureHidden: true };
       await show(window, "studio");
       await shoot(window, `studio-recording-off-${lang}-${scheme}.png`, `the Studio while recording, the preview off · ${lang} · ${scheme}`, { state: "recording-preview-off" });
+      studio = { showing: true };
       studioPreview = { rate: "power", view: "screen" };
       await show(window, "studio");
       await shoot(window, `studio-recording-screen-${lang}-${scheme}.png`, `the Studio while recording, Power saving, the Screen view · ${lang} · ${scheme}`, { state: "recording-screen" });

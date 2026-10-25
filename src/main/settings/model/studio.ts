@@ -18,7 +18,6 @@ const VIEW_LABELS: Record<StudioView, [PlainMessageKey, PlainMessageKey]> = {
 };
 
 const RATE_LABELS: Record<StudioPreviewRate, [PlainMessageKey, PlainMessageKey]> = {
-  off: ["Off", "No preview: the Studio adds no work and opens no camera."],
   power: ["Power saving", "5 fps while you only watch, 10 fps while you work in the Studio."],
   standard: ["Standard", "10 fps all the time."],
   smooth: ["Smooth", "15 fps all the time; uses the most power."],

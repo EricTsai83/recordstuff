@@ -440,13 +440,11 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(settingsView(idle, on()).groups.filter((g) => g.tab === "studio").map((g) => g.id).slice(0, 4), "the Studio's first rows").toEqual(["cameraPreview", "studioPreviewRate", "studioPreviewView", "studioCamera"]);
     expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
       mode: "live", display: { width: 1512, height: 982 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
-      x: 0.1, y: 0.2, camera: "iPhone Camera" } });
+      x: 0.1, y: 0.2 } });
     // Another display: its own position.
     const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" } });
     expect(preview(idle, studio)?.cameraPreview).toMatchObject({ display: { width: 1080, height: 1920 }, x: 0.4, y: 0.6 });
     expect(preview(idle, { ...on(), displays: [] }), "no display to show").toBeUndefined();
-    // The chosen camera by the name it has now, which the page matches; a renamed one keeps its stored label meanwhile.
-    expect(preview(idle, on({ device: { id: "iphone", label: "Old iPhone name" } }))?.cameraPreview?.camera).toBe("iPhone Camera");
   });
 
   it("says why there is no picture: the switch off, access not allowed, a recording without the camera yet", () => {
@@ -474,17 +472,18 @@ describe("the camera's preview (plan 075, step 7)", () => {
       .toMatchObject({ mode: "recording", composed: true });
   });
 
-  it("offers the preview's rate, Off by default, and its view, at any time (plan 092, D1, D3)", () => {
+  it("offers the preview's rate, Power saving by default, and its view, at any time (plan 092, D1, D3; no Off since 2026-10-25)", () => {
     const rate = (state: RecordingState, ctx: AppContext) => group(state, ctx, "studioPreviewRate");
     expect(rate(idle, on())).toMatchObject({ tab: "studio", section: "studioPreview", enabled: true, label: "Preview rate" });
-    expect(rate(idle, on())?.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["off", "Off", true], ["power", "Power saving", false],
+    expect(rate(idle, on())?.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["power", "Power saving", true],
       ["standard", "Standard", false], ["smooth", "Smooth", false]]);
     expect(rate(idle, on())?.choices.every((c) => (c.description ?? "").length > 0), "each choice says what it does").toBe(true);
     const standard = on({}, { studioPreview: { rate: "standard", view: "screen" } });
     expect(rate(recording, standard)).toMatchObject({ enabled: true });
     expect(settingsChecked(recording, standard, "studioPreviewRate", "standard")).toBe(true);
     expect(settingsAction(recording, standard, "studioPreviewRate", "smooth")).toEqual({ setStudioPreview: { rate: "smooth" } });
-    expect(settingsAction(idle, on(), "studioPreviewRate", "off")).toEqual({ setStudioPreview: { rate: "off" } });
+    expect(settingsAction(idle, on(), "studioPreviewRate", "power")).toEqual({ setStudioPreview: { rate: "power" } });
+    expect(settingsAction(idle, on(), "studioPreviewRate", "off"), "Live preview is the picture's switch").toBeUndefined();
     expect(settingsAction(idle, on(), "studioPreviewRate", "turbo")).toBeUndefined();
     const view = group(recording, standard, "studioPreviewView");
     expect(view).toMatchObject({ enabled: true, choices: [
@@ -496,7 +495,7 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(settingsAction(recording, standard, "studioPreviewView", "camera"), "094's Camera view").toEqual({ setStudioPreview: { view: "camera" } });
     expect(settingsAction(idle, on(), "studioPreviewView", "selfie")).toBeUndefined();
     expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewView")?.choices.map((c) => c.label)).toEqual(["錄影畫面", "只看螢幕", "只看相機"]);
-    expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewRate")?.choices.map((c) => c.label)).toEqual(["關閉", "省電", "標準", "流暢"]);
+    expect(group(idle, { ...on(), language: "zh-TW" }, "studioPreviewRate")?.choices.map((c) => c.label)).toEqual(["省電", "標準", "流暢"]);
   });
 
   it("sends where the bubble was let go of on the display shown at any time, and nothing out of range", () => {

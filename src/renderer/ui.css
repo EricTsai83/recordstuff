@@ -923,11 +923,6 @@
   .camera-preview-handle:focus-visible {
     box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--ring);
   }
-  .camera-preview-camera {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
   .camera-preview-status {
     position: absolute;
     inset: auto 8px 8px;
@@ -1234,6 +1229,42 @@
     font-size: 11px;
     font-weight: 500;
     line-height: 1.2;
+  }
+  /* Turn on preview over the stage while Live preview is off (2026-10-25): glass, shown only while the pointer is on
+     the stage or the button has focus, so the bare stage stays bare. Over the picture, so nothing moves. */
+  .studio-stage-start {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+  /* The bubble stays over it, to be dragged wherever it is placed. */
+  .studio-stage .camera-preview-handle {
+    z-index: 2;
+  }
+  .studio-stage-start > button {
+    pointer-events: auto;
+    border-color: var(--studio-live-edge);
+    background: var(--studio-live-glass);
+    backdrop-filter: blur(10px);
+    color: var(--studio-live-ink-on);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .studio-stage-start > button:hover {
+    background: var(--studio-live-glass);
+    color: var(--studio-live-ink-on);
+  }
+  .studio-stage:hover .studio-stage-start > button,
+  .studio-stage-start > button:focus-visible {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .studio-stage-start > button {
+      transition: none;
+    }
   }
   .studio-controls > .studio-note,
   .studio-controls > .studio-failure {
@@ -2267,6 +2298,14 @@
     object-fit: cover;
     position: relative;
   }
+  /* A portrait recording shows whole in the card's 16:9, on the player's ground either side (2026-10-25). */
+  .clip-thumb.portrait {
+    background: var(--media);
+  }
+  .clip-thumb.portrait img,
+  .clip-preview[data-portrait] > video {
+    object-fit: contain;
+  }
   .no-thumb img {
     opacity: 0;
   }
@@ -2297,14 +2336,6 @@
     flex-direction: column;
     gap: 3px;
     min-width: 0;
-  }
-  /* A portrait recording shows whole in the card's 16:9, on the player's ground either side (2026-10-25). */
-  .clip-thumb.portrait {
-    background: var(--media);
-  }
-  .clip-thumb.portrait img,
-  .clip-preview[data-portrait] > video {
-    object-fit: contain;
   }
   .clip-title {
     font-size: 13px;

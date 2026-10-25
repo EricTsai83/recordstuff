@@ -311,7 +311,7 @@ function installPanelHandlers(): void {
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       const action = settingsAction(sessionState, context, group, choice);
       if (typeof action === "object" && "setStudioPreview" in action) {
-        const current = context.studioPreview ?? { rate: "off", view: "composed" };
+        const current = context.studioPreview ?? { rate: "power", view: "composed" };
         const { rate, view } = action.setStudioPreview;
         state.cameraContext = { ...context, studioPreview: { rate: rate ?? current.rate, view: view ?? current.view } };
       }

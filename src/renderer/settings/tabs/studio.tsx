@@ -352,12 +352,31 @@ function PreviewPanel({ rate }: { rate: SettingsGroup }) {
 }
 
 /**
+ * Over the stage while Live preview is off (2026-10-25, at the maintainer's request): a glass button that shows while
+ * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the line of controls does.
+ */
+function StageStart({ live }: { live: SettingsGroup }) {
+  const id = `setting-${live.id}-stage`;
+  return (
+    <div className="studio-stage-start">
+      <Button id={id} variant="outline" className="h-9 gap-1.5 rounded-full px-4 text-sm"
+        onClick={() => void model.choose(live.id, "on", id)}>
+        <Radio aria-hidden="true" />{model.text("Turn on preview")}
+      </Button>
+    </div>
+  );
+}
+
+/**
  * Paces the Studio at the chosen rate (studio-pace.ts) and tells the capture process the chosen view; returns what
  * the stage shows of them. Power saving's rate in use is not shown: the rate's own line says what it does (the
- * maintainer, 2026-10-23, in place of D1's corner label).
+ * maintainer, 2026-10-23, in place of D1's corner label). The picture is off until a session's picture is shown (2026-10-25:
+ * Live preview is its one switch, the rate no longer offers Off), so the Studio opens no camera of its own; main's word
+ * on the switch decides, not a choice still saving, so a picture is not let go and asked for again while it saves.
  */
-function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup | undefined): PreviewShown {
-  const chosen: StudioPreviewRate = rate && isStudioPreviewRate(model.committed(rate)) ? model.committed(rate) as StudioPreviewRate : "off";
+function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup | undefined, live: SettingsGroup | undefined,
+  session: boolean): PreviewShown {
+  const chosen: StudioPreviewRate = rate && isStudioPreviewRate(model.committed(rate)) ? model.committed(rate) as StudioPreviewRate : "power";
   const viewChosen = view && isStudioView(model.committed(view)) ? model.committed(view) as StudioView : "composed";
   // One pacer from the Studio's opening, told each rate chosen, so what the pointer did before a choice still counts.
   const pacer = useRef<StudioPacer | undefined>(undefined);
@@ -370,7 +389,7 @@ function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup |
   useEffect(() => pacer.current?.rate(chosen), [chosen]);
   useEffect(() => setPreviewView(viewChosen), [viewChosen]);
   return {
-    off: chosen === "off",
+    off: live !== undefined && !(session && live.choices.some((choice) => choice.id === "on" && choice.checked)),
     view: viewChosen,
   };
 }
@@ -396,13 +415,14 @@ export function Studio() {
   const rate = groupOf("studioPreviewRate");
   const view = groupOf("studioPreviewView");
   // Its preview and meters at the chosen rate (plan 092, D1), and the chosen view (D3).
-  const shown = usePreviewChoice(rate, view);
+  const shown = usePreviewChoice(rate, view, live, preview?.cameraPreview?.mode === "recording");
   return (
     <div className="studio">
       <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}>
-          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={rate ? shown : undefined}
+          {live && shown.off && live.enabled && model.committed(live) !== "on" && <StageStart live={live} />}
+          <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={live ? shown : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
           {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24). */}
           {live?.note && <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>}

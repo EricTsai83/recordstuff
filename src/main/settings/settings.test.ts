@@ -166,7 +166,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -274,7 +274,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -294,7 +294,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
   });
 
@@ -348,7 +348,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -448,7 +448,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "off", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
+      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: false, audioVolume: { system: 100, microphone: 100 }, camera: false, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [],
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -909,12 +909,15 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
     expect(s.fileNameTemplate).toBe("Demo {date} {time}");
   });
 
-  it("keeps the Studio's preview off until a rate is chosen, and remembers the rate and the view (plan 092)", async () => {
-    expect(defaultSettings("/a").studioPreview).toEqual({ rate: "off", view: "composed" });
-    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { studioPreview: { rate: "off" } }, warnings: [] });
-    for (const bad of ["standard", { rate: "fast", view: "composed" }, { rate: "standard" }, { rate: "standard", view: "selfie" }]) {
+  it("starts the Studio's preview at Power saving, reads a stored Off as it, and remembers the rate and the view (plan 092, 2026-10-25)", async () => {
+    expect(defaultSettings("/a").studioPreview).toEqual({ rate: "power", view: "composed" });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { studioPreview: { rate: "power" } }, warnings: [] });
+    // Off was a rate until 2026-10-25: a stored one keeps its view and reads as Power saving, without a warning.
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: { rate: "off", view: "screen" } })))
+      .toMatchObject({ settings: { studioPreview: { rate: "power", view: "screen" } }, warnings: [] });
+    for (const bad of ["standard", { rate: "fast", view: "composed" }, { rate: "standard" }, { rate: "standard", view: "selfie" }, { rate: "off" }]) {
       expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: bad })), JSON.stringify(bad))
-        .toMatchObject({ settings: { studioPreview: { rate: "off", view: "composed" } }, warnings: ["studioPreview is invalid: the Recording Studio's preview is off"] });
+        .toMatchObject({ settings: { studioPreview: { rate: "power", view: "composed" } }, warnings: ["studioPreview is invalid: using Power saving and the recorded picture"] });
     }
     const s = store();
     await s.setStudioPreview({ rate: "smooth" });
@@ -927,8 +930,9 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
     expect(store().studioPreview, "plan 094's Camera view is kept").toEqual({ rate: "smooth", view: "camera" });
     await s.setStudioPreview({ view: "screen" });
     await expect(s.setStudioPreview({})).rejects.toThrow("unsupported Studio preview");
-    await s.setStudioPreview({ rate: "off" });
-    expect(store().studioPreview).toEqual({ rate: "off", view: "screen" });
+    await expect(s.setStudioPreview({ rate: "off" } as never), "Off is no longer a rate").rejects.toThrow("unsupported Studio preview");
+    await s.setStudioPreview({ rate: "power" });
+    expect(store().studioPreview).toEqual({ rate: "power", view: "screen" });
   });
 
   it("keeps the previews' sound off until it is turned on, and remembers it (2026-10-14)", async () => {

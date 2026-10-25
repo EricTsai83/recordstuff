@@ -12,11 +12,12 @@ import { STUDIO_STALL_MAX_MS } from "./studio-stall";
 export { STUDIO_ACTIVE_MS, STUDIO_FPS, STUDIO_RATES, STUDIO_RESTING_FPS, STUDIO_SMOOTH_FPS, type StudioFps } from "./studio-rates";
 
 /**
- * The Studio's preview rate (plan 092, D1), one persisted choice for a Live preview and a recording alike: Off (the
- * default: no preview is composed, encoded or drawn, and the Studio opens no camera of its own), Power saving (5 a
- * second while only looked at, 10 while someone works in it), Standard (10) and Smooth (15).
+ * The Studio's preview rate (plan 092, D1), one persisted choice for a Live preview and a recording alike: Power saving
+ * (the default: 5 a second while only looked at, 10 while someone works in it), Standard (10) and Smooth (15). Off was
+ * one until 2026-10-25, when the maintainer made Live preview the picture's one switch; a stored Off reads as Power
+ * saving (settings.ts).
  */
-export const STUDIO_PREVIEW_RATES = ["off", "power", "standard", "smooth"] as const;
+export const STUDIO_PREVIEW_RATES = ["power", "standard", "smooth"] as const;
 export type StudioPreviewRate = (typeof STUDIO_PREVIEW_RATES)[number];
 /**
  * What the preview shows (plan 092, D3; plan 094, D1): the composed picture, the screen without the camera, or the camera
@@ -26,8 +27,8 @@ export const STUDIO_VIEWS = ["composed", "screen", "camera"] as const;
 export type StudioView = (typeof STUDIO_VIEWS)[number];
 /** The choice as stored: the rate and the view. */
 export interface StudioPreviewSettings { rate: StudioPreviewRate; view: StudioView }
-export const DEFAULT_STUDIO_PREVIEW: StudioPreviewSettings = { rate: "off", view: "composed" };
-/** The one rate of a choice that holds one; Power saving's follows the Studio's use (studio-pace.ts), Off has none. */
+export const DEFAULT_STUDIO_PREVIEW: StudioPreviewSettings = { rate: "power", view: "composed" };
+/** The one rate of a choice that holds one; Power saving's follows the Studio's use (studio-pace.ts). */
 export const FIXED_STUDIO_FPS: Partial<Record<StudioPreviewRate, StudioFps>> = { standard: STUDIO_FPS, smooth: STUDIO_SMOOTH_FPS };
 
 export const isStudioPreviewRate = (value: unknown): value is StudioPreviewRate => STUDIO_PREVIEW_RATES.includes(value as StudioPreviewRate);

@@ -58,9 +58,10 @@
  * whose capture delivers few pictures (the recording's idle path). `--studio` without `--camera` shows the screen's
  * preview with the camera switch held off, so no camera opens; `--studio-active` rests the pointer on the Studio during S,
  * where Power saving shows 10 frames a second instead of the 5 it shows while only looked at (plan 081, D1); L presses
- * Live preview with the pointer, so Power saving is at 10 there either way. `--studio-rate off|power|standard|smooth`
+ * Live preview with the pointer, so Power saving is at 10 there either way. `--studio-rate power|standard|smooth`
  * (plan 092, D1; default `power`, the Studio as it was before the choice) seeds the Studio's preview rate in
- * settings.json, restored with the other seeded keys: under `off` S and L show no preview, only the meters.
+ * settings.json, restored with the other seeded keys (Off was a rate until 2026-10-25, when Live preview became the
+ * picture's one switch).
  * `--studio-view composed|screen|camera` (plan 094; default `composed`) seeds its view the same way, so the Camera view
  * and its Composed control are measured back to back on one bundle. `--studio-stall <at>,<for>` (plan 084, seconds)
  * launches the bundle with `RECORDSTUFF_STUDIO_STALL`, so the Studio's page holds its thread for `for` seconds once it
@@ -127,7 +128,7 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate off|power|standard|smooth] [--studio-view composed|screen|camera] [--studio-stall <at>,<for>] [--studio-memory] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate power|standard|smooth] [--studio-view composed|screen|camera] [--studio-stall <at>,<for>] [--studio-memory] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
@@ -135,7 +136,7 @@ let studio = false;
 /** Plan 083: the pointer rests on the Studio during S, and each session's pipeline figures are logged and reported. */
 let studioActive = false;
 /** Plan 092: the Studio's preview rate, seeded for the round. */
-const STUDIO_RATES = ["off", "power", "standard", "smooth"] as const;
+const STUDIO_RATES = ["power", "standard", "smooth"] as const;
 let studioRate: (typeof STUDIO_RATES)[number] | undefined;
 /** Plan 094: the Studio's preview view, seeded for the round. */
 const STUDIO_VIEWS = ["composed", "screen", "camera"] as const;
@@ -145,7 +146,7 @@ let studioStall: string | undefined;
 /** Plan 084: each S recording's memory noted as under `--studio-stall`, at 15 s, without a stall. */
 let studioMemory = false;
 /** What each rate shows while the Studio is only looked at, and while the pointer is on it. */
-const STUDIO_RATE_FPS = { off: [0, 0], power: [5, 10], standard: [10, 10], smooth: [15, 15] } as const;
+const STUDIO_RATE_FPS = { power: [5, 10], standard: [10, 10], smooth: [15, 15] } as const;
 let diagnostics = false;
 let materialKind: keyof typeof MATERIALS = "moving";
 /** Plan 091: record without sound, and ask capture for the frame interval. */
@@ -595,7 +596,7 @@ async function main(): Promise<number> {
     const extra = plain ? chosen.summary.cpuPercent.average - plain.summary.cpuPercent.average : Number.NaN;
     const set = recordings.filter((r) => r.fps === fps && r.studio);
     scenarios.push({ name: `S. Recording at ${fps} fps with the Recording Studio showing it${studioActive ? " (the pointer on it)" : ""}`, key: `studioRecording${fps}`, summary: chosen.summary,
-      note: `The Studio window at ${studioDisplay}; the preview ${shownRate === "off" ? "off" : `at ${shownRate}`}; ${studioActive ? `the pointer rested on it (${STUDIO_RATE_FPS[shownRate][1]} frames a second)` : `the pointer off it (${STUDIO_RATE_FPS[shownRate][0]} frames a second once it rests)`}${camera === undefined ? "; no camera composed" : ""}.`,
+      note: `The Studio window at ${studioDisplay}; the preview at ${shownRate}; ${studioActive ? `the pointer rested on it (${STUDIO_RATE_FPS[shownRate][1]} frames a second)` : `the pointer off it (${STUDIO_RATE_FPS[shownRate][0]} frames a second once it rests)`}${camera === undefined ? "; no camera composed" : ""}.`,
       ...(diagnostics ? { pipeline: summarizeSession(mergeSessions(`S. ${fps} fps, ${set.length} run(s)`, set.flatMap((r) => r.pipeline ? [r.pipeline] : []))) } : {}),
       verdicts: [judgeCoverage(chosen.summary, RECORDING_SECONDS - 10, chosen.samplerFailure),
         { check: "Over R's median at the same rate (D18)", limit: "≤ 8 points", actual: plain ? `${extra.toFixed(1)} points (${chosen.summary.cpuPercent.average.toFixed(1)}% against ${plain.summary.cpuPercent.average.toFixed(1)}%)` : "no R to compare",

@@ -136,8 +136,6 @@ export interface CameraPreviewView {
   /** Its position, a fraction of the free space on each axis. */
   x: number;
   y: number;
-  /** The chosen camera's name, which the page matches to its own list of cameras; absent is the default camera. */
-  camera?: string;
   /** What the stage says without a picture. */
   status?: string;
   /** What the Studio's Camera view (plan 094) says without a camera to show: lost, not ready, hidden or not in the session. */

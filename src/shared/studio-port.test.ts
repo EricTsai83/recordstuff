@@ -27,9 +27,10 @@ describe("the Recording Studio's port (plan 081)", () => {
   });
 
   it("reads a stored rate choice only whole (plan 092)", () => {
-    expect(isStudioPreviewSettings({ rate: "off", view: "screen" })).toBe(true);
+    expect(isStudioPreviewSettings({ rate: "standard", view: "screen" })).toBe(true);
     expect(isStudioPreviewSettings({ rate: "power", view: "camera" })).toBe(true);
-    for (const bad of [{ rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "selfie" }, [], null]) {
+    // Off was a rate until 2026-10-25; settings.ts reads a stored one as Power saving before this check.
+    for (const bad of [{ rate: "off", view: "composed" }, { rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "selfie" }, [], null]) {
       expect(isStudioPreviewSettings(bad), JSON.stringify(bad)).toBe(false);
     }
   });

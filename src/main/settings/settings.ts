@@ -248,7 +248,10 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const camera = field("camera", isBoolean, defaults.camera, `camera is not a boolean: using ${defaults.camera ? "on" : "off"}`);
   const cameraLayout = field("cameraLayout", isCameraLayout, defaults.cameraLayout, "cameraLayout is invalid: using the default bubble");
   const cameraDevice = field<CameraDevicePreference | undefined>("cameraDevice", isCameraDevicePreference, undefined, "cameraDevice is invalid: using the system default camera");
-  const studioPreview = field("studioPreview", isStudioPreviewSettings, defaults.studioPreview, "studioPreview is invalid: the Recording Studio's preview is off");
+  // Off was a rate until 2026-10-25 (Live preview is now the picture's one switch): read as Power saving, without a warning.
+  const storedPreview = record["studioPreview"] as { rate?: unknown } | undefined;
+  if (storedPreview && typeof storedPreview === "object" && storedPreview.rate === "off") record["studioPreview"] = { ...storedPreview, rate: "power" };
+  const studioPreview = field("studioPreview", isStudioPreviewSettings, defaults.studioPreview, "studioPreview is invalid: using Power saving and the recorded picture");
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
   // Only a pattern stored as it would be saved: trimmed and usable.
   const isTemplate = (value: unknown): value is string => typeof value === "string" && canonicalFileNameTemplate(value) === value;

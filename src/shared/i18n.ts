@@ -565,8 +565,8 @@ export const ZH_TW = {
   // The preview's rate and view (plan 092, D1, D3).
   "Preview rate": "預覽速率",
   "Power saving": "省電",
+  "Turn on preview": "開啟預覽",
   Smooth: "流暢",
-  "No preview: the Studio adds no work and opens no camera.": "不顯示預覽：工作室不增加負擔，也不開啟相機。",
   "5 fps while you only watch, 10 fps while you work in the Studio.": "只是觀看時每秒 5 格，在工作室操作時每秒 10 格。",
   "10 fps all the time.": "固定每秒 10 格。",
   "15 fps all the time; uses the most power.": "固定每秒 15 格，最耗電。",
@@ -597,7 +597,6 @@ export const ZH_TW = {
   "Allow camera access to see it here.": "允許取用相機後即可在此預覽。",
   "Shown here once the recording starts.": "錄影開始後會顯示在這裡。",
   "Camera position": "相機位置",
-  "The camera could not be shown here.": "無法在此顯示相機。",
   "Show camera": "顯示相機",
   "The camera dropped out during the recording. The screen was recorded without it while it was out.":
     "錄影途中相機曾中斷，中斷期間只錄到螢幕畫面。",

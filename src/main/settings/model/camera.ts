@@ -181,9 +181,6 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
     : !camera.session ? (camera.enabled ? t("The camera joins from the next recording.", language) : t("Turn on Camera to see it here.", language))
     : camera.session.hidden ? t("The camera is hidden from the recording.", language) : status;
   const id = `${x},${y}`;
-  // The name the camera has now, which the page matches to its own list; the stored label may be an older one.
-  const chosen = camera.device && camera.devices?.find((device) => device.id === camera.device?.id);
-  const named = chosen ? chosen.name : camera.devices?.find((device) => device.default)?.name;
   return {
     // The bubble is placed at any time, the camera off, a countdown or a recording in progress: a setting, as its shape (D7).
     ...group("cameraPreview", t("Preview", language), true,
@@ -197,7 +194,6 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
       // The picture holds a camera to place only while its session composes one.
       composed: !showing || camera.session !== undefined,
       x, y,
-      ...(named ? { camera: named } : {}),
       ...(status ? { status } : {}),
       ...(cameraStatus ? { cameraStatus } : {}),
     },

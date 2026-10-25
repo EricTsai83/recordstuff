@@ -4,9 +4,10 @@
  * arrow keys, to exactly where it is let go of, with no snapping to the edges or the centre (2026-10-22, at the
  * maintainer's request); that place is the choice sent to main, so one drag is one save, also while recording (D7).
  *
- * Before recording the bubble shows the camera itself, opened only while the preview is in sight (D6); while a
- * recording composes the camera, the page asks main for the engine's preview of the whole picture (D17), also only
- * while in sight, and the bubble is dragged over it unseen, with a word under the picture when the camera gives none.
+ * The page opens no camera of its own (since 2026-10-25: Live preview is the Studio's one switch for its picture, and
+ * before it the bubble is an outline); while a session makes a picture the page asks main for the engine's preview of
+ * the whole picture (D17), only while in sight, and the bubble is dragged over it unseen, with a word under the picture
+ * when the camera gives none.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { CameraPreviewView, SettingsGroup } from "../../../shared/settings-panel";
@@ -60,48 +61,6 @@ function useSize(element: HTMLElement | null): { width: number; height: number }
   return size;
 }
 
-/**
- * The camera itself, from Chromium's own list, matched to the chosen camera by name; the default when none matches.
- * Nothing is opened once `ended` says the preview no longer wants it, which listing the cameras may take long enough for.
- */
-async function openCamera(name: string | undefined, ended: () => boolean): Promise<MediaStream | undefined> {
-  const size = { width: { ideal: 640 }, height: { ideal: 360 } };
-  if (name) {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    if (ended()) return undefined;
-    const match = devices.find((device) => device.kind === "videoinput" && (device.label === name || device.label.startsWith(`${name} (`)));
-    if (match) return navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: match.deviceId }, ...size }, audio: false });
-  }
-  return navigator.mediaDevices.getUserMedia({ video: size, audio: false });
-}
-
-/** The camera in the bubble while `on`: opened as it turns on, every track stopped as it turns off (D6). */
-function useLiveCamera(video: HTMLVideoElement | null, on: boolean, name: string | undefined): boolean {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    setFailed(false);
-    if (!on || !video || !navigator.mediaDevices?.getUserMedia) return;
-    let stream: MediaStream | undefined;
-    let ended = false;
-    void openCamera(name, () => ended).then((opened) => {
-      if (!opened) return;
-      if (ended) {
-        for (const track of opened.getTracks()) track.stop();
-        return;
-      }
-      stream = opened;
-      video.srcObject = opened;
-      void video.play().catch(() => undefined);
-    }, () => { if (!ended) setFailed(true); });
-    return () => {
-      ended = true;
-      for (const track of stream?.getTracks() ?? []) track.stop();
-      video.srcObject = null;
-    };
-  }, [video, on, name]);
-  return failed;
-}
-
 /** The recording's preview drawn into `canvas` while `on`: main joins the page to it, on the Studio's port (studio-feed.ts). */
 function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boolean {
   const [drawing, setDrawing] = useState(false);
@@ -148,15 +107,12 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
 }) {
   const id = `setting-${group.id}`;
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const inSight = useInSight(stage);
   const size = useSize(stage);
   const off = shown?.off === true;
   const screenOnly = shown?.view === "screen";
   const cameraOnly = shown?.view === "camera" && !off;
-  // Before a session the camera itself opens in the bubble only for the composed picture the preview shows.
-  const failed = useLiveCamera(video, preview.mode === "live" && inSight && !off && !screenOnly, preview.camera);
   const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight && !off);
   /** Where the bubble shows while it is moved or its new place saves; the view's place otherwise. */
   const { shown: position, move: setMoving, commit: save } = usePendingValue<CameraPosition>({ x: preview.x, y: preview.y }, (a, b) => a.x === b.x && a.y === b.y);
@@ -215,14 +171,13 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
     commit({ x: +clamp01(position.x + move[0]).toFixed(4), y: +clamp01(position.y + move[1]).toFixed(4) });
   };
 
-  const live = preview.mode === "live" && !failed && !off && !screenOnly;
-  // In the Camera view the engine's picture is the camera itself; before a session the bubble holds the page's own.
+  // In the Camera view the engine's picture is the camera itself.
   const draggable = preview.composed && !cameraOnly;
   const showsBubble = cameraOnly ? preview.composed && preview.mode !== "recording" : preview.composed;
   const box = cameraOnly ? { left: enlarged.x, top: enlarged.y, width: enlarged.width, height: enlarged.height, borderRadius: enlargedRadius }
     : { left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius };
   // The Camera view says why it has no camera at once: that is about the camera, not the engine's first frame.
-  const status = off ? undefined : failed ? model.text("The camera could not be shown here.")
+  const status = off ? undefined
     : cameraOnly ? preview.cameraStatus
     : preview.mode === "recording" && !drawing ? undefined
     : screenOnly && preview.mode !== "recording" ? undefined : preview.status;
@@ -236,22 +191,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
         {/* In the Camera view the engine's picture is clipped to the camera it draws, so the stage's grey is around it. */}
         <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true"
           style={cameraOnly ? { clipPath: `inset(${enlarged.y}px ${size.width - enlarged.x - enlarged.width}px ${size.height - enlarged.y - enlarged.height}px ${enlarged.x}px round ${enlargedRadius}px)` } : undefined} />
-        {showsBubble && <div
-          className="camera-preview-bubble"
-          data-live={live || undefined}
-          aria-hidden="true"
-          style={box}
-        >
-          <video
-            ref={setVideo}
-            className="camera-preview-camera"
-            hidden={!live}
-            muted
-            playsInline
-            aria-hidden="true"
-            style={preview.bubble.mirror ? { transform: "scaleX(-1)" } : undefined}
-          />
-        </div>}
+        {showsBubble && <div className="camera-preview-bubble" aria-hidden="true" style={box} />}
         {/* What is dragged: the bubble, or a target of at least HANDLE_MIN pixels centred on it when it is drawn smaller. */}
         {draggable && <div
           id={id}

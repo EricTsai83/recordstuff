@@ -57,9 +57,9 @@ it("holds Standard at 10 and Smooth at 15 whatever is done in the Studio, paces 
     expect(rates.preview.at(-1), `${rate} stopped`).toBe(10);
   }
   rates.preview.length = 0;
-  const pacer = paceStudio("off");
+  const pacer = paceStudio("power");
   root.dispatchEvent(new PointerEvent("pointerenter"));
-  expect(rates.preview, "Off's meters follow the pointer").toEqual([5, 10]);
+  expect(rates.preview, "Power saving follows the pointer").toEqual([5, 10]);
   // The pointer rests on the Studio while a rate is chosen: Power saving starts at the working rate, as it would
   // have, and Smooth and back keep it.
   pacer.rate("smooth");
