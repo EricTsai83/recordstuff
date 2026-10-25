@@ -5,7 +5,8 @@
  * **The recording is never written.** It is opened only to read its identity (edit-store.ts); the engine opens it
  * read-only. The export goes to an owned temporary file in the same folder (`.<name>.recordstuff-export-<id>.part`,
  * hidden, so the Recordings tab does not list it), whose path is journalled in userData before the worker creates it.
- * It is published under a name nothing holds (`<name> (edited).mp4`, numbered past taken ones) only once the worker
+ * It is published under a name nothing holds (`<name> (edited).mp4`, 「<name>（已剪輯）.mp4」 in Traditional Chinese,
+ * numbered past taken ones) only once the worker
  * finished and synced it, by a hard link that fails rather than replaces (or, on a volume without hard links, an
  * exclusive placeholder renamed over). Cancel, a worker crash, a full disk, a refused rename and quit remove only that
  * temporary file; one left by a crash is removed at the next launch, by its journalled path and owned name.
@@ -121,9 +122,9 @@ export function partName(title: string): string {
   return `.${title}.recordstuff-export-${randomBytes(6).toString("hex")}.part`;
 }
 
-/** `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on. */
-export function editedName(title: string, attempt: number): string {
-  return attempt <= 1 ? `${title} (edited).mp4` : `${title} (edited ${attempt}).mp4`;
+/** `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已剪輯）.mp4」. */
+export function editedName(title: string, attempt: number, language?: Language): string {
+  return `${attempt <= 1 ? translate("{title} (edited)", language, { title }) : translate("{title} (edited {number})", language, { title, number: attempt })}.mp4`;
 }
 
 const PUBLISH_ATTEMPTS = 100;
@@ -144,11 +145,12 @@ export async function publish(
   reserving: (target: string, mark?: FileMark) => Promise<void> = async () => undefined,
   /** Whether the export was cancelled meanwhile: nothing is published then. */
   cancelled: () => boolean = () => false,
+  language?: Language,
 ): Promise<string> {
   const dir = path.dirname(part);
   const stop = (): never => { throw Object.assign(new Error("the export was cancelled before it was published"), { code: "ECANCELED" }); };
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
-    const target = path.join(dir, editedName(title, attempt));
+    const target = path.join(dir, editedName(title, attempt, language));
     if (await files.exists(target)) continue;
     if (cancelled()) stop();
     try {
@@ -681,7 +683,7 @@ export class Editing {
           if (!reserved.includes(target)) reserved.push(target);
           const entry: JournalEntry = mark ? { placeholder: target, ino: mark.ino, dev: mark.dev } : { placeholder: target };
           await this.journal((entries) => [...entries.filter((e) => entryPath(e) !== target), entry]);
-        }, () => run.cancelled);
+        }, () => run.cancelled, this.deps.language());
         this.deps.log(`editing: exported ${open.path} as ${published} (${result.bytes} bytes)`);
         this.lastExport = published;
         this.deps.published(published);

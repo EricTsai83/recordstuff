@@ -672,6 +672,8 @@ export const ZH_TW = {
   "The edit could not be saved. Check free disk space, then try again.": "無法儲存剪輯。請檢查磁碟空間後再試一次。",
   "The export could not start. Check free disk space, then try again.": "無法開始匯出。請檢查磁碟空間後再試一次。",
   "Exported as {name}.": "已匯出為 {name}。",
+  "{title} (edited)": "{title}（已剪輯）",
+  "{title} (edited {number})": "{title}（已剪輯 {number}）",
   "only recordings made by this version of RecordStuff can be cut.": "只能剪輯這個版本的 RecordStuff 錄製的影片。",
   "its index is damaged.": "影片的索引已損壞。",
   "it could not be read.": "無法讀取影片。",

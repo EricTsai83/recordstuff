@@ -18,7 +18,7 @@
  * - **Volume.** The microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
  * - **Export.** Export is pressed; main must log the render with the camera shown and the volumes the scene gives, and
- *   publish `<name> (edited).mp4`. Its middle frame must hold the camera track's own picture where the scene put the
+ *   publish `<name> (edited).mp4` (「（已剪輯）」 in Traditional Chinese), read from its log line. Its middle frame must hold the camera track's own picture where the scene put the
  *   bubble and the screen track's everywhere else (`judgeComposite`); a camera too flat to recognise (a covered lens)
  *   leaves that check unjudged, which blocks the round rather than passing it. It must have one picture and one sound
  *   track and last as long as the recording.
