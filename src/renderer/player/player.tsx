@@ -380,6 +380,7 @@ export function Player({
       <div
         ref={root}
         className={`pc${media.playing ? "" : " pc-paused"}${idle ? " pc-idle" : ""}`}
+        aria-busy={loading || undefined}
         onKeyDownCapture={keydown}
         onPointerMove={() => flushSync(wake)}
         onPointerDown={wake}
@@ -400,8 +401,9 @@ export function Player({
             onDoubleClick();
           }}
         />
-        <div className="pc-spinner" role="status" aria-label={translate("Loading the video", language)} hidden={!loading}>
-          <span aria-hidden="true" />
+        {/* Drawn only: assistive technology hears the player busy (aria-busy) instead of a second status or progress bar. */}
+        <div className="pc-spinner" aria-hidden="true" hidden={!loading}>
+          <span />
         </div>
         <div
           key={`bezel-${flash?.seq ?? 0}`}

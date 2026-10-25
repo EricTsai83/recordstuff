@@ -290,8 +290,8 @@ it("shows YouTube's loading spinner once a picture has been missing for a quarte
   let ready = 0;
   Object.defineProperty(video, "readyState", { get: () => ready, configurable: true });
   const spinner = root.querySelector<HTMLElement>(".pc-spinner")!;
-  expect(spinner.getAttribute("role")).toBe("status");
-  expect(spinner.getAttribute("aria-label")).toBe("Loading the video");
+  // Drawn only; the player is what is busy to assistive technology.
+  expect(spinner.getAttribute("aria-hidden")).toBe("true");
   // A fast load: the picture is ready within the quarter second, so nothing shows.
   flushSync(() => video.dispatchEvent(new Event("loadstart")));
   vi.advanceTimersByTime(100);
@@ -305,8 +305,10 @@ it("shows YouTube's loading spinner once a picture has been missing for a quarte
   expect(spinner.hidden).toBe(true);
   flushSync(() => vi.advanceTimersByTime(100));
   expect(spinner.hidden).toBe(false);
+  expect(root.getAttribute("aria-busy")).toBe("true");
   flushSync(() => video.dispatchEvent(new Event("playing")));
   expect(spinner.hidden).toBe(true);
+  expect(root.hasAttribute("aria-busy")).toBe(false);
   // A slow first load: no picture yet, shown until one is ready.
   ready = 0;
   flushSync(() => video.dispatchEvent(new Event("loadstart")));
