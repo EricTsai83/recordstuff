@@ -663,11 +663,11 @@ export const ZH_TW = {
   "The export failed while encoding a join. The recording is unchanged; export again.": "編碼接點時匯出失敗。原始錄影沒有變動，請再匯出一次。",
   "The export failed. The recording is unchanged; export again.": "匯出失敗。原始錄影沒有變動，請再匯出一次。",
   // Editable recordings (plan 087): the setting, the card, and the camera and sound in the edit view.
-  "Editable recordings": "可編輯錄影",
-  "Editable recordings are available on macOS only.": "可編輯錄影只支援 macOS。",
+  "Editable recordings": "可剪輯錄影",
+  "Editable recordings are available on macOS only.": "可剪輯錄影只支援 macOS。",
   "Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps show the screen with system audio until you export it from Edit….":
     "把螢幕、相機與各個聲音分開保存，錄完後可在「剪輯…」中擺放相機、調整音量。檔案約大一倍；從「剪輯…」匯出前，其他 App 只會顯示螢幕與系統聲音。",
-  "Editable": "可編輯",
+  "Editable": "可剪輯",
   "Camera and sound": "相機與聲音",
   "Camera size": "相機大小",
   "Camera: {x}% across, {y}% down. Drag it, or use the arrow keys, to move it.": "相機：水平 {x}%、垂直 {y}%。可拖曳或用方向鍵移動。",
