@@ -449,6 +449,9 @@ describe("the camera's preview (plan 075, step 7)", () => {
 
   it("says why there is no picture: the switch off, access not allowed, a recording without the camera yet", () => {
     expect(preview(idle, on({ enabled: false }))?.cameraPreview).toMatchObject({ mode: "off", status: "Turn on Camera to see it here." });
+    // The camera off, there is no bubble to place or wait for (2026-10-26); on, its place is drawn before any picture.
+    expect(preview(idle, on({ enabled: false }))?.cameraPreview?.composed, "camera off").toBe(false);
+    expect(preview(idle, on())?.cameraPreview?.composed, "camera on").toBe(true);
     expect(preview(idle, on({ access: "denied" }))?.cameraPreview).toMatchObject({ mode: "off", status: "Allow camera access to see it here." });
     expect(preview({ type: "starting" }, on())?.cameraPreview).toMatchObject({ mode: "off", status: "Shown here once the recording starts." });
     expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview).toMatchObject({ mode: "recording" });

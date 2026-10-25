@@ -1057,11 +1057,23 @@
     max-width: 30ch;
     color: var(--muted-foreground);
   }
+  /* Side by side while they fit, wrapping in a narrow window; the camera's the widest, so its shape's three fields share
+     one line at the default size, the preview's, holding one menu, the narrowest (2026-10-26). */
   .studio-panels {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 10px;
-    align-items: start;
+    align-items: flex-start;
+  }
+  .studio-panels > .studio-panel {
+    flex: 1 1 210px;
+    min-width: 0;
+  }
+  .studio-panels > .studio-panel-preview {
+    flex: 0.8 1 170px;
+  }
+  .studio-panels > .studio-panel-camera {
+    flex: 1.4 1 246px;
   }
   .studio-panel {
     display: grid;
@@ -1091,10 +1103,6 @@
     height: 15px;
     color: var(--primary);
   }
-  .studio-shape {
-    display: grid;
-    gap: 6px;
-  }
   /* One label column for every row, so the controls line up; the shape's segments share the row's width. */
   .studio-shape-row {
     display: grid;
@@ -1110,11 +1118,47 @@
     min-width: 0;
   }
   /* The bubble's width, height and rounding side by side (2026-10-21): three number fields on one line, wrapping in a
-     narrow panel rather than cutting a value off. */
+     narrow panel rather than cutting a value off; tighter since 2026-10-26, so the three share one line at the default size. */
   .studio-fields {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 4px;
+  }
+  .studio-fields .number-setting-name {
+    padding-left: 5px;
+  }
+  .studio-fields .number-setting-unit {
+    padding-right: 5px;
+  }
+  /* The camera's head: its title and ?, then Mirror's icon beside the switch at the end. */
+  .studio-head-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: auto;
+  }
+  .studio-lock + .studio-head-end {
+    margin-inline-start: 0;
+  }
+  .studio-help {
+    margin-inline-start: -4px;
+    margin-inline-end: auto;
+    color: var(--muted-foreground);
+  }
+  .studio-help svg {
+    width: 14px;
+    height: 14px;
+  }
+  .studio-icon-toggle[aria-pressed="true"] {
+    color: var(--primary);
+    background: color-mix(in oklch, var(--primary) 12%, transparent);
+  }
+  /* In the line of controls, as tall and round as Live preview beside it. */
+  .studio-quick .studio-icon-toggle {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
   }
   /* A number field with its short name inside it, as a design tool's: the name is dragged sideways to change it. */
   .number-setting {
@@ -1170,11 +1214,6 @@
     padding-right: 8px;
     color: var(--muted-foreground);
   }
-  .studio-toggles {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
   /* Said in the camera's head while a recording runs, in place of a line under it, so the panel keeps its height. */
   .studio-lock {
     display: inline-flex;
@@ -1191,10 +1230,6 @@
     flex: none;
     width: 12px;
     height: 12px;
-  }
-  .studio-toggle[aria-pressed="true"] {
-    color: var(--primary);
-    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
   }
   .studio-mixer {
     display: grid;

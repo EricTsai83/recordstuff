@@ -191,8 +191,9 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
       mode,
       display: { width: display.logicalWidth, height: display.logicalHeight },
       bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
-      // The picture holds a camera to place only while its session composes one.
-      composed: !showing || camera.session !== undefined,
+      // The picture holds a camera to place only while its session composes one, and before a session only while the
+      // camera is on (2026-10-26, the maintainer's request: with it off there is nothing to place, nor to wait for).
+      composed: showing ? camera.session !== undefined : camera.enabled,
       x, y,
       ...(status ? { status } : {}),
       ...(cameraStatus ? { cameraStatus } : {}),

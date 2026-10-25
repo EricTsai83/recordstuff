@@ -6,8 +6,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { AudioLines, Camera, CameraOff, Eye, EyeOff, FlipHorizontal2, Lock, Monitor, MonitorPlay, PictureInPicture2, Radio, Square, Video } from "lucide-react";
+import { AudioLines, Camera, CameraOff, CircleHelp, Eye, FlipHorizontal2, Lock, Monitor, MonitorPlay, PictureInPicture2, Radio, Square, UserRound, UserRoundX, Video } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
+import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { ControlTooltip } from "../../components/control-tooltip";
@@ -29,18 +30,21 @@ function Failures({ groups }: { groups: (SettingsGroup | undefined)[] }) {
 }
 
 /**
- * An on/off group drawn as a button that is pressed while on, its icon beside its name in words (2026-10-24, at the
- * maintainer's request: an icon alone did not say what it does): Mirror, and showing the camera while recording.
+ * An on/off group drawn as an icon alone, pressed while on, named by its tooltip and to assistive technology (2026-10-26,
+ * the maintainer's choice of a compact camera panel): Mirror, in the camera's head, and showing the camera while a
+ * recording composes it, in the line of controls, where words would wrap the line and move the stage under it.
  */
-function Toggle({ group, icon: Icon, offIcon: OffIcon }: { group: SettingsGroup; icon: typeof Eye; offIcon?: typeof Eye }) {
+function IconToggle({ group, icon: OnIcon, offIcon: OffIcon }: { group: SettingsGroup; icon: typeof Eye; offIcon?: typeof Eye }) {
   const on = model.committed(group) === "on";
-  const Shown = !on && OffIcon ? OffIcon : Icon;
+  const Icon = !on && OffIcon ? OffIcon : OnIcon;
   return (
-    <Button id={`setting-${group.id}`} variant="outline" size="sm" className="studio-toggle" aria-pressed={on}
-      disabled={!group.enabled} aria-describedby={group.info ? `setting-${group.id}-info` : undefined}
-      onClick={() => void model.choose(group.id, on ? "off" : "on", `setting-${group.id}`)}>
-      <Shown aria-hidden="true" />{group.label}
-    </Button>
+    <ControlTooltip label={group.label}>
+      <Button id={`setting-${group.id}`} variant="ghost" size="icon-sm" className="studio-icon-toggle" aria-pressed={on} aria-label={group.label}
+        disabled={!group.enabled} aria-describedby={group.info ? `setting-${group.id}-info` : undefined}
+        onClick={() => void model.choose(group.id, on ? "off" : "on", `setting-${group.id}`)}>
+        <Icon aria-hidden="true" />
+      </Button>
+    </ControlTooltip>
   );
 }
 
@@ -127,38 +131,42 @@ function CameraPanel() {
   const camera = groupOf("studioCamera");
   if (!camera) return null;
   const mirror = groupOf("cameraMirror");
-  const shown = groupOf("cameraShown");
   const fields = ["cameraWidth", "cameraHeight", "cameraRounding"].map(groupOf);
-  // What the pixels are counted on: the recording's size on the display it would capture now.
+  // What the pixels are counted on: the recording's size on the display it would capture now, at the quality's cap.
   const pixels = fields[0]?.note;
+  // Compact (2026-10-26, the maintainer's choice of mockups): the shape's three fields in one row, what their pixels
+  // are counted on behind a ? beside the title, Mirror an icon in the head. Showing the camera, a recording's own
+  // choice, is in the line of controls while a recording composes it (Toolbar); the panel never changes height.
   return (
-    <section className="studio-panel" aria-labelledby="studio-camera-heading">
+    <section className="studio-panel studio-panel-camera" aria-labelledby="studio-camera-heading">
       <div className="studio-panel-head">
         <h2 id="studio-camera-heading"><Camera aria-hidden="true" />{camera.label}</h2>
+        {pixels && (
+          <ControlTooltip label={pixels}>
+            <Button variant="ghost" size="icon-sm" className="studio-help" id="studio-camera-pixels-button"
+              aria-label={translate("More about {label}", model.view?.language, { label: camera.label })} aria-describedby="studio-camera-pixels">
+              <CircleHelp aria-hidden="true" />
+            </Button>
+          </ControlTooltip>
+        )}
         {/* Locked while a recording runs: said in the head's own line, so the panel keeps its height (2026-10-24). */}
         {camera.note && <span className="studio-lock" aria-hidden="true"><Lock />{model.text("Locked")}</span>}
-        <Switch id={`setting-${camera.id}`} aria-labelledby="studio-camera-heading" checked={model.committed(camera) === "on"}
-          disabled={!camera.enabled} aria-describedby={camera.note ? "setting-studioCamera-note" : undefined}
-          onCheckedChange={(checked) => void model.choose(camera.id, checked ? "on" : "off", `setting-${camera.id}`)} />
+        <span className="studio-head-end">
+          {mirror && <IconToggle group={mirror} icon={FlipHorizontal2} />}
+          <Switch id={`setting-${camera.id}`} aria-labelledby="studio-camera-heading" checked={model.committed(camera) === "on"}
+            disabled={!camera.enabled} aria-describedby={camera.note ? "setting-studioCamera-note" : undefined}
+            onCheckedChange={(checked) => void model.choose(camera.id, checked ? "on" : "off", `setting-${camera.id}`)} />
+        </span>
       </div>
       {camera.note && <span id="setting-studioCamera-note" className="sr-only">{camera.note}</span>}
-      <div className="studio-shape">
-        <div className="studio-fields">
-          {fields.map((group) => group?.number && (
-            <NumberSetting key={group.id} group={group} field={group.number} disabled={!group.enabled}
-              describedBy={pixels && group.number.unit === "px" ? "studio-camera-pixels" : undefined} />
-          ))}
-        </div>
-        {pixels && <p id="studio-camera-pixels" className="studio-note">{pixels}</p>}
-        {/* Showing the camera is the recording's own choice (D13), always in its place: pressed while a session composes
-            the camera, and before one held, so nothing moves as a recording starts (2026-10-24). */}
-        <div className="studio-toggles">
-          {shown ? <Toggle group={shown} icon={Eye} offIcon={EyeOff} />
-            : <Button variant="outline" size="sm" className="studio-toggle" disabled aria-pressed={false}><Eye aria-hidden="true" />{model.text("Show camera in recording")}</Button>}
-          {mirror && <Toggle group={mirror} icon={FlipHorizontal2} />}
-        </div>
+      {pixels && <span id="studio-camera-pixels" className="sr-only">{pixels}</span>}
+      <div className="studio-fields">
+        {fields.map((group) => group?.number && (
+          <NumberSetting key={group.id} group={group} field={group.number} disabled={!group.enabled}
+            describedBy={pixels && group.number.unit === "px" ? "studio-camera-pixels" : undefined} />
+        ))}
       </div>
-      <Failures groups={[camera, shown, mirror, ...fields]} />
+      <Failures groups={[camera, groupOf("cameraShown"), mirror, ...fields]} />
     </section>
   );
 }
@@ -298,11 +306,16 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 function Toolbar({ controls, live }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined }) {
   if (!controls) return null;
   const view = groupOf("studioPreviewView");
+  const shown = groupOf("cameraShown");
   return (
     <section className="studio-controls" data-phase={controls.phase} aria-labelledby="studio-controls-heading">
       <h2 id="studio-controls-heading" className="sr-only">{controls.sectionHeading ?? controls.label}</h2>
       <RecordControl controls={controls} />
       <div className="studio-quick">
+        {/* Showing the camera, while a recording composes it (2026-10-26, from the camera's panel, where it stood
+            disabled the rest of the time): the recording's own choice, pressed while shown. */}
+        {/* A person, struck through while hidden (2026-10-26, the maintainer's choice of icons: an eye did not say it). */}
+        {shown && <IconToggle group={shown} icon={UserRound} offIcon={UserRoundX} />}
         {view && <ViewMenu view={view} />}
         {live && <LiveSwitch live={live} />}
       </div>
@@ -323,7 +336,7 @@ function PreviewPanel({ rate }: { rate: SettingsGroup }) {
   const description = rate.choices.find((choice) => choice.id === chosen)?.description;
   const id = `setting-${rate.id}`;
   return (
-    <section className="studio-panel" aria-labelledby="studio-preview-heading">
+    <section className="studio-panel studio-panel-preview" aria-labelledby="studio-preview-heading">
       <div className="studio-panel-head"><h2 id="studio-preview-heading"><MonitorPlay aria-hidden="true" />{model.text("Preview")}</h2></div>
       <div className="studio-preview-choices">
         <span id={`${id}-label`} className="studio-preview-label">{rate.label}</span>
