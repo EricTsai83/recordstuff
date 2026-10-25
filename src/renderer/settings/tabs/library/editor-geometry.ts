@@ -1,33 +1,9 @@
 /**
- * The edit view's bubble geometry (2026-10-25, at the maintainer's request), in the recording's own pixels: where a
- * dragged bubble snaps, and the size and place a corner handle gives it. Pure, so the page draws and the tests check
+ * The edit view's bubble geometry (2026-10-25, at the maintainer's request), in the recording's own pixels: the size
+ * and place a corner handle gives the bubble. A dragged bubble does not snap; it stays where it is dropped. Pure, so the page draws and the tests check
  * the same numbers; the shared formulas (camera-layout.ts) place the bubble as the export composes it.
  */
 import { bubbleRect, CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, positionFromRect, type CameraPosition, type Rect } from "../../../../shared/camera-layout";
-
-/** The margin a snapped bubble keeps from the picture's edges, as a fraction of its shorter side. */
-export const SNAP_MARGIN = 0.04;
-/** How near a snap place a bubble's edge or centre must come to be pulled onto it, as a fraction of the shorter side. */
-export const SNAP_DISTANCE = 0.02;
-
-/**
- * A bubble whose top-left corner is dropped at (`x`, `y`): on each axis pulled onto the nearer edge's margin or the
- * centre when within the snap distance, then as the position the layout keeps. Holding ⌥ (`free`) places it exactly.
- */
-export function snapPlace(x: number, y: number, width: number, height: number, frameWidth: number, frameHeight: number, free = false): CameraPosition {
-  if (!free) {
-    const shorter = Math.min(frameWidth, frameHeight);
-    const margin = Math.round(SNAP_MARGIN * shorter), reach = SNAP_DISTANCE * shorter;
-    const snap = (at: number, size: number, frame: number): number => {
-      const places = [margin, (frame - size) / 2, frame - size - margin];
-      const nearest = places.reduce((best, place) => (Math.abs(place - at) < Math.abs(best - at) ? place : best));
-      return Math.abs(nearest - at) <= reach ? nearest : at;
-    };
-    x = snap(x, width, frameWidth);
-    y = snap(y, height, frameHeight);
-  }
-  return positionFromRect(x, y, width, height, frameWidth, frameHeight);
-}
 
 /** Which corner of the bubble its resize handle takes: the one facing the picture's middle, so it grows into the picture. */
 export function handleCorner(position: CameraPosition): { right: boolean; bottom: boolean } {

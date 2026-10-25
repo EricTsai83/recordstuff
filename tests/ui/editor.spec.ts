@@ -141,7 +141,7 @@ test("the preview skips removed parts, Undo takes a removal back, and a cancelle
  * main as a version-2 edit; the recording itself and the preview still play through the CORS-enabled scheme; and the
  * export is asked for rendered, with the camera where it was dragged and the volumes in dB.
  */
-test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered; then snapped, resized by its handle, a sound muted, everything reset, undone and redone", async () => {
+test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered; then dragged again, resized by its handle, a sound muted, everything reset, undone and redone", async () => {
   const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
@@ -214,7 +214,7 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(render.volumesDb[0]).toBe(0);
   expect(render.volumesDb[1]).toBeCloseTo(20 * Math.log10(0.95), 6);
 
-  // 2026-10-25: a drop near the middle snaps onto it; ⌥ would place it exactly. The bubble sits over the player's
+  // A drop beside the middle stays where it is dropped: the bubble does not snap. The bubble sits over the player's
   // seek bar here, which gives the press to the bubble. Measured again: the export's message moved the dialog.
   const placed = (await bubble.boundingBox())!;
   const now = await measure();
@@ -222,7 +222,9 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await page.mouse.down();
   await page.mouse.move(now.left + now.width / 2 + 3, now.top + now.height / 2 - 2, { steps: 8 });
   await page.mouse.up();
-  expect(await eventually(() => record().scene?.camera?.x === 0.5 && record().scene?.camera?.y === 0.5), JSON.stringify(record().scene)).toBe(true);
+  expect(await eventually(() => Math.abs((record().scene?.camera?.x ?? 0) - 0.5) < 0.03 && Math.abs((record().scene?.camera?.y ?? 0) - 0.5) < 0.03), JSON.stringify(record().scene)).toBe(true);
+  expect(record().scene.camera.x).not.toBe(0.5);
+  expect(record().scene.camera.y).not.toBe(0.5);
 
   // The handle on the corner facing the middle grows it from the opposite corner, its shape kept.
   const handle = page.locator(".editor-camera-handle");

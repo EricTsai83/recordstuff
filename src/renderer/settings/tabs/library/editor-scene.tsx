@@ -5,14 +5,13 @@
  * engine's camera_layout.rs) in the recording's pixels, scaled to the picture as the player shows it, and holds the
  * camera's own track, cropped as the export crops it. Moving something shows a draft at once; letting go saves it.
  *
- * Since 2026-10-25, at the maintainer's request: a dragged bubble snaps to the edges' margins and the centre (⌥ places
- * it freely), a handle on the corner facing the picture's middle resizes it, the volumes' sliders put 100% in the
+ * Since 2026-10-25, at the maintainer's request: a handle on the corner facing the picture's middle resizes the bubble, the volumes' sliders put 100% in the
  * middle and each sound has a mute button, the controls are grouped as camera and sound, and Reset puts everything back
- * as recorded. The Studio's own bubble keeps its exact placement (2026-10-22).
+ * as recorded. A dragged bubble stays exactly where it is dropped, without snapping, as the Studio's (2026-10-22).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { bubbleRadius, bubbleRect, CAMERA_MAX_SIZE, type CameraLayout } from "../../../../shared/camera-layout";
+import { bubbleRadius, bubbleRect, CAMERA_MAX_SIZE, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
 import type { EditableSound, EditScene, SceneCamera } from "../../../../shared/editable";
@@ -22,7 +21,7 @@ import { ControlTooltip } from "../../../components/control-tooltip";
 import { Slider } from "../../../components/ui/slider";
 import { Switch } from "../../../components/ui/switch";
 import * as model from "../../settings-controller";
-import { handleCorner, resized, resizeTo, smallestLonger, snapPlace } from "./editor-geometry";
+import { handleCorner, resized, resizeTo, smallestLonger } from "./editor-geometry";
 
 /** The arrow keys' steps over the free space, as the Studio's (camera-preview.tsx). */
 const STEP = 0.01;
@@ -131,7 +130,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
     const at = inPicture(event.clientX, event.clientY);
     if (!grip || !at) return undefined;
     if (grip.kind === "resize") return resizeTo(grip.start, shape, at.x, at.y, frame.width, frame.height);
-    const position = snapPlace(at.x - grip.dx, at.y - grip.dy, bubble.width, bubble.height, frame.width, frame.height, event.altKey);
+    const position = positionFromRect(at.x - grip.dx, at.y - grip.dy, bubble.width, bubble.height, frame.width, frame.height);
     return { x: +clamp01(position.x).toFixed(4), y: +clamp01(position.y).toFixed(4) };
   };
   /** Takes hold of the bubble or its handle: the pointer's moves and release then come to `element`. */
