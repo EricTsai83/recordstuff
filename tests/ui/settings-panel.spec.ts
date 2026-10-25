@@ -596,7 +596,19 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
     h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
   });
   await expect(page.getByRole("timer"), "S131 the elapsed time while recording").toHaveText(/^1:0[5-9]$/);
-  await expect(page.getByRole("button", { name: "Show camera in recording" }), "S131 the camera's hiding while recording (D13)").toHaveAttribute("aria-pressed", "true");
+  const shown = page.getByRole("button", { name: "Show camera in recording" });
+  await expect(shown, "S131 the camera's hiding while recording (D13)").toHaveAttribute("aria-pressed", "true");
+  // Its tooltip says what a press does now, while its accessible name stays the setting's (2026-10-26).
+  const tip = page.locator('[data-slot="tooltip-content"][data-open]');
+  await shown.hover();
+  await expect(tip, "S131 shown: the tooltip offers hiding").toHaveText("Hide camera in recording");
+  await host.evaluate(h => {
+    h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: true } } };
+    h.push(h.settingsView(h.state.cameraState!, h.state.cameraContext));
+  });
+  await expect(shown, "S131 hidden: the same control, not pressed").toHaveAttribute("aria-pressed", "false");
+  await expect(tip, "S131 hidden: the tooltip offers showing").toHaveText("Show camera in recording");
+  await page.mouse.move(0, 0);
   await clearCalls();
   await page.getByRole("button", { name: "Stop recording" }).click();
   await expect.poll(calls, { message: "S131 Stop asks main" }).toEqual([["studioControls", "stop"]]);

@@ -8,7 +8,7 @@ import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioV
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { AudioLines, Camera, CameraOff, CircleHelp, Eye, FlipHorizontal2, Lock, Monitor, MonitorPlay, PictureInPicture2, Radio, Square, UserRound, UserRoundX, Video } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
-import { translate } from "../../../shared/i18n";
+import { translate, type PlainMessageKey } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { ControlTooltip } from "../../components/control-tooltip";
@@ -35,11 +35,15 @@ function Failures({ groups }: { groups: (SettingsGroup | undefined)[] }) {
  * the maintainer's choice of a compact camera panel): Mirror, in the camera's head, and showing the camera while a
  * recording composes it, in the line of controls, where words would wrap the line and move the stage under it.
  */
-function IconToggle({ group, icon: OnIcon, offIcon: OffIcon }: { group: SettingsGroup; icon: typeof Eye; offIcon?: typeof Eye }) {
+function IconToggle({ group, icon: OnIcon, offIcon: OffIcon, onTip }: {
+  group: SettingsGroup; icon: typeof Eye; offIcon?: typeof Eye; onTip: PlainMessageKey;
+}) {
   const on = model.committed(group) === "on";
   const Icon = !on && OffIcon ? OffIcon : OnIcon;
+  // The tooltip says what a press does now (2026-10-26, the maintainer's request): the name while off, its undoing while
+  // on. The accessible name stays the setting's, its state said by aria-pressed, so a screen reader hears one control.
   return (
-    <ControlTooltip label={group.label}>
+    <ControlTooltip label={on ? model.text(onTip) : group.label}>
       <Button id={`setting-${group.id}`} variant="ghost" size="icon-sm" className="studio-icon-toggle" aria-pressed={on} aria-label={group.label}
         disabled={!group.enabled} aria-describedby={group.info ? `setting-${group.id}-info` : undefined}
         onClick={() => void model.choose(group.id, on ? "off" : "on", `setting-${group.id}`)}>
@@ -153,7 +157,7 @@ function CameraPanel() {
         {/* Locked while a recording runs: said in the head's own line, so the panel keeps its height (2026-10-24). */}
         {camera.note && <span className="studio-lock" aria-hidden="true"><Lock />{model.text("Locked")}</span>}
         <span className="studio-head-end">
-          {mirror && <IconToggle group={mirror} icon={FlipHorizontal2} />}
+          {mirror && <IconToggle group={mirror} icon={FlipHorizontal2} onTip="Stop mirroring in recording" />}
           <Switch id={`setting-${camera.id}`} aria-labelledby="studio-camera-heading" checked={model.committed(camera) === "on"}
             disabled={!camera.enabled} aria-describedby={camera.note ? "setting-studioCamera-note" : undefined}
             onCheckedChange={(checked) => void model.choose(camera.id, checked ? "on" : "off", `setting-${camera.id}`)} />
@@ -318,7 +322,7 @@ function Toolbar({ controls, live }: { controls: SettingsGroup | undefined; live
         {/* Showing the camera, while a recording composes it (2026-10-26, from the camera's panel, where it stood
             disabled the rest of the time): the recording's own choice, pressed while shown. */}
         {/* A person, struck through while hidden (2026-10-26, the maintainer's choice of icons: an eye did not say it). */}
-        {shown && <IconToggle group={shown} icon={UserRound} offIcon={UserRoundX} />}
+        {shown && <IconToggle group={shown} icon={UserRound} offIcon={UserRoundX} onTip="Hide camera in recording" />}
         {view && <ViewMenu view={view} />}
         {live && <LiveSwitch live={live} />}
       </div>
