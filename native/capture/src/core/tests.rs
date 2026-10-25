@@ -258,6 +258,13 @@ fn lengths(file: &crate::mux::parse::Mp4) -> (f64, f64) {
     (video.duration as f64 * 1000.0 / f64::from(video.timescale), presented as f64 * 1000.0 / 48_000.0)
 }
 
+/// A timing bound widened by `RECORDSTUFF_TIMING_SCALE` (at least 1, 1 unless set) for a machine known to be slow. The
+/// real-clock tests run one at a time (`pnpm test:native`, CI), so a runner no longer needs it to pass.
+fn bound(base: Duration) -> Duration {
+    let scale = std::env::var("RECORDSTUFF_TIMING_SCALE").ok().and_then(|value| value.parse::<f64>().ok());
+    base.mul_f64(scale.filter(|scale| scale.is_finite() && *scale >= 1.0).unwrap_or(1.0))
+}
+
 /// How late this machine wakes a thread now: the most a few 2 ms sleeps overran. A CI runner can be busy enough that a
 /// timing bound has to allow it.
 fn scheduling_slack() -> Duration {
@@ -695,7 +702,7 @@ fn with_every_slot_the_first_slots_are_encoded_on_time_not_in_a_burst() {
         let encoded = rig.encoded.lock().unwrap().clone();
         rig.stop();
         assert!(encoded.len() <= allowed, "{encoded:?}");
-        if elapsed < Duration::from_millis(80) + slack * 2 { Ok(()) } else { Err(format!("first slot after {elapsed:?} (slack {slack:?})")) }
+        if elapsed < bound(Duration::from_millis(80)) + slack * 2 { Ok(()) } else { Err(format!("first slot after {elapsed:?} (slack {slack:?})")) }
     });
 }
 
@@ -1236,7 +1243,7 @@ fn showing_the_camera_wakes_the_refresh_thread_for_the_next_slot() {
         rig.stop();
         assert!(count <= allowed, "no catch-up burst");
         // Within a slot and a little, not at the end of a 100 ms wait, allowing how late this machine woke threads then.
-        if elapsed < Duration::from_millis(60) + slack * 2 { Ok(()) } else { Err(format!("first frame after {elapsed:?} (slack {slack:?})")) }
+        if elapsed < bound(Duration::from_millis(60)) + slack * 2 { Ok(()) } else { Err(format!("first frame after {elapsed:?} (slack {slack:?})")) }
     });
 }
 

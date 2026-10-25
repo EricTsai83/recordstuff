@@ -188,7 +188,9 @@ jobs:
         working-directory: native/capture
         env:
           RECORDSTUFF_SYNTHETIC_OUT: ${{ runner.temp }}\synthetic.mp4
-        run: cargo test --lib
+        # The session core's tests run on the real clock, one at a time after the rest, so no other test takes the
+        # runner's cores while they time a slot (as `pnpm test:native` does).
+        run: cargo test --lib -- --skip core::tests && cargo test --lib -- --test-threads=1 core::tests
       - name: Decode the synthetic recording
         shell: pwsh
         run: |

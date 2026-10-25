@@ -80,7 +80,9 @@ const phases: PhaseSpec[] = [
   ...(typecheck ? [{ name: "typecheck", executable: "pnpm", args: ["typecheck"] }] : []),
   ...(files.length ? [{ name: `unit (${files.length} files)`, executable: "pnpm", args: ["exec", "vitest", "run", ...selection.unit] }] : []),
   ...(selection.native ? [
-    { name: `native (${selection.native.join(" ")})`, executable: "cargo", args: ["test", "--manifest-path", "native/capture/Cargo.toml", "--lib", "--", ...selection.native] },
+    // The session core's tests run on the real clock: one at a time, as `pnpm test:native` runs them.
+    { name: `native (${selection.native.join(" ")})`, executable: "cargo", args: ["test", "--manifest-path", "native/capture/Cargo.toml", "--lib", "--",
+      ...(selection.native.some((filter) => "core::tests".startsWith(filter)) ? ["--test-threads=1"] : []), ...selection.native] },
     { name: "native lint", executable: "pnpm", args: ["lint:native"] },
     { name: "native format", executable: "pnpm", args: ["fmt:native:check"] },
   ] : []),
