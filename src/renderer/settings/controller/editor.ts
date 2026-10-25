@@ -130,12 +130,35 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   }
 }
 
-/** Closes the edit view, unless an export is running (it is cancelled first, or left to finish). */
+/** The recording whose edit view waits for its saves before it closes. */
+let closing: LibraryItemView | undefined;
+
+/**
+ * Closes the edit view, unless an export is running (it is cancelled first, or left to finish). A change still saving
+ * (the X clicked straight after a cut) is waited for first: main drops a save whose view has closed.
+ */
 export function closeEditor(restore = true): void {
   const item = editingItem;
-  if (!item) return;
+  if (!item || closing === item) return;
   if (editorView()?.export.phase === "exporting") return;
   editorVideo?.pause();
+  closing = item;
+  void saved().finally(() => {
+    closing = undefined;
+    if (editingItem === item && editorView()?.export.phase !== "exporting") finishClose(item, restore);
+  });
+}
+
+/** Settles once no change waits or saves, including one queued while the last was waited for. */
+async function saved(): Promise<void> {
+  for (;;) {
+    const waiting = [edits, sceneSaves, saveDone];
+    await Promise.all(waiting);
+    if (waiting[0] === edits && waiting[1] === sceneSaves && waiting[2] === saveDone) return;
+  }
+}
+
+function finishClose(item: LibraryItemView, restore: boolean): void {
   editingItem = undefined;
   splits = [];
   selectedFrom = undefined;
