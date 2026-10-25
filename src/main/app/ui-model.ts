@@ -56,6 +56,8 @@ export type AppAction =
   | "openOptionalFeatures"
   | "relaunch"
   | "start"
+  /** Start recording with this one recording editable (2026-10-25), while the setting stays off; macOS only. */
+  | "startEditable"
   | "stop"
   /** A Live preview in the Recording Studio (plan 075, D20), and letting it go. */
   | "startPreview"

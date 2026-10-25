@@ -30,6 +30,8 @@ const mac: AppContext = {
   updates: { state: { kind: "idle" }, enabled: true },
   notifications: true,
   displays: [], display: { kind: "primary" },
+  // On, so the menus below show no Start editable recording; "idle" covers the setting off.
+  editableRecording: true,
 };
 const win: AppContext = {
   platform: "win32",
@@ -94,6 +96,14 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(labels(m.menu)).toEqual(["開始錄影", "錄製麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
     expect(m.tooltip).toBe("RecordStuff: 待命中");
     expect(enabledActions(m.menu)).toEqual(["start", { setMicrophone: true }, "openSettings", "openStudio", "showLastRecording", "quit"]);
+  });
+
+  it("idle with editable recordings off offers one editable recording under Start, on macOS only", () => {
+    const m = trayModel({ type: "idle" }, { ...mac, editableRecording: false });
+    expect(labels(m.menu).slice(0, 3)).toEqual(["開始錄影", "開始可剪輯錄影", "錄製麥克風"]);
+    expect(enabledActions(m.menu)).toContain("startEditable");
+    expect(enabledActions(trayModel({ type: "idle" }, { ...win, editableRecording: false }).menu)).not.toContain("startEditable");
+    expect(enabledActions(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, editableRecording: false }).menu)).not.toContain("startEditable");
   });
 
   it("idle with an unusable output dir offers its fix beside Start and says why under RecordStuff", () => {

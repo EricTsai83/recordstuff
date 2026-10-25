@@ -26,6 +26,8 @@ export interface ActionDeps {
   studioOpen?(): boolean;
   /** Shows or hides the recording's picture in the Recording Studio while it records (2026-10-21). */
   studioPicture?(shown: boolean): void;
+  /** Makes the next recording editable though the setting is off (2026-10-25): until it ends or does not start. */
+  editableOnce?(): void;
   /** Nothing is recording or quitting (`preferencesUnlocked`), so a session-touching change may apply. */
   settled(): boolean;
   platform: NodeJS.Platform;
@@ -362,6 +364,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         // An open macOS menu cannot change, so a Start chosen late is resolved now: only idle starts (plan 048).
         if (!recorder.startIfIdle()) log(`tray: Start recording ignored in state ${recorder.state.type}`);
         // Done either way: the Recording Studio's button (D19) shows the state that follows, not a failure.
+        return true;
+      case "startEditable":
+        if (recorder.state.type !== "idle") {
+          log(`tray: Start editable recording ignored in state ${recorder.state.type}`);
+          return true;
+        }
+        deps.editableOnce?.();
+        recorder.startIfIdle();
         return true;
       case "stop":
         recorder.stop();

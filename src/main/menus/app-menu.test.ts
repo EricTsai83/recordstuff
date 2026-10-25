@@ -25,7 +25,7 @@ vi.mock("electron", () => ({
 const { AppMenu } = await import("./app-menu");
 
 const ctx: AppContext = {
-  platform: "darwin", language: "en", outputDir: "/Users/eric/Movies/RecordStuff", homeDir: "/Users/eric",
+  platform: "darwin", language: "en", outputDir: "/Users/eric/Movies/RecordStuff", homeDir: "/Users/eric", editableRecording: true,
   quality: DEFAULT_QUALITY, countdown: 3, countdownSound: true,
   hotkey: { ...DEFAULT_HOTKEY, registered: true },
   updates: { state: { kind: "idle" }, enabled: true }, notifications: true,

@@ -205,6 +205,11 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       }
       // Whenever a left click would start: the same toggle, countdown included (plan 048).
       const actions = [item(text("Start recording"), "start", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut)];
+      // With editable recordings off, one recording can be editable all the same (2026-10-25, the maintainer's
+      // request): the setting stays off, and the next recording is plain again. macOS only, as the engine's tracks are.
+      if (ctx.platform === "darwin" && !ctx.editableRecording) {
+        actions.push(item(text("Start editable recording"), "startEditable", text("This recording keeps the camera and each sound apart, so Edit… can change them. Editable recordings stay off.")));
+      }
       // The one folder item left: the fix, while the folder is what stops the next recording.
       if (state.outputDirUnavailable) actions.push(item(text("Change output folder…"), "changeOutputDir", ctx.outputDir));
       // Likewise the way back from a chosen display that is gone, as Settings offers it.

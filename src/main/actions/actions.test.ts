@@ -45,6 +45,18 @@ function harness(overrides: Partial<ActionDeps> = {}) {
 }
 
 describe("createActionHandler", () => {
+  it("makes only the recording Start editable recording begins editable, and only from idle (2026-10-25)", async () => {
+    const editableOnce = vi.fn();
+    const { deps, act } = harness({ editableOnce });
+    expect(await act("startEditable")).toBe(true);
+    expect(editableOnce).toHaveBeenCalledTimes(1);
+    expect(deps.recorder.startIfIdle).toHaveBeenCalledTimes(1);
+    (deps.recorder as { state: { type: string } }).state = { type: "recording" };
+    expect(await act("startEditable")).toBe(true);
+    expect(editableOnce).toHaveBeenCalledTimes(1);
+    expect(deps.recorder.startIfIdle).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses every action but quit while a quit runs", async () => {
     const { deps, act } = harness({ quitRequested: () => true });
     expect(await act("openSettings")).toBe(false);
