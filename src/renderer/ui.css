@@ -2840,6 +2840,23 @@
     align-items: center;
     gap: 8px;
   }
+  /* As wide as its widest state (exporting: the bar, its percent and Cancel), so its neighbours never move. */
+  .editor-export {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 13.5rem;
+    /* At the row's end, also when a narrow window wraps it onto a line of its own. */
+    margin-inline-start: auto;
+  }
+  .editor-hint > :first-child {
+    min-width: 0;
+  }
+  .editor-done {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .editor-spacer {
     flex: 1 1 0;
   }
@@ -2851,7 +2868,7 @@
   }
   .editor-progress {
     display: block;
-    width: 120px;
+    width: 64px;
     height: 6px;
     border-radius: 3px;
     background: var(--muted);
@@ -2923,15 +2940,26 @@
     outline-offset: 2px;
   }
   /* The resize handle on the corner facing the picture's middle: shown with the bubble's edge, and always reachable. */
+  /* A badge with the resize arrows (2026-10-25), on the corner facing the picture's middle. */
   .editor-camera-handle {
     position: absolute;
     z-index: 1;
-    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
     background: var(--media-foreground);
-    box-shadow: 0 0 0 2px var(--media), 0 1px 4px color-mix(in oklab, var(--media) 60%, transparent);
+    color: var(--media);
+    box-shadow: 0 0 0 1px var(--media), 0 1px 4px color-mix(in oklab, var(--media) 60%, transparent);
     pointer-events: auto;
     touch-action: none;
-    opacity: 0.85;
+    opacity: 0.9;
+  }
+  .editor-camera-handle svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.5;
+    pointer-events: none;
   }
   .editor-camera-handle[data-corner="top-left"],
   .editor-camera-handle[data-corner="bottom-right"] {

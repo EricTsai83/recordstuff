@@ -489,9 +489,16 @@ test("an editable recording's camera is dragged into place, its microphone turne
     return out; })()`);
   expect(problems).toEqual([]);
 
-  // Export: rendered, with no cut, the camera where it was dragged in the recording's shape.
+  // Export: rendered, with no cut, the camera where it was dragged in the recording's shape. Nothing under the buttons,
+  // or beside Export, moves as it starts and ends: its outcome takes the hint's line.
+  const rows = async () => [(await page.locator("#editor-scene-reset").boundingBox())!.y, (await page.locator("#editor-redo").boundingBox())!.x];
+  const rowsBefore = await rows();
   await page.locator("#editor-export").click();
   await expect(page.locator(".editor-done")).toBeVisible({ timeout: 5000 });
+  // Within a pixel: the centred dialog may settle a fraction of one, which no one sees.
+  const rowsAfter = await rows();
+  rowsAfter.forEach((value, index) => expect(Math.abs(value - rowsBefore[index]!)).toBeLessThanOrEqual(1));
+  await expect(page.locator("#editor-export")).toHaveAccessibleName("Export again");
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera: Record<string, number | boolean>; volumesDb: number[] };
   expect(render.camera).toEqual({ width: 0.2, height: 0.3, rounding: 0.15, x: 0, y: 1, mirror: false });
   expect(render.volumesDb[0]).toBe(0);
@@ -511,6 +518,7 @@ test("an editable recording's camera is dragged into place, its microphone turne
 
   // The handle on the corner facing the middle grows it from the opposite corner, its shape kept.
   const handle = page.locator(".editor-camera-handle");
+  await expect(handle.locator("svg")).toHaveCount(1);
   const grip = (await handle.boundingBox())!;
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();

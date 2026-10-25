@@ -275,11 +275,11 @@ function EditorPanel() {
     };
   }, []);
   // A change can take the focused part away (an Undo merging it, a removal joining it to its neighbour): focus then
-  // falls to the page, outside the dialog, and the edit view's keys stop (2026-10-25, a hands-on round). It goes back to
-  // the selected part, or the timeline.
+  // falls to the page or behind the dialog (a tab, in CI), and the edit view's keys stop (2026-10-25, a hands-on round).
+  // It goes back to the selected part, or the timeline.
   useEffect(() => {
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup")) return;
     const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
     target?.focus({ preventScroll: true });
   });
@@ -533,7 +533,15 @@ function EditorPanel() {
       {/* How to cut, kept in sight since the gestures cannot be seen until they are tried, and the keys behind a button
           beside it: listed in full they took three lines of a small window. */}
       <div className="editor-hint">
-        <span>{model.text("Drag the ends to trim, or across the timeline to choose a range.")}</span>
+        {/* An export's outcome takes the hint's place, one line, so nothing below moves (2026-10-25: a row of its own
+            appeared under the buttons and pushed the camera and sound down). */}
+        {editor.export.phase === "done" ? (
+          <span className="editor-done" role="status" title={editor.export.message}>{editor.export.message}</span>
+        ) : editor.export.phase === "failed" ? (
+          <span className="editor-failure" role="alert">{editor.export.message}</span>
+        ) : (
+          <span>{model.text("Drag the ends to trim, or across the timeline to choose a range.")}</span>
+        )}
         {/* The keys, opened by a click as well as named to assistive technology (a hands-on round found a tooltip alone
             showed nothing on a click). */}
         <Popover>
@@ -615,6 +623,8 @@ function ExportControls() {
   const editor = model.editorView();
   if (!editor) return null;
   const state = editor.export;
+  // One width in every state (min-width in ui.css), its outcome written in the hint's row: the buttons beside it and the
+  // rows under it stay where they are as an export starts, runs and ends (2026-10-25).
   if (state.phase === "exporting") {
     const percent = Math.round(state.progress * 100);
     return (
@@ -636,23 +646,20 @@ function ExportControls() {
       </span>
     );
   }
+  const again = state.phase === "failed" || state.phase === "done";
   return (
     <span className="editor-export">
       {state.phase === "done" && (
-        <>
-          <span className="editor-done" role="status">{state.message}</span>
-          {/* Once exported, finding the file is what comes next: the main button, Export again beside it. */}
-          <Button id="editor-reveal" size="sm" onClick={() => void model.revealExport()}>
-            <FolderOpen />
-            {model.text(model.platform() === "darwin" ? "Show in Finder" : "Open folder")}
-          </Button>
-        </>
+        // Once exported, finding the file is what comes next: the main button, Export again beside it as an icon.
+        <Button id="editor-reveal" size="sm" onClick={() => void model.revealExport()}>
+          <FolderOpen />
+          {model.text(model.platform() === "darwin" ? "Show in Finder" : "Open folder")}
+        </Button>
       )}
-      {state.phase === "failed" && <span className="editor-failure" role="alert">{state.message}</span>}
-      <ControlTooltip label={editor.blocked ?? model.text(editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
+      <ControlTooltip label={editor.blocked ?? model.text(state.phase === "done" ? "Export again" : editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
         <Button
           id="editor-export"
-          size="sm"
+          size={state.phase === "done" ? "icon-sm" : "sm"}
           variant={state.phase === "done" ? "outline" : "default"}
           // Not while a change is being saved: the export takes the edit as saved.
           aria-disabled={!editor.exportable || model.editorSaving}
@@ -660,8 +667,8 @@ function ExportControls() {
             if (editor.exportable && !model.editorSaving) void model.exportEdit();
           }}
         >
-          <Upload />
-          {model.text(state.phase === "failed" || state.phase === "done" ? "Export again" : "Export")}
+          {state.phase === "done" ? <RotateCcw /> : <Upload />}
+          <span className={state.phase === "done" ? "sr-only" : undefined}>{model.text(again ? "Export again" : "Export")}</span>
         </Button>
       </ControlTooltip>
     </span>

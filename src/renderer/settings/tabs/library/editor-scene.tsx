@@ -10,7 +10,7 @@
  * as recorded. A dragged bubble stays exactly where it is dropped, without snapping, as the Studio's (2026-10-22).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { MoveDiagonal, MoveDiagonal2, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { bubbleRadius, bubbleRect, CAMERA_MAX_SIZE, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
@@ -65,7 +65,7 @@ function layoutOf(camera: SceneCamera, shape: { rounding: number; mirror: boolea
 }
 
 /** The handle's size on the screen, in CSS pixels. */
-const HANDLE = 14;
+const HANDLE = 20;
 
 /** The bubble over the player's picture; nothing when the recording has no camera or it is hidden. */
 export function EditorCamera({ editor }: { editor: EditorView }) {
@@ -222,7 +222,10 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
               style={{ left: box.left + (corner.right ? box.width : 0) - HANDLE / 2, top: box.top + (corner.bottom ? box.height : 0) - HANDLE / 2, width: HANDLE, height: HANDLE }}
               onPointerDown={onPointerDown("resize")}
               {...pointer}
-            />
+            >
+              {/* The resize symbol on it, its arrows along the diagonal it drags (2026-10-25: a plain circle read as nothing). */}
+              {corner.bottom === corner.right ? <MoveDiagonal2 /> : <MoveDiagonal />}
+            </span>
           )}
         </>
       )}
