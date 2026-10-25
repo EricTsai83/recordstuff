@@ -117,7 +117,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     v.pause();
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
-  await expect(page.locator(".editor-hint")).toBeVisible();
+  await expect(page.locator(".editor-hint")).toHaveText("Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · ⌘Z undo · ⇧⌘Z redo");
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -125,7 +125,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await page.mouse.click(box.x + box.width * 0.25, y);
   await expect.poll(time).toBeGreaterThan(1.8);
   expect(await time()).toBeLessThan(2.2);
-  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(1\.[89]|2\.[01])$/);
+  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(1\.[89]\d|2\.[01]\d)$/);
   // Dragged from the playhead, the playhead follows; no range is chosen.
   await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
@@ -136,10 +136,8 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await expect(page.locator(".editor-range")).toHaveCount(0);
   await page.locator("#editor-split").click();
   await expect(page.locator(".editor-part")).toHaveCount(2);
-  // Once something is cut, the hint names the keys instead.
-  await expect(page.locator(".editor-hint")).toHaveText("Space play or pause · ← → a frame · S split · Delete remove · ⌘Z undo");
   await expect(page.locator("#editor-feedback")).toHaveText(/^Split at 0:0(5\.[89]|6\.[01])$/);
-  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]|6\.[01])$/);
+  await expect(page.locator(".editor-position")).toHaveText(/^Playhead 0:0(5\.[89]\d|6\.[01]\d)$/);
 
   // Undo takes a split back and Redo makes it again, though a split is never saved.
   await page.keyboard.press("Meta+z");
@@ -172,6 +170,16 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("data-removed", "true");
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#editor-remove")).toHaveText("Keep part");
+
+  // Undo from the keyboard while a part has the focus, again and again: a step that takes the focused part away (the
+  // splits merging it) leaves the focus in the view, so the next ⌘Z still undoes (a hands-on round lost it).
+  await page.locator(".editor-part").nth(1).focus();
+  for (const parts of [3, 2, 1]) {
+    await page.keyboard.press("Meta+z");
+    await expect(page.locator(".editor-part")).toHaveCount(parts);
+    await expect(page.locator(".editor-part[data-removed]")).toHaveCount(0);
+    expect(await page.evaluate(() => document.getElementById("editor")?.contains(document.activeElement) ?? false)).toBe(true);
+  }
 });
 
 test("the handles trim the start and the end, a drag across the timeline removes what it chose, each a step Undo takes back (2026-10-25)", async () => {
@@ -211,6 +219,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await page.mouse.up();
   await expect(page.locator(".editor-range")).toHaveCount(1);
   await expect(page.locator("#editor-remove")).toHaveText("Remove selection");
+  await expect(page.locator(".editor-position")).toHaveText(/^Selection 0:0\d\.\d\d–0:0\d\.\d\d \(0:01\.\d\d\)$/);
   await page.locator("#editor-remove").click();
   await expect(page.locator(".editor-range")).toHaveCount(0);
   await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);

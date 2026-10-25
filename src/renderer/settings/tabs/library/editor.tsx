@@ -232,6 +232,13 @@ function rulerTime(seconds: number, step: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}` : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+/** A time to the hundredth, m:ss.ss: fine enough that a frame's step shows. */
+function precise(seconds: number): string {
+  const hundredths = Math.max(0, Math.round(seconds * 100));
+  const minutes = Math.floor(hundredths / 6000), rest = (hundredths % 6000) / 100;
+  return `${minutes}:${rest.toFixed(2).padStart(5, "0")}`;
+}
+
 /** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
 interface TimelineGesture { pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge }
 /** A trim handle's width, and how far beyond it a press still takes hold of it, in CSS pixels. */
@@ -242,6 +249,15 @@ function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
   const gesture = useRef<TimelineGesture | null>(null);
+  // A change can take the focused part away (an Undo merging it, a removal joining it to its neighbour): focus then
+  // falls to the page, outside the dialog, and the edit view's keys stop (2026-10-25, a hands-on round). It goes back to
+  // the selected part, or the timeline.
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
+    target?.focus({ preventScroll: true });
+  });
   const language = model.view?.language ?? "en";
   if (!editor || editor.state === "loading") {
     return (
@@ -300,7 +316,6 @@ function EditorPanel() {
   const trim = model.shownTrim(editor);
   const range = model.rangeSelection;
   const ruler = rulerMarks(editor.seconds);
-  const untouched = editor.removed.length === 0 && parts.length === 1;
   const trimHandle = (edge: model.TrimEdge) => {
     const value = trim[edge];
     const step = (event: React.KeyboardEvent): number | undefined => {
@@ -345,6 +360,7 @@ function EditorPanel() {
       <div
         className="editor-timeline"
         role="group"
+        tabIndex={-1}
         aria-label={model.text("Timeline")}
         onPointerDown={(event) => {
           const ticks = ticksAt(event.currentTarget, event.clientX);
@@ -417,12 +433,14 @@ function EditorPanel() {
         {ruler.marks.map((mark) => (
           <span key={mark} style={{ left: `${(mark / Math.max(editor.seconds, 0.001)) * 100}%` }}>{rulerTime(mark, ruler.step)}</span>
         ))}
+        <i className="editor-ruler-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} />
       </div>
+      {/* How to cut and the keys, kept in sight: the gestures cannot be seen until they are tried. */}
       <p className="editor-hint text-muted-foreground">
-        {/* How to cut until something is cut, then the keys: one line either way. */}
-        {untouched
-          ? model.text("Drag either end of the timeline to trim it, or drag across it to choose what to remove.")
-          : translate("Space play or pause · ← → a frame · S split · Delete remove · {undo} undo", language, { undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z" })}
+        {translate("Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · {undo} undo · {redo} redo", language, {
+          undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",
+          redo: model.platform() === "darwin" ? "⇧⌘Z" : "Ctrl+Y",
+        })}
       </p>
       <div className="editor-actions">
         <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
@@ -450,9 +468,14 @@ function EditorPanel() {
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
-        {/* The playhead's time to the tenth, as Split and the parts say it: the player's own clock shows whole seconds. */}
+        {/* The playhead's time to the hundredth, so a frame's step shows (the player's own clock shows whole seconds); a
+            range being chosen shows where it runs and how long it is instead. */}
         <span className="editor-position text-muted-foreground">
-          {translate("Playhead {time}", language, { time: at(time) })}
+          {range
+            ? translate("Selection {from}–{to} ({length})", language, {
+              from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
+            })
+            : translate("Playhead {time}", language, { time: precise(time) })}
         </span>
         <span className="editor-length text-muted-foreground">
           {translate("Export length {length}", language, { length: at(editor.outputSeconds) })}
