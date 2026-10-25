@@ -843,7 +843,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
   await host.evaluate(h => h.setSize(560, 680));
 });
 
-test("S142 the Studio's line of controls: Live preview beside Start, and what the camera is doing while a recording gives no picture of it, nothing over the picture (plan 090, 2026-10-23)", { tag: "@recording-settings" }, async () => {
+test("S142 the Studio's line of controls: Live preview beside Start, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said over the stage, so nothing moves (plan 090, 2026-10-23, 2026-10-25)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
   const recording = (state?: "waiting" | "notReady" | "lost") => host.evaluate((h, state) => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
@@ -856,14 +856,36 @@ test("S142 the Studio's line of controls: Live preview beside Start, and what th
   const controls = page.locator(".studio-controls");
   await expect(controls.getByRole("switch", { name: "Live preview" }), "S142 Live preview is in the line of controls").toBeVisible();
   await expect(page.locator(".camera-preview-stage").getByRole("switch"), "S142 nothing laid over the picture").toHaveCount(0);
-  await expect(controls.getByRole("status"), "S142 waiting for its first frame").toHaveText("Waiting for the camera…");
-  await expect(page.locator(".camera-preview-stage .camera-preview-status"), "S142 not over the picture").toHaveCount(0);
+  // Said once, over the stage (2026-10-25: in the line of controls it wrapped a narrow window's line and moved the stage).
+  const said = page.locator(".studio-stage").getByRole("status");
+  await expect(said, "S142 waiting for its first frame").toHaveText("Waiting for the camera…");
+  await expect(controls.getByRole("status"), "S142 not in the line of controls").toHaveCount(0);
+  await expect(page.locator(".camera-preview-stage .camera-preview-status"), "S142 said once").toHaveCount(0);
   await recording("notReady");
-  await expect(controls.getByRole("status"), "S142 not ready").toHaveText("The camera is not ready.");
+  await expect(said, "S142 not ready").toHaveText("The camera is not ready.");
   await recording("lost");
-  await expect(controls.getByRole("status"), "S142 lost").toHaveText("The camera dropped out. Reconnecting…");
+  await expect(said, "S142 lost").toHaveText("The camera dropped out. Reconnecting…");
   await recording();
-  await expect(controls.getByRole("status"), "S142 nothing while it delivers").toHaveCount(0);
+  await expect(said, "S142 nothing while it delivers").toHaveCount(0);
+  // A portrait screen's narrow window: the line of controls and the picture keep their places as it is said and goes.
+  await host.evaluate(h => h.setSize(541, 900));
+  const places = () => page.evaluate(() => [".studio-controls", ".studio-stage .camera-preview-stage", ".studio-panels"].map((selector) => {
+    const box = document.querySelector(selector)!.getBoundingClientRect();
+    return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
+  }));
+  await expect.poll(async () => { const a = await places(); await page.waitForTimeout(100); return a.join("|") === (await places()).join("|"); },
+    { message: "S142 the narrow layout settles" }).toBe(true);
+  const delivering = await places();
+  await recording("waiting");
+  await expect(said, "S142 said in the narrow window").toHaveText("Waiting for the camera…");
+  expect(await said.evaluate((note) => {
+    const box = note.getBoundingClientRect();
+    return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest(".studio-stage-note") ?? null;
+  }), "S142 only said: what is under it still takes the pointer").toBeNull();
+  expect(await places(), "S142 nothing moves as it is said").toEqual(delivering);
+  await recording();
+  await expect(said).toHaveCount(0);
+  expect(await places(), "S142 nothing moves as it goes").toEqual(delivering);
   await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
 });
 
@@ -1012,6 +1034,10 @@ test("S143–S145 the Studio's preview panel: Power saving by default, no camera
     await expect(page.getByRole("application", { name: "Preview" }), `S145 nothing to drag in a session's Camera view: ${text}`).toHaveCount(0);
     await expect(page.locator(".studio-stage .camera-preview-bubble"), `S145 the engine's picture is the camera: ${text}`).toHaveCount(0);
     await expect(said, `S145 the Camera view says why it has no camera: ${text}`).toHaveText(text);
+    if (session?.state === "lost") {
+      await expect(page.locator(".studio-stage").getByRole("status"), "S145 and announces it, said once on screen").toHaveText("The camera dropped out. Reconnecting…");
+      await expect(page.locator(".studio-stage .studio-stage-note"), "S145 no second line over its own picture").toHaveCount(0);
+    }
   }
   await host.evaluate(h => {
     h.state.cameraState = undefined;

@@ -288,19 +288,19 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 }
 
 /**
- * One line over the preview (2026-10-21): the recording's phase and action, what the camera is doing when a session
- * gives no picture of it (plan 090), and at its end the view and Live preview (2026-10-23). Nothing joins it as a
- * recording starts (2026-10-24: each input's level and mute and the camera's showing went back to their panels, where
- * they are named), and its buttons keep their widths, so the stage under it never moves. No bar or card of its own.
+ * One line over the preview (2026-10-21): the recording's phase and action, and at its end the view and Live preview
+ * (2026-10-23). Nothing joins it as a recording starts (2026-10-24: each input's level and mute and the camera's showing
+ * went back to their panels, where they are named), nor while the camera gives no picture (said over the stage since
+ * 2026-10-25: in a narrow window it wrapped the line and moved the stage), and its buttons keep their widths, so the
+ * stage under it never moves. No bar or card of its own.
  */
-function Toolbar({ controls, live, camera }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined; camera: string | undefined }) {
+function Toolbar({ controls, live }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined }) {
   if (!controls) return null;
   const view = groupOf("studioPreviewView");
   return (
     <section className="studio-controls" data-phase={controls.phase} aria-labelledby="studio-controls-heading">
       <h2 id="studio-controls-heading" className="sr-only">{controls.sectionHeading ?? controls.label}</h2>
       <RecordControl controls={controls} />
-      {camera && <p className="studio-camera-status" role="status"><CameraOff aria-hidden="true" />{camera}</p>}
       <div className="studio-quick">
         {view && <ViewMenu view={view} />}
         {live && <LiveSwitch live={live} />}
@@ -417,17 +417,24 @@ export function Studio() {
   const view = groupOf("studioPreviewView");
   // Its preview and meters at the chosen rate (plan 092, D1), and the chosen view (D3).
   const shown = usePreviewChoice(rate, view, live, preview?.cameraPreview?.mode === "recording");
+  // What the camera is doing while a session gives no picture of it (plan 090): over the stage, or, in the Camera view,
+  // which shows it in its own picture, to assistive technology only, still announced as it changes.
+  const cameraStatus = preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined;
+  const cameraSaid = shown.view !== "camera" ? cameraStatus : undefined;
   return (
     <div className="studio">
-      <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
+      <Toolbar controls={controls} live={live} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}
           style={{ ["--preview-ratio" as string]: preview.cameraPreview.display.width / preview.cameraPreview.display.height }}>
           <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={live ? shown : undefined}
             overlay={live && shown.off && live.enabled && model.committed(live) !== "on" ? <StageStart live={live} /> : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
-          {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24). */}
-          {live?.note && <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>}
+          {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24), and so
+              what the camera is doing while it gives no picture (plan 090; the Camera view says it in its own picture). */}
+          {live?.note ? <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>
+            : cameraSaid && <p className="studio-stage-note" role="status"><CameraOff aria-hidden="true" />{cameraSaid}</p>}
+          {shown.view === "camera" && cameraStatus && <p className="sr-only" role="status">{cameraStatus}</p>}
           {/* How to move the bubble, for assistive technology only: on screen the bubble shows it can be dragged. */}
           {preview.info && <p id="setting-cameraPreview-info" className="sr-only">{preview.info}</p>}
           <Failures groups={[preview, live]} />

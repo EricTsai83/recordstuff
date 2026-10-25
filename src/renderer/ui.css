@@ -1255,10 +1255,13 @@
     gap: 6px 12px;
   }
   /* A Live preview's start or failure, over the foot of the stage rather than a line under it, which would shrink the
-     picture while it is said (2026-10-24). */
+     picture while it is said (2026-10-24), and what the camera is doing while it gives no picture (2026-10-25). */
   .studio-stage-note {
     position: absolute;
     inset: auto 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     width: fit-content;
     max-width: calc(100% - 20px);
     margin: 0 auto;
@@ -1268,9 +1271,16 @@
     background: var(--studio-live-glass);
     backdrop-filter: blur(8px);
     color: var(--studio-live-ink-on);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     line-height: 1.2;
+    /* Only said: the bubble under it is still dragged. */
+    pointer-events: none;
+  }
+  .studio-stage-note svg {
+    width: 12px;
+    height: 12px;
+    flex: none;
   }
   /* Turn on preview over the stage while Live preview is off (2026-10-25): glass, shown only while the pointer is on
      the stage or the button has focus, so the bare stage stays bare. Over the picture, so nothing moves. */
@@ -1361,19 +1371,6 @@
   }
   /* What the camera is doing while a session gives no picture of it (plan 090): a quiet line beside the recording's
      control, not the recording's red. */
-  .studio-camera-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0;
-    font-size: 12px;
-    color: var(--muted-foreground);
-  }
-  .studio-camera-status svg {
-    width: 14px;
-    height: 14px;
-    flex: none;
-  }
   .studio-note {
     margin: 0;
     font-size: 12px;

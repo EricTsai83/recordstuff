@@ -222,7 +222,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
           onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}
           onKeyDown={onKeyDown}
         />}
-        {/* The Studio says a session's camera in its line of controls; the Camera view, being that camera, says it here too. */}
+        {/* The Studio says a session's camera over its stage; the Camera view, being that camera, says it here instead. */}
         {status && !(statusOutside && preview.mode === "recording" && !cameraOnly) && <p className="camera-preview-status">{status}</p>}
       </div>
       <span id={`${id}-position`} className="sr-only">
