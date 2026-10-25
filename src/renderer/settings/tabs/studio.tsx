@@ -18,6 +18,7 @@ import { CameraPreview, type PreviewShown } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
 import { SliderSetting } from "./row-parts/slider";
 import { Elapsed } from "./row-parts/elapsed";
+import { GroupIcon } from "./row-parts/icons";
 import { paceStudio, type StudioPacer } from "./studio-pace";
 import { setPreviewView } from "./studio-feed";
 
@@ -191,6 +192,8 @@ function AudioPanel() {
           return (
             <div key={group.id} className="studio-channel">
               <div className="studio-channel-head">
+                {/* Each input by its icon too (2026-10-26, the maintainer's request), the one Recording settings gives it. */}
+                <GroupIcon id={group.id} />
                 <span id={`setting-${group.id}-label`}>{group.label}</span>
               </div>
               {fader?.slider && (
@@ -454,9 +457,13 @@ export function Studio() {
           <Failures groups={[preview, live]} />
         </section>
       )}
+      {/* Two columns while they fit (2026-10-26, the maintainer's choice of mockups): the preview's and the camera's short
+          panels stacked beside the audio's taller one, so both columns end level; one column in a narrow window. */}
       <div className="studio-panels">
-        {preview?.cameraPreview && rate && <PreviewPanel rate={rate} />}
-        <CameraPanel />
+        <div className="studio-panels-side">
+          {preview?.cameraPreview && rate && <PreviewPanel rate={rate} />}
+          <CameraPanel />
+        </div>
         <AudioPanel />
       </div>
     </div>

@@ -346,9 +346,11 @@ async function run(): Promise<void> {
   }
 
   // 3b. The Studio's stage at its display's shape (plan 095): a landscape and a portrait display at the default, narrow,
-  //     minimum and large sizes, so the picture is seen meeting its stage on one axis at each.
+  //     minimum and large sizes, so the picture is seen meeting its stage on one axis at each; 820 and 860 px wide sit
+  //     either side of the panels' change from one column to two (2026-10-26).
   for (const [shape, choice] of [["landscape", { kind: "primary" }], ["portrait", { kind: "display", id: "1", label: "BenQ BL2480T" }]] as const) {
     for (const [sizeName, size] of [["default", DEFAULT_SETTINGS_SIZE], ["narrow", { width: 440, height: 760 }], ["minimum", MIN_SETTINGS_SIZE],
+      ["820x760", { width: 820, height: 760 }], ["860x760", { width: 860, height: 760 }],
       ["1043x758", { width: 1043, height: 758 }], ["1440x900", { width: 1440, height: 900 }]] as const) {
       const window = await begin("studio-stage", "en", "light", sizeName, size);
       display = choice;

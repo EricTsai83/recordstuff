@@ -253,8 +253,6 @@
   --display-shadow: 0 1px 2px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.1);
   /* The Camera section's preview (plan 075): the menu bar's frosted band over the wallpaper and the bubble before its
      picture arrives, the same in both themes. */
-  /* The Recording Studio's panels, raised as Settings' section cards are. */
-  --studio-panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 2px 10px rgb(0 0 0 / 0.035);
   /* Live preview's glass pill over the picture, the same in both themes: its edge, glass and ink, white once on, and
      its signal's green, not the recording's red. */
   --studio-live-edge: rgb(255 255 255 / 0.18);
@@ -312,7 +310,6 @@
 /* The page sets .dark from the appearance setting (System follows the OS); color-scheme on :root keeps native controls
    and system colours in step with it. */
 .dark {
-  --studio-panel-shadow: none;
   --permission-card-bg: oklch(0.2550 0 0);
   --permission-card-fg: #fafafa;
   --permission-card-muted: rgb(250 250 250 / 0.66);
@@ -1062,31 +1059,30 @@
     max-width: 30ch;
     color: var(--muted-foreground);
   }
-  /* Side by side while they fit, wrapping in a narrow window; the camera's the widest, so its shape's three fields share
-     one line at the default size, the preview's, holding one menu, the narrowest (2026-10-26). */
+  /* Two columns while each has 248 px, one below that (2026-10-26): the preview's and the camera's sections stacked in
+     the first, the audio's in the second; 248 px keeps the camera's three fields on one line (in English, the widest,
+     they take 241 px). No cards (the maintainer's request, the same day): each section is its heading and its controls
+     on the page, so columns of unequal height leave nothing drawn empty, and the wide gap between columns parts them. */
   .studio-panels {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 248px), 1fr));
+    gap: 20px 36px;
+    padding-top: 4px;
   }
-  .studio-panels > .studio-panel {
-    flex: 1 1 210px;
+  .studio-panels-side {
+    display: grid;
+    align-content: start;
+    gap: 20px;
     min-width: 0;
   }
-  .studio-panels > .studio-panel-preview {
-    flex: 0.8 1 170px;
-  }
-  .studio-panels > .studio-panel-camera {
-    flex: 1.4 1 246px;
+  .studio-panels-side:empty {
+    display: none;
   }
   .studio-panel {
     display: grid;
+    align-content: start;
     gap: 8px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    background: var(--card);
-    box-shadow: var(--studio-panel-shadow);
+    min-width: 0;
   }
   .studio-panel-head {
     display: flex;
@@ -1249,12 +1245,16 @@
   .studio-channel-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-height: 20px;
   }
   .studio-channel-head > span {
     flex: 1;
     min-width: 0;
+  }
+  .studio-channel-head > .row-icon {
+    width: 14px;
+    height: 14px;
   }
   /* Each input in the Audio panel (2026-10-24): its name, then its level now with its mute, then, under a rule, the
      volume it is recorded at; a caption names each line, one column wide, so the meter and the fader line up. */
