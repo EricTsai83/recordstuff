@@ -421,7 +421,8 @@ export function Studio() {
     <div className="studio">
       <Toolbar controls={controls} live={live} camera={preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined} />
       {preview?.cameraPreview && (
-        <section className="studio-stage" aria-label={preview.label}>
+        <section className="studio-stage" aria-label={preview.label}
+          style={{ ["--preview-ratio" as string]: preview.cameraPreview.display.width / preview.cameraPreview.display.height }}>
           <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={live ? shown : undefined}
             overlay={live && shown.off && live.enabled && model.committed(live) !== "on" ? <StageStart live={live} /> : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />

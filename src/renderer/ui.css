@@ -953,13 +953,16 @@
   }
   /* The Recording Studio (plan 075, D19), as OBS lays out its window: the preview across the top, panels under it. */
   /* The Studio fills the page's height (plan 095), so the stage takes what the line of controls and the panels leave;
-     below its floor the page scrolls. */
+     below its floor the page scrolls. The stage is never taller than the picture at the page's width, so in a tall,
+     narrow window the panels follow the picture and the height left over is below them (2026-10-25, maintainer's
+     choice), not grey above and under the picture. */
   .settings-card:has(> .studio) {
     display: flex;
     flex-direction: column;
   }
   .studio {
     --studio-stage-floor: 200px;
+    container-type: inline-size;
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -967,9 +970,11 @@
     padding-bottom: 12px;
   }
   .studio-stage {
+    --bezel: 6px;
     position: relative;
     flex: 1 1 0;
     min-height: var(--studio-stage-floor);
+    max-height: calc((100cqw - var(--bezel)) / var(--preview-ratio, 16 / 9) + var(--bezel));
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     gap: 6px;
@@ -984,7 +989,6 @@
     place-items: center;
   }
   .studio-stage .camera-preview-stage {
-    --bezel: 6px;
     width: min(calc(100cqw - var(--bezel)), calc((100cqh - var(--bezel)) * var(--preview-ratio, 16 / 9)));
   }
   /* The preview's panel (plan 092): the rate's menu and the view's segments, each on a line with its name. */

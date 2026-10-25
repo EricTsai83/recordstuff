@@ -1131,6 +1131,17 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
     }
   }
   await zoomTo(1);
+  // A tall, narrow window (a portrait screen's) keeps no grey above and under a landscape picture: the stage is the
+  // picture's height and the panels follow it, the height left over below them (2026-10-25, maintainer's choice).
+  await show("landscape");
+  await host.evaluate(h => h.setSize(900, 1600));
+  await expect.poll(async () => {
+    const m = await measure();
+    // Next to it: the space between them is only the Studio's own gap between its parts, whatever that is.
+    const [gap, rowGap] = await page.evaluate(() => [document.querySelector(".studio-panels")!.getBoundingClientRect().top - document.querySelector(".studio-stage")!.getBoundingClientRect().bottom,
+      parseFloat(getComputedStyle(document.querySelector(".studio")!).rowGap) || 0]);
+    return { fills: Math.abs(m.picture.height - m.box.height) <= 1 && Math.abs(m.picture.width - m.box.width) <= 1, follows: Math.abs(gap - rowGap) <= 1 };
+  }, { message: "S146 a tall, narrow window: the stage is the picture's height and the panels follow it" }).toEqual({ fills: true, follows: true });
   // Dragged on a large stage, the bubble is let go of where the recording composes it.
   await show("landscape");
   await host.evaluate(h => h.setSize(1440, 900));
