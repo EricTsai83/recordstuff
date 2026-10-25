@@ -9,7 +9,7 @@
 import { test, expect, type Launched } from "./fixtures";
 import type { Page, TestInfo } from "@playwright/test";
 import fs from "node:fs";
-import { read, until, clickAt, centre, eventually } from "./helpers";
+import { read, until, clickAt, centre, eventually, drawn, frames } from "./helpers";
 
 /**
  * Whether the focused element draws some focus indicator, whatever its style: a visible outline, or a shadow layer that
@@ -36,10 +36,9 @@ const all = (): Promise<Array<{ id: string; acknowledged: boolean; persistenceFa
 const current = async () => (await all())[0];
 const set = (values: Record<string, unknown>): Promise<void> => host.evaluate((h, next) => { Object.assign(h.state, next); }, values);
 const callCount = (): Promise<number> => host.evaluate(h => h.chooseCalls.length);
-/** As the former fixture's pushResult: the view with the entry token `focus`, then a moment for the page. */
+/** As the former fixture's pushResult: the view with the entry token `focus`, resolved once the page has taken it. */
 async function pushResult(lang: "en" | "zh-TW", focus = 0): Promise<void> {
-  await host.evaluate((h, args) => h.pushResult(args.lang, args.focus), { lang, focus });
-  await page.waitForTimeout(120);
+  await drawn(page, () => host.evaluate((h, args) => h.pushResult(args.lang, args.focus), { lang, focus }));
 }
 const lastFocus = (): Promise<number> => host.evaluate(h => h.state.lastFocus);
 async function shot(testInfo: TestInfo, name: string): Promise<void> {
@@ -245,8 +244,7 @@ test("S087–S088 the history loading status in both languages, and an automatic
   // An entry opens the failures tab, where the former sequence already was.
   await pushResult("en", 1);
   for (const lang of ["en", "zh-TW"] as const) {
-    await host.evaluate((h, value) => h.push({ ...h.settingsView({ type: "idle" }, { ...h.baseContext(), language: value, historyLoading: true, recordingResults: [] }), resultFocus: h.state.lastFocus }), lang);
-    await page.waitForTimeout(120);
+    await drawn(page, () => host.evaluate((h, value) => h.push({ ...h.settingsView({ type: "idle" }, { ...h.baseContext(), language: value, historyLoading: true, recordingResults: [] }), resultFocus: h.state.lastFocus }), lang));
     expect.soft(await read<boolean>(page, `(() => { const el = document.querySelector(".result-history-status"); return !el.hidden && el.textContent === ${JSON.stringify(lang === "en" ? "Loading failure history…" : "正在載入失敗紀錄…")} && el.scrollWidth <= el.clientWidth && !document.querySelector(".recording-result"); })()`),
       `S087 history loading status ${lang} is readable without rows`).toBe(true);
     await shot(testInfo, `history-loading-${lang}.png`);
@@ -274,7 +272,7 @@ for (const [delay, lang] of [[150, "en"], [2000, "zh-TW"]] as const) {
     await persist();
     await pushResult(lang, await lastFocus() + 1);
     await clickAt(page, `${row(acked)} [data-action="acknowledge"]`);
-    await page.waitForTimeout(60);
+    await until(page, `document.querySelector('${row(acked)} [data-action="acknowledge"]')?.getAttribute("aria-disabled") === "true"`);
     const waiting = await read<{ busy: boolean; focused: boolean; text: string; unread: boolean }>(page, `(() => { const b = document.querySelector('${row(acked)} [data-action="acknowledge"]'); return { busy: b?.getAttribute("aria-disabled") === "true" && !b.disabled, focused: document.activeElement === b, text: document.querySelector('${row(acked)} .result-saving').textContent, unread: document.querySelector('${row(acked)}')?.hasAttribute("data-open") }; })()`);
     expect.soft(waiting, `S089 ${delay} ms save keeps the busy Got it focusable, unread and labelled (${lang})`).toEqual({ busy: true, focused: true, unread: true, text: lang === "en" ? "Saving this change…" : "正在儲存這項變更…" });
     if (delay === 2000) for (const scheme of ["light", "dark"] as const) {
@@ -410,7 +408,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   // A day rollover moves rows between groups without dropping focus, and Technical details shows the focus line.
   const where = (): Promise<{ active: string; day: string }> => read(page, `({ active: document.activeElement.id || document.activeElement.dataset.action || document.activeElement.tagName,
     day: document.activeElement.closest(".result-day")?.dataset.day ?? "" })`);
-  const rollover = async (days: number): Promise<void> => { await host.evaluate((h, value) => h.rollover(value), days); await page.waitForTimeout(150); };
+  const rollover = (days: number): Promise<void> => drawn(page, () => host.evaluate((h, value) => h.rollover(value), days));
   await read(page, `document.querySelectorAll(".recording-result[data-open]").forEach(row => { row.querySelector(".result-summary").click(); })`);
   await page.waitForTimeout(80);
   await page.locator(".recording-result > .result-summary").nth(1).focus();
@@ -439,7 +437,8 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
     await page.mouse.move(at.x, at.y);
     // Downwards: Electron's `sendInputEvent` wheel, which the former fixture sent, counts down as negative; DOM wheel deltas count it positive.
     for (let i = 0; i < 4; i += 1) await page.mouse.wheel(0, 60);
-    await page.waitForTimeout(250);
+    // A wheel scrolls smoothly: read once the panel has moved and stopped, as a tab switch keeps where it is then.
+    await eventually(async () => { const at = await scrollTop(); await frames(page); return at > 0 && at === await scrollTop(); });
   };
   // A reloaded page is a new window: every tab starts at the top.
   await page.reload();
@@ -482,7 +481,7 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
 
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`S110–S115 ${lang}/${scheme}: tab, menu, segment, switch, button and row action show visible keyboard focus at the minimum size`, { tag: "@layout" }, async ({}, testInfo) => {
-    await host.evaluate((h, value) => { h.setSize(380, 360); h.theme(value); }, scheme);
+    await host.evaluate(async (h, value) => { await h.setSize(380, 360); h.theme(value); }, scheme);
     await seedHistory();
     await pushResult(lang, 0);
     const settled = `document.activeElement.getAnimations().every(animation => animation.playState !== "running")`;

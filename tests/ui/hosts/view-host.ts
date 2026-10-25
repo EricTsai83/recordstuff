@@ -15,6 +15,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import type * as ElectronModule from "electron";
 import { createBoundary } from "./boundary";
+import { settled } from "./settle";
 import { RecordingResults } from "../../../src/main/recording/recording-result";
 import { settingsAction, settingsView } from "../../../src/main/settings/settings-model";
 import { translate, type Language } from "../../../src/shared/i18n";
@@ -499,8 +500,10 @@ const hostControls: Record<string, unknown> = {
   },
   pendingSaves: (): number => heldSaves.length,
   releaseSave: (): void => { const next = heldSaves.shift(); if (!next) throw new Error("No held save"); next(); },
-  setSize: (width: number, height: number): void => { panel!.setSize(width, height); },
-  setContentSize: (width: number, height: number): void => { panel!.setContentSize(width, height); },
+  /** Each resolves once the page is laid out at the new size or zoom (settle.ts): await it before measuring. */
+  setSize: async (width: number, height: number): Promise<void> => { panel!.setSize(width, height); await settled(panel!); },
+  setContentSize: async (width: number, height: number): Promise<void> => { panel!.setContentSize(width, height); await settled(panel!); },
+  setZoom: async (factor: number): Promise<void> => { panel!.webContents.setZoomFactor(factor); await settled(panel!); },
   theme: (scheme: "light" | "dark" | "system"): void => { nativeTheme.themeSource = scheme; },
   /** The library the Recordings tab reads, with a reference `now` for the former fixture's snapshots. */
   snapshotNow: (): Date => new Date(2026, 9, 4, 18, 0, 0),

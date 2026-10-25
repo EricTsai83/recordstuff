@@ -12,7 +12,7 @@
 import { test, expect, type Launched } from "./fixtures";
 import type { Page, TestInfo } from "@playwright/test";
 import fs from "node:fs";
-import { read, until, centre, underControls, frames } from "./helpers";
+import { read, until, centre, underControls, frames, drawn } from "./helpers";
 import { translate } from "../../src/shared/i18n";
 
 const STATES = ["recording", "general", "listening", "error", "locked", "sound-off", "countdown-off", "library", "library-empty", "library-failed"] as const;
@@ -58,7 +58,7 @@ async function open(launchView: () => Promise<{ launched: Launched; page: Page }
   // The third recording has no picture: the scheme answers its thumbnail 404 and the card shows the fallback (S028).
   host.expectedErrors.push(/Failed to load resource: the server responded with a status of 404 .*\(recordstuff-media:\/\/thumb\//);
   await expect(page.locator("#setting-hotkey")).toBeVisible();
-  await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES[args.size]); }, { scheme, size });
+  await host.evaluate(async (h, args) => { h.theme(args.scheme); await h.setSize(...h.SNAPSHOT_SIZES[args.size]); }, { scheme, size });
   // The launch view has no Recordings tab yet; the snapshot context's first push brings it, as the first of the ten
   // states did when they ran in one case.
   await pushState(host, "recording", lang);
@@ -70,8 +70,7 @@ async function checkState(host: Launched, page: Page, testInfo: TestInfo, lang: 
   const key = `${lang}/${scheme}/${size}/${state}`;
   const tab = state.startsWith("library") ? "library" : state === "general" || state === "listening" ? "general" : "recording";
   await page.locator(`#tab-${tab}`).click();
-  await pushState(host, state, lang);
-  await page.waitForTimeout(80);
+  await drawn(page, () => pushState(host, state, lang));
   await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
   if (state === "listening") await page.locator("#shortcut-capture").focus();
   else if (state === "sound-off") await page.locator("#setting-countdownSound").focus();
@@ -175,13 +174,13 @@ async function checkOverlays(page: Page, testInfo: TestInfo, lang: "en" | "zh-TW
   // A hover on the last item moves focus to it from the first, so the keyboard continues where the pointer is.
   const last = await centre(page, "#clip-menu-trash", false);
   await page.mouse.move(last.x, last.y);
-  await page.waitForTimeout(150);
+  await until(page, `document.activeElement?.id === "clip-menu-trash"`, 2000);
   const hovered = await read<string>(page, `document.activeElement?.id ?? ""`);
   await picture(page, testInfo, `clip-menu-hover-${lang}-${scheme}-${size}.png`);
   expect.soft(hovered, `S033 ${lang}/${scheme}/${size}/card menu: hovering an item focuses it`).toBe("clip-menu-trash");
   // An Escape with no menu open would close the window: only one that opened is answered.
   if ((await menuState()).open) await page.keyboard.press("Escape");
-  await page.waitForTimeout(100);
+  await until(page, `!document.getElementById("clip-menu")?.hasAttribute("data-open") && (document.activeElement?.id ?? "").endsWith("-more")`, 2000);
   const escaped = await menuState();
   await page.mouse.click(card.x, card.y, { button: "right" });
   await expect(page.locator("#clip-context-menu")).toBeVisible();

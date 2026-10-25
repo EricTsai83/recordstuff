@@ -155,7 +155,7 @@ test("K-N01–K-N14 normal: a refused registration is saved, explained, notified
   expect.soft(Boolean((await s.group()).diagnostics?.length) && (await s.recordingAttempts()).at(-1)?.registered === false && s.saved().hotkey.enabled,
     "K-N13 leave failed selection for a fresh process").toBe(true);
   // Sizes every runner's display holds: a reopened window is fitted to the work area (CI's is about 1024 × 681).
-  await s.app.evaluate(h => h.settingsWindow().setSize(640, 560));
+  await s.app.evaluate(h => h.setSettingsSize(640, 560));
   const geometry = path.join(s.app.data, "userData/settings-window.json");
   expect.soft(await eventually(() => fs.existsSync(geometry) && JSON.parse(fs.readFileSync(geometry, "utf8")).width === 640 && JSON.parse(fs.readFileSync(geometry, "utf8")).height === 560 && s.savedKey() === ACCELERATOR, 5000),
     "K-N14 window resize persists independently of shortcut preferences").toBe(true);
@@ -345,7 +345,7 @@ test("K-S01–K-S39 settings: legacy key, appearance, entry and restore, reserve
   const logPath = path.join(s.app.data, "logs/recordstuff.log");
   const logBeforeEntry = fs.readFileSync(logPath, "utf8").length;
   const settingsWindow = (): Promise<number[]> => s.app.evaluate(h => h.settingsWindow().getSize());
-  await s.app.evaluate(h => h.settingsWindow().setSize(620, 540));
+  await s.app.evaluate(h => h.setSettingsSize(620, 540));
   await expect.poll(settingsWindow).toEqual([620, 540]);
   for (const round of [1, 2]) {
     await s.closeWithKey();

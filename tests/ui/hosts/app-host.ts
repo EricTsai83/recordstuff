@@ -12,6 +12,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import type * as ElectronModule from "electron";
 import { createBoundary } from "./boundary";
+import { settled } from "./settle";
 
 const require = createRequire(__filename);
 const electron = require("electron") as typeof ElectronModule;
@@ -101,6 +102,9 @@ const host = {
   },
   /** The open Settings window, if any. */
   settingsWindow: (): ElectronModule.BrowserWindow | undefined => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes("settings.html")),
+  /** Resize or zoom the open Settings window; each resolves once its page is laid out so (settle.ts). */
+  setSettingsSize: async (width: number, height: number): Promise<void> => { const window = host.settingsWindow()!; window.setSize(width, height); await settled(window); },
+  setSettingsZoom: async (factor: number): Promise<void> => { const window = host.settingsWindow()!; window.webContents.setZoomFactor(factor); await settled(window); },
   /** What production asked of the Settings window: shown, focused, minimized (the boundary's virtual state). */
   settingsState: () => { const window = host.settingsWindow(); return window ? boundary.windowState(window) : undefined; },
   /** The full-screen video window, if one is open, and what production asked of it. */

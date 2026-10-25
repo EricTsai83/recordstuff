@@ -127,8 +127,8 @@ for (const language of ["en", "zh-TW"] as const) {
     await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
     await page.clock.pauseAt(new Date("2026-10-08T12:01:00Z"));
     const view = await page.evaluate(() => (window as unknown as { settings: SettingsBridge }).settings.read());
-    await host.evaluate((h, args) => {
-      h.setSize(...h.SNAPSHOT_SIZES.minimum);
+    await host.evaluate(async (h, args) => {
+      await h.setSize(...h.SNAPSHOT_SIZES.minimum);
       h.setView({ ...args.view, language: args.language });
     }, { language, view });
     const notice = zoomNotice();

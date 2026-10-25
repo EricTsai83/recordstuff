@@ -4,10 +4,10 @@ import fs from "node:fs/promises";
 for (const scheme of ["light", "dark"] as const) {
   test(`short zoomed settings ${scheme}: the final note and control read in full and are not covered at the bottom`, async ({ launchView }, testInfo) => {
     const { launched: host, page } = await launchView();
-    await host.evaluate((h, scheme) => {
+    await host.evaluate(async (h, scheme) => {
       h.theme(scheme);
-      h.setContentSize(380, 360);
-      h.window().webContents.setZoomFactor(1.5);
+      await h.setContentSize(380, 360);
+      await h.setZoom(1.5);
       h.pushModel({ type: "idle" });
     }, scheme);
     await page.locator("#tab-recording").click();

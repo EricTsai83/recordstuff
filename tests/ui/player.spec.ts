@@ -12,7 +12,7 @@ import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { read, eventually, centre } from "./helpers";
+import { read, eventually, until, centre } from "./helpers";
 import { VIDEO_TIMING, formatDuration } from "../../src/shared/video-player";
 import { TRAFFIC_LIGHT_ZONE } from "../../src/shared/window-controls";
 import { phrases, translate, type PlainMessageKey } from "../../src/shared/i18n";
@@ -172,7 +172,7 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
   await keep(page, "player-resting-light.png");
   expect.soft(rested, `P04 while it plays, the controls and the pointer step aside after ${VIDEO_TIMING.idleMs / 1000} s at rest`).toEqual({ controls: false, cursor: "none" });
   await page.mouse.move(picture.x + 12, picture.y + 6);
-  await page.waitForTimeout(350);
+  await eventually(async () => { const state = await resting(page); return state.controls && state.cursor !== "none"; }, 2000);
   const woken = await resting(page);
   expect.soft(woken.controls && woken.cursor !== "none", `P05 a pointer move brings them back ${JSON.stringify(woken)}`).toBe(true);
   await page.mouse.click(picture.x, picture.y);
@@ -278,7 +278,7 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
 test("the player grows and shrinks with the window and stays inside it", async () => {
   /** The player's size in a `width`×`height` window, measured once the dialog's animations have finished. */
   const stageIn = async (width: number, height: number): Promise<{ width: number; height: number; inside: boolean }> => {
-    await app.evaluate((h, size) => h.settingsWindow()!.setSize(size.width, size.height), { width, height });
+    await app.evaluate((h, size) => h.setSettingsSize(size.width, size.height), { width, height });
     await expect.poll(() => app.evaluate(h => h.settingsWindow()!.getSize().join("×"))).toBe(`${width}×${height}`);
     await eventually(() => read<boolean>(page, `document.querySelector(".player").getAnimations().every(animation => animation.playState !== "running")`));
     return read(page, `(() => { const r = document.querySelector(".player").getBoundingClientRect();
@@ -309,7 +309,8 @@ test("P20 a key seek, a volume key and a click on the picture each give feedback
   await page.keyboard.press("ArrowUp");
   const volume = await read<{ bezel: boolean; text: string }>(page, `({ bezel: !document.querySelector(".player .pc-bezel").hidden, text: document.querySelector(".player .pc-bezel-text").hidden ? "" : document.querySelector(".player .pc-bezel-text").textContent })`);
   expect.soft(volume.bezel && volume.text.length > 0, `P20 a volume key shows its feedback and level ${JSON.stringify(volume)}`).toBe(true);
-  await page.waitForTimeout(900);
+  // The volume's feedback ends before the click, so what is read after it is the click's own.
+  await until(page, `document.querySelector(".player .pc-bezel").hidden`, 2000);
   await page.locator(".player .pc > video").click();
   const clicked = await read<{ kind: string | undefined; hidden: boolean }>(page, `(() => { const b = document.querySelector(".player .pc-bezel");
     return { kind: b.dataset.kind, hidden: b.hidden }; })()`);
@@ -328,7 +329,7 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
   await page.mouse.click(card.x, card.y);
   await eventually(async () => !(await playback(page, ".player .pc > video")).paused, 5000);
   await read(page, `document.querySelector(".player .pc > video").currentTime = 2`);
-  await page.waitForTimeout(150);
+  await until(page, `!document.querySelector(".player .pc > video").seeking`);
   // Where the player was when full screen was asked for: the full-screen page must start there.
   const handed = (await playback(page, ".player .pc > video")).time;
   const waitingId = await standby();
@@ -362,10 +363,11 @@ test("P11–P15 full screen: the full-screen page gets the name, the controls an
   await keep(full, "fullscreen-playing.png");
   await full.mouse.move(viewport.width / 2, viewport.height / 2);
   await full.waitForTimeout(VIDEO_TIMING.idleMs + 600);
+  await eventually(async () => !(await resting(full)).controls, 1500);
   const fullRest = await resting(full);
   expect.soft(fullRest, "P12 in full screen the controls and the pointer step aside at rest too").toEqual({ controls: false, cursor: "none" });
   await full.mouse.move(viewport.width / 2 + 10, viewport.height / 2 + 4);
-  await full.waitForTimeout(350);
+  await eventually(async () => { const state = await resting(full); return state.controls && state.cursor !== "none"; }, 2000);
   const fullWake = await resting(full);
   expect.soft(fullWake.controls && fullWake.cursor !== "none", `P13 …and come back on a move ${JSON.stringify(fullWake)}`).toBe(true);
   const before = (await playback(full, "#video")).time;
@@ -618,9 +620,9 @@ test("a card's frame picture stays inside the picture at any card width, and the
   };
   // Down to the narrowest window under the last zoom step, the frame picture stays inside the card's picture.
   for (const [width, zoom] of [[1800, 1], [1000, 1], [380, 1], [380, 1.5]] as const) {
-    await app.evaluate((h, args) => {
-      h.settingsWindow()!.setSize(args.width, 800);
-      h.settingsWindow()!.webContents.setZoomFactor(args.zoom);
+    await app.evaluate(async (h, args) => {
+      await h.setSettingsSize(args.width, 800);
+      await h.setSettingsZoom(args.zoom);
     }, { width, zoom });
     await expect.poll(() => app.evaluate(h => h.settingsWindow()!.getSize()[0])).toBe(width);
     for (const fraction of [0.02, 0.5, 0.98]) {
@@ -651,7 +653,7 @@ test("a card's frame picture stays inside the picture at any card width, and the
   await page.mouse.move(bar.x + bar.width * 0.55, bar.y - 120);
   await expect(page.locator(".player .frame-peek")).toHaveCount(0);
   // A player this small lays its bottom controls over the close button; it closes at the usual zoom.
-  await app.evaluate(h => h.settingsWindow()!.webContents.setZoomFactor(1));
+  await app.evaluate(h => h.setSettingsZoom(1));
   await page.locator("#player-close").click();
 });
 

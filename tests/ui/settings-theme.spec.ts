@@ -5,9 +5,9 @@ test("the settings panel scrolls to its end by wheel and keyboard without scroll
   const { launched: host, page } = await launchView();
   const panel = page.locator("#settings-panel");
   for (const scheme of ["light", "dark"] as const) {
-    await host.evaluate((h, theme) => {
+    await host.evaluate(async (h, theme) => {
       h.theme(theme);
-      h.setContentSize(960, 400);
+      await h.setContentSize(960, 400);
       h.pushModel({ type: "idle" }, { library: { ...h.library().state, files: [] } });
     }, scheme);
     await page.locator("#tab-general").click();

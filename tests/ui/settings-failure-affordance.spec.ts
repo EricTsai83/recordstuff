@@ -5,8 +5,8 @@ for (const language of ["en", "zh-TW"] as const) {
   test(`failure rows and technical details open and close by pointer and keyboard ${language}`, async ({ launchView }, testInfo) => {
     const { launched: host, page } = await launchView({ mode: "components" });
     await expect(page.locator("#tab-library")).toBeVisible();
-    await host.evaluate((h, args) => {
-      h.setSize(...h.SNAPSHOT_SIZES.default);
+    await host.evaluate(async (h, args) => {
+      await h.setSize(...h.SNAPSHOT_SIZES.default);
       h.pushModel({ type: "idle" }, { language: args.language, recordingResults: [
         { id: "terminated", occurredAt: "2026-09-29T04:38:00Z", code: "app_terminated", outcome: "unknown", detail: "Capture host exited before finalization.", acknowledged: true },
         { id: "permission", occurredAt: "2026-09-29T01:08:00Z", code: "permission_denied", outcome: "empty", acknowledged: true },

@@ -9,7 +9,7 @@ for (const language of ["en", "zh-TW"] as const) for (const size of ["default", 
     const page = await app.page("settings.html");
     // Resize the opened fixture window: a bare stored width/height is treated as an older layout by main.
     const dimensions = size === "default" ? { width: 960, height: 640 } : { width: 380, height: 360 };
-    await app.evaluate((h, dimensions) => h.settingsWindow().setSize(dimensions.width, dimensions.height), dimensions);
+    await app.evaluate((h, dimensions) => h.setSettingsSize(dimensions.width, dimensions.height), dimensions);
     await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(dimensions);
     await page.locator("#tab-general").click();
     await pickMenu(page, "setting-hotkey", "custom");

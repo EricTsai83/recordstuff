@@ -9,7 +9,7 @@ import { test, expect, type Launched } from "./fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { read, until, centre, clickAt, pickMenu } from "./helpers";
+import { read, until, eventually, centre, clickAt, pickMenu, drawn } from "./helpers";
 
 let host: Launched, page: Page;
 test.beforeEach(async ({ launchView }) => {
@@ -145,8 +145,7 @@ test("S016–S021 the notification setting: switch and pane button, ids to main,
       button: document.querySelector("#setting-notifications-openSettings"), scroll: window.scrollY, below: document.querySelector("#setting-updates-row")?.getBoundingClientRect().top }; })()`);
     await page.keyboard.press("Space");
     await expect.poll(() => host.evaluate(h => h.pendingSaves())).toBe(1);
-    await host.evaluate(h => h.push(h.fixtureView(h.state.language)));
-    await page.waitForTimeout(100);
+    await drawn(page, () => host.evaluate(h => h.push(h.fixtureView(h.state.language))));
     const during = await read<Record<string, unknown>>(page, `({ sameSelect: beforeToggle.select === document.querySelector("#setting-notifications"),
       samePanel: beforeToggle.panel === document.querySelector("#settings-panel"), focused: document.activeElement === beforeToggle.select,
       scrollStable: window.scrollY === beforeToggle.scroll && document.querySelector("#setting-updates-row")?.getBoundingClientRect().top === beforeToggle.below,
@@ -184,16 +183,18 @@ test("S022 the Recordings folder is read by the app's library: names, dates, siz
 });
 
 test("S037–S038 countdown sound: a click on the checked switch asks main for off; under countdown Off it is disabled, keeps its value and sends nothing", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await page.locator("#tab-recording").click();
   const soundSwitch = async (countdown: 0 | 3) => {
-    await host.evaluate((h, value) => { h.state.soundContext = { ...h.baseContext(), countdown: value }; h.push(h.settingsView({ type: "idle" }, h.state.soundContext)); }, countdown);
-    await page.waitForTimeout(80);
+    await drawn(page, () => host.evaluate((h, value) => { h.state.soundContext = { ...h.baseContext(), countdown: value }; h.push(h.settingsView({ type: "idle" }, h.state.soundContext)); }, countdown));
     await clearCalls();
     const before = await read<{ checked: boolean; disabled: boolean }>(page, `(() => { const el = document.getElementById("setting-countdownSound"); el.scrollIntoView({ block: "center" });
       return { checked: el.getAttribute("aria-checked") === "true", disabled: el.disabled }; })()`);
     await clickAt(page, "#setting-countdownSound");
-    await page.waitForTimeout(150);
+    // An enabled switch is read once main has the click and the switch shows its answer; a disabled one must send
+    // nothing, so it is given time to.
+    if (before.disabled) await page.waitForTimeout(150);
+    else await eventually(async () => (await calls()).length > 0 && await read<string | null>(page, `document.getElementById("setting-countdownSound").getAttribute("aria-checked")`) !== String(before.checked));
     return { ...before, calls: await calls(), after: await read<boolean>(page, `document.getElementById("setting-countdownSound").getAttribute("aria-checked") === "true"`) };
   };
   const enabled = await soundSwitch(3);
@@ -203,7 +204,7 @@ test("S037–S038 countdown sound: a click on the checked switch asks main for o
 });
 
 test("S117–S120 microphone: the switch asks main, the input device follows it, a session locks both, and a denial offers its pane (plan 074)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await page.locator("#tab-recording").click();
   const devices = [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }];
   await host.evaluate((h, list) => {
@@ -247,7 +248,7 @@ test("S117–S120 microphone: the switch asks main, the input device follows it,
 });
 
 test("S139–S141 the Input level, Search for devices and the input device while recording (plan 079)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); h.microphoneLevelWatches.length = 0; });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); h.microphoneLevelWatches.length = 0; });
   await page.locator("#tab-recording").click();
   const devices = [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }];
   const show = (recording: boolean, more: Record<string, unknown> = {}): Promise<void> => host.evaluate((h, [list, recording, more]) => {
@@ -293,7 +294,7 @@ test("S139–S141 the Input level, Search for devices and the input device while
 });
 
 test("S121–S123 camera: the switch asks main, a session locks it, and a denial offers its pane (plan 075)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await page.locator("#tab-recording").click();
   await host.evaluate(h => {
     h.state.cameraContext = { ...h.baseContext(), camera: { enabled: false, available: true, access: "granted" } };
@@ -332,7 +333,7 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
 });
 
 test("S124–S126 camera rows: number fields in pixels and percent, typed, stepped or dragged by their names, each commits once; a recording with the camera keeps the shape editable (plan 075, step 7; 2026-10-21)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
   await host.evaluate((h, list) => {
     h.state.cameraState = undefined;
@@ -428,7 +429,7 @@ test("S124–S126 camera rows: number fields in pixels and percent, typed, stepp
 });
 
 test("S127–S130 camera preview: no camera of the page's own before Live preview, the bubble dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7; 2026-10-25)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   // No real camera in a background run: the page's own camera calls are answered by a drawn picture.
   await page.evaluate(() => {
     const record = { opened: [] as string[], stopped: 0 };
@@ -570,7 +571,7 @@ test("S127–S130 camera preview: no camera of the page's own before Live previe
 });
 
 test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside the elapsed time; Recording settings keeps the camera's switch and device with the way there (plan 075, D19)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
     h.state.cameraContext = { ...h.baseContext(), camera: { enabled: true, available: true, access: "granted" } };
@@ -608,7 +609,7 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
 });
 
 test("S133–S134 the Recording Studio's meters: levels while recording and in sight, a mute per input, said to assistive technology (plan 075, D19)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.levelWatches.length = 0;
     h.state.cameraState = undefined;
@@ -666,7 +667,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
 });
 
 test("S138 each input's fader under its meter: saved between and during recordings, said in percent, 100% in the middle, silent at its bottom (plan 075, D21, 2026-10-21; 2026-10-25)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(560, 680); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
     h.state.cameraContext = { ...h.baseContext(), microphone: { enabled: true }, audioVolume: { system: 100, microphone: 50 } };
@@ -710,7 +711,7 @@ test("S138 each input's fader under its meter: saved between and during recordin
 });
 
 test("S135 the sidebar collapses to toolbars of icons named by their tooltips, its status a bell that opens the card beside it, and is remembered; a narrow window keeps it collapsed (2026-10-17, 2026-10-20, 2026-10-21)", { tag: "@layout" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 680); h.pushModel({ type: "idle" }); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 680); h.pushModel({ type: "idle" }); });
   const toggle = page.locator("#sidebar-toggle");
   await expect(toggle).toHaveAttribute("aria-label", "Collapse sidebar");
   await toggle.focus();
@@ -774,7 +775,7 @@ test("S135 the sidebar collapses to toolbars of icons named by their tooltips, i
   expect(await page.locator("#tab-recording .tab-icon").boundingBox(), "S135 the icons do not move").toEqual(collapsedIcon);
   // A narrow window has no room for the full sidebar: it keeps the collapsed toolbars, with no toggle, and the choice
   // saved for a wide window stays (2026-10-21).
-  await host.evaluate(h => { h.setSize(560, 680); h.pushModel({ type: "idle" }); });
+  await host.evaluate(async h => { await h.setSize(560, 680); h.pushModel({ type: "idle" }); });
   await expect(page.locator("main"), "S135 a narrow window's sidebar is collapsed").toHaveAttribute("data-sidebar", "collapsed");
   await expect(toggle).toBeHidden();
   await expect(page.locator("#sidebar-about-hide-menu"), "S135 …its window actions one button").toBeVisible();
@@ -785,7 +786,7 @@ test("S135 the sidebar collapses to toolbars of icons named by their tooltips, i
 });
 
 test("S136–S137 Live preview: a switch of the preview's own, apart from Start, asks main; the engine's picture shows with no bubble to place when the camera is off, can be hidden while recording, and leaving the Studio lets it go (plan 075, D20, 2026-10-21)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.studioWatches.length = 0;
     h.previewWatches.length = 0;
@@ -844,7 +845,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
 });
 
 test("S142 the Studio's line of controls: Live preview beside Start, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said over the stage, so nothing moves (plan 090, 2026-10-23, 2026-10-25)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   const recording = (state?: "waiting" | "notReady" | "lost") => host.evaluate((h, state) => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
     h.state.cameraContext = { ...h.baseContext(), studio: { showing: true },
@@ -868,10 +869,8 @@ test("S142 the Studio's line of controls: Live preview beside Start, nothing lai
   await recording();
   await expect(said, "S142 nothing while it delivers").toHaveCount(0);
   // A portrait screen's narrow window: the line of controls and the picture keep their places as it is said and goes.
+  // setSize resolves once the page has the new size (hosts/settle.ts).
   await host.evaluate(h => h.setSize(541, 900));
-  // The page has its new width first: two equal reads of the old layout, before the resize reached it, passed for a
-  // settled one on CI (2026-10-25), as in S146.
-  await expect.poll(() => page.evaluate(() => window.innerWidth), { message: "S142 the window has its narrow size" }).toBe(541);
   const places = () => page.evaluate(() => [".studio-controls", ".studio-stage .camera-preview-stage", ".studio-panels"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
@@ -889,11 +888,11 @@ test("S142 the Studio's line of controls: Live preview beside Start, nothing lai
   await recording();
   await expect(said).toHaveCount(0);
   expect(await places(), "S142 nothing moves as it goes").toEqual(delivering);
-  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+  await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
 test("S143–S145 the Studio's preview panel: Power saving by default, no camera opened before Live preview with the bubble still placed, a rate whose every choice says what it does, and the Screen view (plan 092; no Off since 2026-10-25)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await page.evaluate(() => {
     const record = { opened: 0 };
     (window as unknown as { cameraCalls: typeof record }).cameraCalls = record;
@@ -1052,11 +1051,11 @@ test("S143–S145 the Studio's preview panel: Power saving by default, no camera
   await clearCalls();
   await chooseView("As recorded");
   await expect.poll(calls, { message: "S145 Composed again" }).toEqual([["studioPreviewView", "composed"]]);
-  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+  await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
 test("S147 Turn on preview over the stage while Live preview is off: shown only on hover or focus, it asks main as the switch does and moves nothing; none while the switch cannot act or once the preview is on (2026-10-25)", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(1000, 720); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
     // The bubble in the middle of the display, under where the button shows.
@@ -1081,22 +1080,22 @@ test("S147 Turn on preview over the stage while Live preview is off: shown only 
   await expect.poll(shown, { message: "S147 shown with the pointer anywhere on the stage" }).toBe(true);
   expect(await places(), "S147 it moves nothing").toEqual(before);
   // However narrow the picture, it stays inside it (a portrait display in a short window: the stage's floor).
-  await host.evaluate(h => {
+  await host.evaluate(async h => {
     h.state.cameraContext = { ...h.state.cameraContext!,
       displays: [{ id: "1", label: "Studio", logicalWidth: 1080, logicalHeight: 1920, scaleFactor: 1, internal: false, primary: true, x: 0, y: 0 }] };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
-    h.setSize(1000, 480);
+    await h.setSize(1000, 480);
   });
   await expect.poll(() => page.evaluate(() => {
     const picture = document.querySelector(".studio-stage .camera-preview-stage")!.getBoundingClientRect();
     const button = document.querySelector(".studio-stage-start > button")!.getBoundingClientRect();
     return picture.width < 160 && button.left >= picture.left && button.right <= picture.right && button.top >= picture.top && button.bottom <= picture.bottom;
   }), { message: "S147 inside a narrow portrait picture" }).toBe(true);
-  await host.evaluate(h => {
+  await host.evaluate(async h => {
     h.state.cameraContext = { ...h.state.cameraContext!,
       displays: [{ id: "1", label: "Built-in Display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true, x: 0, y: 0 }] };
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
-    h.setSize(1000, 720);
+    await h.setSize(1000, 720);
   });
   // A bubble placed under it is still what the pointer takes there, so it drags from its middle too.
   await expect.poll(() => page.evaluate(() => {
@@ -1150,9 +1149,7 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
       overflow: panel.scrollWidth > panel.clientWidth + 1 };
   });
   const SIZES = [[960, 640], [440, 760], [1043, 758], [1440, 900], [380, 360]] as const;
-  const zoomTo = (factor: number) => host.evaluate((_h, factor, electron) => {
-    for (const window of electron.BrowserWindow.getAllWindows()) window.webContents.setZoomFactor(factor);
-  }, factor);
+  const zoomTo = (factor: number) => host.evaluate((h, factor) => h.setZoom(factor), factor);
   await show("landscape");
   await page.locator("#tab-studio").click();
   for (const shape of ["landscape", "portrait"] as const) {
@@ -1189,11 +1186,9 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   }, { message: "S146 a tall, narrow window: the stage is the picture's height and the panels follow it" }).toEqual({ fills: true, follows: true });
   // Dragged on a large stage, the bubble is let go of where the recording composes it.
   await show("landscape");
+  // Measured once the window's new size has been laid out (setSize waits for it, hosts/settle.ts) and the stage has
+  // followed: a stage read mid-resize sent the drag to a stale middle.
   await host.evaluate(h => h.setSize(1440, 900));
-  // Measured once the window's new size has been laid out: a stage read mid-resize sent the drag to a stale middle.
-  // The page has its new width first: two equal reads of the old layout, before the resize reached it, once passed
-  // for a settled one on CI (2026-10-25), pressing where the bubble no longer was.
-  await expect.poll(() => page.evaluate(() => window.innerWidth), { message: "S146 the window has its large size" }).toBe(1440);
   let lastBox = "";
   await expect.poll(async () => {
     const now = JSON.stringify([await page.locator(".camera-preview-stage").boundingBox(), await page.getByRole("application", { name: "Preview" }).boundingBox()]);
@@ -1236,11 +1231,11 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   });
   await expect(page.locator(".studio-stage-note"), "S146 a Live preview starting is said over the stage").toHaveText("Starting preview…");
   expect(await places(), "S146 over the stage, which keeps its size").toEqual(during);
-  await host.evaluate(h => { h.state.cameraState = undefined; h.setSize(560, 680); });
+  await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);
   await host.evaluate(h => h.pushModel({ type: "idle", outputDirUnavailable: true }));
   await expect(page.locator("#status-action")).toHaveText("Change output folder…");
@@ -1249,11 +1244,11 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
   await expect.poll(calls, { message: "S040 status card: a click on Change output folder… asks main for status/folder" }).toEqual([["status", "folder"]]);
   // A missing permission: Open System Settings is the primary action, followed by the optional Relaunch link.
   for (const [lang, scheme, size] of [["en", "light", "default"], ["en", "dark", "narrow"], ["zh-TW", "light", "minimum"]] as const) {
-    await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang }); }, { lang, scheme, size });
+    await host.evaluate(async (h, args) => { h.theme(args.scheme); await h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang }); }, { lang, scheme, size });
     await page.waitForTimeout(150);
     await keep(`status-permission-${lang}-${scheme}-${size}.png`);
   }
-  await host.evaluate(h => { h.theme("light"); h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); });
   await host.evaluate(h => h.pushModel({ type: "needsPermission", needsRelaunch: false }));
   await expect(page.locator("#status-secondary")).toBeVisible();
   await expect(page.locator("#status-secondary")).toHaveText("Already allowed? Relaunch");
@@ -1266,7 +1261,7 @@ test("S039–S041 the status card: no Start when ready; Change output folder… 
 
 for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
   test(`S042–S043 ${lang}/${size}: the ⓘ explanation by hover (kept through the gap and on itself) and by Tab, closed by Escape with the window open`, { tag: "@layout" }, async () => {
-    await host.evaluate((h, args) => { h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "idle" }, { language: args.lang }); }, { lang, size });
+    await host.evaluate(async (h, args) => { await h.setSize(...h.SNAPSHOT_SIZES[args.size]); h.pushModel({ type: "idle" }, { language: args.lang }); }, { lang, size });
     await page.locator("#tab-recording").click();
     const infoState = (id: string) => read<{ open: boolean; expanded: string | null; text: string; inside: boolean; describes: boolean }>(page, `(() => {
       const id = ${JSON.stringify(`setting-${id}`)}, popover = document.getElementById(id + "-info-popup"), r = popover?.getBoundingClientRect();
@@ -1292,7 +1287,8 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     const inGap = await infoState("countdownSound");
     await page.mouse.move(geometry.onto.x, geometry.onto.y); await page.waitForTimeout(300);
     const kept = await infoState("countdownSound");
-    await page.mouse.move(4, 4); await page.waitForTimeout(300);
+    await page.mouse.move(4, 4);
+    await until(page, `!document.getElementById("setting-countdownSound-info-popup")?.hasAttribute("data-open")`);
     const left = await infoState("countdownSound");
     expect.soft({ open: hovered.open, expanded: hovered.expanded, inside: hovered.inside, describes: hovered.describes, text: hovered.text,
       inGap: inGap.open, kept: kept.open, left: left.open, leftExpanded: left.expanded },
@@ -1306,7 +1302,7 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     await keep(`info-focus-${lang}-light-${size}.png`);
     // An Escape with no explanation open would close the window: only one that opened is answered.
     if (tabbed.open) await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
+    await until(page, `!document.getElementById("setting-resolutionCap-info-popup")?.hasAttribute("data-open")`);
     const escaped = await infoState("resolutionCap");
     expect.soft({ active: tabbed.active, open: tabbed.open, inside: tabbed.inside, windowOpen: !page.isClosed(), escaped: escaped.open },
       `S043 ${lang}/${size}: a Tab reaches the next ⓘ and shows its explanation; Escape closes it and leaves the window open`)
@@ -1315,17 +1311,15 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
 }
 
 test("S044–S048 update checks: repeated states keep nodes and geometry; Tab and Enter start one check and keep focus through it", { tag: "@general" }, async () => {
-  await host.evaluate(h => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }); });
+  await host.evaluate(async h => { await h.setSize(560, 680); h.pushModel({ type: "idle" }, { updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }); });
   await page.locator("#tab-general").click();
   await read(page, `window.updateBefore = { row: document.getElementById("setting-updates-row"), button: document.getElementById("setting-updates-check"), note: document.getElementById("setting-updates-note"), below: document.getElementById("setting-language-row").getBoundingClientRect().top };`);
   for (const [id, updateState] of [["S044", { kind: "checking", previous: { kind: "current", checkedAt: 1000 } }], ["S045", { kind: "current", checkedAt: 2000 }]] as const) {
-    await host.evaluate((h, value) => h.pushModel({ type: "idle" }, { updates: { enabled: true, state: value } }), updateState);
-    await page.waitForTimeout(60);
+    await drawn(page, () => host.evaluate((h, value) => h.pushModel({ type: "idle" }, { updates: { enabled: true, state: value } }), updateState));
     expect.soft(await read<boolean>(page, `updateBefore.row === document.getElementById("setting-updates-row") && updateBefore.button === document.getElementById("setting-updates-check") && updateBefore.note === document.getElementById("setting-updates-note") && !updateBefore.note.hidden && updateBefore.below === document.getElementById("setting-language-row").getBoundingClientRect().top`),
       `${id} repeated update ${updateState.kind} preserves nodes and lower-row geometry`).toBe(true);
   }
-  await host.evaluate(h => { h.state.updateContext = { ...h.baseContext(), updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); });
-  await page.waitForTimeout(60);
+  await drawn(page, () => host.evaluate(h => { h.state.updateContext = { ...h.baseContext(), updates: { enabled: true, state: { kind: "current", checkedAt: 1000 } } }; h.push(h.settingsView({ type: "idle" }, h.state.updateContext)); }));
   await clearCalls();
   await read(page, `document.getElementById("setting-updates-check").scrollIntoView({ block: "center" }); document.getElementById("setting-updateChecks").focus()`);
   await page.keyboard.press("Tab");
@@ -1350,8 +1344,7 @@ test("S044–S048 update checks: repeated states keep nodes and geometry; Tab an
 });
 
 test("S050 a Tab-focused control in an overflowing panel is scrolled into view and uncovered", { tag: "@layout" }, async () => {
-  await host.evaluate(h => { h.pushModel({ type: "idle" }); h.setSize(380, 360); });
-  await page.waitForTimeout(100);
+  await drawn(page, () => host.evaluate(async h => { h.pushModel({ type: "idle" }); await h.setSize(380, 360); }));
   await read(page, `document.getElementById("settings-panel").scrollTop = 0`);
   expect(await read<boolean>(page, `(p => p.scrollHeight > p.clientHeight)(document.getElementById("settings-panel"))`), "the content overflows the panel at this size").toBe(true);
   await page.locator('[role="tab"][aria-selected="true"]').first().focus();
@@ -1378,7 +1371,7 @@ test("S050 a Tab-focused control in an overflowing panel is scrolled into view a
 });
 
 test("S053–S057 General's footer and the log link: wide and narrow windows, a failed link's Retry keeps focus in its row", { tag: "@general" }, async () => {
-  await host.evaluate(h => { h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
+  await host.evaluate(async h => { await h.setSize(720, 900); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   await page.waitForTimeout(100);
   // The credit and the named website/source links are shown and do not overlap, whatever their arrangement.
@@ -1392,7 +1385,7 @@ test("S053–S057 General's footer and the log link: wide and narrow windows, a 
   expect.soft(await read(page, footer), "S053 General's footer shows the credit and named website/source links without overlap; Hide interface stays reachable")
     .toEqual({ credit: true, links: [true, true], apart: true, hide: true });
   await host.evaluate(h => h.setSize(560, 760));
-  await page.waitForTimeout(100);
+  await until(page, `(f => f.credit && f.links.every(Boolean) && f.apart && f.hide)(${footer})`);
   expect.soft(await read(page, footer), "S054 a narrow window keeps the credit and named links without overlap, and Hide interface reachable")
     .toEqual({ credit: true, links: [true, true], apart: true, hide: true });
   await expect(page.locator("#setting-log-show")).toBeHidden();
@@ -1413,9 +1406,9 @@ test("S053–S057 General's footer and the log link: wide and narrow windows, a 
 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`Troubleshooting sections, always-visible cleanup warning and General footer: ${language}/${scheme}, mouse and keyboard`, { tag: "@general" }, async () => {
-    await host.evaluate((h, args) => {
+    await host.evaluate(async (h, args) => {
       h.theme(args.scheme);
-      h.setSize(720, 900);
+      await h.setSize(720, 900);
       h.state.captureView = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: args.language });
       h.push(h.state.captureView);
     }, { language, scheme });
@@ -1484,18 +1477,20 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
 }
 
 test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave capture, focus rings, listening indicator, Control+F12, Confirm, forced colors and reduced motion", { tag: "@shortcut" }, async () => {
-  await host.evaluate(h => { h.setSize(560, 760); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
+  await host.evaluate(async h => { await h.setSize(560, 760); h.state.captureView = h.settingsView({ type: "idle" }, h.baseContext()); h.push(h.state.captureView); });
   await page.locator("#tab-general").click();
   const arm = (): Promise<unknown> => pickMenu(page, "setting-hotkey", "custom");
+  // Armed once main has answered: the page then focuses the listening editor.
+  const capturing = `document.activeElement?.id === "shortcut-capture"`;
   await arm();
-  await page.waitForTimeout(100);
+  await until(page, capturing);
   await page.keyboard.press("Tab");
   const exit = await read<string>(page, "document.activeElement.id");
   await page.keyboard.press("Tab");
   const next = await read<string>(page, "document.activeElement.id");
   expect.soft({ exit, next }, "S058 Tab exits capture to the next visible preference, its ⓘ and then its switch").toEqual({ exit: "setting-notifications-info-button", next: "setting-notifications" });
   await arm();
-  await page.waitForTimeout(100);
+  await until(page, capturing);
   await page.keyboard.press("Shift+Tab");
   const back = await read<string>(page, "document.activeElement.id");
   await expect.poll(() => focusShown("#setting-hotkey"), { message: "S059 keyboard navigation retains a visible focus indicator" }).toBe(true);
@@ -1503,7 +1498,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   expect.soft(await read<boolean>(page, `document.activeElement === document.getElementById("setting-hotkey")`) && back === "setting-hotkey",
     "S060 pointer bookkeeping preserves DOM focus").toBe(true);
   await arm();
-  await page.waitForTimeout(100);
+  await until(page, capturing);
   await expect.soft(page.locator("#shortcut-capture"), "S061 acknowledged capture shows the listening editor").toBeVisible();
   await page.keyboard.press("Control+F12");
   await expect.soft(page.locator("#shortcut-capture"), "S062 Control+F12 is shown as ⌃ with the named key F12").toHaveText(/⌃\s*F12/);
@@ -1516,7 +1511,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   expect.soft(back, "S064 Shift+Tab exits capture to its preceding edit action").toBe("setting-hotkey");
   await host.evaluate(h => h.setSize(560, 680));
   await page.emulateMedia({ forcedColors: "active" });
-  await page.waitForTimeout(100);
+  await until(page, `matchMedia("(forced-colors: active)").matches`);
   // Whatever the style, under forced colors the switch keeps an edge and the selected segment differs from the others.
   expect.soft(await read<boolean>(page, `(() => {
     const edge = s => (s.borderTopStyle !== "none" && parseFloat(s.borderTopWidth) > 0) || (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0);
@@ -1527,7 +1522,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
   await keep("panel-forced-colors.png");
   await page.emulateMedia({ forcedColors: "none", reducedMotion: "reduce" });
   await arm();
-  await page.waitForTimeout(100);
+  await until(page, capturing);
   expect.soft(await read<number>(page, `document.getElementById("shortcut-capture").getAnimations({ subtree: true }).filter(a => a.playState === "running" && a.effect?.getComputedTiming().iterations === Infinity).length`),
     "S066 reduced motion stops the listening animation").toBe(0);
   await page.locator("#shortcut-cancel").click();
@@ -1538,7 +1533,7 @@ test("S058–S066 the shortcut editor by keyboard: Tab and Shift+Tab leave captu
 for (const platform of ["darwin", "win32"] as const) {
   test(`S116 ${platform}: the top of a narrow window is clickable: nothing, the window-drag strip included, covers a tab`, { tag: "@layout" }, async () => {
     // Plan 066 found the strip over the tabs on Windows CI; the page lays out by the platform its view names.
-    await host.evaluate((h, value) => { h.setSize(560, 680); h.pushModel({ type: "idle" }, { platform: value }); }, platform);
+    await host.evaluate(async (h, value) => { await h.setSize(560, 680); h.pushModel({ type: "idle" }, { platform: value }); }, platform);
     await expect(page.locator("html")).toHaveAttribute("data-platform", platform);
     const covered = await read<string[]>(page, `[...document.querySelectorAll('[role="tab"]')].filter(tab => { const r = tab.getBoundingClientRect();
       return r.width > 0 && !tab.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }).map(tab => tab.id)`);

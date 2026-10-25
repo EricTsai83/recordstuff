@@ -75,6 +75,26 @@ export async function underControls(page: Page): Promise<string[] | undefined> {
   })()`);
 }
 
+/**
+ * Runs `push`, which has main send the Settings page one or more views, and resolves once the page has taken the last:
+ * its own subscription draws a view synchronously (flushSync) and runs before this one, made later. A fixed pause
+ * after a push raced a busy CI runner (2026-10).
+ */
+export async function drawn<T>(page: Page, push: () => Promise<T>): Promise<T> {
+  const count = (): Promise<number> => page.evaluate(() => {
+    const seen = window as unknown as { settings: { onChanged(callback: () => void): () => void }; pushesSeen?: number };
+    if (seen.pushesSeen === undefined) {
+      seen.pushesSeen = 0;
+      seen.settings.onChanged(() => { seen.pushesSeen! += 1; });
+    }
+    return seen.pushesSeen;
+  });
+  const before = await count();
+  const result = await push();
+  await expect.poll(count, { message: "the page takes main's push" }).toBeGreaterThan(before);
+  return result;
+}
+
 /** Two animation frames: the frame holding a change, not the one before it. */
 export const frames = (page: Page): Promise<unknown> => read(page, "new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))");
 

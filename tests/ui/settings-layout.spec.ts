@@ -41,10 +41,10 @@ const focusLook = (control: Locator): Promise<string> => control.evaluate(el => 
 for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`compact content ${language}/${scheme}: fields fit and labels read in full beside the sidebar and under zoom`, async () => {
     for (const [width, zoom] of [[600, 1], [960, LAST_ZOOM], [380, LAST_ZOOM]] as const) {
-      await host.evaluate((h, args) => {
+      await host.evaluate(async (h, args) => {
         h.theme(args.scheme);
-        h.setContentSize(args.width, 640);
-        h.window().webContents.setZoomFactor(args.zoom);
+        await h.setContentSize(args.width, 640);
+        await h.setZoom(args.zoom);
         h.pushModel({ type: "idle" }, { language: args.language });
       }, { width, zoom, language, scheme });
       await page.locator("#tab-recording").click();
@@ -66,10 +66,10 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
   });
 
   test(`long rename ${language}/${scheme}: an unbroken title fits and actions remain reachable in a zoomed minimum window`, async ({}, testInfo) => {
-    await host.evaluate((h, args) => {
+    await host.evaluate(async (h, args) => {
       h.theme(args.scheme);
-      h.setContentSize(380, 360);
-      h.window().webContents.setZoomFactor(1.5);
+      await h.setContentSize(380, 360);
+      await h.setZoom(1.5);
       const view = h.settingsView({ type: "idle" }, { ...h.baseContext(), language: args.language, library: h.library().state });
       view.library.items[0].title = "Recording".repeat(24);
       h.push(view);
@@ -107,9 +107,9 @@ test("the macOS top strip covers the window width without covering settings cont
   test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
   await host.evaluate(h => h.pushModel({ type: "idle" }, { library: h.library().state }));
   for (const zoom of [1, LAST_ZOOM]) for (const size of ["default", "minimum"] as const) {
-    await host.evaluate((h, args) => {
-      h.window().webContents.setZoomFactor(args.zoom);
-      h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+    await host.evaluate(async (h, args) => {
+      await h.setZoom(args.zoom);
+      await h.setSize(...h.SNAPSHOT_SIZES[args.size]);
       h.pushModel({ type: "idle" }, { library: h.library().state });
     }, { zoom, size });
     for (const tab of TABS) {
@@ -136,8 +136,8 @@ test("the macOS top strip covers the window width without covering settings cont
 test("the macOS sidebar's blank space drags while tabs, window actions and overlays stay clickable", async () => {
   test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
   const backdrop = page.locator(".sidebar-background"), region = "-webkit-app-region";
-  await host.evaluate(h => {
-    h.setSize(...h.SNAPSHOT_SIZES.default);
+  await host.evaluate(async h => {
+    await h.setSize(...h.SNAPSHOT_SIZES.default);
     h.pushModel({ type: "needsPermission", needsRelaunch: false }, { library: h.library().state });
   });
   await expect(backdrop).toHaveCSS(region, "drag");
@@ -175,9 +175,9 @@ test("the macOS sidebar's blank space drags while tabs, window actions and overl
 test("wheel and keyboard scrolling in settings keep controls below the macOS drag strip", async ({}, testInfo) => {
   test.skip(process.platform !== "darwin", "Other platforms use the native title bar.");
   for (const zoom of [1, LAST_ZOOM]) {
-    await host.evaluate((h, factor) => {
-      h.window().webContents.setZoomFactor(factor);
-      h.setContentSize(960, 400);
+    await host.evaluate(async (h, factor) => {
+      await h.setZoom(factor);
+      await h.setContentSize(960, 400);
       h.pushModel({ type: "idle" }, { library: h.library().state });
     }, zoom);
     await page.locator("#tab-general").click();
@@ -220,9 +220,9 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
   test(`Window actions ${language}/${scheme}: the label reads in full in both placements, with mouse and keyboard access`, { tag: "@general" }, async ({}, testInfo) => {
     // The full sidebar's Hide interface and its more-actions menu; a narrow window's collapsed sidebar follows.
     for (const size of ["default"] as const) {
-      await host.evaluate((h, args) => {
+      await host.evaluate(async (h, args) => {
         h.theme(args.scheme);
-        h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+        await h.setSize(...h.SNAPSHOT_SIZES[args.size]);
         h.pushModel({ type: "idle" }, { language: args.language });
       }, { language, scheme, size });
       await page.locator("#tab-general").click();
@@ -288,7 +288,7 @@ for (const language of ["en", "zh-TW"] as const) for (const scheme of ["light", 
       await expect.poll(() => host.evaluate((h, offset) => h.chooseCalls.slice(offset), before)).toEqual([["about", "hide"], ["about", "hide"], ["about", "quit"], ["about", "quit"]]);
     }
     // A narrow window's collapsed sidebar: one button, whose menu holds Hide interface and Quit.
-    await host.evaluate((h, args) => { h.setSize(...h.SNAPSHOT_SIZES.minimum); h.pushModel({ type: "idle" }, { language: args.language }); }, { language });
+    await host.evaluate(async (h, args) => { await h.setSize(...h.SNAPSHOT_SIZES.minimum); h.pushModel({ type: "idle" }, { language: args.language }); }, { language });
     await page.locator("#tab-general").click();
     const names = language === "en" ? ["Hide interface", "Quit RecordStuff"] : ["隱藏介面", "結束 RecordStuff"];
     const trigger = page.locator("#sidebar-about-hide-menu"), menu = page.locator("#sidebar-about-hide-menu-content");
@@ -353,9 +353,9 @@ const measure = (page: Page): Promise<{ small: string[]; tiny: string[]; outside
 for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`permission setup ${lang}/${scheme}: guidance and both recovery paths remain readable and reachable at every window size`, { tag: "@recording-settings" }, async ({}, testInfo) => {
     for (const size of ["default", "narrow", "minimum"] as const) {
-      await host.evaluate((h, args) => {
+      await host.evaluate(async (h, args) => {
         h.theme(args.scheme);
-        h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+        await h.setSize(...h.SNAPSHOT_SIZES[args.size]);
         h.pushModel({ type: "needsPermission", needsRelaunch: false }, { language: args.lang });
       }, { lang, scheme, size });
       const action = page.locator("#status-action"), secondary = page.locator("#status-secondary");
@@ -403,7 +403,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
 
   test(`U067-1 ${lang}/${scheme}: every tab at the default size draws text of at least 12px, controls of at least 24px`, async () => {
     // The microphone on (plan 074), so its Input device menu is opened and measured with the others.
-    await host.evaluate((h, args) => { h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state,
+    await host.evaluate(async (h, args) => { h.theme(args.scheme); await h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state,
       microphone: { enabled: true, access: "granted", devices: [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }] }, recordingResults: [
       { id: "disk", occurredAt: new Date(Date.now() - 1800_000).toISOString(), code: "disk_full", detail: "ENOSPC", outcome: "partial", partialPath: "/tmp/partial.mp4", acknowledged: false },
       { id: "capture", occurredAt: new Date(Date.now() - 7200_000).toISOString(), code: "capture_start_failed", detail: "timed out", outcome: "empty", acknowledged: true }] }); }, { lang, scheme });
@@ -445,7 +445,7 @@ for (const lang of ["en", "zh-TW"] as const) for (const scheme of ["light", "dar
 
 for (const lang of ["en", "zh-TW"] as const) {
   test(`U067-2 ${lang}: at the app's last zoom step in a minimum-size window every tab and control stays inside the window and its card`, async () => {
-    await host.evaluate((h, args) => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.minimum); h.window().webContents.setZoomFactor(args.zoom);
+    await host.evaluate(async (h, args) => { h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES.minimum); await h.setZoom(args.zoom);
       h.pushModel({ type: "idle" }, { language: args.lang, library: h.library().state }); }, { lang, zoom: LAST_ZOOM });
     for (const tab of TABS) {
       await page.locator(`#tab-${tab}`).click();
@@ -487,7 +487,7 @@ test("U067-0 both measurements detect a field's small value", async () => {
 });
 
 test("U070-1 a card's menu lists every action readably inside the window and Escape closes it", { tag: "@library" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "zh-TW", library: h.library().state }); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "zh-TW", library: h.library().state }); });
   await page.locator("#tab-library").click();
   await page.locator(MORE).first().click();
   const menu = page.locator("#clip-menu");
@@ -503,7 +503,7 @@ test("U070-1 a card's menu lists every action readably inside the window and Esc
 });
 
 test("U070-2 a settings menu follows focus-visible, preserves focus after selection and Escape closes only the menu", async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en" }); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en" }); });
   await page.locator("#tab-recording").click();
   const trigger = page.locator("#setting-resolutionCap");
   await page.mouse.move(0, 0);
@@ -527,8 +527,8 @@ test("U070-2 a settings menu follows focus-visible, preserves focus after select
 
 for (const scheme of ["light", "dark"] as const) for (const layout of ["grid", "list"] as const) {
   test(`U070-3 ${scheme}/${layout}: recording card focus is visible, an arrival focuses the card, and pointer input still reaches it`, { tag: "@library" }, async ({}, testInfo) => {
-    await host.evaluate((h, args) => {
-      h.theme(args.scheme); h.setSize(...h.SNAPSHOT_SIZES.default);
+    await host.evaluate(async (h, args) => {
+      h.theme(args.scheme); await h.setSize(...h.SNAPSHOT_SIZES.default);
       h.pushModel({ type: "idle" }, { language: "en", library: h.library().state, libraryLayout: args.layout });
     }, { scheme, layout });
     await page.locator("#tab-library").click();
@@ -569,8 +569,8 @@ test("U071-1 a long category name never squeezes the library's search away: it k
   const long = "A very long category name that goes on and on";
   let picked = false;
   for (const size of ["default", "narrow", "minimum"] as const) {
-    await host.evaluate((h, args) => {
-      h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES[args.size]);
+    await host.evaluate(async (h, args) => {
+      h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES[args.size]);
       const state = h.library().state;
       h.pushModel({ type: "idle" }, { language: "zh-TW", library: { ...state, folders: [...(state.folders ?? []), { name: args.long, empty: true }] } });
     }, { size, long });
@@ -599,7 +599,7 @@ test("U071-1 a long category name never squeezes the library's search away: it k
 });
 
 test("U071-2 an entry to a recording the search hides clears the search and focuses that card at once", { tag: "@library" }, async () => {
-  await host.evaluate(h => { h.theme("light"); h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES.default); h.pushModel({ type: "idle" }, { language: "en", library: h.library().state }); });
   await page.locator("#tab-library").click();
   const first = await page.locator(".clip").first().getAttribute("data-id");
   await page.locator("#library-search").fill("no recording is called this");
