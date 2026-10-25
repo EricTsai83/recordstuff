@@ -5,7 +5,7 @@
  * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FolderOpen, Keyboard, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Keyboard, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -121,7 +121,7 @@ function editorKey(event: React.KeyboardEvent): void {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   // On the timeline, as in other editors: Space plays or pauses, and ← → step a frame (Shift, a second). A part is a
   // button, which Space would otherwise press.
-  const onTimeline = target.closest(".editor-timeline") !== null;
+  const onTimeline = target.closest(".editor-trimmer") !== null;
   if (onTimeline && event.key === " ") {
     event.preventDefault();
     model.togglePlayback();
@@ -248,13 +248,15 @@ interface TimelineGesture {
   offset?: number;
 }
 /** A trim handle's width, and how far beyond it a press still takes hold of it, in CSS pixels. */
-const TRIM_HANDLE = 8;
+const TRIM_HANDLE = 12;
 const TRIM_REACH = 10;
 
 function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
   const gesture = useRef<TimelineGesture | null>(null);
+  /** The track of pictures and parts, whose width the recording's time spans; the handles stand outside it. */
+  const track = useRef<HTMLDivElement | null>(null);
   /** The trim handle with the keyboard's focus, whose edge the times' row keeps saying. */
   const [focusedEdge, setFocusedEdge] = useState<model.TrimEdge | undefined>(undefined);
   // However a press ends, the gesture does: a release anywhere in the window, or the window losing the pointer.
@@ -318,18 +320,20 @@ function EditorPanel() {
   // 2026-10-25, after a hands-on walkthrough: a click on the timeline puts the playhead there and selects the part
   // there; a drag across it chooses a range Remove takes out; a drag that starts on the playhead scrubs; and the handles
   // at either end trim the recording's start and end. Split stays for cutting the timeline into parts by hand.
-  const ticksAt = (element: HTMLElement, clientX: number): number | undefined => {
-    const box = element.getBoundingClientRect();
-    if (box.width <= 0) return undefined;
-    return Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * editor.duration);
+  /** The recording's time under `clientX`, kept within it unless `free` (a handle's grip may lie beyond the track). */
+  const ticksAt = (clientX: number, free = false): number | undefined => {
+    const box = track.current?.getBoundingClientRect();
+    if (!box || box.width <= 0) return undefined;
+    const fraction = (clientX - box.left) / box.width;
+    return Math.round((free ? fraction : Math.min(1, Math.max(0, fraction))) * editor.duration);
   };
   const placeAt = (ticks: number): void => {
     const part = model.partAt(parts, ticks);
     if (part) model.selectPart(part, false);
     model.seekTo(ticks / editor.timescale);
   };
-  const follow = (element: HTMLElement, pointer: number, clientX: number): void => {
-    const held = gesture.current, ticks = ticksAt(element, clientX);
+  const follow = (pointer: number, clientX: number): void => {
+    const held = gesture.current, ticks = ticksAt(clientX, held?.mode === "start" || held?.mode === "end");
     if (!held || held.pointer !== pointer || ticks === undefined) return;
     if (held.mode === "click" && Math.abs(clientX - held.startX) > 4) held.mode = "range";
     if (held.mode === "scrub") placeAt(ticks);
@@ -381,7 +385,7 @@ function EditorPanel() {
         aria-valuenow={+(value / editor.timescale).toFixed(2)}
         aria-valuetext={precise(value / editor.timescale)}
         aria-disabled={busy || undefined}
-        style={{ left: percent(value) }}
+        style={{ "--at": value / editor.duration } as React.CSSProperties}
         // The timeline's own press takes hold of it (2026-10-25: a handle following the pointer by itself did not move
         // under a real pointer in a hands-on round, where the timeline's drags did).
         onKeyDown={(event) => {
@@ -397,30 +401,31 @@ function EditorPanel() {
           setFocusedEdge(undefined);
           void model.commitTrim();
         }}
-      />
+      >
+        {edge === "start" ? <ChevronLeft aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+      </span>
     );
   };
   return (
     <div className="editor-panel">
+      {/* The trimmer, as iPhone's and QuickTime's: the handles stand outside the kept recording with ‹ ›, lines join them
+          above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
       <div
-        className="editor-timeline"
-        role="group"
-        tabIndex={-1}
-        aria-label={model.text("Timeline")}
+        className="editor-trimmer"
         onPointerDown={(event) => {
-          const ticks = ticksAt(event.currentTarget, event.clientX);
-          if (busy || event.button !== 0 || ticks === undefined) return;
+          const ticks = ticksAt(event.clientX);
+          const box = track.current?.getBoundingClientRect();
+          if (busy || event.button !== 0 || ticks === undefined || !box) return;
           model.keepSkimmed();
           event.currentTarget.setPointerCapture(event.pointerId);
-          const box = event.currentTarget.getBoundingClientRect();
           const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
           // A trim handle, pressed or pressed beside: the start's reaches in from its edge, the end's back from its.
           const handle = (event.target as HTMLElement).closest?.(".editor-trim")?.getAttribute("data-edge");
           const edge: model.TrimEdge | undefined = handle === "start" || handle === "end" ? handle
-            : event.clientX >= xOf(trim.start) - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_HANDLE + TRIM_REACH ? "start"
-            : event.clientX <= xOf(trim.end) + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_HANDLE - TRIM_REACH ? "end" : undefined;
+            : event.clientX >= xOf(trim.start) - TRIM_HANDLE - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_REACH ? "start"
+            : event.clientX <= xOf(trim.end) + TRIM_HANDLE + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_REACH ? "end" : undefined;
           if (edge) {
-            gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge, offset: ticks - trim[edge] };
+            gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge, offset: (ticksAt(event.clientX, true) ?? ticks) - trim[edge] };
             document.getElementById(`editor-trim-${edge}`)?.focus({ preventScroll: true });
             model.moveTrim(edge, trim[edge]);
             return;
@@ -432,17 +437,17 @@ function EditorPanel() {
           if (onPlayhead) placeAt(ticks);
         }}
         onPointerMove={(event) => {
-          if (gesture.current) follow(event.currentTarget, event.pointerId, event.clientX);
+          if (gesture.current) follow(event.pointerId, event.clientX);
           else if (model.skimming && event.pointerType === "mouse") {
-            const ticks = ticksAt(event.currentTarget, event.clientX);
+            const ticks = ticksAt(event.clientX);
             if (ticks !== undefined) model.skimTo(ticks);
           }
         }}
         onPointerLeave={() => { if (!gesture.current) model.endSkim(); }}
         // Where it is let go too: a drag whose moves did not come (a jump of the pointer) still ends there.
         onPointerUp={(event) => {
-          follow(event.currentTarget, event.pointerId, event.clientX);
-          const held = gesture.current, ticks = ticksAt(event.currentTarget, event.clientX);
+          follow(event.pointerId, event.clientX);
+          const held = gesture.current, ticks = ticksAt(event.clientX);
           if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) placeAt(ticks);
           if (held?.pointer === event.pointerId && (held.mode === "start" || held.mode === "end")) void model.commitTrim();
           gesture.current = null;
@@ -460,6 +465,7 @@ function EditorPanel() {
           gesture.current = null;
         }}
       >
+        <div ref={track} className="editor-timeline" role="group" tabIndex={-1} aria-label={model.text("Timeline")}>
         {editingSource && <TimelineStrip source={editingSource} />}
         {parts.map((part) => {
           const label = translate(part.removed ? "{from} to {to}, removed" : "{from} to {to}, kept", language, {
@@ -488,8 +494,16 @@ function EditorPanel() {
         {range && <span className="editor-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
+        </div>
+        <span className="editor-trim-frame" style={{ "--from": trim.start / editor.duration, "--to": trim.end / editor.duration } as React.CSSProperties} aria-hidden="true" />
         {trimHandle("start")}
         {trimHandle("end")}
+        {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}
+        {model.trimming() && (
+          <span className="editor-trim-time" style={{ "--at": trim[model.trimming()!] / editor.duration } as React.CSSProperties} aria-hidden="true">
+            {precise(trim[model.trimming()!] / editor.timescale)}
+          </span>
+        )}
       </div>
       <div className="editor-ruler" aria-hidden="true">
         {ruler.marks.map((mark) => (

@@ -2564,7 +2564,7 @@
     position: relative;
     height: 40px;
     flex: none;
-    border-radius: 8px;
+    border-radius: 2px;
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--input);
     overflow: hidden;
@@ -2607,36 +2607,41 @@
   .editor-part:disabled {
     cursor: default;
   }
-  /* The trim handles (2026-10-25): bars at the kept recording's ends, the start's reaching in from its left edge and
-     the end's from its right, so either can be grabbed though they meet. 8 px drawn: the timeline takes hold of one
-     8 px beyond it too, so it is no harder to catch and hides less of the pictures. */
+  /* The trimmer (2026-10-25), as iPhone's and QuickTime's: its sides padded by a handle's width, so the handles stand
+     outside the kept recording, never over its pictures, and one at the very start or end is seen whole. */
+  .editor-trimmer {
+    --trim-pad: 12px;
+    position: relative;
+    flex: none;
+    padding: 0 var(--trim-pad);
+    touch-action: none;
+  }
   .editor-trim {
     position: absolute;
     top: 0;
     bottom: 0;
     z-index: 4;
-    width: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trim-pad);
     background: var(--primary);
+    color: var(--primary-foreground);
     cursor: ew-resize;
-    touch-action: none;
   }
+  .editor-trim svg {
+    width: 12px;
+    height: 12px;
+    stroke-width: 3;
+  }
+  /* The start's right edge and the end's left edge are the cuts. */
   .editor-trim[data-edge="start"] {
-    border-radius: 8px 0 0 8px;
+    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at) - var(--trim-pad));
+    border-radius: 6px 0 0 6px;
   }
   .editor-trim[data-edge="end"] {
-    transform: translateX(-100%);
-    border-radius: 0 8px 8px 0;
-  }
-  .editor-trim::after {
-    content: "";
-    position: absolute;
-    top: 30%;
-    bottom: 30%;
-    left: 50%;
-    width: 2px;
-    margin-left: -1px;
-    border-radius: 1px;
-    background: var(--primary-foreground);
+    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at));
+    border-radius: 0 6px 6px 0;
   }
   .editor-trim:focus-visible {
     outline: 2px solid var(--ring);
@@ -2645,6 +2650,33 @@
   .editor-trim[aria-disabled="true"] {
     cursor: default;
     opacity: 0.6;
+  }
+  /* The lines joining the handles above and below the kept recording. */
+  .editor-trim-frame {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 3;
+    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--from));
+    width: calc((100% - 2 * var(--trim-pad)) * (var(--to) - var(--from)));
+    border-block: 2px solid var(--primary);
+    pointer-events: none;
+  }
+  /* A dragged handle's time, above its cut. */
+  .editor-trim-time {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    z-index: 5;
+    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at));
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    pointer-events: none;
   }
   .editor-range {
     position: absolute;
@@ -2658,6 +2690,7 @@
   .editor-ruler {
     position: relative;
     height: 14px;
+    margin-inline: 12px;
     margin-top: -6px;
     overflow: hidden;
     color: var(--muted-foreground);

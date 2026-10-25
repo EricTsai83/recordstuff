@@ -260,8 +260,14 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   // Each drag saves; the next waits for the save, as the timeline takes no press while one is under way.
   const saved = () => expect(page.locator("#editor-undo")).toHaveAttribute("aria-disabled", "false");
 
-  // Taken hold of in the middle of the bar and let go where it was pressed: the edge stays where it was.
+  // The handles stand outside the kept recording, as iPhone's: the start's right edge and the end's left edge are the
+  // track's ends, so neither covers its pictures.
   const start = (await page.locator("#editor-trim-start").boundingBox())!;
+  const last = (await page.locator("#editor-trim-end").boundingBox())!;
+  expect(Math.abs(start.x + start.width - box.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(last.x - (box.x + box.width))).toBeLessThanOrEqual(1);
+
+  // Taken hold of in the middle of the bar and let go where it was pressed: the edge stays where it was.
   await page.mouse.move(start.x + start.width / 2, y);
   await page.mouse.down();
   await page.mouse.move(start.x + start.width / 2 + 1, y);
@@ -274,7 +280,10 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await page.mouse.down();
   await page.mouse.move(start.x + start.width / 2 + 100, y, { steps: 5 });
   await expect(page.locator(".editor-position")).toHaveText(/^The export starts at 0:0\d\.\d\d$/);
+  // Its time shows above it while it moves, and goes when it is let go.
+  await expect(page.locator(".editor-trim-time")).toHaveText(/^0:0\d\.\d\d$/);
   await page.mouse.up();
+  await expect(page.locator(".editor-trim-time")).toHaveCount(0);
   expect(await value("start")).toBeCloseTo(100 * perPixel, 1);
   await saved();
 
@@ -320,7 +329,7 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await page.mouse.move(grip.x + grip.width / 2, y);
   await page.mouse.down();
   await page.mouse.move(box.x - 80, y, { steps: 5 });
-  await page.evaluate(() => document.querySelector(".editor-timeline")!.releasePointerCapture(1));
+  await page.evaluate(() => document.querySelector(".editor-trimmer")!.releasePointerCapture(1));
   // The lost hold is told at the next pointer event.
   await page.mouse.move(box.x - 90, y);
   await expect.poll(length).not.toBe(before);
