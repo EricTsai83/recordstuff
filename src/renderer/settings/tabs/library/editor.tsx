@@ -5,7 +5,7 @@
  * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FolderOpen, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { FolderOpen, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -310,7 +310,12 @@ function EditorPanel() {
     if (!held || held.pointer !== pointer || ticks === undefined) return;
     if (held.mode === "click" && Math.abs(clientX - held.startX) > 4) held.mode = "range";
     if (held.mode === "scrub") placeAt(ticks);
-    else if (held.mode === "range") model.selectRange(held.start, ticks);
+    else if (held.mode === "range") {
+      // The preview follows the end being dragged, so the cut is chosen by its picture (2026-10-25).
+      model.selectRange(held.start, ticks);
+      model.editorVideo?.pause();
+      model.seekTo(ticks / editor.timescale);
+    }
     else if (held.mode === "start" || held.mode === "end") model.moveTrim(held.mode, ticks);
   };
   const trim = model.shownTrim(editor);
@@ -365,6 +370,7 @@ function EditorPanel() {
         onPointerDown={(event) => {
           const ticks = ticksAt(event.currentTarget, event.clientX);
           if (busy || event.button !== 0 || ticks === undefined) return;
+          model.keepSkimmed();
           event.currentTarget.setPointerCapture(event.pointerId);
           const box = event.currentTarget.getBoundingClientRect();
           const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
@@ -385,7 +391,14 @@ function EditorPanel() {
           gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: onPlayhead ? "scrub" : "click" };
           if (onPlayhead) placeAt(ticks);
         }}
-        onPointerMove={(event) => follow(event.currentTarget, event.pointerId, event.clientX)}
+        onPointerMove={(event) => {
+          if (gesture.current) follow(event.currentTarget, event.pointerId, event.clientX);
+          else if (model.skimming && event.pointerType === "mouse") {
+            const ticks = ticksAt(event.currentTarget, event.clientX);
+            if (ticks !== undefined) model.skimTo(ticks);
+          }
+        }}
+        onPointerLeave={() => { if (!gesture.current) model.endSkim(); }}
         // Where it is let go too: a drag whose moves did not come (a jump of the pointer) still ends there.
         onPointerUp={(event) => {
           follow(event.currentTarget, event.pointerId, event.clientX);
@@ -425,6 +438,7 @@ function EditorPanel() {
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
         {range && <span className="editor-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+        {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
         {trimHandle("start")}
         {trimHandle("end")}
@@ -465,6 +479,12 @@ function EditorPanel() {
           <Button id="editor-redo" variant="outline" size="sm" aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
             <Redo2 />
             {model.text("Redo")}
+          </Button>
+        </ControlTooltip>
+        <ControlTooltip label={model.text("Show the picture under the pointer as it moves over the timeline")}>
+          <Button id="editor-skim" variant={model.skimming ? "secondary" : "outline"} size="sm" aria-pressed={model.skimming} onClick={() => model.toggleSkimming()}>
+            <ScanEye />
+            {model.text("Skimming")}
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />

@@ -628,6 +628,8 @@ export const ZH_TW = {
   "Undo (Ctrl+Z)": "還原 (Ctrl+Z)",
   "Export length {length}": "匯出長度 {length}",
   "Playhead {time}": "播放位置 {time}",
+  "Skimming": "滑過預覽",
+  "Show the picture under the pointer as it moves over the timeline": "滑鼠在時間軸上移動時，預覽顯示游標位置的畫面",
   "Selection {from}–{to} ({length})": "選取範圍 {from}–{to}（長度 {length}）",
   "Drag the ends to trim · drag across to choose · Space play or pause · ← → a frame (Shift: a second) · S split · Delete remove · {undo} undo · {redo} redo":
     "拖曳兩端修剪 · 拖曳選取範圍 · 空白鍵 播放／暫停 · ← → 逐格（Shift 一秒）· S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",

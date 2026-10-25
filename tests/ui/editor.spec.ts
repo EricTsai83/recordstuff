@@ -52,7 +52,7 @@ async function openEditor(parts = 1): Promise<void> {
 }
 
 async function seek(seconds: number): Promise<void> {
-  await page.locator("#editor video").evaluate(async (el, to) => {
+  await page.locator("#editor .editor-stage video").first().evaluate(async (el, to) => {
     const video = el as HTMLVideoElement;
     video.pause();
     if (video.readyState < 1) await new Promise((done) => video.addEventListener("loadedmetadata", done, { once: true }));
@@ -111,7 +111,7 @@ test("a part is split off and removed, kept by main across a reopen, and exporte
 
 test("a click on the timeline puts the playhead there, a drag from the playhead scrubs, Split cuts where it was put, by S under any input method, and Undo takes a split back (2026-10-25)", async () => {
   await openEditor();
-  const video = page.locator("#editor video");
+  const video = page.locator("#editor .editor-stage video").first();
   await video.evaluate(async (el) => {
     const v = el as HTMLVideoElement;
     v.pause();
@@ -212,11 +212,14 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await expect(page.locator("#editor-feedback")).toHaveText(/^The export ends at /);
   expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration - 1, 0);
 
-  // A drag across the middle chooses a range; Remove selection takes it out.
+  // A drag across the middle chooses a range, the preview following its moving end; Remove selection takes it out.
   await page.mouse.move(box.x + box.width * 0.45, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, y, { steps: 6 });
   await page.mouse.up();
+  const at = () => read<number>(page, "document.querySelector('#editor video').currentTime");
+  await expect.poll(at).toBeGreaterThan(duration * 0.6 - 0.2);
+  expect(await at()).toBeLessThan(duration * 0.6 + 0.2);
   await expect(page.locator(".editor-range")).toHaveCount(1);
   await expect(page.locator("#editor-remove")).toHaveText("Remove selection");
   await expect(page.locator(".editor-position")).toHaveText(/^Selection 0:0\d\.\d\d–0:0\d\.\d\d \(0:01\.\d\d\)$/);
@@ -243,13 +246,57 @@ test("the handles trim the start and the end, a drag across the timeline removes
   expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration * 0.75, 0);
 });
 
+test("with Skimming on, the preview shows the picture under the pointer and goes back to the playhead when it leaves; off, a move does nothing (2026-10-25)", async () => {
+  await openEditor();
+  const video = page.locator("#editor .editor-stage video").first();
+  await video.evaluate(async (el) => {
+    const v = el as HTMLVideoElement;
+    v.pause();
+    if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
+  });
+  const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
+  const box = (await page.locator(".editor-timeline").boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.click(box.x + box.width * 0.25, y);
+  await expect.poll(time).toBeGreaterThan(1.8);
+
+  // Off by default: a pointer passing over the timeline leaves the preview where it is.
+  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "false");
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
+  await page.waitForTimeout(200);
+  expect(await time()).toBeLessThan(2.2);
+  await expect(page.locator(".editor-skimmer")).toHaveCount(0);
+
+  // On: the preview follows the pointer, with a skimmer line, and comes back to 2 s when the pointer leaves.
+  await page.locator("#editor-skim").click();
+  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(box.x + box.width * 0.5, y, { steps: 4 });
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
+  await expect.poll(time).toBeGreaterThan(5.8);
+  await expect(page.locator(".editor-skimmer")).toHaveCount(1);
+  await page.mouse.move(box.x + box.width * 0.75, box.y - 60, { steps: 2 });
+  await expect.poll(time).toBeLessThan(2.2);
+  expect(await time()).toBeGreaterThan(1.8);
+  await expect(page.locator(".editor-skimmer")).toHaveCount(0);
+
+  // A click while skimming puts the playhead there, and it stays when the pointer leaves.
+  await page.mouse.move(box.x + box.width * 0.5, y, { steps: 3 });
+  await page.mouse.click(box.x + box.width * 0.5, y);
+  await page.mouse.move(box.x + box.width * 0.5, box.y - 60, { steps: 2 });
+  await page.waitForTimeout(200);
+  expect(await time()).toBeGreaterThan(3.8);
+  expect(await time()).toBeLessThan(4.2);
+  await page.locator("#editor-skim").click();
+  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "false");
+});
+
 test("the preview skips removed parts, Undo takes a removal back, and a cancelled export leaves nothing", async () => {
   await openEditor();
   await removeFrom(3, 2);
 
   // Played from 2.5 s, the preview stops where the removed tail begins instead of showing it.
   await seek(2.5);
-  await page.locator("#editor video").evaluate((el) => (el as HTMLVideoElement).play());
+  await page.locator("#editor .editor-stage video").first().evaluate((el) => (el as HTMLVideoElement).play());
   expect(await eventually(() => read<boolean>(page, `document.querySelector("#editor video").paused`), 5000)).toBe(true);
   const stopped = await read<number>(page, `document.querySelector("#editor video").currentTime`);
   expect(Math.abs(stopped - 3)).toBeLessThan(0.1);

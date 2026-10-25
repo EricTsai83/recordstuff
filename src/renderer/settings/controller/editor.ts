@@ -27,6 +27,16 @@ export let selectedFrom: number | undefined;
 export let rangeSelection: EditRange | undefined;
 /** A trim handle being dragged (2026-10-25): where the kept recording would start or end, until it is let go. */
 let trimDraft: { edge: TrimEdge; at: number } | undefined;
+/**
+ * Skimming (2026-10-25, the maintainer's choice, as Final Cut Pro's): while on, the preview shows the picture under the
+ * pointer as it moves over the timeline, and goes back to the playhead when it leaves. Off by default; kept while the
+ * app runs.
+ */
+export let skimming = false;
+/** Where the skimmer is, in the video's timescale, while the pointer skims. */
+export let skimAt: number | undefined;
+/** The playhead's time before the pointer began skimming, which it returns to; none once a press put it elsewhere. */
+let skimFrom: number | undefined;
 /** The shortest stretch the trim handles leave between them, in seconds. */
 const TRIM_GAP = 0.2;
 /**
@@ -360,6 +370,38 @@ function playhead(editor: EditorView): number {
 
 export function seekTo(seconds: number): void {
   if (editorVideo) editorVideo.currentTime = seconds;
+}
+
+export function toggleSkimming(): void {
+  skimming = !skimming;
+  if (!skimming) endSkim();
+  draw();
+}
+
+/** Shows the picture at `ticks` while the pointer skims the timeline. */
+export function skimTo(ticks: number): void {
+  const editor = editorView();
+  if (!skimming || !editor || !editorVideo) return;
+  if (skimFrom === undefined) {
+    skimFrom = editorVideo.currentTime;
+    editorVideo.pause();
+  }
+  skimAt = ticks;
+  seekTo(ticks / editor.timescale);
+  draw();
+}
+
+/** The pointer left the timeline: the preview goes back to the playhead, unless a press moved it meanwhile. */
+export function endSkim(): void {
+  if (skimFrom !== undefined) seekTo(skimFrom);
+  skimFrom = undefined;
+  skimAt = undefined;
+  draw();
+}
+
+/** A press on the timeline while skimming: what it does to the playhead stays when the pointer leaves. */
+export function keepSkimmed(): void {
+  skimFrom = undefined;
 }
 
 /** Plays the preview, or pauses it. */

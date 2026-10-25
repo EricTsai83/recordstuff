@@ -2671,6 +2671,16 @@
     border-left: 1px solid var(--border);
     white-space: nowrap;
   }
+  /* Where the pointer skims (2026-10-25): thinner than the playhead and of the accent, so the two are told apart. */
+  .editor-skimmer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 3;
+    width: 1px;
+    background: var(--primary);
+    pointer-events: none;
+  }
   /* The playhead's place on the ruler too, so it is found under the pictures as well as over them. */
   .editor-ruler-playhead {
     position: absolute;
