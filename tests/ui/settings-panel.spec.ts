@@ -869,6 +869,9 @@ test("S142 the Studio's line of controls: Live preview beside Start, nothing lai
   await expect(said, "S142 nothing while it delivers").toHaveCount(0);
   // A portrait screen's narrow window: the line of controls and the picture keep their places as it is said and goes.
   await host.evaluate(h => h.setSize(541, 900));
+  // The page has its new width first: two equal reads of the old layout, before the resize reached it, passed for a
+  // settled one on CI (2026-10-25), as in S146.
+  await expect.poll(() => page.evaluate(() => window.innerWidth), { message: "S142 the window has its narrow size" }).toBe(541);
   const places = () => page.evaluate(() => [".studio-controls", ".studio-stage .camera-preview-stage", ".studio-panels"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
