@@ -65,7 +65,13 @@ export const COUNTDOWN_OVERLAY = {
   referenceFontPt: 56,
   digit: "rgba(255, 255, 255, 0.28)",
   outline: { widthPx: 1, color: "rgba(0, 0, 0, 0.10)" },
+  /**
+   * A light glow close round the digit that dark content shows, before 040's soft shadows that light content shows
+   * (2026-10-25: the maintainer found the digit too faint over dark content and chose this from candidates over
+   * dark, black, white, text and photo backgrounds, keeping its look over white).
+   */
   shadows: [
+    { xPx: 0, yPx: 0, blurPx: 1, color: "rgba(255, 255, 255, 0.55)" },
     { xPx: 0, yPx: 0, blurPx: 1, color: "rgba(0, 0, 0, 0.20)" },
     { xPx: 0, yPx: 1, blurPx: 3, color: "rgba(0, 0, 0, 0.14)" },
     { xPx: 0, yPx: 0, blurPx: 14, color: "rgba(0, 0, 0, 0.08)" },
@@ -74,6 +80,12 @@ export const COUNTDOWN_OVERLAY = {
   reducedTransparency: {
     digit: "rgba(255, 255, 255, 1)",
     outline: { widthPx: 1.5, color: "rgba(0, 0, 0, 0.45)" },
+    /** 040's shadows, without the default digit's glow (2026-10-25): the opaque digit and its outline already carry it. */
+    shadows: [
+      { xPx: 0, yPx: 0, blurPx: 1, color: "rgba(0, 0, 0, 0.20)" },
+      { xPx: 0, yPx: 1, blurPx: 3, color: "rgba(0, 0, 0, 0.14)" },
+      { xPx: 0, yPx: 0, blurPx: 14, color: "rgba(0, 0, 0, 0.08)" },
+    ],
   },
 } as const;
 

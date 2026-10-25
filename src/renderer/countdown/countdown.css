@@ -65,5 +65,6 @@ body,
   .face {
     color: var(--digit-opaque);
     -webkit-text-stroke: var(--outline-width-strong) var(--outline-strong);
+    text-shadow: var(--shadow-strong);
   }
 }

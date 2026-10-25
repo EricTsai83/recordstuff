@@ -31,6 +31,9 @@ function em(px: number): string {
  * the digit follows the window through `vmin` and its outline and shadows
  * follow the digit through `em`.
  */
+const shadowOf = (shadows: ReadonlyArray<{ xPx: number; yPx: number; blurPx: number; color: string }>): string =>
+  shadows.map((s) => `${em(s.xPx)} ${em(s.yPx)} ${em(s.blurPx)} ${s.color}`).join(", ");
+
 export function overlayStyle(): Record<string, string> {
   const { font, digit, outline, shadows, reducedTransparency, windowPerFont } =
     COUNTDOWN_OVERLAY;
@@ -41,12 +44,11 @@ export function overlayStyle(): Record<string, string> {
     "--digit": digit,
     "--outline-width": em(outline.widthPx),
     "--outline": outline.color,
-    "--shadow": shadows
-      .map((s) => `${em(s.xPx)} ${em(s.yPx)} ${em(s.blurPx)} ${s.color}`)
-      .join(", "),
+    "--shadow": shadowOf(shadows),
     "--digit-opaque": reducedTransparency.digit,
     "--outline-width-strong": em(reducedTransparency.outline.widthPx),
     "--outline-strong": reducedTransparency.outline.color,
+    "--shadow-strong": shadowOf(reducedTransparency.shadows),
     "--fade-in": `${COUNTDOWN_TIMING.fadeInMs}ms`,
     "--fade-out": `${COUNTDOWN_TIMING.fadeOutMs}ms`,
     "--crossfade": `${COUNTDOWN_TIMING.crossfadeMs}ms`,

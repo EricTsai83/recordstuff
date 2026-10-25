@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { COUNTDOWN_TICK, COUNTDOWN_TIMING } from "../../shared/countdown";
+import { COUNTDOWN_OVERLAY, COUNTDOWN_TICK, COUNTDOWN_TIMING } from "../../shared/countdown";
 import { createCountdownState, overlayStyle, playTick, soundRequested, type TickContext } from "./countdown-state";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -49,9 +49,9 @@ describe("countdown overlay page", () => {
   it("takes every appearance and timing value from the shared module", () => {
     const style = overlayStyle();
     expect(style).toMatchObject({
-      "--digit": "rgba(255, 255, 255, 0.28)",
-      "--outline": "rgba(0, 0, 0, 0.10)",
-      "--digit-opaque": "rgba(255, 255, 255, 1)",
+      "--digit": COUNTDOWN_OVERLAY.digit,
+      "--outline": COUNTDOWN_OVERLAY.outline.color,
+      "--digit-opaque": COUNTDOWN_OVERLAY.reducedTransparency.digit,
       "--fade-in": `${COUNTDOWN_TIMING.fadeInMs}ms`,
       "--crossfade": `${COUNTDOWN_TIMING.crossfadeMs}ms`,
       "--fade-out": `${COUNTDOWN_TIMING.fadeOutMs}ms`,
@@ -72,7 +72,11 @@ describe("countdown overlay page", () => {
     const px = (value: string): string => value.replace(/([\d.]+)em/g, (_, n: string) => `${Math.round(Number(n) * fontPx * 1e6) / 1e6}px`);
     expect(px(style["--outline-width"]!)).toBe("1px");
     expect(px(style["--outline-width-strong"]!)).toBe("1.5px");
-    expect(px(style["--shadow"]!)).toBe("0 0 1px rgba(0, 0, 0, 0.20), 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 14px rgba(0, 0, 0, 0.08)");
+    const shadowPx = (shadows: ReadonlyArray<{ xPx: number; yPx: number; blurPx: number; color: string }>): string =>
+      shadows.map((s) => `${s.xPx}${s.xPx ? "px" : ""} ${s.yPx}${s.yPx ? "px" : ""} ${s.blurPx}px ${s.color}`).join(", ");
+    expect(px(style["--shadow"]!)).toBe(shadowPx(COUNTDOWN_OVERLAY.shadows));
+    // Reduced transparency keeps shadows of its own, so the default digit's can change without changing it.
+    expect(px(style["--shadow-strong"]!)).toBe(shadowPx(COUNTDOWN_OVERLAY.reducedTransparency.shadows));
 
     // In the 238 pt window of a 1080 pt display the digit is 151 pt, with proportionally wider outlines.
     const scaled = (parseFloat(style["--font-size"]!) / 100) * 238;
