@@ -140,6 +140,9 @@ export interface CameraPreviewView {
   status?: string;
   /** What the Studio's Camera view (plan 094) says without a camera to show: lost, not ready, hidden or not in the session. */
   cameraStatus?: string;
+  /** The engine's picture is shown and composes the camera, which gives no picture yet (waiting, not ready or lost): the
+   * page marks its place with the placeholder until it does (2026-10-25, the maintainer's choice). */
+  cameraAwaited?: boolean;
 }
 export interface RecordingResultView {
   id: string;

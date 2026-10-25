@@ -260,8 +260,13 @@
   --sidebar-note-shadow: 0 0 0 1px var(--border), 0 6px 18px rgb(0 0 0 / 0.12);
   /* A level meter's bar: green to amber to red over its last 12 dB below full scale. */
   --meter-level: linear-gradient(90deg, oklch(0.72 0.17 150) 0% 80%, oklch(0.8 0.16 85) 80% 95%, oklch(0.63 0.22 27) 95%);
+  /* The camera's place before its picture: frosted glass over the stage, a see-through person in it, no edge
+     (2026-10-25, the maintainer's choice); the opaque grey is kept for reduced transparency. */
   --camera-preview-bubble: oklch(0.32 0.01 260);
   --camera-preview-bubble-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  --camera-preview-glass: linear-gradient(160deg, rgb(255 255 255 / 0.38), rgb(255 255 255 / 0.14));
+  --camera-preview-glass-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  --camera-preview-figure: rgb(255 255 255 / 0.55);
   --display-text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   /* An opaque mask stop: a mask reads only its alpha. */
   --mask-opaque: #000;
@@ -880,9 +885,29 @@
   .camera-preview-bubble {
     position: absolute;
     overflow: hidden;
-    background: var(--camera-preview-bubble);
-    box-shadow: var(--camera-preview-bubble-shadow);
+    container-type: size;
+    background: var(--camera-preview-glass);
+    box-shadow: var(--camera-preview-glass-shadow);
+    backdrop-filter: blur(14px) saturate(1.6);
     pointer-events: none;
+  }
+  /* Shoulders on the bubble's foot, the head inside however flat the bubble; fading downwards, glass like it. */
+  .camera-preview-figure {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: min(86cqw, 92cqh);
+    height: auto;
+    translate: -50% 0;
+    fill: var(--camera-preview-figure);
+    mask-image: linear-gradient(var(--mask-opaque) 10%, transparent 140%);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .camera-preview-bubble {
+      background: var(--camera-preview-bubble);
+      box-shadow: var(--camera-preview-bubble-shadow);
+      backdrop-filter: none;
+    }
   }
   /* The target over the bubble, at least 24px however small the bubble is drawn: it carries the focus ring. */
   .camera-preview-handle {
@@ -901,12 +926,25 @@
   .camera-preview[data-mode="recording"] .camera-preview-bubble {
     background: none;
     box-shadow: none;
+    backdrop-filter: none;
   }
-  /* With the preview off (plan 092) the stage is empty, so the bubble is drawn as before a session; the Screen view's
-     picture has no camera, so the bubble is an outline over it, still dragged. */
-  .camera-preview[data-mode="recording"][data-off] .camera-preview-bubble {
-    background: var(--camera-preview-bubble);
-    box-shadow: var(--camera-preview-bubble-shadow);
+  .camera-preview[data-mode="recording"]:not([data-off], [data-awaited]) .camera-preview-figure {
+    display: none;
+  }
+  /* With the preview off (plan 092) the stage is empty, so the bubble is drawn as before a session, and so it is over the
+     picture while the camera gives none yet (2026-10-25); the Screen view's picture has no camera, so the bubble is an
+     outline over it, still dragged. */
+  .camera-preview[data-mode="recording"]:is([data-off], [data-awaited]) .camera-preview-bubble {
+    background: var(--camera-preview-glass);
+    box-shadow: var(--camera-preview-glass-shadow);
+    backdrop-filter: blur(14px) saturate(1.6);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .camera-preview[data-mode="recording"]:is([data-off], [data-awaited]) .camera-preview-bubble {
+      background: var(--camera-preview-bubble);
+      box-shadow: var(--camera-preview-bubble-shadow);
+      backdrop-filter: none;
+    }
   }
   .camera-preview[data-mode="recording"][data-view="screen"]:not([data-off]) .camera-preview-bubble {
     outline: 1.5px dashed var(--display-ink);

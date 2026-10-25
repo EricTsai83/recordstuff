@@ -459,6 +459,13 @@ describe("the camera's preview (plan 075, step 7)", () => {
     expect(preview(recording, on({ session: { hidden: false, state: "lost" } }))?.cameraPreview?.status).toBe("The camera dropped out. Reconnecting…");
     expect(preview(recording, on({ session: { hidden: false, state: "lost" } }, { language: "zh-TW" }))?.cameraPreview?.status).toBe("相機已中斷，正在重新連線…");
     expect(preview(recording, on({ session: { hidden: true, state: "waiting" } }))?.cameraPreview?.status).toBeUndefined();
+    // Until the camera gives a picture its place is marked (2026-10-25): not once it does, nor while it is hidden.
+    for (const state of ["waiting", "notReady", "lost"] as const) {
+      expect(preview(recording, on({ session: { hidden: false, state } }))?.cameraPreview?.cameraAwaited, `awaited while ${state}`).toBe(true);
+    }
+    expect(preview(recording, on({ session: { hidden: false } }))?.cameraPreview?.cameraAwaited, "the camera gives its picture").toBeUndefined();
+    expect(preview(recording, on({ session: { hidden: true, state: "waiting" } }))?.cameraPreview?.cameraAwaited, "hidden from the recording").toBeUndefined();
+    expect(preview(idle, on())?.cameraPreview?.cameraAwaited, "no engine picture: the page's own placeholder").toBeUndefined();
     expect(preview(idle, on({ session: { hidden: false, state: "waiting" } }, { studio: { preview: { live: true }, showing: true } }))?.cameraPreview?.status,
       "a Live preview waits for the camera too").toBe("Waiting for the camera…");
     expect(preview(recording, on({ session: { hidden: false } }, { studio: { showing: false, pictureHidden: true } }))?.cameraPreview,

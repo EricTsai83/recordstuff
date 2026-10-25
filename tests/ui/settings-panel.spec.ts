@@ -468,6 +468,7 @@ test("S127–S130 camera preview: no camera of the page's own before Live previe
   await page.waitForTimeout(500);
   expect((await cameraCalls()).opened, "S127 no camera opens before Live preview").toEqual([]);
   await expect(page.locator(".camera-preview-bubble video"), "S127 the bubble is an outline").toHaveCount(0);
+  await expect(page.locator(".camera-preview-figure"), "S127 a figure marks where the camera will be").toBeVisible();
 
   // Let go of just inside an edge, the bubble stays there: nothing pulls it onto the edge (2026-10-22).
   await clearCalls();
@@ -934,6 +935,21 @@ test("S143–S145 the Studio's preview panel: Power saving by default, no camera
   });
   await expect.poll(() => host.evaluate(h => [...h.previewWatches]), { message: "S144 the recording's picture is asked for once shown" }).toEqual([true]);
   await expect(page.locator(".camera-preview-picture"), "S144 and takes the stage").toBeVisible();
+  // Until the recording's camera gives a picture, its place is marked over the picture; then the camera is the picture's.
+  const withCamera = (state?: "waiting") => host.evaluate((h, state) => {
+    h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, session: { hidden: false, ...(state ? { state } : {}) } } };
+    h.push(h.settingsView(h.state.cameraState!, h.state.cameraContext));
+  }, state);
+  await withCamera("waiting");
+  await expect(page.locator(".studio-stage .camera-preview-figure"), "S144 the camera's place marked while it gives no picture").toBeVisible();
+  await withCamera();
+  await expect(page.locator(".studio-stage .camera-preview-bubble"), "S144 the bubble still placed over the recording's camera").toHaveCount(1);
+  await expect(page.locator(".studio-stage .camera-preview-figure"), "S144 no figure over the recording's own camera").toBeHidden();
+  await host.evaluate(h => {
+    const { session: _session, ...camera } = h.state.cameraContext!.camera!;
+    h.state.cameraContext = { ...h.state.cameraContext!, camera };
+    h.push(h.settingsView(h.state.cameraState!, h.state.cameraContext));
+  });
 
   // S145 the view: a menu in the line of controls over the stage (2026-10-24, three segments until then), named by the
   // picture it shows, every choice saying what it shows; switched while watching; the Screen view before a session

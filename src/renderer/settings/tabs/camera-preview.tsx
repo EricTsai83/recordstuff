@@ -175,6 +175,8 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
 
   // In the Camera view the engine's picture is the camera itself.
   const draggable = preview.composed && !cameraOnly;
+  // The engine's picture composes the camera, which gives none yet: its place is marked as before a session (2026-10-25).
+  const awaited = preview.mode === "recording" && !off && !screenOnly && !cameraOnly && preview.composed && preview.cameraAwaited === true;
   const showsBubble = cameraOnly ? preview.composed && preview.mode !== "recording" : preview.composed;
   const box = cameraOnly ? { left: enlarged.x, top: enlarged.y, width: enlarged.width, height: enlarged.height, borderRadius: enlargedRadius }
     : { left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius };
@@ -184,7 +186,7 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
     : preview.mode === "recording" && !drawing ? undefined
     : screenOnly && preview.mode !== "recording" ? undefined : preview.status;
   return (
-    <div className="camera-preview" data-mode={preview.mode} data-off={off || undefined} data-view={shown?.view}>
+    <div className="camera-preview" data-mode={preview.mode} data-off={off || undefined} data-awaited={awaited || undefined} data-view={shown?.view}>
       <div
         ref={setStage}
         className="camera-preview-stage"
@@ -193,7 +195,15 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
         {/* In the Camera view the engine's picture is clipped to the camera it draws, so the stage's grey is around it. */}
         <canvas ref={setCanvas} className="camera-preview-picture" hidden={preview.mode !== "recording" || off} aria-hidden="true"
           style={cameraOnly ? { clipPath: `inset(${enlarged.y}px ${size.width - enlarged.x - enlarged.width}px ${size.height - enlarged.y - enlarged.height}px ${enlarged.x}px round ${enlargedRadius}px)` } : undefined} />
-        {showsBubble && <div className="camera-preview-bubble" aria-hidden="true" style={box} />}
+        {showsBubble && (
+          <div className="camera-preview-bubble" aria-hidden="true" style={box}>
+            {/* Where the camera will be, before its picture: a person rising from the bubble's foot, as a video call waits. */}
+            <svg className="camera-preview-figure" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="40" r="19" />
+              <path d="M8 100c0-23 19-37 42-37s42 14 42 37Z" />
+            </svg>
+          </div>
+        )}
         {overlay}
         {/* What is dragged: the bubble, or a target of at least HANDLE_MIN pixels centred on it when it is drawn smaller. */}
         {draggable && <div

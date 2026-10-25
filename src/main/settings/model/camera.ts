@@ -196,6 +196,7 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
       x, y,
       ...(status ? { status } : {}),
       ...(cameraStatus ? { cameraStatus } : {}),
+      ...(showing && missing ? { cameraAwaited: true } : {}),
     },
   };
 }
