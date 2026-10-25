@@ -696,7 +696,7 @@ export const ZH_TW = {
   "Editable": "可剪輯",
   "Camera and sound": "相機與聲音",
   "Camera size": "相機大小",
-  "Camera: {x}% across, {y}% down. Drag it, or use the arrow keys, to move it.": "相機：水平 {x}%、垂直 {y}%。可拖曳或用方向鍵移動。",
+  "Camera: {x}% across, {y}% down, {size}% in size. Drag it or use the arrow keys to move it; drag a corner, or press + or −, to resize it.": "相機：水平 {x}%、垂直 {y}%，大小 {size}%。可拖曳或用方向鍵移動；拖曳角落或按 + 或 − 調整大小。",
   "Preparing the camera…": "正在準備相機…",
   // The edit view's camera and sound, refined 2026-10-25.
   "Sound": "聲音",

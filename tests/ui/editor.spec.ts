@@ -119,7 +119,6 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     v.pause();
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
-  await expect(page.locator(".editor-hint")).toContainText("Drag the ends to trim, or across the timeline to choose a range.");
   await expect(page.locator("#editor-keys")).toHaveAccessibleName(`Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ${process.platform === "darwin" ? "⌘Z undo · ⇧⌘Z redo" : "Ctrl+Z undo · Ctrl+Y redo"} · on a trim handle, ← → move its edge`);
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
@@ -346,7 +345,7 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
 });
 
-test("with Skimming on, the preview shows the picture under the pointer and goes back to the playhead when it leaves; off, a move does nothing (2026-10-25)", async () => {
+test("Skimming, on by default, shows the picture under the pointer and goes back to the playhead when it leaves; switched off in the shortcuts' popup, a move does nothing (2026-10-25)", async () => {
   await openEditor();
   const video = page.locator("#editor .editor-stage video").first();
   await video.evaluate(async (el) => {
@@ -358,20 +357,10 @@ test("with Skimming on, the preview shows the picture under the pointer and goes
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   await page.mouse.click(box.x + box.width * 0.25, y);
+  await page.mouse.move(box.x + box.width * 0.25, box.y - 60, { steps: 2 });
   await expect.poll(time).toBeGreaterThan(1.8);
 
-  // Off by default: a pointer passing over the timeline leaves the preview where it is.
-  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "false");
-  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
-  await page.waitForTimeout(200);
-  expect(await time()).toBeLessThan(2.2);
-  await expect(page.locator(".editor-skimmer")).toHaveCount(0);
-
-  await expect(page.locator("#editor-skim")).toHaveText("SkimmingOff");
   // On: the preview follows the pointer, with a skimmer line, and comes back to 2 s when the pointer leaves.
-  await page.locator("#editor-skim").click();
-  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#editor-skim")).toHaveText("SkimmingOn");
   await page.mouse.move(box.x + box.width * 0.5, y, { steps: 4 });
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
   await expect.poll(time).toBeGreaterThan(5.8);
@@ -388,8 +377,18 @@ test("with Skimming on, the preview shows the picture under the pointer and goes
   await page.waitForTimeout(200);
   expect(await time()).toBeGreaterThan(3.8);
   expect(await time()).toBeLessThan(4.2);
+
+  // Off, by its switch in the shortcuts' popup: a pointer passing over the timeline leaves the preview where it is.
+  await page.locator("#editor-keys").click();
+  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", "true");
   await page.locator("#editor-skim").click();
-  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#editor-skim")).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#editor-keys-popup")).toHaveCount(0);
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 4 });
+  await page.waitForTimeout(200);
+  expect(await time()).toBeLessThan(4.2);
+  await expect(page.locator(".editor-skimmer")).toHaveCount(0);
 });
 
 test("the preview skips removed parts, Undo takes a removal back, and a cancelled export leaves nothing", async () => {
@@ -426,12 +425,14 @@ test("the preview skips removed parts, Undo takes a removal back, and a cancelle
  * main as a version-2 edit; the recording itself and the preview still play through the CORS-enabled scheme; and the
  * export is asked for rendered, with the camera where it was dragged and the volumes in dB.
  */
-test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered; then dragged again, resized by its handle, a sound muted, everything reset, undone and redone", async () => {
+test("an editable recording's camera is dragged into place, its microphone turned down, and its export asked rendered; then dragged again, selected and resized by a corner's handle, a sound muted, everything reset, undone and redone", async () => {
   const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
   const bubble = page.locator("#editor-camera");
   await expect(bubble).toBeVisible();
+  // Not selected, nothing is drawn over the picture beside the bubble: no handles.
+  await expect(page.locator(".editor-camera-handle")).toHaveCount(0);
   await expect(bubble.locator("video")).toHaveAttribute("src", /^recordstuff-media:\/\/preview\/\d+\/camera$/);
   await expect(page.locator(".editor-overlay audio")).toHaveAttribute("src", /\/secondSound$/);
 
@@ -469,20 +470,23 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(after.x).toBeLessThan(picture.left + 2);
   expect(after.y + after.height).toBeGreaterThan(picture.top + picture.height - 2);
 
-  // The microphone a step down with the keyboard.
+  // The microphone a step down with the keyboard, in the popup the Camera and sound button opens.
+  await page.locator("#editor-scene-button").click();
   const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
   await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
   await microphone.focus();
   await page.keyboard.press("ArrowLeft");
   await expect(microphone).toHaveAttribute("aria-valuetext", "95%");
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
+  // The save redraws the view; the slider, in a popup outside the dialog, keeps the keyboard's focus.
+  await expect(microphone).toBeFocused();
 
-  // The scene's row stays inside the window, each control readable and large enough to hit.
+  // The popup stays inside the window, readable; the toolbar does not overflow.
   const problems = await read<string[]>(page, `(() => {
     const out = [];
     const panel = document.querySelector(".editor-panel");
     if (panel.scrollWidth > panel.clientWidth + 1) out.push("the panel overflows sideways");
-    for (const el of panel.querySelectorAll(".editor-scene [role=switch], .editor-scene [data-slot=slider-thumb], .editor-scene-value, .editor-scene label")) {
+    for (const el of document.querySelectorAll("#editor-scene-popup [role=switch], #editor-scene-popup [data-slot=slider-thumb], #editor-scene-popup .editor-scene-value, #editor-scene-popup label, #editor-scene-popup button")) {
       const box = el.getBoundingClientRect();
       if (box.right > innerWidth || box.bottom > innerHeight || box.left < 0) out.push((el.id || el.className) + " outside the window");
       if (getComputedStyle(el).visibility === "hidden") out.push((el.id || el.className) + " hidden");
@@ -490,10 +494,12 @@ test("an editable recording's camera is dragged into place, its microphone turne
     }
     return out; })()`);
   expect(problems).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#editor-scene-popup")).toHaveCount(0);
 
   // Export: rendered, with no cut, the camera where it was dragged in the recording's shape. Nothing under the buttons,
-  // or beside Export, moves as it starts and ends: its outcome takes the hint's line.
-  const rows = async () => [(await page.locator("#editor-scene-reset").boundingBox())!.y, (await page.locator("#editor-redo").boundingBox())!.x];
+  // or beside Export, moves as it starts and ends: its outcome takes the toolbar's free space.
+  const rows = async () => [(await page.locator("#editor-scene-button").boundingBox())!.x, (await page.locator("#editor-redo").boundingBox())!.x];
   const rowsBefore = await rows();
   await page.locator("#editor-export").click();
   await expect(page.locator(".editor-done")).toBeVisible({ timeout: 5000 });
@@ -518,9 +524,13 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(record().scene.camera.x).not.toBe(0.5);
   expect(record().scene.camera.y).not.toBe(0.5);
 
-  // The handle on the corner facing the middle grows it from the opposite corner, its shape kept.
-  const handle = page.locator(".editor-camera-handle");
-  await expect(handle.locator("svg")).toHaveCount(1);
+  // A click elsewhere leaves it unselected; a click on it selects it, a handle on each corner.
+  await page.locator("#editor-split").focus();
+  await expect(page.locator(".editor-camera-handle")).toHaveCount(0);
+  await bubble.click();
+  await expect(page.locator(".editor-camera-handle")).toHaveCount(4);
+  // The bottom-right corner's handle grows it from the top-left corner, its shape kept.
+  const handle = page.locator('.editor-camera-handle[data-corner="bottom-right"]');
   const grip = (await handle.boundingBox())!;
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();
@@ -529,20 +539,26 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(await eventually(() => (record().scene?.camera?.width ?? 0) > 0.2)).toBe(true);
   const grown = record().scene.camera;
   expect(grown.height / grown.width).toBeCloseTo(0.3 / 0.2, 2);
-  await expect(page.locator("#editor-camera-size")).toBeAttached();
-  await expect(page.locator(".editor-scene-group").first().locator(".editor-scene-value")).toHaveText(`${Math.round(grown.height * 100)}%`);
+  await expect(bubble).toHaveAccessibleName(new RegExp(`, ${Math.round(grown.height * 100)}% in size\\.`));
 
-  // A sound muted by its button and back to where it was.
-  await page.locator("#editor-volume-system-mute").click();
+  // A sound muted by its slider's left end (the popup holds only the slider), its toolbar button struck through; Undo
+  // brings it back.
+  await page.locator("#editor-scene-button").click();
+  await page.getByRole("slider", { name: "System audio", exact: true }).focus();
+  await page.keyboard.press("Home");
   expect(await eventually(() => record().scene?.volumes?.system === 0)).toBe(true);
-  await page.locator("#editor-volume-system-mute").click();
+  await expect(page.getByRole("slider", { name: "System audio", exact: true })).toHaveAttribute("aria-valuetext", "0%");
+  await page.keyboard.press("Escape");
+  await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);
 
-  // Reset puts the camera and the volumes back as recorded; Undo takes it back, Redo makes it again.
+  // Reset, in the popup, puts the camera and the volumes back as recorded; Undo takes it back, Redo makes it again.
+  await page.locator("#editor-scene-button").click();
   await page.locator("#editor-scene-reset").click();
   const recorded = { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } };
   expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
   await expect(page.locator("#editor-scene-reset")).toBeDisabled();
+  await page.keyboard.press("Escape");
   await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
   await page.locator("#editor-redo").click();

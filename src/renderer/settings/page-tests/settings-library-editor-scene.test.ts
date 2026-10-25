@@ -44,11 +44,15 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   await menu(document.getElementById("clip-a-more")!);
   click(document.getElementById("clip-menu-edit")!);
-  await vi.waitFor(() => expect(document.querySelector(".editor-scene")).not.toBeNull());
+  await vi.waitFor(() => expect(document.getElementById("editor-scene-button")).not.toBeNull());
 
-  // The controls: the camera shown and its size, then a volume for each sound the recording holds.
+  // The controls, behind the toolbar's Camera and sound button: the camera shown, then a volume for each sound the
+  // recording holds. The camera's size is its corner handles (2026-10-25: no slider).
+  expect(document.getElementById("editor-scene-button")!.textContent).toBe("Camera and sound");
+  click(document.getElementById("editor-scene-button")!);
+  await vi.waitFor(() => expect(document.querySelector("#editor-scene-popup .editor-scene")).not.toBeNull());
   expect(document.getElementById("editor-camera-shown")!.getAttribute("aria-checked")).toBe("true");
-  expect(document.getElementById("editor-camera-size")).not.toBeNull();
+  expect(document.getElementById("editor-camera-size")).toBeNull();
   expect(document.getElementById("editor-volume-system")).not.toBeNull();
   expect(document.getElementById("editor-volume-microphone")).not.toBeNull();
   // An editable recording can be exported with no cut, and says what its export writes.
@@ -62,7 +66,7 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   video.dispatchEvent(new Event("loadedmetadata"));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).not.toBeNull());
   const bubble = document.getElementById("editor-camera")!;
-  expect(bubble.getAttribute("aria-label")).toBe("Camera: 97% across, 5% down. Drag it, or use the arrow keys, to move it.");
+  expect(bubble.getAttribute("aria-label")).toBe("Camera: 97% across, 5% down, 30% in size. Drag it or use the arrow keys to move it; drag a corner, or press + or −, to resize it.");
   expect(bubble.querySelector("video")!.getAttribute("src")).toBe("recordstuff-media://preview/1/camera");
   expect(bubble.querySelector("video")!.style.transform).toBe("scaleX(-1)");
   expect(document.querySelector<HTMLAudioElement>(".editor-overlay audio")!.getAttribute("src")).toBe("recordstuff-media://preview/1/secondSound");
@@ -90,13 +94,20 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   expect(document.getElementById("editor-camera-shown")!.hasAttribute("data-disabled")).toBe(false);
   await vi.waitFor(() => expect(document.getElementById("editor-camera")!.getAttribute("aria-label")).toContain("95% across"));
 
+  // + grows it a step, its shape kept: the sliders' keyboard counterpart now the slider is gone.
+  document.getElementById("editor-camera")!.dispatchEvent(new KeyboardEvent("keydown", { key: "+", bubbles: true }));
+  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 2 }));
+  const grown = (choices.at(-1) as { scene: EditScene }).scene.camera!;
+  expect(grown.height).toBeCloseTo(0.31, 4);
+  expect(grown.width / grown.height).toBeCloseTo(0.2 / 0.3, 2);
+
   // Hidden: saved, and the bubble goes.
   click(document.getElementById("editor-camera-shown")!);
-  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 2, scene: { camera: { x: 0.95, shown: false } } }));
+  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 3, scene: { camera: { x: 0.95, shown: false } } }));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).toBeNull());
 
   // ⌘Z brings the shown camera back.
   document.getElementById("editor-undo")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 3, scene: { camera: { x: 0.95, shown: true } } }));
+  await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 4, scene: { camera: { x: 0.95, shown: true } } }));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).not.toBeNull());
 });

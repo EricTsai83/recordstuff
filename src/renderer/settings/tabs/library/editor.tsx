@@ -5,7 +5,7 @@
  * pictures. Export writes a new file beside the recording, which stays as it is.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, FolderOpen, Keyboard, Redo2, RotateCcw, ScanEye, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Keyboard, Redo2, RefreshCw, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../
 import { Player } from "../../../player/player";
 import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Switch } from "../../../components/ui/switch";
 import * as model from "../../settings-controller";
 import { EditorCamera, EditorSceneControls } from "./editor-scene";
 
@@ -162,10 +163,10 @@ export function EditorDialog() {
         keepMounted
         id="editor"
         overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
-        // As wide as the window allows with the panel under a 16:9 picture: the timeline, its ruler and hint, the actions,
-        // and an editable recording's camera and sound controls, which need more of the height (known from the card before
-        // the view arrives, so the dialog does not change its size as it opens).
-        className={`editor flex ${editor?.editable ?? item?.editable ? "w-[min(calc(100vw-48px),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve)-258px)*16/9))]" : "w-[min(calc(100vw-48px),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve)-198px)*16/9))]"} max-h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]`}
+        // The whole window but its margins, as the player's (2026-10-25, at the maintainer's request: a picture sized
+        // to 16:9 over the panel left wide bands of the page either side): the panel at the foot, the stage taking the
+        // rest of the height, the picture contained in it. A window too short for both scrolls.
+        className="editor flex h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] w-[calc(100vw-48px)] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.editorVideo}
@@ -178,7 +179,7 @@ export function EditorDialog() {
         <DialogDescription className="sr-only">
           {model.text("Select a part of the timeline, then remove it. Split at the playhead to mark where a part starts or ends.")}
         </DialogDescription>
-        <div className="editor-stage aspect-video bg-media text-media-foreground">
+        <div className="editor-stage bg-media text-media-foreground">
           {item && (
             <Player
               id="editor-player"
@@ -279,7 +280,7 @@ function EditorPanel() {
   // It goes back to the selected part, or the timeline.
   useEffect(() => {
     const active = document.activeElement;
-    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup")) return;
+    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-scene-popup")) return;
     const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
     target?.focus({ preventScroll: true });
   });
@@ -409,6 +410,84 @@ function EditorPanel() {
   };
   return (
     <div className="editor-panel">
+      {/* One row over the timeline (2026-10-25, the maintainer's choice of layouts, to simplify the view and give the
+          picture more of the height): the edits; the camera and the sound behind one named button (editor-scene.tsx);
+          where the playhead is and how long the export runs; the keys, with Skimming's switch; Export. An export's outcome
+          takes the free space before them, so nothing moves. The playhead's time is to the hundredth, so a frame's step
+          shows; a range being chosen or an edge being trimmed shows that instead. */}
+      <div className="editor-toolbar">
+        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
+          <Button id="editor-undo" variant="ghost" size="icon" aria-label={model.text("Undo")} aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
+            <Undo2 />
+          </Button>
+        </ControlTooltip>
+        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Y)")}>
+          <Button id="editor-redo" variant="ghost" size="icon" aria-label={model.text("Redo")} aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
+            <Redo2 />
+          </Button>
+        </ControlTooltip>
+        <span className="editor-divider" aria-hidden="true" />
+        <ControlTooltip label={model.text("Split at the playhead (S)")}>
+          <Button id="editor-split" variant="ghost" size="icon" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) model.splitAtPlayhead(); }}>
+            <Scissors />
+          </Button>
+        </ControlTooltip>
+        <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
+          <Button id="editor-remove" variant="ghost" size="icon" aria-label={model.text(range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part")} aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
+            {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
+          </Button>
+        </ControlTooltip>
+        <EditorSceneControls editor={editor} />
+        <span className="editor-divider" aria-hidden="true" />
+        <span className="editor-times text-muted-foreground">
+          <span className="editor-position">
+            {trimming
+              ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
+              : range
+              ? translate("Selection {from}–{to} ({length})", language, {
+                from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
+              })
+              : translate("Playhead {time}", language, { time: precise(time) })}
+          </span>
+          {/* To the hundredth, as the times beside it (a hands-on round). */}
+          <span className="editor-length">{translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}</span>
+        </span>
+        <span className="editor-outcome">
+          {editor.export.phase === "done" ? (
+            <span className="editor-done" role="status" title={editor.export.message}>{editor.export.message}</span>
+          ) : editor.export.phase === "failed" ? (
+            <span className="editor-failure" role="alert" title={editor.export.message}>{editor.export.message}</span>
+          ) : null}
+        </span>
+        {/* The keys, opened by a click as well as named to assistive technology (a
+            hands-on round found a tooltip alone showed nothing on a click). */}
+        <Popover>
+          <ControlTooltip label={model.text("Keyboard shortcuts")}>
+            <PopoverTrigger render={<Button variant="ghost" size="icon" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+              <Keyboard />
+            </PopoverTrigger>
+          </ControlTooltip>
+          <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup gap-0" finalFocus={false}>
+            {/* Skimming, on by default, switched here rather than by a toolbar icon few would read (2026-10-25, the
+                maintainer's choice). */}
+            <div className="editor-keys-option">
+              <label htmlFor="editor-skim">{model.text("Skimming")}</label>
+              <Switch id="editor-skim" checked={model.skimming} onCheckedChange={() => model.toggleSkimming()} />
+            </div>
+            <p className="editor-keys-note">{model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}</p>
+            <p className="editor-keys-title">{model.text("Editing shortcuts")}</p>
+            <dl>
+              {shortcuts.map(([key, action]) => (
+                <div key={action}>
+                  <dt><Kbd>{key}</Kbd></dt>
+                  <dd>{model.text(action)}</dd>
+                </div>
+              ))}
+            </dl>
+          </PopoverContent>
+        </Popover>
+        <ExportControls />
+      </div>
       {/* The trimmer, as iPhone's and QuickTime's: the handles stand outside the kept recording with ‹ ›, lines join them
           above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
       <div
@@ -417,6 +496,9 @@ function EditorPanel() {
           const ticks = ticksAt(event.clientX);
           const box = track.current?.getBoundingClientRect();
           if (busy || event.button !== 0 || ticks === undefined || !box) return;
+          // The playhead as it stands, read before the press keeps what is skimmed: while skimming the picture is
+          // already under the pointer, and every press would read as one on the playhead, a scrub, never a range.
+          const now = model.playheadTime() ?? time;
           model.keepSkimmed();
           event.currentTarget.setPointerCapture(event.pointerId);
           const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
@@ -431,7 +513,6 @@ function EditorPanel() {
             model.moveTrim(edge, trim[edge]);
             return;
           }
-          const now = model.editorVideo?.currentTime ?? time;
           const playheadX = box.left + Math.min(1, now / Math.max(editor.seconds, 0.001)) * box.width;
           const onPlayhead = Math.abs(event.clientX - playheadX) <= 6;
           gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: onPlayhead ? "scrub" : "click" };
@@ -512,98 +593,6 @@ function EditorPanel() {
         ))}
         <i className="editor-ruler-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} />
       </div>
-      {/* A row of its own for the times (2026-10-25): a range's longer readout among the buttons pushed Export onto a
-          new row and moved the picture. The playhead's time is to the hundredth, so a frame's step shows (the player's
-          own clock shows whole seconds); a range being chosen shows where it runs and how long it is instead. */}
-      <div className="editor-status text-muted-foreground">
-        <span className="editor-position">
-          {trimming
-            ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
-            : range
-            ? translate("Selection {from}–{to} ({length})", language, {
-              from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
-            })
-            : translate("Playhead {time}", language, { time: precise(time) })}
-        </span>
-        <span className="editor-length">
-          {/* To the hundredth, as the times beside it (a hands-on round). */}
-          {translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}
-        </span>
-      </div>
-      {/* How to cut, kept in sight since the gestures cannot be seen until they are tried, and the keys behind a button
-          beside it: listed in full they took three lines of a small window. */}
-      <div className="editor-hint">
-        {/* An export's outcome takes the hint's place, one line, so nothing below moves (2026-10-25: a row of its own
-            appeared under the buttons and pushed the camera and sound down). */}
-        {editor.export.phase === "done" ? (
-          <span className="editor-done" role="status" title={editor.export.message}>{editor.export.message}</span>
-        ) : editor.export.phase === "failed" ? (
-          <span className="editor-failure" role="alert">{editor.export.message}</span>
-        ) : (
-          <span>{model.text("Drag the ends to trim, or across the timeline to choose a range.")}</span>
-        )}
-        {/* The keys, opened by a click as well as named to assistive technology (a hands-on round found a tooltip alone
-            showed nothing on a click). */}
-        <Popover>
-          <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-keys" className="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
-            <Keyboard />
-            {model.text("Keyboard shortcuts")}
-          </PopoverTrigger>
-          <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup" finalFocus={false}>
-            <p className="editor-keys-title">{model.text("Editing shortcuts")}</p>
-            <dl>
-              {shortcuts.map(([key, action]) => (
-                <div key={action}>
-                  <dt><Kbd>{key}</Kbd></dt>
-                  <dd>{model.text(action)}</dd>
-                </div>
-              ))}
-            </dl>
-          </PopoverContent>
-        </Popover>
-      </div>
-      <div className="editor-actions">
-        <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
-          <Button id="editor-remove" variant="outline" size="sm" aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
-            {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
-            {/* As wide as its widest name, so the buttons after it stay put as its name changes (a hands-on round). */}
-            <span className="editor-swap">
-              {(["Remove selection", "Remove part", "Keep part"] as const).map((name) => (
-                <span key={name} data-shown={name === (range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part") || undefined}>{model.text(name)}</span>
-              ))}
-            </span>
-          </Button>
-        </ControlTooltip>
-        <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="outline" size="sm" aria-disabled={busy} onClick={() => { if (!busy) model.splitAtPlayhead(); }}>
-            <Scissors />
-            {model.text("Split")}
-          </Button>
-        </ControlTooltip>
-        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
-          <Button id="editor-undo" variant="outline" size="sm" aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
-            <Undo2 />
-            {model.text("Undo")}
-          </Button>
-        </ControlTooltip>
-        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Y)")}>
-          <Button id="editor-redo" variant="outline" size="sm" aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
-            <Redo2 />
-            {model.text("Redo")}
-          </Button>
-        </ControlTooltip>
-        {/* Its state is written beside its name (2026-10-25): a filled button alone read as a hover. */}
-        <ControlTooltip label={model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}>
-          <Button id="editor-skim" variant="outline" size="sm" className="editor-skim" aria-pressed={model.skimming} onClick={() => model.toggleSkimming()}>
-            <ScanEye />
-            {model.text("Skimming")}
-            <span className="editor-skim-state" aria-hidden="true">{model.text(model.skimming ? "On" : "Off")}</span>
-          </Button>
-        </ControlTooltip>
-        <span className="editor-spacer" />
-        <ExportControls />
-      </div>
-      <EditorSceneControls editor={editor} />
       {(editor.notes.length > 0 || editor.saveFailure || (editor.blocked && editor.export.phase !== "exporting")) && (
         <ul className="editor-notes">
           {editor.saveFailure && <li className="editor-failure" role="alert">{editor.saveFailure}</li>}
@@ -667,7 +656,8 @@ function ExportControls() {
             if (editor.exportable && !model.editorSaving) void model.exportEdit();
           }}
         >
-          {state.phase === "done" ? <RotateCcw /> : <Upload />}
+          {/* Export again runs the export once more: not the ↺ of the camera and sound's Reset (2026-10-25). */}
+          {state.phase === "done" ? <RefreshCw /> : <Upload />}
           <span className={state.phase === "done" ? "sr-only" : undefined}>{model.text(again ? "Export again" : "Export")}</span>
         </Button>
       </ControlTooltip>

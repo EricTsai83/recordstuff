@@ -11,11 +11,12 @@
  * - the card's More actions → Edit… opens the edit view, which must draw the camera's bubble;
  * - **Drag.** The bubble is dragged with CoreGraphics pointer events to the bottom-left; the edit record must save it
  *   there (`judgePlace`).
- * - **Resize.** The size slider's thumb is clicked and moved 5 steps down by the arrow keys; the record must save the
- *   bubble smaller by 5 points with its shape kept (`judgeResize`).
- * - **Hide and Undo.** Show camera is switched off (the record says hidden and the bubble leaves the view), then Undo is
+ * - **Resize.** The bubble is clicked, which selects it, and − pressed 5 times (2026-10-25: the size slider went, its
+ *   corner handles and + / − resize it); the record must save the bubble smaller by 5 points with its shape kept
+ *   (`judgeResize`).
+ * - **Hide and Undo.** Show camera, in the toolbar's Camera and sound popup, is switched off (the record says hidden and the bubble leaves the view), then Undo is
  *   pressed (shown again, the resize kept).
- * - **Volume.** The microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
+ * - **Volume.** In the toolbar's Camera and sound popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
  * - **Export.** Export is pressed; main must log the render with the camera shown and the volumes the scene gives, and
  *   publish `<name> (edited).mp4` (「（已剪輯）」 in Traditional Chinese), read from its log line. Its middle frame must hold the camera track's own picture where the scene put the
@@ -27,7 +28,7 @@
  *   handle held a fifth in must show its time above it (the accent's red, `redShare`) and the readout there, and leave
  *   the export shorter when let go with the label gone; dragged past the window's edge and let go there, it must save
  *   the full export length again; a range held across the middle must show its span with the preview at its moving
- *   end, and Delete remove it; with Skimming on, the pointer over the timeline must move the preview there and, moved
+ *   end, and Delete remove it; with Skimming on (its default), the pointer over the timeline must move the preview there and, moved
  *   away, back; the shortcuts button must list the editing shortcuts on a click; and ⌘Z must take every change back.
  * - **The next recording**, by the shortcut, must be plain again: the setting stayed off.
  *
@@ -317,7 +318,7 @@ async function main(): Promise<number> {
     }
     await click(editItem ?? fail("no Edit… item in the card's menu after 3 tries"));
     const marker = "\u0001";
-    const bubblePrefix = translate("Camera: {x}% across, {y}% down. Drag it, or use the arrow keys, to move it.", language, { x: marker, y: marker }).split(marker)[0]!;
+    const bubblePrefix = translate("Camera: {x}% across, {y}% down, {size}% in size. Drag it or use the arrow keys to move it; drag a corner, or press + or −, to resize it.", language, { x: marker, y: marker, size: marker }).split(marker)[0]!;
     const isBubble = (e: WindowElement): boolean => e.role === "AXButton" && e.title.startsWith(bubblePrefix);
     const bubble = await find("camera bubble", isBubble, 20_000);
     // The preview's camera track is copied when the view opens: a moment for it to load and draw.
@@ -418,10 +419,9 @@ async function main(): Promise<number> {
       await sleep(1500);
       check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
 
-      // Skimming: on, the preview shows what is under the pointer, and goes back when it leaves; then off. A pressed
-      // button reaches AX as a toggle (AXCheckBox) and the shortcuts' as a pop-up button: both are found by name.
+      // Skimming, on by default (2026-10-25): the preview shows what is under the pointer, and goes back when it leaves.
+      // The shortcuts' button reaches AX as a pop-up button, found by name.
       const playhead = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
-      await click(await find("Skimming button", (e) => e.title.startsWith(translate("Skimming", language))));
       const over = Math.round(left + span * 0.85);
       await ax().move(over - 20, y);
       await sleep(200);
@@ -433,7 +433,6 @@ async function main(): Promise<number> {
       const back = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
       check({ check: "Skimming: the pointer over the timeline, then away", expected: `the preview at about ${(fullSeconds * 0.85).toFixed(1)} s, then back at ${playhead.toFixed(2)} s`,
         actual: `${skimmed.toFixed(2)} s, then ${back.toFixed(2)} s`, pass: Math.abs(skimmed - fullSeconds * 0.85) <= 0.6 && Math.abs(back - playhead) <= 0.05 });
-      await click(await find("Skimming button", (e) => e.title.startsWith(translate("Skimming", language))));
 
       // The shortcuts, opened by a click on their button.
       const keysButton = await find("shortcuts button", (e) => e.title.startsWith(translate("Keyboard shortcuts", language)));
@@ -462,20 +461,21 @@ async function main(): Promise<number> {
     await shot("2-dragged.png");
     const moved = scene?.camera ?? fail("the drag saved no camera");
 
-    // Resize: the thumb clicked where it is (a click may move it a step: the size it then saved is the start), then the
-    // arrow keys.
-    await click(await find("camera size slider", (e) => e.role === "AXSlider" && e.title === translate("Camera size", language)));
+    // Resize: the bubble clicked, which selects it and saves nothing, then − pressed.
+    await click(await find("camera bubble", isBubble));
     await sleep(600);
     const clicked = readScene()?.scene.camera ?? moved;
     before = revision();
-    await press(KEY.left, SIZE_STEPS);
+    await press(KEY.minus, SIZE_STEPS);
     const resizedLonger = Math.round(Math.max(clicked.width, clicked.height) * 100) - SIZE_STEPS;
     scene = await saved(before, (s) => Boolean(s.camera && Math.round(Math.max(s.camera.width, s.camera.height) * 100) <= resizedLonger));
     check(judgeResize(clicked, scene?.camera, SIZE_STEPS));
     await shot("3-resized.png");
     const resized = scene?.camera ?? fail("the resize saved no camera");
 
-    // Hide, then Undo.
+    // Hide, then Undo; the switch is in the popup the toolbar's Camera and sound button opens (2026-10-25).
+    await click(await find("Camera and sound button", (e) => e.title === translate("Camera and sound", language)));
+    await sleep(400);
     before = revision();
     await click(await find("Show camera switch", (e) => e.role === "AXCheckBox" && e.title === translate("Show camera", language)));
     scene = await saved(before, (s) => s.camera?.shown === false);
@@ -493,8 +493,13 @@ async function main(): Promise<number> {
       actual: `record shown=${String(scene?.camera?.shown)}, ${sameSize ? "size kept" : "size changed"}, bubble ${back ? "drawn" : "missing"}`, pass: scene?.camera?.shown === true && sameSize && back });
     await shot("5-undone.png");
 
-    // The microphone to 50%, by the keyboard after one click on its thumb.
+    // The microphone to 50%, by the keyboard after one click on its thumb, in the volume its toolbar button opens.
     if (microphone) {
+      // The popup may have closed with the Undo click outside it.
+      if (!(await elements()).some((e) => e.role === "AXSlider" && e.title === translate("Microphone", language))) {
+        await click(await find("Camera and sound button", (e) => e.title === translate("Camera and sound", language)));
+        await sleep(400);
+      }
       const slider = await find("Microphone slider", (e) => e.role === "AXSlider" && e.title === translate("Microphone", language));
       await click(slider);
       await sleep(600);

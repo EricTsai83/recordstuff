@@ -3,12 +3,16 @@
  * and place a corner handle gives the bubble. A dragged bubble does not snap; it stays where it is dropped. Pure, so the page draws and the tests check
  * the same numbers; the shared formulas (camera-layout.ts) place the bubble as the export composes it.
  */
-import { bubbleRect, CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, positionFromRect, type CameraPosition, type Rect } from "../../../../shared/camera-layout";
+import { bubbleRect, CAMERA_MAX_SIZE, CAMERA_MIN_SIZE, positionFromRect, type Rect } from "../../../../shared/camera-layout";
 
-/** Which corner of the bubble its resize handle takes: the one facing the picture's middle, so it grows into the picture. */
-export function handleCorner(position: CameraPosition): { right: boolean; bottom: boolean } {
-  return { right: position.x <= 0.5, bottom: position.y <= 0.5 };
-}
+/** A corner of the bubble's box: where a resize handle is. */
+export interface Corner { right: boolean; bottom: boolean }
+
+/** The bubble's four corners, each with a resize handle while the bubble is selected (2026-10-25). */
+export const CORNERS: readonly Corner[] = [
+  { right: false, bottom: false }, { right: true, bottom: false }, { right: false, bottom: true }, { right: true, bottom: true },
+];
+
 
 /** The smallest longer side a bubble of this shape can have: its shorter side still the layout's minimum. */
 export function smallestLonger(width: number, height: number): number {
@@ -25,17 +29,16 @@ export function resized(width: number, height: number, longer: number): { width:
 }
 
 /**
- * The bubble a corner handle dragged to (`px`, `py`) makes: the opposite corner stays where it is, the size follows
- * the pointer with the shape kept, and the place is the one that keeps that corner.
+ * The bubble the handle on `corner` dragged to (`px`, `py`) makes: the opposite corner stays where it is, the size
+ * follows the pointer with the shape kept, and the place is the one that keeps that corner.
  */
 export function resizeTo(
   camera: { x: number; y: number; width: number; height: number },
   shape: { rounding: number; mirror: boolean },
-  px: number, py: number, frameWidth: number, frameHeight: number,
+  px: number, py: number, frameWidth: number, frameHeight: number, corner: Corner,
 ): { x: number; y: number; width: number; height: number } {
   const layout = { width: camera.width, height: camera.height, rounding: shape.rounding, mirror: shape.mirror, positions: [] };
   const now: Rect = bubbleRect(layout, camera, frameWidth, frameHeight);
-  const corner = handleCorner(camera);
   const anchor = { x: corner.right ? now.x : now.x + now.width, y: corner.bottom ? now.y : now.y + now.height };
   const grow = Math.max(Math.abs(px - anchor.x) / now.width, Math.abs(py - anchor.y) / now.height);
   const size = resized(camera.width, camera.height, Math.max(camera.width, camera.height) * grow);
