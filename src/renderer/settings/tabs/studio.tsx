@@ -175,26 +175,27 @@ function AudioPanel() {
       <div className="studio-panel-head"><h2 id="studio-audio-heading"><AudioLines aria-hidden="true" />{rows[0]!.sectionHeading ?? model.text("Audio")}</h2></div>
       <div className="studio-mixer">
         {rows.map((group) => {
-          // Each input under its name (2026-10-24, from the line of controls, where its icon alone said nothing): its
-          // level now with its mute, then, apart, the volume it is recorded at. Both always there, the level at silence
-          // and the mute unavailable while no session runs, so nothing moves as a recording starts.
+          // Each input under its name (2026-10-24, from the line of controls, where its icon alone said nothing): the
+          // volume it is recorded at, then its level now with its mute, with no rule between them, as nowhere else has
+          // one (2026-10-25, the maintainer's request). Both always there, the level at silence and the mute unavailable
+          // while no session runs, so nothing moves as a recording starts.
           const fader = groupOf(`${group.meter!.source}Gain`);
           return (
             <div key={group.id} className="studio-channel">
               <div className="studio-channel-head">
                 <span id={`setting-${group.id}-label`}>{group.label}</span>
               </div>
+              {fader?.slider && (
+                <div className="studio-channel-row">
+                  <span className="studio-channel-caption" aria-hidden="true">{model.text("Recorded")}</span>
+                  <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />
+                </div>
+              )}
               <div className="studio-channel-row">
                 <span className="studio-channel-caption" aria-hidden="true">{model.text("Level")}</span>
                 <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
                   disabled={!group.enabled} describedBy={note ? "studio-audio-note" : undefined} />
               </div>
-              {fader?.slider && (
-                <div className="studio-channel-row studio-channel-fader">
-                  <span className="studio-channel-caption" aria-hidden="true">{model.text("Recorded")}</span>
-                  <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />
-                </div>
-              )}
             </div>
           );
         })}
