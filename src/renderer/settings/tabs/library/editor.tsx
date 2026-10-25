@@ -618,7 +618,7 @@ function EditorPanel() {
       >
         <div ref={track} className="editor-timeline" role="group" tabIndex={-1} aria-label={model.text("Timeline")}>
         {editingSource && <TimelineStrip source={editingSource} />}
-        {parts.map((part) => {
+        {parts.map((part, index) => {
           const label = translate(part.removed ? "{from} to {to}, removed" : "{from} to {to}, kept", language, {
             from: at(part.from / editor.timescale),
             to: at(part.to / editor.timescale),
@@ -630,6 +630,7 @@ function EditorPanel() {
               className="editor-part"
               data-removed={part.removed || undefined}
               data-selected={selected?.from === part.from || undefined}
+              data-split={index < parts.length - 1 || undefined}
               style={{ left: percent(part.from), width: percent(part.to - part.from) }}
               aria-label={label}
               aria-pressed={selected?.from === part.from}
@@ -639,6 +640,9 @@ function EditorPanel() {
             />
           );
         })}
+        {parts.slice(1).map((part) => (
+          <span key={part.from} className="editor-split-mark" style={{ left: percent(part.from) }} aria-hidden="true" />
+        ))}
         {editor.notes.map((note) => (
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
@@ -646,7 +650,6 @@ function EditorPanel() {
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
         </div>
-        <span className="editor-trim-frame" style={{ "--from": trim.start / editor.duration, "--to": trim.end / editor.duration } as React.CSSProperties} aria-hidden="true" />
         {trimHandle("start")}
         {trimHandle("end")}
         {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}
