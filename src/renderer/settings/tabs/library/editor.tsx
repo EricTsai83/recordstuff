@@ -460,11 +460,13 @@ function EditorPanel() {
           ) : null}
         </span>
         {/* The keys, opened by a click as well as named to assistive technology (a
-            hands-on round found a tooltip alone showed nothing on a click). */}
+            hands-on round found a tooltip alone showed nothing on a click). Beside Export, drawn as a key cap rather
+            than as one of the edits' tools (2026-10-25, the maintainer's request). */}
+        <span className="editor-end">
         <Popover>
           <ControlTooltip label={model.text("Keyboard shortcuts")}>
-            <PopoverTrigger render={<Button variant="ghost" size="icon" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
-              <Keyboard />
+            <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+              <Keyboard aria-hidden="true" />
             </PopoverTrigger>
           </ControlTooltip>
           <PopoverContent side="top" align="end" id="editor-keys-popup" className="editor-keys-popup gap-0" finalFocus={false}>
@@ -487,6 +489,7 @@ function EditorPanel() {
           </PopoverContent>
         </Popover>
         <ExportControls />
+        </span>
       </div>
       {/* The trimmer, as iPhone's and QuickTime's: the handles stand outside the kept recording with ‹ ›, lines join them
           above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
@@ -612,8 +615,8 @@ function ExportControls() {
   const editor = model.editorView();
   if (!editor) return null;
   const state = editor.export;
-  // One width in every state (min-width in ui.css), its outcome written in the hint's row: the buttons beside it and the
-  // rows under it stay where they are as an export starts, runs and ends (2026-10-25).
+  // Its outcome written before it, in the space that also takes its changes of width: the edits and the times, and the
+  // rows under them, stay where they are as an export starts, runs and ends (2026-10-25).
   if (state.phase === "exporting") {
     const percent = Math.round(state.progress * 100);
     return (

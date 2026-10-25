@@ -100,7 +100,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("idle with editable recordings off offers one editable recording under Start, on macOS only", () => {
     const m = trayModel({ type: "idle" }, { ...mac, editableRecording: false });
-    expect(labels(m.menu).slice(0, 3)).toEqual(["開始錄影", "開始可剪輯錄影", "錄製麥克風"]);
+    expect(labels(m.menu).slice(0, 3)).toEqual(["開始錄影", "開始可編輯錄影", "錄製麥克風"]);
     expect(enabledActions(m.menu)).toContain("startEditable");
     expect(enabledActions(trayModel({ type: "idle" }, { ...win, editableRecording: false }).menu)).not.toContain("startEditable");
     expect(enabledActions(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, editableRecording: false }).menu)).not.toContain("startEditable");

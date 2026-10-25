@@ -160,12 +160,12 @@ describe("an export", () => {
   it("is named in the app's language, numbered past a taken name", async () => {
     const ctx = setup({ language: () => "zh-TW" });
     await editedOnce(ctx);
-    fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已剪輯）.mp4"), "someone's own file");
+    fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯）.mp4"), "someone's own file");
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（已剪輯 2）.mp4", message: "已匯出為 2026-10-24 10-00-00（已剪輯 2）.mp4。" });
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已剪輯）.mp4"), "utf8")).toBe("someone's own file");
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已剪輯 2）.mp4"), "utf8")).toBe("a whole export");
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（已編輯 2）.mp4", message: "已匯出為 2026-10-24 10-00-00（已編輯 2）.mp4。" });
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯）.mp4"), "utf8")).toBe("someone's own file");
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯 2）.mp4"), "utf8")).toBe("a whole export");
   });
 
   it("is published beside the recording as <name> (edited).mp4, numbered past taken names, never over them", async () => {
@@ -391,10 +391,10 @@ describe("publication", () => {
   it("names exports (edited), then (edited 2) and on, in the app's language", () => {
     expect(editedName("Talk", 1)).toBe("Talk (edited).mp4");
     expect(editedName("Talk", 3)).toBe("Talk (edited 3).mp4");
-    expect(editedName("Talk", 1, "zh-TW")).toBe("Talk（已剪輯）.mp4");
-    expect(editedName("Talk", 2, "zh-TW")).toBe("Talk（已剪輯 2）.mp4");
+    expect(editedName("Talk", 1, "zh-TW")).toBe("Talk（已編輯）.mp4");
+    expect(editedName("Talk", 2, "zh-TW")).toBe("Talk（已編輯 2）.mp4");
     // A title is taken as it is, never as a placeholder.
-    expect(editedName("{number} {title}", 2, "zh-TW")).toBe("{number} {title}（已剪輯 2）.mp4");
+    expect(editedName("{number} {title}", 2, "zh-TW")).toBe("{number} {title}（已編輯 2）.mp4");
   });
 
   it("on a volume without hard links reserves the name first, then moves the file onto it", async () => {

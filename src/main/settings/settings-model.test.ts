@@ -800,7 +800,7 @@ describe("editable recordings (plan 087)", () => {
     expect(settingsAction(idle, context, "editableRecording", "on")).toEqual({ setEditableRecording: true });
     expect(settingsAction(idle, { ...context, editableRecording: true }, "editableRecording", "off")).toEqual({ setEditableRecording: false });
     expect(group({ type: "recording", startedAt: new Date().toISOString() }, context, "editableRecording")?.enabled).toBe(false);
-    expect(group(idle, { ...context, language: "zh-TW" }, "editableRecording")?.label).toBe("可剪輯錄影");
+    expect(group(idle, { ...context, language: "zh-TW" }, "editableRecording")?.label).toBe("可編輯錄影");
     const windows = { ...context, platform: "win32" as const, editableRecording: true };
     expect(group(idle, windows, "editableRecording")).toMatchObject({ enabled: false, note: "Editable recordings are available on macOS only." });
     expect(settingsAction(idle, windows, "editableRecording", "on")).toBeUndefined();
@@ -1429,7 +1429,7 @@ describe("the Recordings tab", () => {
   it("says which recordings are editable (plan 087), in the view's language", () => {
     const marked = [{ ...files[0]!, editable: true as const }, files[1]!];
     expect(settingsView(idle, library({ files: marked })).library!.items.map(item => item.editable)).toEqual(["Editable", undefined]);
-    expect(settingsView(idle, { ...library({ files: marked }), language: "zh-TW" }).library!.items[0]!.editable).toBe("可剪輯");
+    expect(settingsView(idle, { ...library({ files: marked }), language: "zh-TW" }).library!.items[0]!.editable).toBe("可編輯");
   });
   it("names each recording's subfolder and lists the folders the library offers (plan 071)", () => {
     const view = settingsView(idle, library({

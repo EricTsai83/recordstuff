@@ -5,7 +5,7 @@
  * **The recording is never written.** It is opened only to read its identity (edit-store.ts); the engine opens it
  * read-only. The export goes to an owned temporary file in the same folder (`.<name>.recordstuff-export-<id>.part`,
  * hidden, so the Recordings tab does not list it), whose path is journalled in userData before the worker creates it.
- * It is published under a name nothing holds (`<name> (edited).mp4`, 「<name>（已剪輯）.mp4」 in Traditional Chinese,
+ * It is published under a name nothing holds (`<name> (edited).mp4`, 「<name>（已編輯）.mp4」 in Traditional Chinese,
  * numbered past taken ones) only once the worker
  * finished and synced it, by a hard link that fails rather than replaces (or, on a volume without hard links, an
  * exclusive placeholder renamed over). Cancel, a worker crash, a full disk, a refused rename and quit remove only that
@@ -122,7 +122,7 @@ export function partName(title: string): string {
   return `.${title}.recordstuff-export-${randomBytes(6).toString("hex")}.part`;
 }
 
-/** `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已剪輯）.mp4」. */
+/** `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已編輯）.mp4」. */
 export function editedName(title: string, attempt: number, language?: Language): string {
   return `${attempt <= 1 ? translate("{title} (edited)", language, { title }) : translate("{title} (edited {number})", language, { title, number: attempt })}.mp4`;
 }

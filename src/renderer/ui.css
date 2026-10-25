@@ -2370,7 +2370,7 @@
   }
   .clip-text {
     /* Room on the title's line for the ⋮ button at its right. */
-    padding: 10px 30px 0 2px;
+    padding: 10px 32px 0 2px;
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -2392,11 +2392,14 @@
   .clip-detail {
     display: none;
   }
-  /* On the title's line, at its right: the picture's height, then the text's top padding. */
+  /* On the title's line, at its right: the picture's height, then the text's top padding. Larger than the other small
+     icons, in the text's colour, so it reads at a glance once the card is under the pointer (2026-10-25, the maintainer's
+     request). */
   .clip-more {
     position: absolute;
-    top: calc(100cqw * 9 / 16 + 8px);
+    top: calc(100cqw * 9 / 16 + 6px);
     right: 0;
+    color: var(--foreground);
     opacity: 0;
   }
   /* The preview's speaker, at the picture's top right while the preview plays. */
@@ -2814,7 +2817,7 @@
     height: 14px;
     background: var(--foreground);
   }
-  /* The toolbar over the timeline: the edits, the times, the outcome taking what is left, the keys, Skimming, Export. */
+  /* The toolbar over the timeline: the edits, the times, the outcome taking what is left, then the keys (with Skimming) against Export. */
   .editor-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -2918,12 +2921,49 @@
     align-items: center;
     gap: 8px;
   }
-  /* As wide as its widest state (exporting: the bar, its percent and Cancel), so its neighbours never move. */
   .editor-export {
     flex-wrap: nowrap;
-    justify-content: flex-end;
-    min-width: 13.5rem;
+  }
+  /* The keys and Export at the row's end, the keys against Export (2026-10-25, the maintainer's request); the outcome
+     before them takes what Export's states leave, so the edits and the times never move. */
+  .editor-end {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-inline-start: 4px;
+  }
+  /* A key cap, not one of the edits' tools: a muted key with a deeper lower edge. */
+  .editor-keys-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 7px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    color: var(--muted-foreground);
+    background: var(--muted);
+    outline: none;
+    cursor: pointer;
+    transition: color 100ms, border-color 100ms;
+  }
+  .editor-keys-trigger svg {
+    width: 15px;
+    height: 15px;
+  }
+  .editor-keys-trigger:hover,
+  .editor-keys-trigger[aria-expanded="true"] {
+    color: var(--foreground);
+    border-color: color-mix(in oklab, var(--foreground) 25%, var(--border));
+  }
+  .editor-keys-trigger:active {
+    border-bottom-width: 1px;
+    transform: translateY(1px);
+  }
+  .editor-keys-trigger:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 50%, transparent);
   }
   .editor-spacer {
     flex: 1 1 0;
@@ -2990,15 +3030,29 @@
     cursor: grab;
     touch-action: none;
     background: var(--media);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--media-foreground) 55%, transparent);
+  }
+  /* The edge, drawn over the picture inside the bubble's own rounding (2026-10-25, the maintainer's report): a ring of
+     box-shadow outside it met the picture's anti-aliased corners, which covered half of it there and left the curves
+     thinner than the straight sides. */
+  .editor-camera::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 1px solid color-mix(in oklab, var(--media-foreground) 55%, transparent);
+    border-radius: inherit;
+    pointer-events: none;
   }
   .editor-camera[data-dragging] {
     cursor: grabbing;
   }
   /* Under the pointer or held, the bubble shows an edge whatever its picture, which a dark room can make the picture's own. */
+  .editor-camera:hover::after,
+  .editor-camera[data-dragging]::after {
+    border: 2px solid var(--media-foreground);
+  }
   .editor-camera:hover,
   .editor-camera[data-dragging] {
-    box-shadow: 0 0 0 2px var(--media-foreground), 0 0 0 4px color-mix(in oklab, var(--media) 45%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--media) 45%, transparent);
   }
   .editor-camera:focus-visible {
     outline: 2px solid var(--ring);
@@ -3009,9 +3063,13 @@
   .editor-camera[data-selected] {
     outline: none;
   }
+  .editor-camera[data-selected]:hover::after,
+  .editor-camera[data-selected][data-dragging]::after {
+    border: 1px solid color-mix(in oklab, var(--media-foreground) 55%, transparent);
+  }
   .editor-camera[data-selected]:hover,
   .editor-camera[data-selected][data-dragging] {
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--media-foreground) 55%, transparent);
+    box-shadow: none;
   }
   /* The handles' layer, over the player's shaded bars (the bubble's stays under them). */
   .editor-selection {

@@ -3,7 +3,7 @@
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, Scissors } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -173,7 +173,7 @@ export const Clip = memo(function Clip({
         >
           <ControlTooltip label={translate("More actions for {title}", model.view?.language, { title: item.title })}>
             <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" />}
+              render={<Button variant="ghost" size="icon" />}
               id={`clip-${item.id}-more`}
               className="clip-more"
               aria-label={translate(
@@ -182,7 +182,7 @@ export const Clip = memo(function Clip({
                 { title: item.title },
               )}
             >
-              <EllipsisVertical />
+              <EllipsisVertical className="size-[18px]" strokeWidth={2.5} />
             </DropdownMenuTrigger>
           </ControlTooltip>
           <DropdownMenuContent
@@ -267,7 +267,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
         id={`${prefix}-edit`}
         onClick={() => void model.openEditor(item)}
       >
-        <Scissors />
+        <SquarePen />
         <span className="menu-label">{t("Edit…")}</span>
       </Item>
       {targets.length > 0 && (
