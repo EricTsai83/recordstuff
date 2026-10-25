@@ -613,6 +613,17 @@ function shownRemoved(editor: EditorView): EditRange[] {
   return trimDraft ? trimRemoved(editor, trimDraft.edge, trimDraft.at) : editor.removed;
 }
 
+/**
+ * The export's length as drawn, in seconds: while a trim handle is dragged, the saved length changed by what the drag
+ * adds or gives back, so it follows the handle without asking main for a plan on every move. The saved plan's own
+ * adjustments (a part resuming at a later key frame) are kept; the plan made on letting go replaces the estimate.
+ */
+export function shownOutputSeconds(editor: EditorView): number {
+  if (!trimDraft) return editor.outputSeconds;
+  const total = (ranges: readonly EditRange[]): number => ranges.reduce((sum, [from, to]) => sum + to - from, 0);
+  return Math.max(0, editor.outputSeconds + (total(editor.removed) - total(shownRemoved(editor))) / editor.timescale);
+}
+
 /** The removals with the recording's start or end trimmed to `at`: what was trimmed before goes, `at` takes its place. */
 function trimRemoved(editor: EditorView, edge: TrimEdge, at: number): EditRange[] {
   const now = trimmed(editor);

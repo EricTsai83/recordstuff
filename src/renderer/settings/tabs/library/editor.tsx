@@ -527,8 +527,8 @@ function EditorPanel() {
               })
               : translate("Playhead {time}", language, { time: precise(time) })}
           </span>
-          {/* To the hundredth, as the times beside it (a hands-on round). */}
-          <span className="editor-length">{translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}</span>
+          {/* To the hundredth, as the times beside it (a hands-on round); following a trim handle as it is dragged. */}
+          <span className="editor-length">{translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}</span>
         </span>
         <span className="editor-spacer" />
         {/* The keys, opened by a click as well as named to assistive technology (a

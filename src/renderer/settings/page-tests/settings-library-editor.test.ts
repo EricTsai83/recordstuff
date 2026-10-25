@@ -86,6 +86,18 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   await vi.waitFor(() => expect(parts()).toHaveLength(2));
   expect(choices.length).toBe(saves);
 
+  // The export's length follows a trim handle as it moves, before it is saved, and is main's again once it is.
+  const end = document.getElementById("editor-trim-end")!;
+  end.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:09.00"));
+  expect(choices.length).toBe(saves);
+  end.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [[810_000, 900_000]], revision: 4 }));
+  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:09.00"));
+  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:10.00"));
+  await vi.waitFor(() => expect(parts()).toHaveLength(2));
+
   // Escape lets go of the selected part and leaves the view open (2026-10-26).
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[1]!);
   await vi.waitFor(() => expect(document.querySelectorAll('.editor-part[aria-pressed="true"]')).toHaveLength(1));
