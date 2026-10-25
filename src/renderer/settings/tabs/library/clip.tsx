@@ -31,10 +31,12 @@ export const Clip = memo(function Clip({
   const preview = useSyncExternalStore(subscribePreview, () => previewing() === item.id);
   const sound = model.previewSound();
   const [failed, setFailed] = useState(false),
+    [portrait, setPortrait] = useState(false),
     [arrived, setArrived] = useState(false),
     title = useTruncated<HTMLSpanElement>();
   useEffect(() => {
     setFailed(false);
+    setPortrait(false);
   }, [item.thumbnail]);
   useEffect(() => {
     if (model.takeArrival(item.id)) setArrived(true);
@@ -94,7 +96,7 @@ export const Clip = memo(function Clip({
           }}
         >
           <span
-            className={`clip-thumb${failed ? " no-thumb" : ""}${preview ? " previewing" : ""}`}
+            className={`clip-thumb${failed ? " no-thumb" : ""}${portrait ? " portrait" : ""}${preview ? " previewing" : ""}`}
             // Only a mouse resting on a grid card's picture previews it; a list row's picture is too small to watch.
             onPointerEnter={(event) => {
               if (event.pointerType === "mouse" && event.currentTarget.closest("#library")?.getAttribute("data-layout") === "grid")
@@ -111,8 +113,12 @@ export const Clip = memo(function Clip({
               src={item.thumbnail}
               loading="lazy"
               decoding="async"
-              onError={() => flushSync(() => setFailed(true))}
-              onLoad={() => flushSync(() => setFailed(false))}
+              onError={() => flushSync(() => { setFailed(true); setPortrait(false); })}
+              // A portrait recording is shown whole (ui.css), told by its picture: the card carries no size of its own.
+              onLoad={(event) => {
+                const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+                flushSync(() => { setFailed(false); setPortrait(height > width); });
+              }}
             />
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}

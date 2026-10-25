@@ -103,7 +103,9 @@ export function ClipPreview({ item, sound }: { item: LibraryItemView; sound: boo
   const [shown, setShown] = useState(false),
     // The small picture above the bar, and its own video, exist only while the pointer is on the bar's strip.
     [peeking, setPeeking] = useState(false),
-    [pressed, setPressed] = useState(false);
+    [pressed, setPressed] = useState(false),
+    // Told by the video itself, so a portrait recording shows whole even when its card has no thumbnail (ui.css).
+    [portrait, setPortrait] = useState(false);
   useEffect(() => {
     const el = element.current;
     if (!el) return;
@@ -156,7 +158,7 @@ export function ClipPreview({ item, sound }: { item: LibraryItemView; sound: boo
     if (move) seekMain.current(time);
   };
   return (
-    <span className="clip-preview" data-shown={shown || undefined} aria-hidden="true">
+    <span className="clip-preview" data-shown={shown || undefined} data-portrait={portrait || undefined} aria-hidden="true">
       <video
         ref={element}
         src={item.video}
@@ -166,6 +168,7 @@ export function ClipPreview({ item, sound }: { item: LibraryItemView; sound: boo
         disablePictureInPicture
         preload="auto"
         tabIndex={-1}
+        onLoadedMetadata={(event) => setPortrait(event.currentTarget.videoHeight > event.currentTarget.videoWidth)}
         onPlaying={() => setShown(true)}
       />
       <span

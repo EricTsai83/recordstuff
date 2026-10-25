@@ -2298,6 +2298,14 @@
     gap: 3px;
     min-width: 0;
   }
+  /* A portrait recording shows whole in the card's 16:9, on the player's ground either side (2026-10-25). */
+  .clip-thumb.portrait {
+    background: var(--media);
+  }
+  .clip-thumb.portrait img,
+  .clip-preview[data-portrait] > video {
+    object-fit: contain;
+  }
   .clip-title {
     font-size: 13px;
     font-weight: 500;
