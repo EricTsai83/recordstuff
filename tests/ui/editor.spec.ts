@@ -49,6 +49,8 @@ async function openEditor(parts = 1): Promise<void> {
   await expect(page.locator(".editor-part")).toHaveCount(parts);
   // Measured once the dialog has finished opening: positions taken while it grows in are not where it settles.
   await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+  // And once its video's length is known: read before its metadata, it is NaN (seen on CI, 2026-10-25).
+  await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("#editor .editor-stage video")?.duration ?? 0) > 0);
 }
 
 async function seek(seconds: number): Promise<void> {
