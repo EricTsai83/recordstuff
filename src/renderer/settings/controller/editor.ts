@@ -446,7 +446,12 @@ export function splitAtPlayhead(): void {
 }
 
 /** Removes the selected part, or keeps it again when it was removed. */
-export async function toggleSelected(): Promise<void> {
+export function toggleSelected(): Promise<void> {
+  return inTurn(toggleNow);
+}
+
+async function toggleNow(): Promise<void> {
+  while (editorSaving) await saveDone;
   const editor = editorView();
   if (!editor || editor.state !== "ready" || editorSaving || editor.export.phase === "exporting") return;
   if (rangeSelection) return removeRange(editor, rangeSelection);
@@ -543,7 +548,11 @@ export function moveTrim(edge: TrimEdge, ticks: number): void {
 }
 
 /** Saves where a trim handle was let go, as one change Undo takes back. */
-export async function commitTrim(): Promise<void> {
+export function commitTrim(): Promise<void> {
+  return inTurn(commitTrimNow);
+}
+
+async function commitTrimNow(): Promise<void> {
   while (editorSaving) await saveDone;
   const draft = trimDraft;
   const editor = editorView();
@@ -560,7 +569,8 @@ export async function commitTrim(): Promise<void> {
   }
   undoStack.push(current(editor));
   const saved = await save(removed);
-  trimDraft = undefined;
+  // A handle moved again while this saved (a key pressed in quick turn) keeps its new place, for its own save.
+  if (trimDraft === draft) trimDraft = undefined;
   if (!saved) {
     undoStack.pop();
     draw();
@@ -589,17 +599,30 @@ function current(editor: EditorView): EditState {
   return { removed: copy(editor.removed), ...(editor.editable ? { scene: editor.editable.scene } : {}), splits: [...splits] };
 }
 
-export async function undoEdit(): Promise<void> {
-  await step(undoStack, redoStack, "Undone");
+/**
+ * The timeline's saving changes, run one after another (2026-10-25): a key pressed while one saves waits its turn, so
+ * ⌘Z straight after ⇧⌘Z takes back what the redo made, not what lay under it.
+ */
+let edits: Promise<unknown> = Promise.resolve();
+function inTurn<T>(run: () => Promise<T>): Promise<T> {
+  const next = edits.then(run, run);
+  edits = next.catch(() => undefined);
+  return next;
+}
+
+export function undoEdit(): Promise<void> {
+  return inTurn(() => step(undoStack, redoStack, "Undone"));
 }
 
 /** Makes again the change Undo took back last (⇧⌘Z / Ctrl+Shift+Z or Ctrl+Y). */
-export async function redoEdit(): Promise<void> {
-  await step(redoStack, undoStack, "Redone");
+export function redoEdit(): Promise<void> {
+  return inTurn(() => step(redoStack, undoStack, "Redone"));
 }
 
 /** Saves the newest edit of `from`, keeping the one it replaces on `to`; a failed save leaves both as they were. */
 async function step(from: EditState[], to: EditState[], said: "Undone" | "Redone"): Promise<void> {
+  // A key pressed while the last change saves waits for it rather than being lost (⇧⌘Z straight after ⌘Z, in CI).
+  while (editorSaving) await saveDone;
   const editor = editorView();
   if (!editor || editor.state !== "ready" || editorSaving || editor.export.phase === "exporting") return;
   const next = from.pop();
