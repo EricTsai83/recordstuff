@@ -16,6 +16,7 @@ Updated: 2026-09-21. These documents describe the current implementation and rep
 | [Recording pipeline](recording.md) | Start, capture, encoding, chunks, stop, failure, and file durability |
 | [Cutting a recording](editing.md) | The edit view, edit records, the export worker, the smart cut of pictures and sound, publication and admission |
 | [Desktop features](desktop.md) | Tray, notifications, permissions, settings, and logging |
+| [Recordings tab performance](library-performance.md) | Design record: how the Recordings tab stays responsive with many recordings, what it deliberately does not do (virtualization), and when to revisit |
 | [Function reference](functions.md) | Named functions and methods, contracts, side effects, and collaborators |
 | [Website, App, and update-feed delivery](delivery.md) | Flow diagrams, deployment ownership, token requirements, and release boundaries |
 | [GitHub release automation](releases.md) | Tag-triggered build, signing secrets, gates, publishing and failure handling |

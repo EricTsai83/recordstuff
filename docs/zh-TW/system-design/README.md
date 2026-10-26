@@ -16,6 +16,7 @@
 | [錄影管線](recording.md) | 開始、編碼、分段傳輸、停止、失敗與檔案保存如何運作 |
 | [剪輯錄影](editing.md) | 剪輯畫面、剪輯紀錄、匯出 worker、畫面與聲音的 smart cut、發布與 admission |
 | [桌面功能](desktop.md) | 選單、通知、權限、設定與 log 的細節 |
+| [錄影檔分頁的效能設計](library-performance.md) | 設計紀錄：錄影很多時錄影檔分頁如何保持順暢、刻意不做什麼（虛擬化），以及何時重新評估 |
 | [函式設計索引](functions.md) | 各原始碼模組的函式／方法、輸入輸出、副作用與協作關係 |
 | [網站、App 與更新 feed 交付](delivery.md) | 流程圖、部署負責者、token 需求與發布邊界 |
 | [GitHub 發布自動化](releases.md) | tag 觸發建置、簽署 secrets、閘門、公開發布與失敗處理 |
