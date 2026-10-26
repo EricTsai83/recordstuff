@@ -4,7 +4,7 @@
 
 ## 開發流程
 
-專案使用 pnpm，package.json 的 Node 要求為 ≥22.12；TypeScript 量測腳本使用 Node 24 直接執行。FFmpeg／ffprobe 只供開發量測，不隨 App 安裝。
+專案使用 pnpm，package.json 的 Node 要求為 ≥22.18，這是第一個不需加旗標就能執行 TypeScript runner（`pnpm test:scope`、各驗收回合）的 Node 22；TypeScript 量測腳本使用 Node 24 直接執行。FFmpeg／ffprobe 只供開發量測，不隨 App 安裝。
 
 | 指令 | 用途 |
 | --- | --- |

@@ -4,7 +4,7 @@
 
 ## Developer workflow
 
-Use pnpm and a compatible Node version; the verification TypeScript scripts use Node 24 directly. Package.json declares Node ≥22.12 for the project. FFmpeg/ffprobe are development tools, not recipient dependencies.
+Use pnpm and a compatible Node version; the verification TypeScript scripts use Node 24 directly. Package.json declares Node ≥22.18 for the project, the first Node 22 that runs the TypeScript runners (`pnpm test:scope`, the acceptance rounds) without a flag. FFmpeg/ffprobe are development tools, not recipient dependencies.
 
 | Command | Purpose |
 | --- | --- |

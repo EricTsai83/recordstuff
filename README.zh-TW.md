@@ -73,7 +73,7 @@ pnpm dist:mac     # 自簽 DMG → dist/
 pnpm dist:win     # 未簽章 Windows x64 安裝程式 → dist/
 ```
 
-需要 Node ≥22.12 與 Rust stable 工具鏈（用來建置原生擷取引擎）；自簽建置需要本機的 `RecordStuff Dev` 簽署憑證。
+需要 Node ≥22.18 與 Rust stable 工具鏈（用來建置原生擷取引擎）；自簽建置需要本機的 `RecordStuff Dev` 簽署憑證。
 
 - [貢獻指南](docs/zh-TW/CONTRIBUTING.md)：開發環境、程式碼導覽、測試與 PR
 - [System design](docs/zh-TW/system-design/README.md) · [工具](docs/zh-TW/system-design/tooling.md) · [驗證紀錄](docs/zh-TW/verification/README.md) · [計畫](plans/README.zh-TW.md) · [發布](docs/zh-TW/system-design/releases.md)
