@@ -634,6 +634,8 @@ export const ZH_TW = {
   "Playhead {time}": "播放位置 {time}",
   "Skimming": "滑過預覽",
   "Editing shortcuts": "編輯快捷鍵",
+  "The preview stopped because the recording could not be read. Reload it to go on.": "無法讀取錄影，預覽已停止。重新載入後即可繼續。",
+  "Reload preview": "重新載入預覽",
   "Space": "空白鍵",
   "Move a frame": "逐格移動",
   "Move a second": "移動一秒",

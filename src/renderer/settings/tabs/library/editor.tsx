@@ -66,10 +66,12 @@ function usePlaying(): boolean {
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (!video) return;
-    const show = (): void => setPlaying(!video.paused);
+    // A failed or finished recording is not playing, though Chromium may leave it unpaused (2026-10-26).
+    const show = (): void => setPlaying(!video.paused && !video.ended && !video.error);
     show();
-    for (const name of ["play", "pause", "ended", "emptied"]) video.addEventListener(name, show);
-    return () => { for (const name of ["play", "pause", "ended", "emptied"]) video.removeEventListener(name, show); };
+    const events = ["play", "pause", "ended", "emptied", "error", "loadstart"];
+    for (const name of events) video.addEventListener(name, show);
+    return () => { for (const name of events) video.removeEventListener(name, show); };
   }, [video]);
   return playing;
 }
@@ -270,11 +272,20 @@ export function EditorDialog() {
               videoRef={model.attachEditorVideo}
               // Its sound goes through Web Audio at an editable recording's volumes (plan 087), which needs CORS.
               crossOrigin="anonymous"
+              error={model.editorPreviewError}
+              onError={model.editorPreviewFailed}
               controls={false}
               onDoubleClick={() => undefined}
               fullScreen={() => undefined}
               trailing={null}
               close={
+                <>
+                {model.editorPreviewError && (
+                  <Button id="editor-reload" variant="media" onClick={() => model.reloadEditorPreview()}>
+                    <RotateCcw />
+                    {model.text("Reload preview")}
+                  </Button>
+                )}
                 <ControlTooltip label={exporting ? model.text("Cancel the export to close") : model.text("Close")}>
                   <Button
                     variant="media"
@@ -287,6 +298,7 @@ export function EditorDialog() {
                     <X />
                   </Button>
                 </ControlTooltip>
+                </>
               }
             />
           )}

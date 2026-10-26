@@ -89,6 +89,15 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   video.dispatchEvent(new Event("seeked"));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")!.dataset.hidden).toBeUndefined());
   expect(document.querySelector(".editor-camera-ghost")).toBeNull();
+  // Played to its very end, the preview reports the end itself, where the stretch ends: the camera stays hidden, as
+  // the export's last picture has it (Codex's computer-use round of 2026-10-26 saw it come back there).
+  video.currentTime = 10;
+  video.dispatchEvent(new Event("ended"));
+  await vi.waitFor(() => expect(document.getElementById("editor-camera")!.dataset.hidden).toBe("true"));
+  expect(document.querySelector(".editor-camera-ghost")).not.toBeNull();
+  video.currentTime = 1;
+  video.dispatchEvent(new Event("seeked"));
+  await vi.waitFor(() => expect(document.getElementById("editor-camera")!.dataset.hidden).toBeUndefined());
 
   // The lane's hidden stretch, chosen from the keyboard, then the camera button: shown there again, nothing hidden.
   const hiddenStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[1]!;

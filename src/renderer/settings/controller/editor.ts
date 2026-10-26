@@ -24,6 +24,12 @@ import { openPlayer, playingItem } from "./player";
 
 export let editingItem: LibraryItemView | undefined;
 export let editorVideo: HTMLVideoElement | null = null;
+/**
+ * Why the preview stopped, said over it with Reload preview (2026-10-26: a media error left Play showing Pause over a
+ * still picture, with nothing on screen to say so, and the view opened again on the same element kept it; Codex's
+ * computer-use round). Empty while it plays.
+ */
+export let editorPreviewError = "";
 /** Where the timeline was split without a removal on either side, in the video's timescale. */
 let splits: number[] = [];
 /** The selected part, by where it starts. */
@@ -131,6 +137,10 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   undoStack.length = 0;
   redoStack.length = 0;
   sceneDraft = undefined;
+  editorPreviewError = "";
+  dropReload();
+  // The dialog keeps its player between views: one that failed last time loads again rather than stay broken.
+  if (editorVideo?.error && editingItem.video === editorVideo.getAttribute("src")) editorVideo.load();
   draw();
   // Refused (another recording's export runs): the view closes and says so.
   if (!(await send({ action: "open" })) && editingItem === item && !editorView()) {
@@ -230,6 +240,8 @@ async function saved(): Promise<void> {
 
 function finishClose(item: LibraryItemView, restore: boolean): void {
   editingItem = undefined;
+  editorPreviewError = "";
+  dropReload();
   volumeOpen = false;
   laneInput = undefined;
   exportWatched = undefined;
@@ -459,8 +471,12 @@ function watchFrames(video: HTMLVideoElement): void {
     if (!editor || video.paused) return;
     // Volume stretches (2026-10-26): each frame shown sets the sounds' gains for its time; nothing without any.
     if (editorScene(editor)?.volumeStretches) syncPreviewAudio();
-    const time = metadata.mediaTime * editor.timescale;
-    const range = editor.skipped.find(([from, to]) => time >= from && time < to);
+    // Half a frame either way: a frame's media time is rounded to microseconds and need not fall on the timescale's
+    // grid, so the frame a range ends at could read as just inside it and be sought to again and again, the preview
+    // standing still while it shows Pause.
+    const time = metadata.mediaTime * editor.timescale,
+      slack = editor.timescale / Math.max(1, editor.frameRate) / 2;
+    const range = editor.skipped.find(([from, to]) => time >= from - slack && time < to - slack);
     if (!range) return;
     if (range[1] >= editor.duration) {
       video.pause();
@@ -520,11 +536,51 @@ export function keepSkimmed(): void {
   skimFrom = undefined;
 }
 
-/** Plays the preview, or pauses it. */
+/** Plays the preview, or pauses it; a preview that failed loads again first, then plays. */
 export function togglePlayback(): void {
   if (!editorVideo) return;
-  if (editorVideo.paused) void editorVideo.play().catch(() => undefined);
+  if (editorVideo.error) reloadEditorPreview(true);
+  else if (editorVideo.paused) void editorVideo.play().catch(() => undefined);
   else editorVideo.pause();
+}
+
+/** The preview's media failed while the view is open: said over it, with Reload preview. */
+export function editorPreviewFailed(): void {
+  if (!editingItem || !editorVideo?.getAttribute("src")) return;
+  dropReload();
+  editorPreviewError = translate("The preview stopped because the recording could not be read. Reload it to go on.", view?.language);
+  announce(editorPreviewError);
+}
+
+/**
+ * A reload waiting for its metadata. Let go when the view closes or opens, the preview fails again or reloads again,
+ * so a reload that never ends cannot seek or play the next recording the kept-mounted player shows (review of
+ * 2026-10-26).
+ */
+let pendingReload: AbortController | undefined;
+function dropReload(): void {
+  pendingReload?.abort();
+  pendingReload = undefined;
+}
+
+/** Reload preview: the recording loads again and comes back to where the playhead was, playing if asked. */
+export function reloadEditorPreview(play = false): void {
+  const video = editorVideo, item = editingItem;
+  if (!video || !item) return;
+  dropReload();
+  const at = video.currentTime, source = video.getAttribute("src");
+  const reload = new AbortController();
+  pendingReload = reload;
+  editorPreviewError = "";
+  draw();
+  video.addEventListener("loadedmetadata", () => {
+    if (pendingReload !== reload) return;
+    pendingReload = undefined;
+    if (editingItem !== item || editorVideo !== video || video.getAttribute("src") !== source) return;
+    video.currentTime = at;
+    if (play) void video.play().catch(() => undefined);
+  }, { once: true, signal: reload.signal });
+  video.load();
 }
 
 /** Moves the paused playhead by `frames` frames and `seconds` seconds, onto a frame start. */

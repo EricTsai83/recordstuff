@@ -67,9 +67,12 @@ function useFrameSize(video: HTMLVideoElement | null): { width: number; height: 
 
 /**
  * Whether the camera is in the picture where the preview is, and whether the preview is paused. Followed frame by frame
- * only while the camera is hidden over some stretches; a draw happens only when either changes.
+ * only while the camera is hidden over some stretches; a draw happens only when either changes. The time asked about
+ * stops short of `duration`: played to its end the preview reports the end itself, which no stretch holds (they end
+ * there, open), so the camera came back on the last frame though the export leaves it out (Codex's computer-use round
+ * of 2026-10-26); the last picture's own time is inside the stretch.
  */
-function useCameraNow(camera: SceneCamera | undefined, timescale: number): { shown: boolean; paused: boolean } {
+function useCameraNow(camera: SceneCamera | undefined, timescale: number, duration: number): { shown: boolean; paused: boolean } {
   const video = model.editorVideo;
   const [shown, setShown] = useState(true);
   const [paused, setPaused] = useState(true);
@@ -77,7 +80,8 @@ function useCameraNow(camera: SceneCamera | undefined, timescale: number): { sho
   useEffect(() => {
     if (!video) return;
     let callback: number | undefined;
-    const check = (seconds: number): void => setShown(!stretches || cameraShownAt(stretches, Math.round(seconds * timescale)));
+    const check = (seconds: number): void =>
+      setShown(!stretches || cameraShownAt(stretches, Math.min(Math.round(seconds * timescale), duration - 1)));
     const show = (): void => {
       check(video.currentTime || 0);
       setPaused(video.paused);
@@ -105,7 +109,7 @@ function useCameraNow(camera: SceneCamera | undefined, timescale: number): { sho
       for (const [name, listener] of events) video.removeEventListener(name, listener);
       if (callback !== undefined) video.cancelVideoFrameCallback(callback);
     };
-  }, [video, stretches, timescale]);
+  }, [video, stretches, timescale, duration]);
   return { shown: !camera || (camera.shown && (!stretches || shown)), paused };
 }
 
@@ -154,7 +158,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = model.editorScene(editor);
   const camera = scene?.camera;
-  const now = useCameraNow(camera, editor.timescale);
+  const now = useCameraNow(camera, editor.timescale, editor.duration);
   // A hidden bubble leaves with the focus, which no blur reports: shown again, it is not selected.
   useEffect(() => { if (!now.shown) setSelected(false); }, [now.shown]);
   // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
