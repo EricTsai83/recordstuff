@@ -8,7 +8,7 @@
  * record stores them; the view also gives seconds for the page's player.
  */
 
-import { EDITABLE_DESCRIPTION_LIMIT, isEditScene, isExportRender, type EditableSound, type EditScene, type ExportRender } from "./editable";
+import { EDITABLE_DESCRIPTION_LIMIT, isEditScene, isExportRender, mergeRanges, type EditableSound, type EditScene, type ExportRender } from "./editable";
 
 /** A removed range, `[from, to)` in the video's timescale. */
 export type EditRange = [number, number];
@@ -236,12 +236,5 @@ export function isEditorChoice(value: unknown): value is EditorChoice {
 
 /** Sorted, merged ranges, without empty ones: what a save keeps. */
 export function normalizeRanges(ranges: readonly EditRange[]): EditRange[] {
-  const sorted = ranges.filter(([from, to]) => to > from).map(([from, to]): EditRange => [from, to]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const merged: EditRange[] = [];
-  for (const [from, to] of sorted) {
-    const last = merged.at(-1);
-    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
-    else merged.push([from, to]);
-  }
-  return merged;
+  return mergeRanges(ranges);
 }

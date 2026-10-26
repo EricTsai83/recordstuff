@@ -13,8 +13,8 @@
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
 import {
-  cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, setVolumeOver, subtractRange, volumeAt, volumeStretchesOf,
-  withCameraHidden, withVolumeStretches, type EditScene, type VolumeInput,
+  cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, sameScene as sameFittedScene, setVolumeOver, subtractRange,
+  volumeAt, volumeStretchesOf, withCameraHidden, withVolumeStretches, type EditScene, type VolumeInput,
 } from "../../../shared/editable";
 import { EditMix, FOLLOWED_EVENTS, followMedia, mixScene, watchSkipped } from "../../player/edited-playback";
 import { playbackOf } from "../../player/player-state";
@@ -622,7 +622,7 @@ async function toggleNow(): Promise<void> {
   if (rangeSelection) return removeRange(editor, rangeSelection);
   const part = selectedPart(editor);
   if (!part) return;
-  const removed = part.removed ? subtract(editor.removed, part) : normalizeRanges([...editor.removed, [part.from, part.to]]);
+  const removed = part.removed ? subtractRange(editor.removed, [part.from, part.to]) : normalizeRanges([...editor.removed, [part.from, part.to]]);
   if (refuseKeepingNothing(editor, removed)) return;
   undoStack.push(current(editor));
   const saved = await save(removed);
@@ -690,18 +690,6 @@ export function selectRange(a: number, b: number): void {
   draw();
 }
 
-/** The ranges without `part`. */
-function subtract(ranges: readonly EditRange[], part: TimelinePart): EditRange[] {
-  const out: EditRange[] = [];
-  for (const [from, to] of ranges) {
-    if (to <= part.from || from >= part.to) out.push([from, to]);
-    else {
-      if (from < part.from) out.push([from, part.from]);
-      if (to > part.to) out.push([part.to, to]);
-    }
-  }
-  return out;
-}
 
 /** The edit as it is now, as Undo and Redo keep it. */
 function current(editor: EditorView): EditState {
@@ -1031,9 +1019,12 @@ export function revertToOriginal(): Promise<boolean> {
   });
 }
 
-/** Whether two scenes place and mix alike. */
+/**
+ * Whether two scenes place and mix alike, whatever order their keys were written in (the shared `sameScene`); a
+ * recording that is not editable has none on either side.
+ */
 export function sameScene(a: EditScene | undefined, b: EditScene | undefined): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  return a && b ? sameFittedScene(a, b) : a === b;
 }
 
 /** Settles when the save under way does. */
