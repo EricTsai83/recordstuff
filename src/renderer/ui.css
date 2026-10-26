@@ -2879,7 +2879,7 @@
   /* The light theme draws it as the dark one shows it, a darker block under the white frame (2026-10-27, the
      maintainer's review: over light lanes a light fill left the frame faint). */
   :root:not(.dark) .editor-selection {
-    background: color-mix(in oklab, var(--media) 16%, transparent);
+    background: color-mix(in oklab, var(--media) 9%, transparent);
   }
   /* What a click under the pointer would choose, faint and red, with no actions. */
   .editor-selection-preview {
