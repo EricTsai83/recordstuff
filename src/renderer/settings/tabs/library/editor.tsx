@@ -1005,11 +1005,10 @@ function EditorPanel() {
         })}
         {/* One playhead over the pictures and every lane, as editors draw it (the maintainer's question of 2026-10-26: a
             line of its own in each, placed alike, broke where their widths differed), under the selection's actions. */}
-        <span className="editor-playhead" style={{ "--at": Math.min(1, time / Math.max(editor.seconds, 0.001)) } as React.CSSProperties} aria-hidden="true">
-          <svg className="editor-playhead-cap" viewBox="0 0 10 9" focusable="false">
-            <path d="M0.5 0.5 H9.5 L5 8.5 Z" />
-          </svg>
-        </span>
+        <svg className="editor-playhead" style={{ "--at": Math.min(1, time / Math.max(editor.seconds, 0.001)) } as React.CSSProperties} aria-hidden="true" focusable="false">
+          <line x1="5" x2="5" y1="1" y2="100%" shapeRendering="crispEdges" />
+          <path className="editor-playhead-cap" d="M0.5 0.5 H9.5 L5 8.5 Z" />
+        </svg>
         {trimHandle("start")}
         {trimHandle("end")}
         {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}

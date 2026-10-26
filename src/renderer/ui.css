@@ -3342,30 +3342,26 @@
     margin-left: -1px;
     pointer-events: none;
   }
-  /* White with a dark edge and a cap (2026-10-25): seen over any picture of the strip, and unlike a selected part's ring. */
-  /* One white line (the maintainer's review of 2026-10-26: edged in black it read as three), a soft shade keeping it in
-     sight over light lanes; one element over the pictures and the lanes, at the same fraction of the track the
-     trimmer's padding leaves for them. */
+  /* The playhead: one SVG over the pictures and every lane, its line and its cap drawn in one coordinate space, so the
+     cap's point is always on the line's middle (the maintainer's question of 2026-10-26, after a line and a cap of their
+     own rounded apart). The line, white with a soft shade that keeps it in sight over light lanes (edged in black it
+     read as three), snaps to whole pixels so it stays sharp; the cap keeps its smooth edges. Its height follows the
+     lanes without stretching the cap: the line's end is a percentage, the cap in pixels. */
   .editor-trimmer > .editor-playhead {
     left: calc(var(--trim-pad) + var(--at) * (100% - 2 * var(--trim-pad)));
-    z-index: 5;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--media-foreground);
-    box-shadow: 0 0 3px color-mix(in oklab, var(--media-scrim) 70%, transparent);
-  }
-  /* The cap, its point on the line's middle: an SVG triangle (2026-10-26, the maintainer's question: a clipped box lost
-     its shade to its own clip, and came out faint on light lanes), offset from the line by whole pixels (10 px wide over
-     a 2 px line, 4 px to its left) so both round alike wherever the playhead stands. */
-  .editor-playhead-cap {
-    position: absolute;
     top: -1px;
-    left: -4px;
+    z-index: 5;
     width: 10px;
-    height: 9px;
+    height: calc(100% + 1px);
+    margin-left: -5px;
     overflow: visible;
   }
-  .editor-playhead-cap path {
+  .editor-playhead line {
+    stroke: var(--media-foreground);
+    stroke-width: 2px;
+    filter: drop-shadow(0 0 1.5px color-mix(in oklab, var(--media-scrim) 70%, transparent));
+  }
+  .editor-playhead-cap {
     fill: var(--media-foreground);
     stroke: color-mix(in oklab, var(--media-scrim) 55%, transparent);
     stroke-width: 1px;
