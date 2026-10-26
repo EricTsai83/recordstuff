@@ -27,6 +27,7 @@ import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { translate, type Language, type PlainMessageKey } from "../../shared/i18n";
 import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type PreviewTrack } from "../../shared/editing";
+import type { PlaybackEdit } from "../../shared/video-player";
 import { defaultScene, exportRender, fitScene, parseEditableDescription, sameScene, type EditableDescription, type EditScene } from "../../shared/editable";
 import { fileResponse } from "../lib/file-response";
 import { editRecord, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
@@ -294,6 +295,8 @@ interface Open {
   export: EditorExport;
   /** An editable recording's description, and its preview tracks once copied (plan 087). */
   editable?: { description: EditableDescription; preview: Partial<Record<PreviewTrack, string>> };
+  /** The preview tracks being copied, which the full-screen viewer waits for: it hears of no later ones. */
+  previewing?: Promise<void>;
 }
 
 /** The preview tracks' URLs: `recordstuff-media://preview/<generation>/<track>`, served by `previewResponse`. */
@@ -359,6 +362,24 @@ export class Editing {
       export: open.export,
       ...(open.saveFailure ? { saveFailure: open.saveFailure } : {}),
       ...(open.editable && open.state === "ready" ? { editable: this.editableView(open, open.editable) } : {}),
+    };
+  }
+
+  /**
+   * The open edit as the full-screen viewer plays it (2026-10-27): what the preview plays, from main's own edit, for
+   * the recording `id` only while its view is open and ready, once its preview tracks are made; undefined otherwise.
+   */
+  async playback(id: string): Promise<PlaybackEdit | undefined> {
+    // An editable recording's preview tracks first, if they are still being copied: the viewer is told once only
+    // (Codex's review), so it would play without the camera or the second sound the edit view gains a moment later.
+    const pending = this.open?.id === id ? this.open.previewing : undefined;
+    if (pending) await pending.catch(() => undefined);
+    const editor = this.view();
+    if (!editor || editor.id !== id || editor.state !== "ready" || editor.duration <= 0) return undefined;
+    const { timescale, duration, frameRate, skipped, editable } = editor;
+    return {
+      timescale, duration, frameRate, skipped,
+      ...(editable ? { editable: { sounds: editable.sounds, ...(editable.camera ? { camera: editable.camera } : {}), scene: editable.scene, preview: editable.preview } } : {}),
     };
   }
 
@@ -525,7 +546,7 @@ export class Editing {
         const description = parseEditableDescription(plan.editable);
         if (!description) throw new ExportFailure("malformed", `its editable description could not be read: ${plan.editable.slice(0, 200)}`);
         open.editable = { description, preview: {} };
-        void this.preparePreview(open, generation);
+        open.previewing = this.preparePreview(open, generation);
       }
       open.state = "ready";
     } catch (cause) {

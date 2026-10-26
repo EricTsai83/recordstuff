@@ -693,6 +693,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       return outcome;
     },
     edit: (id, choice) => editing.choose(id, choice),
+    editPlayback: (id) => editing.playback(id),
     folders: {
       create: name => library.createFolder(name),
       // A category renamed or deleted here keeps or drops its favorite and the remembered choice with it (2026-10-09).

@@ -10,7 +10,7 @@
  * (2026-10-26): its own volume, or a stretch's (muted, or a percent), set over the selection by the Volume popup (V).
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
-import { Keyboard, Merge, Mic, MicOff, PanelBottomClose, PanelBottomOpen, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
+import { Keyboard, Maximize, Merge, Mic, MicOff, PanelBottomClose, PanelBottomOpen, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import type { EditorView, EditRange } from "../../../../shared/editing";
@@ -210,6 +210,11 @@ function editorKey(event: React.KeyboardEvent): void {
   if (key === "t") {
     event.preventDefault();
     model.toggleEnlarged();
+  } else if (key === "f") {
+    // Full screen from anywhere in the view, the timeline included, as the shortcuts list says (Codex's review); the
+    // player takes its own F first when it has the focus.
+    event.preventDefault();
+    void model.playEditorFullScreen();
   } else if (model.enlarged) {
     // Enlarged, the timeline's keys wait for it to come back; Space and the arrows are the player's.
     return;
@@ -287,8 +292,9 @@ export function EditorDialog() {
               onError={model.editorPreviewFailed}
               // The player's own controls only while the preview is enlarged, the timeline then out of sight (2026-10-27).
               controls={model.enlarged}
-              onDoubleClick={() => undefined}
-              fullScreen={() => undefined}
+              // A double-click or F plays the edit full screen, as the player's (2026-10-27).
+              onDoubleClick={() => void model.playEditorFullScreen()}
+              fullScreen={() => void model.playEditorFullScreen()}
               trailing={null}
               close={
                 <>
@@ -308,6 +314,18 @@ export function EditorDialog() {
                     onClick={() => model.toggleEnlarged()}
                   >
                     {model.enlarged ? <PanelBottomOpen /> : <PanelBottomClose />}
+                  </Button>
+                </ControlTooltip>
+                <ControlTooltip label={`${model.text("Full screen")} (F)`}>
+                  <Button
+                    variant="media"
+                    size="icon-media"
+                    id="editor-fullscreen"
+                    aria-label={model.text("Full screen")}
+                    aria-disabled={model.editorFullScreenPending || editor?.state !== "ready" || undefined}
+                    onClick={() => void model.playEditorFullScreen()}
+                  >
+                    <Maximize />
                   </Button>
                 </ControlTooltip>
                 <ControlTooltip label={exporting ? model.text("Cancel the export to close") : model.text("Close")}>
@@ -663,7 +681,7 @@ function EditorPanel() {
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
     ...(camera ? [["C", "Hide or show the camera in the selection"] as [string, PlainMessageKey]] : []),
     ...(inputs.length > 0 ? [["V", "Set the volume of the selection"] as [string, PlainMessageKey]] : []),
-    ["T", "Enlarge preview"],
+    ["T", "Enlarge preview"], ["F", "Full screen"],
   ];
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
     undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",

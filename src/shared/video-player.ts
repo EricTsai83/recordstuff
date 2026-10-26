@@ -5,6 +5,8 @@
  * player carries on from where it ended. Shared by main, the player's page and the fullscreen page, so it has no
  * Electron or DOM import.
  */
+import { isEditScene, type EditableSound, type EditScene } from "./editable";
+import type { EditRange } from "./editing";
 
 /** Where a video is and what it does: handed to the fullscreen window and handed back when it ends. */
 export interface PlaybackState {
@@ -27,10 +29,75 @@ export function formatDuration(seconds: number): string {
   return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
 }
 
-/** The player's request, sent with `choose("recordingFile:<id>", …)`; main answers when the fullscreen ends. */
+/**
+ * The player's request, sent with `choose("recordingFile:<id>", …)`; main answers when the fullscreen ends. `edited`
+ * from the edit view (2026-10-27): the viewer plays the recording's open edit as the preview does (`PlaybackEdit`),
+ * which main takes from its own edit, never from the page.
+ */
 export interface FullScreenChoice {
   action: "fullscreen";
   state: PlaybackState;
+  edited?: boolean;
+}
+
+/**
+ * An edit for the full-screen viewer to play as the edit view's preview plays it (2026-10-27): the ranges the export
+ * leaves out, in the video's timescale, and an editable recording's scene with its preview tracks' URLs. Main's own,
+ * built from the edit it holds open.
+ */
+export interface PlaybackEdit {
+  timescale: number;
+  /** The recording's length in its timescale. */
+  duration: number;
+  frameRate: number;
+  skipped: EditRange[];
+  editable?: {
+    sounds: EditableSound[];
+    camera?: { rounding: number; mirror: boolean };
+    scene: EditScene;
+    preview: { camera?: string; secondSound?: string };
+  };
+}
+
+/** At most as many skipped ranges as an edit record holds, both its own and its plan's joins. */
+const MAX_SKIPPED = 512;
+const PREVIEW_URL = /^recordstuff-media:\/\/preview\/\d+\/(camera|secondSound)$/;
+
+/** An edit from another process, or undefined: every number finite, every range ordered, every URL a preview's. */
+export function playbackEdit(value: unknown): PlaybackEdit | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const { timescale, duration, frameRate, skipped, editable } = value as Record<string, unknown>;
+  const positive = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+  if (!positive(timescale) || !positive(duration) || !positive(frameRate)) return undefined;
+  if (!Array.isArray(skipped) || skipped.length > MAX_SKIPPED) return undefined;
+  const ranges: EditRange[] = [];
+  for (const range of skipped) {
+    if (!Array.isArray(range) || range.length !== 2) return undefined;
+    const [from, to] = range as unknown[];
+    if (typeof from !== "number" || typeof to !== "number" || !Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to <= from) return undefined;
+    ranges.push([from, to]);
+  }
+  const edit: PlaybackEdit = { timescale, duration, frameRate, skipped: ranges };
+  if (editable === undefined) return edit;
+  if (!editable || typeof editable !== "object") return undefined;
+  const { sounds, camera, scene, preview } = editable as Record<string, unknown>;
+  if (!Array.isArray(sounds) || sounds.length > 2 || !sounds.every((sound) => sound === "system" || sound === "microphone" || sound === "silent")) return undefined;
+  if (!isEditScene(scene)) return undefined;
+  let shape: { rounding: number; mirror: boolean } | undefined;
+  if (camera !== undefined) {
+    const { rounding, mirror } = (camera ?? {}) as Record<string, unknown>;
+    if (typeof rounding !== "number" || !Number.isFinite(rounding) || rounding < 0 || rounding > 1 || typeof mirror !== "boolean") return undefined;
+    shape = { rounding, mirror };
+  }
+  if (!preview || typeof preview !== "object") return undefined;
+  const urls: { camera?: string; secondSound?: string } = {};
+  for (const track of ["camera", "secondSound"] as const) {
+    const url = (preview as Record<string, unknown>)[track];
+    if (url === undefined) continue;
+    if (typeof url !== "string" || !PREVIEW_URL.test(url)) return undefined;
+    urls[track] = url;
+  }
+  return { ...edit, editable: { sounds: sounds as EditableSound[], ...(shape ? { camera: shape } : {}), scene, preview: urls } };
 }
 
 /** A state from another process, or undefined: numbers finite and in range, flags boolean. */
@@ -59,7 +126,7 @@ export const VIDEO_CHANNELS = {
 } as const;
 
 /** Query parameters the fullscreen page is loaded with. */
-export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang", title: "title", standby: "standby" } as const;
+export const VIDEO_QUERY = { src: "src", time: "t", playing: "play", volume: "vol", muted: "mute", language: "lang", title: "title", standby: "standby", edit: "edit" } as const;
 
 /** What a page loaded in standby is sent to play; main's own values, never a page's. */
 export interface VideoLoad {
@@ -67,16 +134,20 @@ export interface VideoLoad {
   state: PlaybackState;
   language: string;
   title?: string;
+  /** From the edit view: the edit, played as its preview plays it. */
+  edit?: PlaybackEdit;
 }
 
 /** A load from another process, or undefined. */
 export function videoLoad(value: unknown): VideoLoad | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const { src, state, language, title } = value as Record<string, unknown>;
+  const { src, state, language, title, edit } = value as Record<string, unknown>;
   const playback = playbackState(state);
   if (typeof src !== "string" || !src || !playback || typeof language !== "string") return undefined;
   if (title !== undefined && typeof title !== "string") return undefined;
-  return { src, state: playback, language, ...(title ? { title } : {}) };
+  const played = edit === undefined ? undefined : playbackEdit(edit);
+  if (edit !== undefined && !played) return undefined;
+  return { src, state: playback, language, ...(title ? { title } : {}), ...(played ? { edit: played } : {}) };
 }
 
 export const VIDEO_TIMING = {

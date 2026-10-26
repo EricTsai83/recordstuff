@@ -15,7 +15,7 @@
  * on 2026-10-10. Without one ready, a request creates its window as before.
  */
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Rectangle } from "electron";
-import { VIDEO_CHANNELS, VIDEO_QUERY, VIDEO_TIMING, playbackState, type PlaybackState, type VideoLoad } from "../../shared/video-player";
+import { VIDEO_CHANNELS, VIDEO_QUERY, VIDEO_TIMING, playbackState, type PlaybackEdit, type PlaybackState, type VideoLoad } from "../../shared/video-player";
 import type { Language } from "../../shared/i18n";
 
 export interface VideoFullScreenOptions {
@@ -36,6 +36,8 @@ export interface VideoFullScreenRequest {
   language: Language;
   /** The recording's name over the picture, as the listing shows it; main's own words, never the page's. */
   title?: string;
+  /** From the edit view: its edit, as main holds it, played as the preview plays it (2026-10-27). */
+  edit?: PlaybackEdit;
   /** The window has gone: give focus back to the one it played for. */
   closed?: () => void;
 }
@@ -137,7 +139,7 @@ export class VideoFullScreen {
       });
       // Closed while it covers the screen (by quitting): the menu bar and the Dock come back first.
       window.on("close", () => { if (mac && window.isSimpleFullScreen()) window.setSimpleFullScreen(false); });
-      const load: VideoLoad = { src: request.src, state, language: request.language, ...(request.title ? { title: request.title } : {}) };
+      const load: VideoLoad = { src: request.src, state, language: request.language, ...(request.title ? { title: request.title } : {}), ...(request.edit ? { edit: request.edit } : {}) };
       if (standby) window.webContents.send(VIDEO_CHANNELS.load, load);
       else this.load(window, {
         [VIDEO_QUERY.src]: load.src,
@@ -147,6 +149,7 @@ export class VideoFullScreen {
         [VIDEO_QUERY.muted]: state.muted ? "1" : "0",
         [VIDEO_QUERY.language]: load.language,
         ...(load.title ? { [VIDEO_QUERY.title]: load.title } : {}),
+        ...(load.edit ? { [VIDEO_QUERY.edit]: JSON.stringify(load.edit) } : {}),
       });
     });
   }

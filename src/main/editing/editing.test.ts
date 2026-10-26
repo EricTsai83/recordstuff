@@ -710,6 +710,30 @@ describe("an editable recording (plan 087)", () => {
     });
   });
 
+  it("hands the full-screen viewer the open edit as its preview plays it, once the preview tracks are made, and nothing for another recording", async () => {
+    let finish!: () => void;
+    const worker = runner(undefined, DESCRIPTION);
+    const extract = worker.extract.getMockImplementation()!;
+    worker.extract.mockImplementation(async (request) => {
+      if (request.track === "camera") await new Promise<void>((resolve) => { finish = resolve; });
+      return extract(request);
+    });
+    const ctx = setup({}, worker);
+    expect(await ctx.editing.playback("rec")).toBeUndefined();
+    await ctx.editing.choose("rec", { action: "open" });
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [[0, 90_000]], revision: 0 })).toBe(true);
+    await vi.waitFor(() => expect(worker.extract).toHaveBeenCalled());
+    // Asked while the camera is still being copied: it waits for it (Codex's review), so the viewer has its URL.
+    let answered = false;
+    const asked = ctx.editing.playback("rec").then((edit) => { answered = true; return edit; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(answered).toBe(false);
+    finish();
+    const edit = await asked;
+    expect(edit).toMatchObject({ timescale: 90_000, editable: { sounds: ["system", "microphone"], preview: { camera: expect.stringMatching(/^recordstuff-media:\/\/preview\/\d+\/camera$/) } } });
+    expect(await ctx.editing.playback("other")).toBeUndefined();
+  });
+
   it("removes the preview tracks a crash left at the next launch", async () => {
     const folder = path.join(dir, "userData", "edits", "preview");
     fs.mkdirSync(folder, { recursive: true });

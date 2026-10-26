@@ -22,7 +22,7 @@ import { preferencesUnlocked } from "../recording/recording-lock";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../../shared/hotkey";
 import { translate } from "../../shared/i18n";
 import { ZOOM_KEYS } from "../../shared/shortcut-catalog";
-import { isFullScreenChoice, type FullScreenChoice } from "../../shared/video-player";
+import { isFullScreenChoice, type FullScreenChoice, type PlaybackEdit } from "../../shared/video-player";
 import { isEditorChoice, type EditorChoice } from "../../shared/editing";
 import type { VideoFullScreen } from "../library/video-fullscreen";
 import type { AppAction, AppContext } from "../app/ui-model";
@@ -99,6 +99,8 @@ export interface SettingsWindowOptions {
   move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem }>;
   /** The edit view's actions for a listed recording (plan 085): resolves whether the action took effect. */
   edit?: (id: string, choice: EditorChoice) => Promise<boolean>;
+  /** The recording's open edit as the full-screen viewer plays it, when its edit view is open (2026-10-27). */
+  editPlayback?: (id: string) => Promise<PlaybackEdit | undefined>;
   /** The Recordings tab's folder actions (recordings-library.ts): the folder made or renamed, or why not. */
   folders?: {
     create: (name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
@@ -739,8 +741,10 @@ export class SettingsWindow {
     const id = group.slice("recordingFile:".length);
     const item = this.view().library?.items.find(entry => entry.id === id);
     const fullScreen = this.options.fullScreen;
+    // From the edit view, its edit as main holds it, played as the preview plays it; none open for it is refused.
+    const edit = choice.edited ? await this.options.editPlayback?.(id) : undefined;
     // While a quit runs nothing new opens, as every other action is refused then (`settingsAction`).
-    if (!item || !fullScreen || recipient.isDestroyed() || this.quitStarted()) {
+    if (!item || !fullScreen || recipient.isDestroyed() || this.quitStarted() || (choice.edited && !edit)) {
       this.log(`settings window: refused ${JSON.stringify({ group, choice: "fullscreen" })}`);
       const view = this.view();
       return this.deliver({ view, applied: false }, recipient);
@@ -751,6 +755,7 @@ export class SettingsWindow {
       display: screen.getDisplayMatching(recipient.getBounds()).bounds,
       language: this.options.context().language,
       title: item.title,
+      ...(edit ? { edit } : {}),
       closed: () => { if (!recipient.isDestroyed() && this.window === recipient) recipient.focus(); },
     });
     this.escapeQuietUntil = Date.now() + FULLSCREEN_ESCAPE_QUIET_MS;

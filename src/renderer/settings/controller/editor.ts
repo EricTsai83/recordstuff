@@ -17,6 +17,8 @@ import {
   withCameraHidden, withVolumeStretches, type EditScene, type VolumeInput,
 } from "../../../shared/editable";
 import { EditMix, FOLLOWED_EVENTS, followMedia, mixScene, watchSkipped } from "../../player/edited-playback";
+import { playbackOf } from "../../player/player-state";
+import type { FullScreenChoice, PlaybackState } from "../../../shared/video-player";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, subscribe, view } from "./core";
 import { forgetMenu } from "./library";
@@ -436,6 +438,49 @@ export function togglePlayback(): void {
   if (editorVideo.error) reloadEditorPreview(true);
   else if (editorVideo.paused) void editorVideo.play().catch(() => undefined);
   else editorVideo.pause();
+}
+
+/** A full-screen viewer open from the edit view, until it is left. */
+export let editorFullScreenPending = false;
+
+/**
+ * Full screen from the edit view (2026-10-27, the maintainer's request), as the player's: the full-screen viewer plays
+ * the edit as the preview plays it (main hands it the edit it holds, `PlaybackEdit`), from where the preview stands;
+ * left, the preview takes up where the viewer was.
+ */
+export async function playEditorFullScreen(): Promise<void> {
+  if (!editingItem || !editorVideo || editorFullScreenPending || editorView()?.state !== "ready") return;
+  // The edit as saved is what main hands the viewer: a change still saving or queued is waited for first, as Export
+  // waits (Codex's review), so the viewer plays what the preview shows.
+  editorFullScreenPending = true;
+  draw();
+  const item = editingItem;
+  await saved();
+  const video = editorVideo;
+  if (editingItem?.id !== item.id || !video || editorView()?.state !== "ready") {
+    editorFullScreenPending = false;
+    draw();
+    return;
+  }
+  const state = playbackOf(video);
+  video.pause();
+  let end: PlaybackState = { ...state, playing: false };
+  try {
+    const result = await window.settings.choose(`recordingFile:${item.id}`, { action: "fullscreen", state, edited: true } satisfies FullScreenChoice);
+    render(result.view);
+    end = result.playback ?? end;
+  } catch {
+    /* No viewer opened: the preview stays where it was, paused. */
+  } finally {
+    editorFullScreenPending = false;
+    draw();
+  }
+  if (editingItem?.id !== item.id || editorVideo !== video) return;
+  video.volume = end.volume;
+  video.muted = end.muted;
+  video.currentTime = end.time;
+  if (end.playing) void video.play().catch(() => undefined);
+  video.focus({ preventScroll: true });
 }
 
 /** Enlarge preview on or off (T, or its button); the focus goes to the picture, or back to the timeline. */

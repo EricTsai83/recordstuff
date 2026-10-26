@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { documentLanguage, translate, isLanguage } from "../../shared/i18n";
 import {
   VIDEO_QUERY,
+  playbackEdit,
   videoLoad,
   type PlaybackState,
   type VideoBridge,
@@ -14,6 +15,7 @@ import {
 import { browserPlatform, isCloseChord } from "../lib/shortcut-capture";
 import { playbackOf } from "../player/player-state";
 import { useDarkClass } from "../lib/color-scheme";
+import { EditedLayer } from "../player/edited-layer";
 
 declare global {
   interface Window {
@@ -28,6 +30,14 @@ function queried(query: URLSearchParams): VideoLoad {
     return Number.isFinite(value) ? value : fallback;
   };
   const title = query.get(VIDEO_QUERY.title);
+  // From the edit view, its edit (2026-10-27); one that cannot be read plays the recording as it is.
+  let edit;
+  try {
+    const raw = query.get(VIDEO_QUERY.edit);
+    edit = raw ? playbackEdit(JSON.parse(raw)) : undefined;
+  } catch {
+    edit = undefined;
+  }
   return {
     src: query.get(VIDEO_QUERY.src) ?? "",
     state: {
@@ -38,6 +48,7 @@ function queried(query: URLSearchParams): VideoLoad {
     },
     language: query.get(VIDEO_QUERY.language) ?? "en",
     ...(title ? { title } : {}),
+    ...(edit ? { edit } : {}),
   };
 }
 
@@ -70,6 +81,8 @@ function VideoPage({ load }: { load: VideoLoad }) {
     frames = useRef<number[]>([]),
     listeners = useRef<Array<() => void>>([]);
   const start = useRef<PlaybackState>(load.state).current;
+  // The element, for the edit's layer to follow once it is there.
+  const [element, setElement] = useState<HTMLVideoElement | null>(null);
   const sayReady = useCallback(() => {
     if (ready.current) return;
     ready.current = true;
@@ -103,6 +116,7 @@ function VideoPage({ load }: { load: VideoLoad }) {
   const assign = useCallback(
     (element: HTMLVideoElement | null) => {
       video.current = element;
+      setElement(element);
       if (element) {
         element.volume = start.volume;
         element.muted = start.muted;
@@ -151,7 +165,7 @@ function VideoPage({ load }: { load: VideoLoad }) {
     };
   }, [language, leave]);
   const label = translate("Exit full screen", language);
-  return (
+  const player = (
     <Player
       id="video"
       source={load.src}
@@ -163,6 +177,8 @@ function VideoPage({ load }: { load: VideoLoad }) {
       onDoubleClick={leave}
       fullScreen={leave}
       large
+      // Its sound goes through Web Audio at an editable recording's volumes, which needs CORS.
+      {...(load.edit?.editable ? { crossOrigin: "anonymous" as const } : {})}
       trailing={
         <ControlTooltip label={label}>
           <Button
@@ -177,5 +193,13 @@ function VideoPage({ load }: { load: VideoLoad }) {
         </ControlTooltip>
       }
     />
+  );
+  // An edit plays as the edit view's preview plays it, its layer over the picture (2026-10-27).
+  if (!load.edit) return player;
+  return (
+    <div className="video-edited">
+      {player}
+      <EditedLayer video={element} edit={load.edit} />
+    </div>
   );
 }

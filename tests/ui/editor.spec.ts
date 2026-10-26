@@ -340,7 +340,7 @@ test("the timeline spans the panel, a range dragged past it reaches the recordin
   await page.locator("#editor-keys").click();
   await expect(page.locator("#editor-keys-popup")).toBeVisible();
   await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
-  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
+  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(9);
   // Shortcuts only: Skimming is in More options (2026-10-26).
   await expect(page.locator("#editor-keys-popup #editor-skim")).toHaveCount(0);
 });
@@ -1032,4 +1032,65 @@ test("a selection's actions float over the line above the timeline, words where 
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
   }
+});
+
+/**
+ * Full screen from the edit view (2026-10-27): the player's full-screen viewer plays the edit as the preview plays it,
+ * main handing it the edit it holds. A removed head is skipped as it plays, and leaving hands the place back to the
+ * preview.
+ */
+test("full screen from the edit view plays the edit as its preview does, a removed head skipped, and hands its place back", async () => {
+  await openEditor();
+  const box = (await page.locator(".editor-timeline").boundingBox())!;
+  const y = box.y + box.height / 2;
+  const duration = await read<number>(page, "document.querySelector('#editor .editor-stage video').duration");
+  // The first 40% cut: a range dragged past the start, then Delete.
+  await page.mouse.move(box.x + box.width * 0.4, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 60, y, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.press("Delete");
+  await expect(page.locator(".editor-part").first()).toHaveAttribute("data-removed", "true");
+  await seek(0.2);
+  await expect(page.locator("#editor-fullscreen")).toHaveAccessibleName("Full screen");
+  const waiting = app.page("video.html");
+  await page.locator("#editor-fullscreen").click();
+  const full = await waiting;
+  await expect(full.locator(".video-edited .edited-layer")).toHaveCount(1);
+  const viewer = full.locator(".pc > video");
+  const at = (): Promise<number> => viewer.evaluate((el) => (el as HTMLVideoElement).currentTime);
+  // Played from inside the removed head, it goes on where the export does, at once: played through, it would take
+  // more than 2.5 s to get there.
+  await viewer.evaluate((el) => (el as HTMLVideoElement).play());
+  await expect.poll(at, { timeout: 1500 }).toBeGreaterThan(duration * 0.4 - 0.1);
+  await viewer.evaluate((el) => (el as HTMLVideoElement).pause());
+  const there = await at();
+  await full.locator("#exit").click();
+  const preview = (): Promise<number> => page.evaluate(() => (document.querySelector("#editor .editor-stage video") as HTMLVideoElement).currentTime);
+  await expect.poll(async () => Math.abs((await preview()) - there), { timeout: 5000 }).toBeLessThan(0.1);
+  await expect(page.locator("#editor[data-open]")).toHaveCount(1);
+});
+
+test("full screen from an editable recording's edit view draws its camera where the scene puts it and plays its second sound", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  await expect(page.locator("#editor-camera video")).toHaveAttribute("src", /^recordstuff-media:\/\/preview\/\d+\/camera$/);
+  const cameraSrc = await page.locator("#editor-camera video").getAttribute("src");
+  // F from the timeline too, not only from the picture (Codex's review).
+  await page.locator("#editor .editor-timeline").focus();
+  const waiting = app.page("video.html");
+  await page.keyboard.press("f");
+  const full = await waiting;
+  await expect(full.locator(".edited-camera video")).toHaveAttribute("src", cameraSrc!);
+  await expect(full.locator(".edited-layer audio")).toHaveAttribute("src", /^recordstuff-media:\/\/preview\/\d+\/secondSound$/);
+  // Placed as the edit view places it: at the picture's top right, its own size.
+  await expect.poll(async () => {
+    const bubble = await full.locator(".edited-camera").boundingBox();
+    const picture = await full.locator(".pc > video").boundingBox();
+    return Boolean(bubble && picture && bubble.width > 20 && bubble.x + bubble.width > picture.x + picture.width * 0.7 && bubble.y < picture.y + picture.height * 0.4);
+  }).toBe(true);
+  await expect(full.locator(".edited-camera")).not.toHaveAttribute("data-hidden");
+  await full.keyboard.press("Escape");
+  await expect(page.locator("#editor[data-open]")).toHaveCount(1);
 });
