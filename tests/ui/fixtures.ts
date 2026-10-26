@@ -338,7 +338,14 @@ async function launch(kind: "app" | "view" | "countdown", data: string, extra: R
   if (!pid) throw new Error("Electron started without a pid");
   application.process().stdout?.on("data", chunk => { fs.appendFileSync(path.join(data, "electron.log"), chunk); });
   application.process().stderr?.on("data", chunk => { fs.appendFileSync(path.join(data, "electron.log"), chunk); });
-  void testInfo;
+  // Playwright's `trace`/`screenshot` options reach only browser contexts its fixtures create, never an Electron launch:
+  // its trace is started here, and kept with screenshots of its windows only when the test fails (`keepEvidence`).
+  // DOM snapshots only: the screencast adds work to every frame of every case, where the timings are asserted.
+  // Bounded, as every step around a launch is: a start that hangs must not keep the launch from its caller, which
+  // registers it for teardown.
+  await Promise.race([application.context().tracing.start({ title: testInfo.titlePath.slice(1).join(" › "), snapshots: true, screenshots: false }),
+    timeoutAfter(5000, "starting the trace")])
+    .catch((error: unknown) => console.warn(`ui: the launch's trace could not start: ${String(error)}`));
   return new Launched(kind === "countdown" ? "view" : kind, application, data, pid);
 }
 
@@ -399,10 +406,36 @@ const launchers = base.extend<Fixtures>({
   },
 });
 
+/**
+ * A launch still open when its test failed: its trace and a picture of each of its windows, attached to the test (in
+ * test-results/ui/, which CI uploads). A test that passed discards the trace. Bounded, so a launch that hangs still
+ * reaches its teardown.
+ */
+async function keepEvidence(launched: Launched, index: number, failed: boolean, testInfo: TestInfo): Promise<void> {
+  const tracing = launched.application.context().tracing;
+  if (!failed) { await Promise.race([tracing.stop(), timeoutAfter(5000, "discarding the trace")]).catch(() => undefined); return; }
+  for (const [n, page] of launched.application.windows().entries()) {
+    const file = testInfo.outputPath(`launch-${index}-window-${n}-${page.url().split("?")[0]!.split("/").pop() || "page"}.png`);
+    try {
+      await Promise.race([page.screenshot({ path: file }), timeoutAfter(5000, "a screenshot")]);
+      await testInfo.attach(path.basename(file, ".png"), { path: file, contentType: "image/png" });
+    } catch { /* A window that closed or cannot draw: the trace still holds its DOM. */ }
+  }
+  const trace = testInfo.outputPath(`launch-${index}-trace.zip`);
+  try {
+    await Promise.race([tracing.stop({ path: trace }), timeoutAfter(10_000, "saving the trace")]);
+    await testInfo.attach(`launch-${index}-trace`, { path: trace, contentType: "application/zip" });
+  } catch { /* Evidence only: the failure itself is the test's. */ }
+}
+
 // Teardown for every launch, in its own fixture so it runs after the test body on every outcome.
 export const test = launchers.extend<{ containment: void }>({
   containment: [async ({ launches }, use, testInfo) => {
     await use();
+    const failed = testInfo.status !== testInfo.expectedStatus;
+    for (const [index, launched] of launches.entries()) {
+      if (!launched.closed && !launched.teardown) await keepEvidence(launched, index, failed, testInfo);
+    }
     const reports: Array<Teardown & { kind: string; data: string }> = [];
     for (const launched of launches) reports.push({ kind: launched.kind, data: launched.data, ...launched.teardown ?? await tearDown(launched) });
     await testInfo.attach("teardown.json", { body: JSON.stringify(reports, null, 2), contentType: "application/json" });

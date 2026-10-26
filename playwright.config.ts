@@ -18,7 +18,8 @@ export default defineConfig({
   outputDir: "test-results/ui",
   // UI tests keep no pixel baselines: the design may change freely (docs/testing.md).
   updateSnapshots: "none",
-  use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
+  // No `use.trace`/`use.screenshot`: they reach only the browser contexts Playwright's own fixtures create, and every
+  // case here launches Electron, whose trace and failure screenshots tests/ui/fixtures.ts keeps itself (`keepEvidence`).
   projects: [
     { name: "background", testMatch: "**/*.spec.ts", testIgnore: ["**/drills.spec.ts", "**/drill-target.spec.ts"] },
     { name: "drills", testMatch: ["**/drills.spec.ts", "**/drill-target.spec.ts"] },
