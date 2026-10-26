@@ -2847,6 +2847,16 @@
     outline: none;
     box-shadow: inset 0 0 0 1.5px var(--ring);
   }
+  /* The selected part's own frame is the selection's, so the focus draws none over it; and the timeline, a place the
+     focus is put back to so the view's keys still work, draws no focus ring around the pictures (2026-10-27, the
+     maintainer's report: the page's default red outline sat on the selection's top edge). */
+  .editor-part[aria-pressed="true"]:focus-visible {
+    box-shadow: none;
+  }
+  .editor-timeline:focus,
+  .editor-timeline:focus-visible {
+    outline: none;
+  }
   .editor-part:disabled {
     cursor: default;
   }
