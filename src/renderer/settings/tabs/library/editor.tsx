@@ -382,6 +382,12 @@ function RemoveButton({ id }: { id: string }) {
   );
 }
 
+/** The tracks the floating action at `target` changes: Remove every one, the camera's button its lane, Volume the sounds'. */
+function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | undefined {
+  const id = (target as HTMLElement | null)?.closest?.("button")?.id;
+  return id === "editor-remove" ? "all" : id === "editor-camera-toggle" ? "camera" : id === "editor-volume" ? "sound" : undefined;
+}
+
 /**
  * The line over the timeline (2026-10-26, B′, then the maintainer's review of it): small, close to the timeline and apart
  * from the toolbar; the playhead's time (or a trim handle's) and the export's length together at its end, how to select
@@ -389,9 +395,9 @@ function RemoveButton({ id }: { id: string }) {
  * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
  * a selection comes and goes; the actions keep clear of the times.
  */
-function EditorActionRow({ editor, track, span, position, length, shortPosition, shortLength, children }: {
+function EditorActionRow({ editor, track, span, position, length, shortPosition, shortLength, onTarget, children }: {
   editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string;
-  shortPosition: string; shortLength: string; children: ReactNode;
+  shortPosition: string; shortLength: string; onTarget: (target: "all" | "camera" | "sound" | undefined) => void; children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
   const [left, setLeft] = useState<number | undefined>(undefined);
@@ -401,6 +407,8 @@ function EditorActionRow({ editor, track, span, position, length, shortPosition,
   const wide = useRef(0);
   const shown = span !== undefined && editor.export.phase !== "exporting" && model.trimming() === undefined;
   const from = span?.[0], to = span?.[1];
+  // Gone with the selection, the mark goes too.
+  useEffect(() => { if (!shown) onTarget(undefined); }, [shown, onTarget]);
   useLayoutEffect(() => {
     const place = (): void => {
       const line = row.current, actions = bar.current, timeline = track.current;
@@ -442,6 +450,11 @@ function EditorActionRow({ editor, track, span, position, length, shortPosition,
           data-placed={left !== undefined || undefined}
           data-compact={compact || undefined}
           style={{ left: left ?? 0 }}
+          // Which tracks the action under the pointer or the focus changes, for the timeline to mark.
+          onPointerOver={(event) => onTarget(targetOf(event.target))}
+          onPointerLeave={() => onTarget(undefined)}
+          onFocus={(event) => onTarget(targetOf(event.target))}
+          onBlur={() => onTarget(undefined)}
         >
           <span className="editor-selection-length">{precise(((to ?? 0) - (from ?? 0)) / editor.timescale)}</span>
           {children}
@@ -460,6 +473,9 @@ function EditorPanel() {
   const track = useRef<HTMLDivElement | null>(null);
   /** The trim handle with the keyboard's focus, whose edge the times' row keeps saying. */
   const [focusedEdge, setFocusedEdge] = useState<model.TrimEdge | undefined>(undefined);
+  // What the selection's action under the pointer or the focus acts on, marked on the timeline (2026-10-26, the
+  // maintainer's choice): Remove every track, the camera's button its lane, Volume the sounds' lanes.
+  const [actionTarget, setActionTarget] = useState<"all" | "camera" | "sound" | undefined>(undefined);
   // However a press ends, the gesture does: a release anywhere in the window, or the window losing the pointer.
   useEffect(() => {
     const end = (): void => {
@@ -583,6 +599,9 @@ function EditorPanel() {
   // While a handle moves, the times' row says where the export will start or end, to the hundredth.
   const trimming = model.trimming() ?? focusedEdge;
   const range = model.rangeSelection;
+  // The span the lanes mark: a range, else the selected part, whose mark shows only while an action names its tracks
+  // (review of 2026-10-26: a part chosen by a click had none to light).
+  const laneSpan: EditRange | undefined = range ?? (selected ? [selected.from, selected.to] : undefined);
   const ruler = rulerMarks(editor.seconds);
   const trimHandle = (edge: model.TrimEdge) => {
     const value = trim[edge];
@@ -661,7 +680,7 @@ function EditorPanel() {
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
           <Button id="editor-split" variant="ghost" size="sm" className="editor-tool" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
-            <span aria-hidden="true">{model.text("Split")}</span>
+            <span className="editor-tool-label" aria-hidden="true">{model.text("Split")}</span>
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
@@ -703,6 +722,7 @@ function EditorPanel() {
           : translate("Playhead {time}", language, { time: precise(time) })}
         length={translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}
         shortPosition={precise(trimming ? trim[trimming] / editor.timescale : time)}
+        onTarget={setActionTarget}
         shortLength={precise(model.shownOutputSeconds(editor))}
       >
         <RemoveButton id="editor-remove" />
@@ -730,6 +750,7 @@ function EditorPanel() {
       <div
         className="editor-trimmer"
         data-lane={lanes > 0 || undefined}
+        data-target={(range || selected) && actionTarget ? actionTarget : undefined}
         style={{ "--lanes": lanes } as React.CSSProperties}
         onPointerDown={(event) => {
           const ticks = ticksAt(event.clientX);
@@ -873,7 +894,7 @@ function EditorPanel() {
             {editor.removed.map(([from, to]) => (
               <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
             ))}
-            {range && <span className="editor-camera-range" data-outline={model.rangeLane && model.rangeLane !== "camera" ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+            {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === "camera") || undefined} data-outline={model.rangeLane && model.rangeLane !== "camera" ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
             <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
           </div>
         )}
@@ -925,7 +946,7 @@ function EditorPanel() {
               {editor.removed.map(([from, to]) => (
                 <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
               ))}
-              {range && <span className="editor-camera-range" data-outline={model.rangeLane && model.rangeLane !== input ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+              {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === input) || undefined} data-outline={model.rangeLane && model.rangeLane !== input ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
               <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
             </div>
           );

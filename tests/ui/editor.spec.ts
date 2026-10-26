@@ -887,6 +887,9 @@ test("a selection's actions float over the line above the timeline, words where 
     await page.mouse.up();
     const actions = page.locator("#editor-selection-actions");
     await expect(actions).toBeVisible();
+    // The toolbar keeps one row at either width (the 420 px window put Export on a row of its own).
+    const play = (await page.locator("#editor-play").boundingBox())!, exportButton = (await page.locator("#editor-export").boundingBox())!;
+    expect(Math.abs((exportButton.y + exportButton.height / 2) - (play.y + play.height / 2))).toBeLessThan(4);
     // The line keeps its height with the actions on it, and they stay within its width, clear of the toolbar above
     // and of the timeline below (the maintainer's review of 2026-10-26).
     expect((await page.locator(".editor-action-row").boundingBox())!.height).toBeCloseTo(line.height, 0);
@@ -907,6 +910,24 @@ test("a selection's actions float over the line above the timeline, words where 
       await expect(page.locator(".editor-readouts-short")).toBeVisible();
     }
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
+    // The action under the pointer marks the tracks it changes (2026-10-26, the maintainer's choice): Remove every one,
+    // the camera's button its lane, Volume the sounds'; nothing marked once the pointer leaves.
+    const trimmer = page.locator(".editor-trimmer");
+    for (const [button, target] of [["#editor-remove", "all"], ["#editor-camera-toggle", "camera"], ["#editor-volume", "sound"]] as const) {
+      await page.locator(button).hover();
+      await expect(trimmer).toHaveAttribute("data-target", target);
+    }
+    await page.mouse.move(pictures.x + 4, pictures.y - 120);
+    await expect(trimmer).not.toHaveAttribute("data-target");
+    // A part chosen by a click is marked on the lanes too, while an action names them (review of 2026-10-26).
+    await page.keyboard.press("Escape");
+    await page.mouse.click(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
+    await expect(actions).toBeVisible();
+    await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeHidden();
+    await page.locator("#editor-camera-toggle").hover();
+    await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeVisible();
+    // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
+    await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
   }

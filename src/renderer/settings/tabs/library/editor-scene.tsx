@@ -376,10 +376,12 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
   return (
     <>
       <Popover>
-        <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-options" className="editor-options-button">
-          <SlidersHorizontal aria-hidden="true" />
-          {name}
-        </PopoverTrigger>
+        <ControlTooltip label={name}>
+          <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-options" className="editor-options-button" aria-label={name}>
+            <SlidersHorizontal aria-hidden="true" />
+            <span className="editor-tool-label">{name}</span>
+          </PopoverTrigger>
+        </ControlTooltip>
         <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={name}>
           <div className="editor-options" role="group" aria-label={name}>
             {/* Skimming, off by default (2026-10-26), and what it does under its switch. */}
