@@ -14,9 +14,9 @@ import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
 import {
   cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, setVolumeOver, subtractRange, volumeAt, volumeStretchesOf,
-  withCameraHidden, withVolumeStretches, type EditableSound, type EditScene, type VolumeInput,
+  withCameraHidden, withVolumeStretches, type EditScene, type VolumeInput,
 } from "../../../shared/editable";
-import { softLimit } from "../../../shared/audio-volume";
+import { EditMix, FOLLOWED_EVENTS, followMedia, mixScene, watchSkipped } from "../../player/edited-playback";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, subscribe, view } from "./core";
 import { forgetMenu } from "./library";
@@ -68,7 +68,8 @@ let sceneDraft: EditScene | undefined;
  * toolbar for the moment it took, a flicker at every step of a volume or an Undo); every change waits its turn instead.
  */
 export let editorSaving = false;
-let frameCallback: number | undefined;
+/** Stops the preview's frame-by-frame watch of the recording attached last. */
+let stopWatching: () => void = () => undefined;
 
 /** One stretch of the timeline between two cuts or splits. */
 export interface TimelinePart {
@@ -274,12 +275,16 @@ export function forgetEditor(ids: ReadonlySet<string>): void {
 }
 
 export function attachEditorVideo(video: HTMLVideoElement | null): void {
-  if (editorVideo && frameCallback !== undefined) editorVideo.cancelVideoFrameCallback(frameCallback);
-  frameCallback = undefined;
+  stopWatching();
+  stopWatching = () => undefined;
   if (editorVideo) for (const [name, listener] of followers) editorVideo.removeEventListener(name, listener);
   editorVideo = video;
-  // Chromium has it; a page test's DOM may not.
-  if (video && typeof video.requestVideoFrameCallback === "function") watchFrames(video);
+  // While the preview plays, a frame in a removed range jumps on, as the export goes on (`watchSkipped`); each frame
+  // sets the sounds' gains for its time while any volume stretch exists.
+  if (video) stopWatching = watchSkipped(video, () => editorView(), () => {
+    const editor = editorView();
+    if (editor && editorScene(editor)?.volumeStretches) syncPreviewAudio();
+  });
   if (video) for (const [name, listener] of followers) video.addEventListener(name, listener);
   // The view draws again with it, so the playhead follows it from the first seek (a ref is set while React commits).
   if (video) queueMicrotask(draw);
@@ -288,114 +293,40 @@ export function attachEditorVideo(video: HTMLVideoElement | null): void {
 /** An editable recording's camera and second sound (plan 087), played beside the recording for its preview. */
 let previewCamera: HTMLVideoElement | null = null;
 let previewSound: HTMLAudioElement | null = null;
-/** How far a follower may drift from the playing recording before it is put back to its time. */
-const DRIFT_SECONDS = 0.12;
-
 export function attachPreviewCamera(video: HTMLVideoElement | null): void {
   previewCamera = video;
-  if (video) follow(video, true);
+  if (video && editorVideo) followMedia(editorVideo, video, true);
 }
 
 export function attachPreviewSound(media: HTMLAudioElement | null): void {
   // A view's element goes with its view: its sound graph is released, so none is kept for an element no longer shown.
-  if (previewSound && previewSound !== media) release(previewSound);
+  if (previewSound && previewSound !== media) mix.release(previewSound);
   previewSound = media;
   if (media) {
-    follow(media, true);
+    if (editorVideo) followMedia(editorVideo, media, true);
     syncPreviewAudio();
   }
 }
 
-/**
- * Puts `media` where the recording is, playing or not as it is, at its rate and with its mute and volume (the player's
- * own controls). `exact` after a seek or when it joins; while playing it is moved back only once it drifts.
- */
-function follow(media: HTMLMediaElement, exact: boolean): void {
-  const main = editorVideo;
-  if (!main || !Number.isFinite(main.currentTime)) return;
-  const drift = Math.abs(media.currentTime - main.currentTime);
-  if (exact ? drift > 0.001 : drift > DRIFT_SECONDS) media.currentTime = main.currentTime;
-  media.playbackRate = main.playbackRate;
-  media.muted = main.muted;
-  media.volume = main.volume;
-  if (main.paused && !media.paused) media.pause();
-  else if (!main.paused && media.paused) void media.play().catch(() => undefined);
-}
-
 function followAll(exact: boolean): void {
-  for (const media of [previewCamera, previewSound]) if (media) follow(media, exact);
+  if (!editorVideo) return;
+  for (const media of [previewCamera, previewSound]) if (media) followMedia(editorVideo, media, exact);
 }
 
-/** The recording's events its followers take. */
-const followers: Array<[string, () => void]> = [
-  ["play", () => { resumeAudio(); followAll(true); }],
-  ["pause", () => { followAll(true); syncPreviewAudio(); }], ["seeked", () => { followAll(true); syncPreviewAudio(); }], ["ratechange", () => followAll(false)],
-  ["volumechange", () => { followAll(false); syncPreviewAudio(); }], ["timeupdate", () => followAll(false)],
-];
+/** The recording's events its followers take (`FOLLOWED_EVENTS`), the sound's gains with some. */
+const followers: Array<[string, () => void]> = FOLLOWED_EVENTS.map(([name, exact]): [string, () => void] => [name, () => {
+  if (name === "play") mix.resume();
+  followAll(exact);
+  if (name === "pause" || name === "seeked" || name === "volumechange") syncPreviewAudio();
+}]);
 
-/**
- * The preview's sound (plan 087): each element through a gain at its track's volume, summed, then through the export's
- * soft limit (core's `limit`, as a wave shaper), so a loud or raised mix sounds as the export will, and only then the
- * player's own volume and mute, as a master gain: Chromium applies an element's volume and mute to its source node
- * (measured 2026-10-25), so each element's gain divides its own volume back out, and the mix is limited as the export
- * limits it whatever the player's volume (Codex's second review). Created once; each element's source can be made only
- * once, so an element's nodes live as long as it is shown, and are released after.
- */
-let audio: { context: AudioContext; mix: AudioNode; master: GainNode; nodes: Map<HTMLMediaElement, { source: AudioNode; gain: GainNode }> } | undefined;
-/** The span of sums the limiter's curve covers: past it a sum is as limited as full scale is. */
-const LIMIT_SPAN = 8;
-
-function gainFor(media: HTMLMediaElement): GainNode | undefined {
-  if (typeof AudioContext !== "function") return undefined;
-  if (!audio) {
-    const context = new AudioContext();
-    // Scaled into the shaper's -1…1 and out again by its curve, which is the limit of the sums -LIMIT_SPAN…LIMIT_SPAN.
-    const into = context.createGain();
-    into.gain.value = 1 / LIMIT_SPAN;
-    const shaper = context.createWaveShaper();
-    shaper.curve = Float32Array.from({ length: 4096 }, (_, n) => softLimit((n / 4095 * 2 - 1) * LIMIT_SPAN));
-    const master = context.createGain();
-    into.connect(shaper).connect(master).connect(context.destination);
-    audio = { context, mix: into, master, nodes: new Map() };
-  }
-  let nodes = audio.nodes.get(media);
-  if (!nodes) {
-    const source = audio.context.createMediaElementSource(media);
-    const gain = audio.context.createGain();
-    source.connect(gain).connect(audio.mix);
-    nodes = { source, gain };
-    audio.nodes.set(media, nodes);
-  }
-  return nodes.gain;
-}
-
-/** Stops a follower that left and lets its nodes go. */
-function release(media: HTMLMediaElement): void {
-  media.pause();
-  const nodes = audio?.nodes.get(media);
-  if (!nodes) return;
-  nodes.source.disconnect();
-  nodes.gain.disconnect();
-  audio!.nodes.delete(media);
-}
-
-function resumeAudio(): void {
-  if (audio?.context.state === "suspended") void audio.context.resume().catch(() => undefined);
-}
+/** The preview's sound (plan 087), shared with the full-screen viewer (`EditMix`). */
+const mix = new EditMix();
 
 /** The scene shown now: the draft being moved, or the one saved. */
 export function editorScene(editor: EditorView): EditScene | undefined {
   return sceneDraft ?? editor.editable?.scene;
 }
-
-/** A sound's volume in `scene` at `time` (the video's timescale; a stretch's there, 2026-10-26), as a gain. */
-export function soundGain(scene: EditScene, sound: EditableSound | undefined, time = 0): number {
-  const percent = sound === "microphone" || sound === "system" ? volumeAt(scene, sound, time) : 100;
-  return percent / 100;
-}
-
-/** The last gain each sound node was told, so a frame that changes nothing schedules nothing. */
-const told = new WeakMap<GainNode, number>();
 
 /**
  * Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. Any other
@@ -404,33 +335,13 @@ const told = new WeakMap<GainNode, number>();
 export function syncPreviewAudio(): void {
   const editor = editorView();
   const scene = editor && editorScene(editor);
-  // What the element's volume did to its source undone: the gain alone is the scene's. While it plays a change of
-  // stretch eases over a few milliseconds, as the export's does, so it does not click.
-  const set = (media: HTMLMediaElement, gain: GainNode, factor: number): void => {
-    const level = media.muted ? 0 : media.volume;
-    const value = level > 0 ? factor / level : 0;
-    if (told.get(gain) === value) return;
-    told.set(gain, value);
-    if (audio && !media.paused) gain.gain.setTargetAtTime(value, audio.context.currentTime, 0.004);
-    else {
-      gain.gain.cancelScheduledValues(0);
-      gain.gain.value = value;
-    }
-  };
-  if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
+  if (!editorVideo) return;
   if (!editor?.editable || !scene) {
-    const kept = editorVideo && audio?.nodes.get(editorVideo);
-    if (kept && editorVideo) set(editorVideo, kept.gain, 1);
+    mix.master(editorVideo);
+    mix.unity(editorVideo);
     return;
   }
-  const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[editorVideo, editor.editable.sounds[0]], [previewSound, editor.editable.sounds[1]]];
-  const time = Math.round((editorVideo?.currentTime ?? 0) * editor.timescale);
-  for (const [media, sound] of pairs) {
-    if (!media) continue;
-    const gain = gainFor(media);
-    if (gain) set(media, gain, soundGain(scene, sound, time));
-  }
-  if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
+  mixScene(mix, editorVideo, previewSound, editor.editable.sounds, scene, Math.round((editorVideo.currentTime || 0) * editor.timescale));
 }
 
 /** How many scene changes wait to be saved (in turn with the timeline's, `inTurn`); the draft stays until the last. */
@@ -470,34 +381,6 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
 }
 
 const copy = (ranges: readonly EditRange[]): EditRange[] => ranges.map(([from, to]): EditRange => [from, to]);
-
-/**
- * While the preview plays, each frame shown is checked: one in a removed range jumps to where that range ends, so the
- * preview plays what the export will hold. A seek into a removed range shows it, marked on the timeline.
- */
-function watchFrames(video: HTMLVideoElement): void {
-  const check = (_now: number, metadata: VideoFrameCallbackMetadata): void => {
-    frameCallback = video.requestVideoFrameCallback(check);
-    const editor = editorView();
-    if (!editor || video.paused) return;
-    // Volume stretches (2026-10-26): each frame shown sets the sounds' gains for its time; nothing without any.
-    if (editorScene(editor)?.volumeStretches) syncPreviewAudio();
-    // Half a frame either way: a frame's media time is rounded to microseconds and need not fall on the timescale's
-    // grid, so the frame a range ends at could read as just inside it and be sought to again and again, the preview
-    // standing still while it shows Pause.
-    const time = metadata.mediaTime * editor.timescale,
-      slack = editor.timescale / Math.max(1, editor.frameRate) / 2;
-    const range = editor.skipped.find(([from, to]) => time >= from - slack && time < to - slack);
-    if (!range) return;
-    if (range[1] >= editor.duration) {
-      video.pause();
-      video.currentTime = range[0] / editor.timescale;
-    } else {
-      video.currentTime = range[1] / editor.timescale;
-    }
-  };
-  frameCallback = video.requestVideoFrameCallback(check);
-}
 
 /** The video's position in its timescale, on a frame start. */
 function playhead(editor: EditorView): number {
