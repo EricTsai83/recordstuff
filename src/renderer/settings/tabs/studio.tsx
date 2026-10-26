@@ -18,7 +18,6 @@ import { CameraPreview, type PreviewShown } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
 import { SliderSetting } from "./row-parts/slider";
 import { Elapsed } from "./row-parts/elapsed";
-import { GroupIcon } from "./row-parts/icons";
 import { paceStudio, type StudioPacer } from "./studio-pace";
 import { setPreviewView } from "./studio-feed";
 
@@ -195,9 +194,8 @@ function AudioPanel() {
           const fader = groupOf(`${group.meter!.source}Gain`);
           return (
             <div key={group.id} className="studio-channel">
+              {/* By its name alone (2026-10-26, the maintainer's request: the icon the same day gave it beside the name went). */}
               <div className="studio-channel-head">
-                {/* Each input by its icon too (2026-10-26, the maintainer's request), the one Recording settings gives it. */}
-                <GroupIcon id={group.id} />
                 <span id={`setting-${group.id}-label`}>{group.label}</span>
               </div>
               {fader?.slider && (

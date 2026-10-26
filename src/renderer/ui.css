@@ -1345,10 +1345,6 @@
     flex: 1;
     min-width: 0;
   }
-  .studio-channel-head > .row-icon {
-    width: 14px;
-    height: 14px;
-  }
   /* Each input in the Audio panel (2026-10-24): its name, then its level now with its mute, then, under a rule, the
      volume it is recorded at; a caption names each line, one column wide, so the meter and the fader line up. */
   .studio-channel-head > span {
