@@ -322,11 +322,21 @@ test("the timeline spans the panel, a range dragged past it reaches the recordin
   // edit still plays as previewed; Escape, or T, or the button again, brings the timeline back.
   const stageHeight = async () => (await page.locator("#editor .editor-stage").boundingBox())!.height;
   const before = await stageHeight();
+  // Its button and full screen's at the picture's bottom right, where a player keeps them (2026-10-27).
+  const stageBox = (await page.locator("#editor .editor-stage").boundingBox())!;
+  for (const id of ["#editor-enlarge", "#editor-fullscreen"]) {
+    const button = (await page.locator(id).boundingBox())!;
+    expect(button.y + button.height).toBeGreaterThan(stageBox.y + stageBox.height - 40);
+    expect(button.x + button.width).toBeGreaterThan(stageBox.x + stageBox.width - 100);
+  }
   await page.locator("#editor-enlarge").click();
   await expect(page.locator("#editor .editor-panel")).toBeHidden();
   await expect(page.locator("#editor .pc-seek")).toBeVisible();
   expect(await stageHeight()).toBeGreaterThan(before + 100);
   await expect(page.locator("#editor-enlarge")).toHaveAccessibleName("Show the timeline");
+  // Enlarged, both at the end of the player's own controls.
+  await expect(page.locator("#editor .pc-bottom #editor-enlarge")).toHaveCount(1);
+  await expect(page.locator("#editor .pc-bottom #editor-fullscreen")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(page.locator("#editor .editor-panel")).toBeVisible();
   await expect(page.locator("#editor .pc-seek")).toBeHidden();

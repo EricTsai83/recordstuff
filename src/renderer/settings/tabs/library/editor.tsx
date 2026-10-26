@@ -243,6 +243,35 @@ export function EditorDialog() {
   const exporting = editor?.export.phase === "exporting";
   // Every view drawn: an editable recording's gains at its scene, any other recording's at unity (plan 087).
   useEffect(() => model.syncPreviewAudio());
+  // Enlarge preview and full screen, together where a player keeps them (2026-10-27).
+  const viewButtons = (
+    <>
+      <ControlTooltip label={`${model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")} (T)`}>
+        <Button
+          variant="media"
+          size="icon-media"
+          id="editor-enlarge"
+          aria-label={model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")}
+          aria-pressed={model.enlarged}
+          onClick={() => model.toggleEnlarged()}
+        >
+          {model.enlarged ? <PanelBottomOpen /> : <PanelBottomClose />}
+        </Button>
+      </ControlTooltip>
+      <ControlTooltip label={`${model.text("Full screen")} (F)`}>
+        <Button
+          variant="media"
+          size="icon-media"
+          id="editor-fullscreen"
+          aria-label={model.text("Full screen")}
+          aria-disabled={model.editorFullScreenPending || editor?.state !== "ready" || undefined}
+          onClick={() => void model.playEditorFullScreen()}
+        >
+          <Maximize />
+        </Button>
+      </ControlTooltip>
+    </>
+  );
   useExportToast();
   return (
     <Dialog
@@ -295,7 +324,10 @@ export function EditorDialog() {
               // A double-click or F plays the edit full screen, as the player's (2026-10-27).
               onDoubleClick={() => void model.playEditorFullScreen()}
               fullScreen={() => void model.playEditorFullScreen()}
-              trailing={null}
+              // Enlarged, the two ways to see it larger sit at the end of the player's own controls, as its full screen
+              // does; otherwise at the picture's bottom right (2026-10-27, the maintainer's review: by Close they were
+              // in the wrong corner, where a player keeps them).
+              trailing={model.enlarged ? viewButtons : null}
               close={
                 <>
                 {model.editorPreviewError && (
@@ -304,30 +336,6 @@ export function EditorDialog() {
                     {model.text("Reload preview")}
                   </Button>
                 )}
-                <ControlTooltip label={`${model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")} (T)`}>
-                  <Button
-                    variant="media"
-                    size="icon-media"
-                    id="editor-enlarge"
-                    aria-label={model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")}
-                    aria-pressed={model.enlarged}
-                    onClick={() => model.toggleEnlarged()}
-                  >
-                    {model.enlarged ? <PanelBottomOpen /> : <PanelBottomClose />}
-                  </Button>
-                </ControlTooltip>
-                <ControlTooltip label={`${model.text("Full screen")} (F)`}>
-                  <Button
-                    variant="media"
-                    size="icon-media"
-                    id="editor-fullscreen"
-                    aria-label={model.text("Full screen")}
-                    aria-disabled={model.editorFullScreenPending || editor?.state !== "ready" || undefined}
-                    onClick={() => void model.playEditorFullScreen()}
-                  >
-                    <Maximize />
-                  </Button>
-                </ControlTooltip>
                 <ControlTooltip label={exporting ? model.text("Cancel the export to close") : model.text("Close")}>
                   <Button
                     variant="media"
@@ -345,10 +353,11 @@ export function EditorDialog() {
             />
           )}
           {item && editor?.state === "ready" && editor.editable && <EditorCamera editor={editor} />}
+          {item && !model.enlarged && <div className="editor-view-buttons">{viewButtons}</div>}
           {/* Over the stage's foot, inside the dialog, so the dialog neither covers it nor takes its clicks as outside.
               Only while the view is open: a second Sonner list drawn the rest of the time held the page's Trash toast
               open after the pointer left it. */}
-          {model.editingItem && <Toaster id={EXPORT_TOASTER} hotkey={[]} position="bottom-right" visibleToasts={1} offset={12} />}
+          {model.editingItem && <Toaster id={EXPORT_TOASTER} hotkey={[]} position="bottom-right" visibleToasts={1} offset={{ bottom: model.enlarged ? 84 : 56, right: 12 }} />}
         </div>
         {item && <EditorPanel />}
         <p id="editor-feedback" className="sr-only" role="status" aria-live="polite">

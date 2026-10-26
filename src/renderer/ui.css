@@ -2769,6 +2769,19 @@
     background: var(--card);
     color: var(--card-foreground);
   }
+  /* Enlarge preview and full screen at the picture's bottom right, where a player keeps them (2026-10-27), on a dark
+     wash so they read over any picture; enlarged, they go into the player's own controls. */
+  .editor-view-buttons {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--media) 45%, transparent);
+  }
   /* Enlarge preview (2026-10-27): the panel steps aside and the stage takes its room. */
   .editor[data-enlarged] .editor-panel {
     display: none;
