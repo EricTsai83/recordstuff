@@ -2503,6 +2503,26 @@
     font-weight: 600;
     letter-spacing: 0;
   }
+  /* A recording that holds an edit, badged at its picture's top left as its length is at the bottom right (2026-10-26). */
+  .clip-edited-badge {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+    padding: 1px 7px 1px 6px;
+    color: var(--media-foreground);
+    background: var(--media-scrim);
+    font-size: 12px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .clip-edited-badge svg {
+    width: 12px;
+    height: 12px;
+  }
   .clip-text {
     /* Room on the title's line for the ⋮ button at its right. */
     padding: 10px 32px 0 2px;

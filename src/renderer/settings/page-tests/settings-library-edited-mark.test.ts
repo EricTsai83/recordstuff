@@ -27,7 +27,7 @@ it("marks an edited recording as a state, not a link, and offers Continue editin
   window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: () => () => {} };
   await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
-  expect(document.querySelector("#clip-b .clip-edited")).toBeNull();
+  expect(document.querySelector("#clip-b .clip-edited-badge")).toBeNull();
   expect(document.getElementById("clip-a-open")!.getAttribute("aria-label")).toContain("Edited");
   await menu(document.getElementById("clip-b-more")!);
   expect(document.getElementById("clip-menu-edit")!.textContent).toBe("Edit…");
@@ -39,9 +39,10 @@ it("marks an edited recording as a state, not a link, and offers Continue editin
   await vi.waitFor(() => expect(document.getElementById("clip-menu-edit")).toBeNull());
 
   // A state, not a link: a click on it is the card's, which plays the recording.
-  const mark = document.querySelector<HTMLElement>("#clip-a .clip-meta .clip-edited")!;
+  // A badge on the picture, not in the text, and not a link (2026-10-26).
+  const mark = document.querySelector<HTMLElement>("#clip-a .clip-thumb .clip-edited-badge")!;
   expect(mark.textContent).toBe("Edited");
-  expect(mark.classList.contains("clip-editable")).toBe(false);
+  expect(document.querySelector("#clip-a .clip-meta")!.textContent).not.toContain("Edited");
   click(mark);
   await vi.waitFor(() => expect(document.querySelector(".player[data-open]")).not.toBeNull());
   expect(choices).toEqual([]);

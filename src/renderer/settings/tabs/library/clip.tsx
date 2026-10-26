@@ -3,7 +3,7 @@
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, Scissors, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -121,6 +121,14 @@ export const Clip = memo(function Clip({
                 flushSync(() => { setFailed(false); setPortrait(height > width); });
               }}
             />
+            {/* A recording that holds an edit says so on its picture, a state badge (the maintainer's request of 2026-10-26),
+                as its length does at the opposite corner; not a control: a click there is the card's. */}
+            {item.edited && (
+              <span className="clip-edited-badge">
+                <Scissors aria-hidden="true" />
+                {item.edited}
+              </span>
+            )}
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}
             </span>
@@ -312,8 +320,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
  * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
  * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
  * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit…. A recording
- * that holds an edit says Edited beside it, a state only (the maintainer's review the same day): a click there is the
- * card's, and its menu offers Continue editing….
+ * that holds an edit is badged on its picture instead (the thumbnail's own), its menu offering Continue editing….
  */
 function EditableMark({ item }: { item: LibraryItemView }) {
   return (
@@ -333,12 +340,6 @@ function EditableMark({ item }: { item: LibraryItemView }) {
           >
             {item.editable}
           </span>
-        </>
-      )}
-      {item.edited && (
-        <>
-          {" · "}
-          <span className="clip-edited">{item.edited}</span>
         </>
       )}
     </>
