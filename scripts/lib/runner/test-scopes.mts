@@ -77,7 +77,7 @@ export const TEST_SCOPES: readonly TestScope[] = [
   {
     name: "player",
     covers: "the recordings player and its full-screen window",
-    unit: ["src/renderer/player/", "src/renderer/video/", "src/main/library/video-fullscreen.test.ts", `${PAGE}settings-player-fullscreen.test.ts`, "src/preload/"],
+    unit: ["src/renderer/player/", "src/renderer/video/", "src/shared/video-player.test.ts", "src/main/library/video-fullscreen.test.ts", `${PAGE}settings-player-fullscreen.test.ts`, "src/preload/"],
     ui: [{ file: "player.spec.ts" }, { file: "components.spec.ts", tags: ["@player"] }],
   },
   {
