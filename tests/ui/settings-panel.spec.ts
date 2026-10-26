@@ -888,6 +888,9 @@ test("S142 the Studio's line of controls: Live preview beside Start, nothing lai
   // A portrait screen's narrow window: the line of controls and the picture keep their places as it is said and goes.
   // setSize resolves once the page has the new size (hosts/settle.ts).
   await host.evaluate(h => h.setSize(541, 900));
+  // The narrow window's own layout first: its sidebar collapses, which can come later than the size on a busy machine
+  // (2026-10-26, CI: the places were taken with the sidebar still wide, then it collapsed and everything "moved").
+  await expect(page.locator('main[data-sidebar="collapsed"]'), "S142 the narrow window's sidebar").toHaveCount(1);
   const places = () => page.evaluate(() => [".studio-controls", ".studio-stage .camera-preview-stage", ".studio-panels"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
