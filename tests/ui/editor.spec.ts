@@ -500,6 +500,8 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await page.locator("#editor-mix").click();
   // It opens on its first volume, not on the ⓘ before it, so the arrow keys set it at once (a native round, 2026-10-26).
   await expect(page.getByRole("slider", { name: "System audio", exact: true })).toBeFocused();
+  // And framed, though the panel was opened by a click and no key has been pressed (a native round, 2026-10-26).
+  expect(await page.getByRole("slider", { name: "System audio", exact: true }).evaluate((input) => getComputedStyle(input.closest("[data-slot=slider-thumb]")!).boxShadow)).not.toBe("none");
   const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
   await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
   await microphone.focus();
@@ -543,6 +545,13 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await microphone.focus();
   await page.keyboard.press("Space");
   await expect(page.locator("#editor-play")).toHaveAccessibleName(/^Play/);
+  await expect(page.locator("#editor-mix-popup")).toBeVisible();
+  // With the focus moved on to Play, Escape still closes it first, and leaves the view open.
+  await page.locator("#editor-play").focus();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#editor-mix-popup")).toHaveCount(0);
+  await expect(page.locator("#editor[data-open]")).toHaveCount(1);
+  await page.locator("#editor-mix").click();
   await expect(page.locator("#editor-mix-popup")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("#editor-mix-popup")).toHaveCount(0);

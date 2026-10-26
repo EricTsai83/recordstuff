@@ -4,6 +4,8 @@
  * the player's black stage that takes a pointing hand, and `growOnHover`, the player's seek bar, whose track thickens
  * and whose thumb grows in only while the pointer is over it or it has focus (restored 2026-10-07). `variant="seek"` is
  * the media slider in the accent red, as YouTube's seek bar and a library card's preview bar draw it (2026-10-08).
+ * `focusRing` rings the thumb whenever it has the focus, a click's included, where the arrow keys set it at once (the edit
+ * view's overall volumes, opened on their first slider, 2026-10-26).
  */
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { cn } from "@/lib/utils";
@@ -18,12 +20,14 @@ function Slider({
   controlClassName,
   variant = "default",
   growOnHover = false,
+  focusRing = false,
   ...props
 }: SliderPrimitive.Root.Props & {
   thumbProps?: SliderPrimitive.Thumb.Props;
   controlClassName?: string;
   variant?: "default" | "media" | "seek";
   growOnHover?: boolean;
+  focusRing?: boolean;
 }) {
   const media = variant === "media" || variant === "seek";
   const _values = Array.isArray(value)
@@ -76,6 +80,7 @@ function Slider({
               media &&
                 "size-[13px] rounded-full border-0 bg-media-foreground shadow-[var(--media-thumb-shadow)] has-[:focus-visible]:ring-media-foreground/80",
               variant === "seek" && "bg-primary",
+              focusRing && "has-[:focus]:ring-[3px] has-[:focus]:ring-ring/40 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/40",
               growOnHover &&
                 "scale-0 transition-[scale,box-shadow] duration-100 ease-out group-hover/slider:scale-100 group-active/slider:scale-100 has-focus-visible:scale-100",
             )}

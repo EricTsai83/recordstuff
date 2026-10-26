@@ -340,7 +340,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
 }
 
 /** A volume's row: its name, its slider (100% in the middle, as the Studio's faders; the left end mutes), its value. */
-function VolumeRow({ id, label, value, disabled, set }: { id: string; label: string; value: number; disabled: boolean; set: (value: number, commit: boolean) => void }) {
+function VolumeRow({ id, label, value, disabled, focusRing, set }: { id: string; label: string; value: number; disabled: boolean; focusRing?: boolean; set: (value: number, commit: boolean) => void }) {
   const text = `${value}%`;
   return (
     <div className="editor-scene-row">
@@ -353,6 +353,7 @@ function VolumeRow({ id, label, value, disabled, set }: { id: string; label: str
           max={VOLUME_FADER_MAX}
           step={1}
           disabled={disabled}
+          focusRing={focusRing ?? false}
           thumbProps={{ "aria-label": label, "aria-valuetext": text }}
           onValueChange={(next) => { const n = first(next); if (n !== undefined) set(volumeFromFader(n), false); }}
           onValueCommitted={(next) => { const n = first(next); if (n !== undefined) set(volumeFromFader(n), true); }}
@@ -512,6 +513,19 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = editable && model.editorScene(editor);
   const [open, setOpen] = useState(false);
+  // Escape closes it first, wherever the focus is in the view (a native round of 2026-10-26: with the focus moved on to
+  // Play, Escape left it open), before the view's own Escape lets go of a selection.
+  useEffect(() => {
+    if (!open) return;
+    const escape = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
+  }, [open]);
   if (!editable || !scene) return null;
   const sounds = new Set<EditableSound>(editable.sounds);
   if (!sounds.has("system") && !sounds.has("microphone")) return null;
@@ -557,11 +571,11 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
             </Button>
           </div>
           {sounds.has("system") && (
-            <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
+            <VolumeRow id="editor-volume-system" focusRing label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
               set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
           )}
           {sounds.has("microphone") && (
-            <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
+            <VolumeRow id="editor-volume-microphone" focusRing label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
               set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
           )}
         </div>
