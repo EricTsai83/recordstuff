@@ -691,6 +691,11 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   const hidden = (await stretches.nth(1).boundingBox())!;
   await page.mouse.click(hidden.x + hidden.width / 2, hidden.y + hidden.height / 2);
   await expect(stretches.nth(1)).toHaveAttribute("aria-pressed", "true");
+  // Chosen on the camera's lane: filled there only, outlined on the pictures and the inputs' lanes (2026-10-26: a
+  // stretch spanning the recording turned the whole timeline red).
+  await expect(page.locator(".editor-timeline .editor-range")).toHaveAttribute("data-outline", "true");
+  await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range')).not.toHaveAttribute("data-outline", "true");
+  await expect(page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-range')).toHaveAttribute("data-outline", "true");
   await page.keyboard.press("c");
   expect(await eventually(() => record().version === 2 && record().scene?.camera?.hidden === undefined && record().scene?.camera?.shown === true)).toBe(true);
   await expect(stretches).toHaveCount(1);

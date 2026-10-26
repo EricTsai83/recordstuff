@@ -3044,6 +3044,12 @@
     box-shadow: inset 0 0 0 2px var(--primary);
     pointer-events: none;
   }
+  /* A range chosen on a lane is filled there only; on the pictures and the other lanes, outlined (2026-10-26). */
+  .editor-range[data-outline],
+  .editor-camera-range[data-outline] {
+    background: none;
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
   .editor-camera-playhead {
     position: absolute;
     top: 0;

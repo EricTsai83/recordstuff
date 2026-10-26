@@ -616,12 +616,20 @@ async function removeRange(editor: EditorView, [from, to]: EditRange): Promise<v
 }
 
 /** Chooses the range between two places on the timeline (the video's timescale), or none when they meet. */
-export function selectRange(a: number, b: number): void {
+/**
+ * The lane a range was chosen on, by a click on one of its stretches; none for a range dragged across the pictures. Only
+ * that lane is filled as chosen (2026-10-26, the maintainer's report: a stretch spanning the recording filled the whole
+ * timeline red, as if all of it were about to go); the pictures and the other lanes outline it.
+ */
+export let rangeLane: Lane | undefined;
+
+export function selectRange(a: number, b: number, lane?: Lane): void {
   const editor = editorView();
   if (!editor) return;
   const from = Math.max(0, Math.min(a, b)), to = Math.min(editor.duration, Math.max(a, b));
   const frame = editor.timescale / Math.max(1, editor.frameRate);
   rangeSelection = to - from >= frame ? [from, to] : undefined;
+  rangeLane = rangeSelection ? lane : undefined;
   if (rangeSelection) selectedFrom = undefined;
   draw();
 }

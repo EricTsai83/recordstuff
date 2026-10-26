@@ -666,7 +666,7 @@ function EditorPanel() {
             const stretch = held.lane ? list.find((one) => ticks >= one.from && ticks < one.to) ?? list.at(-1) : undefined;
             if (held.lane) model.chooseLaneInput(held.lane === "camera" ? undefined : held.lane);
             if (stretch) {
-              model.selectRange(stretch.from, stretch.to);
+              model.selectRange(stretch.from, stretch.to, held.lane);
               model.seekTo(ticks / editor.timescale);
             } else placeAt(ticks);
           }
@@ -716,7 +716,7 @@ function EditorPanel() {
         {editor.notes.map((note) => (
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
-        {range && <span className="editor-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+        {range && <span className="editor-range" data-outline={model.rangeLane ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
         </div>
@@ -741,7 +741,7 @@ function EditorPanel() {
                   disabled={busy}
                   onClick={(event) => {
                     if (event.detail !== 0) return;
-                    model.selectRange(stretch.from, stretch.to);
+                    model.selectRange(stretch.from, stretch.to, "camera");
                     model.seekTo(stretch.from / editor.timescale);
                   }}
                 >
@@ -754,7 +754,7 @@ function EditorPanel() {
             {editor.removed.map(([from, to]) => (
               <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
             ))}
-            {range && <span className="editor-camera-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+            {range && <span className="editor-camera-range" data-outline={model.rangeLane && model.rangeLane !== "camera" ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
             <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
           </div>
         )}
@@ -787,7 +787,7 @@ function EditorPanel() {
                     onClick={(event) => {
                       if (event.detail !== 0) return;
                       model.chooseLaneInput(input);
-                      model.selectRange(stretch.from, stretch.to);
+                      model.selectRange(stretch.from, stretch.to, input);
                       model.seekTo(stretch.from / editor.timescale);
                     }}
                   >
@@ -801,7 +801,7 @@ function EditorPanel() {
               {editor.removed.map(([from, to]) => (
                 <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
               ))}
-              {range && <span className="editor-camera-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+              {range && <span className="editor-camera-range" data-outline={model.rangeLane && model.rangeLane !== input ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
               <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
             </div>
           );
