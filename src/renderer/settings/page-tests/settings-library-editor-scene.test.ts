@@ -46,16 +46,24 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   click(document.getElementById("clip-menu-edit")!);
   await vi.waitFor(() => expect(document.getElementById("editor-options")).not.toBeNull());
 
-  // The controls, behind the toolbar's Options button (2026-10-26, with Skimming): the camera shown, then a volume for each sound the
-  // recording holds. The camera's size is its corner handles (2026-10-25: no slider).
-  expect(document.getElementById("editor-options")!.textContent).toBe("Options");
+  // The overall volumes in a panel of their own, a volume for each sound the recording holds (2026-10-26, the maintainer's
+  // review); what is set once, Skimming and the camera hidden, behind ⋯. The camera's size is its corner handles
+  // (2026-10-25: no slider).
+  expect(document.getElementById("editor-mix")!.getAttribute("aria-label")).toBe("Overall volume");
+  click(document.getElementById("editor-mix")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-volume-system")).not.toBeNull());
+  expect(document.getElementById("editor-volume-microphone")).not.toBeNull();
+  expect(document.getElementById("editor-camera-hidden")).toBeNull();
+  click(document.getElementById("editor-mix")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-mix-popup")).toBeNull());
+  expect(document.getElementById("editor-options")!.getAttribute("aria-label")).toBe("More options");
   click(document.getElementById("editor-options")!);
-  await vi.waitFor(() => expect(document.querySelector("#editor-options-popup .editor-scene")).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector("#editor-options-popup .editor-options")).not.toBeNull());
   expect(document.getElementById("editor-skim")!.getAttribute("aria-checked")).toBe("false");
   expect(document.getElementById("editor-camera-hidden")!.getAttribute("aria-checked")).toBe("false");
+  expect(document.querySelector('label[for="editor-camera-hidden"]')!.textContent).toBe("Hide camera view");
   expect(document.getElementById("editor-camera-size")).toBeNull();
-  expect(document.getElementById("editor-volume-system")).not.toBeNull();
-  expect(document.getElementById("editor-volume-microphone")).not.toBeNull();
+  expect(document.getElementById("editor-volume-system")).toBeNull();
   // An editable recording can be exported with no cut, and says what its export writes.
   expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("false");
 

@@ -955,7 +955,7 @@ export function toggleCameraInSelection(): Promise<boolean> {
   if (!editor || !scene || !camera || editor.state !== "ready" || editor.export.phase === "exporting") return Promise.resolve(false);
   // Hidden throughout, C says why it does nothing, with or without a selection.
   if (!camera.shown) {
-    announce(translate("Turn off Hide the camera throughout in Options to hide or show it over a stretch.", view?.language));
+    announce(translate("Turn off Hide camera view in More options to hide or show it over a stretch.", view?.language));
     return Promise.resolve(false);
   }
   if (!target) return Promise.resolve(false);
@@ -1128,12 +1128,15 @@ export function resetVolumesInSelection(): Promise<boolean> {
   });
 }
 
-/** An editable recording's camera and volumes back to how the recording left them, as one change Undo takes back. */
-export function resetScene(): Promise<boolean> {
+/**
+ * The overall volumes back to 100%, as one change Undo takes back (2026-10-26, the maintainer's review: Reset in the
+ * volume panel resets those two and nothing set on the timeline, neither the volumes of its own nor the camera).
+ */
+export function resetOverallVolumes(): Promise<boolean> {
   const editor = editorView();
-  const recorded = editor?.editable?.recorded;
-  if (!editor || !recorded || sameScene(editorScene(editor), recorded)) return Promise.resolve(false);
-  return changeScene(recorded, true);
+  const scene = editor && editorScene(editor);
+  if (!editor || !scene || (scene.volumes.system === 100 && scene.volumes.microphone === 100)) return Promise.resolve(false);
+  return changeScene({ ...scene, volumes: { ...scene.volumes, system: 100, microphone: 100 } }, true);
 }
 
 /** Whether the edit changes nothing: every part kept, no split, and an editable recording's scene as recorded. */

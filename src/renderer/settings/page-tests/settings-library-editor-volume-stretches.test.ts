@@ -85,15 +85,11 @@ it("mutes the microphone over a part from the Volume popup, sets the system's th
   document.getElementById("editor-undo")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(saves().at(-1)).toMatchObject({ revision: 2, scene: { volumeStretches: { microphone: [[360_000, 900_000, 0]] } } }));
 
-  // Reset camera and volumes, in Options, clears the stretches too.
-  click(document.getElementById("editor-options")!);
-  await vi.waitFor(() => expect(document.getElementById("editor-scene-reset")).not.toBeNull());
-  click(document.getElementById("editor-scene-reset")!);
-  await vi.waitFor(() => expect(saves().at(-1)).toEqual({ action: "save", removed: [], revision: 3, scene: START }));
-
   // An input silent itself: Mute then Unmute over the part gives it 100% there, so Unmute is always heard (Codex's review).
-  click(document.getElementById("editor-options")!);
+  click(document.getElementById("editor-mix")!);
   await vi.waitFor(() => expect(document.getElementById("editor-volume-system")).not.toBeNull());
+  // Reset has the microphone's 80% to put back.
+  expect(document.getElementById("editor-mix-reset")!.getAttribute("aria-disabled")).toBe("false");
   const before = saves().length;
   const thumb = document.querySelector<HTMLElement>('#editor-volume-system [role="slider"], #editor-volume-system input')!;
   thumb.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
@@ -106,5 +102,14 @@ it("mutes the microphone over a part from the Volume popup, sets the system's th
   // Muted already (its own volume is 0%): Unmute.
   expect(document.getElementById("editor-volume-mute-system")!.getAttribute("aria-pressed")).toBe("true");
   click(document.getElementById("editor-volume-mute-system")!);
-  await vi.waitFor(() => expect(saves().at(-1)!.scene!.volumeStretches).toEqual({ system: [[360_000, 900_000, 100]] }));
+  await vi.waitFor(() => expect(saves().at(-1)!.scene!.volumeStretches).toEqual({ microphone: [[360_000, 900_000, 0]], system: [[360_000, 900_000, 100]] }));
+
+  // Reset in the overall panel puts the overall volume back to 100% and leaves the timeline's own volumes as they are
+  // (2026-10-26, the maintainer's review), one change ⌘Z takes back.
+  if (!document.getElementById("editor-mix-reset")) click(document.getElementById("editor-mix")!);
+  const stretches = saves().at(-1)!.scene!.volumeStretches;
+  click(document.getElementById("editor-mix-reset")!);
+  await vi.waitFor(() => expect(saves().at(-1)!.scene).toEqual({ volumes: { system: 100, microphone: 100 }, volumeStretches: stretches }));
+  document.getElementById("editor-undo")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(saves().at(-1)!.scene!.volumes.system).toBe(0));
 });

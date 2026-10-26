@@ -14,9 +14,9 @@
  * - **Resize.** The bubble is clicked, which selects it, and − pressed 5 times (2026-10-25: the size slider went, its
  *   corner handles and + / − resize it); the record must save the bubble smaller by 5 points with its shape kept
  *   (`judgeResize`).
- * - **Hide and Undo.** Hide the camera throughout, in the toolbar's Options popup (2026-10-26, Show camera before), is switched on (the record says hidden and the bubble leaves the view), then Undo is
+ * - **Hide and Undo.** Hide camera view, in the toolbar's ⋯ More options (2026-10-26; Hide the camera throughout, and Show camera before), is switched on (the record says hidden and the bubble leaves the view), then Undo is
  *   pressed (shown again, the resize kept).
- * - **Volume.** In the toolbar's Options popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
+ * - **Volume.** In the toolbar's Overall volume panel (2026-10-26), the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
  * - **Volume** (2026-10-26). Shift+→ to 11 s, S, Shift+← to 9 s, S (the part from 9 to 11 s selected), V and each
  *   input's Mute in the Volume popup: the record must hold each input at 0% from 9 to 11 s, the export be asked for
@@ -35,7 +35,7 @@
  *   handle held a fifth in must show its time above it (the accent's red, `redShare`) and the readout there, and leave
  *   the export shorter when let go with the label gone; dragged past the window's edge and let go there, it must save
  *   the full export length again; a range held across the middle must show its span with the preview at its moving
- *   end, and Delete remove it; with Skimming switched on in Options (off by default), the pointer over the timeline must move the preview there and, moved
+ *   end, and Delete remove it; with Skimming switched on in More options (off by default), the pointer over the timeline must move the preview there and, moved
  *   away, back; the shortcuts button must list the editing shortcuts on a click; and ⌘Z must take every change back.
  * - **The next recording**, by the shortcut, must be plain again: the setting stayed off.
  *
@@ -441,9 +441,9 @@ async function main(): Promise<number> {
       check({ check: "Range: held across the middle", expected: `a selection, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s`,
         actual: `"${heldSelection ?? "none"}", then "${readout ?? "no playhead readout"}"`, pass: heldSelection !== undefined && Math.abs(shown - fullSeconds * 0.6) <= 1.2 });
 
-      // Skimming, off by default (2026-10-26), switched on in Options: the preview shows what is under the pointer, and
+      // Skimming, off by default (2026-10-26), switched on in More options: the preview shows what is under the pointer, and
       // goes back when it leaves. The shortcuts' button reaches AX as a pop-up button, found by name.
-      await click(await find("Options button", (e) => e.title === translate("Options", language)));
+      await click(await find("More options button", (e) => e.title === translate("More options", language)));
       await sleep(400);
       await click(await find("Skimming switch", (e) => e.role === "AXCheckBox" && e.title === translate("Skimming", language)));
       await sleep(300);
@@ -502,11 +502,11 @@ async function main(): Promise<number> {
     await shot("3-resized.png");
     const resized = scene?.camera ?? fail("the resize saved no camera");
 
-    // Hide, then Undo; the switch is in the popup the toolbar's Options button opens (2026-10-26).
-    await click(await find("Options button", (e) => e.title === translate("Options", language)));
+    // Hide, then Undo; the switch is in the popup the toolbar's ⋯ (More options) opens (2026-10-26).
+    await click(await find("More options button", (e) => e.title === translate("More options", language)));
     await sleep(400);
     before = revision();
-    await click(await find("Hide the camera throughout switch", (e) => e.role === "AXCheckBox" && e.title === translate("Hide the camera throughout", language)));
+    await click(await find("Hide camera view switch", (e) => e.role === "AXCheckBox" && e.title === translate("Hide camera view", language)));
     scene = await saved(before, (s) => s.camera?.shown === false);
     await sleep(500);
     const bubbleGone = !(await elements()).some(isBubble);
@@ -524,9 +524,11 @@ async function main(): Promise<number> {
 
     // The microphone to 50%, by the keyboard after one click on its thumb, in the volume its toolbar button opens.
     if (microphone) {
-      // The popup may have closed with the Undo click outside it.
+      // The overall volumes are a panel of their own (2026-10-26): Escape closes More options, then their button opens it.
       if (!(await elements()).some((e) => e.role === "AXSlider" && e.title === translate("Microphone", language))) {
-        await click(await find("Options button", (e) => e.title === translate("Options", language)));
+        await ax().key(KEY.escape);
+        await sleep(300);
+        await click(await find("Overall volume button", (e) => e.title === translate("Overall volume", language)));
         await sleep(400);
       }
       const slider = await find("Microphone slider", (e) => e.role === "AXSlider" && e.title === translate("Microphone", language));
@@ -550,7 +552,7 @@ async function main(): Promise<number> {
     // there on; stepped on to 7 s, S and C show it again after that, leaving it hidden from 4 to 7 s.
     const stretchMarker = "\u0002";
     const shownSuffix = translate("{from} to {to}, camera shown", language, { from: stretchMarker, to: stretchMarker }).split(stretchMarker).at(-1)!;
-    // The Options popup, open from the volume, hides the rest of the window from accessibility: Escape closes it.
+    // The overall volumes' panel, open from the volume, hides the rest of the window from accessibility: Escape closes it.
     await ax().key(KEY.escape);
     await sleep(500);
     // A stretch is a pressed-or-not button, which Chromium gives macOS as a toggle (AXCheckBox).

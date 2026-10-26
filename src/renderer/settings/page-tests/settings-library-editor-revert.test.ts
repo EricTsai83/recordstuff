@@ -16,7 +16,8 @@ const ready = (removed: EditRange[], scene: EditScene, revision: number): Editor
 
 /**
  * Revert to original recording (2026-10-26, the maintainer's request): in Options, unavailable while nothing is
- * edited; it keeps every part again and puts the camera and volumes back as recorded in one save, which Undo takes back.
+ * edited; it asks first, then keeps every part again and puts the camera and volumes back as recorded in one save,
+ * which Undo takes back.
  */
 it("reverts the whole edit in one change, which Undo takes back", async () => {
   document.body.innerHTML = '<div id="root"></div>';
@@ -47,8 +48,22 @@ it("reverts the whole edit in one change, which Undo takes back", async () => {
   await vi.waitFor(() => expect(document.getElementById("editor-revert")).not.toBeNull());
   expect(document.getElementById("editor-revert")!.getAttribute("aria-disabled")).toBe("false");
 
+  // It asks first (the maintainer's request): Cancel leaves the edit as it is.
   click(document.getElementById("editor-revert")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-revert-confirm")).not.toBeNull());
+  expect(document.getElementById("editor-revert-confirm")!.getAttribute("role")).toBe("alertdialog");
+  expect(document.getElementById("editor-revert-confirm")!.textContent).toContain("Undo (⌘Z) brings them back while this view is open");
+  click(document.getElementById("editor-revert-cancel")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-revert-confirm")).toBeNull());
+  expect(saves).toEqual([]);
+  // The dialog took the place of Options, which open again for the second try.
+  if (!document.getElementById("editor-revert")) click(document.getElementById("editor-options")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-revert")).not.toBeNull());
+  click(document.getElementById("editor-revert")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-revert-confirm-button")).not.toBeNull());
+  click(document.getElementById("editor-revert-confirm-button")!);
   await vi.waitFor(() => expect(saves).toEqual([{ action: "save", removed: [], revision: 3, scene: RECORDED }]));
+  if (!document.getElementById("editor-revert")) click(document.getElementById("editor-options")!);
   await vi.waitFor(() => expect(document.getElementById("editor-revert")!.getAttribute("aria-disabled")).toBe("true"));
   expect(document.getElementById("editor-revert-note")!.textContent).toBe("Nothing is edited yet.");
   expect(document.getElementById("editor-feedback")!.textContent).toBe("Back to the original recording");

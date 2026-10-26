@@ -3590,20 +3590,13 @@
     font-size: var(--text-xs);
     text-align: center;
   }
-  /* The options behind one named button in the toolbar (2026-10-26): Skimming with what it does, then an editable
-     recording's camera and sound, a row each, in words, then Reset. */
+  /* More options behind ⋯ (2026-10-26, the maintainer's review): what is set once and seldom again, one column, each
+     group apart: Skimming and the camera, the lanes, then Revert. */
   .editor-options {
     display: grid;
     gap: 14px;
     min-width: 260px;
     max-width: 320px;
-  }
-  /* A group's own heading inside a section of the options (the inputs' overall volumes). */
-  .editor-scene-subtitle {
-    margin: 4px 0 -4px;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-    font-weight: 600;
   }
   .editor-options-note {
     margin: 4px 0 0;
@@ -3611,51 +3604,22 @@
     font-size: var(--text-xs);
     white-space: normal;
   }
-  .editor-options-skim + .editor-scene {
+  .editor-options > * + * {
     padding-top: 14px;
     border-top: 1px solid var(--border);
   }
-  /* Revert to original recording, last and apart (2026-10-26). */
-  .editor-options-revert {
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-  .editor-options-revert > button {
-    margin-inline-start: -8px;
-  }
-  .editor-scene {
+  /* The overall volumes' panel (2026-10-26): the two inputs under their heading, Reset small at the heading's end. */
+  .editor-mix {
     display: grid;
-    gap: 10px;
+    gap: 4px;
+    min-width: 260px;
   }
-  /* An editable recording's options side by side where the window is wide enough (2026-10-26, the maintainer's request:
-     in one column they stood taller than a short window): Skimming, the lanes and Revert on the left, the camera and
-     the sounds on the right, about as tall as each other; narrower, one column as before. The popup never stands taller
-     than the room it has, and scrolls inside rather than being cut off. */
-  @media (min-width: 720px) {
-    .editor-options:has(> .editor-scene:not(.editor-lanes)) {
-      grid-template-columns: 260px 324px;
-      grid-template-areas: "skim scene" "lanes scene" "revert scene";
-      align-items: start;
-      column-gap: 24px;
-      max-width: none;
-    }
-    .editor-options > .editor-options-skim {
-      grid-area: skim;
-    }
-    .editor-options > .editor-lanes {
-      grid-area: lanes;
-    }
-    .editor-options > .editor-options-revert {
-      grid-area: revert;
-    }
-    .editor-options > .editor-scene:not(.editor-lanes) {
-      grid-area: scene;
-      align-self: stretch;
-      padding-top: 0;
-      padding-inline-start: 24px;
-      border-top: 0;
-      border-inline-start: 1px solid var(--border);
-    }
+  .editor-mix .editor-options-title-row {
+    margin: 0 0 4px;
+  }
+  #editor-mix-reset {
+    margin-inline-end: -6px;
+    color: var(--muted-foreground);
   }
   /* The export's toast (2026-10-26) over the stage's foot, inside the edit view rather than the window's corner. */
   .editor-stage [data-sonner-toaster] {
@@ -3669,6 +3633,59 @@
   }
   .editor-scene-row > :first-child {
     flex: 1;
+  }
+  /* Version A (2026-10-26): every group of Options under one kind of small heading. */
+  .editor-options-title {
+    margin: 0 0 6px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .editor-options-title-row {
+    margin-top: 8px;
+  }
+  .editor-options-title-row .editor-options-title {
+    flex: none;
+    margin: 0;
+  }
+  .editor-options-group {
+    display: grid;
+    gap: 4px;
+  }
+  /* A note behind an ⓘ beside the control's name, the control kept at the row's end. */
+  .editor-scene-row:has(> .editor-options-info) > :first-child {
+    flex: none;
+  }
+  .editor-options-info {
+    display: inline-grid;
+    place-items: center;
+    margin-inline-end: auto;
+    color: var(--muted-foreground);
+    border-radius: 50%;
+    cursor: help;
+    outline: none;
+  }
+  .editor-options-info svg {
+    width: 14px;
+    height: 14px;
+  }
+  .editor-options-info:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+  /* The lanes' switches in a neutral grey: they show or hide what is drawn, not anything of the recording. */
+  .editor-neutral-switch[data-checked] {
+    background: color-mix(in oklab, var(--foreground) 45%, transparent);
+  }
+  /* Revert last, its note beside it. */
+  .editor-options-revert {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+  }
+  .editor-options-revert .editor-options-note {
+    margin: 0;
   }
   .editor-scene-reset {
     justify-self: start;

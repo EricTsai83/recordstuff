@@ -24,7 +24,7 @@ import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Toaster } from "../../../components/ui/sonner";
 import * as model from "../../settings-controller";
-import { EditorCamera, EditorOptions, VolumeButton } from "./editor-scene";
+import { EditorCamera, EditorOptions, OverallVolume, VolumeButton } from "./editor-scene";
 
 /**
  * Follows the preview's position to draw the playhead: on each frame shown while it plays, and on each seek. Nothing
@@ -540,7 +540,7 @@ function EditorPanel() {
     const active = document.activeElement;
     // The Volume popup too (Codex's computer-use round, 2026-10-26: its slider lost the focus at every save, and the
     // next arrow key moved the playhead).
-    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-options-popup, #editor-volume-popup")) return;
+    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-options-popup, #editor-volume-popup, #editor-mix-popup, #editor-revert-confirm")) return;
     const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
     target?.focus({ preventScroll: true });
   });
@@ -726,6 +726,7 @@ function EditorPanel() {
           </Button>
         </ControlTooltip>
         <span className="editor-spacer" />
+        <OverallVolume editor={editor} />
         <EditorOptions editor={editor} />
         {/* The keys, opened by a click as well as named to assistive technology (a
             hands-on round found a tooltip alone showed nothing on a click). Beside Export, drawn as a key cap rather
@@ -782,7 +783,7 @@ function EditorPanel() {
           </ControlTooltip>
         )}
         {camera && (
-          <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
+          <ControlTooltip label={model.text(allHidden ? "Turn off Hide camera view in More options to hide or show it over a stretch." : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
             <Button
               id="editor-camera-toggle"
               variant="ghost"

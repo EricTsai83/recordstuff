@@ -355,7 +355,7 @@ test("a trim handle keeps its distance from the pointer, reaches the recording's
   await expect(page.locator("#editor-keys-popup")).toBeVisible();
   await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
   await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
-  // Shortcuts only: Skimming is in Options (2026-10-26).
+  // Shortcuts only: Skimming is in More options (2026-10-26).
   await expect(page.locator("#editor-keys-popup #editor-skim")).toHaveCount(0);
 });
 
@@ -496,8 +496,8 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(after.x).toBeLessThan(picture.left + 2);
   expect(after.y + after.height).toBeGreaterThan(picture.top + picture.height - 2);
 
-  // The microphone a step down with the keyboard, in the popup the Options button opens.
-  await page.locator("#editor-options").click();
+  // The microphone a step down with the keyboard, in the overall volumes' panel (2026-10-26).
+  await page.locator("#editor-mix").click();
   const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
   await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
   await microphone.focus();
@@ -521,7 +521,7 @@ test("an editable recording's camera is dragged into place, its microphone turne
     const out = [];
     const panel = document.querySelector(".editor-panel");
     if (panel.scrollWidth > panel.clientWidth + 1) out.push("the panel overflows sideways");
-    for (const el of document.querySelectorAll("#editor-options-popup [role=switch], #editor-options-popup [data-slot=slider-thumb], #editor-options-popup .editor-scene-value, #editor-options-popup label, #editor-options-popup button")) {
+    for (const el of document.querySelectorAll("#editor-mix-popup [data-slot=slider-thumb], #editor-mix-popup .editor-scene-value, #editor-mix-popup label, #editor-mix-popup button")) {
       const box = el.getBoundingClientRect();
       if (box.right > innerWidth || box.bottom > innerHeight || box.left < 0) out.push((el.id || el.className) + " outside the window");
       if (getComputedStyle(el).visibility === "hidden") out.push((el.id || el.className) + " hidden");
@@ -529,8 +529,17 @@ test("an editable recording's camera is dragged into place, its microphone turne
     }
     return out; })()`);
   expect(problems).toEqual([]);
+  // It stays open as the preview plays, so a volume is set by ear: Play leaves it open, and Space from it plays or
+  // pauses (the maintainer's review of 2026-10-26).
+  await page.locator("#editor-play").click();
+  await expect(page.locator("#editor-mix-popup")).toBeVisible();
+  await expect(page.locator("#editor-play")).toHaveAccessibleName(/^Pause/);
+  await microphone.focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator("#editor-play")).toHaveAccessibleName(/^Play/);
+  await expect(page.locator("#editor-mix-popup")).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.locator("#editor-options-popup")).toHaveCount(0);
+  await expect(page.locator("#editor-mix-popup")).toHaveCount(0);
 
   // Export: rendered, with no cut, the camera where it was dragged in the recording's shape. Nothing in the toolbar moves
   // as it starts and ends: its outcome is a toast.
@@ -581,9 +590,8 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await expect(page.locator(".editor-camera-handle")).toHaveCount(0);
   await expect(page.locator("#editor[data-open]")).toHaveCount(1);
 
-  // A sound muted by its slider's left end (the popup holds only the slider), its toolbar button struck through; Undo
-  // brings it back.
-  await page.locator("#editor-options").click();
+  // A sound muted by its slider's left end; Undo brings it back.
+  await page.locator("#editor-mix").click();
   await page.getByRole("slider", { name: "System audio", exact: true }).focus();
   await page.keyboard.press("Home");
   expect(await eventually(() => record().scene?.volumes?.system === 0)).toBe(true);
@@ -592,24 +600,26 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);
 
-  // Reset, in the popup, puts the camera and the volumes back as recorded; Undo takes it back, Redo makes it again.
-  // Nothing removed and the scene as recorded is no edit: its record goes (2026-10-26, the card's Edited mark with it).
-  await page.locator("#editor-options").click();
-  await page.locator("#editor-scene-reset").click();
-  expect(await eventually(() => record().scene === undefined)).toBe(true);
-  await expect(page.locator("#editor-scene-reset")).toBeDisabled();
+  // Reset, in the panel, puts both overall volumes back to 100% and nothing else: the camera stays where it was dragged
+  // (the maintainer's review of 2026-10-26). Undo takes it back, Redo makes it again.
+  const placedCamera = record().scene.camera;
+  await page.locator("#editor-mix").click();
+  await page.locator("#editor-mix-reset").click();
+  expect(await eventually(() => record().scene?.volumes?.microphone === 100)).toBe(true);
+  expect(record().scene.camera).toEqual(placedCamera);
+  await expect(page.locator("#editor-mix-reset")).toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Escape");
   await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
   await page.locator("#editor-redo").click();
-  expect(await eventually(() => record().scene === undefined)).toBe(true);
+  expect(await eventually(() => record().scene?.volumes?.microphone === 100)).toBe(true);
   await expect(page.locator("#editor-redo")).toBeDisabled();
   // And by the keyboard: ⌘Z / Ctrl+Z, then ⇧⌘Z / Ctrl+Shift+Z.
   await page.locator("#editor-undo").focus();
   await page.keyboard.press("ControlOrMeta+z");
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
   await page.keyboard.press("ControlOrMeta+Shift+z");
-  expect(await eventually(() => record().scene === undefined)).toBe(true);
+  expect(await eventually(() => record().scene?.volumes?.microphone === 100)).toBe(true);
   await page.keyboard.press("Escape");
 });
 
@@ -875,23 +885,23 @@ test("a selection's actions float over the line above the timeline, words where 
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
   await expect(page.locator("#editor-camera")).toBeVisible();
-  // Options side by side where the window is wide, one column where it is narrow; never taller than the window, never
-  // wider than its content (the maintainer's request of 2026-10-26: one column stood taller than a short window).
-  for (const [w, h, columns] of [[960, 520, 2], [560, 520, 1]] as Array<[number, number, number]>) {
+  // More options and the overall volumes stay inside a short window, never wider than their content (the maintainer's
+  // request of 2026-10-26: the options stood taller than a short window).
+  for (const [w, h, trigger, id] of [[960, 520, "#editor-options", "#editor-options-popup"], [560, 520, "#editor-options", "#editor-options-popup"], [560, 520, "#editor-mix", "#editor-mix-popup"]] as Array<[number, number, string, string]>) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(300);
-    await page.locator("#editor-options").click();
-    const popup = page.locator("#editor-options-popup");
+    await page.locator(trigger).click();
+    const popup = page.locator(id);
     await expect(popup).toBeVisible();
     await page.waitForTimeout(250);
     const fit = await popup.evaluate((element) => {
-      const box = element.getBoundingClientRect(), grid = element.querySelector(".editor-options")!;
-      return { top: box.top, bottom: box.bottom, overflowX: element.scrollWidth - element.clientWidth, columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length };
+      const box = element.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, right: box.right, overflowX: element.scrollWidth - element.clientWidth };
     });
     expect(fit.top).toBeGreaterThanOrEqual(0);
     expect(fit.bottom).toBeLessThanOrEqual(h);
+    expect(fit.right).toBeLessThanOrEqual(w);
     expect(fit.overflowX).toBeLessThanOrEqual(0);
-    expect(fit.columns).toBe(columns);
     await page.keyboard.press("Escape");
     await expect(popup).toBeHidden();
   }

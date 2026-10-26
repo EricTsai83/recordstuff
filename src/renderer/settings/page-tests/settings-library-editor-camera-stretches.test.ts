@@ -126,7 +126,7 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   document.getElementById("editor-undo")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(saves().at(-1)).toMatchObject({ revision: 2, scene: { camera: { shown: true, hidden: [[360_000, 900_000]] } } }));
 
-  // The options: Hide the camera throughout, off, says how many stretches hide it. On, nothing of the camera is in the
+  // More options: Hide camera view, off, says how many stretches hide it. On, nothing of the camera is in the
   // export, the stretches kept, and the camera button waits; off again, the stretches are back (the maintainer's choice).
   click(document.getElementById("editor-options")!);
   await vi.waitFor(() => expect(document.getElementById("editor-camera-hidden")).not.toBeNull());
@@ -140,7 +140,7 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   // The camera button waits: not there without a selection, unavailable over one.
   expect(document.getElementById("editor-camera-toggle")?.getAttribute("aria-disabled") ?? "true").toBe("true");
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true }));
-  await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Turn off Hide the camera throughout in Options to hide or show it over a stretch."));
+  await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Turn off Hide camera view in More options to hide or show it over a stretch."));
   expect(saves()).toHaveLength(4);
   click(document.getElementById("editor-camera-hidden")!);
   await vi.waitFor(() => expect(saves().at(-1)).toEqual({ action: "save", removed: [], revision: 4, scene: { ...START, camera: stretch } }));

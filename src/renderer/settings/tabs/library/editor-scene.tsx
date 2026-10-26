@@ -16,13 +16,14 @@
  * outline that says so. The bubble's element stays meanwhile, so its camera keeps following and shows again at once.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Mic, MicOff, RotateCcw, SlidersHorizontal, UserRoundX, Volume2, VolumeX } from "lucide-react";
+import { Ellipsis, Info, Mic, MicOff, RotateCcw, SlidersHorizontal, UserRoundX, Volume2, VolumeX } from "lucide-react";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
 import { cameraShownAt, cameraStretches, volumeStretchesOf, type EditableSound, type EditScene, type SceneCamera, type VolumeInput } from "../../../../shared/editable";
 import { translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { Kbd } from "../../../components/ui/kbd";
 import { ControlTooltip } from "../../../components/control-tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
@@ -371,44 +372,94 @@ function VolumeRow({ id, label, value, disabled, set }: { id: string; label: str
 export function EditorOptions({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = editable && model.editorScene(editor);
-  const name = model.text("Options");
+  const name = model.text("More options");
   const busy = editor.export.phase === "exporting", original = model.isOriginal(editor);
+  const camera = editable?.camera && scene ? scene.camera : undefined;
+  const stretches = camera ? cameraStretches(camera, editor.duration).length : 0;
+  const cameraNote = !camera ? "" : !camera.shown
+    ? model.text("The export holds no camera. Switched off, the camera follows the timeline again.")
+    : stretches === 1
+    ? model.text("Hidden over one stretch of the timeline. Select a stretch and press C to hide or show the camera there.")
+    : stretches > 1
+    ? translate("Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.", model.view?.language, { count: String(stretches) })
+    : "";
+  // Revert asks first (the maintainer's request of 2026-10-26): it clears the whole edit.
+  const [confirming, setConfirming] = useState(false);
   return (
     <>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent id="editor-revert-confirm" role="alertdialog" className="max-w-sm" showCloseButton={false}
+          initialFocus={() => document.getElementById("editor-revert-cancel")}>
+          <DialogHeader>
+            <DialogTitle>{model.text("Revert to the original recording?")}</DialogTitle>
+            <DialogDescription>
+              {model.text("Every removed part, split, camera change and volume change is cleared. Undo (⌘Z) brings them back while this view is open; once it is closed, they are gone.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button id="editor-revert-cancel" variant="outline" onClick={() => setConfirming(false)}>{model.text("Cancel")}</Button>
+            <Button id="editor-revert-confirm-button" variant="destructive" onClick={() => { setConfirming(false); void model.revertToOriginal(); }}>
+              {model.text("Revert")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Popover>
         <ControlTooltip label={name}>
-          <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-options" className="editor-options-button" aria-label={name}>
-            <SlidersHorizontal aria-hidden="true" />
-            <span className="editor-tool-label">{name}</span>
+          <PopoverTrigger render={<Button variant="ghost" size="icon" />} id="editor-options" className="editor-options-button" aria-label={name}>
+            <Ellipsis aria-hidden="true" />
           </PopoverTrigger>
         </ControlTooltip>
-        <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={name}>
+        <PopoverContent side="top" align="end" id="editor-options-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={name}
+          initialFocus={() => document.getElementById("editor-skim")}>
+          {/* What is set once and seldom again (the maintainer's review of 2026-10-26: the overall volumes, adjusted while
+              listening, have a panel of their own that stays open as the preview plays). */}
           <div className="editor-options" role="group" aria-label={name}>
-            {/* Skimming, off by default (2026-10-26), and what it does under its switch. */}
-            <div className="editor-options-skim">
+            <div className="editor-options-group">
               <div className="editor-scene-row">
                 <label htmlFor="editor-skim">{model.text("Skimming")}</label>
+                <OptionInfo id="editor-skim-note" text={model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")} />
                 <Switch id="editor-skim" checked={model.skimming} aria-describedby="editor-skim-note" onCheckedChange={() => model.toggleSkimming()} />
               </div>
-              <p id="editor-skim-note" className="editor-options-note">{model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}</p>
+              {camera && (
+                <>
+                  <div className="editor-scene-row">
+                    <label htmlFor="editor-camera-hidden">{model.text("Hide camera view")}</label>
+                    <OptionInfo id="editor-camera-tip" text={model.text("To hide it for a while only, select that stretch on the timeline and press C.")} />
+                    <Switch id="editor-camera-hidden" checked={!camera.shown} disabled={busy}
+                      aria-describedby={cameraNote ? "editor-camera-note" : "editor-camera-tip"}
+                      onCheckedChange={(hidden) => { void model.hideCameraThroughout(hidden); }} />
+                  </div>
+                  {/* Said in words only when it tells what the export holds now: hidden throughout, or over stretches. */}
+                  {cameraNote && <p id="editor-camera-note" className="editor-options-note">{cameraNote}</p>}
+                </>
+              )}
             </div>
-            {editable && scene && <SceneControls editor={editor} editable={editable} scene={scene} />}
             {editable && scene && <LaneControls editor={editor} scene={scene} />}
-            {/* Last, apart from the rest (2026-10-26, the maintainer's request): the whole edit undone in one step. */}
             <div className="editor-options-revert">
-              <Button id="editor-revert" variant="ghost" size="sm" aria-disabled={busy || original} aria-describedby="editor-revert-note"
-                onClick={() => { if (!busy && !original) void model.revertToOriginal(); }}>
+              <Button id="editor-revert" variant="outline" size="sm" aria-disabled={busy || original} aria-describedby="editor-revert-note"
+                onClick={() => { if (!busy && !original) setConfirming(true); }}>
                 <RotateCcw aria-hidden="true" />
-                {model.text("Revert to original recording")}
+                {model.text("Revert to original recording…")}
               </Button>
-              <p id="editor-revert-note" className="editor-options-note">
-                {model.text(original ? "Nothing is edited yet." : "Keeps every part again and puts everything back as recorded. Undo takes it back.")}
-              </p>
+              {original && <p id="editor-revert-note" className="editor-options-note">{model.text("Nothing is edited yet.")}</p>}
             </div>
           </div>
         </PopoverContent>
       </Popover>
     </>
+  );
+}
+
+/** A note behind an ⓘ (2026-10-26, version A): its words on hover or focus, and read with the control it describes. */
+function OptionInfo({ id, text }: { id: string; text: string }) {
+  return (
+    <ControlTooltip label={text}>
+      <span className="editor-options-info" tabIndex={0} aria-label={text}>
+        <Info aria-hidden="true" />
+        <span id={id} className="sr-only">{text}</span>
+      </span>
+    </ControlTooltip>
   );
 }
 
@@ -424,8 +475,8 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
   ];
   if (lanes.length === 0) return null;
   return (
-    <div className="editor-scene editor-lanes" role="group" aria-label={model.text("Lanes on the timeline")}>
-      <p className="editor-keys-title">{model.text("Lanes on the timeline")}</p>
+    <div className="editor-options-group editor-lanes" role="group" aria-label={model.text("Lanes on the timeline")}>
+      <p className="editor-options-title">{model.text("Lanes on the timeline")}</p>
       {lanes.map(({ lane, name, held }) => {
         const shown = model.laneShown(lane);
         return (
@@ -433,7 +484,7 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
             <div className="editor-scene-row">
               <label htmlFor={`editor-lane-${lane}`}>{name}</label>
               {/* Named in full for assistive technology, which would otherwise hear two controls named as an input. */}
-              <Switch id={`editor-lane-${lane}`} checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}
+              <Switch id={`editor-lane-${lane}`} className="editor-neutral-switch" checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}
                 aria-describedby={!shown && held > 0 ? `editor-lane-${lane}-note` : undefined}
                 onCheckedChange={(next) => model.showLane(lane, next)} />
             </div>
@@ -450,64 +501,68 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
   );
 }
 
-/** An editable recording's camera and volumes, and Reset, in the options' popup. */
-function SceneControls({ editor, editable, scene }: { editor: EditorView; editable: NonNullable<EditorView["editable"]>; scene: EditScene }) {
-  // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
-  // keep the keyboard's focus.
+/**
+ * The overall volumes (2026-10-26, the maintainer's review of the options): what every part of the timeline without a
+ * volume of its own plays at, in a panel of their own that stays open while the preview plays, so a volume is set by
+ * ear: a press on Play, the timeline or anywhere in the edit view leaves it open, Space plays or pauses from it, and its
+ * button, Escape or a press outside the view closes it. Reset puts both back to 100% and touches nothing set on the
+ * timeline.
+ */
+export function OverallVolume({ editor }: { editor: EditorView }) {
+  const editable = editor.editable;
+  const scene = editable && model.editorScene(editor);
+  const [open, setOpen] = useState(false);
+  if (!editable || !scene) return null;
+  const sounds = new Set<EditableSound>(editable.sounds);
+  if (!sounds.has("system") && !sounds.has("microphone")) return null;
   const busy = editor.export.phase === "exporting";
   const change = (next: EditScene, commit: boolean): void => { void model.changeScene(next, commit); };
-  const camera = scene.camera;
-  const sounds = new Set<EditableSound>(editable.sounds);
-  const unchanged = model.sameScene(scene, editable.recorded);
-  // Hide the camera throughout (2026-10-26, the maintainer's choice, in place of Show camera): a switch over the
-  // timeline's stretches, which it keeps; its note says what the export holds now.
-  const stretches = camera ? cameraStretches(camera, editor.duration).length : 0;
-  const note = !camera ? "" : !camera.shown
-    ? model.text("The export holds no camera. Switched off, the camera follows the timeline again.")
-    : stretches === 1
-    ? model.text("Hidden over one stretch of the timeline. Select a stretch and press C to hide or show the camera there.")
-    : stretches > 1
-    ? translate("Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.", model.view?.language, { count: String(stretches) })
-    : model.text("To hide it for a while only, select that stretch on the timeline and press C.");
+  const atFull = scene.volumes.system === 100 && scene.volumes.microphone === 100;
+  const name = model.text("Overall volume");
   return (
-    <div className="editor-scene" role="group" aria-label={model.text(camera ? "Camera and sound" : "Sound")}>
-      {/* Its own heading, as the lanes' below have: an input's name appears in both. */}
-      <p className="editor-keys-title" aria-hidden="true">{model.text(camera ? "Camera and sound" : "Sound")}</p>
-      {camera && (
-        <div className="editor-options-skim">
-          <div className="editor-scene-row">
-            <label htmlFor="editor-camera-hidden">{model.text("Hide the camera throughout")}</label>
-            <Switch
-              id="editor-camera-hidden"
-              checked={!camera.shown}
-              disabled={busy}
-              aria-describedby="editor-camera-note"
-              onCheckedChange={(hidden) => { void model.hideCameraThroughout(hidden); }}
-            />
-          </div>
-          <p id="editor-camera-note" className="editor-options-note">{note}</p>
-        </div>
-      )}
-      {/* The inputs' overall volumes (2026-10-26, the maintainer's question: these and the timeline's muted stretches read
-          as two ways of saying one thing): what every part of the timeline without a volume of its own plays at. */}
-      <p className="editor-scene-subtitle" aria-hidden="true">{model.text("Overall volume")}</p>
-      {sounds.has("system") && (
-        <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
-          set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
-      )}
-      {sounds.has("microphone") && (
-        <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
-          set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
-      )}
-      <p className="editor-options-note">{model.text("Every part of the timeline without a volume of its own plays at these; set one with Volume (V).")}</p>
-      <ControlTooltip label={model.text("Put the camera and the volumes back as recorded")}>
-        <Button id="editor-scene-reset" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy || unchanged}
-          onClick={() => { if (!busy && !unchanged) void model.resetScene(); }}>
-          <RotateCcw />
-          {model.text(camera ? "Reset camera and volumes" : "Reset volumes")}
-        </Button>
+    <Popover open={open} onOpenChange={(next, details) => {
+      // Left open by a press inside the edit view (Play, the timeline): the volume is set while listening.
+      const inside = details.event?.target instanceof Element && details.event.target.closest("#editor") !== null;
+      if (!next && details.reason === "outside-press" && inside) return;
+      setOpen(next);
+    }}>
+      <ControlTooltip label={name}>
+        <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-mix" className="editor-mix-button" aria-label={name}>
+          <SlidersHorizontal aria-hidden="true" />
+          <span className="editor-tool-label">{name}</span>
+        </PopoverTrigger>
       </ControlTooltip>
-    </div>
+      <PopoverContent side="top" align="end" id="editor-mix-popup" className="editor-mix-popup w-auto max-w-[calc(100vw-24px)] gap-0 p-3" aria-label={name}
+        // Focus on the first volume, not on the ⓘ before it, whose note would open and take the first Escape.
+        initialFocus={() => document.querySelector<HTMLElement>('#editor-mix-popup [role="slider"]')}
+        onKeyDown={(event) => {
+          // Space plays or pauses from here as on the timeline, so a volume is tried without leaving it.
+          if (event.key === " " && !(event.target instanceof HTMLButtonElement)) {
+            event.preventDefault();
+            model.togglePlayback();
+          }
+        }}>
+        <div className="editor-mix" role="group" aria-label={name}>
+          <div className="editor-scene-row editor-options-title-row">
+            <p className="editor-options-title">{name}</p>
+            <OptionInfo id="editor-volume-note" text={model.text("Every part of the timeline without a volume of its own plays at these; set one with Volume (V).")} />
+            <Button id="editor-mix-reset" variant="ghost" size="sm" aria-disabled={busy || atFull} aria-label={model.text("Reset both volumes to 100%")}
+              onClick={() => { if (!busy && !atFull) void model.resetOverallVolumes(); }}>
+              <RotateCcw aria-hidden="true" />
+              {model.text("Reset")}
+            </Button>
+          </div>
+          {sounds.has("system") && (
+            <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
+              set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
+          )}
+          {sounds.has("microphone") && (
+            <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
+              set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
