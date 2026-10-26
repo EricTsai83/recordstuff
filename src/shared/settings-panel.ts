@@ -36,8 +36,16 @@ export interface DisplayFrame {
   /** Its size in pixels, `3024×1964`. */
   pixels: string;
 }
-/** `failures` is the stable entry id for Troubleshooting, which also contains diagnostic and cleanup actions. */
-export type SettingsTab = "library" | "studio" | "recording" | "general" | "shortcuts" | "failures";
+/**
+ * The Settings window's tabs, in the sidebar's order. `failures` is the stable entry id for Troubleshooting, which also
+ * contains diagnostic and cleanup actions.
+ */
+export const SETTINGS_TABS = ["library", "studio", "recording", "general", "shortcuts", "failures"] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+/** Whether `value` names a tab: what a page's control or the window's storage hands back is any string. */
+export function isSettingsTab(value: unknown): value is SettingsTab {
+  return (SETTINGS_TABS as readonly unknown[]).includes(value);
+}
 /** One row of the Keyboard Shortcuts tab (plan 073): read-only, from `shortcut-catalog.ts`. */
 export interface ShortcutRowView {
   id: string;

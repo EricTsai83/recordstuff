@@ -9,7 +9,7 @@ import { ScrollFades } from "../components/scroll-fades";
 import { ControlTooltip } from "../components/control-tooltip";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { ZoomToast } from "./zoom-toast";
-import type { SettingsStatus } from "../../shared/settings-panel";
+import { isSettingsTab, type SettingsStatus } from "../../shared/settings-panel";
 import { translate } from "../../shared/i18n";
 import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
@@ -248,15 +248,7 @@ export function SettingsApp() {
             orientation="vertical"
             className="settings-tabs contents"
             onValueChange={(value) => {
-              if (
-                value === "library" ||
-                value === "studio" ||
-                value === "general" ||
-                value === "recording" ||
-                value === "shortcuts" ||
-                value === "failures"
-              )
-                model.activateTab(value);
+              if (isSettingsTab(value)) model.activateTab(value);
             }}
           >
             <TabsList

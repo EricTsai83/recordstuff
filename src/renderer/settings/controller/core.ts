@@ -11,11 +11,12 @@ import {
   translate,
   type PlainMessageKey,
 } from "../../../shared/i18n";
-import type {
-  SettingsBridge,
-  SettingsGroup,
-  SettingsTab,
-  SettingsView,
+import {
+  isSettingsTab,
+  type SettingsBridge,
+  type SettingsGroup,
+  type SettingsTab,
+  type SettingsView,
 } from "../../../shared/settings-panel";
 import {
   arming,
@@ -69,11 +70,10 @@ export let view: SettingsView | undefined;
  * An entry that names a tab (the Recording Studio from the tray, a notification's recording) still opens on it.
  */
 const TAB_KEY = "recordstuff.settingsTab";
-const TABS: readonly SettingsTab[] = ["library", "studio", "recording", "general", "shortcuts", "failures"];
 function rememberedTab(): SettingsTab {
   try {
     const saved = localStorage.getItem(TAB_KEY);
-    return TABS.find((tab) => tab === saved) ?? "library";
+    return isSettingsTab(saved) ? saved : "library";
   } catch {
     return "library";
   }
