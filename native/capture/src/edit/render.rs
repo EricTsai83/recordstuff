@@ -577,10 +577,14 @@ fn render(
             let encoded = video.take().map_err(encode)?;
             output.take(encoded)?;
             if let Some(sound) = sound.as_mut() {
-                // Sound up to the pictures, so the file interleaves them.
+                // Sound up to the pictures, so the file interleaves them, a whole chunk at a time: each `advance`
+                // decodes from `PRE_ROLL_PACKETS` before and makes a decoder of its own, so a picture's worth of sound
+                // at a time decoded about three times the packets it used. The rest follows after the last picture.
                 let until = (u128::from(out) * u128::from(sound.format.sample_rate) / u128::from(timescale)) as u64;
-                let packets = sound.advance(until, source, renderer)?;
-                output.sound(packets)?;
+                if until >= sound.mixed + CHUNK_PACKETS * PACKET {
+                    let packets = sound.advance(until, source, renderer)?;
+                    output.sound(packets)?;
+                }
             }
             output.progress.advance()
         })?;
@@ -625,6 +629,8 @@ mod tests {
         composed: Vec<(Vec<u8>, Option<Vec<u8>>)>,
         mixed: Vec<f32>,
         camera_asked: Option<Layout>,
+        /// How many times sound was decoded.
+        decodes: usize,
     }
 
     struct FakeRenderer(Arc<Mutex<Calls>>);
@@ -701,6 +707,7 @@ mod tests {
             Ok(Box::new(FakeVideo { calls: self.0.clone(), camera: None, pending: Vec::new(), format_sent: false }))
         }
         fn decode_audio(&mut self, _format: &AudioFormat, packets: &[Vec<u8>]) -> Result<Vec<f32>, String> {
+            self.0.lock().unwrap().decodes += 1;
             Ok(packets.iter().flat_map(|p| std::iter::repeat_n(f32::from(p[0]) / 100.0, 2048)).collect())
         }
         fn audio_encoder(&mut self, _format: &AudioFormat, _bitrate: u32) -> Result<Box<dyn AudioEncode>, String> {
@@ -817,6 +824,8 @@ mod tests {
         let last_heard = 94_144 - 16_000 - 1;
         assert!((left[0] - 0.07).abs() < 1e-6 && (left[last_heard] - 0.07).abs() < 1e-6);
         assert!(left[last_heard + 1..].iter().all(|&v| v == 0.0));
+        // A chunk at a time, not a picture's worth: each track's two parts in at most two chunks each.
+        assert!(calls.decodes <= 8, "{} decodes", calls.decodes);
         let parsed = parse(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(parsed.tracks.len(), 2);
         std::fs::remove_file(&path).unwrap();
