@@ -3048,6 +3048,14 @@
       display: none;
     }
   }
+  /* Narrower still, as a 420 px window is on Windows, whose dialog keeps wider margins: the dividers go and Export
+     shows its icon alone, still named Export (Windows CI, 2026-10-27: Export and the keys fell to a second row). */
+  @container (max-width: 379.98px) {
+    .editor-toolbar .editor-divider,
+    .editor-toolbar .editor-export-label {
+      display: none;
+    }
+  }
 
   /* The line over the timeline (2026-10-26, B′, then the maintainer's review): small and close to the timeline, with
      room above it apart from the toolbar; the times together at its end, how to select at its start. A selection's

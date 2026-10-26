@@ -1057,6 +1057,8 @@ function ExportControls() {
         <Button
           id="editor-export"
           size="sm"
+          // Named for its icon alone in the narrowest view (Windows CI, 2026-10-27).
+          aria-label={model.text("Export")}
           // A change still saving is waited for by the export itself (controller's exportEdit), so nothing dims meanwhile.
           aria-disabled={!editor.exportable}
           onClick={() => {
@@ -1064,7 +1066,7 @@ function ExportControls() {
           }}
         >
           <Upload />
-          {model.text("Export")}
+          <span className="editor-export-label">{model.text("Export")}</span>
         </Button>
       </ControlTooltip>
     </span>
