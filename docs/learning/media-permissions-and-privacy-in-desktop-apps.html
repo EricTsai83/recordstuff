@@ -567,7 +567,7 @@ pre code .sh-prompt { color: #ff946e; font-weight: 400; }
 
 <p>（2026-10-26 更新：維護者改為兩者預設開啟，新安裝在首次啟動時開啟一個指引，先說明螢幕錄製、麥克風與相機各自的用途，只有在使用者按下「允許」時才觸發 macOS 的詢問，一次一個，被拒就把開關關掉；設定檔保存每個欄位，所以既有使用者保留原本的選擇。以下描述的是在此之前的做法，取捨表已一併更新。）</p>
 
-<p>麥克風與相機原本都是預設關閉的設定。各有兩個開關，設定同一個值：設定視窗裡的開關，以及選單列閒置選單裡的「錄製麥克風」「錄製相機」勾選項目。打開時才請求，且只在 macOS 還沒問過時請求：</p>
+<p>麥克風與相機原本都是預設關閉的設定。各有兩個開關，設定同一個值：設定視窗裡的開關，以及選單列閒置選單裡的「錄影時包含」下的「麥克風」「錄影時包含」下的「相機」勾選項目。打開時才請求，且只在 macOS 還沒問過時請求：</p>
 
 <pre class="language-typescript"><span class="label">TypeScript</span><code><span class="c">/** The same for the camera (plan 075): asked when the Camera switch is turned on. */</span>
 <span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">askCameraAccess</span><span class="o">(</span>platform<span class="o">:</span> <span class="t">NodeJS</span><span class="o">.</span><span class="p">Platform</span> <span class="o">=</span> process<span class="o">.</span><span class="p">platform</span><span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>boolean<span class="o">&gt;</span> <span class="o">{</span>
