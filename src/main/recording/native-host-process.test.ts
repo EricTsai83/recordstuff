@@ -580,6 +580,16 @@ describe("NativeHost", () => {
     expect(logs.filter((entry) => entry.startsWith("timing: stop")).length).toBe(1);
   });
 
+  it("logs a sound encoder's failure at the stop, and still finishes the file", async () => {
+    const { port, engine, logs } = await prepared();
+    engine.stop.mockResolvedValueOnce({ drainMs: 1, drainPaddedFrames: 0, frameLeadAvgMs: 0, frameLeadMaxMs: 0, audioFailure: "encode failed (-50)" } as never);
+    port.deliver({ type: "record", sessionId: "s1" });
+    port.deliver({ type: "stop", sessionId: "s1" });
+    await flush();
+    expect(logs).toContain("recording: the sound's encoder failed at the stop, so the sound ends early: encode failed (-50)");
+    expect(port.sent.some((message) => (message as { type: string }).type === "stopped")).toBe(true);
+  });
+
   it("prepares within the cap the setting names, at the setting's bit rate, and reports the capture", async () => {
     const { port, engine } = await prepared();
     expect(port.sent[0]).toEqual({ type: "ready" });

@@ -61,7 +61,7 @@ struct FakeAudio {
     frames_in: u64,
     /// Frames out of the encoder so far, priming included.
     frames_out: u64,
-    /// Set, every drain fails.
+    /// Set, every drain and the final flush fail.
     fail: Arc<AtomicBool>,
     /// The loudest sample pushed, as f32 bits.
     loudest: Arc<AtomicU32>,
@@ -103,6 +103,9 @@ impl AudioEncode for FakeAudio {
         Ok(())
     }
     fn finish(&mut self, out: &mut dyn FnMut(Vec<u8>)) -> Result<(), String> {
+        if self.fail.load(Ordering::Acquire) {
+            return Err("audio encoder broke at the flush".into());
+        }
         let until = (self.frames_in + u64::from(PRIMING)).next_multiple_of(u64::from(AAC_FRAMES));
         self.packets(out, until);
         Ok(())
@@ -854,6 +857,33 @@ fn an_audio_encoder_failing_on_the_microphone_s_sound_fails_the_recording_and_lo
     assert!(rig.heard.microphone_lost.lock().unwrap().is_empty(), "{:?}", rig.heard.microphone_lost.lock().unwrap());
     rig.audio_fail.store(false, Ordering::Release);
     rig.stop();
+}
+
+#[test]
+fn an_audio_encoder_failing_at_the_stop_is_told_with_the_stop_and_the_file_is_still_finished() {
+    let mut rig = Rig::new("audio-at-stop");
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    rig.shared.sound(0, t0, 4_800, |_, _| 0.25).unwrap();
+    // Broken only now: the drain's and the flush's errors were dropped, the sound silently cut short. Here the flush
+    // is what fails (the drain had nothing more to encode); the first error is told.
+    rig.audio_fail.store(true, Ordering::Release);
+    // `stop` waits for the finished file: the recording is still saved.
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.audio_failure.as_deref(), Some("audio encoder broke at the flush"));
+    assert!(rig.heard.failures.lock().unwrap().is_empty(), "a stop's encoder error fails no recording");
+}
+
+#[test]
+fn a_stop_with_working_encoders_tells_no_audio_failure() {
+    let mut rig = Rig::new("audio-fine");
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.audio_failure, None);
 }
 
 #[test]

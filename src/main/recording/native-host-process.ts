@@ -31,6 +31,8 @@ interface StopReport {
   insertedAudioFrames?: number[]; droppedAudioFrames?: number[]; limitedAudioSamples?: number;
   /** What capture delivered while recording (plan 076 step 7): pictures, deliveries without one, the longest gap between pictures. */
   capturedPictures?: number; capturedWithoutPicture?: number; capturedLongestGapMs?: number;
+  /** A sound encoder's first error while the stop drained and flushed it: the file is finished, its sound ending early. */
+  audioFailure?: string | null;
 }
 interface FinishReport { bytes: number; fragmented?: string | null; finalizeMs: number }
 interface EngineEvent {
@@ -646,6 +648,8 @@ export class NativeHost {
         : ""}` +
       `${(stopped.limitedAudioSamples ?? 0) > 0 ? `; ${stopped.limitedAudioSamples} sample(s) of two inputs limited below full scale` : ""}` +
       `${stopped.capturedPictures === undefined ? "" : `; capture delivered ${stopped.capturedPictures} pictures and ${stopped.capturedWithoutPicture ?? 0} frames without one, ${(stopped.capturedLongestGapMs ?? 0).toFixed(1)} ms apart at most`})`);
+    // The recording is still saved; its sound ends where the encoder stopped, which only this line tells.
+    if (stopped.audioFailure) this.log(`recording: the sound's encoder failed at the stop, so the sound ends early: ${stopped.audioFailure}`);
     // Engine events after this are the file's, which `finish` answers for.
     this.session = undefined;
     this.send({ type: "stopped", sessionId, tracksStoppedAt: Date.now() });

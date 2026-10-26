@@ -381,6 +381,9 @@ pub struct Stopped {
     /// delivers every refresh shows about 60 pictures a second and a longest gap near 17 ms; a recording's frame then
     /// missing from the file is the pacer's, not capture's.
     pub captured: Captured,
+    /// The first error of a sound encoder while the stop drained and flushed it: the file is still finished, its sound
+    /// ending where the encoder stopped (while recording, such an error fails the recording instead).
+    pub audio_failure: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -976,6 +979,8 @@ pub struct Core<P: Platform> {
     audio_bitrate: u32,
     writer: Option<JoinHandle<()>>,
     refresher: Option<JoinHandle<()>>,
+    /// `Stopped::audio_failure`, kept from `drain` to `end`.
+    audio_failure: Option<String>,
 }
 
 impl<P: Platform> Core<P> {
@@ -1011,7 +1016,7 @@ impl<P: Platform> Core<P> {
             meters: Meters::default(),
             diagnostics: Diagnostics::from_env().map(Arc::new),
         });
-        Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None }
+        Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None, audio_failure: None }
     }
 
     /// Which of the sound inputs is the microphone, whose loss while recording is told rather than failing it.
@@ -1242,9 +1247,17 @@ impl<P: Platform> Core<P> {
                 return (0.0, 0);
             }
             let mut packets = Vec::new();
+            // An encoder's error loses what it held; the stop goes on, and `Stopped` tells it.
+            let mut keep = |track: usize, made: Result<Vec<Vec<u8>>, String>, failure: &mut Option<String>| match made {
+                Ok(made) => packets.extend(made.into_iter().map(|data| (track, data))),
+                Err(detail) => {
+                    failure.get_or_insert(detail);
+                }
+            };
             for track in 0..audio.mixers.len() {
                 let ready = audio.mixers[track].ready().min(target);
-                packets.extend(audio.advance(track, ready).unwrap_or_default().into_iter().map(|data| (track, data)));
+                let made = audio.advance(track, ready);
+                keep(track, made, &mut self.audio_failure);
             }
             // The track furthest from the stop: the frames still missing that the drain waits for.
             let missing = (0..audio.mixers.len()).map(|track| target.saturating_sub(audio.mixed(track))).max().unwrap_or(0);
@@ -1252,7 +1265,8 @@ impl<P: Platform> Core<P> {
             if done {
                 // What has not arrived by now is silence.
                 for track in 0..audio.mixers.len() {
-                    packets.extend(audio.advance(track, target).unwrap_or_default().into_iter().map(|data| (track, data)));
+                    let made = audio.advance(track, target);
+                    keep(track, made, &mut self.audio_failure);
                 }
             }
             // Under the audio lock, as in `Shared::sound`.
@@ -1305,7 +1319,9 @@ impl<P: Platform> Core<P> {
             for (track, mut encoder) in encoders.into_iter().enumerate() {
                 let mut frames = None;
                 if audio.mixed(track) > 0 {
-                    let _ = encoder.finish(&mut |packet| packets.push((track, packet)));
+                    if let Err(detail) = encoder.finish(&mut |packet| packets.push((track, packet))) {
+                        self.audio_failure.get_or_insert(detail);
+                    }
                     frames = Some(encoder.frames_in().min(self.shared.audio_target.load(Ordering::Acquire)));
                 }
                 audio_frames.push(frames);
@@ -1328,7 +1344,9 @@ impl<P: Platform> Core<P> {
             without_picture: self.shared.captured_without_picture.load(Ordering::Relaxed),
             longest_gap_ms: self.shared.captured_gap_max_ns.load(Ordering::Relaxed) as f64 / 1e6,
         };
-        let stopped = Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames, audio_corrections, limited_audio_samples, captured };
+        let audio_failure = self.audio_failure.take();
+        let stopped =
+            Stopped { drain_ms, drain_padded_frames, frame_lead_ms, late_audio_frames, audio_corrections, limited_audio_samples, captured, audio_failure };
         let outcome = self.shared.writer.lock().unwrap().take().map(|sender| (sender.finish(stop_ns, audio_frames), self.writer.take()));
         (stopped, Finishing { outcome, began: Instant::now() })
     }

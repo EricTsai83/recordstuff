@@ -216,6 +216,8 @@ pub struct StopReport {
     pub captured_pictures: f64,
     pub captured_without_picture: f64,
     pub captured_longest_gap_ms: f64,
+    /// A sound encoder's first error while the stop drained and flushed it: the sound ends early.
+    pub audio_failure: Option<String>,
 }
 
 #[napi(object)]
@@ -946,6 +948,7 @@ fn nothing_stopped() -> StopReport {
         captured_pictures: 0.0,
         captured_without_picture: 0.0,
         captured_longest_gap_ms: 0.0,
+        audio_failure: None,
     }
 }
 
@@ -973,6 +976,7 @@ impl Task for StopTask {
                 captured_pictures: stopped.captured.pictures as f64,
                 captured_without_picture: stopped.captured.without_picture as f64,
                 captured_longest_gap_ms: stopped.captured.longest_gap_ms,
+                audio_failure: stopped.audio_failure,
             })
         }
         #[cfg(not(any(target_os = "macos", windows)))]
