@@ -3215,6 +3215,11 @@
     margin-inline: 4px;
     background: var(--border);
   }
+  /* Lighter in the dark theme, where the border token is all but the panel's own colour (2026-10-27, the maintainer's
+     review); the selection's actions' dividers alike. */
+  .dark :is(.editor-divider, .editor-selection-divider) {
+    background: color-mix(in oklab, var(--foreground) 24%, transparent);
+  }
   .editor-keys-popup {
     width: auto;
     min-width: 200px;
