@@ -3354,14 +3354,15 @@
     background: var(--media-foreground);
     box-shadow: 0 0 3px color-mix(in oklab, var(--media-scrim) 70%, transparent);
   }
-  .editor-playhead::before {
-    content: "";
+  /* The cap, its point on the line's middle: offset by whole pixels from the line (10 px wide over a 2 px line, 4 px to
+     its left), so both round alike wherever the playhead stands (the maintainer's report of 2026-10-26: centred by a
+     transform, the point fell half a pixel or so off the line). */
+  .editor-playhead-cap {
     position: absolute;
     top: -1px;
-    left: 50%;
+    left: -4px;
     width: 10px;
     height: 8px;
-    transform: translateX(-50%);
     background: var(--media-foreground);
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     filter: drop-shadow(0 0 1px var(--media-scrim));

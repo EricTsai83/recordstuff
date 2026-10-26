@@ -1014,6 +1014,9 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(Math.abs(head.y + head.height - (lastLane.y + lastLane.height))).toBeLessThanOrEqual(1);
     const at = await page.locator("#editor .pc video").evaluate((video: HTMLVideoElement) => video.currentTime / video.duration);
     expect(Math.abs(head.x + head.width / 2 - (pictures.x + at * pictures.width))).toBeLessThanOrEqual(1.5);
+    // Its cap's point stands on the line's middle (the maintainer's report of 2026-10-26).
+    const cap = (await page.locator(".editor-playhead-cap").boundingBox())!;
+    expect(Math.abs(cap.x + cap.width / 2 - (head.x + head.width / 2))).toBeLessThanOrEqual(0.25);
     // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
     await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");
