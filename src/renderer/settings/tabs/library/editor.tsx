@@ -24,7 +24,7 @@ import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Toaster } from "../../../components/ui/sonner";
 import * as model from "../../settings-controller";
-import { EditorCamera, EditorOptions, OverallVolume, VolumeButton } from "./editor-scene";
+import { EditorCamera, EditorOptions, OverallVolume, TOOL_HOVER, VolumeButton } from "./editor-scene";
 
 /**
  * Follows the preview's position to draw the playhead: on each frame shown while it plays, and on each seek. Nothing
@@ -367,7 +367,7 @@ function RemoveButton({ id }: { id: string }) {
         id={id}
         variant="ghost"
         size="sm"
-        className="editor-remove"
+        className={`editor-remove ${TOOL_HOVER}`}
         aria-label={model.text(range ? "Remove selection" : keep ? "Keep part" : "Remove part")}
         aria-disabled={busy || (!selected && !range)}
         onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}
@@ -475,7 +475,7 @@ function EditorActionRow({ editor, track, span, actions: actionsKey, position, l
         >
           {/* Leaving the selection first, as a selection bar has it (2026-10-27, the maintainer's choice): what Escape does. */}
           <ControlTooltip label={model.text("Deselect (Esc)")}>
-            <Button id="editor-deselect" variant="ghost" size="icon-sm" className="editor-deselect" aria-label={model.text("Deselect")} onClick={() => model.deselect()}>
+            <Button id="editor-deselect" variant="ghost" size="icon-sm" className={`editor-deselect ${TOOL_HOVER}`} aria-label={model.text("Deselect")} onClick={() => model.deselect()}>
               <X />
             </Button>
           </ControlTooltip>
@@ -661,18 +661,18 @@ function EditorPanel() {
           time is to the hundredth, so a frame's step shows. */}
       <div className="editor-toolbar">
         <ControlTooltip label={`${model.text(playing ? "Pause" : "Play")} (${model.text("Space")})`}>
-          <Button id="editor-play" variant="ghost" size="icon" aria-label={model.text(playing ? "Pause" : "Play")} onClick={() => model.togglePlayback()}>
+          <Button id="editor-play" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text(playing ? "Pause" : "Play")} onClick={() => model.togglePlayback()}>
             {playing ? <Pause /> : <Play />}
           </Button>
         </ControlTooltip>
         <span className="editor-divider" aria-hidden="true" />
         <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
-          <Button id="editor-undo" variant="ghost" size="icon" aria-label={model.text("Undo")} aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
+          <Button id="editor-undo" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text("Undo")} aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
             <Undo2 />
           </Button>
         </ControlTooltip>
         <ControlTooltip label={model.text(model.platform() === "darwin" ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Y)")}>
-          <Button id="editor-redo" variant="ghost" size="icon" aria-label={model.text("Redo")} aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
+          <Button id="editor-redo" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text("Redo")} aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
             <Redo2 />
           </Button>
         </ControlTooltip>
@@ -681,7 +681,7 @@ function EditorPanel() {
             among it, floats over the selection (2026-10-26, the maintainer's rule after B′: an action sits where what it
             acts on is). */}
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="ghost" size="sm" className="editor-tool" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
+          <Button id="editor-split" variant="ghost" size="sm" className={`editor-tool ${TOOL_HOVER}`} aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
             <span className="editor-tool-label" aria-hidden="true">{model.text("Split")}</span>
           </Button>
@@ -731,7 +731,7 @@ function EditorPanel() {
         {/* A part that starts at a split of the timeline's own joins the one before it (2026-10-26). */}
         {model.canJoinPrevious(editor) && (
           <ControlTooltip label={model.text("Join this part to the one before it, taking its split away")}>
-            <Button id="editor-join" variant="ghost" size="sm" aria-label={model.text("Join previous")} aria-disabled={busy} onClick={() => { if (!busy) void model.joinPrevious(); }}>
+            <Button id="editor-join" variant="ghost" className={TOOL_HOVER} size="sm" aria-label={model.text("Join previous")} aria-disabled={busy} onClick={() => { if (!busy) void model.joinPrevious(); }}>
               <Merge />
               <span className="editor-join-label">{model.text("Join previous")}</span>
             </Button>
@@ -743,7 +743,7 @@ function EditorPanel() {
               id="editor-camera-toggle"
               variant="ghost"
               size="sm"
-              className="editor-camera-toggle"
+              className={`editor-camera-toggle ${TOOL_HOVER}`}
               aria-label={model.text(showingCamera ? "Show camera in selection" : "Hide camera in selection")}
               aria-disabled={busy || !cameraTarget || allHidden}
               onClick={() => { if (!busy && cameraTarget && !allHidden) void model.toggleCameraInSelection(); }}

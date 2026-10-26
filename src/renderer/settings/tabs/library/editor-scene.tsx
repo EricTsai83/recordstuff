@@ -407,7 +407,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
       </Dialog>
       <Popover>
         <ControlTooltip label={name}>
-          <PopoverTrigger render={<Button variant="ghost" size="icon" />} id="editor-options" className="editor-options-button" aria-label={name}>
+          <PopoverTrigger render={<Button variant="ghost" className={TOOL_HOVER} size="icon" />} id="editor-options" className="editor-options-button" aria-label={name}>
             <Ellipsis aria-hidden="true" />
           </PopoverTrigger>
         </ControlTooltip>
@@ -513,6 +513,12 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
 }
 
 /**
+ * The edit view's ghost buttons' hover and open state, seen in either theme (2026-10-27, the maintainer's review: the
+ * ghost variant's muted wash, at half strength in the dark theme, was all but the panel's colour).
+ */
+export const TOOL_HOVER = "hover:bg-foreground/7 aria-expanded:bg-foreground/7 dark:hover:bg-foreground/12 dark:aria-expanded:bg-foreground/12";
+
+/**
  * The overall volumes (2026-10-26, the maintainer's review of the options): what every part of the timeline without a
  * volume of its own plays at, in a panel of their own that stays open while the preview plays, so a volume is set by
  * ear: a press on Play, the timeline or anywhere in the edit view leaves it open, Space plays or pauses from it, and its
@@ -555,7 +561,7 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
       setOpen(next);
     }}>
       <ControlTooltip label={name}>
-        <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-mix" className="editor-mix-button" aria-label={name}>
+        <PopoverTrigger render={<Button variant="ghost" className={TOOL_HOVER} size="sm" />} id="editor-mix" className="editor-mix-button" aria-label={name}>
           <SlidersHorizontal aria-hidden="true" />
           <span className="editor-tool-label">{name}</span>
         </PopoverTrigger>
@@ -574,7 +580,7 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
           <div className="editor-scene-row editor-options-title-row">
             <p className="editor-options-title">{name}</p>
             <OptionInfo id="editor-volume-note" text={model.text("Every part of the timeline without a volume of its own plays at these; set one with Volume (V).")} />
-            <Button id="editor-mix-reset" variant="ghost" size="sm" aria-disabled={busy || atFull} aria-label={model.text("Reset both volumes to 100%")}
+            <Button id="editor-mix-reset" variant="ghost" className={TOOL_HOVER} size="sm" aria-disabled={busy || atFull} aria-label={model.text("Reset both volumes to 100%")}
               onClick={() => { if (!busy && !atFull) void model.resetOverallVolumes(); }}>
               <RotateCcw aria-hidden="true" />
               {model.text("Reset")}
@@ -611,7 +617,7 @@ export function VolumeButton({ editor }: { editor: EditorView }) {
     <Popover open={open} onOpenChange={(next) => { if (!next || (target && !busy)) model.setVolumeOpen(next); }}>
       <ControlTooltip label={tip}>
         <PopoverTrigger
-          render={<Button variant="ghost" size="sm" className="editor-camera-toggle editor-volume-toggle" />}
+          render={<Button variant="ghost" size="sm" className={`editor-camera-toggle editor-volume-toggle ${TOOL_HOVER}`} />}
           id="editor-volume"
           aria-label={model.text("Volume of the selection")}
           aria-disabled={busy || !target}
@@ -628,7 +634,7 @@ export function VolumeButton({ editor }: { editor: EditorView }) {
               {translate("Volume from {from} to {to}", model.view?.language, { from: model.clock(target[0] / editor.timescale), to: model.clock(target[1] / editor.timescale) })}
             </p>
             {order.map((input) => <SelectionVolumeRow key={input} editor={editor} input={input} />)}
-            <Button id="editor-volume-back" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy}
+            <Button id="editor-volume-back" variant="ghost" size="sm" className={`editor-scene-reset ${TOOL_HOVER}`} aria-disabled={busy}
               onClick={() => { if (!busy) void model.resetVolumesInSelection(); }}>
               <RotateCcw />
               {model.text("Back to the overall volume")}
@@ -652,7 +658,7 @@ function SelectionVolumeRow({ editor, input }: { editor: EditorView; input: Volu
     <div className="editor-scene-row editor-volume-row">
       <span aria-hidden="true">{name}</span>
       <ControlTooltip label={model.text(muted ? "Unmute in the selection" : "Mute in the selection")}>
-        <Button id={`editor-volume-mute-${input}`} variant="ghost" size="icon-sm" aria-pressed={muted}
+        <Button id={`editor-volume-mute-${input}`} variant="ghost" className={TOOL_HOVER} size="icon-sm" aria-pressed={muted}
           aria-label={translate(muted ? "Unmute {name} in the selection" : "Mute {name} in the selection", model.view?.language, { name })}
           // Unmuted, back to the input's own volume, or to 100% where that is silent itself, so Unmute is always heard
           // (Codex's review); Back to the overall volume stays the way to its own volume whatever it is.
