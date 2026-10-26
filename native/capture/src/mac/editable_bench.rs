@@ -420,7 +420,7 @@ fn a_rendered_export_composes_the_camera_where_the_edit_puts_it_and_mixes_at_its
     record_editable(&source, 2.5);
     let before = std::fs::read(&source).unwrap();
     let corner = Layout { x: 0.0, y: 1.0, ..Layout::default() };
-    let options = RenderOptions { camera: Some(corner), camera_hidden: Vec::new(), gains: vec![0.0, 1.0] };
+    let options = RenderOptions { camera: Some(corner), camera_hidden: Vec::new(), gain_stretches: Vec::new(), gains: vec![0.0, 1.0] };
     // Half a second removed from the middle (90 kHz ticks).
     let removed = [(90_000u64, 135_000u64)];
     let report = render::export(&source, &output, &removed, &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
@@ -541,7 +541,12 @@ fn render_bench() {
     std::fs::create_dir_all(&dir).unwrap();
     let source = dir.join("source.mp4");
     editable_source(&source, seconds);
-    let options = RenderOptions { camera: Some(Layout { x: 0.03, y: 0.95, ..Layout::default() }), camera_hidden: Vec::new(), gains: vec![1.0, 1.0] };
+    let options = RenderOptions {
+        camera: Some(Layout { x: 0.03, y: 0.95, ..Layout::default() }),
+        camera_hidden: Vec::new(),
+        gain_stretches: Vec::new(),
+        gains: vec![1.0, 1.0],
+    };
     let output = dir.join("export.mp4");
     let began = Instant::now();
     let done = render::export(&source, &output, &[], &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();

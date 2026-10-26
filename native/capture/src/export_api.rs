@@ -51,8 +51,19 @@ pub struct ExportRender {
     /// Where the bubble is left out though composed elsewhere (2026-10-26), in the video's timescale on the
     /// recording's own clock; absent or empty, it is composed throughout.
     pub camera_hidden: Option<Vec<ExportRange>>,
+    /// Each sound track's stretches at a volume of their own (2026-10-26), in the file's order, in dB.
+    pub volume_stretches_db: Option<Vec<Vec<ExportVolumeStretch>>>,
     /// Each sound track's volume in dB, in the file's order (the Studio's faders, src/shared/audio-volume.ts).
     pub volumes_db: Vec<f64>,
+}
+
+/// A stretch of a sound track at its own volume: `[from, to)` in the video's timescale, the volume in dB.
+#[napi(object)]
+#[derive(Clone, Copy)]
+pub struct ExportVolumeStretch {
+    pub from: f64,
+    pub to: f64,
+    pub db: f64,
 }
 
 #[napi(object)]
@@ -193,6 +204,12 @@ fn parse(request: ExportRequest) -> Result<Parsed> {
             camera: render.camera.map(|c| Layout { width: c.width, height: c.height, rounding: c.rounding, x: c.x, y: c.y, mirror: c.mirror }.clamped()),
             camera_hidden: render.camera_hidden.unwrap_or_default().iter().map(|r| Ok((tick(r.from)?, tick(r.to)?))).collect::<Result<Vec<_>>>()?,
             gains: render.volumes_db.iter().map(|&db| gain_factor(db)).collect(),
+            gain_stretches: render
+                .volume_stretches_db
+                .unwrap_or_default()
+                .iter()
+                .map(|list| list.iter().map(|s| Ok((tick(s.from)?, tick(s.to)?, gain_factor(s.db)))).collect::<Result<Vec<_>>>())
+                .collect::<Result<Vec<_>>>()?,
         }),
         None => None,
     };

@@ -39,6 +39,8 @@ const CHUNK_PACKETS: u64 = 47;
 const PRE_ROLL_PACKETS: u64 = 2;
 /// The output sound's bit rate when the source does not say.
 const DEFAULT_AUDIO_BITRATE: u32 = 256_000;
+/// How long a track's volume takes to move to a stretch's and back (2026-10-26): long enough not to click.
+const GAIN_RAMP_SECONDS: f64 = 0.010;
 
 /// What the edit asks of the rendered export besides its removed ranges.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,6 +52,10 @@ pub struct RenderOptions {
     pub camera_hidden: Vec<(u64, u64)>,
     /// Each sound track's volume as a linear factor, in the file's order; a missing one is 1.
     pub gains: Vec<f32>,
+    /// Each sound track's stretches at a volume of their own (2026-10-26): `(from, to, factor)` in the video's
+    /// timescale on the recording's own clock, sorted and apart, in the file's order; the factor takes the place of the
+    /// track's volume there, eased in over `GAIN_RAMP_SECONDS` at each change so it does not click.
+    pub gain_stretches: Vec<Vec<(u64, u64, f32)>>,
 }
 
 /// The platform's half: pictures decoded, composed and encoded, and sound decoded and encoded.
@@ -319,9 +325,12 @@ struct SoundPart {
     out_start: u64,
 }
 
+/// A sound track to mix: its volume, and its stretches at volumes of their own in its own frames, `(from, to, factor)`.
+type MixTrack = (AudioTrack, f32, Vec<(u64, u64, f32)>);
+
 /// The output's sound: each track decoded a chunk at a time, mixed at its volume, the joins faded, encoded as one.
 struct Sound {
-    tracks: Vec<(AudioTrack, f32)>,
+    tracks: Vec<MixTrack>,
     format: AudioFormat,
     encoder: Box<dyn AudioEncode>,
     parts: Vec<SoundPart>,
@@ -329,6 +338,8 @@ struct Sound {
     mixed: u64,
     total: u64,
     fade: u64,
+    /// `GAIN_RAMP_SECONDS` in frames.
+    ramp: u64,
     bitrate: u32,
 }
 
@@ -345,13 +356,15 @@ impl Sound {
             let count = (until - at).min(CHUNK_PACKETS * PACKET).min(part_end - at);
             let from = p.from + (at - p.out_start);
             let mut mix = vec![0f32; count as usize * 2];
-            for (track, gain) in &self.tracks {
-                if *gain == 0.0 {
+            for (track, gain, stretches) in &self.tracks {
+                let envelope = gain_envelope(*gain, stretches, from, count, self.ramp);
+                if envelope.iter().all(|&g| g == 0.0) {
                     continue;
                 }
                 let frames = decode_frames(source, track, &self.format, from, from + count, renderer)?;
-                for (out, value) in mix.iter_mut().zip(frames) {
-                    *out += value * gain;
+                for (n, frame) in frames.as_chunks::<2>().0.iter().enumerate() {
+                    mix[n * 2] += frame[0] * envelope[n];
+                    mix[n * 2 + 1] += frame[1] * envelope[n];
                 }
             }
             for (n, frame) in mix.as_chunks_mut::<2>().0.iter_mut().enumerate() {
@@ -376,6 +389,34 @@ impl Sound {
         }
         Ok(packets)
     }
+}
+
+/// A track's volume for its frames `from..from + count`: a stretch's factor inside it, `base` elsewhere, moving from the
+/// one before over `ramp` frames after each change.
+fn gain_envelope(base: f32, stretches: &[(u64, u64, f32)], from: u64, count: u64, ramp: u64) -> Vec<f32> {
+    if stretches.is_empty() {
+        return vec![base; count as usize];
+    }
+    let target = |f: u64| -> f32 {
+        let i = stretches.partition_point(|s| s.0 <= f);
+        if i > 0 && f < stretches[i - 1].1 { stretches[i - 1].2 } else { base }
+    };
+    let mut changes: Vec<u64> = stretches.iter().flat_map(|s| [s.0, s.1]).collect();
+    changes.sort_unstable();
+    changes.dedup();
+    (from..from + count)
+        .map(|f| {
+            let now = target(f);
+            let i = changes.partition_point(|&c| c <= f);
+            match i.checked_sub(1).map(|i| changes[i]) {
+                Some(change) if change > 0 && f - change < ramp => {
+                    let before = target(change - 1);
+                    before + (now - before) * raised_cosine(f - change, ramp)
+                }
+                _ => now,
+            }
+        })
+        .collect()
 }
 
 /// 0 at `0`, 1 at `length`: a raised cosine, as 085's joins (plan.rs).
@@ -444,15 +485,24 @@ fn render(
     let mut video = renderer.video(&screen_format, camera_format.as_ref().zip(camera.map(|(_, layout)| layout)), remux::bitrate(index)).map_err(encode)?;
 
     // The sound tracks, in the file's order, at the edit's volumes.
-    let tracks: Vec<(AudioTrack, f32)> = index
+    let tracks: Vec<MixTrack> = index
         .audio
         .iter()
         .chain(index.second_audio.iter())
         .enumerate()
-        .map(|(n, track)| (track.clone(), options.gains.get(n).copied().unwrap_or(1.0).max(0.0)))
+        .map(|(n, track)| {
+            // The stretches in the track's own frames, as its sound is counted.
+            let rate = u128::from(track.sample_rate);
+            let frames = |ticks: u64| (u128::from(ticks) * rate / u128::from(timescale)) as u64;
+            let stretches = options
+                .gain_stretches
+                .get(n)
+                .map_or_else(Vec::new, |list| list.iter().map(|&(a, b, g)| (frames(a), frames(b), g.max(0.0))).filter(|s| s.1 > s.0).collect());
+            (track.clone(), options.gains.get(n).copied().unwrap_or(1.0).max(0.0), stretches)
+        })
         .collect();
     let mut sound = match tracks.first() {
-        Some((first, _)) => {
+        Some((first, _, _)) => {
             let format = AudioFormat { config: first.config.clone(), sample_rate: first.sample_rate, channels: first.channels };
             let bitrate = if first.average_bitrate > 0 { first.average_bitrate } else { DEFAULT_AUDIO_BITRATE };
             let encoder = renderer.audio_encoder(&AudioFormat { channels: 2, ..format.clone() }, bitrate).map_err(encode)?;
@@ -470,7 +520,8 @@ fn render(
                 })
                 .collect();
             let fade = ((FADE_SECONDS * rate as f64).round() as u64).max(1);
-            Some(Sound { tracks, format, encoder, parts, mixed: 0, total: out, fade, bitrate })
+            let ramp = ((GAIN_RAMP_SECONDS * rate as f64).round() as u64).max(1);
+            Some(Sound { tracks, format, encoder, parts, mixed: 0, total: out, fade, ramp, bitrate })
         }
         None => None,
     };
@@ -681,8 +732,12 @@ mod tests {
     fn each_kept_picture_is_composed_with_the_camera_picture_of_its_time_and_a_cut_decodes_from_key_frames() {
         let layout = Layout::default();
         // Frames 10 to 39 removed (3000 ticks a frame): the second part resumes at frame 40, inside its second's group.
-        let (result, calls, path) =
-            rendered("composed", &[(30_000, 120_000)], RenderOptions { camera_hidden: Vec::new(), camera: Some(layout), gains: vec![1.0, 1.0] }, false);
+        let (result, calls, path) = rendered(
+            "composed",
+            &[(30_000, 120_000)],
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(layout), gains: vec![1.0, 1.0] },
+            false,
+        );
         let (_, frames) = result.unwrap();
         assert_eq!(calls.camera_asked, Some(layout));
         // 60 pictures less the 30 removed.
@@ -704,7 +759,8 @@ mod tests {
 
     #[test]
     fn a_hidden_camera_is_neither_decoded_nor_composed() {
-        let (result, calls, path) = rendered("hidden", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] }, false);
+        let (result, calls, path) =
+            rendered("hidden", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] }, false);
         result.unwrap();
         assert_eq!(calls.camera_asked, None);
         assert!(calls.cameras.is_empty() && calls.composed.iter().all(|(_, camera)| camera.is_none()));
@@ -717,7 +773,7 @@ mod tests {
         // Pictures 20–39 (0.67–1.33 s at 30 fps, 3000 ticks apart) hidden; a cut over 10–15 keeps the stretch on the
         // recording's own clock, not the export's.
         let layout = Layout { x: 0.0, y: 1.0, ..Layout::default() };
-        let options = RenderOptions { camera: Some(layout), camera_hidden: vec![(60_000, 120_000)], gains: vec![1.0, 1.0] };
+        let options = RenderOptions { camera: Some(layout), camera_hidden: vec![(60_000, 120_000)], gain_stretches: Vec::new(), gains: vec![1.0, 1.0] };
         let (result, calls, path) = rendered("hidden-stretch", &[(30_000, 45_000)], options, false);
         result.unwrap();
         assert_eq!(calls.camera_asked, Some(layout));
@@ -739,8 +795,12 @@ mod tests {
     #[test]
     fn the_sound_is_each_track_at_its_volume_faded_across_a_join() {
         // The system's sound (0.02) at half, the microphone's (0.03) at twice: 0.07 wherever no fade applies.
-        let (result, calls, path) =
-            rendered("mixed", &[(30_000, 60_000)], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![0.5, 2.0] }, false);
+        let (result, calls, path) = rendered(
+            "mixed",
+            &[(30_000, 60_000)],
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.5, 2.0] },
+            false,
+        );
         result.unwrap();
         let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
         // 1.67 s kept at 48 kHz.
@@ -763,8 +823,40 @@ mod tests {
     }
 
     #[test]
+    fn a_stretch_of_a_track_at_its_own_volume_takes_its_place_there_eased_in_and_out() {
+        // The microphone (0.03) silent from 0.5 s to 1 s on the recording's clock (frames 24,000 to 48,000 at 48 kHz),
+        // the system (0.02) at its own volume throughout: 0.02 inside, 0.05 outside, 10 ms (480 frames) to move.
+        let options =
+            RenderOptions { gain_stretches: vec![vec![], vec![(45_000, 90_000, 0.0)]], camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] };
+        let (result, calls, path) = rendered("volume-stretch", &[], options, false);
+        result.unwrap();
+        let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
+        assert!((left[23_999] - 0.05).abs() < 1e-6, "{}", left[23_999]);
+        assert!(left[24_200] > 0.02 && left[24_200] < 0.05, "easing out {}", left[24_200]);
+        assert!((left[24_480] - 0.02).abs() < 1e-6 && (left[47_999] - 0.02).abs() < 1e-6, "{} {}", left[24_480], left[47_999]);
+        assert!(left[48_200] > 0.02 && left[48_200] < 0.05, "easing in {}", left[48_200]);
+        assert!((left[48_480] - 0.05).abs() < 1e-6, "{}", left[48_480]);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_track_silent_but_for_a_stretch_is_heard_there_alone() {
+        // The system silent, but at 200% from 0.5 s to 1 s.
+        let options =
+            RenderOptions { gain_stretches: vec![vec![(45_000, 90_000, 2.0)], vec![]], camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 0.0] };
+        let (result, calls, path) = rendered("volume-stretch-alone", &[], options, false);
+        result.unwrap();
+        let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
+        assert_eq!(left[10_000], 0.0);
+        assert!((left[30_000] - 0.04).abs() < 1e-6, "{}", left[30_000]);
+        assert_eq!(left[60_000], 0.0);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn a_muted_track_is_left_out_and_the_other_plays_alone() {
-        let (result, calls, path) = rendered("muted", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 1.0] }, false);
+        let (result, calls, path) =
+            rendered("muted", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 1.0] }, false);
         result.unwrap();
         // The microphone's 0.03 alone while its track lasts (94,144 frames), silence after.
         let (heard, after) = calls.mixed.split_at(94_144 * 2);
@@ -775,7 +867,8 @@ mod tests {
 
     #[test]
     fn a_cancel_stops_it_and_removing_everything_or_a_plain_recording_is_refused() {
-        let (result, _, path) = rendered("cancel", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![] }, true);
+        let (result, _, path) =
+            rendered("cancel", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![] }, true);
         assert_eq!(result.unwrap_err().code, "cancelled");
         std::fs::remove_file(&path).unwrap();
 
@@ -785,7 +878,7 @@ mod tests {
         let plain = temp("plain-source");
         std::fs::write(&plain, crate::edit::remux::tests::recording(2)).unwrap();
         let output = temp("plain-output");
-        let options = RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![] };
+        let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![] };
         let error = export(&plain, &output, &[], &options, &mut FakeRenderer(Arc::default()), &mut |_| {}, &AtomicBool::new(false)).err().unwrap();
         assert_eq!(error.code, "unsupported");
         assert!(!output.exists(), "nothing is created for a refused export");
@@ -840,7 +933,7 @@ mod tests {
         let plan = render_plan(&index, &[]).unwrap();
         let calls = Arc::new(Mutex::new(Calls::default()));
         let path = temp("interrupted");
-        let options = RenderOptions { camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
+        let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
         let (_, frames) =
             render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &AtomicBool::new(false))
                 .unwrap();
