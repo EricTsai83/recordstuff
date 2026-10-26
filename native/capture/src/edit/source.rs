@@ -115,7 +115,8 @@ impl Samples {
             offset += u64::from(self.sizes[index]);
         }
         for index in from..to {
-            if chunk + 1 < self.chunks.len() && self.chunks[chunk + 1].1 as usize == index {
+            // `while`: a chunk with no samples starts where the next one does and is passed over.
+            while chunk + 1 < self.chunks.len() && self.chunks[chunk + 1].1 as usize == index {
                 chunk += 1;
                 offset = self.chunks[chunk].0;
             }
@@ -688,6 +689,10 @@ fn read_fragments(source: &dyn ReadAt, tops: &[BoxHeader], length: u64, traks: &
             pending.push((track, start, entries));
         }
         for (track, start, entries) in pending {
+            // An empty run adds no chunk, as `plain_samples` skips an empty one: it would start where the next does.
+            if entries.is_empty() {
+                continue;
+            }
             let t = &mut traks[track];
             if t.samples.len() + entries.len() > SAMPLES_LIMIT {
                 return Err(ReadError::unsupported("more samples than any recording the engine writes"));
@@ -844,6 +849,18 @@ pub(crate) mod tests {
         let mut seen = Vec::new();
         samples.locate(1, 5, |i, o, s| seen.push((i, o, s)));
         assert_eq!(seen, [(1, 101, 2), (2, 500, 3), (3, 503, 4), (4, 900, 5)]);
+    }
+
+    #[test]
+    fn locate_passes_over_a_chunk_with_no_samples() {
+        // The chunk at 500 holds nothing and starts where the one at 700 does: samples 2 and 3 are read from 700.
+        let samples = Samples { sizes: vec![1, 2, 3, 4], durations: vec![1; 4], chunks: vec![(100, 0), (500, 2), (700, 2)] };
+        let mut seen = Vec::new();
+        samples.locate(0, 4, |i, o, s| seen.push((i, o, s)));
+        assert_eq!(seen, [(0, 100, 1), (1, 101, 2), (2, 700, 3), (3, 703, 4)]);
+        seen.clear();
+        samples.locate(3, 4, |i, o, s| seen.push((i, o, s)));
+        assert_eq!(seen, [(3, 703, 4)]);
     }
 
     /// An editable recording (plan 087) as the writer lays it out: screen, system sound, microphone, camera, and its
