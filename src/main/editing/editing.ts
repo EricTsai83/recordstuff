@@ -122,8 +122,19 @@ export function partName(title: string): string {
   return `.${title}.recordstuff-export-${randomBytes(6).toString("hex")}.part`;
 }
 
-/** `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已編輯）.mp4」. */
+/** An earlier export's ending, in either language: 「（已編輯）」, 「（已編輯 2）」, " (edited)", " (edited 2)". */
+const EDITED_ENDING = new RegExp(`(?:${(["en", "zh-TW"] as const).flatMap((language) => [
+  translate("{title} (edited)", language, { title: "" }),
+  translate("{title} (edited {number})", language, { title: "", number: "\u0001" }),
+]).map((ending) => ending.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\u0001", "\\d+")).join("|")})$`);
+
+/**
+ * `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已編輯）.mp4」. An
+ * export edited again counts on from its source's title (2026-10-26): 「Talk（已編輯）」 exports as 「Talk（已編輯 2）」, not
+ * 「Talk（已編輯）（已編輯）」.
+ */
 export function editedName(title: string, attempt: number, language?: Language): string {
+  title = title.replace(EDITED_ENDING, "") || title;
   return `${attempt <= 1 ? translate("{title} (edited)", language, { title }) : translate("{title} (edited {number})", language, { title, number: attempt })}.mp4`;
 }
 

@@ -76,7 +76,7 @@ worker 是獨立的 `utilityProcess`（服務名稱 `RecordStuff Export`），�
 
 1. main 在 worker 建立暫存檔之前，把它的路徑記入 journal（`userData/edits/exports-in-flight.json`，原子寫入）；暫存檔位於錄影旁：`.<name>.recordstuff-export-<12 個十六進位字元>.part`，為隱藏檔，錄影分頁不會列出。
 2. worker 只在該檔不存在時建立它，remux 進去，並在 muxer 的 finish 中 sync；進度約每秒十次送到畫面。
-3. main 以第一個空著的 `<name> (edited).mp4`、`<name> (edited 2).mp4`……發布：用失敗而非取代的 hard link，接著移除暫存檔名。不支援 hard link 的磁碟先把佔位檔記入 journal，以獨佔建立取得檔名，再把檔案 rename 到該空白佔位檔上；Node 沒有不取代的 rename，因此在這種磁碟上，其他程式恰好在兩次呼叫之間放到該名稱的檔案會被取代，這是僅存的暴露。佔位檔的路徑在建立前記入 journal，建立後再記下其 inode；只有在仍是那個空白檔時才會再被移除。匯出一旦被取消，即使 worker 已完成也不會發布。
+3. main 以第一個空著的 `<name> (edited).mp4`、`<name> (edited 2).mp4`……發布（再次編輯的匯出檔沿用其來源的名稱接續編號：`Talk（已編輯）` 匯出為 `Talk（已編輯 2）`，而非 `Talk（已編輯）（已編輯）`，不論是哪種語言命名的）：用失敗而非取代的 hard link，接著移除暫存檔名。不支援 hard link 的磁碟先把佔位檔記入 journal，以獨佔建立取得檔名，再把檔案 rename 到該空白佔位檔上；Node 沒有不取代的 rename，因此在這種磁碟上，其他程式恰好在兩次呼叫之間放到該名稱的檔案會被取代，這是僅存的暴露。佔位檔的路徑在建立前記入 journal，建立後再記下其 inode；只有在仍是那個空白檔時才會再被移除。匯出一旦被取消，即使 worker 已完成也不會發布。
 4. 取消、worker 當機或卡住、磁碟已滿、link 或 rename 被拒、結束 App，都只移除暫存檔。journal 項目只在檔案確實不在之後才移除；無法移除的（例如磁碟暫時不在）留到下次啟動。啟動時（在 journal 自己的佇列中執行，期間開始的匯出會排在它之後記入）：journal 中名稱屬於匯出的暫存檔，以及仍是所記 inode 的空白佔位檔，都會被移除；沒有記下 inode 的佔位檔與其他名稱一律不動。暫時無法檢查或移除的檔案保留其項目。
 
 列表會更新，新的錄影以獨立的一筆出現。

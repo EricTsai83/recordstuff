@@ -397,6 +397,28 @@ describe("publication", () => {
     expect(editedName("{number} {title}", 2, "zh-TW")).toBe("{number} {title}（已編輯 2）.mp4");
   });
 
+  it("counts an export edited again on from its source's title, whichever language named it", () => {
+    for (const title of ["Talk（已編輯）", "Talk（已編輯 2）", "Talk (edited)", "Talk (edited 12)"]) {
+      expect(editedName(title, 1, "zh-TW"), title).toBe("Talk（已編輯）.mp4");
+      expect(editedName(title, 3), title).toBe("Talk (edited 3).mp4");
+    }
+    // Only the ending: an edited word inside the title, or an ending that is not one, stays.
+    expect(editedName("Talk (edited) notes", 1)).toBe("Talk (edited) notes (edited).mp4");
+    expect(editedName("Talk (edited two)", 1)).toBe("Talk (edited two) (edited).mp4");
+    expect(editedName("Talk(edited)", 1)).toBe("Talk(edited) (edited).mp4");
+    // A title that is nothing but the ending keeps it, so the name is never empty.
+    expect(editedName("（已編輯）", 1, "zh-TW")).toBe("（已編輯）（已編輯）.mp4");
+  });
+
+  it("publishes an export edited again as its source's next free name", async () => {
+    const part = path.join(dir, "Movies", ".Talk（已編輯）.recordstuff-export-0123456789ab.part");
+    fs.writeFileSync(part, "export");
+    fs.writeFileSync(path.join(dir, "Movies", "Talk（已編輯）.mp4"), "first");
+    const published = await publish(part, "Talk（已編輯）", files(), () => undefined, undefined, undefined, "zh-TW");
+    expect(path.basename(published)).toBe("Talk（已編輯 2）.mp4");
+    expect(fs.readFileSync(path.join(dir, "Movies", "Talk（已編輯）.mp4"), "utf8")).toBe("first");
+  });
+
   it("on a volume without hard links reserves the name first, then moves the file onto it", async () => {
     const part = path.join(dir, "Movies", ".Talk.recordstuff-export-0123456789ab.part");
     fs.writeFileSync(part, "export");
