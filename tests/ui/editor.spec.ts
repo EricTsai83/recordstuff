@@ -281,6 +281,13 @@ test("the timeline spans the panel, a range dragged past it reaches the recordin
   await page.mouse.up();
   await expect.poll(style).toMatch(/--to: 1;/);
 
+  // Escape lets go of it and takes the focus to the timeline, so the part the press focused is not ringed once a key
+  // is pressed (a native round's R20, 2026-10-27).
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".editor-selection")).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement?.classList.contains("editor-timeline"))).toBe(true);
+  await expect(page.locator(".editor-part:focus-visible")).toHaveCount(0);
+
   // A hold lost outside the window (no release comes): the range ends where it was; a later move chooses nothing.
   await page.mouse.move(box.x + box.width * 0.4, y);
   await page.mouse.down();

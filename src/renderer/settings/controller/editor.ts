@@ -177,13 +177,14 @@ export function escapeEditor(): boolean {
     document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
     return true;
   }
-  if (rangeSelection) {
+  if (rangeSelection || selectedFrom !== undefined) {
     rangeSelection = undefined;
-    draw();
-    return true;
-  }
-  if (selectedFrom !== undefined) {
     selectedFrom = undefined;
+    // The focus goes with the selection to the timeline, which draws no ring: left on the part a press focused, Escape
+    // (a key) would ring it in red though nothing is chosen any more (a native round's R20, 2026-10-27).
+    if (document.activeElement?.closest(".editor-timeline .editor-part, .editor-camera-lane")) {
+      document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
+    }
     draw();
     return true;
   }
