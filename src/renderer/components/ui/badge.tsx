@@ -1,8 +1,4 @@
-/**
- * App extensions: a readable metadata size (counts use the standard primary variant), and `inverse`, the foreground's
- * colour as its ground, for a state that must read at a glance without the brand's red meaning an action or a fault
- * (2026-10-26, the Recordings tab's Edited).
- */
+/** App extension: a readable metadata size. Counts use the standard primary variant. */
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -23,7 +19,6 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary decoration-primary underline-offset-4 hover:underline hover:text-primary hover:[&>svg]:text-primary",
-        inverse: "bg-foreground text-background",
       },
       size: {
         default: "text-[0.625rem]",

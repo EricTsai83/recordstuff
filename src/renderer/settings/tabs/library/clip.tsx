@@ -6,7 +6,6 @@ import { useEffect, useState, useSyncExternalStore, memo } from "react";
 import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
-import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
 import { useTruncated } from "../../../lib/use-truncated";
@@ -84,7 +83,6 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                   item.editable,
-                  item.edited,
                 ].filter((part): part is string => Boolean(part)),
                 language,
               ),
@@ -313,7 +311,8 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
  * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
  * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
  * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit…. A recording
- * that holds an edit has an Edited badge after it, a state, its menu offering Continue editing….
+ * that holds an edit is not marked on its card (the maintainer's call of 2026-10-26: shown whether or not it had been
+ * exported, the mark said nothing to act on); its menu offers Continue editing….
  */
 function EditableMark({ item }: { item: LibraryItemView }) {
   return (
@@ -334,13 +333,6 @@ function EditableMark({ item }: { item: LibraryItemView }) {
             {item.editable}
           </span>
         </>
-      )}
-      {/* A recording that holds an edit: a state badge after its time and size (the maintainer's request of 2026-10-26),
-          not a control, so a click there is the card's. */}
-      {item.edited && (
-        <Badge variant="inverse" size="md" className="clip-edited-badge rounded-[5px] px-1">
-          {item.edited}
-        </Badge>
       )}
     </>
   );
