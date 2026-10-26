@@ -336,6 +336,8 @@ export const ZH_TW = {
   "Stop recording": "停止錄影",
   // The player's fullscreen, in a window of its own (2026-10-05).
   "Full screen": "全螢幕",
+  "Enlarge preview": "放大預覽",
+  "Show the timeline": "顯示時間軸",
   "Exit full screen": "結束全螢幕",
   // The player's own controls (2026-10-05).
   Play: "播放",

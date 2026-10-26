@@ -10,7 +10,7 @@
  * (2026-10-26): its own volume, or a stretch's (muted, or a percent), set over the selection by the Volume popup (V).
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
-import { Keyboard, Merge, Mic, MicOff, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
+import { Keyboard, Merge, Mic, MicOff, PanelBottomClose, PanelBottomOpen, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import type { EditorView, EditRange } from "../../../../shared/editing";
@@ -207,7 +207,13 @@ function editorKey(event: React.KeyboardEvent): void {
     model.stepPlayhead((event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 0 : 1), event.shiftKey ? (event.key === "ArrowLeft" ? -1 : 1) : 0);
     return;
   }
-  if (key === "s") {
+  if (key === "t") {
+    event.preventDefault();
+    model.toggleEnlarged();
+  } else if (model.enlarged) {
+    // Enlarged, the timeline's keys wait for it to come back; Space and the arrows are the player's.
+    return;
+  } else if (key === "s") {
     event.preventDefault();
     void model.splitAtPlayhead();
   } else if (key === "c" && target.closest(".editor-panel, .editor-stage")) {
@@ -252,6 +258,7 @@ export function EditorDialog() {
         // rest of the height, the picture contained in it. A window too short for both scrolls.
         className="editor flex h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] w-[calc(100vw-2*var(--dialog-margin))] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
         data-id={item?.id}
+        data-enlarged={model.enlarged || undefined}
         showCloseButton={false}
         initialFocus={() => model.editorVideo}
         finalFocus={false}
@@ -278,7 +285,8 @@ export function EditorDialog() {
               crossOrigin="anonymous"
               error={model.editorPreviewError}
               onError={model.editorPreviewFailed}
-              controls={false}
+              // The player's own controls only while the preview is enlarged, the timeline then out of sight (2026-10-27).
+              controls={model.enlarged}
               onDoubleClick={() => undefined}
               fullScreen={() => undefined}
               trailing={null}
@@ -290,6 +298,18 @@ export function EditorDialog() {
                     {model.text("Reload preview")}
                   </Button>
                 )}
+                <ControlTooltip label={`${model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")} (T)`}>
+                  <Button
+                    variant="media"
+                    size="icon-media"
+                    id="editor-enlarge"
+                    aria-label={model.text(model.enlarged ? "Show the timeline" : "Enlarge preview")}
+                    aria-pressed={model.enlarged}
+                    onClick={() => model.toggleEnlarged()}
+                  >
+                    {model.enlarged ? <PanelBottomOpen /> : <PanelBottomClose />}
+                  </Button>
+                </ControlTooltip>
                 <ControlTooltip label={exporting ? model.text("Cancel the export to close") : model.text("Close")}>
                   <Button
                     variant="media"
@@ -641,6 +661,7 @@ function EditorPanel() {
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
     ...(camera ? [["C", "Hide or show the camera in the selection"] as [string, PlainMessageKey]] : []),
     ...(inputs.length > 0 ? [["V", "Set the volume of the selection"] as [string, PlainMessageKey]] : []),
+    ["T", "Enlarge preview"],
   ];
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo", language, {
     undo: model.platform() === "darwin" ? "⌘Z" : "Ctrl+Z",

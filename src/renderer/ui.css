@@ -2769,6 +2769,10 @@
     background: var(--card);
     color: var(--card-foreground);
   }
+  /* Enlarge preview (2026-10-27): the panel steps aside and the stage takes its room. */
+  .editor[data-enlarged] .editor-panel {
+    display: none;
+  }
   /* The height the panel leaves, never less than a picture's worth: a shorter window scrolls the dialog instead. */
   .editor-stage {
     position: relative;

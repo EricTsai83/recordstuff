@@ -304,11 +304,29 @@ test("the timeline spans the panel, a range dragged past it reaches the recordin
   await expect.poll(style).toMatch(/--from: 0;/);
   expect(await style()).not.toMatch(/--to: 1;/);
 
+  // Enlarge preview (2026-10-27): the panel steps aside, the picture takes its room with the player's controls, and the
+  // edit still plays as previewed; Escape, or T, or the button again, brings the timeline back.
+  const stageHeight = async () => (await page.locator("#editor .editor-stage").boundingBox())!.height;
+  const before = await stageHeight();
+  await page.locator("#editor-enlarge").click();
+  await expect(page.locator("#editor .editor-panel")).toBeHidden();
+  await expect(page.locator("#editor .pc-seek")).toBeVisible();
+  expect(await stageHeight()).toBeGreaterThan(before + 100);
+  await expect(page.locator("#editor-enlarge")).toHaveAccessibleName("Show the timeline");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#editor .editor-panel")).toBeVisible();
+  await expect(page.locator("#editor .pc-seek")).toBeHidden();
+  await expect(page.locator("#editor[data-open]")).toHaveCount(1);
+  await page.keyboard.press("t");
+  await expect(page.locator("#editor .editor-panel")).toBeHidden();
+  await page.keyboard.press("t");
+  await expect(page.locator("#editor .editor-panel")).toBeVisible();
+
   // The keyboard button opens the shortcuts on a click, too.
   await page.locator("#editor-keys").click();
   await expect(page.locator("#editor-keys-popup")).toBeVisible();
   await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
-  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(7);
+  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
   // Shortcuts only: Skimming is in More options (2026-10-26).
   await expect(page.locator("#editor-keys-popup #editor-skim")).toHaveCount(0);
 });

@@ -42,6 +42,11 @@ export let rangeSelection: EditRange | undefined;
  * 2026-10-26, as Final Cut Pro's (the maintainer's choice); kept while the app runs.
  */
 export let skimming = false;
+/**
+ * Enlarge preview (2026-10-27, the maintainer's request): the timeline and its toolbar step aside and the picture takes
+ * the view, playing as edited, with the player's own controls; for the view only, never saved.
+ */
+export let enlarged = false;
 /** Where the skimmer is, in the video's timescale, while the pointer skims. */
 export let skimAt: number | undefined;
 /** The playhead's time before the pointer began skimming, which it returns to; none once a press put it elsewhere. */
@@ -125,6 +130,7 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   forgetMenu();
   editingItem = item;
   exportWatched = undefined;
+  enlarged = false;
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
@@ -172,6 +178,11 @@ export function closeEditor(restore = true): Promise<void> {
  */
 export function escapeEditor(): boolean {
   if (!editingItem) return false;
+  // An enlarged preview first: Escape brings the timeline back.
+  if (enlarged) {
+    toggleEnlarged();
+    return true;
+  }
   // The bubble first while it has the focus, as that is what was last chosen.
   if (document.activeElement?.id === "editor-camera") {
     document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
@@ -245,6 +256,7 @@ function finishClose(item: LibraryItemView, restore: boolean): void {
   volumeOpen = false;
   laneInput = undefined;
   exportWatched = undefined;
+  enlarged = false;
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
@@ -541,6 +553,17 @@ export function togglePlayback(): void {
   if (editorVideo.error) reloadEditorPreview(true);
   else if (editorVideo.paused) void editorVideo.play().catch(() => undefined);
   else editorVideo.pause();
+}
+
+/** Enlarge preview on or off (T, or its button); the focus goes to the picture, or back to the timeline. */
+export function toggleEnlarged(): void {
+  if (!editingItem) return;
+  enlarged = !enlarged;
+  draw();
+  requestAnimationFrame(() => {
+    const target = enlarged ? editorVideo : document.querySelector<HTMLElement>("#editor .editor-timeline");
+    target?.focus({ preventScroll: true });
+  });
 }
 
 /** The preview's media failed while the view is open: said over it, with Reload preview. */
