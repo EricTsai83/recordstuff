@@ -422,7 +422,10 @@ function EditorPanel() {
   const inputLanes = inputs.filter((input) => model.laneShown(input));
   const lanes = (cameraLane ? 1 : 0) + inputLanes.length;
   /** A lane's stretches, as a click there chooses one. */
-  const laneStretches = (lane: "camera" | VolumeInput): Array<{ from: number; to: number }> => (lane === "camera" ? stretches : model.volumeLane(editor, lane));
+  /** A lane's stretches, as a click there chooses one; `set` for one the edit set (hidden, or a volume of its own). */
+  const laneStretches = (lane: "camera" | VolumeInput): Array<{ from: number; to: number; set: boolean }> => (lane === "camera"
+    ? stretches.map((one) => ({ ...one, set: one.hidden }))
+    : model.volumeLane(editor, lane).map((one) => ({ ...one, set: one.volume !== undefined })));
   const editingSource = model.editingItem?.video;
   // 2026-10-25, after a hands-on walkthrough: a click on the timeline puts the playhead there and selects the part
   // there; a drag across it chooses a range Remove takes out; a drag that starts on the playhead scrubs; and the handles
@@ -661,11 +664,14 @@ function EditorPanel() {
           follow(event.pointerId, event.clientX);
           const held = gesture.current, ticks = ticksAt(event.clientX);
           if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) {
-            // On a lane, the stretch there is chosen, as a range the camera button or the Volume popup then acts on.
+            // On a lane, a stretch the edit set (hidden, muted, a volume of its own) is chosen, as a range the camera
+            // button or the Volume popup then acts on; anywhere else on it, as on the pictures: the playhead there and
+            // the part there (2026-10-26, the maintainer's report: a lane not yet set is one stretch, and a click chose
+            // the whole recording).
             const list = held.lane ? laneStretches(held.lane) : [];
             const stretch = held.lane ? list.find((one) => ticks >= one.from && ticks < one.to) ?? list.at(-1) : undefined;
             if (held.lane) model.chooseLaneInput(held.lane === "camera" ? undefined : held.lane);
-            if (stretch) {
+            if (stretch?.set) {
               model.selectRange(stretch.from, stretch.to, held.lane);
               model.seekTo(ticks / editor.timescale);
             } else placeAt(ticks);
@@ -741,8 +747,11 @@ function EditorPanel() {
                   disabled={busy}
                   onClick={(event) => {
                     if (event.detail !== 0) return;
-                    model.selectRange(stretch.from, stretch.to, "camera");
-                    model.seekTo(stretch.from / editor.timescale);
+                    // From the keyboard as from the pointer: a hidden stretch is chosen, else the part where it starts.
+                    if (stretch.hidden) {
+                      model.selectRange(stretch.from, stretch.to, "camera");
+                      model.seekTo(stretch.from / editor.timescale);
+                    } else placeAt(stretch.from);
                   }}
                 >
                   {stretch.hidden ? <UserRoundX aria-hidden="true" /> : <UserRound aria-hidden="true" />}
@@ -787,8 +796,10 @@ function EditorPanel() {
                     onClick={(event) => {
                       if (event.detail !== 0) return;
                       model.chooseLaneInput(input);
-                      model.selectRange(stretch.from, stretch.to, input);
-                      model.seekTo(stretch.from / editor.timescale);
+                      if (stretch.volume !== undefined) {
+                        model.selectRange(stretch.from, stretch.to, input);
+                        model.seekTo(stretch.from / editor.timescale);
+                      } else placeAt(stretch.from);
                     }}
                   >
                     <Icon aria-hidden="true" />

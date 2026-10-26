@@ -52,6 +52,10 @@ it("hides a lane from Options, remembers it for the next view, says what it stil
   const key = (k: string): void => { document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: `Key${k.toUpperCase()}`, bubbles: true })); };
   await open();
   expect(lanes()).toEqual(["camera", "microphone"]);
+  // Enter on a stretch the edit has not set chooses the part where it starts, not the whole recording it spans.
+  document.querySelector<HTMLButtonElement>('.editor-camera-lane[data-lane="camera"] .editor-camera-stretch')!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  await vi.waitFor(() => expect(document.querySelector(".editor-part")!.getAttribute("aria-pressed")).toBe("true"));
+  expect(document.querySelector(".editor-range")).toBeNull();
 
   // The microphone muted over the part after 4 s, then its lane hidden in Options: off the timeline, and Options says
   // its stretch still applies.

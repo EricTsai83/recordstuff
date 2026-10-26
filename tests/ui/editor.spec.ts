@@ -640,9 +640,13 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   const handle = (await page.locator("#editor-trim-start").boundingBox())!;
   expect(handle.y + handle.height).toBeLessThanOrEqual(laneBox.y + 1);
   expect(laneBox.height).toBeGreaterThanOrEqual(16);
-  // A click on the lane beside the start's trim handle selects the lane's stretch and trims nothing (Codex's review).
+  // A click on the lane beside the start's trim handle trims nothing (Codex's review); on a stretch the edit has not set
+  // it is as a click on the pictures: the part there, not the whole recording the stretch spans (2026-10-26, the
+  // maintainer's report).
   await page.mouse.click(laneBox.x + 3, laneBox.y + laneBox.height / 2);
-  await expect(stretches.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".editor-part").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(stretches.first()).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".editor-range")).toHaveCount(0);
   await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
   await page.keyboard.press("Escape");
 
