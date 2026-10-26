@@ -3577,7 +3577,8 @@
     display: grid;
     gap: 4px;
   }
-  /* A note behind an ⓘ beside the control's name, the control kept at the row's end. */
+  /* A note behind a help icon beside the control's name, the control kept at the row's end; the ordinary pointer, as
+     the app's other help icons have, since the note opens at once (2026-10-27, the maintainer's review). */
   .editor-scene-row:has(> .editor-options-info) > :first-child {
     flex: none;
   }
@@ -3587,7 +3588,6 @@
     margin-inline-end: auto;
     color: var(--muted-foreground);
     border-radius: 50%;
-    cursor: help;
     outline: none;
   }
   .editor-options-info svg {

@@ -16,7 +16,7 @@
  * outline that says so. The bubble's element stays meanwhile, so its camera keeps following and shows again at once.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Ellipsis, Info, Mic, MicOff, RotateCcw, SlidersHorizontal, UserRoundX, Volume2, VolumeX } from "lucide-react";
+import { CircleHelp, Ellipsis, Mic, MicOff, RotateCcw, SlidersHorizontal, UserRoundX, Volume2, VolumeX } from "lucide-react";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
@@ -453,12 +453,12 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
 
 /** A note behind an ⓘ (2026-10-26, version A): its words on hover or focus, and read with the control it describes. */
 function OptionInfo({ id, text }: { id: string; text: string }) {
-  // At once on hover: the ⓘ is there only to be read (2026-10-27, the maintainer's review: the controls' usual delay
-  // read as nothing happening).
+  // The app's help icon, as the settings', the Studio's and onboarding's, and at once on hover: it is there only to be
+  // read (2026-10-27, the maintainer's review: the controls' usual delay read as nothing happening).
   return (
     <ControlTooltip label={text} delay={0}>
       <span className="editor-options-info" tabIndex={0} aria-label={text}>
-        <Info aria-hidden="true" />
+        <CircleHelp aria-hidden="true" />
         <span id={id} className="sr-only">{text}</span>
       </span>
     </ControlTooltip>
