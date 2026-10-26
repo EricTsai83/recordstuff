@@ -40,7 +40,7 @@ export const TEST_SCOPES: readonly TestScope[] = [
   {
     name: "general",
     covers: "the General tab: language, appearance, notifications, updates, local data cleanup, the footer, Hide interface and Quit",
-    unit: [`${PAGE}settings-appearance.test.ts`, `${PAGE}settings-announce.test.ts`, "src/renderer/settings/controller/", "src/main/settings/settings-model.test.ts", "src/shared/i18n.test.ts",
+    unit: [`${PAGE}settings-appearance.test.ts`, `${PAGE}settings-announce.test.ts`, "src/renderer/settings/controller/", "src/main/settings/settings-model.test.ts", "src/shared/i18n.test.ts", "tests/i18n-usage.test.ts",
       "src/main/app/updates.test.ts", "src/main/app/data-cleanup"],
     ui: [{ file: "settings-notification-help.spec.ts" }, { file: "settings-segments.spec.ts" }, { file: "window-actions.spec.ts" },
       { file: "settings-panel.spec.ts", tags: ["@general"] }, { file: "components.spec.ts", tags: ["@general"] },

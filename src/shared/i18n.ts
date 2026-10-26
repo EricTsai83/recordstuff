@@ -292,8 +292,6 @@ export const ZH_TW = {
   "Reset and cleanup": "重設與清理",
   "Clear local app data": "清除本機 App 資料",
   "This cannot be undone, and RecordStuff will quit.": "此動作無法復原，完成後 App 會結束。",
-  Expand: "展開",
-  Collapse: "收合",
   "Open RecordStuff": "開啟 RecordStuff",
   "The shortcut for RecordStuff is the recording shortcut: open RecordStuff above to change it.": "開啟 RecordStuff 的快捷鍵與錄影快捷鍵相同：請從上方開啟 RecordStuff 更改。",
   "The shortcut for RecordStuff is unavailable: another app may use it. Open RecordStuff above.": "開啟 RecordStuff 的快捷鍵無法使用，可能被其他 App 佔用。請從上方開啟 RecordStuff。",
@@ -319,7 +317,6 @@ export const ZH_TW = {
   "Already allowed? Relaunch RecordStuff": "已經允許了？重新啟動 RecordStuff",
   "Allow screen recording in System Settings.": "請在系統設定允許螢幕錄製。",
   "Screen recording access": "螢幕錄影權限請求",
-  "Allow RecordStuff to record your screen.": "允許 RecordStuff 錄製螢幕，即可開始錄影。",
   "Relaunch RecordStuff after allowing access in System Settings.": "在系統設定允許權限後，請重新啟動 RecordStuff。",
   "If capture still fails after you allow access, relaunch RecordStuff.":
     "允許權限後若仍無法擷取，請重新啟動 RecordStuff。",
@@ -664,7 +661,6 @@ export const ZH_TW = {
   "Revert to original recording…": "復原成原始錄影…",
   "Reset both volumes to 100%": "兩個音量回到 100%",
   "Nothing is edited yet.": "目前沒有任何編輯。",
-  "Keeps every part again and puts everything back as recorded. Undo takes it back.": "保留所有片段，並把所有設定復原成錄製時的樣子。可以用「還原」取回。",
   "Back to the original recording": "已復原成原始錄影",
   "Space": "空白鍵",
   "Move a frame": "逐格移動",
@@ -675,11 +671,9 @@ export const ZH_TW = {
   "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo":
     "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",
   "Selection {from}–{to} ({length})": "選取範圍 {from}–{to}（長度 {length}）",
-  "Reset volumes": "重設音量",
   // The camera hidden over stretches of an editable recording (2026-10-26).
   "Hide the camera in the selection (C)": "在選取範圍隱藏相機 (C)",
   "Show the camera in the selection again (C)": "在選取範圍重新顯示相機 (C)",
-  "Select a part or drag across the timeline, then hide or show the camera there (C)": "先選取片段或在時間軸上拖曳選取範圍，再在那段隱藏或顯示相機 (C)",
   "Hide camera in selection": "在選取範圍隱藏相機",
   "Show camera in selection": "在選取範圍顯示相機",
   "Hide or show the camera in the selection": "在選取範圍隱藏或顯示相機",
@@ -738,7 +732,6 @@ export const ZH_TW = {
   "Cancel export": "取消匯出",
   "Write the kept parts to a new file beside the recording": "把保留的片段寫成錄影旁的新檔案",
   "Export": "匯出",
-  "Export again": "再匯出一次",
   "Split at {time}": "已在 {time} 分割",
   "Kept {from} to {to}": "已保留 {from} 至 {to}",
   "Removed {from} to {to}": "已移除 {from} 至 {to}",
@@ -779,18 +772,13 @@ export const ZH_TW = {
   "Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps show the screen with system audio until you export it from Edit….":
     "把螢幕、相機與各個聲音分開保存，錄完後可在「編輯…」中擺放相機、調整音量。檔案約大一倍；從「編輯…」匯出前，其他 App 只會顯示螢幕與系統聲音。",
   "Editable": "可編輯",
-  "Camera and sound": "相機與聲音",
-  "Camera size": "相機大小",
   "Camera: {x}% across, {y}% down, {size}% in size. Drag it or use the arrow keys to move it; drag a corner, or press + or −, to resize it.": "相機：水平 {x}%、垂直 {y}%，大小 {size}%。可拖曳或用方向鍵移動；拖曳角落或按 + 或 − 調整大小。",
   "Preparing the camera…": "正在準備相機…",
   // The edit view's camera and sound, refined 2026-10-25.
-  "Sound": "聲音",
   // The edit view's options and its export's toast (2026-10-26, the maintainer's choice of mockups).
   "Exported “{title}”": "已匯出「{title}」",
   "Saved in the recording's folder.": "儲存在錄影檔的資料夾。",
   "The export failed": "匯出失敗",
-  "Drag to resize": "拖曳以調整大小",
-  "Put the camera and the volumes back as recorded": "把相機與音量恢復成錄影時的樣子",
   "Redone": "已重做",
   "Redo (⇧⌘Z)": "重做 (⇧⌘Z)",
   "Redo (Ctrl+Y)": "重做 (Ctrl+Y)",
