@@ -440,7 +440,6 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
             <div className="editor-options-revert">
               <Button id="editor-revert" variant="outline" size="sm" aria-disabled={busy || original} aria-describedby="editor-revert-note"
                 onClick={() => { if (!busy && !original) setConfirming(true); }}>
-                <RotateCcw aria-hidden="true" />
                 {model.text("Revert to original recording…")}
               </Button>
               {original && <p id="editor-revert-note" className="editor-options-note">{model.text("Nothing is edited yet.")}</p>}
