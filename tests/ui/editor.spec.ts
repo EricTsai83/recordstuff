@@ -574,6 +574,8 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await expect(page.locator(".editor-camera-handle")).toHaveCount(0);
   await bubble.click();
   await expect(page.locator(".editor-camera-handle")).toHaveCount(4);
+  // The handles' layer is the bubble's own, not drawn as the timeline's selection (it once shared that frame's name).
+  expect(await page.locator(".editor-camera-handles").evaluate((e) => getComputedStyle(e).boxShadow)).toBe("none");
   // The bottom-right corner's handle grows it from the top-left corner, its shape kept.
   const handle = page.locator('.editor-camera-handle[data-corner="bottom-right"]');
   const grip = (await handle.boundingBox())!;

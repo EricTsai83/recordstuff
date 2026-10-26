@@ -320,7 +320,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
           size slider is the handles' keyboard counterpart. A layer of its own beside the bubble's, over the player's
           shaded bars, which dimmed the handles under them (a hands-on round); the bubble's stays under them. */}
       {selected && now.shown && !busy && (
-        <div className="editor-overlay editor-selection">
+        <div className="editor-overlay editor-camera-handles">
           {CORNERS.map((corner) => (
             <span
               key={`${corner.bottom ? "bottom" : "top"}-${corner.right ? "right" : "left"}`}
