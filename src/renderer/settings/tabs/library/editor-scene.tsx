@@ -521,9 +521,13 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
   const name = model.text("Overall volume");
   return (
     <Popover open={open} onOpenChange={(next, details) => {
-      // Left open by a press inside the edit view (Play, the timeline): the volume is set while listening.
-      const inside = details.event?.target instanceof Element && details.event.target.closest("#editor") !== null;
-      if (!next && details.reason === "outside-press" && inside) return;
+      // Left open by a press, or the focus, moving elsewhere in the edit view (Play, the timeline): the volume is set
+      // while listening (a native round of 2026-10-26 found Play closing it).
+      if (!next && (details.reason === "outside-press" || details.reason === "focus-out")) {
+        const event = details.event as (Event & { relatedTarget?: EventTarget | null }) | undefined;
+        const target = details.reason === "focus-out" ? event?.relatedTarget : event?.target;
+        if (!(target instanceof Node) || document.getElementById("editor")?.contains(target)) return;
+      }
       setOpen(next);
     }}>
       <ControlTooltip label={name}>
@@ -534,7 +538,7 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
       </ControlTooltip>
       <PopoverContent side="top" align="end" id="editor-mix-popup" className="editor-mix-popup w-auto max-w-[calc(100vw-24px)] gap-0 p-3" aria-label={name}
         // Focus on the first volume, not on the ⓘ before it, whose note would open and take the first Escape.
-        initialFocus={() => document.querySelector<HTMLElement>('#editor-mix-popup [role="slider"]')}
+        initialFocus={() => document.querySelector<HTMLElement>('#editor-mix-popup input[type="range"]')}
         onKeyDown={(event) => {
           // Space plays or pauses from here as on the timeline, so a volume is tried without leaving it.
           if (event.key === " " && !(event.target instanceof HTMLButtonElement)) {

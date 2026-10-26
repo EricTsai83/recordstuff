@@ -498,6 +498,8 @@ test("an editable recording's camera is dragged into place, its microphone turne
 
   // The microphone a step down with the keyboard, in the overall volumes' panel (2026-10-26).
   await page.locator("#editor-mix").click();
+  // It opens on its first volume, not on the ⓘ before it, so the arrow keys set it at once (a native round, 2026-10-26).
+  await expect(page.getByRole("slider", { name: "System audio", exact: true })).toBeFocused();
   const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
   await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
   await microphone.focus();
@@ -532,6 +534,10 @@ test("an editable recording's camera is dragged into place, its microphone turne
   // It stays open as the preview plays, so a volume is set by ear: Play leaves it open, and Space from it plays or
   // pauses (the maintainer's review of 2026-10-26).
   await page.locator("#editor-play").click();
+  await expect(page.locator("#editor-mix-popup")).toBeVisible();
+  // A press on the timeline leaves it open too.
+  const strip = (await page.locator(".editor-timeline").boundingBox())!;
+  await page.mouse.click(strip.x + strip.width * 0.3, strip.y + strip.height / 2);
   await expect(page.locator("#editor-mix-popup")).toBeVisible();
   await expect(page.locator("#editor-play")).toHaveAccessibleName(/^Pause/);
   await microphone.focus();
