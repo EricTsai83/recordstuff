@@ -58,6 +58,18 @@ const STATES: RecordingState[] = [
 const labels = (menu: TrayMenuItem[]) => menu.map((m) => (m.kind === "separator" ? "—" : m.label));
 const enabledActions = (menu: TrayMenuItem[]) =>
   menu.flatMap((m) => (m.kind === "item" && m.enabled && m.action ? [m.action] : []));
+// Each state's full menu is pinned once, in its own test below; the others name only what they are about, by neighbour
+// or group, so a line added elsewhere in the menu does not fail them.
+/** The entry right below the item labelled `label`. */
+const below = (menu: TrayMenuItem[], label: string) => menu[menu.findIndex((m) => m.kind === "item" && m.label === label) + 1];
+/** The status group: the one between the window's group and Quit's, empty when there is none. */
+const statusGroup = (menu: TrayMenuItem[]) => {
+  const groups = menu.reduce<Extract<TrayMenuItem, { kind: "item" }>[][]>((all, m) => (m.kind === "separator" ? [...all, []] : (all.at(-1)!.push(m), all)), [[]]);
+  const window = groups.findIndex((group) => group.some((m) => m.action === "openSettings"));
+  const next = groups[window + 1] ?? [];
+  return next.some((m) => m.action === "quit") ? [] : next;
+};
+const statusLabels = (menu: TrayMenuItem[]) => statusGroup(menu).map((m) => m.label);
 
 describe("trayModel per state (docs/system-design/desktop.md)", () => {
   it("needsPermission shows the permission actions above Open RecordStuff", () => {
@@ -83,7 +95,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("needsPermission with needsRelaunch shows only the relaunch", () => {
     const m = trayModel({ type: "needsPermission", needsRelaunch: true }, mac);
-    expect(labels(m.menu)[1]).toBe("重新啟動");
+    expect(below(m.menu, "需要螢幕錄製權限")).toMatchObject({ label: "重新啟動", action: "relaunch" });
     expect(enabledActions(m.menu)).toContain("relaunch");
     expect(enabledActions(m.menu)).not.toContain("openPermissionSettings");
   });
@@ -100,7 +112,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("idle with editable recordings off offers one editable recording under Start, on macOS only", () => {
     const m = trayModel({ type: "idle" }, { ...mac, editableRecording: false });
-    expect(labels(m.menu).slice(0, 3)).toEqual(["開始錄影", "開始可編輯錄影", "—"]);
+    expect(below(m.menu, "開始錄影")).toMatchObject({ label: "開始可編輯錄影", action: "startEditable" });
     expect(enabledActions(m.menu)).toContain("startEditable");
     expect(enabledActions(trayModel({ type: "idle" }, { ...win, editableRecording: false }).menu)).not.toContain("startEditable");
     expect(enabledActions(trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, editableRecording: false }).menu)).not.toContain("startEditable");
@@ -108,8 +120,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("idle with an unusable output dir offers its fix beside Start and says why under RecordStuff", () => {
     const m = trayModel({ type: "idle", outputDirUnavailable: true }, mac);
-    expect(labels(m.menu)).toEqual(["開始錄影", "更改儲存位置…", "—", "錄影時包含", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "儲存位置無法使用", "—", "結束 RecordStuff"]);
-    expect(m.menu[1]).toMatchObject({ action: "changeOutputDir", toolTip: mac.outputDir });
+    expect(below(m.menu, "開始錄影")).toMatchObject({ label: "更改儲存位置…", action: "changeOutputDir", toolTip: mac.outputDir });
+    expect(statusGroup(m.menu)).toEqual([expect.objectContaining({ label: "儲存位置無法使用", enabled: false })]);
   });
 
   it("starting: hourglass, no title, Open RecordStuff and quit", () => {
@@ -153,11 +165,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
   it("recording with the camera: Hide camera, then Show camera once it is hidden (plan 075, D13)", () => {
     const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
     const shown = trayModel(recording, { ...mac, camera: { enabled: true, available: true, session: { hidden: false } } });
-    expect(labels(shown.menu).slice(0, 2)).toEqual(["停止", "隱藏相機"]);
-    expect(shown.menu[1]).toMatchObject({ action: { setCameraHidden: true } });
+    expect(below(shown.menu, "停止")).toMatchObject({ label: "隱藏相機", action: { setCameraHidden: true } });
     const hidden = trayModel(recording, { ...mac, language: "en", camera: { enabled: true, available: true, session: { hidden: true } } });
-    expect(labels(hidden.menu).slice(0, 2)).toEqual(["Stop", "Show camera"]);
-    expect(hidden.menu[1]).toMatchObject({ action: { setCameraHidden: false } });
+    expect(below(hidden.menu, "Stop")).toMatchObject({ label: "Show camera", action: { setCameraHidden: false } });
     // No camera in the recording: nothing to hide.
     expect(labels(trayModel(recording, { ...mac, camera: { enabled: true, available: true } }).menu)).not.toContain("隱藏相機");
   });
@@ -218,9 +228,11 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
       const m = trayModel(state, { ...mac, quitting: true, recordingResults: unread });
       expect(m.icon).toBe("busy");
       expect(m.tooltip.split("\n")[0]).toBe("RecordStuff: 錄影存檔或清理完成後即結束…");
-      expect(labels(m.menu)).toEqual(["開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "錄影存檔或清理完成後即結束…", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…", "—", "結束 RecordStuff"]);
+      // No state action is left above the window's items, and the quit's line leads the status group.
+      expect(m.menu[0]).toMatchObject({ action: "openSettings" });
+      expect(statusLabels(m.menu)).toEqual(["錄影存檔或清理完成後即結束…", "尚未確認的錄影失敗：1 筆", "查看失敗紀錄…"]);
     }
-    const statusLine = (ctx: AppContext) => trayModel({ type: "idle" }, ctx).menu[4];
+    const statusLine = (ctx: AppContext) => statusGroup(trayModel({ type: "idle" }, ctx).menu)[0];
     expect(statusLine({ ...mac, language: "en", quitting: true })).toMatchObject({ label: "Quitting once the recording is saved or cleaned up…", enabled: false });
     // Once recording work has settled, a quit still waiting names the saves it waits on, not a recording.
     expect(statusLine({ ...mac, language: "en", quitting: true, quitStep: "metadata" }))
@@ -242,19 +254,18 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("says in every state that a quit was postponed, after the state's lines, since its banner may not be seen (plan 056)", () => {
     const zh = trayModel({ type: "idle" }, { ...mac, quitDeferred: "media" });
-    expect(labels(zh.menu)).toEqual(["開始錄影", "—", "錄影時包含", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。", "—", "結束 RecordStuff"]);
-    expect(zh.menu[9]).toMatchObject({ enabled: false });
+    expect(statusGroup(zh.menu)).toEqual([expect.objectContaining({ label: "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。", enabled: false })]);
     expect(zh.tooltip.split("\n").slice(0, 2)).toEqual(["RecordStuff: 待命中", "錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。"]);
     const saving = trayModel({ type: "stopping" }, { ...mac, language: "en", quitDeferred: "metadata" });
-    expect(labels(saving.menu).slice(4, 6)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are being written. Try again in a moment."]);
+    expect(statusLabels(saving.menu)).toEqual(["Saving…", "Quit or relaunch postponed: settings or the log are being written. Try again in a moment."]);
     expect(labels(trayModel({ type: "idle" }, mac).menu)).not.toContain("錄影工作仍在進行，暫不結束或重新啟動；完成後請再試一次。");
   });
 
   it("says an error box is waiting for the recording, even while it records (plan 056)", () => {
     const m = trayModel({ type: "recording", startedAt: "2026-09-14T00:00:00Z" }, { ...mac, language: "en", errorBoxHeld: true, quitDeferred: "media" });
     expect(m.title).toBe("REC");
-    expect(labels(m.menu)).toEqual(["Stop", "—", "Open RecordStuff", "Open Recording Studio…", "Show last recording", "—", "An unexpected error occurred. See the log for details.",
-      "Quit or relaunch postponed: recording work is pending. Try again when it finishes.", "—", "Quit RecordStuff"]);
+    expect(statusLabels(m.menu)).toEqual(["An unexpected error occurred. See the log for details.",
+      "Quit or relaunch postponed: recording work is pending. Try again when it finishes."]);
     expect(m.tooltip.split("\n")[1]).toBe("An unexpected error occurred. See the log for details.");
     // The log is in RecordStuff → General, which stays open to reach mid-recording.
     expect(enabledActions(m.menu)).toContain("openSettings");
@@ -274,7 +285,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
   });
 
   it("Windows offers the same short menu, the folder's fix keeping its full path as toolTip", () => {
-    expect(labels(trayModel({ type: "idle" }, win).menu)).toEqual(["開始錄影", "—", "錄影時包含", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
+    expect(labels(trayModel({ type: "idle" }, win).menu)).toEqual(labels(trayModel({ type: "idle" }, mac).menu));
     expect(trayModel({ type: "idle", outputDirUnavailable: true }, win).menu.find((i) => i.kind === "item" && i.action === "changeOutputDir")).toMatchObject({ toolTip: win.outputDir });
   });
 
@@ -282,7 +293,7 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     const m = trayModel({ type: "idle" }, { ...win, mediaComponentsMissing: true });
     // Windows shows the status in the tooltip, not as a line of the menu.
     expect(m.tooltip).toContain("Windows 缺少媒體元件，無法開始錄影");
-    expect(labels(m.menu).slice(0, 2)).toEqual(["開始錄影", "開啟選用功能…"]);
+    expect(below(m.menu, "開始錄影")).toMatchObject({ label: "開啟選用功能…" });
     expect(m.menu.find((i) => i.kind === "item" && i.label === "開始錄影")).toMatchObject({ enabled: false });
     expect(m.menu.some((i) => i.kind === "item" && i.action === "start")).toBe(false);
     expect(m.menu.find((i) => i.kind === "item" && i.label === "開啟選用功能…")).toMatchObject({ action: "openOptionalFeatures" });
@@ -493,21 +504,20 @@ describe("display tray feedback", () => {
     expect(trayModel({ type: "idle" }, ctx).tooltip).toBe("RecordStuff: Ready");
     const chosen = trayModel({ type: "idle" }, { ...ctx, display: { kind: "display", id: "7", label: "Old label" } }).menu;
     expect(chosen[0]).toMatchObject({ label: "Start recording" });
-    expect(chosen.at(-3)).toMatchObject({ label: "Ready — Studio", enabled: false });
+    expect(statusGroup(chosen)).toEqual([expect.objectContaining({ label: "Ready — Studio", enabled: false })]);
   });
   it("distinguishes current absence from last source failure with notifications off", () => {
     const ctx: AppContext = { ...mac, language: "en", notifications: false, display: { kind: "display", id: "7", label: "Studio" }, displayFailure: "source_missing" };
     const menu = trayModel({ type: "idle" }, ctx).menu;
-    expect(menu.at(-4)).toMatchObject({ label: "Selected display is unavailable. Choose another screen." });
-    expect(menu.at(-3)).toMatchObject({ label: "Last display failure: The display's capture source is unavailable. Retry or choose another screen." });
+    expect(statusLabels(menu)).toEqual(["Selected display is unavailable. Choose another screen.",
+      "Last display failure: The display's capture source is unavailable. Retry or choose another screen."]);
   });
   it("offers Use Primary display as the way back from a chosen display that is gone, as Settings does", () => {
     const primary = { id: "1", label: "Built-in", logicalWidth: 1512, logicalHeight: 982, scaleFactor: 2, internal: true, primary: true };
     const gone: AppContext = { ...mac, language: "en", display: { kind: "display", id: "7", label: "Studio" }, displays: [primary] };
     const labels = (ctx: AppContext): string[] => trayModel({ type: "idle" }, ctx).menu.flatMap(entry => entry.kind === "item" ? [entry.label] : []);
-    expect(labels(gone)).toEqual(["Start recording", "Use Primary display", "Include in recordings", "Microphone", "Open RecordStuff", "Open Recording Studio…", "Show last recording", "Selected display is unavailable. Choose another screen.", "Quit RecordStuff"]);
-    expect(trayModel({ type: "idle" }, gone).menu.find(entry => entry.kind === "item" && entry.label === "Use Primary display"))
-      .toMatchObject({ enabled: true, action: { setDisplay: { kind: "primary" } } });
+    expect(below(trayModel({ type: "idle" }, gone).menu, "Start recording")).toMatchObject({ label: "Use Primary display", enabled: true, action: { setDisplay: { kind: "primary" } } });
+    expect(statusLabels(trayModel({ type: "idle" }, gone).menu)).toEqual(["Selected display is unavailable. Choose another screen."]);
     expect(labels({ ...gone, language: "zh-TW" })).toContain("使用主螢幕");
     // No primary to go back to, or the display is back: nothing to offer.
     expect(labels({ ...gone, displays: [] })).not.toContain("Use Primary display");
@@ -556,12 +566,11 @@ describe("one group order in every state (plan 048)", () => {
       "Quit RecordStuff",
     ]);
     // Reviewed failures leave the menu: no way back here, and no "Recent failure" line.
-    expect(idle("reviewed", "zh-TW")).toEqual(["開始錄影", "—", "錄影時包含", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
-    expect(idle("none", "en")).toEqual(["Start recording", "—", "Include in recordings", "Microphone", "—", "Open RecordStuff", "Open Recording Studio…", "Show last recording", "—", "Quit RecordStuff"]);
-    const recording = labels(trayModel({ type: "recording", startedAt: "" }, { ...mac, language: "en", recordingResults: histories.unread }).menu);
-    expect(recording).toEqual(["Stop", "—", "Open RecordStuff", "Open Recording Studio…", "Show last recording", "—", "Unreviewed recording failures: 1", "View recording failures…", "—", "Quit RecordStuff"]);
-    const countdown = labels(trayModel({ type: "countdown", remaining: 3 }, { ...mac, recordingResults: histories.reviewed }).menu);
-    expect(countdown).toEqual(["取消錄影", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
+    expect(idle("reviewed", "zh-TW")).toEqual(idle("none", "zh-TW"));
+    const recording = trayModel({ type: "recording", startedAt: "" }, { ...mac, language: "en", recordingResults: histories.unread }).menu;
+    expect(statusLabels(recording)).toEqual(["Unreviewed recording failures: 1", "View recording failures…"]);
+    const countdown = (history: keyof typeof histories) => labels(trayModel({ type: "countdown", remaining: 3 }, { ...mac, recordingResults: histories[history] }).menu);
+    expect(countdown("reviewed")).toEqual(countdown("none"));
     for (const history of Object.keys(histories) as Array<keyof typeof histories>) {
       for (const state of STATES) {
         const menu = labels(trayModel(state, { ...mac, recordingResults: histories[history] }).menu);
