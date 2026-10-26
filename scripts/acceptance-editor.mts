@@ -18,6 +18,9 @@
  *   pressed (shown again, the resize kept).
  * - **Volume.** In the toolbar's Options popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
+ * - **Volume** (2026-10-26). Shift+→ to 9 s, S, V and each input's Mute in the Volume popup: the record must hold each
+ *   input at 0% from 9 s to the end, the export be asked for those stretches and be silent there (at most −50 dB, at
+ *   least 20 dB under 1–3 s).
  * - **Stretch** (2026-10-26). A click on the camera's lane, then Shift+→ to 4 s, S and C, Shift+→ to 7 s, S and C: the
  *   record must hold the camera hidden from 4 to 7 s alone (version 3); paused at 5 s the bubble must be gone from the
  *   view and back at 2 s. The export must be asked to hide it over that one stretch, and a frame at 5.5 s must be the
@@ -83,6 +86,8 @@ const MICROPHONE = 50;
 /** Where the camera is hidden in the Stretch step, in seconds of the 12-second recording. */
 const HIDE_FROM = 4;
 const HIDE_TO = 7;
+/** Where both inputs are muted in the Volume step, in seconds, to the recording's end. */
+const MUTE_FROM = 9;
 /** How long a saved change may take to reach the edit record. */
 const SAVE_MS = 5000;
 
@@ -413,18 +418,24 @@ async function main(): Promise<number> {
       // A range held across the middle: the preview follows the end being dragged; Delete removes it.
       const before = removed();
       const from = { x: Math.round(left + span * 0.4), y }, to = { x: Math.round(left + span * 0.6), y };
+      let heldSelection: string | undefined;
       try {
         await hold(from, to);
         const selection = await textStarting(translate("Selection {from}–{to} ({length})", language, { from: M, to: M, length: M }));
-        const player = (await texts()).find((t) => /^\d+:\d{2} \/ \d+:\d{2}$/.test(t));
-        const shown = clockSeconds(player ?? "") ?? -1;
-        check({ check: "Range: held across the middle", expected: `a selection, the preview at about ${(fullSeconds * 0.6).toFixed(1)} s`,
-          actual: `"${selection ?? "none"}", player "${player ?? "none"}"`, pass: selection !== undefined && Math.abs(shown - fullSeconds * 0.6) <= 1.2 });
+        heldSelection = selection;
       } finally { await ax().pointer("up", to.x, to.y); }
       await sleep(400);
       await ax().key(KEY.delete);
       await sleep(1500);
       check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
+      // Where the preview was left: the moving end. The player's own clock went with its controls (2026-10-26), so the
+      // view's playhead readout, back once the range is gone, says it.
+      const marker = "\u0003";
+      const playheadPrefix = translate("Playhead {time}", language, { time: marker }).split(marker)[0]!;
+      const readout = (await texts()).find((t) => t.startsWith(playheadPrefix));
+      const shown = clockSeconds(readout ?? "") ?? -1;
+      check({ check: "Range: held across the middle", expected: `a selection, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s`,
+        actual: `"${heldSelection ?? "none"}", then "${readout ?? "no playhead readout"}"`, pass: heldSelection !== undefined && Math.abs(shown - fullSeconds * 0.6) <= 1.2 });
 
       // Skimming, off by default (2026-10-26), switched on in Options: the preview shows what is under the pointer, and
       // goes back when it leaves. The shortcuts' button reaches AX as a pop-up button, found by name.
@@ -572,6 +583,29 @@ async function main(): Promise<number> {
     check({ check: "Stretch: the preview follows the playhead", expected: `no bubble at ${HIDE_TO - 2} s, the bubble at ${HIDE_TO - 5} s`,
       actual: `${goneInStretch ? "none" : "a bubble"} at ${HIDE_TO - 2} s, ${backBefore ? "the bubble" : "none"} at ${HIDE_TO - 5} s`, pass: goneInStretch && backBefore });
 
+    // Volume over a stretch (2026-10-26): stepped on to 9 s, S, then V opens the Volume popup over the part from there to
+    // the end, and each input's Mute silences it there; the record must hold those stretches, and the export be silent
+    // there and not before (judged after the export).
+    await step(KEY.right, MUTE_FROM - (HIDE_TO - 5), FLAG.shift);
+    await step(KEY.s, 1);
+    await step(KEY.v, 1);
+    await sleep(600);
+    const inputs = description.sounds.filter((sound): sound is "system" | "microphone" => sound === "system" || sound === "microphone");
+    for (const input of inputs) {
+      const name = translate(input === "system" ? "System audio" : "Microphone", language);
+      const title = translate("Mute {name} in the selection", language, { name });
+      before = revision();
+      await click(await find(`Mute ${input} button`, (e) => (e.role === "AXButton" || e.role === "AXCheckBox") && e.title === title));
+      scene = await saved(before, (s) => Boolean(s.volumeStretches?.[input]?.length));
+    }
+    await shot("6d-volume-muted.png");
+    await ax().key(KEY.escape);
+    await sleep(400);
+    const muted = inputs.map((input) => scene?.volumeStretches?.[input]?.[0]);
+    const mutedOk = muted.length > 0 && muted.every((stretch) => stretch !== undefined && stretch[2] === 0 && Math.abs(stretch[0] - MUTE_FROM * 90_000) <= tolerance);
+    check({ check: `Volume: ${inputs.join(" and ")} muted from ${MUTE_FROM} s by S, V and Mute`, expected: `each a stretch at 0% from ${MUTE_FROM} s (±0.05) to the end`,
+      actual: muted.map((stretch, n) => `${inputs[n]} ${stretch ? `${(stretch[0] / 90_000).toFixed(3)}–${(stretch[1] / 90_000).toFixed(3)} s at ${stretch[2]}%` : "none"}`).join(", "), pass: mutedOk });
+
     const final = readScene()?.scene ?? fail("no scene saved");
 
     // Export.
@@ -585,6 +619,9 @@ async function main(): Promise<number> {
     const asked = /\(camera (shown|left out), volumes ([-\d./]+) dB\)/.exec(rendering.line);
     check({ check: "Export: rendered with the scene", expected: `camera shown, volumes ${volumes} dB`, actual: asked ? `camera ${asked[1]}, volumes ${asked[2]} dB` : rendering.line,
       pass: asked?.[1] === "shown" && asked[2] === volumes });
+    const asked2 = /volume stretches ([\d/]+)/.exec(rendering.line)?.[1];
+    check({ check: "Export: the inputs' volume stretches asked", expected: `one stretch for ${inputs.join(" and ")}`, actual: asked2 ? `stretches ${asked2}` : "none asked",
+      pass: asked2 !== undefined && description.sounds.every((sound, n) => asked2.split("/")[n] === (sound === "silent" ? "0" : "1")) });
     const stretches = /the camera hidden over (\d+) stretch\(es\)/.exec(rendering.line)?.[1];
     check({ check: "Export: the camera left out over its stretch", expected: "the render asked to hide the camera over 1 stretch", actual: stretches ? `over ${stretches}` : "no stretch asked", pass: stretches === "1" });
     if (!published) fail(`the export did not publish: ${done.line}`);
@@ -605,6 +642,22 @@ async function main(): Promise<number> {
     const placed = final.camera ?? fail("the final scene has no camera");
     const composite = judgeComposite(exported, screenFrame, cameraFrame, sceneLayout(placed, shape), placed);
     for (const verdict of composite.verdicts) check(verdict, verdict.judged);
+    // The sound: silent where both inputs are muted, heard before it (mean volume over two seconds each).
+    // A measurement that failed is no evidence (Codex's review): FFmpeg must exit cleanly having decoded samples and
+    // said a mean volume; digital silence it reports as -91 dB, or -inf.
+    const loudness = (from: number): { db: number } | { failed: string } => {
+      const run = spawnSync("ffmpeg", ["-hide_banner", "-ss", String(from), "-t", "2", "-i", published!, "-vn", "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+      // FFmpeg may say an empty first instance of the filter (n_samples: 0) before the one that heard the sound: the last.
+      const samples = Number([...(run.stderr ?? "").matchAll(/n_samples:\s*(\d+)/g)].at(-1)?.[1] ?? 0);
+      const db = [...(run.stderr ?? "").matchAll(/mean_volume:\s*(-?[\d.]+|-inf) dB/g)].at(-1)?.[1];
+      if (run.status !== 0 || samples <= 0 || db === undefined) return { failed: `FFmpeg exit ${String(run.status)}, ${samples} samples${run.error ? `, ${run.error.message}` : ""}` };
+      return { db: db === "-inf" ? Number.NEGATIVE_INFINITY : Number(db) };
+    };
+    const heard = loudness(1), silent = loudness(MUTE_FROM + 0.5);
+    const said = (m: { db: number } | { failed: string }): string => ("failed" in m ? `not measured (${m.failed})` : `${m.db.toFixed(1)} dB`);
+    check({ check: `Export: silent where the inputs are muted (from ${MUTE_FROM} s)`, expected: "at most −50 dB there, and at least 20 dB quieter than 1–3 s",
+      actual: `${said(silent)} from ${MUTE_FROM + 0.5} s, ${said(heard)} at 1–3 s`,
+      pass: "db" in silent && "db" in heard && silent.db <= -50 && heard.db - silent.db >= 20 });
     // A frame in the hidden stretch: the screen's alone.
     const hiddenAt = (HIDE_FROM + HIDE_TO) / 2;
     const hiddenFrame = frameRgb(published!, hiddenAt, width, height, path.join(dir, "export-frame-hidden.png"));

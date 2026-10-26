@@ -72,6 +72,7 @@
     "acceptance:capture-settings": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-capture-settings.mts",
     "acceptance:editor": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/acceptance-editor.mts",
     "native:input": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/native-input.mts",
+    "prep:edit-view": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/edit-view-prep.mts",
     "test:ui": "playwright test --project=background",
     "test:scope": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-scope.mts",
     "test:ui:drills": "playwright test --project=drills"
