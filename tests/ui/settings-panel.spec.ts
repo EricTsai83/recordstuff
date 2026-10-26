@@ -332,7 +332,7 @@ test("S121–S123 camera: the switch asks main, a session locks it, and a denial
   await expect(page.getByRole("button", { name: "已經允許了？重新啟動 RecordStuff" })).toBeVisible();
 });
 
-test("S124–S126 camera rows: number fields in pixels and percent, typed, stepped or dragged by their names, each commits once; a recording with the camera keeps the shape editable (plan 075, step 7; 2026-10-21)", { tag: "@recording-settings" }, async () => {
+test("S124–S126 camera rows: number fields in pixels and percent, typed, stepped or dragged by their names, each commits once; a recording with the camera keeps the shape editable (plan 075, step 7; 2026-10-21)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   const devices = [{ id: "built-in", name: "FaceTime HD Camera", default: true }, { id: "iphone", name: "iPhone Camera", default: false }];
   await host.evaluate((h, list) => {
@@ -428,7 +428,7 @@ test("S124–S126 camera rows: number fields in pixels and percent, typed, stepp
   await expect(page.getByRole("spinbutton", { name: "寬度" }), "S124 zh-TW, at the default's").toHaveAttribute("aria-valuetext", "454 px");
 });
 
-test("S127–S130 camera preview: no camera of the page's own before Live preview, the bubble dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7; 2026-10-25)", { tag: "@recording-settings" }, async () => {
+test("S127–S130 camera preview: no camera of the page's own before Live preview, the bubble dragged and moved with keys to a saved place, the recording's picture while recording (plan 075, step 7; 2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   // No real camera in a background run: the page's own camera calls are answered by a drawn picture.
   await page.evaluate(() => {
@@ -575,7 +575,7 @@ test("S127–S130 camera preview: no camera of the page's own before Live previe
   await expect(page.getByRole("application", { name: "預覽" }), "S127 zh-TW").toHaveAccessibleDescription(/距左側 97%，距上方 5%/);
 });
 
-test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside the elapsed time; Recording settings keeps the camera's switch and device with the way there (plan 075, D19)", { tag: "@recording-settings" }, async () => {
+test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside the elapsed time; Recording settings keeps the camera's switch and device with the way there (plan 075, D19)", { tag: ["@recording-settings", "@studio"] }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -625,7 +625,7 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
   await expect(page.locator("#tab-studio"), "S131 zh-TW").toHaveAccessibleName("錄影工作室");
 });
 
-test("S133–S134 the Recording Studio's meters: levels while recording and in sight, a mute per input, said to assistive technology (plan 075, D19)", { tag: "@recording-settings" }, async () => {
+test("S133–S134 the Recording Studio's meters: levels while recording and in sight, a mute per input, said to assistive technology (plan 075, D19)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.levelWatches.length = 0;
@@ -683,7 +683,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   await expect(page.getByRole("slider", { name: "系統聲音音量" }), "S133 zh-TW, between recordings its fader alone").toBeVisible();
 });
 
-test("S138 each input's fader under its meter: saved between and during recordings, said in percent, 100% in the middle, silent at its bottom (plan 075, D21, 2026-10-21; 2026-10-25)", { tag: "@recording-settings" }, async () => {
+test("S138 each input's fader under its meter: saved between and during recordings, said in percent, 100% in the middle, silent at its bottom (plan 075, D21, 2026-10-21; 2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -802,7 +802,7 @@ test("S135 the sidebar collapses to toolbars of icons named by their tooltips, i
   await expect(toggle).toBeVisible();
 });
 
-test("S136–S137 Live preview: a switch of the preview's own, apart from Start, asks main; the engine's picture shows with no bubble to place when the camera is off, can be hidden while recording, and leaving the Studio lets it go (plan 075, D20, 2026-10-21)", { tag: "@recording-settings" }, async () => {
+test("S136–S137 Live preview: a switch of the preview's own, apart from Start, asks main; the engine's picture shows with no bubble to place when the camera is off, can be hidden while recording, and leaving the Studio lets it go (plan 075, D20, 2026-10-21)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.studioWatches.length = 0;
@@ -861,7 +861,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
   await host.evaluate(h => h.setSize(560, 680));
 });
 
-test("S142 the Studio's line of controls: Live preview beside Start, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said over the stage, so nothing moves (plan 090, 2026-10-23, 2026-10-25)", { tag: "@recording-settings" }, async () => {
+test("S142 the Studio's line of controls: Live preview beside Start, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said over the stage, so nothing moves (plan 090, 2026-10-23, 2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   const recording = (state?: "waiting" | "notReady" | "lost") => host.evaluate((h, state) => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
@@ -911,7 +911,7 @@ test("S142 the Studio's line of controls: Live preview beside Start, nothing lai
   await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
-test("S143–S145 the Studio's preview panel: Power saving by default, no camera opened before Live preview with the bubble still placed, a rate whose every choice says what it does, and the Screen view (plan 092; no Off since 2026-10-25)", { tag: "@recording-settings" }, async () => {
+test("S143–S145 the Studio's preview panel: Power saving by default, no camera opened before Live preview with the bubble still placed, a rate whose every choice says what it does, and the Screen view (plan 092; no Off since 2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await page.evaluate(() => {
     const record = { opened: 0 };
@@ -1074,7 +1074,7 @@ test("S143–S145 the Studio's preview panel: Power saving by default, no camera
   await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
-test("S147 Turn on preview over the stage while Live preview is off: shown only on hover or focus, it asks main as the switch does and moves nothing; none while the switch cannot act or once the preview is on (2026-10-25)", { tag: "@recording-settings" }, async () => {
+test("S147 Turn on preview over the stage while Live preview is off: shown only on hover or focus, it asks main as the switch does and moves nothing; none while the switch cannot act or once the preview is on (2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -1145,7 +1145,7 @@ test("S147 Turn on preview over the stage while Live preview is off: shown only 
   await host.evaluate(h => h.setSize(560, 680));
 });
 
-test("S146 the Studio's stage: the largest picture at the display's shape that fits, landscape and portrait, at each size and zoom, the bubble placed by the same fractions, and what is pressed often over it (plan 095)", { tag: "@recording-settings" }, async () => {
+test("S146 the Studio's stage: the largest picture at the display's shape that fits, landscape and portrait, at each size and zoom, the bubble placed by the same fractions, and what is pressed often over it (plan 095)", { tag: "@studio" }, async () => {
   await host.evaluate(h => h.theme("light"));
   const DISPLAYS = { landscape: [1920, 1080], portrait: [1080, 1920] } as const;
   const show = (shape: keyof typeof DISPLAYS, recording = false) => host.evaluate((h, [width, height, recording]) => {
