@@ -484,8 +484,10 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
           <div key={lane} className="editor-options-skim">
             <div className="editor-scene-row">
               <label htmlFor={`editor-lane-${lane}`}>{name}</label>
-              {/* Named in full for assistive technology, which would otherwise hear two controls named as an input. */}
-              <Switch id={`editor-lane-${lane}`} className="editor-neutral-switch" checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}
+              {/* Named in full for assistive technology, which would otherwise hear two controls named as an input; in a
+                  neutral grey, as it shows or hides what is drawn, not anything of the recording (a rule in ui.css lost to
+                  the switch's own utility, 2026-10-27). */}
+              <Switch id={`editor-lane-${lane}`} className="data-checked:bg-foreground/45" checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}
                 aria-describedby={!shown && held > 0 ? `editor-lane-${lane}-note` : undefined}
                 onCheckedChange={(next) => model.showLane(lane, next)} />
             </div>
