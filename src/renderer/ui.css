@@ -3033,7 +3033,7 @@
     gap: 12px;
     /* Close to both (2026-10-26, the maintainer's review: the room between the toolbar and the timeline was too much):
        a selection's actions, as tall as before, rise from its foot a few pixels short of the toolbar above. */
-    height: 30px;
+    height: 34px;
     margin-top: -4px;
     margin-bottom: -6px;
     /* The smallest the view writes (its UI tests hold every text at 12 px or more). */

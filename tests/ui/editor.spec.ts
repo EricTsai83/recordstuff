@@ -897,8 +897,9 @@ test("a selection's actions float over the line above the timeline, words where 
     const toolbar = (await page.locator(".editor-toolbar").boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height + 2);
     // And the timeline sits close under the toolbar (the maintainer's review of 2026-10-26: there was too much room).
-    expect(pictures.y - (toolbar.y + toolbar.height)).toBeLessThanOrEqual(44);
-    expect(box.y + box.height).toBeLessThanOrEqual(pictures.y - 2);
+    expect(pictures.y - (toolbar.y + toolbar.height)).toBeLessThanOrEqual(48);
+    // Their pointer's tip (5 px under them) stays clear of the selection's top edge (the maintainer's review).
+    expect(box.y + box.height + 5).toBeLessThanOrEqual(pictures.y - 2);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
     // The times stay in sight beside the actions at either width (Codex's computer-use round found a narrow window hid
@@ -940,7 +941,7 @@ test("a selection's actions float over the line above the timeline, words where 
     await expect(actions).toHaveAttribute("data-lane", "camera");
     await expect.poll(async () => {
       const over = (await actions.boundingBox())!;
-      return over.y + over.height <= cameraLane.y + 1 && over.y + over.height >= cameraLane.y - 8 && over.y < pictures.y + pictures.height;
+      return over.y + over.height + 5 <= cameraLane.y - 2 && over.y + over.height >= cameraLane.y - 16 && over.y < pictures.y + pictures.height;
     }).toBe(true);
     // Lanes hidden in Options move the one chosen on, or take it away: the actions follow it, or go back to the line
     // (review of 2026-10-26). The lanes are shown again after, as Options remembers them.
@@ -955,7 +956,7 @@ test("a selection's actions float over the line above the timeline, words where 
       await page.keyboard.press("Escape");
       await expect.poll(async () => {
         const lane = (await systemLane.boundingBox())!, over = (await actions.boundingBox())!;
-        return Math.abs(over.y + over.height - lane.y) <= 8;
+        return over.y + over.height + 5 <= lane.y - 2 && over.y + over.height >= lane.y - 16;
       }).toBe(true);
       await page.locator("#editor-options").click();
       await page.locator("#editor-lane-system").click();

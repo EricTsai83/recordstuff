@@ -382,6 +382,9 @@ function RemoveButton({ id }: { id: string }) {
   );
 }
 
+/** How far a selection's actions' pointer reaches below them, and the room left between its tip and the selection. */
+const CARET = 5, SELECTION_GAP = 4;
+
 /** The tracks the floating action at `target` changes: Remove every one, the camera's button its lane, Volume the sounds'. */
 function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | undefined {
   const id = (target as HTMLElement | null)?.closest?.("button")?.id;
@@ -422,7 +425,9 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
       // need be (2026-10-26, the maintainer's choice: what they act on is then plain); chosen on the pictures, they
       // stand on the line over the timeline, beside the times.
       const laneBox = lane ? line.parentElement?.querySelector(`.editor-camera-lane[data-lane="${lane}"]`)?.getBoundingClientRect() : undefined;
-      setRise(laneBox ? Math.round(lineBox.bottom - laneBox.top) : 0);
+      // Their pointer's tip a few pixels short of the selection's top edge, never on it (the maintainer's review of
+      // 2026-10-26): over a lane, above its top; on the line, at its foot, the timeline a few pixels under it.
+      setRise(laneBox ? Math.round(lineBox.bottom - laneBox.top) + CARET + SELECTION_GAP : CARET);
       // On the line the times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for
       // the actions): the actions take icons and keys alone when their words do not fit beside them. Over a lane the
       // whole width is theirs.
