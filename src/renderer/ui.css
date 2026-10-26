@@ -3354,18 +3354,23 @@
     background: var(--media-foreground);
     box-shadow: 0 0 3px color-mix(in oklab, var(--media-scrim) 70%, transparent);
   }
-  /* The cap, its point on the line's middle: offset by whole pixels from the line (10 px wide over a 2 px line, 4 px to
-     its left), so both round alike wherever the playhead stands (the maintainer's report of 2026-10-26: centred by a
-     transform, the point fell half a pixel or so off the line). */
+  /* The cap, its point on the line's middle: an SVG triangle (2026-10-26, the maintainer's question: a clipped box lost
+     its shade to its own clip, and came out faint on light lanes), offset from the line by whole pixels (10 px wide over
+     a 2 px line, 4 px to its left) so both round alike wherever the playhead stands. */
   .editor-playhead-cap {
     position: absolute;
     top: -1px;
     left: -4px;
     width: 10px;
-    height: 8px;
-    background: var(--media-foreground);
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-    filter: drop-shadow(0 0 1px var(--media-scrim));
+    height: 9px;
+    overflow: visible;
+  }
+  .editor-playhead-cap path {
+    fill: var(--media-foreground);
+    stroke: color-mix(in oklab, var(--media-scrim) 55%, transparent);
+    stroke-width: 1px;
+    stroke-linejoin: round;
+    paint-order: stroke;
   }
   .editor-note-mark {
     background: var(--warning);
