@@ -505,6 +505,10 @@ fn sample_entry(m: Bytes, from: usize, to: usize) -> Result<Description> {
         b"avc1" => {
             let width = m.u16(body + 24)?;
             let height = m.u16(body + 26)?;
+            // A picture with no pixels has nothing to cut or compose (the camera's bubble is laid out in it).
+            if width == 0 || height == 0 {
+                return Err(ReadError::malformed("a video track of no width or height"));
+            }
             // The visual sample entry's 78 bytes, then its boxes.
             let (avcc, avcc_end) = m.need(body + 78, end, b"avcC")?;
             Ok(Description::Avc { avcc: m.get(avcc, avcc_end - avcc)?.to_vec(), width, height })
@@ -811,6 +815,11 @@ pub(crate) mod tests {
         let at = far.windows(4).rposition(|w| w == b"stco").unwrap();
         far[at + 12..at + 16].copy_from_slice(&u32::MAX.to_be_bytes());
         assert_eq!(read(&far).unwrap_err().code, "malformed");
+        // A picture of no width: nothing to cut, and the camera's bubble could not be laid out in it.
+        let mut empty = file.clone();
+        let at = empty.windows(4).rposition(|w| w == b"avc1").unwrap();
+        empty[at + 28..at + 30].copy_from_slice(&0u16.to_be_bytes());
+        assert_eq!(read(&empty).unwrap_err().code, "malformed");
         // A codec other than H.264.
         let mut other = file.clone();
         let at = other.windows(4).rposition(|w| w == b"avc1").unwrap();

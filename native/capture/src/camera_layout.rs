@@ -62,8 +62,9 @@ impl Layout {
         let layout = self.clamped();
         let (fw, fh) = (f64::from(frame_width), f64::from(frame_height));
         let shorter = fw.min(fh);
-        let width = (layout.width * shorter).round().clamp(1.0, fw);
-        let height = (layout.height * shorter).round().clamp(1.0, fh);
+        // `max` after `min`, not `clamp`: a frame of no pixels gives a bubble of one rather than a panic (min > max).
+        let width = (layout.width * shorter).round().min(fw).max(1.0);
+        let height = (layout.height * shorter).round().min(fh).max(1.0);
         let x = ((fw - width) * layout.x).round();
         let y = ((fh - height) * layout.y).round();
         Rect { x, y, width, height }
@@ -329,6 +330,13 @@ mod tests {
         let tiny = Layout { width: 0.0, height: 9.0, ..Layout::default() };
         let bubble = tiny.bubble(1000, 800);
         assert_eq!((bubble.width, bubble.height), (40.0, 480.0));
+    }
+
+    #[test]
+    fn a_frame_of_no_pixels_lays_out_a_bubble_of_one_rather_than_panicking() {
+        let layout = Layout::default();
+        let bubble = layout.bubble(0, 0);
+        assert_eq!((bubble.width, bubble.height), (1.0, 1.0));
     }
 
     #[test]
