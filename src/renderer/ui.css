@@ -3185,7 +3185,10 @@
     position: relative;
     height: 20px;
     margin-top: -6px;
-    overflow: hidden;
+    /* Clipped a little outside itself, so the playhead's mark at the very start or end shows whole (2026-10-27, the
+       maintainer's report: with the timeline the panel's full width, half of it was cut off there). */
+    overflow: clip;
+    overflow-clip-margin: 6px;
     color: var(--muted-foreground);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
