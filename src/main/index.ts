@@ -700,6 +700,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       rename: async (folder, name) => {
         const outcome = await library.renameFolder(folder, name);
         if ("folder" in outcome && outcome.folder !== folder) {
+          // The edits of its recordings follow them, as one recording's does when it is renamed or moved.
+          const dir = library.state.dir;
+          editing.folderMoved(path.join(dir, folder), path.join(dir, outcome.folder));
           await settings.renameLibraryCategory(folder, outcome.folder).catch((cause: unknown) => log(`library: could not carry ${folder}'s favorite and choice to ${outcome.folder}: ${String(cause)}`));
         }
         return outcome;

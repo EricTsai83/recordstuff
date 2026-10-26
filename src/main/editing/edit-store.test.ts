@@ -134,6 +134,28 @@ describe("edit records", () => {
     expect(loaded.kind === "ok" && loaded.record.removed).toEqual(saved.removed);
     expect(fs.existsSync(store.fileFor(recording))).toBe(false);
   });
+
+  it("follow the recordings of a category folder renamed, and only those directly in it", async () => {
+    const folder = path.join(dir, "Demos");
+    fs.mkdirSync(folder);
+    const inside = path.join(folder, "Talk.mp4");
+    fs.renameSync(recording, inside);
+    recording = inside;
+    const saved = await record();
+    await store.save(saved);
+    // A recording outside the folder, whose edit stays where it is.
+    const outside = path.join(dir, "Other.mp4");
+    fs.writeFileSync(outside, Buffer.alloc(1024, 3));
+    await store.save({ ...saved, source: await sourceIdentity(outside) });
+    const renamed = path.join(dir, "Talks");
+    fs.renameSync(folder, renamed);
+    await store.folderMoved(folder, renamed);
+    const moved = path.join(renamed, "Talk.mp4");
+    expect([...store.edited().keys()].sort()).toEqual([outside, moved].sort());
+    const loaded = await store.load(moved, await sourceIdentity(moved));
+    expect(loaded.kind === "ok" && loaded.record.removed).toEqual(saved.removed);
+    expect(fs.existsSync(store.fileFor(inside))).toBe(false);
+  });
 });
 
 describe("a record's parsing", () => {

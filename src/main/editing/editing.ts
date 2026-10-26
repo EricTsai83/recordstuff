@@ -803,10 +803,6 @@ export class Editing {
     this.deps.runner.close();
   }
 
-  /**
-   * A recording was renamed or moved to a category: its edit follows it. (Neither can happen while its edit view is
-   * open, which is modal; a recording moved in Finder leaves the listing, and the page closes its view.)
-   */
   /** Reads which recordings hold an edit, once at launch (EditStore `scan`). */
   scanEdits(): Promise<void> {
     return this.deps.store.scan();
@@ -817,9 +813,18 @@ export class Editing {
     return this.deps.store.edited();
   }
 
+  /**
+   * A recording was renamed or moved to a category: its edit follows it. (Neither can happen while its edit view is
+   * open, which is modal; a recording moved in Finder leaves the listing, and the page closes its view.)
+   */
   moved(from: string, to: string): void {
     // Settings draws again once it has, so the card at its new path is marked Edited (review of 2026-10-26).
     void this.deps.store.moved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edit of ${from} did not follow it to ${to}: ${String(cause)}`));
+  }
+
+  /** A category folder was renamed: the edits of the recordings in it follow them to the new folder. */
+  folderMoved(from: string, to: string): void {
+    void this.deps.store.folderMoved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edits in ${from} did not follow it to ${to}: ${String(cause)}`));
   }
 
   private journalling: Promise<void> = Promise.resolve();

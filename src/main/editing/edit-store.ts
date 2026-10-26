@@ -240,4 +240,15 @@ export class EditStore {
     await this.save({ ...loaded.record, source: identity });
     await this.discard(from);
   }
+
+  /**
+   * A category folder was renamed: the edit of every recording directly in it follows it to the new folder, as
+   * `moved` carries one recording's. Taken from the edits held, so a recording the listing has not reached still keeps
+   * its edit.
+   */
+  async folderMoved(from: string, to: string): Promise<void> {
+    const folder = path.resolve(from);
+    const inside = [...this.index.keys()].filter(source => path.dirname(source) === folder);
+    for (const source of inside) await this.moved(source, path.join(to, path.basename(source)));
+  }
 }
