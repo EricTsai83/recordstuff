@@ -101,4 +101,16 @@ describe("MicrophoneMonitor (plan 079)", () => {
     // A message from a process since replaced is not heard.
     processes[0]!.deliver({ type: "meterLevel", peak: 1, rms: 1 });
   });
+
+  it("counts only exits in a row: a process that listed the inputs starts the count again", () => {
+    const { monitor, processes } = rig();
+    monitor.window(true);
+    // Many exits over a long-open window, each after a process that ran and answered, never use the retries up.
+    for (let round = 0; round < MONITOR_RETRIES * 2; round += 1) {
+      processes.at(-1)!.deliver({ type: "microphones", devices: [] });
+      processes.at(-1)!.exit("it exited with 3");
+      monitor.sync();
+    }
+    expect(processes).toHaveLength(MONITOR_RETRIES * 2 + 1);
+  });
 });

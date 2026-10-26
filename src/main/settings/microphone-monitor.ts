@@ -28,7 +28,10 @@ export interface MicrophoneMonitorOptions {
   log(line: string): void;
 }
 
-/** Processes that ended on their own in a row before the monitor stops starting one until the window opens again. */
+/**
+ * Processes that ended on their own in a row, none of them listing the inputs, before the monitor stops starting one
+ * until the window opens again.
+ */
 export const MONITOR_RETRIES = 3;
 
 export class MicrophoneMonitor {
@@ -86,6 +89,8 @@ export class MicrophoneMonitor {
     switch (message.type) {
       case "microphones":
         if ("devices" in message) {
+          // A process that answers ran: the retries count only processes that ended in a row without doing so.
+          this.exits = 0;
           this.options.devices(message.devices);
           // The chosen input may have come or gone, and the default changed: read what a recording would now.
           if (this.reading !== undefined) this.postMeter();
