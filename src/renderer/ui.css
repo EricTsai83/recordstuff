@@ -2934,20 +2934,35 @@
   /* An editable recording's camera lane under the pictures (2026-10-26): where the camera is in the picture, a soft
      fill with a person, and where it is hidden, an open dashed stretch with the person struck through. The trim handles
      keep to the pictures above it. */
+  /* The lanes are one block under the pictures, each a hair apart from the next (2026-10-26, the maintainer's review:
+     they share one clock, so the gaps between them only took height from them): taller in the same room. */
   .editor-trimmer[data-lane] {
-    --lane: 20px;
+    --lane: 22px;
     --lane-gap: 4px;
   }
   .editor-trimmer[data-lane] .editor-trim {
-    bottom: calc(var(--lanes, 1) * (var(--lane) + var(--lane-gap)));
+    bottom: calc(var(--lane-gap) + var(--lanes, 1) * var(--lane));
   }
   .editor-camera-lane {
+    --lane-edge: color-mix(in oklab, var(--foreground) 22%, transparent);
     position: relative;
     height: var(--lane);
     margin-top: var(--lane-gap);
-    border-radius: 4px;
+    border: 1px solid var(--lane-edge);
+    border-bottom: 0;
+    border-radius: 4px 4px 0 0;
     overflow: hidden;
     touch-action: none;
+  }
+  .editor-camera-lane + .editor-camera-lane {
+    margin-top: 0;
+    border-top-color: color-mix(in oklab, var(--foreground) 12%, transparent);
+    border-radius: 0;
+  }
+  .editor-camera-lane:not(:has(+ .editor-camera-lane)) {
+    border-bottom: 1px solid var(--lane-edge);
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
   }
   .editor-camera-stretch {
     position: absolute;
@@ -2965,7 +2980,14 @@
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
     color: var(--foreground);
     cursor: pointer;
+  }  /* A stretch the edit has not set is the lane's own ground, no box of its own, so the lanes read as one block; a set
+     one (hidden, muted, a volume of its own) keeps its outline. As light as the base rule, so :hover still outlines it
+     (review of 2026-10-26). */
+  .editor-camera-stretch:where(:not([data-hidden]):not([data-custom])) {
+    border-radius: 0;
+    box-shadow: none;
   }
+
   .editor-camera-stretch svg {
     flex: none;
     width: 13px;
@@ -3002,13 +3024,20 @@
   }
   /* The camera's and the volume's buttons in a selection's floating actions (2026-10-26, B′), named in words with their
      key; the camera's as wide for either name, so nothing after it moves as it turns. */
-  .editor-camera-toggle {
-    min-width: 8.5rem;
-    justify-content: flex-start;
-  }
-  .editor-camera-toggle kbd,
-  .editor-remove kbd {
-    margin-inline-start: auto;
+  /* Each action's key right after its name, drawn as a key (2026-10-26, the maintainer's review: set apart at the
+     button's end it read as nothing to do with it). */
+  .editor-selection-actions kbd {
+    min-width: 18px;
+    height: 18px;
+    margin-inline-start: 2px;
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    color: var(--muted-foreground);
+    background: var(--muted);
+    font-size: 11px;
+    line-height: 1;
   }
   /* A narrow view keeps the toolbar on one row: Split and Options by their icons alone, named by their tooltips and
      to assistive technology (the 420 px window put Export on a row of its own). */
@@ -3017,11 +3046,7 @@
       display: none;
     }
   }
-  /* Remove as wide as Keep, so nothing after it moves as it turns. */
-  .editor-remove {
-    min-width: 5.25rem;
-    justify-content: flex-start;
-  }
+
   /* The line over the timeline (2026-10-26, B′, then the maintainer's review): small and close to the timeline, with
      room above it apart from the toolbar; the times together at its end, how to select at its start. A selection's
      actions sit on its foot and rise into that room, so they never reach the toolbar; it is always as tall. */
@@ -3119,16 +3144,13 @@
   .editor-selection-actions[data-compact] :is(.editor-remove, .editor-camera-toggle) {
     min-width: 0;
   }
-  .editor-selection-actions .editor-remove {
-    color: var(--destructive-ink, var(--destructive));
-  }
+
   /* An input's lane (2026-10-26): its own volume quiet, a stretch at a volume of its own in the foreground's fill, a
      muted one hatched as a hidden camera is. */
   /* Its words at the foreground's strength, as the camera lane's (Codex's computer-use round: in the dark theme the
      muted grey read as disabled). */
   .editor-volume-stretch:not([data-custom]) {
     background: color-mix(in oklab, var(--foreground) 6%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
     color: color-mix(in oklab, var(--foreground) 85%, transparent);
   }
   .editor-volume-stretch[data-custom]:not([data-hidden]) {

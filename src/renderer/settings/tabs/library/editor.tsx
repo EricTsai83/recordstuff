@@ -477,7 +477,8 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
           onFocus={(event) => onTarget(targetOf(event.target))}
           onBlur={() => onTarget(undefined)}
         >
-          <span className="editor-selection-length">{precise(((to ?? 0) - (from ?? 0)) / editor.timescale)}</span>
+          {/* Named, so the number reads as the selection's length (the maintainer's review of 2026-10-26). */}
+          <span className="editor-selection-length">{translate("Selected {length}", model.view?.language, { length: precise(((to ?? 0) - (from ?? 0)) / editor.timescale) })}</span>
           {children}
           <span className="editor-selection-caret" aria-hidden="true" />
         </div>

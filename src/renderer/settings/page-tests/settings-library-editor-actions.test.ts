@@ -51,7 +51,7 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")).not.toBeNull());
   const actions = document.getElementById("editor-selection-actions")!;
   expect(actions.getAttribute("role")).toBe("toolbar");
-  expect(actions.querySelector(".editor-selection-length")!.textContent).toBe("0:06.00");
+  expect(actions.querySelector(".editor-selection-length")!.textContent).toBe("Selected 0:06.00");
   expect(actions.querySelector("#editor-remove")!.textContent).toBe("Remove⌫");
   expect(actions.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("false");
   // The hint gives way to the actions (whether the times have room beside them is measured, so the UI tests check it).

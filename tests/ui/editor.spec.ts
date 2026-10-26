@@ -239,7 +239,7 @@ test("the handles trim the start and the end, a drag across the timeline removes
   // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
   expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
   // The range's length leads its floating actions over the timeline (2026-10-26, B′).
-  await expect(page.locator(".editor-selection-length")).toHaveText(/^0:01\.\d\d$/);
+  await expect(page.locator(".editor-selection-length")).toHaveText(/^Selected 0:01\.\d\d$/);
   await page.locator("#editor-remove").click();
   await expect(page.locator(".editor-range")).toHaveCount(0);
   await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);
@@ -977,6 +977,13 @@ test("a selection's actions float over the line above the timeline, words where 
     await page.mouse.click(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
     await expect(actions).not.toHaveAttribute("data-lane");
     await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= pictures.y).toBe(true);
+    // An unset stretch has no box of its own at rest, and an outline under the pointer (review of 2026-10-26).
+    const unset = page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-stretch').first();
+    const ring = (): Promise<string> => unset.evaluate((element) => getComputedStyle(element).boxShadow);
+    await page.mouse.move(pictures.x + 4, pictures.y - 120);
+    expect(await ring()).toBe("none");
+    await unset.hover();
+    await expect.poll(ring).not.toBe("none");
     // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
     await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");
