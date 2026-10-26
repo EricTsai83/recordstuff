@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ALWAYS_UNIT, TEST_SCOPES, resolveSelection, type TestScope } from "./test-scopes.mts";
+import { ALWAYS_UNIT, TEST_SCOPES, nativeTestRuns, resolveSelection, type TestScope } from "./test-scopes.mts";
 
 const root = path.resolve(__dirname, "../../..");
 const scopes: TestScope[] = [
@@ -104,5 +104,15 @@ describe("the scope catalog", () => {
     const reached = new Set(TEST_SCOPES.flatMap(scope => scope.ui.map(({ file }) => file)));
     // The drills check the hosts' own cleanup (`pnpm test:ui:drills`), not app behaviour.
     expect(specs.filter(file => !reached.has(file) && !file.startsWith("drill"))).toEqual([]);
+  });
+});
+
+describe("the native engine's runs", () => {
+  it("run the session core's tests apart, one at a time, and every other filter in parallel", () => {
+    expect(nativeTestRuns(["mux::", "writer::"])).toEqual([{ serial: false, args: ["mux::", "writer::"] }]);
+    expect(nativeTestRuns(["core::", "pacing::"])).toEqual([
+      { serial: false, args: ["core::", "pacing::", "--skip", "core::tests"] },
+      { serial: true, args: ["--test-threads=1", "core::tests"] },
+    ]);
   });
 });

@@ -214,6 +214,22 @@ export interface Selection {
   native?: string[];
 }
 
+/** The session core's tests, which run on the real clock: one at a time, as `pnpm test:native` runs them. */
+export const SERIAL_NATIVE_TESTS = "core::tests";
+
+/**
+ * The `cargo test --lib` runs for a selection's native filters, as the arguments after `--`: one parallel run, and
+ * when a filter takes in the session core's tests, those apart in a run of their own one at a time, so the other
+ * modules' tests are not serialized with them.
+ */
+export function nativeTestRuns(filters: readonly string[]): Array<{ serial: boolean; args: string[] }> {
+  if (!filters.some((filter) => SERIAL_NATIVE_TESTS.startsWith(filter))) return [{ serial: false, args: [...filters] }];
+  return [
+    { serial: false, args: [...filters, "--skip", SERIAL_NATIVE_TESTS] },
+    { serial: true, args: ["--test-threads=1", SERIAL_NATIVE_TESTS] },
+  ];
+}
+
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**

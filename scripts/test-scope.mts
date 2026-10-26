@@ -23,7 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { runnerArgs, scrubbedEnv } from "./lib/runner/runner-env.mts";
-import { TEST_SCOPES, resolveSelection, type Selection } from "./lib/runner/test-scopes.mts";
+import { SERIAL_NATIVE_TESTS, TEST_SCOPES, nativeTestRuns, resolveSelection, type Selection } from "./lib/runner/test-scopes.mts";
 import { displayCommand, runPhases, type PhaseSpec } from "./lib/runner/verification-timing.mts";
 import { staleOutReason } from "./lib/runner/runtime-inputs.mjs";
 
@@ -80,9 +80,11 @@ const phases: PhaseSpec[] = [
   ...(typecheck ? [{ name: "typecheck", executable: "pnpm", args: ["typecheck"] }] : []),
   ...(files.length ? [{ name: `unit (${files.length} files)`, executable: "pnpm", args: ["exec", "vitest", "run", ...selection.unit] }] : []),
   ...(selection.native ? [
-    // The session core's tests run on the real clock: one at a time, as `pnpm test:native` runs them.
-    { name: `native (${selection.native.join(" ")})`, executable: "cargo", args: ["test", "--manifest-path", "native/capture/Cargo.toml", "--lib", "--",
-      ...(selection.native.some((filter) => "core::tests".startsWith(filter)) ? ["--test-threads=1"] : []), ...selection.native] },
+    // The session core's tests run on the real clock, one at a time and apart; the rest in parallel (`nativeTestRuns`).
+    ...nativeTestRuns(selection.native).map(({ serial, args }) => ({
+      name: serial ? `native (${SERIAL_NATIVE_TESTS}, one at a time)` : `native (${selection.native!.join(" ")})`,
+      executable: "cargo", args: ["test", "--manifest-path", "native/capture/Cargo.toml", "--lib", "--", ...args],
+    })),
     { name: "native lint", executable: "pnpm", args: ["lint:native"] },
     { name: "native format", executable: "pnpm", args: ["fmt:native:check"] },
   ] : []),
