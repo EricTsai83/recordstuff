@@ -3,7 +3,7 @@
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, Scissors, SquarePen } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Badge } from "../../../components/ui/badge";
@@ -338,8 +338,7 @@ function EditableMark({ item }: { item: LibraryItemView }) {
       {/* A recording that holds an edit: a state badge after its time and size (the maintainer's request of 2026-10-26),
           not a control, so a click there is the card's. */}
       {item.edited && (
-        <Badge variant="secondary" size="md" className="clip-edited-badge">
-          <Scissors aria-hidden="true" />
+        <Badge variant="inverse" size="md" className="clip-edited-badge">
           {item.edited}
         </Badge>
       )}

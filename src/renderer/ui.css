@@ -2529,7 +2529,7 @@
   }
   /* The Edited badge after a card's time and size (2026-10-26), apart from them and centred on the line. */
   .clip-edited-badge {
-    margin-inline-start: 6px;
+    margin-inline-start: 10px;
     vertical-align: 1px;
   }
   /* An editable recording's mark, a click on which opens the edit view (2026-10-26): a link under the pointer, the
