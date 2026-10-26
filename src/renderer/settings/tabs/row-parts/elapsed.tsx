@@ -3,6 +3,7 @@
  */
 import { useEffect, useState } from "react";
 import { translate } from "../../../../shared/i18n";
+import { formatDuration } from "../../../../shared/video-player";
 import * as model from "../../settings-controller";
 
 /** The recording's elapsed time beside the Recording Studio's Stop (plan 075, D19), counted here from its start. */
@@ -20,6 +21,7 @@ export function Elapsed({ since }: { since: string }) {
     return () => clearTimeout(timer);
   }, [start]);
   const seconds = Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : 0;
-  const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  // `1:02:05` past an hour, as the recording's card and player will read its length.
+  const text = formatDuration(seconds);
   return <span className="studio-elapsed" role="timer" aria-label={translate("Elapsed {time}", model.view?.language, { time: text })}>{text}</span>;
 }
