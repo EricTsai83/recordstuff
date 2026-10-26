@@ -39,10 +39,10 @@ it("marks an edited recording as a state, not a link, and offers Continue editin
   await vi.waitFor(() => expect(document.getElementById("clip-menu-edit")).toBeNull());
 
   // A state, not a link: a click on it is the card's, which plays the recording.
-  // A badge on the picture, not in the text, and not a link (2026-10-26).
-  const mark = document.querySelector<HTMLElement>("#clip-a .clip-thumb .clip-edited-badge")!;
+  // A badge after the time and size, not a link (2026-10-26).
+  const mark = document.querySelector<HTMLElement>("#clip-a .clip-meta .clip-edited-badge")!;
   expect(mark.textContent).toBe("Edited");
-  expect(document.querySelector("#clip-a .clip-meta")!.textContent).not.toContain("Edited");
+  expect(mark.dataset.slot).toBe("badge");
   click(mark);
   await vi.waitFor(() => expect(document.querySelector(".player[data-open]")).not.toBeNull());
   expect(choices).toEqual([]);

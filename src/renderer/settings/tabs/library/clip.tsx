@@ -6,6 +6,7 @@ import { useEffect, useState, useSyncExternalStore, memo } from "react";
 import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, Scissors, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
 import { useTruncated } from "../../../lib/use-truncated";
@@ -121,14 +122,6 @@ export const Clip = memo(function Clip({
                 flushSync(() => { setFailed(false); setPortrait(height > width); });
               }}
             />
-            {/* A recording that holds an edit says so on its picture, a state badge (the maintainer's request of 2026-10-26),
-                as its length does at the opposite corner; not a control: a click there is the card's. */}
-            {item.edited && (
-              <span className="clip-edited-badge">
-                <Scissors aria-hidden="true" />
-                {item.edited}
-              </span>
-            )}
             <span className="clip-duration" hidden={!item.duration}>
               {item.duration}
             </span>
@@ -320,7 +313,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
  * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
  * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
  * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit…. A recording
- * that holds an edit is badged on its picture instead (the thumbnail's own), its menu offering Continue editing….
+ * that holds an edit has an Edited badge after it, a state, its menu offering Continue editing….
  */
 function EditableMark({ item }: { item: LibraryItemView }) {
   return (
@@ -341,6 +334,14 @@ function EditableMark({ item }: { item: LibraryItemView }) {
             {item.editable}
           </span>
         </>
+      )}
+      {/* A recording that holds an edit: a state badge after its time and size (the maintainer's request of 2026-10-26),
+          not a control, so a click there is the card's. */}
+      {item.edited && (
+        <Badge variant="secondary" size="md" className="clip-edited-badge">
+          <Scissors aria-hidden="true" />
+          {item.edited}
+        </Badge>
       )}
     </>
   );
