@@ -2914,7 +2914,7 @@
     --lane-gap: 4px;
   }
   .editor-trimmer[data-lane] .editor-trim {
-    bottom: calc(var(--lane) + var(--lane-gap));
+    bottom: calc(var(--lanes, 1) * (var(--lane) + var(--lane-gap)));
   }
   .editor-camera-lane {
     position: relative;
@@ -2982,19 +2982,48 @@
     min-width: 7.75rem;
     justify-content: flex-start;
   }
-  /* Measured 2026-10-26: with the longest readout (a selection's) the row first wraps at 936 px in English, 916 px in
-     Traditional Chinese, so below 960 px the icon alone. */
-  @container (max-width: 959.98px) {
-    .editor-camera-toggle {
+  /* Measured 2026-10-26: with the longest readout (a selection's) and the Volume button beside the camera's, the row
+     first wraps at 1016 px in English and 856 px in Traditional Chinese, so the icons alone below 1030 px in English and
+     870 px in Chinese (the maintainer's 1060 px window, in Chinese, keeps the words; Codex's computer-use round). */
+  @container (max-width: 1029.98px) {
+    :root:not(:lang(zh-Hant)) .editor-camera-toggle {
       min-width: 0;
       padding-inline: 0;
       width: 1.75rem;
       height: 1.75rem;
       justify-content: center;
     }
-    .editor-camera-toggle-label {
+    :root:not(:lang(zh-Hant)) .editor-camera-toggle-label {
       display: none;
     }
+  }
+  @container (max-width: 869.98px) {
+    :root:lang(zh-Hant) .editor-camera-toggle {
+      min-width: 0;
+      padding-inline: 0;
+      width: 1.75rem;
+      height: 1.75rem;
+      justify-content: center;
+    }
+    :root:lang(zh-Hant) .editor-camera-toggle-label {
+      display: none;
+    }
+  }
+  /* An input's lane (2026-10-26): its own volume quiet, a stretch at a volume of its own in the foreground's fill, a
+     muted one hatched as a hidden camera is. */
+  /* Its words at the foreground's strength, as the camera lane's (Codex's computer-use round: in the dark theme the
+     muted grey read as disabled). */
+  .editor-volume-stretch:not([data-custom]) {
+    background: color-mix(in oklab, var(--foreground) 6%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
+    color: color-mix(in oklab, var(--foreground) 85%, transparent);
+  }
+  .editor-volume-stretch[data-custom]:not([data-hidden]) {
+    background: color-mix(in oklab, var(--foreground) 18%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 35%, transparent);
+  }
+  .editor-volume-toggle {
+    min-width: 0;
   }
   /* What the export leaves out, dimmed on the lane as well. */
   .editor-camera-removed {

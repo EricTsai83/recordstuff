@@ -16,11 +16,11 @@
  * outline that says so. The bubble's element stays meanwhile, so its camera keeps following and shows again at once.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { RotateCcw, SlidersHorizontal, UserRoundX } from "lucide-react";
+import { Mic, MicOff, RotateCcw, SlidersHorizontal, UserRoundX, Volume2, VolumeX } from "lucide-react";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
-import { cameraShownAt, cameraStretches, type EditableSound, type EditScene, type SceneCamera } from "../../../../shared/editable";
+import { cameraShownAt, cameraStretches, volumeStretchesOf, type EditableSound, type EditScene, type SceneCamera, type VolumeInput } from "../../../../shared/editable";
 import { translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
@@ -386,10 +386,49 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
               <p id="editor-skim-note" className="editor-options-note">{model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")}</p>
             </div>
             {editable && scene && <SceneControls editor={editor} editable={editable} scene={scene} />}
+            {editable && scene && <LaneControls editor={editor} scene={scene} />}
           </div>
         </PopoverContent>
       </Popover>
     </>
+  );
+}
+
+/**
+ * The lanes under the timeline, each shown or hidden (2026-10-26, the maintainer's request: an input whose volume is not
+ * being changed need not take room), remembered for the next edit views. A hidden lane still holding stretches says so:
+ * the export applies them all the same.
+ */
+function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene }) {
+  const lanes: Array<{ lane: model.Lane; name: string; held: number }> = [
+    ...(editor.editable?.camera && scene.camera ? [{ lane: "camera" as const, name: model.text("Camera"), held: cameraStretches(scene.camera, editor.duration).length }] : []),
+    ...model.volumeInputs(editor).map((input) => ({ lane: input, name: model.text(input === "system" ? "System audio" : "Microphone"), held: volumeStretchesOf(scene, input).length })),
+  ];
+  if (lanes.length === 0) return null;
+  return (
+    <div className="editor-scene editor-lanes" role="group" aria-label={model.text("Lanes on the timeline")}>
+      <p className="editor-keys-title">{model.text("Lanes on the timeline")}</p>
+      {lanes.map(({ lane, name, held }) => {
+        const shown = model.laneShown(lane);
+        return (
+          <div key={lane} className="editor-options-skim">
+            <div className="editor-scene-row">
+              <label htmlFor={`editor-lane-${lane}`}>{name}</label>
+              {/* Named in full for assistive technology, which would otherwise hear two controls named as an input. */}
+              <Switch id={`editor-lane-${lane}`} checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}
+                aria-describedby={!shown && held > 0 ? `editor-lane-${lane}-note` : undefined}
+                onCheckedChange={(next) => model.showLane(lane, next)} />
+            </div>
+            {!shown && held > 0 && (
+              <p id={`editor-lane-${lane}-note`} className="editor-options-note">
+                {held === 1 ? model.text("Hidden; its one stretch of its own still applies to the export.")
+                  : translate("Hidden; its {count} stretches of their own still apply to the export.", model.view?.language, { count: String(held) })}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -414,6 +453,8 @@ function SceneControls({ editor, editable, scene }: { editor: EditorView; editab
     : model.text("To hide it for a while only, select that stretch on the timeline and press C.");
   return (
     <div className="editor-scene" role="group" aria-label={model.text(camera ? "Camera and sound" : "Sound")}>
+      {/* Its own heading, as the lanes' below have: an input's name appears in both. */}
+      <p className="editor-keys-title" aria-hidden="true">{model.text(camera ? "Camera and sound" : "Sound")}</p>
       {camera && (
         <div className="editor-options-skim">
           <div className="editor-scene-row">
@@ -444,6 +485,88 @@ function SceneControls({ editor, editable, scene }: { editor: EditorView; editab
           {model.text(camera ? "Reset camera and volumes" : "Reset volumes")}
         </Button>
       </ControlTooltip>
+    </div>
+  );
+}
+
+/**
+ * The Volume button and its popup (2026-10-26, the maintainer's request): each input the recording holds at a volume
+ * of its own over the selected range or part, by a slider (100% in the middle, as the Studio's faders) or Mute, and Back
+ * to the overall volume there; the input whose lane was clicked comes first. Named in words beside its icon while the
+ * toolbar has room, as the camera's button. Each change is one Undo takes back; a slider is heard as it moves.
+ */
+export function VolumeButton({ editor }: { editor: EditorView }) {
+  const target = model.cameraTarget(editor);
+  const busy = editor.export.phase === "exporting";
+  const inputs = model.volumeInputs(editor);
+  const order = model.laneInput && inputs.includes(model.laneInput) ? [model.laneInput, ...inputs.filter((input) => input !== model.laneInput)] : inputs;
+  const open = model.volumeOpen && Boolean(target) && !busy;
+  const tip = model.text(target ? "Set the volume of the selection (V)" : "Select a part or drag across the timeline, then set its volume (V)");
+  return (
+    <Popover open={open} onOpenChange={(next) => { if (!next || (target && !busy)) model.setVolumeOpen(next); }}>
+      <ControlTooltip label={tip}>
+        <PopoverTrigger
+          render={<Button variant="ghost" size="sm" className="editor-camera-toggle editor-volume-toggle" />}
+          id="editor-volume"
+          aria-label={model.text("Volume of the selection")}
+          aria-disabled={busy || !target}
+        >
+          <Volume2 aria-hidden="true" />
+          <span className="editor-camera-toggle-label">{model.text("Volume")}</span>
+        </PopoverTrigger>
+      </ControlTooltip>
+      <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={model.text("Volume of the selection")}>
+        {target && (
+          <div className="editor-options editor-volume-options" role="group" aria-label={model.text("Volume of the selection")}>
+            <p className="editor-keys-title">
+              {translate("Volume from {from} to {to}", model.view?.language, { from: model.clock(target[0] / editor.timescale), to: model.clock(target[1] / editor.timescale) })}
+            </p>
+            {order.map((input) => <SelectionVolumeRow key={input} editor={editor} input={input} />)}
+            <Button id="editor-volume-back" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy}
+              onClick={() => { if (!busy) void model.resetVolumesInSelection(); }}>
+              <RotateCcw />
+              {model.text("Back to the overall volume")}
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** One input's row in the Volume popup: its name, Mute, its slider over the selection and its value. */
+function SelectionVolumeRow({ editor, input }: { editor: EditorView; input: VolumeInput }) {
+  const value = model.volumeOverSelection(editor, input) ?? 100;
+  const own = model.editorScene(editor)?.volumes[input] ?? 100;
+  const name = model.text(input === "system" ? "System audio" : "Microphone");
+  const muted = value === 0;
+  const Icon = input === "system" ? (muted ? VolumeX : Volume2) : (muted ? MicOff : Mic);
+  const text = `${value}%`;
+  return (
+    <div className="editor-scene-row editor-volume-row">
+      <span aria-hidden="true">{name}</span>
+      <ControlTooltip label={model.text(muted ? "Unmute in the selection" : "Mute in the selection")}>
+        <Button id={`editor-volume-mute-${input}`} variant="ghost" size="icon-sm" aria-pressed={muted}
+          aria-label={translate(muted ? "Unmute {name} in the selection" : "Mute {name} in the selection", model.view?.language, { name })}
+          // Unmuted, back to the input's own volume, or to 100% where that is silent itself, so Unmute is always heard
+          // (Codex's review); Back to the overall volume stays the way to its own volume whatever it is.
+          onClick={() => { void model.setVolumeInSelection(input, muted ? (own > 0 ? undefined : 100) : 0, true); }}>
+          <Icon />
+        </Button>
+      </ControlTooltip>
+      <span className="editor-scene-track">
+        <Slider
+          id={`editor-volume-selection-${input}`}
+          value={[volumeToFader(value)]}
+          min={0}
+          max={VOLUME_FADER_MAX}
+          step={1}
+          thumbProps={{ "aria-label": name, "aria-valuetext": text }}
+          onValueChange={(next) => { const n = first(next); if (n !== undefined) void model.setVolumeInSelection(input, volumeFromFader(n), false); }}
+          onValueCommitted={(next) => { const n = first(next); if (n !== undefined) void model.setVolumeInSelection(input, volumeFromFader(n), true); }}
+        />
+      </span>
+      <span className="editor-scene-value" aria-hidden="true">{text}</span>
     </div>
   );
 }

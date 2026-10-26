@@ -45,9 +45,9 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   await menu(document.getElementById("clip-a-more")!);
   click(document.getElementById("clip-menu-edit")!);
-  await vi.waitFor(() => expect(document.querySelector(".editor-camera-lane")).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector(".editor-camera-lane[data-lane=\"camera\"]")).not.toBeNull());
   const saves = (): EditorChoice[] => choices.filter((c) => c.action === "save");
-  const lane = (): Array<[string | null, boolean]> => [...document.querySelectorAll<HTMLButtonElement>(".editor-camera-stretch")]
+  const lane = (): Array<[string | null, boolean]> => [...document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")]
     .map((stretch) => [stretch.getAttribute("aria-label"), stretch.dataset.hidden !== undefined]);
   const toggle = (): HTMLElement => document.getElementById("editor-camera-toggle")!;
 
@@ -91,7 +91,7 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   expect(document.querySelector(".editor-camera-ghost")).toBeNull();
 
   // The lane's hidden stretch, chosen from the keyboard, then the camera button: shown there again, nothing hidden.
-  const hiddenStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-stretch")[1]!;
+  const hiddenStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[1]!;
   hiddenStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
   await vi.waitFor(() => expect(hiddenStretch.getAttribute("aria-pressed")).toBe("true"));
   click(toggle());

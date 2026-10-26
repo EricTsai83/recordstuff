@@ -55,7 +55,7 @@ it("saves a camera change after the cut saving before it, and splits where S was
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
   await menu(document.getElementById("clip-a-more")!);
   click(document.getElementById("clip-menu-edit")!);
-  await vi.waitFor(() => expect(document.querySelector(".editor-camera-lane")).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector(".editor-camera-lane[data-lane=\"camera\"]")).not.toBeNull());
   const video = document.querySelector<HTMLVideoElement>("#editor .pc video")!;
   const key = (k: string): void => { document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: `Key${k.toUpperCase()}`, bubbles: true })); };
 

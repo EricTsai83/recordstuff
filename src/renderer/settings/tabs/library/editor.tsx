@@ -6,12 +6,14 @@
  *
  * An editable recording with a camera (2026-10-26, the maintainer's request) has a lane under the pictures that shows
  * where the camera is in the picture and where it is hidden; the camera button (C) hides it over the selected range or
- * part, or shows it there again, and a click on the lane selects one of its stretches.
+ * part, or shows it there again, and a click on the lane selects one of its stretches. Each sound input has a lane too
+ * (2026-10-26): its own volume, or a stretch's (muted, or a percent), set over the selection by the Volume popup (V).
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, Keyboard, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Keyboard, Mic, MicOff, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
+import type { VolumeInput } from "../../../../shared/editable";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
@@ -21,7 +23,7 @@ import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Toaster } from "../../../components/ui/sonner";
 import * as model from "../../settings-controller";
-import { EditorCamera, EditorOptions } from "./editor-scene";
+import { EditorCamera, EditorOptions, VolumeButton } from "./editor-scene";
 
 /**
  * Follows the preview's position to draw the playhead: on each frame shown while it plays, and on each seek. Nothing
@@ -205,6 +207,9 @@ function editorKey(event: React.KeyboardEvent): void {
   } else if (key === "c" && target.closest(".editor-panel, .editor-stage")) {
     event.preventDefault();
     void model.toggleCameraInSelection();
+  } else if (key === "v" && target.closest(".editor-panel, .editor-stage")) {
+    event.preventDefault();
+    model.openVolume();
   } else if ((event.key === "Delete" || event.key === "Backspace") && target.closest(".editor-panel")) {
     event.preventDefault();
     void model.toggleSelected();
@@ -325,8 +330,8 @@ function precise(seconds: number): string {
 /** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
 interface TimelineGesture {
   pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge;
-  /** Pressed on the camera's lane: a click there selects the lane's stretch rather than the part. */
-  lane?: boolean;
+  /** Pressed on a lane (the camera's or an input's): a click there selects the lane's stretch rather than the part. */
+  lane?: "camera" | VolumeInput | undefined;
   /** For a trim handle: how far from its edge it was taken hold of, in the video's timescale, kept while it moves. */
   offset?: number;
 }
@@ -363,7 +368,9 @@ function EditorPanel() {
   // It goes back to the selected part, or the timeline.
   useEffect(() => {
     const active = document.activeElement;
-    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-options-popup")) return;
+    // The Volume popup too (Codex's computer-use round, 2026-10-26: its slider lost the focus at every save, and the
+    // next arrow key moved the playhead).
+    if (active && active !== document.body && active.closest("#editor, #editor-keys-popup, #editor-options-popup, #editor-volume-popup")) return;
     const target = document.querySelector<HTMLElement>("#editor .editor-part[aria-pressed='true']") ?? document.querySelector<HTMLElement>("#editor .editor-timeline");
     target?.focus({ preventScroll: true });
   });
@@ -408,6 +415,14 @@ function EditorPanel() {
   // Hidden throughout in Options: the stretches wait, and so does the button.
   const allHidden = camera && model.cameraHiddenThroughout(editor);
   const stretches = camera ? model.cameraStretches(editor) : [];
+  // An editable recording's sound inputs, each with a lane of its volume (2026-10-26).
+  const inputs = editor.editable ? model.volumeInputs(editor) : [];
+  // The lanes shown: Options hides any of them (2026-10-26); what a hidden one holds is still exported.
+  const cameraLane = camera && model.laneShown("camera");
+  const inputLanes = inputs.filter((input) => model.laneShown(input));
+  const lanes = (cameraLane ? 1 : 0) + inputLanes.length;
+  /** A lane's stretches, as a click there chooses one. */
+  const laneStretches = (lane: "camera" | VolumeInput): Array<{ from: number; to: number }> => (lane === "camera" ? stretches : model.volumeLane(editor, lane));
   const editingSource = model.editingItem?.video;
   // 2026-10-25, after a hands-on walkthrough: a click on the timeline puts the playhead there and selects the part
   // there; a drag across it chooses a range Remove takes out; a drag that starts on the playhead scrubs; and the handles
@@ -443,6 +458,7 @@ function EditorPanel() {
     [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split"],
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
     ...(camera ? [["C", "Hide or show the camera in the selection"] as [string, PlainMessageKey]] : []),
+    ...(inputs.length > 0 ? [["V", "Set the volume of the selection"] as [string, PlainMessageKey]] : []),
     ["← →", "On a trim handle: move its edge a frame, Shift a second"],
   ];
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo · on a trim handle, ← → move its edge", language, {
@@ -553,6 +569,7 @@ function EditorPanel() {
             </Button>
           </ControlTooltip>
         )}
+        {inputs.length > 0 && <VolumeButton editor={editor} />}
         <EditorOptions editor={editor} />
         <span className="editor-divider" aria-hidden="true" />
         <span className="editor-times text-muted-foreground">
@@ -575,7 +592,7 @@ function EditorPanel() {
         <span className="editor-end">
         <Popover>
           <ControlTooltip label={model.text("Keyboard shortcuts")}>
-            <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}${camera ? ` · ${model.text("C hide or show the camera in the selection")}` : ""}`}>
+            <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}${camera ? ` · ${model.text("C hide or show the camera in the selection")}` : ""}${inputs.length > 0 ? ` · ${model.text("V set the volume of the selection")}` : ""}`}>
               <Keyboard aria-hidden="true" />
             </PopoverTrigger>
           </ControlTooltip>
@@ -599,7 +616,8 @@ function EditorPanel() {
           above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
       <div
         className="editor-trimmer"
-        data-lane={camera || undefined}
+        data-lane={lanes > 0 || undefined}
+        style={{ "--lanes": lanes } as React.CSSProperties}
         onPointerDown={(event) => {
           const ticks = ticksAt(event.clientX);
           const box = track.current?.getBoundingClientRect();
@@ -612,7 +630,8 @@ function EditorPanel() {
           const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
           // A press on the camera's lane is the lane's, never a trim handle's beside it (Codex's review): the handles
           // keep to the pictures above it.
-          const lane = (event.target as HTMLElement).closest?.(".editor-camera-lane") !== null;
+          const laneName = (event.target as HTMLElement).closest?.(".editor-camera-lane")?.getAttribute("data-lane");
+          const lane = laneName === "camera" || laneName === "system" || laneName === "microphone" ? laneName : undefined;
           // A trim handle, pressed or pressed beside: the start's reaches in from its edge, the end's back from its.
           const handle = (event.target as HTMLElement).closest?.(".editor-trim")?.getAttribute("data-edge");
           const edge: model.TrimEdge | undefined = lane ? undefined : handle === "start" || handle === "end" ? handle
@@ -642,8 +661,10 @@ function EditorPanel() {
           follow(event.pointerId, event.clientX);
           const held = gesture.current, ticks = ticksAt(event.clientX);
           if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) {
-            // On the camera's lane, the stretch there is chosen, as a range the camera button then acts on.
-            const stretch = held.lane ? stretches.find((one) => ticks >= one.from && ticks < one.to) ?? stretches.at(-1) : undefined;
+            // On a lane, the stretch there is chosen, as a range the camera button or the Volume popup then acts on.
+            const list = held.lane ? laneStretches(held.lane) : [];
+            const stretch = held.lane ? list.find((one) => ticks >= one.from && ticks < one.to) ?? list.at(-1) : undefined;
+            if (held.lane) model.chooseLaneInput(held.lane === "camera" ? undefined : held.lane);
             if (stretch) {
               model.selectRange(stretch.from, stretch.to);
               model.seekTo(ticks / editor.timescale);
@@ -701,8 +722,8 @@ function EditorPanel() {
         </div>
         {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
             time as the pictures above; a stretch is selected by a click, or by Enter on it. */}
-        {camera && (
-          <div className="editor-camera-lane" role="group" aria-label={model.text("Camera")}>
+        {cameraLane && (
+          <div className="editor-camera-lane" data-lane="camera" role="group" aria-label={model.text("Camera")}>
             {stretches.map((stretch) => {
               const chosen = range !== undefined && range[0] === stretch.from && range[1] === stretch.to;
               return (
@@ -737,6 +758,54 @@ function EditorPanel() {
             <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
           </div>
         )}
+        {/* Each input's lane (2026-10-26): its own volume, or a stretch's, muted or a percent. */}
+        {inputLanes.map((input) => {
+          const name = model.text(input === "system" ? "System audio" : "Microphone");
+          const own = editor.editable && model.editorScene(editor)?.volumes[input];
+          return (
+            <div key={input} className="editor-camera-lane editor-volume-lane" data-lane={input} role="group" aria-label={name}>
+              {model.volumeLane(editor, input).map((stretch) => {
+                const chosen = range !== undefined && range[0] === stretch.from && range[1] === stretch.to;
+                const muted = stretch.volume === 0;
+                const from = at(stretch.from / editor.timescale), to = at(stretch.to / editor.timescale);
+                const label = stretch.volume === undefined ? translate("{from} to {to}, {name} at its volume", language, { from, to, name })
+                  : muted ? translate("{from} to {to}, {name} muted", language, { from, to, name })
+                  : translate("{from} to {to}, {name} at {percent}%", language, { from, to, name, percent: String(stretch.volume) });
+                const Icon = input === "system" ? (muted ? VolumeX : Volume2) : (muted ? MicOff : Mic);
+                return (
+                  <button
+                    key={`${stretch.from}-${stretch.to}`}
+                    type="button"
+                    className="editor-camera-stretch editor-volume-stretch"
+                    data-hidden={muted || undefined}
+                    data-custom={stretch.volume !== undefined || undefined}
+                    data-selected={chosen || undefined}
+                    style={{ left: percent(stretch.from), width: percent(stretch.to - stretch.from) }}
+                    aria-label={label}
+                    aria-pressed={chosen}
+                    disabled={busy}
+                    onClick={(event) => {
+                      if (event.detail !== 0) return;
+                      model.chooseLaneInput(input);
+                      model.selectRange(stretch.from, stretch.to);
+                      model.seekTo(stretch.from / editor.timescale);
+                    }}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span aria-hidden="true">
+                      {stretch.volume === undefined ? `${name} ${own ?? 100}%` : muted ? model.text("Muted") : `${stretch.volume}%`}
+                    </span>
+                  </button>
+                );
+              })}
+              {editor.removed.map(([from, to]) => (
+                <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
+              ))}
+              {range && <span className="editor-camera-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+              <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
+            </div>
+          );
+        })}
         {trimHandle("start")}
         {trimHandle("end")}
         {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}

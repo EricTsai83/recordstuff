@@ -624,7 +624,7 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   await openEditor();
   const bubble = page.locator("#editor-camera");
   await expect(bubble).toBeVisible();
-  const lane = page.locator(".editor-camera-lane");
+  const lane = page.locator(".editor-camera-lane[data-lane=\"camera\"]");
   const stretches = lane.locator(".editor-camera-stretch");
   await expect(stretches).toHaveCount(1);
   await expect(stretches.first()).toHaveAccessibleName(/^0:00\.0 to 0:0\d\.\d, camera shown$/);
@@ -714,4 +714,145 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera?: unknown; cameraHidden?: Array<{ from: number; to: number }> };
   expect(render.camera).toBeDefined();
   expect(render.cameraHidden).toEqual([{ from, to }]);
+});
+
+/**
+ * An input's volume over stretches (2026-10-26): a range dragged across the pictures, the Volume button's popup and its
+ * Mute set the microphone silent there, saved by main as a version-3 edit; the microphone's lane says so; the popup and
+ * the lanes stay inside the window; and the export is asked for the stretch in dB on the recording's own clock.
+ */
+test("an editable recording's microphone is muted over a dragged range from the Volume popup, shown on its lane, and asked of the export", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  const microphone = page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-stretch');
+  await expect(microphone).toHaveCount(1);
+  await expect(page.locator('.editor-camera-lane[data-lane="system"] .editor-camera-stretch')).toHaveCount(1);
+  await expect(page.locator("#editor-volume")).toHaveAttribute("aria-disabled", "true");
+
+  // The lanes under the pictures, the trim handles beside the pictures only.
+  const pictures = (await page.locator(".editor-timeline").boundingBox())!;
+  const lowest = (await page.locator('.editor-camera-lane[data-lane="microphone"]').boundingBox())!;
+  const handle = (await page.locator("#editor-trim-start").boundingBox())!;
+  expect(handle.y + handle.height).toBeLessThanOrEqual(pictures.y + pictures.height + 1);
+  expect(lowest.y + lowest.height).toBeLessThanOrEqual((await page.locator(".editor-panel").boundingBox())!.y + (await page.locator(".editor-panel").boundingBox())!.height);
+
+  await page.mouse.move(pictures.x + pictures.width * 0.3, pictures.y + pictures.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pictures.x + pictures.width * 0.6, pictures.y + pictures.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.locator("#editor-volume").click();
+  await expect(page.locator("#editor-volume-popup")).toBeVisible();
+  // The popup inside the window, its text readable.
+  const problems = await read<string[]>(page, `(() => {
+    const out = [];
+    for (const el of document.querySelectorAll("#editor-volume-popup button, #editor-volume-popup [data-slot=slider-thumb], #editor-volume-popup .editor-scene-value")) {
+      const box = el.getBoundingClientRect();
+      if (box.right > innerWidth || box.bottom > innerHeight || box.left < 0 || box.top < 0) out.push((el.id || el.className) + " outside the window");
+      if (parseFloat(getComputedStyle(el).fontSize) < 12) out.push((el.id || el.className) + " text under 12 px");
+    }
+    return out; })()`);
+  expect(problems).toEqual([]);
+  await page.locator("#editor-volume-mute-microphone").click();
+  const edits = path.join(path.dirname(path.dirname(folder)), "userData", "edits");
+  const record = (): Record<string, any> => {
+    const file = fs.readdirSync(edits).find((name) => name.endsWith(".json") && name !== "exports-in-flight.json");
+    return file ? JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")) : {};
+  };
+  expect(await eventually(() => record().version === 3 && record().scene?.volumeStretches?.microphone?.length === 1)).toBe(true);
+  const [from, to, volume] = record().scene.volumeStretches.microphone[0] as [number, number, number];
+  expect(volume).toBe(0);
+  const duration = (await read<number>(page, `document.querySelector("#editor .editor-stage video").duration`)) * 90_000;
+  expect(from / duration).toBeGreaterThan(0.27);
+  expect(to / duration).toBeLessThan(0.63);
+  await expect(microphone).toHaveCount(3);
+  await expect(microphone.nth(1)).toHaveAttribute("data-hidden", "true");
+  // The system's slider by the keyboard: each step saves, and the slider keeps the focus through every save (Codex's
+  // computer-use round: it lost it at the first, and the next arrow key moved the playhead).
+  const system = page.getByRole("slider", { name: "System audio", exact: true });
+  await system.focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowLeft");
+  await expect(system).toHaveAttribute("aria-valuetext", "85%");
+  expect(await eventually(() => record().scene?.volumeStretches?.system?.[0]?.[2] === 85)).toBe(true);
+  await expect(system).toBeFocused();
+  await expect(page.locator("#editor-volume-popup")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // The shortcut list names V.
+  await page.locator("#editor-keys").click();
+  await expect(page.locator("#editor-keys-popup")).toContainText("Set the volume of the selection");
+  await page.keyboard.press("Escape");
+
+  await page.locator("#editor-export").click();
+  await expect(page.locator("#editor .editor-export-toast")).toBeVisible({ timeout: 5000 });
+  const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { volumeStretchesDb?: Array<Array<{ from: number; to: number; db: number }>> };
+  expect(render.volumeStretchesDb).toEqual([[{ from, to, db: expect.closeTo(20 * Math.log10(0.85), 9) }], [{ from, to, db: -60 }]]);
+});
+
+/**
+ * What the computer-use rounds of 2026-10-26 checked by eye, kept as behaviour (docs/testing.md: no design values): the
+ * toolbar stays on one row as the camera button's name turns, at the maintainer's window width and a narrower one, with
+ * the longest readout; a click or a drag on the paused "camera hidden here" outline neither plays the preview nor moves
+ * the hidden bubble; and the Volume popup lists the input whose lane was clicked first.
+ */
+test("the toolbar keeps one row as the camera button turns, the hidden camera's outline takes no press, and the Volume popup lists the clicked lane's input first", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  await expect(page.locator("#editor-camera")).toBeVisible();
+  const select = async (from: number, to: number): Promise<void> => {
+    const pictures = (await page.locator(".editor-timeline").boundingBox())!;
+    await page.mouse.move(pictures.x + pictures.width * from, pictures.y + pictures.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(pictures.x + pictures.width * to, pictures.y + pictures.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  const toolbarHeight = async (): Promise<number> => (await page.locator(".editor-toolbar").boundingBox())!.height;
+  const oneRow = (await page.locator("#editor-play").boundingBox())!.height * 1.6;
+
+  for (const width of [1060, 960]) {
+    await page.setViewportSize({ width, height: 760 });
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    await page.waitForTimeout(200);
+    await select(0.3, 0.6);
+    await expect(page.locator("#editor-camera-toggle")).toHaveAttribute("aria-disabled", "false");
+    expect(await toolbarHeight(), `${width}px, hide`).toBeLessThan(oneRow);
+    await page.locator("#editor-camera-toggle").click();
+    await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Show camera in selection");
+    expect(await toolbarHeight(), `${width}px, show`).toBeLessThan(oneRow);
+    await page.locator("#editor-camera-toggle").click();
+    await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
+  }
+
+  // Hidden over 30–60%, paused inside: a press and a drag on the outline leave the preview paused and the bubble put.
+  await page.locator("#editor-camera-toggle").click();
+  const middle = (await read<number>(page, `document.querySelector("#editor .editor-stage video").duration`)) * 0.45;
+  await seek(middle);
+  const ghost = page.locator(".editor-camera-ghost");
+  await expect(ghost).toBeVisible();
+  const box = (await ghost.boundingBox())!;
+  const place = async (): Promise<string> => read<string>(page, `JSON.stringify([document.getElementById("editor-camera").style.left, document.getElementById("editor-camera").style.top])`);
+  const placed = await place();
+  const paused = (): Promise<boolean> => read<boolean>(page, `document.querySelector("#editor .editor-stage video").paused`);
+  // The picture behind plays on a click: each press is judged on its own, as a click then a drag's release would
+  // play and pause again.
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(200);
+  expect(await paused(), "a click on the outline played the preview").toBe(true);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 120, box.y + 80, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  expect(await paused(), "a drag on the outline played the preview").toBe(true);
+  expect(await place(), "the hidden bubble moved").toBe(placed);
+
+  // A click on the microphone's lane, then the Volume button: the microphone's row comes first.
+  const lane = (await page.locator('.editor-camera-lane[data-lane="microphone"]').boundingBox())!;
+  await page.mouse.click(lane.x + lane.width * 0.2, lane.y + lane.height / 2);
+  await page.locator("#editor-volume").click();
+  await expect(page.locator("#editor-volume-popup")).toBeVisible();
+  const rows = await page.locator("#editor-volume-popup .editor-volume-row > span:first-child").allTextContents();
+  expect(rows).toEqual(["Microphone", "System audio"]);
+  await page.keyboard.press("Escape");
 });

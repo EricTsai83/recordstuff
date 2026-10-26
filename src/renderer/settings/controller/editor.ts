@@ -12,7 +12,10 @@
  */
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
-import { cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, subtractRange, withCameraHidden, type EditableSound, type EditScene } from "../../../shared/editable";
+import {
+  cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, setVolumeOver, subtractRange, volumeAt, volumeStretchesOf,
+  withCameraHidden, withVolumeStretches, type EditableSound, type EditScene, type VolumeInput,
+} from "../../../shared/editable";
 import { softLimit } from "../../../shared/audio-volume";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, subscribe, view } from "./core";
@@ -227,6 +230,8 @@ async function saved(): Promise<void> {
 
 function finishClose(item: LibraryItemView, restore: boolean): void {
   editingItem = undefined;
+  volumeOpen = false;
+  laneInput = undefined;
   exportWatched = undefined;
   splits = [];
   selectedFrom = undefined;
@@ -301,7 +306,7 @@ function followAll(exact: boolean): void {
 /** The recording's events its followers take. */
 const followers: Array<[string, () => void]> = [
   ["play", () => { resumeAudio(); followAll(true); }],
-  ["pause", () => followAll(true)], ["seeked", () => followAll(true)], ["ratechange", () => followAll(false)],
+  ["pause", () => { followAll(true); syncPreviewAudio(); }], ["seeked", () => { followAll(true); syncPreviewAudio(); }], ["ratechange", () => followAll(false)],
   ["volumechange", () => { followAll(false); syncPreviewAudio(); }], ["timeupdate", () => followAll(false)],
 ];
 
@@ -360,11 +365,14 @@ export function editorScene(editor: EditorView): EditScene | undefined {
   return sceneDraft ?? editor.editable?.scene;
 }
 
-/** A sound's volume in `scene`, as a gain. */
-export function soundGain(scene: EditScene, sound: EditableSound | undefined): number {
-  const percent = sound === "microphone" ? scene.volumes.microphone : sound === "system" ? scene.volumes.system : 100;
+/** A sound's volume in `scene` at `time` (the video's timescale; a stretch's there, 2026-10-26), as a gain. */
+export function soundGain(scene: EditScene, sound: EditableSound | undefined, time = 0): number {
+  const percent = sound === "microphone" || sound === "system" ? volumeAt(scene, sound, time) : 100;
   return percent / 100;
 }
+
+/** The last gain each sound node was told, so a frame that changes nothing schedules nothing. */
+const told = new WeakMap<GainNode, number>();
 
 /**
  * Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. Any other
@@ -373,10 +381,18 @@ export function soundGain(scene: EditScene, sound: EditableSound | undefined): n
 export function syncPreviewAudio(): void {
   const editor = editorView();
   const scene = editor && editorScene(editor);
-  // What the element's volume did to its source undone: the gain alone is the scene's.
+  // What the element's volume did to its source undone: the gain alone is the scene's. While it plays a change of
+  // stretch eases over a few milliseconds, as the export's does, so it does not click.
   const set = (media: HTMLMediaElement, gain: GainNode, factor: number): void => {
     const level = media.muted ? 0 : media.volume;
-    gain.gain.value = level > 0 ? factor / level : 0;
+    const value = level > 0 ? factor / level : 0;
+    if (told.get(gain) === value) return;
+    told.set(gain, value);
+    if (audio && !media.paused) gain.gain.setTargetAtTime(value, audio.context.currentTime, 0.004);
+    else {
+      gain.gain.cancelScheduledValues(0);
+      gain.gain.value = value;
+    }
   };
   if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
   if (!editor?.editable || !scene) {
@@ -385,10 +401,11 @@ export function syncPreviewAudio(): void {
     return;
   }
   const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[editorVideo, editor.editable.sounds[0]], [previewSound, editor.editable.sounds[1]]];
+  const time = Math.round((editorVideo?.currentTime ?? 0) * editor.timescale);
   for (const [media, sound] of pairs) {
     if (!media) continue;
     const gain = gainFor(media);
-    if (gain) set(media, gain, soundGain(scene, sound));
+    if (gain) set(media, gain, soundGain(scene, sound, time));
   }
   if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
 }
@@ -440,6 +457,8 @@ function watchFrames(video: HTMLVideoElement): void {
     frameCallback = video.requestVideoFrameCallback(check);
     const editor = editorView();
     if (!editor || video.paused) return;
+    // Volume stretches (2026-10-26): each frame shown sets the sounds' gains for its time; nothing without any.
+    if (editorScene(editor)?.volumeStretches) syncPreviewAudio();
     const time = metadata.mediaTime * editor.timescale;
     const range = editor.skipped.find(([from, to]) => time >= from && time < to);
     if (!range) return;
@@ -841,6 +860,8 @@ export function toggleCameraInSelection(): Promise<boolean> {
   const said = translate(show ? "Camera shown from {from} to {to}" : "Camera hidden from {from} to {to}", view?.language, {
     from: clock(target[0] / editor.timescale), to: clock(target[1] / editor.timescale),
   });
+  // A change to a hidden lane shows it again, so what changed is seen.
+  if (!laneShown("camera")) showLane("camera", true);
   return changeScene({ ...scene, camera: withCameraHidden(camera, next, editor.duration) }, true).then((saved) => {
     if (saved) announce(said);
     return saved;
@@ -857,6 +878,144 @@ export function hideCameraThroughout(hidden: boolean): Promise<boolean> {
   const camera = scene?.camera;
   if (!editor || !scene || !camera || camera.shown === !hidden) return Promise.resolve(false);
   return changeScene({ ...scene, camera: { ...camera, shown: !hidden } }, true);
+}
+
+/** The inputs the view's editable recording holds, which have volume lanes (2026-10-26). */
+export function volumeInputs(editor: EditorView): VolumeInput[] {
+  const sounds = editor.editable?.sounds ?? [];
+  return (["system", "microphone"] as const).filter((input) => sounds.includes(input));
+}
+
+/** One stretch of an input's lane: at the input's own volume (`volume` undefined) or a stretch's. */
+export interface VolumeLaneStretch { from: number; to: number; volume?: number }
+
+/** An input's lane: the recording from start to end, at its own volume or a stretch's. */
+export function volumeLane(editor: EditorView, input: VolumeInput): VolumeLaneStretch[] {
+  const scene = editorScene(editor);
+  if (!scene) return [];
+  const out: VolumeLaneStretch[] = [];
+  let at = 0;
+  for (const [from, to, volume] of volumeStretchesOf(scene, input)) {
+    if (from > at) out.push({ from: at, to: from });
+    out.push({ from, to, volume });
+    at = to;
+  }
+  if (at < editor.duration) out.push({ from: at, to: editor.duration });
+  return out;
+}
+
+/** A lane under the timeline's pictures: the camera's, or a sound input's. */
+export type Lane = "camera" | VolumeInput;
+/** Where the lanes hidden in Options are remembered (2026-10-26): this window's own look, as the sidebar's. */
+const LANES_KEY = "recordstuff.editorHiddenLanes";
+const LANES: readonly Lane[] = ["camera", "system", "microphone"];
+let hiddenLanes: Set<Lane> = (() => {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(LANES_KEY) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((lane): lane is Lane => (LANES as readonly unknown[]).includes(lane)) : []);
+  } catch {
+    return new Set<Lane>();
+  }
+})();
+
+/** Whether `lane` is shown under the timeline (Options' lanes, 2026-10-26, the maintainer's request). */
+export function laneShown(lane: Lane): boolean {
+  return !hiddenLanes.has(lane);
+}
+
+/** Shows or hides `lane`, remembered for the next edit views; what it holds is kept and exported either way. */
+export function showLane(lane: Lane, shown: boolean): void {
+  const next = new Set(hiddenLanes);
+  if (shown) next.delete(lane);
+  else next.add(lane);
+  hiddenLanes = next;
+  try { localStorage.setItem(LANES_KEY, JSON.stringify([...next])); } catch { /* a page without storage keeps it until closed */ }
+  draw();
+}
+
+/** Whether the Volume popup is open: its button, or V (2026-10-26). */
+export let volumeOpen = false;
+
+/** Opens or closes the Volume popup; with nothing selected, V says what to choose instead of opening it. */
+export function setVolumeOpen(open: boolean): void {
+  volumeOpen = open;
+  draw();
+}
+
+export function openVolume(): void {
+  const editor = editorView();
+  if (!editor || editor.state !== "ready" || editor.export.phase === "exporting" || volumeInputs(editor).length === 0) return;
+  if (!cameraTarget(editor)) {
+    announce(translate("Select a part or drag across the timeline, then set its volume (V)", view?.language));
+    return;
+  }
+  setVolumeOpen(true);
+}
+
+/** The input whose lane was clicked last, which the volume popup lists first. */
+export let laneInput: VolumeInput | undefined;
+export function chooseLaneInput(input: VolumeInput | undefined): void {
+  laneInput = input;
+}
+
+/** `input`'s volume over the selection as the popup shows it: at the selection's start. */
+export function volumeOverSelection(editor: EditorView, input: VolumeInput): number | undefined {
+  const scene = editorScene(editor);
+  const target = cameraTarget(editor);
+  return scene && target ? volumeAt(scene, input, target[0]) : undefined;
+}
+
+/**
+ * The volume popup (2026-10-26, the maintainer's request): `input` at `percent` over the selected range or part (0%
+ * silent), or back to its own volume there when `percent` is undefined. While `commit` is false a draft, heard at once
+ * (a slider moving); committed, one change Undo takes back.
+ */
+export function setVolumeInSelection(input: VolumeInput, percent: number | undefined, commit: boolean): Promise<boolean> {
+  const editor = editorView();
+  const scene = editor && editorScene(editor);
+  const target = editor && cameraTarget(editor);
+  if (!editor || !scene || !target || editor.state !== "ready" || editor.export.phase === "exporting") return Promise.resolve(false);
+  // Over the shown scene: a slider's next draft sets the same range again, so drafts never pile up.
+  const next = setVolumeOver(volumeStretchesOf(scene, input), target[0], target[1], percent, editor.duration);
+  if (next.length > MAX_CAMERA_HIDDEN) {
+    announce(translate("An input can be at a volume of its own over at most {count} stretches.", view?.language, { count: String(MAX_CAMERA_HIDDEN) }));
+    return Promise.resolve(false);
+  }
+  const name = translate(input === "system" ? "System audio" : "Microphone", view?.language);
+  const range = { from: clock(target[0] / editor.timescale), to: clock(target[1] / editor.timescale) };
+  const said = percent === undefined
+    ? translate("{name} back to its volume from {from} to {to}", view?.language, { name, ...range })
+    : percent === 0
+    ? translate("{name} muted from {from} to {to}", view?.language, { name, ...range })
+    : translate("{name} at {percent}% from {from} to {to}", view?.language, { name, percent: String(percent), ...range });
+  if (commit && !laneShown(input)) showLane(input, true);
+  return changeScene(withVolumeStretches(scene, input, next), commit).then((saved) => {
+    if (saved && commit) announce(said);
+    return saved;
+  });
+}
+
+/** Back to the overall volume over the selection, for every input at once, as one change Undo takes back. */
+export function resetVolumesInSelection(): Promise<boolean> {
+  const editor = editorView();
+  let scene = editor && editorScene(editor);
+  const target = editor && cameraTarget(editor);
+  if (!editor || !scene || !target || editor.export.phase === "exporting") return Promise.resolve(false);
+  for (const input of volumeInputs(editor)) {
+    const next = setVolumeOver(volumeStretchesOf(scene, input), target[0], target[1], undefined, editor.duration);
+    // Given back inside a stretch, it splits in two: past the limit the whole change is refused (Codex's review).
+    if (next.length > MAX_CAMERA_HIDDEN) {
+      announce(translate("An input can be at a volume of its own over at most {count} stretches.", view?.language, { count: String(MAX_CAMERA_HIDDEN) }));
+      return Promise.resolve(false);
+    }
+    scene = withVolumeStretches(scene, input, next);
+  }
+  if (sameScene(scene, editorScene(editor))) return Promise.resolve(false);
+  const said = translate("Volumes back to the overall volume from {from} to {to}", view?.language, { from: clock(target[0] / editor.timescale), to: clock(target[1] / editor.timescale) });
+  return changeScene(scene, true).then((saved) => {
+    if (saved) announce(said);
+    return saved;
+  });
 }
 
 /** An editable recording's camera and volumes back to how the recording left them, as one change Undo takes back. */
