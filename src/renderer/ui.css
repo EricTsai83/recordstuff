@@ -1623,9 +1623,9 @@
   }
   /* The desk is the arrangement's bounding box, scaled to fit the stage's height or width, whichever runs out first;
      each screen is placed in it by percentages. */
-  /* The screens centred in the stage; the Follow the primary display switch sits in its bottom-right corner and takes no
-     line of its own. The screens keep clear of its column, so it never covers a screen or a label: a wide stage spares
-     room for the switch and its name, a narrow one for the switch alone, its name then shown on hover. */
+  /* The screens centred in the stage; on a wide stage the Follow the primary display switch sits in its bottom-right
+     corner and takes no line of its own, the screens keeping clear of its column so it never covers a screen or a
+     label; a narrow one gives it a line under them. */
   .arrangement-stage {
     --stage-height: 128px;
     position: relative;
@@ -1653,9 +1653,15 @@
       --follow-room: 190px;
     }
   }
+  /* A narrow stage has no corner to spare: the switch and its name take a line of their own under the screens
+     (2026-10-26, formerly the switch alone, its name only on hover). */
   @container arrangement (max-width: 569.98px) {
-    .arrangement-follow-text {
-      display: none;
+    .arrangement-stage > .arrangement-options {
+      position: static;
+      justify-self: end;
+    }
+    .arrangement-stage > .arrangement-screens {
+      --follow-room: 0px;
     }
   }
   .arrangement-screens {

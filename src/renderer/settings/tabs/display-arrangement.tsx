@@ -6,11 +6,10 @@
  * small screen cuts neither. Positions are percentages of the arrangement's box: the picture scales with CSS alone, with
  * no measuring or observers.
  */
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { type KeyboardEvent } from "react";
 import { Check } from "lucide-react";
 import type { SettingsChoice, SettingsGroup } from "../../../shared/settings-panel";
 import { Switch } from "../../components/ui/switch";
-import { ControlTooltip } from "../../components/control-tooltip";
 import * as model from "../settings-controller";
 
 const percent = (value: number): string => `${(value * 100).toFixed(3)}%`;
@@ -81,12 +80,6 @@ export function DisplayArrangement({
   const roomBelow = labels.some((label, index) => label.place === "below" && boxes[index]!.y + boxes[index]!.h > 1 - LABEL_BAND),
     roomAbove = labels.some((label, index) => label.place === "above" && boxes[index]!.y < LABEL_BAND);
   const following = value === "primary";
-  // Whether the stage is too narrow to write the switch's name (CSS decides, by the stage's width): read after a render
-  // and again as the pointer or focus enters the picture, before it can reach the switch, so nothing watches the layout.
-  const followName = useRef<HTMLSpanElement>(null);
-  const [nameHidden, setNameHidden] = useState(false);
-  const checkName = () => setNameHidden((followName.current?.offsetWidth ?? 1) <= 1);
-  useLayoutEffect(checkName);
   // While another screen is being saved, choosing the committed one again is a newer intent that replaces it.
   const saving = model.savingOf(group.id);
   const pending = saving !== undefined && saving.choice !== value;
@@ -112,7 +105,7 @@ export function DisplayArrangement({
     if (choice) choose(choice);
   };
   return (
-    <div id={id} role="group" className="arrangement" aria-labelledby={`${id}-label`} aria-describedby={describedBy} onPointerEnter={checkName} onFocus={checkName}>
+    <div id={id} role="group" className="arrangement" aria-labelledby={`${id}-label`} aria-describedby={describedBy}>
       <div className="arrangement-stage">
         <div role="radiogroup" className="arrangement-screens" aria-labelledby={`${id}-label`} onKeyDown={onKeyDown}>
         <div
@@ -183,24 +176,18 @@ export function DisplayArrangement({
         {follow && (
           <div className="arrangement-options">
             <div className="arrangement-option">
-              {/* A narrow stage keeps only the switch in its corner, its name read aloud and shown on hover. */}
-              <ControlTooltip label={nameHidden ? model.text("Follow the primary display") : undefined}>
-                <Switch
-                  id={`${id}-primary`}
-                  size="sm"
-                  checked={followIntended}
-                  disabled={disabled || (followIntended ? !primaryScreen?.enabled : !follow.enabled)}
-                  onCheckedChange={(checked) => {
-                    const next = checked ? follow : primaryScreen;
-                    if (next) choose(next, `${id}-primary`);
-                  }}
-                />
-              </ControlTooltip>
-              {/* The name is always read; it is written only where the stage has room for it. */}
-              <label htmlFor={`${id}-primary`}>
-                <span className="sr-only">{model.text("Follow the primary display")}</span>
-                <span ref={followName} className="arrangement-follow-text" aria-hidden="true">{model.text("Follow the primary display")}</span>
-              </label>
+              <Switch
+                id={`${id}-primary`}
+                size="sm"
+                checked={followIntended}
+                disabled={disabled || (followIntended ? !primaryScreen?.enabled : !follow.enabled)}
+                onCheckedChange={(checked) => {
+                  const next = checked ? follow : primaryScreen;
+                  if (next) choose(next, `${id}-primary`);
+                }}
+              />
+              {/* Written at every width (2026-10-26: a narrow stage had dropped it, leaving a switch nobody could name). */}
+              <label htmlFor={`${id}-primary`} className="arrangement-follow-text">{model.text("Follow the primary display")}</label>
             </div>
           </div>
         )}

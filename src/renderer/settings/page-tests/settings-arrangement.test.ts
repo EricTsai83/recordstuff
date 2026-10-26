@@ -38,7 +38,7 @@ it("draws the screens where they stand, chooses one by click or arrow, and follo
   expect(radio("2").hasAttribute("data-primary")).toBe(true);
   // Following the primary marks the screen that holds the menu bar without checking it, and that screen is the Tab stop.
   expect(radio("primary").getAttribute("aria-checked")).toBe("true");
-  expect(radio("primary").labels[0]!.querySelector(".sr-only")!.textContent).toBe("Follow the primary display");
+  expect(radio("primary").labels[0]!.textContent).toBe("Follow the primary display");
   expect(radio("2").getAttribute("aria-checked")).toBe("false");
   expect(radio("2").hasAttribute("data-following")).toBe(true);
   expect(["1", "2"].map((id) => radio(id).tabIndex)).toEqual([-1, 0]);
