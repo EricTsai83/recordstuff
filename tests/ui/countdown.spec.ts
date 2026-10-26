@@ -69,8 +69,17 @@ test("C05–C06 the tick preference loads the page with its sound flag and a cha
   const replacing = host.application.waitForEvent("window", { predicate: next => next.url().includes("countdown.html") && next !== page });
   await host.evaluate(h => { h.overlay.show(3, { sound: false }); });
   const replaced = await replacing;
-  const second = await host.evaluate(h => { const window = h.overlayWindow(); return { url: window.webContents.getURL(), id: window.id }; });
-  expect.soft(second.id !== first.id && !new URL(second.url).searchParams.has(COUNTDOWN_SOUND_QUERY) && await eventually(() => page.isClosed()),
+  // Main finds the new window by its URL, which its webContents may not report yet when Playwright already has the page
+  // (the old one is gone by then): read once it does (macOS CI, 2026-10-27, as the fixtures' note of 2026-10-08).
+  let second: { url: string; id: number } | undefined;
+  await expect.poll(async () => {
+    second = await host.evaluate((h, before) => {
+      const window = h.overlayWindow();
+      return window && window.id !== before ? { url: window.webContents.getURL(), id: window.id } : undefined;
+    }, first.id);
+    return second !== undefined;
+  }, { timeout: 5000 }).toBe(true);
+  expect.soft(second!.id !== first.id && !new URL(second!.url).searchParams.has(COUNTDOWN_SOUND_QUERY) && await eventually(() => page.isClosed()),
     "C05 a different tick preference replaces the page, as only a load can change its flag").toBe(true);
   await expect.poll(async () => (await faces(replaced)).front).toBe("3");
   await host.evaluate(h => h.overlay.close());
