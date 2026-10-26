@@ -2801,7 +2801,8 @@
     position: relative;
     height: 40px;
     flex: none;
-    border-radius: 2px;
+    /* Square, as every edge of the timeline and of its selection (2026-10-27, the maintainer's review). */
+    border-radius: 0;
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--input);
     overflow: hidden;
@@ -2868,12 +2869,14 @@
     left: calc(var(--from) * 100%);
     width: calc((var(--to) - var(--from)) * 100%);
     z-index: 4;
-    border-radius: 5px;
+    border-radius: 0;
     pointer-events: none;
   }
   .editor-selection {
     background: color-mix(in oklab, var(--media-foreground) 18%, transparent);
-    box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px color-mix(in oklab, var(--media) 22%, transparent),
+    /* Its dark hair at 40%: the top edge lies on the pictures' first row, where the white is lost on bright pictures and
+       the hair above it on the panel was all that showed (the maintainer's report of 2026-10-27, at 22% too faint). */
+    box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px color-mix(in oklab, var(--media) 40%, transparent),
       0 2px 8px color-mix(in oklab, var(--media) 20%, transparent);
   }
   /* The light theme draws it as the dark one shows it, a darker block under the white frame (2026-10-27, the
@@ -2929,10 +2932,6 @@
     background: color-mix(in oklab, var(--foreground) 12%, transparent);
     pointer-events: none;
   }
-  .editor-camera-lane:not(:has(+ .editor-camera-lane)) {
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
-  }
   .editor-camera-lane:not(:has(+ .editor-camera-lane))::before {
     border-bottom: 1px solid var(--lane-edge);
   }
@@ -2947,7 +2946,7 @@
     padding: 0 6px;
     overflow: hidden;
     border: 0;
-    border-radius: 4px;
+    border-radius: 0;
     background: color-mix(in oklab, var(--foreground) 11%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
     color: var(--foreground);
@@ -3261,10 +3260,10 @@
   }
   /* Grey in the light theme (2026-10-27, the maintainer's review: white over the light lanes was hard to see). */
   :root:not(.dark) .editor-playhead line {
-    stroke: var(--muted-foreground);
+    stroke: color-mix(in oklab, var(--muted-foreground) 60%, var(--background));
   }
   :root:not(.dark) .editor-playhead-cap {
-    fill: var(--muted-foreground);
+    fill: color-mix(in oklab, var(--muted-foreground) 60%, var(--background));
   }
   .editor-note-mark {
     background: var(--warning);
