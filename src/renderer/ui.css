@@ -3632,6 +3632,36 @@
     display: grid;
     gap: 10px;
   }
+  /* An editable recording's options side by side where the window is wide enough (2026-10-26, the maintainer's request:
+     in one column they stood taller than a short window): Skimming, the lanes and Revert on the left, the camera and
+     the sounds on the right, about as tall as each other; narrower, one column as before. The popup never stands taller
+     than the room it has, and scrolls inside rather than being cut off. */
+  @media (min-width: 720px) {
+    .editor-options:has(> .editor-scene:not(.editor-lanes)) {
+      grid-template-columns: 260px 324px;
+      grid-template-areas: "skim scene" "lanes scene" "revert scene";
+      align-items: start;
+      column-gap: 24px;
+      max-width: none;
+    }
+    .editor-options > .editor-options-skim {
+      grid-area: skim;
+    }
+    .editor-options > .editor-lanes {
+      grid-area: lanes;
+    }
+    .editor-options > .editor-options-revert {
+      grid-area: revert;
+    }
+    .editor-options > .editor-scene:not(.editor-lanes) {
+      grid-area: scene;
+      align-self: stretch;
+      padding-top: 0;
+      padding-inline-start: 24px;
+      border-top: 0;
+      border-inline-start: 1px solid var(--border);
+    }
+  }
   /* The export's toast (2026-10-26) over the stage's foot, inside the edit view rather than the window's corner. */
   .editor-stage [data-sonner-toaster] {
     position: absolute !important;

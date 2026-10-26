@@ -875,6 +875,26 @@ test("a selection's actions float over the line above the timeline, words where 
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
   await expect(page.locator("#editor-camera")).toBeVisible();
+  // Options side by side where the window is wide, one column where it is narrow; never taller than the window, never
+  // wider than its content (the maintainer's request of 2026-10-26: one column stood taller than a short window).
+  for (const [w, h, columns] of [[960, 520, 2], [560, 520, 1]] as Array<[number, number, number]>) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(300);
+    await page.locator("#editor-options").click();
+    const popup = page.locator("#editor-options-popup");
+    await expect(popup).toBeVisible();
+    await page.waitForTimeout(250);
+    const fit = await popup.evaluate((element) => {
+      const box = element.getBoundingClientRect(), grid = element.querySelector(".editor-options")!;
+      return { top: box.top, bottom: box.bottom, overflowX: element.scrollWidth - element.clientWidth, columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length };
+    });
+    expect(fit.top).toBeGreaterThanOrEqual(0);
+    expect(fit.bottom).toBeLessThanOrEqual(h);
+    expect(fit.overflowX).toBeLessThanOrEqual(0);
+    expect(fit.columns).toBe(columns);
+    await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
+  }
   for (const width of [960, 560, 420]) {
     await page.setViewportSize({ width, height: 760 });
     await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));

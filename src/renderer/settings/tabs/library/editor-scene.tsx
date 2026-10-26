@@ -382,7 +382,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
             <span className="editor-tool-label">{name}</span>
           </PopoverTrigger>
         </ControlTooltip>
-        <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={name}>
+        <PopoverContent side="top" align="start" id="editor-options-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={name}>
           <div className="editor-options" role="group" aria-label={name}>
             {/* Skimming, off by default (2026-10-26), and what it does under its switch. */}
             <div className="editor-options-skim">
@@ -538,7 +538,7 @@ export function VolumeButton({ editor }: { editor: EditorView }) {
           <Kbd aria-hidden="true">V</Kbd>
         </PopoverTrigger>
       </ControlTooltip>
-      <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={model.text("Volume of the selection")}>
+      <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={model.text("Volume of the selection")}>
         {target && (
           <div className="editor-options editor-volume-options" role="group" aria-label={model.text("Volume of the selection")}>
             <p className="editor-keys-title">
