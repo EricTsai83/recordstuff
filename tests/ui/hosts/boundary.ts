@@ -302,6 +302,11 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
       if (!muted) violate("audio:unmute", `web contents ${contents.id} asked to unmute`);
       setAudioMuted(true);
     };
+    // Muted again as each page starts and is ready: muted as it is made, before it has a renderer, a page has now and
+    // then come up unmuted all the same, and the audit at the end found it (macOS CI, 2026-10-27).
+    const remute = (): void => { if (!contents.isDestroyed()) setAudioMuted(true); };
+    contents.on("did-start-loading", remute);
+    contents.on("dom-ready", remute);
   });
   electron.app.on("browser-window-created", (_event, window) => {
     if (!(window instanceof ContainedWindow)) violate("window:uncontained", `window ${window.id} was not made through the boundary`);
