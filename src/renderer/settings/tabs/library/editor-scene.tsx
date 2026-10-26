@@ -470,20 +470,28 @@ function OptionInfo({ id, text }: { id: string; text: string }) {
  * the export applies them all the same.
  */
 function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene }) {
-  const lanes: Array<{ lane: model.Lane; name: string; held: number }> = [
-    ...(editor.editable?.camera && scene.camera ? [{ lane: "camera" as const, name: model.text("Camera"), held: cameraStretches(scene.camera, editor.duration).length }] : []),
-    ...model.volumeInputs(editor).map((input) => ({ lane: input, name: model.text(input === "system" ? "System audio" : "Microphone"), held: volumeStretchesOf(scene, input).length })),
+  // Each named as a track of the timeline, so the switches read as showing a track, not as the camera or a sound
+  // themselves (2026-10-27, the maintainer's review).
+  const lanes: Array<{ lane: model.Lane; name: string; track: string; held: number }> = [
+    ...(editor.editable?.camera && scene.camera ? [{ lane: "camera" as const, name: model.text("Camera"), track: model.text("Camera track"), held: cameraStretches(scene.camera, editor.duration).length }] : []),
+    ...model.volumeInputs(editor).map((input) => ({
+      lane: input, name: model.text(input === "system" ? "System audio" : "Microphone"),
+      track: model.text(input === "system" ? "System audio track" : "Microphone track"), held: volumeStretchesOf(scene, input).length,
+    })),
   ];
   if (lanes.length === 0) return null;
   return (
-    <div className="editor-options-group editor-lanes" role="group" aria-label={model.text("Lanes on the timeline")}>
-      <p className="editor-options-title">{model.text("Lanes on the timeline")}</p>
-      {lanes.map(({ lane, name, held }) => {
+    <div className="editor-options-group editor-lanes" role="group" aria-label={model.text("Show on the timeline")}>
+      <div className="editor-scene-row editor-options-title-row">
+        <p className="editor-options-title">{model.text("Show on the timeline")}</p>
+        <OptionInfo id="editor-lanes-note" text={model.text("Only what the timeline shows: a hidden track is still exported.")} />
+      </div>
+      {lanes.map(({ lane, name, track, held }) => {
         const shown = model.laneShown(lane);
         return (
           <div key={lane} className="editor-options-skim">
             <div className="editor-scene-row">
-              <label htmlFor={`editor-lane-${lane}`}>{name}</label>
+              <label htmlFor={`editor-lane-${lane}`}>{track}</label>
               {/* Named in full for assistive technology, which would otherwise hear two controls named as an input; in the
                   app's own colours, as every switch is (2026-10-27, the maintainer's review: a grey one read as another kind). */}
               <Switch id={`editor-lane-${lane}`} checked={shown} aria-label={translate("Show the {name} lane", model.view?.language, { name })}

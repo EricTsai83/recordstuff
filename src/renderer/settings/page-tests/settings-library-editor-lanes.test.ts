@@ -71,6 +71,9 @@ it("hides a lane from Options, remembers it for the next view, says what it stil
   click(document.getElementById("editor-options")!);
   await vi.waitFor(() => expect(document.getElementById("editor-lane-microphone")).not.toBeNull());
   expect(document.getElementById("editor-lane-microphone-note")).toBeNull();
+  // Named as the timeline's tracks, under what they do (2026-10-27, the maintainer's review).
+  expect(document.querySelector("#editor-options-popup .editor-lanes .editor-options-title")!.textContent).toBe("Show on the timeline");
+  expect(document.querySelector('label[for="editor-lane-microphone"]')!.textContent).toBe("Microphone track");
   click(document.getElementById("editor-lane-microphone")!);
   await vi.waitFor(() => expect(lanes()).toEqual(["camera"]));
   // Remembered for the next run of the app.
