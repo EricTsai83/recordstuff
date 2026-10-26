@@ -1,8 +1,8 @@
 //! The rendered export's pictures and sound on macOS (plan 087, edit/render.rs): VideoToolbox decodes the screen and
 //! the camera into IOSurface-backed 4:2:0 pictures, the recording's Metal compositor (compositor.rs) composes the
 //! camera's newest decoded picture onto each screen picture where the edit placed its bubble, and the recording's H.264
-//! encoder (video.rs), not in real time, at the source's level, encodes the result. A camera left out skips the
-//! compositor: the screen's own picture is encoded. Pictures in flight in the encoder are bounded, so decoding never
+//! encoder (video.rs), not in real time, at the source's level, encodes the result. A camera left out, throughout or
+//! over a stretch the edit hides it in, skips the compositor: the screen's own picture is encoded. Pictures in flight in the encoder are bounded, so decoding never
 //! runs far ahead of it. Sound uses 085's AAC decoder and the recording's AAC encoder (edit.rs, audio.rs).
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -151,7 +151,7 @@ impl VideoRender for MacVideo {
         Ok(())
     }
 
-    fn screen(&mut self, data: &[u8], out_ns: Option<u64>) -> Result<(), String> {
+    fn screen(&mut self, data: &[u8], out_ns: Option<u64>, with_camera: bool) -> Result<(), String> {
         self.decoded += 1;
         let picture = Self::decode(&self.screen, data, self.decoded, out_ns.is_some())?;
         let (Some(at), Some(picture)) = (out_ns, picture) else {
@@ -161,7 +161,7 @@ impl VideoRender for MacVideo {
         self.encoded.wait_below(IN_FLIGHT)?;
         self.encoded.state.lock().unwrap().in_flight += 1;
         let key = std::mem::replace(&mut self.first, false);
-        match self.composed.as_ref() {
+        match self.composed.as_ref().filter(|_| with_camera) {
             Some((compositor, _)) => {
                 let composed = compositor.compose(&picture, at)?;
                 self.encoder.encode(&composed, at, key)

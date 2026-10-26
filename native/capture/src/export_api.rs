@@ -48,6 +48,9 @@ pub struct ExportRequest {
 pub struct ExportRender {
     /// The camera's bubble, in the camera layout's fractions (src/shared/camera-layout.ts); absent leaves it out.
     pub camera: Option<ExportCamera>,
+    /// Where the bubble is left out though composed elsewhere (2026-10-26), in the video's timescale on the
+    /// recording's own clock; absent or empty, it is composed throughout.
+    pub camera_hidden: Option<Vec<ExportRange>>,
     /// Each sound track's volume in dB, in the file's order (the Studio's faders, src/shared/audio-volume.ts).
     pub volumes_db: Vec<f64>,
 }
@@ -185,10 +188,14 @@ fn parse(request: ExportRequest) -> Result<Parsed> {
         Some("keyFrame") => JoinPolicy::KeyFrame,
         Some(other) => return Err(failure("invalid_range", format!("join {other}"))),
     };
-    let render = request.render.map(|render| RenderOptions {
-        camera: render.camera.map(|c| Layout { width: c.width, height: c.height, rounding: c.rounding, x: c.x, y: c.y, mirror: c.mirror }.clamped()),
-        gains: render.volumes_db.iter().map(|&db| gain_factor(db)).collect(),
-    });
+    let render = match request.render {
+        Some(render) => Some(RenderOptions {
+            camera: render.camera.map(|c| Layout { width: c.width, height: c.height, rounding: c.rounding, x: c.x, y: c.y, mirror: c.mirror }.clamped()),
+            camera_hidden: render.camera_hidden.unwrap_or_default().iter().map(|r| Ok((tick(r.from)?, tick(r.to)?))).collect::<Result<Vec<_>>>()?,
+            gains: render.volumes_db.iter().map(|&db| gain_factor(db)).collect(),
+        }),
+        None => None,
+    };
     Ok(Parsed { source: PathBuf::from(request.source), output: request.output.map(PathBuf::from), removed, policy, render })
 }
 

@@ -1,5 +1,6 @@
 //! The rendered export of an editable recording (plan 087): the screen and the camera decoded, the camera's bubble
-//! composed onto the screen where the edit placed it (or left out), every kept picture encoded again, and the sound
+//! composed onto the screen where the edit placed it (or left out, throughout or over the stretches the edit hides it
+//! in, 2026-10-26), every kept picture encoded again, and the sound
 //! tracks decoded, mixed at the edit's volumes, cut by its removed ranges with faded joins and encoded as one track,
 //! into a new file. 085's remux copies a recording's pictures and sound; nothing can be copied here, since the picture
 //! itself changes, so every kept picture is re-encoded and no join waits for a key frame.
@@ -44,6 +45,9 @@ const DEFAULT_AUDIO_BITRATE: u32 = 256_000;
 pub struct RenderOptions {
     /// The camera's bubble (the edit's place and size, the recording's shape), or None to leave the camera out.
     pub camera: Option<Layout>,
+    /// Where the bubble is left out though `camera` is given: `[from, to)` in the video's timescale on the recording's
+    /// own clock. A picture whose time falls in one is the screen's alone, and no camera picture is decoded for it.
+    pub camera_hidden: Vec<(u64, u64)>,
     /// Each sound track's volume as a linear factor, in the file's order; a missing one is 1.
     pub gains: Vec<f32>,
 }
@@ -62,9 +66,9 @@ pub trait Renderer {
 pub trait VideoRender {
     /// Decodes a camera sample; the last one decoded is composed from then on.
     fn camera(&mut self, data: &[u8]) -> Result<(), String>;
-    /// Decodes a screen sample; with `out_ns`, composes its picture with the camera's and encodes it at that time.
-    /// Without, the picture is only a reference for the next ones.
-    fn screen(&mut self, data: &[u8], out_ns: Option<u64>) -> Result<(), String>;
+    /// Decodes a screen sample; with `out_ns`, composes its picture with the camera's (unless `with_camera` is false:
+    /// the screen's own picture) and encodes it at that time. Without, the picture is only a reference for the next ones.
+    fn screen(&mut self, data: &[u8], out_ns: Option<u64>, with_camera: bool) -> Result<(), String>;
     /// What has been encoded so far, in order: `Media::VideoFormat` once, then `Media::Video`.
     fn take(&mut self) -> Result<Vec<Media>, String>;
     /// Every picture encoded, then what is left.
@@ -206,6 +210,11 @@ fn ns_from_ticks(ticks: u64, timescale: u32) -> u64 {
 
 fn ticks_from_ns(ns: u64, timescale: u32) -> u64 {
     (u128::from(ns) * u128::from(timescale) / u128::from(NANOS_PER_SECOND)) as u64
+}
+
+/// Whether `time` falls in one of the stretches the camera is hidden over.
+fn hidden_at(hidden: &[(u64, u64)], time: u64) -> bool {
+    hidden.iter().any(|&(from, to)| time >= from && time < to)
 }
 
 /// The camera picture shown at `time`: the last one captured at or before it.
@@ -493,10 +502,12 @@ fn render(
         let key = key_before(screen, part.first);
         remux::for_each_sample(source, &screen.samples, key, part.end, &mut |frame, data| {
             if frame < part.first {
-                return video.screen(data, None).map_err(encode);
+                return video.screen(data, None, false).map_err(encode);
             }
             let time = screen.times[frame];
-            if let Some((track, _)) = camera
+            let with_camera = camera.is_some() && !hidden_at(&options.camera_hidden, time);
+            if with_camera
+                && let Some((track, _)) = camera
                 && let Some(wanted) = camera_at(track, time)
                 && camera_shown != Some(wanted)
             {
@@ -511,7 +522,7 @@ fn render(
                 camera_shown = Some(wanted);
             }
             let out = part.out_start + (time - part.start);
-            video.screen(data, Some(ns_from_ticks(out, timescale))).map_err(encode)?;
+            video.screen(data, Some(ns_from_ticks(out, timescale)), with_camera).map_err(encode)?;
             let encoded = video.take().map_err(encode)?;
             output.take(encoded)?;
             if let Some(sound) = sound.as_mut() {
@@ -580,18 +591,19 @@ mod tests {
             self.camera = Some(data.to_vec());
             Ok(())
         }
-        fn screen(&mut self, data: &[u8], out_ns: Option<u64>) -> Result<(), String> {
+        fn screen(&mut self, data: &[u8], out_ns: Option<u64>, with_camera: bool) -> Result<(), String> {
             let Some(at) = out_ns else {
                 self.calls.lock().unwrap().references.push(data.to_vec());
                 return Ok(());
             };
-            self.calls.lock().unwrap().composed.push((data.to_vec(), self.camera.clone()));
+            let camera = self.camera.clone().filter(|_| with_camera);
+            self.calls.lock().unwrap().composed.push((data.to_vec(), camera.clone()));
             if !std::mem::replace(&mut self.format_sent, true) {
                 let Codec::H264 { avcc, .. } = crate::mux::mp4::tests::video_config().codec else { unreachable!() };
                 self.pending.push(Media::VideoFormat { avcc, width: 64, height: 36 });
             }
             let mut sample = data.to_vec();
-            sample.extend(self.camera.clone().unwrap_or_default());
+            sample.extend(camera.unwrap_or_default());
             self.pending.push(Media::Video { data: sample, pts_ns: at, sync: self.pending.len() <= 1 });
             Ok(())
         }
@@ -669,7 +681,8 @@ mod tests {
     fn each_kept_picture_is_composed_with_the_camera_picture_of_its_time_and_a_cut_decodes_from_key_frames() {
         let layout = Layout::default();
         // Frames 10 to 39 removed (3000 ticks a frame): the second part resumes at frame 40, inside its second's group.
-        let (result, calls, path) = rendered("composed", &[(30_000, 120_000)], RenderOptions { camera: Some(layout), gains: vec![1.0, 1.0] }, false);
+        let (result, calls, path) =
+            rendered("composed", &[(30_000, 120_000)], RenderOptions { camera_hidden: Vec::new(), camera: Some(layout), gains: vec![1.0, 1.0] }, false);
         let (_, frames) = result.unwrap();
         assert_eq!(calls.camera_asked, Some(layout));
         // 60 pictures less the 30 removed.
@@ -691,7 +704,7 @@ mod tests {
 
     #[test]
     fn a_hidden_camera_is_neither_decoded_nor_composed() {
-        let (result, calls, path) = rendered("hidden", &[], RenderOptions { camera: None, gains: vec![1.0, 1.0] }, false);
+        let (result, calls, path) = rendered("hidden", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] }, false);
         result.unwrap();
         assert_eq!(calls.camera_asked, None);
         assert!(calls.cameras.is_empty() && calls.composed.iter().all(|(_, camera)| camera.is_none()));
@@ -700,9 +713,34 @@ mod tests {
     }
 
     #[test]
+    fn a_camera_hidden_over_a_stretch_is_left_out_of_its_pictures_only_and_comes_back_after() {
+        // Pictures 20–39 (0.67–1.33 s at 30 fps, 3000 ticks apart) hidden; a cut over 10–15 keeps the stretch on the
+        // recording's own clock, not the export's.
+        let layout = Layout { x: 0.0, y: 1.0, ..Layout::default() };
+        let options = RenderOptions { camera: Some(layout), camera_hidden: vec![(60_000, 120_000)], gains: vec![1.0, 1.0] };
+        let (result, calls, path) = rendered("hidden-stretch", &[(30_000, 45_000)], options, false);
+        result.unwrap();
+        assert_eq!(calls.camera_asked, Some(layout));
+        assert!(!calls.composed.is_empty());
+        for (screen, camera) in &calls.composed {
+            let n = screen[1];
+            if (20..40).contains(&n) {
+                assert_eq!(camera, &None, "picture {n} is in the hidden stretch");
+            } else {
+                assert_eq!(camera.as_deref(), Some(&[4, n][..]), "picture {n} has its own camera picture");
+            }
+        }
+        // No camera picture is decoded for the hidden stretch's own pictures alone: past it, decoding resumes from the
+        // camera's key frame before picture 40 (or after the last one shown), never every picture in between.
+        assert!(!calls.cameras.iter().any(|c| (20..30).contains(&c[1])), "{:?}", calls.cameras.iter().map(|c| c[1]).collect::<Vec<_>>());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn the_sound_is_each_track_at_its_volume_faded_across_a_join() {
         // The system's sound (0.02) at half, the microphone's (0.03) at twice: 0.07 wherever no fade applies.
-        let (result, calls, path) = rendered("mixed", &[(30_000, 60_000)], RenderOptions { camera: None, gains: vec![0.5, 2.0] }, false);
+        let (result, calls, path) =
+            rendered("mixed", &[(30_000, 60_000)], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![0.5, 2.0] }, false);
         result.unwrap();
         let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
         // 1.67 s kept at 48 kHz.
@@ -726,7 +764,7 @@ mod tests {
 
     #[test]
     fn a_muted_track_is_left_out_and_the_other_plays_alone() {
-        let (result, calls, path) = rendered("muted", &[], RenderOptions { camera: None, gains: vec![0.0, 1.0] }, false);
+        let (result, calls, path) = rendered("muted", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 1.0] }, false);
         result.unwrap();
         // The microphone's 0.03 alone while its track lasts (94,144 frames), silence after.
         let (heard, after) = calls.mixed.split_at(94_144 * 2);
@@ -737,7 +775,7 @@ mod tests {
 
     #[test]
     fn a_cancel_stops_it_and_removing_everything_or_a_plain_recording_is_refused() {
-        let (result, _, path) = rendered("cancel", &[], RenderOptions { camera: None, gains: vec![] }, true);
+        let (result, _, path) = rendered("cancel", &[], RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![] }, true);
         assert_eq!(result.unwrap_err().code, "cancelled");
         std::fs::remove_file(&path).unwrap();
 
@@ -747,7 +785,7 @@ mod tests {
         let plain = temp("plain-source");
         std::fs::write(&plain, crate::edit::remux::tests::recording(2)).unwrap();
         let output = temp("plain-output");
-        let options = RenderOptions { camera: None, gains: vec![] };
+        let options = RenderOptions { camera_hidden: Vec::new(), camera: None, gains: vec![] };
         let error = export(&plain, &output, &[], &options, &mut FakeRenderer(Arc::default()), &mut |_| {}, &AtomicBool::new(false)).err().unwrap();
         assert_eq!(error.code, "unsupported");
         assert!(!output.exists(), "nothing is created for a refused export");
@@ -802,7 +840,7 @@ mod tests {
         let plan = render_plan(&index, &[]).unwrap();
         let calls = Arc::new(Mutex::new(Calls::default()));
         let path = temp("interrupted");
-        let options = RenderOptions { camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
+        let options = RenderOptions { camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
         let (_, frames) =
             render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &AtomicBool::new(false))
                 .unwrap();
