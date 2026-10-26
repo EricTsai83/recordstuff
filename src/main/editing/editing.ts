@@ -32,6 +32,7 @@ import { defaultScene, exportRender, fitScene, parseEditableDescription, sameSce
 import { fileResponse } from "../lib/file-response";
 import { editRecord, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
 import { ExportFailure } from "./export-host";
+import { SerialQueue } from "../lib/serial-queue";
 
 /** Why an export cannot start now. */
 export type ExportBlock = "recording" | "preview" | "saving" | "quitting";
@@ -827,25 +828,22 @@ export class Editing {
     void this.deps.store.folderMoved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edits in ${from} did not follow it to ${to}: ${String(cause)}`));
   }
 
-  private journalling: Promise<void> = Promise.resolve();
+  private readonly journalling = new SerialQueue();
 
   /**
    * At launch, before anything else touches the journal: what a crash left is removed, in the journal's own queue, so
    * an export started meanwhile is journalled after it and never lost from it.
    */
   removeLeftovers(): Promise<void> {
-    const cleaning = this.journalling.then(async () => { await removeLeftovers(this.deps.journal, this.deps.log, this.files); });
-    this.journalling = cleaning.catch((cause: unknown) => this.deps.log(`editing: leftover exports not checked: ${String(cause)}`));
-    return this.journalling;
+    return this.journalling.run(async () => { await removeLeftovers(this.deps.journal, this.deps.log, this.files); })
+      .catch((cause: unknown) => this.deps.log(`editing: leftover exports not checked: ${String(cause)}`));
   }
 
   private journal(change: (entries: JournalEntry[]) => JournalEntry[]): Promise<void> {
-    const write = this.journalling.then(async () => {
+    return this.journalling.run(async () => {
       const entries = change(await readJournal(this.deps.journal));
       await writeFileAtomic(this.deps.journal, `${JSON.stringify(entries)}\n`, { syncDirectory: true });
     });
-    this.journalling = write.catch(() => undefined);
-    return write;
   }
 
   /** What the view says about a failed inspection or export, by its code. */

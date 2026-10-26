@@ -16,6 +16,7 @@ import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { MAX_EDIT_RANGES, normalizeRanges, type EditRange } from "../../shared/editing";
 import { isEditScene, type EditScene } from "../../shared/editable";
+import { SerialQueue } from "../lib/serial-queue";
 
 /**
  * The newest record this version writes. Version 1 (plan 085) holds the cuts; version 2 (plan 087) adds an editable
@@ -129,7 +130,7 @@ export function parseRecord(text: string): EditRecord | { reason: string } {
 
 export class EditStore {
   /** Writes in order, one record at a time: a later save never lands before an earlier one. */
-  private queue: Promise<void> = Promise.resolve();
+  private readonly queue = new SerialQueue();
   /**
    * The recordings that hold an edit, by path, with the size their record was made for (2026-10-26, the maintainer's
    * request: the Recordings tab marks an edited recording and offers Continue editing…). Read from the folder once by
@@ -145,9 +146,7 @@ export class EditStore {
    * 2026-10-26).
    */
   scan(): Promise<void> {
-    const run = this.queue.then(() => this.scanNow());
-    this.queue = run.catch(() => undefined);
-    return run;
+    return this.queue.run(() => this.scanNow());
   }
 
   private async scanNow(): Promise<void> {
@@ -215,17 +214,19 @@ export class EditStore {
   save(record: EditRecord): Promise<void> {
     const file = this.fileFor(record.source.path);
     const text = `${JSON.stringify(record, null, 2)}\n`;
-    const write = this.queue.then(() => writeFileAtomic(file, text, { syncDirectory: true })).then(() => this.note(record));
-    this.queue = write.catch(() => undefined);
-    return write;
+    return this.queue.run(async () => {
+      await writeFileAtomic(file, text, { syncDirectory: true });
+      this.note(record);
+    });
   }
 
   /** Removes the edit for `source` (Discard): only the record, never the recording. */
   discard(source: string): Promise<void> {
     const file = this.fileFor(source);
-    const remove = this.queue.then(() => fs.promises.rm(file, { force: true })).then(() => { this.index.delete(path.resolve(source)); });
-    this.queue = remove.catch(() => undefined);
-    return remove;
+    return this.queue.run(async () => {
+      await fs.promises.rm(file, { force: true });
+      this.index.delete(path.resolve(source));
+    });
   }
 
   /**

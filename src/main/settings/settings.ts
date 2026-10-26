@@ -31,7 +31,7 @@ import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "..
 import { stableVersion } from "../../shared/version";
 import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
-import { drainQueue } from "../lib/drain-queue";
+import { SerialQueue } from "../lib/serial-queue";
 import { errnoCode } from "../lib/errors";
 
 export const SETTINGS_VERSION = 4;
@@ -283,7 +283,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
 export class SettingsStore {
   private settings: Settings;
   /** Writes are serialized: each next value is built from the last committed one (review F2). */
-  private queue: Promise<void> = Promise.resolve();
+  private readonly queue = new SerialQueue();
   private readonly filePath: string;
   private readonly log: (message: string) => void;
   private readonly platform: NodeJS.Platform;
@@ -573,18 +573,16 @@ export class SettingsStore {
    * later saves still run from the last committed settings.
    */
   private save(update: (current: Settings) => Settings): Promise<void> {
-    const run = this.queue.then(async () => {
+    return this.queue.run(async () => {
       const next = update(this.settings);
       await this.write(next);
       this.settings = next;
     });
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 
   /** Wait for every previously accepted save before quitting. */
   async flush(): Promise<void> {
-    await drainQueue(() => this.queue);
+    await this.queue.drain();
   }
 
   private load(defaultOutputDir: string): Settings {

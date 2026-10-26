@@ -1,4 +1,5 @@
 import type { CameraDevice, MicrophoneDevice } from "../../shared/protocol";
+import { SerialQueue } from "../lib/serial-queue";
 
 export interface DeviceListsDeps {
   /** The engine's listings (native-capture-host.ts); each asks `allowed` again once its process is ready. */
@@ -24,7 +25,7 @@ export class DeviceLists {
   cameras: readonly CameraDevice[] | undefined;
   /** Settings' Search for devices is running: its button reads Searching…. */
   searching = false;
-  private turns: Promise<void> = Promise.resolve();
+  private readonly turns = new SerialQueue();
   private listingMicrophones: Promise<void> | undefined;
   private listingCameras: Promise<void> | undefined;
 
@@ -71,10 +72,8 @@ export class DeviceLists {
   }
 
   private inTurn(list: () => Promise<void>): Promise<void> {
-    const run = this.turns.then(list);
     // A listing that fails is its own caller's to report; the next one still takes its turn.
-    this.turns = run.catch(() => undefined);
-    return run;
+    return this.turns.run(list);
   }
 }
 

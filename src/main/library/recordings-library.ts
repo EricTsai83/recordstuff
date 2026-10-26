@@ -33,6 +33,7 @@ import { retryWhileHeldOpen } from "../lib/held-open";
 import { fileResponse } from "../lib/file-response";
 export { parseRange } from "../lib/file-response";
 import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
+import { SerialQueue } from "../lib/serial-queue";
 
 export const MEDIA_SCHEME = "recordstuff-media";
 /**
@@ -677,13 +678,11 @@ export class RecordingsLibrary {
    * cannot replace the folder the first just made. Another app making that name in the instant between the look and the
    * rename can still lose an empty folder, which Node offers no exclusive rename to prevent.
    */
-  private folderQueue: Promise<unknown> = Promise.resolve();
+  private readonly folderQueue = new SerialQueue();
   /** Settles once a folder rename and its waiting recordings' new paths are done. */
   private folderRenaming: Promise<void> | undefined;
   private queued<T>(run: () => Promise<T>): Promise<T> {
-    const next = this.folderQueue.then(run, run);
-    this.folderQueue = next.catch(() => undefined);
-    return next;
+    return this.folderQueue.run(run);
   }
 
   /** Makes a new, empty subfolder of the output folder (plan 071); never one that is already there. */

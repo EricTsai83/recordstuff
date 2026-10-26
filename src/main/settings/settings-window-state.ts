@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
-import { drainQueue } from "../lib/drain-queue";
+import { SerialQueue } from "../lib/serial-queue";
 import { errnoCode } from "../lib/errors";
 
 export interface WindowSize { width: number; height: number }
@@ -34,7 +34,7 @@ function validZoom(value: unknown): value is number {
 
 /** UI geometry is independent of recording preferences and their write queue. */
 export class SettingsWindowState {
-  private queue: Promise<void> = Promise.resolve();
+  private readonly queue = new SerialQueue();
   private current: WindowSize = { ...DEFAULT_SETTINGS_SIZE };
   /** The size the file holds, which an older default may keep from opening the window: a zoom saved alone keeps it. */
   private stored: WindowSize | undefined;
@@ -97,7 +97,7 @@ export class SettingsWindowState {
   private write(what: string): void {
     const snapshot = { layout: LAYOUT, ...(this.stored ? { width: this.stored.width, height: this.stored.height } : {}),
       ...(this.place ? { x: this.place.x, y: this.place.y } : {}), ...(this.currentZoom !== 1 ? { zoom: this.currentZoom } : {}) };
-    this.queue = this.queue.then(async () => {
+    void this.queue.run(async () => {
       if (this.newerOnDisk) throw new Error("Window state is from a newer app version; refusing to overwrite it");
       if (this.resetPending && !this.backedUp) { await keepFile(this.file, "reset-backup"); this.backedUp = true; }
       await writeFileAtomic(this.file, JSON.stringify(snapshot));
@@ -106,7 +106,7 @@ export class SettingsWindowState {
       .catch(error => this.log(`settings window: ${what} save failed: ${String(error)}`));
   }
   async flush(): Promise<void> {
-    await drainQueue(() => this.queue);
+    await this.queue.drain();
   }
 }
 

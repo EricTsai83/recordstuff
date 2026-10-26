@@ -9,6 +9,7 @@
  * sees it exit and removes the export's unfinished file. The recording is opened read-only by the engine.
  */
 import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
+import { SerialQueue } from "../lib/serial-queue";
 
 interface NativeExport {
   inspect(request: ExportRequest & { join?: string }): Promise<ExportPlan>;
@@ -42,7 +43,7 @@ export function failureOf(cause: unknown): { code: ExportFailureCode; detail: st
 
 export class ExportWorker {
   /** One request at a time; a second waits for the first. */
-  private queue: Promise<void> = Promise.resolve();
+  private readonly queue = new SerialQueue();
   /** The export whose progress is reported, while one runs. */
   private exporting: number | undefined;
 
@@ -63,28 +64,25 @@ export class ExportWorker {
       case "ping": this.send({ type: "pong", id: message.id }); return;
       case "cancel": this.engine.cancel(); return;
       case "inspect": case "export": {
-        const run = this.queue.then(() => this.serve(message));
-        this.queue = run.catch(() => undefined);
+        void this.queue.run(() => this.serve(message));
         return;
       }
       case "extract": {
         const { id, request } = message;
-        const run = this.queue.then(async () => {
+        void this.queue.run(async () => {
           try { this.send({ type: "extracted", id, bytes: await this.engine.extract(request.source, request.track, request.output) }); }
           catch (cause) { this.send({ type: "failed", id, ...failureOf(cause) }); }
         });
-        this.queue = run.catch(() => undefined);
         return;
       }
       case "copy": {
         if (!this.bench || !this.engine.streamCopy) return;
         const { id, request } = message;
         const copy = this.engine.streamCopy;
-        const run = this.queue.then(async () => {
+        void this.queue.run(async () => {
           try { this.send({ type: "copied", id, bytes: await copy.call(this.engine, request.source, request.output) }); }
           catch (cause) { this.send({ type: "failed", id, ...failureOf(cause) }); }
         });
-        this.queue = run.catch(() => undefined);
         return;
       }
     }
