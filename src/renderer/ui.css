@@ -2776,6 +2776,15 @@
     min-height: 200px;
     width: 100%;
   }
+  /* The player's stage at the recording's shape (2026-10-26): the largest box of that shape the window holds below its
+     title bar, never narrower than its controls need (a portrait recording in a short window is then letterboxed
+     inside). `--player-ratio` is the page's (dialogs.tsx). */
+  .player {
+    --player-room-w: calc(100vw - 2 * var(--dialog-margin));
+    --player-room-h: calc(100dvh - 2 * var(--dialog-margin) - var(--dialog-top-reserve));
+    --player-w: min(var(--player-room-w), max(min(320px, var(--player-room-w)), calc(var(--player-room-h) * var(--player-ratio, 16 / 9))));
+    --player-h: min(var(--player-room-h), calc(var(--player-w) / var(--player-ratio, 16 / 9)));
+  }
   .editor-panel {
     display: flex;
     flex-direction: column;

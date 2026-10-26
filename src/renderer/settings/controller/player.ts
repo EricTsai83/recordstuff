@@ -7,6 +7,15 @@ import { forgetMenu } from "./library";
 
 export let playingItem: LibraryItemView | undefined;
 export let playerError = "";
+/**
+ * The player's stage's width over its height, the recording's own (2026-10-26, the maintainer's choice: a fixed 16:9
+ * stage left a portrait recording a third of its width). Taken from the card's picture as the player opens, so the
+ * stage opens at its size, and from the video once its size is known when that differs.
+ */
+export let playerRatio = 16 / 9;
+const MIN_RATIO = 9 / 21, MAX_RATIO = 21 / 9;
+const fitRatio = (width: number, height: number): number | undefined =>
+  width > 0 && height > 0 ? Math.min(MAX_RATIO, Math.max(MIN_RATIO, width / height)) : undefined;
 export let playerVideo: HTMLVideoElement | null = null;
 export let fullScreenPending = false;
 let hideCount = 0;
@@ -21,6 +30,8 @@ export function attachVideo(video: HTMLVideoElement | null): void {
 /** Plays `item`, from `start` seconds when given (where its card's hover preview had reached). */
 export function openPlayer(item: LibraryItemView, start?: number): void {
   forgetMenu();
+  const picture = document.querySelector<HTMLImageElement>(`#clip-${CSS.escape(item.id)} img`);
+  playerRatio = (picture && fitRatio(picture.naturalWidth, picture.naturalHeight)) ?? 16 / 9;
   playingItem = item;
   playerError = "";
   clearFeedback();
@@ -38,6 +49,13 @@ export function closePlayer(restore = true): void {
   playingItem = undefined;
   draw();
   if (restore && id) focus(`clip-${id}-open`);
+}
+/** The video's own size, once known: the stage follows it when the card's picture said otherwise. */
+export function playerMetadata(video: HTMLVideoElement): void {
+  const ratio = fitRatio(video.videoWidth, video.videoHeight);
+  if (!playingItem || ratio === undefined || Math.abs(ratio - playerRatio) < 0.01) return;
+  playerRatio = ratio;
+  draw();
 }
 export function playerFailed(): void {
   if (!playingItem || !playerVideo?.getAttribute("src")) return;

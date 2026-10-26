@@ -178,10 +178,13 @@ export function PlayerDialog() {
     >
       <DialogContent
         keepMounted
-        // The player's stage: as wide as the window allows at 16:9, black in both themes, below the title bar on macOS.
-        // The backdrop only darkens; ui.css blurs the page under it (#root), which costs nothing per video frame.
+        // The player's stage: as large as the window allows at the recording's own shape (2026-10-26, formerly always
+        // 16:9), at least wide enough for its controls, black in both themes, below the title bar on macOS (ui.css
+        // `.player`). The backdrop only darkens; ui.css blurs the page under it (#root), which costs nothing per frame.
         overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
-        className="player aspect-video rounded-[14px] shadow-player ring-0 w-[min(calc(100vw-2*var(--dialog-margin)),calc((100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))*16/9))] max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
+        className="player rounded-[14px] shadow-player ring-0 max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
+        // Inline, so the dialog's own width utilities do not win over it.
+        style={{ "--player-ratio": model.playerRatio, width: "var(--player-w)", height: "var(--player-h)" } as React.CSSProperties}
         data-id={item?.id}
         showCloseButton={false}
         initialFocus={() => model.playerVideo}
@@ -215,6 +218,7 @@ export function PlayerDialog() {
             language={model.view?.language ?? "en"}
             videoRef={model.attachVideo}
             onError={model.playerFailed}
+            onMetadata={model.playerMetadata}
             onDoubleClick={() => void model.playFullScreen()}
             onPlay={() => {
               if (model.fullScreenPending) model.playerVideo?.pause();
