@@ -338,7 +338,7 @@ function EditableMark({ item }: { item: LibraryItemView }) {
       {/* A recording that holds an edit: a state badge after its time and size (the maintainer's request of 2026-10-26),
           not a control, so a click there is the card's. */}
       {item.edited && (
-        <Badge variant="inverse" size="md" className="clip-edited-badge rounded-[5px]">
+        <Badge variant="inverse" size="md" className="clip-edited-badge rounded-[5px] px-1">
           {item.edited}
         </Badge>
       )}
