@@ -611,6 +611,11 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await page.keyboard.press("Home");
   expect(await eventually(() => record().scene?.volumes?.system === 0)).toBe(true);
   await expect(page.getByRole("slider", { name: "System audio", exact: true })).toHaveAttribute("aria-valuetext", "0%");
+  // ⌘Z from the slider itself takes it back (a native round, 2026-10-26: the slider kept the key), and ⇧⌘Z makes it again.
+  await page.keyboard.press("ControlOrMeta+z");
+  expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  expect(await eventually(() => record().scene?.volumes?.system === 0)).toBe(true);
   await page.keyboard.press("Escape");
   await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);

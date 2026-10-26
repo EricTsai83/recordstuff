@@ -179,7 +179,10 @@ function TimelineStrip({ source }: { source: string }) {
 /** Keys of the edit view that are not the player's: Split, Remove or keep, Undo, Redo. */
 function editorKey(event: React.KeyboardEvent): void {
   const target = event.target as HTMLElement;
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+  // A slider's input takes Undo and Redo as the rest of the view does (a native round of 2026-10-26: ⌘Z on a volume did
+  // nothing); a field that takes text keeps its own.
+  const slider = target instanceof HTMLInputElement && target.type === "range";
+  if ((target instanceof HTMLInputElement && !slider) || target instanceof HTMLTextAreaElement) return;
   const command = model.platform() === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   // By the key's place, not its character (2026-10-25): with an input method such as Zhuyin on, S reports no "s".
   const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
@@ -190,7 +193,7 @@ function editorKey(event: React.KeyboardEvent): void {
     void (redo ? model.redoEdit() : model.undoEdit());
     return;
   }
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.metaKey || event.ctrlKey || event.altKey || slider) return;
   // On the timeline, as in other editors: Space plays or pauses, and ← → step a frame (Shift, a second). A part is a
   // button, which Space would otherwise press.
   const onTimeline = target.closest(".editor-trimmer") !== null;
