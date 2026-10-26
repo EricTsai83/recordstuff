@@ -500,9 +500,18 @@ test("an editable recording's camera is dragged into place, its microphone turne
   const microphone = page.getByRole("slider", { name: "Microphone", exact: true });
   await expect(microphone).toHaveAttribute("aria-valuetext", "100%");
   await microphone.focus();
+  // Its save leaves the timeline as it is (2026-10-26, the maintainer's report: each step dimmed the trim handles, the
+  // parts and Export for the moment it saved).
+  await page.evaluate(() => {
+    const seen: string[] = ((window as unknown as { dimmed: string[] }).dimmed = []);
+    new MutationObserver((list) => { for (const m of list) seen.push((m.target as HTMLElement).id || (m.target as HTMLElement).className); })
+      .observe(document.querySelector("#editor .editor-panel")!, { subtree: true, attributes: true, attributeFilter: ["aria-disabled", "disabled"] });
+  });
   await page.keyboard.press("ArrowLeft");
   await expect(microphone).toHaveAttribute("aria-valuetext", "95%");
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
+  const dimmed = await read<string[]>(page, "window.dimmed");
+  expect(dimmed.filter((target) => /editor-trim|editor-part|editor-camera-stretch|editor-split|editor-export|editor-remove/.test(target))).toEqual([]);
   // The save redraws the view; the slider, in a popup outside the dialog, keeps the keyboard's focus.
   await expect(microphone).toBeFocused();
 
@@ -601,4 +610,108 @@ test("an editable recording's camera is dragged into place, its microphone turne
   await page.keyboard.press("ControlOrMeta+Shift+z");
   expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
   await page.keyboard.press("Escape");
+});
+
+/**
+ * The camera hidden over stretches of an editable recording (2026-10-26): a range dragged across the pictures and the
+ * camera button hide it there, saved by main as a version-3 edit; the lane under the pictures shows the stretch, and the
+ * preview's bubble is not drawn while the playhead is in it (its place an outline while paused); a click on the lane's
+ * stretch and C show it there again; Undo hides it again; the export is asked to leave it out over that stretch only.
+ */
+test("an editable recording's camera is hidden over a dragged range, shown again from its lane with C, and left out of the export there only", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  const bubble = page.locator("#editor-camera");
+  await expect(bubble).toBeVisible();
+  const lane = page.locator(".editor-camera-lane");
+  const stretches = lane.locator(".editor-camera-stretch");
+  await expect(stretches).toHaveCount(1);
+  await expect(stretches.first()).toHaveAccessibleName(/^0:00\.0 to 0:0\d\.\d, camera shown$/);
+  const toggle = page.locator("#editor-camera-toggle");
+  await expect(toggle).toHaveAttribute("aria-disabled", "true");
+
+  // The lane sits under the pictures, inside the panel, the trim handles beside the pictures only.
+  const pictures = (await page.locator(".editor-timeline").boundingBox())!;
+  const laneBox = (await lane.boundingBox())!;
+  expect(laneBox.y).toBeGreaterThanOrEqual(pictures.y + pictures.height);
+  expect(Math.abs(laneBox.x - pictures.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(laneBox.width - pictures.width)).toBeLessThanOrEqual(1);
+  const handle = (await page.locator("#editor-trim-start").boundingBox())!;
+  expect(handle.y + handle.height).toBeLessThanOrEqual(laneBox.y + 1);
+  expect(laneBox.height).toBeGreaterThanOrEqual(16);
+  // A click on the lane beside the start's trim handle selects the lane's stretch and trims nothing (Codex's review).
+  await page.mouse.click(laneBox.x + 3, laneBox.y + laneBox.height / 2);
+  await expect(stretches.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
+  await page.keyboard.press("Escape");
+
+  // No save dims anything while it runs (2026-10-26, the maintainer's report): watched through the rest of the test,
+  // which saves the camera, Undo and Redo.
+  await page.evaluate(() => {
+    const seen: string[] = ((window as unknown as { dimmed: string[] }).dimmed = []);
+    new MutationObserver((list) => { for (const m of list) seen.push((m.target as HTMLElement).id || String((m.target as HTMLElement).className)); })
+      .observe(document.querySelector("#editor .editor-panel")!, { subtree: true, attributes: true, attributeFilter: ["aria-disabled", "disabled"] });
+  });
+
+  // Dragged across the pictures from 30% to 60%, then the camera button: hidden over that range.
+  await page.mouse.move(pictures.x + pictures.width * 0.3, pictures.y + pictures.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pictures.x + pictures.width * 0.6, pictures.y + pictures.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(toggle).toHaveAttribute("aria-disabled", "false");
+  await expect(toggle).toHaveAccessibleName("Hide camera in selection");
+  await toggle.click();
+  const edits = path.join(path.dirname(path.dirname(folder)), "userData", "edits");
+  const record = (): Record<string, any> => {
+    const file = fs.readdirSync(edits).find((name) => name.endsWith(".json") && name !== "exports-in-flight.json");
+    return file ? JSON.parse(fs.readFileSync(path.join(edits, file), "utf8")) : {};
+  };
+  expect(await eventually(() => record().version === 3)).toBe(true);
+  const duration = (await read<number>(page, `document.querySelector("#editor .editor-stage video").duration`)) * 90_000;
+  const [from, to] = (record().scene.camera.hidden as Array<[number, number]>)[0]!;
+  expect(from / duration).toBeGreaterThan(0.27);
+  expect(from / duration).toBeLessThan(0.33);
+  expect(to / duration).toBeGreaterThan(0.57);
+  expect(to / duration).toBeLessThan(0.63);
+  await expect(stretches).toHaveCount(3);
+  await expect(stretches.nth(1)).toHaveAttribute("data-hidden", "true");
+  await expect(toggle).toHaveAccessibleName("Show camera in selection");
+
+  // The preview in the stretch, paused: no bubble, its place outlined; before the stretch, the bubble again.
+  await seek(((from + to) / 2) / 90_000);
+  await expect(bubble).toHaveAttribute("data-hidden", "true");
+  await expect(page.locator(".editor-camera-ghost")).toBeVisible();
+  await seek(0.2);
+  await expect(bubble).not.toHaveAttribute("data-hidden", "true");
+  await expect(page.locator(".editor-camera-ghost")).toHaveCount(0);
+
+  // A click on the lane's hidden stretch selects it; C shows the camera there again: nothing hidden, version 2.
+  await page.locator("#editor-split").focus();
+  const hidden = (await stretches.nth(1).boundingBox())!;
+  await page.mouse.click(hidden.x + hidden.width / 2, hidden.y + hidden.height / 2);
+  await expect(stretches.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("c");
+  expect(await eventually(() => record().version === 2 && record().scene?.camera?.hidden === undefined && record().scene?.camera?.shown === true)).toBe(true);
+  await expect(stretches).toHaveCount(1);
+
+  // Undo hides it over the stretch again.
+  await page.keyboard.press("ControlOrMeta+z");
+  expect(await eventually(() => record().version === 3)).toBe(true);
+  await expect(stretches).toHaveCount(3);
+
+  const dimmed = await read<string[]>(page, "window.dimmed");
+  expect(dimmed.filter((target) => /editor-trim|editor-part|editor-camera-stretch|editor-split|editor-export/.test(target))).toEqual([]);
+
+  // The shortcut list names C.
+  await page.locator("#editor-keys").click();
+  await expect(page.locator("#editor-keys-popup")).toContainText("Hide or show the camera in the selection");
+  await page.keyboard.press("Escape");
+
+  // Export: rendered with the camera composed, left out over that stretch only, on the recording's own clock.
+  await page.locator("#editor-export").click();
+  await expect(page.locator("#editor .editor-export-toast")).toBeVisible({ timeout: 5000 });
+  const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera?: unknown; cameraHidden?: Array<{ from: number; to: number }> };
+  expect(render.camera).toBeDefined();
+  expect(render.cameraHidden).toEqual([{ from, to }]);
 });

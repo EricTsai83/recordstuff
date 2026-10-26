@@ -3,9 +3,13 @@
  * at the playhead (S) and removed or kept again (Delete); Undo (⌘Z / Ctrl+Z) takes the last change back and Redo
  * (⇧⌘Z / Ctrl+Shift+Z or Ctrl+Y) makes it again. The preview plays only what is kept, over a strip of the recording's
  * pictures. Export writes a new file beside the recording, which stays as it is.
+ *
+ * An editable recording with a camera (2026-10-26, the maintainer's request) has a lane under the pictures that shows
+ * where the camera is in the picture and where it is hidden; the camera button (C) hides it over the selected range or
+ * part, or shows it there again, and a click on the lane selects one of its stretches.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, Keyboard, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Keyboard, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
@@ -197,7 +201,10 @@ function editorKey(event: React.KeyboardEvent): void {
   }
   if (key === "s") {
     event.preventDefault();
-    model.splitAtPlayhead();
+    void model.splitAtPlayhead();
+  } else if (key === "c" && target.closest(".editor-panel, .editor-stage")) {
+    event.preventDefault();
+    void model.toggleCameraInSelection();
   } else if ((event.key === "Delete" || event.key === "Backspace") && target.closest(".editor-panel")) {
     event.preventDefault();
     void model.toggleSelected();
@@ -244,6 +251,8 @@ export function EditorDialog() {
         </DialogTitle>
         <DialogDescription className="sr-only">
           {model.text("Select a part of the timeline, then remove it. Split at the playhead to mark where a part starts or ends.")}
+          {/* An editable recording's camera too (Codex's computer-use round, 2026-10-26). */}
+          {editor?.editable?.camera ? ` ${model.text("Select a stretch of the timeline, then press C to hide or show the camera there.")}` : ""}
         </DialogDescription>
         <div className="editor-stage bg-media text-media-foreground">
           {item && (
@@ -316,6 +325,8 @@ function precise(seconds: number): string {
 /** What a press on the timeline turned into: a click until it moves, a range once it does, or the playhead dragged. */
 interface TimelineGesture {
   pointer: number; startX: number; start: number; mode: "click" | "range" | "scrub" | model.TrimEdge;
+  /** Pressed on the camera's lane: a click there selects the lane's stretch rather than the part. */
+  lane?: boolean;
   /** For a trim handle: how far from its edge it was taken hold of, in the video's timescale, kept while it moves. */
   offset?: number;
 }
@@ -383,12 +394,20 @@ function EditorPanel() {
   }
   const parts = model.timelineParts(editor);
   const selected = model.selectedPart(editor);
-  // Unavailable while a change saves or an export runs, but still focusable (aria-disabled): a control disabled under
-  // the keyboard's focus would drop it, and the edit view's shortcuts with it (2026-10-25).
-  const busy = model.editorSaving || editor.export.phase === "exporting";
+  // Unavailable only while an export runs (2026-10-26, the maintainer's report: a save, a few tens of milliseconds,
+  // dimmed the trim handles, the parts and the toolbar each time, a flicker at every change); a change pressed while
+  // another saves waits its turn in the controller. Still focusable (aria-disabled) where it can be.
+  const busy = editor.export.phase === "exporting";
   const percent = (ticks: number): string => `${(ticks / editor.duration) * 100}%`;
   const at = (seconds: number): string => model.clock(seconds);
   const removing = selected && !selected.removed;
+  // An editable recording's camera, hidden or shown over the selection (2026-10-26).
+  const camera = model.hasCamera(editor);
+  const cameraTarget = camera ? model.cameraTarget(editor) : undefined;
+  const showingCamera = cameraTarget !== undefined && model.cameraHiddenOver(editor, cameraTarget);
+  // Hidden throughout in Options: the stretches wait, and so does the button.
+  const allHidden = camera && model.cameraHiddenThroughout(editor);
+  const stretches = camera ? model.cameraStretches(editor) : [];
   const editingSource = model.editingItem?.video;
   // 2026-10-25, after a hands-on walkthrough: a click on the timeline puts the playhead there and selects the part
   // there; a drag across it chooses a range Remove takes out; a drag that starts on the playhead scrubs; and the handles
@@ -423,6 +442,7 @@ function EditorPanel() {
   const shortcuts: Array<[string, PlainMessageKey]> = [
     [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split"],
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
+    ...(camera ? [["C", "Hide or show the camera in the selection"] as [string, PlainMessageKey]] : []),
     ["← →", "On a trim handle: move its edge a frame, Shift a second"],
   ];
   const keys = translate("Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo · on a trim handle, ← → move its edge", language, {
@@ -506,7 +526,7 @@ function EditorPanel() {
         </ControlTooltip>
         <span className="editor-divider" aria-hidden="true" />
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="ghost" size="icon" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) model.splitAtPlayhead(); }}>
+          <Button id="editor-split" variant="ghost" size="icon" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
           </Button>
         </ControlTooltip>
@@ -515,6 +535,24 @@ function EditorPanel() {
             {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
           </Button>
         </ControlTooltip>
+        {camera && (
+          <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : !cameraTarget ? "Select a part or drag across the timeline, then hide or show the camera there (C)" : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
+            {/* Named in words beside its icon (2026-10-26, two computer-use rounds: a person alone read as an account's
+                button); both names are as long, so nothing after it moves as it turns. */}
+            <Button
+              id="editor-camera-toggle"
+              variant="ghost"
+              size="sm"
+              className="editor-camera-toggle"
+              aria-label={model.text(showingCamera ? "Show camera in selection" : "Hide camera in selection")}
+              aria-disabled={busy || !cameraTarget || allHidden}
+              onClick={() => { if (!busy && cameraTarget && !allHidden) void model.toggleCameraInSelection(); }}
+            >
+              {showingCamera ? <UserRound /> : <UserRoundX />}
+              <span className="editor-camera-toggle-label">{model.text(showingCamera ? "Show camera" : "Hide camera")}</span>
+            </Button>
+          </ControlTooltip>
+        )}
         <EditorOptions editor={editor} />
         <span className="editor-divider" aria-hidden="true" />
         <span className="editor-times text-muted-foreground">
@@ -537,7 +575,7 @@ function EditorPanel() {
         <span className="editor-end">
         <Popover>
           <ControlTooltip label={model.text("Keyboard shortcuts")}>
-            <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}`}>
+            <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}${camera ? ` · ${model.text("C hide or show the camera in the selection")}` : ""}`}>
               <Keyboard aria-hidden="true" />
             </PopoverTrigger>
           </ControlTooltip>
@@ -561,6 +599,7 @@ function EditorPanel() {
           above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
       <div
         className="editor-trimmer"
+        data-lane={camera || undefined}
         onPointerDown={(event) => {
           const ticks = ticksAt(event.clientX);
           const box = track.current?.getBoundingClientRect();
@@ -571,9 +610,12 @@ function EditorPanel() {
           model.keepSkimmed();
           event.currentTarget.setPointerCapture(event.pointerId);
           const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
+          // A press on the camera's lane is the lane's, never a trim handle's beside it (Codex's review): the handles
+          // keep to the pictures above it.
+          const lane = (event.target as HTMLElement).closest?.(".editor-camera-lane") !== null;
           // A trim handle, pressed or pressed beside: the start's reaches in from its edge, the end's back from its.
           const handle = (event.target as HTMLElement).closest?.(".editor-trim")?.getAttribute("data-edge");
-          const edge: model.TrimEdge | undefined = handle === "start" || handle === "end" ? handle
+          const edge: model.TrimEdge | undefined = lane ? undefined : handle === "start" || handle === "end" ? handle
             : event.clientX >= xOf(trim.start) - TRIM_HANDLE - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_REACH ? "start"
             : event.clientX <= xOf(trim.end) + TRIM_HANDLE + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_REACH ? "end" : undefined;
           if (edge) {
@@ -583,8 +625,8 @@ function EditorPanel() {
             return;
           }
           const playheadX = box.left + Math.min(1, now / Math.max(editor.seconds, 0.001)) * box.width;
-          const onPlayhead = Math.abs(event.clientX - playheadX) <= 6;
-          gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: onPlayhead ? "scrub" : "click" };
+          const onPlayhead = !lane && Math.abs(event.clientX - playheadX) <= 6;
+          gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: onPlayhead ? "scrub" : "click", lane };
           if (onPlayhead) placeAt(ticks);
         }}
         onPointerMove={(event) => {
@@ -599,7 +641,14 @@ function EditorPanel() {
         onPointerUp={(event) => {
           follow(event.pointerId, event.clientX);
           const held = gesture.current, ticks = ticksAt(event.clientX);
-          if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) placeAt(ticks);
+          if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) {
+            // On the camera's lane, the stretch there is chosen, as a range the camera button then acts on.
+            const stretch = held.lane ? stretches.find((one) => ticks >= one.from && ticks < one.to) ?? stretches.at(-1) : undefined;
+            if (stretch) {
+              model.selectRange(stretch.from, stretch.to);
+              model.seekTo(ticks / editor.timescale);
+            } else placeAt(ticks);
+          }
           if (held?.pointer === event.pointerId && (held.mode === "start" || held.mode === "end")) void model.commitTrim();
           gesture.current = null;
         }}
@@ -650,6 +699,44 @@ function EditorPanel() {
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
         </div>
+        {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
+            time as the pictures above; a stretch is selected by a click, or by Enter on it. */}
+        {camera && (
+          <div className="editor-camera-lane" role="group" aria-label={model.text("Camera")}>
+            {stretches.map((stretch) => {
+              const chosen = range !== undefined && range[0] === stretch.from && range[1] === stretch.to;
+              return (
+                <button
+                  key={`${stretch.from}-${stretch.to}`}
+                  type="button"
+                  className="editor-camera-stretch"
+                  data-hidden={stretch.hidden || undefined}
+                  data-selected={chosen || undefined}
+                  style={{ left: percent(stretch.from), width: percent(stretch.to - stretch.from) }}
+                  aria-label={translate(stretch.hidden ? "{from} to {to}, camera hidden" : "{from} to {to}, camera shown", language, {
+                    from: at(stretch.from / editor.timescale), to: at(stretch.to / editor.timescale),
+                  })}
+                  aria-pressed={chosen}
+                  disabled={busy}
+                  onClick={(event) => {
+                    if (event.detail !== 0) return;
+                    model.selectRange(stretch.from, stretch.to);
+                    model.seekTo(stretch.from / editor.timescale);
+                  }}
+                >
+                  {stretch.hidden ? <UserRoundX aria-hidden="true" /> : <UserRound aria-hidden="true" />}
+                  {/* In words while the stretch is wide enough, so the lane says what it is; cut off when narrow. */}
+                  <span aria-hidden="true">{model.text(stretch.hidden ? "Camera hidden" : "Camera shown")}</span>
+                </button>
+              );
+            })}
+            {editor.removed.map(([from, to]) => (
+              <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
+            ))}
+            {range && <span className="editor-camera-range" style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
+            <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
+          </div>
+        )}
         {trimHandle("start")}
         {trimHandle("end")}
         {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}
@@ -714,10 +801,10 @@ function ExportControls() {
         <Button
           id="editor-export"
           size="sm"
-          // Not while a change is being saved: the export takes the edit as saved.
-          aria-disabled={!editor.exportable || model.editorSaving}
+          // A change still saving is waited for by the export itself (controller's exportEdit), so nothing dims meanwhile.
+          aria-disabled={!editor.exportable}
           onClick={() => {
-            if (editor.exportable && !model.editorSaving) void model.exportEdit();
+            if (editor.exportable) void model.exportEdit();
           }}
         >
           <Upload />

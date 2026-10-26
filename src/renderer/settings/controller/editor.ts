@@ -6,12 +6,13 @@
  *
  * An editable recording (plan 087) also has a scene: the camera's place, size and visibility, and each input's
  * volume. While the bubble is dragged or a slider moves, the page shows a draft of it; letting go saves it, one change
- * for Undo. Its preview plays the recording (the screen with its first sound) with the camera's and the second sound's
+ * for Undo. Since 2026-10-26 the camera can be hidden or shown again over any stretch: the selected range or part, with
+ * the toolbar's camera button or C, each a change Undo takes back. Its preview plays the recording (the screen with its first sound) with the camera's and the second sound's
  * own tracks beside it, kept to the recording's time, and each sound through a gain at its volume.
  */
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { normalizeRanges, type EditorChoice, type EditorView, type EditRange } from "../../../shared/editing";
-import type { EditableSound, EditScene } from "../../../shared/editable";
+import { cameraHidden, cameraStretches as storedStretches, MAX_CAMERA_HIDDEN, mergeRanges, subtractRange, withCameraHidden, type EditableSound, type EditScene } from "../../../shared/editable";
 import { softLimit } from "../../../shared/audio-volume";
 import { translate } from "../../../shared/i18n";
 import { announce, draw, focus, render, subscribe, view } from "./core";
@@ -51,7 +52,11 @@ const undoStack: EditState[] = [];
 const redoStack: EditState[] = [];
 /** The scene shown while the bubble is dragged or a slider moves, until it is let go and saved. */
 let sceneDraft: EditScene | undefined;
-/** A change being saved: further edits wait for its answer, which brings the revision they change. */
+/**
+ * A change being saved: further edits wait for its answer, which brings the revision they change. Nothing is drawn
+ * unavailable meanwhile (2026-10-26, the maintainer's report: each save dimmed the trim handles, the parts and the
+ * toolbar for the moment it took, a flicker at every step of a volume or an Undo); every change waits its turn instead.
+ */
 export let editorSaving = false;
 let frameCallback: number | undefined;
 
@@ -102,12 +107,13 @@ export function selectedPart(editor: EditorView): TimelinePart | undefined {
   return partAt(timelineParts(editor), selectedFrom);
 }
 
+/** Undo and Redo pressed while a change saves wait for it (`step`): only an empty stack makes them unavailable. */
 export function canUndo(): boolean {
-  return undoStack.length > 0 && !editorSaving;
+  return undoStack.length > 0;
 }
 
 export function canRedo(): boolean {
-  return redoStack.length > 0 && !editorSaving;
+  return redoStack.length > 0;
 }
 
 /** Opens the edit view for `item`. */
@@ -213,9 +219,9 @@ export async function playExport(name: string, from: string): Promise<void> {
 /** Settles once no change waits or saves, including one queued while the last was waited for. */
 async function saved(): Promise<void> {
   for (;;) {
-    const waiting = [edits, sceneSaves, saveDone];
+    const waiting = [edits, saveDone];
     await Promise.all(waiting);
-    if (waiting[0] === edits && waiting[1] === sceneSaves && waiting[2] === saveDone) return;
+    if (waiting[0] === edits && waiting[1] === saveDone) return;
   }
 }
 
@@ -387,8 +393,7 @@ export function syncPreviewAudio(): void {
   if (audio && editorVideo) audio.master.gain.value = editorVideo.muted ? 0 : editorVideo.volume;
 }
 
-/** Scene changes being saved, one after another, and how many are waiting. */
-let sceneSaves: Promise<unknown> = Promise.resolve();
+/** How many scene changes wait to be saved (in turn with the timeline's, `inTurn`); the draft stays until the last. */
 let scenesWaiting = 0;
 
 /**
@@ -405,7 +410,10 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
   draw();
   if (!commit) return Promise.resolve(true);
   scenesWaiting++;
-  const run = sceneSaves.then(async () => {
+  // In turn with the timeline's changes, after the save in flight (Codex's second review): a camera change pressed
+  // while a cut saves is saved against the revision and the cuts that save brings, never a stale one main refuses.
+  const run = inTurn(async () => {
+    while (editorSaving) await saveDone;
     const now = editorView();
     if (!now?.editable || now.state !== "ready" || now.export.phase === "exporting") return false;
     undoStack.push(current(now));
@@ -418,7 +426,6 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
     syncPreviewAudio();
     draw();
   });
-  sceneSaves = run.catch(() => false);
   return run;
 }
 
@@ -520,11 +527,24 @@ export function selectPart(part: TimelinePart, seek = true): void {
   draw();
 }
 
-/** Splits the timeline at the playhead; the part after it is selected. */
-export function splitAtPlayhead(): void {
+/**
+ * Splits the timeline at the playhead; the part after it is selected. In turn with the saving changes, so Undo keeps the
+ * edit as it is once a change still saving has landed (the controls stay available while one saves, 2026-10-26).
+ */
+export function splitAtPlayhead(): Promise<void> {
+  // Where S was pressed, read now: the playhead may move while a save is waited for (Codex's second review).
+  const editor = editorView();
+  const at = editor ? playhead(editor) : 0;
+  const item = editingItem;
+  return inTurn(async () => {
+    while (editorSaving) await saveDone;
+    if (editingItem === item) splitNow(at);
+  });
+}
+
+function splitNow(at: number): void {
   const editor = editorView();
   if (!editor || editor.state !== "ready" || editor.export.phase === "exporting") return;
-  const at = playhead(editor);
   if (at <= 0 || at >= editor.duration) return;
   undoStack.push(current(editor));
   redoStack.length = 0;
@@ -746,6 +766,99 @@ async function step(from: EditState[], to: EditState[], said: "Undone" | "Redone
   } else from.push(next);
 }
 
+/** Whether the view's recording has a camera whose stretches can be hidden: an editable recording with one. */
+export function hasCamera(editor: EditorView): boolean {
+  return Boolean(editor.editable?.camera && editorScene(editor)?.camera);
+}
+
+/** One stretch of the camera's lane under the timeline: the camera shown or hidden from `from` to `to`. */
+export interface CameraStretch { from: number; to: number; hidden: boolean }
+
+/** The camera's lane: the recording from start to end in stretches, each shown or hidden. */
+export function cameraStretches(editor: EditorView): CameraStretch[] {
+  const camera = editorScene(editor)?.camera;
+  if (!camera) return [];
+  const stretches: CameraStretch[] = [];
+  let at = 0;
+  for (const [from, to] of cameraHidden(camera, editor.duration)) {
+    if (from > at) stretches.push({ from: at, to: from, hidden: false });
+    stretches.push({ from, to, hidden: true });
+    at = to;
+  }
+  if (at < editor.duration) stretches.push({ from: at, to: editor.duration, hidden: false });
+  return stretches;
+}
+
+/**
+ * The stretch the camera button acts on: the range dragged across the timeline, else the selected part, its ends on
+ * frame starts. None without either: the button then says to choose one first.
+ */
+export function cameraTarget(editor: EditorView): EditRange | undefined {
+  const frame = editor.timescale / Math.max(1, editor.frameRate);
+  const snap = (ticks: number): number => Math.min(editor.duration, Math.max(0, Math.round(Math.round(ticks / frame) * frame)));
+  const chosen = rangeSelection ?? (() => { const part = selectedPart(editor); return part ? [part.from, part.to] as EditRange : undefined; })();
+  if (!chosen) return undefined;
+  const from = chosen[0] <= 0 ? 0 : snap(chosen[0]), to = chosen[1] >= editor.duration ? editor.duration : snap(chosen[1]);
+  return to > from ? [from, to] : undefined;
+}
+
+/** Whether the camera is hidden over the whole of `range` by the timeline's stretches, so the button shows it there again. */
+export function cameraHiddenOver(editor: EditorView, [from, to]: EditRange): boolean {
+  const camera = editorScene(editor)?.camera;
+  return Boolean(camera && storedStretches(camera, editor.duration).some(([a, b]) => a <= from && b >= to));
+}
+
+/** Hidden throughout (the options' switch): the timeline's stretches wait, and the camera button with them. */
+export function cameraHiddenThroughout(editor: EditorView): boolean {
+  return editorScene(editor)?.camera?.shown === false;
+}
+
+/**
+ * The camera button and C (2026-10-26, the maintainer's request): over the selected range or part, the camera is hidden,
+ * or shown again where it was hidden throughout that stretch, as one change Undo takes back. The selection stays, so a
+ * second press takes it back as well.
+ */
+export function toggleCameraInSelection(): Promise<boolean> {
+  const editor = editorView();
+  const scene = editor && editorScene(editor);
+  const camera = scene?.camera;
+  const target = editor && cameraTarget(editor);
+  if (!editor || !scene || !camera || editor.state !== "ready" || editor.export.phase === "exporting") return Promise.resolve(false);
+  // Hidden throughout, C says why it does nothing, with or without a selection.
+  if (!camera.shown) {
+    announce(translate("Turn off Hide the camera throughout in Options to hide or show it over a stretch.", view?.language));
+    return Promise.resolve(false);
+  }
+  if (!target) return Promise.resolve(false);
+  const hidden = storedStretches(camera, editor.duration);
+  const show = cameraHiddenOver(editor, target);
+  const next = show ? subtractRange(hidden, target) : mergeRanges([...hidden, target], editor.duration);
+  // Past the most stretches a scene holds, the change is refused, never saved with a stretch dropped (Codex's review).
+  if (next.length > MAX_CAMERA_HIDDEN) {
+    announce(translate("The camera can be hidden over at most {count} stretches.", view?.language, { count: String(MAX_CAMERA_HIDDEN) }));
+    return Promise.resolve(false);
+  }
+  const said = translate(show ? "Camera shown from {from} to {to}" : "Camera hidden from {from} to {to}", view?.language, {
+    from: clock(target[0] / editor.timescale), to: clock(target[1] / editor.timescale),
+  });
+  return changeScene({ ...scene, camera: withCameraHidden(camera, next, editor.duration) }, true).then((saved) => {
+    if (saved) announce(said);
+    return saved;
+  });
+}
+
+/**
+ * Hide the camera throughout, the options' switch (2026-10-26, the maintainer's choice: a switch over the timeline's
+ * stretches, never one that drops them): on, no camera in the export; off again, the stretches the timeline holds.
+ */
+export function hideCameraThroughout(hidden: boolean): Promise<boolean> {
+  const editor = editorView();
+  const scene = editor && editorScene(editor);
+  const camera = scene?.camera;
+  if (!editor || !scene || !camera || camera.shown === !hidden) return Promise.resolve(false);
+  return changeScene({ ...scene, camera: { ...camera, shown: !hidden } }, true);
+}
+
 /** An editable recording's camera and volumes back to how the recording left them, as one change Undo takes back. */
 export function resetScene(): Promise<boolean> {
   const editor = editorView();
@@ -786,6 +899,10 @@ export let exportWatched: string | undefined;
 
 export async function exportEdit(): Promise<boolean> {
   const id = editingItem?.id;
+  // The export takes the edit as saved: a change still saving or queued (a volume just let go) is waited for first, so
+  // Export need not be drawn unavailable while one saves (2026-10-26).
+  await saved();
+  if (editingItem?.id !== id || !editorView()?.exportable) return false;
   const applied = await send({ action: "export" });
   const phase = editorView()?.export.phase;
   // Refused, the export is not this one's, unless the refusal is a failure to start.

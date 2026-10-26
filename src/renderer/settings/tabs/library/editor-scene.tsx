@@ -10,13 +10,17 @@
  * in the way of the picture, and read as an expand button); the volumes' sliders put 100% in the
  * middle (the left end mutes), the controls sit behind one Options button in the toolbar (since 2026-10-26, with
  * Skimming), and Reset puts everything back as recorded. A dragged bubble stays exactly where it is dropped, without snapping, as the Studio's (2026-10-22).
+ *
+ * Since 2026-10-26 (the maintainer's request) the camera can be hidden over stretches of the recording: while the
+ * preview is in one the bubble is not drawn, as the export leaves it out, and paused there its place shows as an
+ * outline that says so. The bubble's element stays meanwhile, so its camera keeps following and shows again at once.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { RotateCcw, SlidersHorizontal } from "lucide-react";
+import { RotateCcw, SlidersHorizontal, UserRoundX } from "lucide-react";
 import { bubbleRadius, bubbleRect, positionFromRect, type CameraLayout } from "../../../../shared/camera-layout";
 import { VOLUME_FADER_MAX, volumeFromFader, volumeToFader } from "../../../../shared/audio-volume";
 import type { EditorView } from "../../../../shared/editing";
-import type { EditableSound, EditScene, SceneCamera } from "../../../../shared/editable";
+import { cameraShownAt, cameraStretches, type EditableSound, type EditScene, type SceneCamera } from "../../../../shared/editable";
 import { translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
@@ -59,6 +63,50 @@ function useFrameSize(video: HTMLVideoElement | null): { width: number; height: 
     return () => video.removeEventListener("loadedmetadata", read);
   }, [video]);
   return size;
+}
+
+/**
+ * Whether the camera is in the picture where the preview is, and whether the preview is paused. Followed frame by frame
+ * only while the camera is hidden over some stretches; a draw happens only when either changes.
+ */
+function useCameraNow(camera: SceneCamera | undefined, timescale: number): { shown: boolean; paused: boolean } {
+  const video = model.editorVideo;
+  const [shown, setShown] = useState(true);
+  const [paused, setPaused] = useState(true);
+  const stretches = camera?.shown && camera.hidden?.length ? camera : undefined;
+  useEffect(() => {
+    if (!video) return;
+    let callback: number | undefined;
+    const check = (seconds: number): void => setShown(!stretches || cameraShownAt(stretches, Math.round(seconds * timescale)));
+    const show = (): void => {
+      check(video.currentTime || 0);
+      setPaused(video.paused);
+    };
+    const frame = (_now: number, metadata: VideoFrameCallbackMetadata): void => {
+      check(metadata.mediaTime);
+      callback = video.requestVideoFrameCallback(frame);
+    };
+    const play = (): void => {
+      setPaused(false);
+      if (stretches && callback === undefined && typeof video.requestVideoFrameCallback === "function") callback = video.requestVideoFrameCallback(frame);
+    };
+    const pause = (): void => {
+      if (callback !== undefined) video.cancelVideoFrameCallback(callback);
+      callback = undefined;
+      show();
+    };
+    const events: Array<[string, () => void]> = [["seeked", show], ["loadedmetadata", show], ["play", play], ["pause", pause], ["ended", pause], ["emptied", pause]];
+    // Seeks while paused (a click on the timeline, the arrow keys) report the place before the picture is decoded.
+    if (stretches) events.push(["timeupdate", show]);
+    for (const [name, listener] of events) video.addEventListener(name, listener);
+    show();
+    if (!video.paused) play();
+    return () => {
+      for (const [name, listener] of events) video.removeEventListener(name, listener);
+      if (callback !== undefined) video.cancelVideoFrameCallback(callback);
+    };
+  }, [video, stretches, timescale]);
+  return { shown: !camera || (camera.shown && (!stretches || shown)), paused };
 }
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
@@ -106,8 +154,9 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = model.editorScene(editor);
   const camera = scene?.camera;
+  const now = useCameraNow(camera, editor.timescale);
   // A hidden bubble leaves with the focus, which no blur reports: shown again, it is not selected.
-  useEffect(() => { if (!camera?.shown) setSelected(false); }, [camera?.shown]);
+  useEffect(() => { if (!now.shown) setSelected(false); }, [now.shown]);
   // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
   // keep the keyboard's focus.
   const busy = editor.export.phase === "exporting";
@@ -173,8 +222,10 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
     if (next) place(next, true);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    // + (or =, its key unshifted) and − resize it, its shape kept, from its place.
-    const grow = event.key === "+" || event.key === "=" ? 1 : event.key === "-" || event.key === "_" ? -1 : 0;
+    // + (or =, its key unshifted) and − resize it, its shape kept, from its place. By the key's place as well as its
+    // character (2026-10-26, a native round): with an input method such as Zhuyin on, − reports another character.
+    const grow = event.key === "+" || event.key === "=" || event.code === "Equal" || event.code === "NumpadAdd" ? 1
+      : event.key === "-" || event.key === "_" || event.code === "Minus" || event.code === "NumpadSubtract" ? -1 : 0;
     if (grow !== 0 && !busy && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       event.stopPropagation();
@@ -198,7 +249,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   // The player's shaded bars let the pointer through to the bubble, but its seek bar takes it over the picture's
   // bottom: there a press inside the bubble's box moves the bubble; the bar's buttons still take theirs.
   const origin = overlay?.getBoundingClientRect();
-  grab.current = camera.shown && origin && !busy
+  grab.current = now.shown && origin && !busy
     ? { box: new DOMRect(origin.left + box.left, origin.top + box.top, box.width, box.height),
       begin: (pointer, x, y) => begin("move", pointer, x, y, document.getElementById("editor-camera")) }
     : undefined;
@@ -209,13 +260,27 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
         {sound}
         {camera.shown && (
           <>
+            {/* Hidden here, paused: its place as an outline that says so (2026-10-26), never while playing, as the
+                export holds nothing there. */}
+            {!now.shown && now.paused && (
+              // It takes the pointer's press, so a press on it does not reach the player behind and play it (Codex's
+              // computer-use round): nothing there to take hold of while the camera is hidden.
+              <div className="editor-camera-ghost" style={{ ...box, borderRadius: radius }} aria-hidden="true"
+                onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+                <UserRoundX />
+                {box.width >= 96 && box.height >= 56 && <span>{model.text("Camera hidden here")}</span>}
+              </div>
+            )}
             <div
               id="editor-camera"
               className="editor-camera"
               role="button"
-              tabIndex={0}
+              tabIndex={now.shown ? 0 : -1}
               aria-label={label}
               aria-disabled={busy || undefined}
+              aria-hidden={now.shown ? undefined : true}
+              data-hidden={now.shown ? undefined : true}
               data-dragging={drag.current?.moved ? true : undefined}
               data-selected={(selected && !busy) || undefined}
               style={{ ...box, borderRadius: radius }}
@@ -248,7 +313,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
       {/* Selected, a handle on each corner of the bubble's box, with no line between them (the maintainer's choice); the
           size slider is the handles' keyboard counterpart. A layer of its own beside the bubble's, over the player's
           shaded bars, which dimmed the handles under them (a hands-on round); the bubble's stays under them. */}
-      {selected && camera.shown && !busy && (
+      {selected && now.shown && !busy && (
         <div className="editor-overlay editor-selection">
           {CORNERS.map((corner) => (
             <span
@@ -337,17 +402,31 @@ function SceneControls({ editor, editable, scene }: { editor: EditorView; editab
   const camera = scene.camera;
   const sounds = new Set<EditableSound>(editable.sounds);
   const unchanged = model.sameScene(scene, editable.recorded);
+  // Hide the camera throughout (2026-10-26, the maintainer's choice, in place of Show camera): a switch over the
+  // timeline's stretches, which it keeps; its note says what the export holds now.
+  const stretches = camera ? cameraStretches(camera, editor.duration).length : 0;
+  const note = !camera ? "" : !camera.shown
+    ? model.text("The export holds no camera. Switched off, the camera follows the timeline again.")
+    : stretches === 1
+    ? model.text("Hidden over one stretch of the timeline. Select a stretch and press C to hide or show the camera there.")
+    : stretches > 1
+    ? translate("Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.", model.view?.language, { count: String(stretches) })
+    : model.text("To hide it for a while only, select that stretch on the timeline and press C.");
   return (
     <div className="editor-scene" role="group" aria-label={model.text(camera ? "Camera and sound" : "Sound")}>
       {camera && (
-        <div className="editor-scene-row">
-          <label htmlFor="editor-camera-shown">{model.text("Show camera")}</label>
-          <Switch
-            id="editor-camera-shown"
-            checked={camera.shown}
-            disabled={busy}
-            onCheckedChange={(shown) => change({ ...scene, camera: { ...camera, shown } }, true)}
-          />
+        <div className="editor-options-skim">
+          <div className="editor-scene-row">
+            <label htmlFor="editor-camera-hidden">{model.text("Hide the camera throughout")}</label>
+            <Switch
+              id="editor-camera-hidden"
+              checked={!camera.shown}
+              disabled={busy}
+              aria-describedby="editor-camera-note"
+              onCheckedChange={(hidden) => { void model.hideCameraThroughout(hidden); }}
+            />
+          </div>
+          <p id="editor-camera-note" className="editor-options-note">{note}</p>
         </div>
       )}
       {sounds.has("system") && (

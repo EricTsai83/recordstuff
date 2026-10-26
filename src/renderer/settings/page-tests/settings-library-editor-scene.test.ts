@@ -52,7 +52,7 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   click(document.getElementById("editor-options")!);
   await vi.waitFor(() => expect(document.querySelector("#editor-options-popup .editor-scene")).not.toBeNull());
   expect(document.getElementById("editor-skim")!.getAttribute("aria-checked")).toBe("false");
-  expect(document.getElementById("editor-camera-shown")!.getAttribute("aria-checked")).toBe("true");
+  expect(document.getElementById("editor-camera-hidden")!.getAttribute("aria-checked")).toBe("false");
   expect(document.getElementById("editor-camera-size")).toBeNull();
   expect(document.getElementById("editor-volume-system")).not.toBeNull();
   expect(document.getElementById("editor-volume-microphone")).not.toBeNull();
@@ -92,7 +92,7 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
     { action: "save", removed: [], revision: 1, scene: { ...START, camera: { ...START.camera!, x: 0.95 } } },
   ]));
   // The controls were never disabled meanwhile, so the keyboard's focus stays where it was.
-  expect(document.getElementById("editor-camera-shown")!.hasAttribute("data-disabled")).toBe(false);
+  expect(document.getElementById("editor-camera-hidden")!.hasAttribute("data-disabled")).toBe(false);
   await vi.waitFor(() => expect(document.getElementById("editor-camera")!.getAttribute("aria-label")).toContain("95% across"));
 
   // + grows it a step, its shape kept: the sliders' keyboard counterpart now the slider is gone.
@@ -102,8 +102,8 @@ it("places the camera with the arrow keys, hides it, and takes the change back, 
   expect(grown.height).toBeCloseTo(0.31, 4);
   expect(grown.width / grown.height).toBeCloseTo(0.2 / 0.3, 2);
 
-  // Hidden: saved, and the bubble goes.
-  click(document.getElementById("editor-camera-shown")!);
+  // Hidden throughout: saved, and the bubble goes.
+  click(document.getElementById("editor-camera-hidden")!);
   await vi.waitFor(() => expect(choices.at(-1)).toMatchObject({ action: "save", revision: 3, scene: { camera: { x: 0.95, shown: false } } }));
   await vi.waitFor(() => expect(document.getElementById("editor-camera")).toBeNull());
 
