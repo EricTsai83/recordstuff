@@ -16,7 +16,7 @@
  * worker's cancel bound.
  *
  * **An editable recording (plan 087)** describes itself through the engine's plan: its edit also holds a scene (the
- * camera's place and size, whether it is shown, each input's volume), and its export is rendered rather than
+ * camera's place and size, when it is shown, each input's volume), and its export is rendered rather than
  * remuxed, so it can be exported with no cut at all. While its view is open, its camera and second sound are copied
  * into files of their own in userData (`edits/preview`) for the page to play beside the recording; they are removed
  * when the view closes, and any left by a crash at the next launch.
@@ -590,9 +590,10 @@ export class Editing {
     }
     if (this.open !== open) return this.abandoned();
     const snapped: EditRange[] = plan.removed.map(({ from, to }) => [from, to]);
-    // An editable recording's scene: the one given, else the one saved, else where the recording left everything.
+    // An editable recording's scene: the one given, else the one saved, else where the recording left everything. The
+    // camera's hidden stretches are kept within the recording, sorted and merged.
     const description = open.editable?.description;
-    const nextScene = description ? (scene ? fitScene(scene, description) : this.sceneOf(open, description)) : undefined;
+    const nextScene = description ? (scene ? fitScene(scene, description, plan.duration) : this.sceneOf(open, description)) : undefined;
     const record = editRecord({ source: open.identity, timescale: plan.timescale, removed: snapped, revision: open.record.revision + 1, scene: nextScene });
     try {
       await this.deps.store.save(record);
@@ -663,7 +664,8 @@ export class Editing {
     }
     run.started = true;
     open.export = { phase: "exporting", progress: 0, cancelling: false };
-    this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
+    const hiddenNote = render?.cameraHidden ? `, the camera hidden over ${render.cameraHidden.length} stretch(es)` : "";
+    this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${hiddenNote}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
     this.deps.changed();
     let lastShown = 0;
     const reserved: string[] = [];

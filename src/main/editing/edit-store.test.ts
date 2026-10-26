@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EDIT_RECORD_LIMIT, EditStore, parseRecord, sourceIdentity, type EditRecord } from "./edit-store";
+import { EDIT_RECORD_LIMIT, EditStore, editRecord, parseRecord, sourceIdentity, type EditRecord } from "./edit-store";
 
 let dir: string;
 let store: EditStore;
@@ -70,7 +70,7 @@ describe("edit records", () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     for (const [text, reason] of [
       ["{ not json", /not valid JSON/],
-      [JSON.stringify({ version: 3, removed: [] }), /newer version \(3\)/],
+      [JSON.stringify({ version: 4, removed: [] }), /newer version \(4\)/],
       [JSON.stringify({ version: 1, removed: "all" }), /fields/],
       [JSON.stringify({ ...{ version: 1, timescale: 90_000, revision: 1, source: { path: recording, size: 1, mtimeMs: 1, hash: "a".repeat(64) } }, removed: [[20, 30], [10, 25]] }), /overlap or are out of order/],
     ] as const) {
@@ -121,5 +121,21 @@ describe("a record's parsing", () => {
     expect(parseRecord(JSON.stringify({ version: 1, source, timescale: 90_000, removed: [], revision: 0, scene }))).not.toHaveProperty("scene");
     expect(parseRecord(JSON.stringify({ version: 1, source: { ...source, hash: "x" }, timescale: 90_000, removed: [], revision: 0 }))).toHaveProperty("reason");
     expect(parseRecord(JSON.stringify({ version: 1, source, timescale: 90_000, removed: [[2, 1]], revision: 0 }))).toHaveProperty("reason");
+  });
+
+  it("takes version 3, a camera hidden over stretches (2026-10-26), and writes it only for such a camera", () => {
+    const source = { path: "/a.mp4", size: 10, mtimeMs: 5, hash: "f".repeat(64) };
+    const camera = { x: 0.5, y: 1, width: 0.2, height: 0.3, shown: true };
+    const scene = { camera: { ...camera, hidden: [[90_000, 180_000], [270_000, 360_000]] as Array<[number, number]> }, volumes: { system: 100, microphone: 100 } };
+    expect(parseRecord(JSON.stringify({ version: 3, source, timescale: 90_000, removed: [], revision: 4, scene }))).toEqual({ version: 3, source, timescale: 90_000, removed: [], revision: 4, scene });
+    // Version 2 never wrote stretches: a record that says 2 and holds them was not written by it.
+    expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 4, scene }))).toHaveProperty("reason");
+    expect(parseRecord(JSON.stringify({ version: 3, source, timescale: 90_000, removed: [], revision: 4, scene: { ...scene, camera: { ...camera, hidden: [[5, 2]] } } }))).toHaveProperty("reason");
+    expect(parseRecord(JSON.stringify({ version: 4, source, timescale: 90_000, removed: [], revision: 4, scene }))).toMatchObject({ reason: expect.stringContaining("newer version (4)") });
+    const fields = { source, timescale: 90_000, removed: [] as Array<[number, number]>, revision: 1 };
+    expect(editRecord({ ...fields, scene }).version).toBe(3);
+    expect(editRecord({ ...fields, scene: { ...scene, camera } }).version).toBe(2);
+    expect(editRecord({ ...fields, scene: { ...scene, camera: { ...camera, shown: false } } }).version).toBe(2);
+    expect(editRecord(fields).version).toBe(1);
   });
 });

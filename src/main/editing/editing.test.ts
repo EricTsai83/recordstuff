@@ -580,6 +580,29 @@ describe("an editable recording (plan 087)", () => {
     expect(worker.export.mock.calls[0]![0].render).toEqual({ volumesDb: [0, 0] });
   });
 
+  it("saves a camera hidden over stretches as a version-3 edit, kept within the recording, and leaves it out of the export there only", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    const place = { x: 0.5, y: 0.5, width: 0.2, height: 0.3, shown: true };
+    // Out of order, overlapping and past the recording's end, as no page sends them: saved sorted, merged and within it.
+    const scene = { camera: { ...place, hidden: [[600_000, 2_000_000], [90_000, 180_000], [150_000, 270_000]] as Array<[number, number]> }, volumes: { system: 100, microphone: 100 } };
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 0, scene })).toBe(true);
+    expect(record()).toMatchObject({ version: 3, scene: { camera: { ...place, hidden: [[90_000, 270_000], [600_000, 900_000]] } } });
+    // Hidden throughout keeps the stretches (version 3); with none, it is version 2's hidden camera.
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 1, scene: { ...scene, camera: { ...place, shown: false, hidden: [[0, 900_000]] } } })).toBe(true);
+    expect(record()).toMatchObject({ version: 3, scene: { camera: { ...place, shown: false, hidden: [[0, 900_000]] } } });
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 2, scene: { ...scene, camera: { ...place, shown: false } } })).toBe(true);
+    expect(record()).toMatchObject({ version: 2, scene: { camera: { ...place, shown: false } } });
+    expect((record() as { scene: { camera: object } }).scene.camera).not.toHaveProperty("hidden");
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [[0, 45_000]], revision: 3, scene: { ...scene, camera: { ...place, hidden: [[90_000, 180_000]] } } })).toBe(true);
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    // On the recording's own clock, as the cuts are: the cut before the stretch does not move it.
+    expect(worker.export.mock.calls[0]![0].render).toMatchObject({ camera: { x: 0.5, y: 0.5 }, cameraHidden: [{ from: 90_000, to: 180_000 }] });
+    expect(ctx.logs.some((line) => /rendering .* the camera hidden over 1 stretch\(es\) \(camera shown, volumes /.test(line))).toBe(true);
+  });
+
   it("shows a recording whose description cannot be read as one that cannot be edited", async () => {
     const ctx = setup({}, runner(undefined, JSON.stringify({ version: 9, sounds: [] })));
     await ctx.editing.choose("rec", { action: "open" });
