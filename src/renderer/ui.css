@@ -3239,18 +3239,6 @@
     background: color-mix(in oklab, var(--media-foreground) 26%, transparent);
     box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px var(--media-scrim);
   }
-  /* As the pictures' playhead, so the two read as one line through the block. */
-  .editor-camera-playhead {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 3;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--media-foreground);
-    box-shadow: 0 0 3px color-mix(in oklab, var(--media-scrim) 70%, transparent);
-    pointer-events: none;
-  }
   /* The ruler's times under a band the playhead's mark has to itself (2026-10-26: the mark sat on the times). */
   .editor-ruler {
     position: relative;
@@ -3356,8 +3344,11 @@
   }
   /* White with a dark edge and a cap (2026-10-25): seen over any picture of the strip, and unlike a selected part's ring. */
   /* One white line (the maintainer's review of 2026-10-26: edged in black it read as three), a soft shade keeping it in
-     sight over light lanes. */
-  .editor-playhead {
+     sight over light lanes; one element over the pictures and the lanes, at the same fraction of the track the
+     trimmer's padding leaves for them. */
+  .editor-trimmer > .editor-playhead {
+    left: calc(var(--trim-pad) + var(--at) * (100% - 2 * var(--trim-pad)));
+    z-index: 5;
     width: 2px;
     margin-left: -1px;
     background: var(--media-foreground);

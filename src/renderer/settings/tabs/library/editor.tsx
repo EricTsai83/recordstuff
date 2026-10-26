@@ -910,7 +910,6 @@ function EditorPanel() {
         ))}
         {range && <span className="editor-range" data-outline={model.rangeLane ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
-        <span className="editor-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
         </div>
         {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
             time as the pictures above; a stretch is selected by a click, or by Enter on it. */}
@@ -950,7 +949,6 @@ function EditorPanel() {
               <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
             ))}
             {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === "camera") || undefined} data-outline={model.rangeLane && model.rangeLane !== "camera" ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
-            <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
           </div>
         )}
         {/* Each input's lane (2026-10-26): its own volume, or a stretch's, muted or a percent. */}
@@ -1002,10 +1000,12 @@ function EditorPanel() {
                 <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
               ))}
               {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === input) || undefined} data-outline={model.rangeLane && model.rangeLane !== input ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
-              <span className="editor-camera-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} aria-hidden="true" />
             </div>
           );
         })}
+        {/* One playhead over the pictures and every lane, as editors draw it (the maintainer's question of 2026-10-26: a
+            line of its own in each, placed alike, broke where their widths differed), under the selection's actions. */}
+        <span className="editor-playhead" style={{ "--at": Math.min(1, time / Math.max(editor.seconds, 0.001)) } as React.CSSProperties} aria-hidden="true" />
         {trimHandle("start")}
         {trimHandle("end")}
         {/* While a handle is dragged, its time above it, where the eye is (2026-10-25). */}
