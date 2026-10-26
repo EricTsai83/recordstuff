@@ -164,6 +164,12 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
     drag.current = undefined;
     if (next) commit(next);
   };
+  // Cancelled, or let go outside the window (the press ends with no release here): the bubble goes back, unsaved.
+  const onPointerLost = (event: PointerEvent<HTMLDivElement>): void => {
+    if (drag.current?.pointer !== event.pointerId) return;
+    drag.current = undefined;
+    setMoving(undefined);
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const step = event.shiftKey ? BIG_STEP : STEP;
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
@@ -219,7 +225,8 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}
+          onPointerCancel={onPointerLost}
+          onLostPointerCapture={onPointerLost}
           onKeyDown={onKeyDown}
         />}
         {/* The Studio says a session's camera over its stage; the Camera view, being that camera, says it here instead. */}

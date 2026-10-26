@@ -384,6 +384,15 @@ export function changeScene(next: EditScene, commit: boolean): Promise<boolean> 
   return run;
 }
 
+/** A draft no commit follows (a drag cancelled or let go outside the window): the saved scene shows again. */
+export function dropSceneDraft(): void {
+  // A committed change still saving clears the draft itself once saved.
+  if (scenesWaiting > 0 || sceneDraft === undefined) return;
+  sceneDraft = undefined;
+  syncPreviewAudio();
+  draw();
+}
+
 const copy = (ranges: readonly EditRange[]): EditRange[] => ranges.map(([from, to]): EditRange => [from, to]);
 
 /** The video's position in its timescale, on a frame start. */

@@ -112,11 +112,17 @@ function NumberSetting({ group, field, disabled, describedBy }: {
     drag.current = undefined;
     commit(moving ?? grip.from);
   };
+  // Cancelled, or let go outside the window (the press ends with no release here): the drag ends, its value unsaved.
+  const onPointerLost = (event: PointerEvent<HTMLSpanElement>): void => {
+    if (drag.current?.pointer !== event.pointerId) return;
+    drag.current = undefined;
+    setMoving(undefined);
+  };
   return (
     <label className="number-setting" data-disabled={disabled || undefined}>
       <ControlTooltip label={group.info ?? group.label}>
         <span className="number-setting-name" aria-hidden="true" onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp} onPointerCancel={() => { drag.current = undefined; setMoving(undefined); }}>{field.short}</span>
+          onPointerUp={onPointerUp} onPointerCancel={onPointerLost} onLostPointerCapture={onPointerLost}>{field.short}</span>
       </ControlTooltip>
       <input id={id} type="text" inputMode="numeric" role="spinbutton" autoComplete="off" spellCheck={false} disabled={disabled}
         aria-label={group.label} aria-valuenow={shown} aria-valuemin={field.min} aria-valuemax={field.max}

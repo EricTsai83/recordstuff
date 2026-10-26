@@ -259,7 +259,15 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
     ? { box: new DOMRect(origin.left + box.left, origin.top + box.top, box.width, box.height),
       begin: (pointer, x, y) => begin("move", pointer, x, y, document.getElementById("editor-camera")) }
     : undefined;
-  const pointer = { onPointerMove, onPointerUp, onPointerCancel: () => { drag.current = undefined; } };
+  // Cancelled, or let go outside the window (the press ends with no release here): the drag ends and the bubble goes
+  // back to its saved place, rather than a draft staying shown that the export and Undo know nothing of.
+  const onPointerLost = (event: PointerEvent<HTMLElement>): void => {
+    const grip = drag.current;
+    if (grip?.pointer !== event.pointerId) return;
+    drag.current = undefined;
+    if (grip.moved) model.dropSceneDraft();
+  };
+  const pointer = { onPointerMove, onPointerUp, onPointerCancel: onPointerLost, onLostPointerCapture: onPointerLost };
   return (
     <>
       <div ref={setOverlay} className="editor-overlay">
