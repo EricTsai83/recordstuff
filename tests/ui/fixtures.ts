@@ -38,7 +38,7 @@ const CLOSE_TIMEOUT_MS = 15_000;
 const EXIT_TIMEOUT_MS = process.platform === "win32" ? 15_000 : 5_000;
 const SCAN_INTERVAL_MS = 1_000;
 /** One line per launch's teardown (plan 078 step 5), read by `scripts/ui-close-timings.mts`. */
-export const CLOSE_TIMINGS_FILE = path.join(process.cwd(), "test-results", "ui-close-timings.jsonl");
+export const CLOSE_TIMINGS_FILE = path.join(ROOT, "test-results", "ui-close-timings.jsonl");
 
 /**
  * A worker that dies between tests is reported by Playwright as "worker process exited unexpectedly" with nothing

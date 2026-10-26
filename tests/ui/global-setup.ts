@@ -38,6 +38,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // This run's close timings only (plan 078 step 5; fixtures.ts appends one line per launch).
   fs.rmSync(path.join(root, "test-results", "ui-close-timings.jsonl"), { force: true });
   const hosts = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-ui-hosts-"));
+  // The teardown below removes the folder only after a run; a host that does not compile removes it here.
+  try {
+    await compileHosts(root, hosts);
+  } catch (error) {
+    fs.rmSync(hosts, { recursive: true, force: true });
+    throw error;
+  }
+  process.env.RECORDSTUFF_UI_HOSTS = hosts;
+  // The same digest the verification recipes record (verification-timing.mts), so their reports name the same build.
+  process.env.RECORDSTUFF_UI_OUT_DIGEST = treeDigest(path.join(root, "out")) ?? "missing";
+  console.log(`UI hosts compiled to ${hosts}; testing out/ ${process.env.RECORDSTUFF_UI_OUT_DIGEST.slice(0, 12)}`);
+  return async () => { fs.rmSync(hosts, { recursive: true, force: true }); };
+}
+
+/** The Electron hosts under tests/ui/hosts, compiled once for the run into `hosts`. */
+async function compileHosts(root: string, hosts: string): Promise<void> {
   await build({
     configFile: false, logLevel: "error", root,
     resolve: { alias: { "@": path.join(root, "src/renderer") } },
@@ -50,9 +66,4 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       rollupOptions: { external: ["electron", /^node:/] },
     },
   });
-  process.env.RECORDSTUFF_UI_HOSTS = hosts;
-  // The same digest the verification recipes record (verification-timing.mts), so their reports name the same build.
-  process.env.RECORDSTUFF_UI_OUT_DIGEST = treeDigest(path.join(root, "out")) ?? "missing";
-  console.log(`UI hosts compiled to ${hosts}; testing out/ ${process.env.RECORDSTUFF_UI_OUT_DIGEST.slice(0, 12)}`);
-  return async () => { fs.rmSync(hosts, { recursive: true, force: true }); };
 }
