@@ -31,11 +31,10 @@
  *   leaves that check unjudged, which blocks the round rather than passing it. It must have one picture and one sound
  *   track and last as long as the recording.
  *
- * - **Timeline** (2026-10-25, held where a person holds it, which a Computer Use pointer could not): the start's trim
- *   handle held a fifth in must show its time above it (the accent's red, `redShare`) and the readout there, and leave
- *   the export shorter when let go with the label gone; dragged past the window's edge and let go there, it must save
- *   the full export length again; a range held across the middle must show its span with the preview at its moving
- *   end, and Delete remove it; with Skimming switched on in More options (off by default), the pointer over the timeline must move the preview there and, moved
+ * - **Timeline** (2026-10-25, held where a person holds it, which a Computer Use pointer could not): a range dragged
+ *   from a fifth in past the timeline's start and let go outside the window must reach the very start, and Delete must
+ *   leave the export about a fifth shorter (2026-10-26: the start and end are cut as any range is, the trim handles
+ *   gone); a range held across the middle must show its span with the preview at its moving end, and Delete remove it; with Skimming switched on in More options (off by default), the pointer over the timeline must move the preview there and, moved
  *   away, back; the shortcuts button must list the editing shortcuts on a click; and ⌘Z must take every change back.
  * - **The next recording**, by the shortcut, must be plain again: the setting stayed off.
  *
@@ -63,7 +62,7 @@ import { nativeDrag } from "./lib/runner/native-drag.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
 import { frameRgb, hasTool, probe, requireMediaTimeout } from "./lib/verification/media-tools.mts";
-import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, redShare, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
+import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
 import type { Verdict } from "./lib/acceptance/capture-settings.mts";
 import { AUDIO_VOLUME_STEP, volumeDb } from "../src/shared/audio-volume.ts";
 import type { EditableDescription, EditScene } from "../src/shared/editable.ts";
@@ -358,8 +357,8 @@ async function main(): Promise<number> {
 
     /**
      * The timeline with real input, held where a person holds it (2026-10-25: a Computer Use pointer could neither hold
-     * a drag nor move without pressing, so these ran only in the UI tests): a trim handle's time label and readout while
-     * held, a handle let go past the window saving with the full export length, a range's preview following its end,
+     * a drag nor move without pressing, so these ran only in the UI tests): the start cut by a range dragged past it and
+     * let go outside the window, a range's preview following its end,
      * Skimming's hover and its way back, the shortcuts opened by a click, and every change undone.
      */
     const timeline = async (): Promise<void> => {
@@ -373,51 +372,44 @@ async function main(): Promise<number> {
       const lengthText = translate("Export length {length}", language, { length: M });
       const playheadText = translate("Playhead {time}", language, { time: M });
       const removed = (): number => (fs.existsSync(recordFile) ? (JSON.parse(fs.readFileSync(recordFile, "utf8")) as { removed?: unknown[] }).removed?.length : 0) ?? 0;
-      const handle = async (edge: "start" | "end"): Promise<WindowElement> =>
-        find(`${edge} trim handle`, (e) => e.role === "AXSlider" && e.title === translate(edge === "start" ? "Start of the export" : "End of the export", language));
+      // The timeline's span, from every part's bounds together (the camera's and the volumes' checks before it split
+      // the recording, Codex's review). A part is a pressed-or-not button, which Chromium gives macOS as a toggle.
+      const partMarker = "\u0004";
+      const suffixOf = (key: "{from} to {to}, kept" | "{from} to {to}, removed"): string =>
+        translate(key, language, { from: partMarker, to: partMarker }).split(partMarker).at(-1)!;
+      const keptSuffix = suffixOf("{from} to {to}, kept"), removedSuffix = suffixOf("{from} to {to}, removed");
+      const isPart = (e: WindowElement): boolean => (e.role === "AXButton" || e.role === "AXCheckBox") && (e.title.endsWith(keptSuffix) || e.title.endsWith(removedSuffix));
+      const part = async (): Promise<WindowElement> => find("a kept part", (e) => isPart(e) && e.title.endsWith(keptSuffix));
       const window = (await ax().windows(appPid)).windows.find((w) => w.title === WINDOW)?.frame ?? fail("no window frame");
-      const startHandle = await handle("start"), endHandle = await handle("end");
-      const left = startHandle.frame.x + startHandle.frame.width, right = endHandle.frame.x, y = Math.round(startHandle.frame.y + startHandle.frame.height / 2);
-      const top = startHandle.frame.y, span = right - left;
+      const parts = (await elements()).filter(isPart);
+      if (parts.length === 0) fail("no timeline parts");
+      const whole = {
+        x: Math.min(...parts.map((e) => e.frame.x)), y: parts[0]!.frame.y,
+        width: Math.max(...parts.map((e) => e.frame.x + e.frame.width)) - Math.min(...parts.map((e) => e.frame.x)), height: parts[0]!.frame.height,
+      };
+      const left = whole.x, right = whole.x + whole.width, y = Math.round(whole.y + whole.height / 2);
+      const top = whole.y, span = right - left;
       const full = await textStarting(lengthText) ?? fail("no export length shown");
       const fullSeconds = clockSeconds(full) ?? fail(`unreadable export length: ${full}`);
-      const labelRed = async (x: number, name: string): Promise<number> => {
-        const file = path.join(dir, name);
-        await command("screencapture", ["-x", "-R", [Math.round(x - 40), Math.round(top - 26), 80, 22].join(","), file], AbortSignal.timeout(10_000));
-        shots.push(name);
-        return redShare(frameRgb(file, 0, 80, 22, path.join(dir, `${name}.scaled.png`)));
-      };
       const hold = async (from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> => {
         await ax().pointer("down", from.x, from.y);
         for (let i = 1; i <= 8; i++) { await ax().pointer("drag", Math.round(from.x + (to.x - from.x) * i / 8), Math.round(from.y + (to.y - from.y) * i / 8)); await sleep(30); }
         await sleep(400);
       };
 
-      // A trim handle held a fifth of the way in: its time above it and the readout say where the export starts.
-      const aim = Math.round(left + span * 0.2);
-      try {
-        await hold(centre(startHandle.frame), { x: aim, y });
-        const reading = await textStarting(translate("The export starts at {time}", language, { time: M }));
-        const red = await labelRed(aim, "8-trim-held-label.png");
-        await shot("8-trim-held.png");
-        const expected = fullSeconds * 0.2;
-        check({ check: "Trim: the start's handle held a fifth in", expected: `the readout and a time label above it at about ${expected.toFixed(2)} s`,
-          actual: `readout "${reading ?? "none"}", label red ${(red * 100).toFixed(0)}%`,
-          pass: reading !== undefined && Math.abs((clockSeconds(reading) ?? -1) - expected) <= 0.5 && red > 0.15 });
-      } finally { await ax().pointer("up", aim, y); }
-      await sleep(1200);
-      const afterRed = await labelRed(aim, "9-trim-released-label.png");
-      const trimmed = await textStarting(lengthText);
-      check({ check: "Trim: let go", expected: "the label gone and the export length shorter", actual: `label red ${(afterRed * 100).toFixed(0)}%, "${trimmed}"`,
-        pass: afterRed < 0.05 && (clockSeconds(trimmed ?? "") ?? fullSeconds) < fullSeconds - 1 });
-
-      // The handle dragged past the window's edge and let go there: back at the start, the full length saved.
-      const moved = await handle("start");
-      const outside = Math.round(window.x - 120);
-      try { await hold(centre(moved.frame), { x: outside, y }); } finally { await ax().pointer("up", outside, y); }
+      // The start cut as any range is (2026-10-26: no trim handles): dragged from a fifth in past the timeline's start
+      // and let go outside the window, the range reaches the very start; Delete leaves the export a fifth shorter.
+      const fifth = { x: Math.round(left + span * 0.2), y }, outside = { x: Math.round(window.x - 120), y };
+      try { await hold(fifth, outside); } finally { await ax().pointer("up", outside.x, outside.y); }
+      await sleep(400);
+      await ax().key(KEY.delete);
       await sleep(1500);
-      const restored = await textStarting(lengthText);
-      check({ check: "Trim: let go outside the window", expected: `the full export length, ${full}`, actual: restored ?? "none", pass: restored === full });
+      const head = (fs.existsSync(recordFile) ? (JSON.parse(fs.readFileSync(recordFile, "utf8")) as { removed?: Array<[number, number]> }).removed?.[0] : undefined);
+      const cut = await textStarting(lengthText);
+      await shot("8-start-cut.png");
+      check({ check: "Start: a range dragged past it, then Delete", expected: `the range from the very start removed, the export about ${(fullSeconds * 0.8).toFixed(1)} s`,
+        actual: `removed ${JSON.stringify(head ?? null)}, "${cut ?? "none"}"`,
+        pass: head?.[0] === 0 && Math.abs((clockSeconds(cut ?? "") ?? 0) - fullSeconds * 0.8) <= 0.6 });
 
       // A range held across the middle: the preview follows the end being dragged; Delete removes it.
       const before = removed();
@@ -472,8 +464,8 @@ async function main(): Promise<number> {
       await click(keysButton);
 
       // Every change undone from the keyboard, the focus kept in the view throughout.
-      // The start's handle, on screen however the window lies across displays (the end's may not be).
-      await click(await handle("start"));
+      // A kept part, on screen however the window lies across displays, takes the focus into the timeline.
+      await click(await part());
       for (let i = 0; i < 12 && removed() > 0; i++) { await ax().key(KEY.z, FLAG.command); await sleep(700); }
       check({ check: "Undo: every timeline change taken back by ⌘Z", expected: "nothing removed", actual: `${removed()} removed`, pass: removed() === 0 });
       await shot("11-undone.png");

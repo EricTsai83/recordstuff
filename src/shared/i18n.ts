@@ -668,10 +668,8 @@ export const ZH_TW = {
   "Remove the selection": "移除選取的部分",
   "Keyboard shortcuts": "快捷鍵",
   "Move over the timeline to preview; moving away returns to the playhead, and a click sets it.": "滑過時間軸即可預覽；移開後回到播放位置，按一下可設定播放位置。",
-  "Drag the ends to trim, or across the timeline to choose a range.": "拖曳兩端修剪，或在時間軸上拖曳選取範圍。",
-  "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo · on a trim handle, ← → move its edge":
-    "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做 · 在修剪把手上，←／→ 微調邊界",
-  "On a trim handle: move its edge a frame, Shift a second": "在修剪把手上：逐格微調邊界，Shift 一次一秒",
+  "Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · {undo} undo · {redo} redo":
+    "空白鍵 播放／暫停 · ←／→ 逐格，Shift＋←／→ 移動一秒 · S 分割 · Delete 移除 · {undo} 還原 · {redo} 重做",
   "Selection {from}–{to} ({length})": "選取範圍 {from}–{to}（長度 {length}）",
   "Reset volumes": "重設音量",
   // The camera hidden over stretches of an editable recording (2026-10-26).
@@ -725,12 +723,8 @@ export const ZH_TW = {
   "C hide or show the camera in the selection": "C 在選取範圍隱藏／顯示相機",
   "The camera can be hidden over at most {count} stretches.": "相機最多只能在 {count} 段隱藏。",
   "To hide it for a while only, select that stretch on the timeline and press C.": "只想在某段時間隱藏？在時間軸上選取那段後按 C。",
-  "Start of the export": "匯出的開頭",
-  "End of the export": "匯出的結尾",
   "Remove the selected range (Delete)": "移除選取的範圍 (Delete)",
   "Remove selection": "移除選取範圍",
-  "The export starts at {time}": "匯出從 {time} 開始",
-  "The export ends at {time}": "匯出在 {time} 結束",
   "Export progress": "匯出進度",
   "Cancelling…": "正在取消…",
   "Cancel export": "取消匯出",

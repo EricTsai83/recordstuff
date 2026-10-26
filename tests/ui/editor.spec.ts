@@ -130,7 +130,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
     v.pause();
     if (v.readyState < 1) await new Promise((done) => v.addEventListener("loadedmetadata", done, { once: true }));
   });
-  await expect(page.locator("#editor-keys")).toHaveAccessibleName(`Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ${process.platform === "darwin" ? "⌘Z undo · ⇧⌘Z redo" : "Ctrl+Z undo · Ctrl+Y redo"} · on a trim handle, ← → move its edge`);
+  await expect(page.locator("#editor-keys")).toHaveAccessibleName(`Keyboard shortcuts: Space play or pause · ← → a frame, Shift+← → a second · S split · Delete remove · ${process.platform === "darwin" ? "⌘Z undo · ⇧⌘Z redo" : "Ctrl+Z undo · Ctrl+Y redo"}`);
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
   const time = () => video.evaluate((el) => (el as HTMLVideoElement).currentTime);
@@ -195,7 +195,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   }
 });
 
-test("the handles trim the start and the end, a drag across the timeline removes what it chose, each a step Undo takes back (2026-10-25)", async () => {
+test("a drag past the timeline's start or end and Delete cut the head or the tail, a drag across it removes what it chose, each a step Undo takes back (2026-10-26: no trim handles)", async () => {
   await openEditor();
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
@@ -206,24 +206,27 @@ test("the handles trim the start and the end, a drag across the timeline removes
   };
   const seconds = async () => read<number>(page, "document.querySelector('#editor video').duration");
   const duration = await seconds();
+  await expect(page.locator(".editor-trim")).toHaveCount(0);
 
-  // The start's handle dragged a quarter in: the first quarter is removed. Pressed just beside the handle, as a pointer
-  // that does not quite land on its 12 px still takes hold of it.
-  const start = (await page.locator("#editor-trim-start").boundingBox())!;
-  await page.mouse.move(start.x + start.width + 4, y);
+  // The head: dragged from a quarter in past the start, the range reaches the very start; Delete removes it.
+  await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.25, y, { steps: 6 });
+  await page.mouse.move(box.x - 80, y, { steps: 6 });
   await page.mouse.up();
+  await expect(page.locator(".editor-selection")).toHaveAttribute("style", /--from: 0;/);
+  await page.keyboard.press("Delete");
   await expect(page.locator(".editor-part").first()).toHaveAttribute("data-removed", "true");
-  await expect(page.locator("#editor-feedback")).toHaveText(/^The export starts at 0:0(1\.[89]|2\.[01])$/);
-  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", /^(1\.[89]\d?|2(\.[01]\d?)?)$/);
+  await expect(page.locator("#editor-feedback")).toHaveText(/^Removed 0:00\.0 to 0:0(1\.[89]|2\.[01])$/);
 
-  // The end's handle, stepped from the keyboard: Shift+← takes a second off the end each press.
-  await page.locator("#editor-trim-end").focus();
-  await page.keyboard.press("Shift+ArrowLeft");
+  // The tail, the same past the end.
+  await page.mouse.move(box.x + box.width * 0.9, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 80, y, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator(".editor-selection")).toHaveAttribute("style", /--to: 1;/);
+  await page.keyboard.press("Delete");
   await expect(page.locator(".editor-part").last()).toHaveAttribute("data-removed", "true");
-  await expect(page.locator("#editor-feedback")).toHaveText(/^The export ends at /);
-  expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration - 1, 0);
+  expect(saved()).toHaveLength(2);
 
   const exportY = (await page.locator("#editor-export").boundingBox())!.y;
   // A drag across the middle chooses a range, the preview following its moving end; Remove selection takes it out.
@@ -246,115 +249,54 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await expect(page.locator("#editor-feedback")).toHaveText(/^Removed 0:0(3\.[4-9]|4\.[0-9]) to 0:0(4\.[5-9]|5\.[0-2])$/);
   expect(saved()).toHaveLength(3);
 
-  // Undo takes each back in turn, the trims included.
+  // Undo takes each back in turn, the head and the tail included.
   for (const left of [2, 1, 0]) {
     await page.keyboard.press("ControlOrMeta+z");
     await expect(page.locator(".editor-part[data-removed]")).toHaveCount(left);
   }
-  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
 
-  // The end's handle dragged by the pointer, down at the handle and up far away with no move between (as a hands-on
-  // round's pointer did): the end is trimmed there.
-  const end = (await page.locator("#editor-trim-end").boundingBox())!;
+  // Pressed and let go far away with no move between (as a hands-on round's pointer did): the range is chosen there.
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: end.x + end.width / 2, y, button: "left", buttons: 1, clickCount: 1 });
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x + box.width * 0.75, y, button: "left", buttons: 0, clickCount: 1 });
-  await expect(page.locator(".editor-part").last()).toHaveAttribute("data-removed", "true");
-  expect(Number(await page.locator("#editor-trim-end").getAttribute("aria-valuenow"))).toBeCloseTo(duration * 0.75, 0);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: box.x + box.width * 0.75, y, button: "left", buttons: 1, clickCount: 1 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x + box.width + 40, y, button: "left", buttons: 0, clickCount: 1 });
+  await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove selection");
+  await expect(page.locator(".editor-selection")).toHaveAttribute("style", /--to: 1;/);
 });
 
-test("a trim handle keeps its distance from the pointer, reaches the recording's very start and end, and steps a frame from the keyboard (2026-10-25)", async () => {
+test("the timeline spans the panel, a range dragged past it reaches the recording's very start and end, a hold lost outside the window ends where it was, and the shortcuts open on a click (2026-10-26: no trim handles)", async () => {
   await openEditor();
   const box = (await page.locator(".editor-timeline").boundingBox())!;
   const y = box.y + box.height / 2;
-  const seconds = await read<number>(page, "document.querySelector('#editor .editor-stage video').duration");
-  const value = async (edge: string) => Number(await page.locator(`#editor-trim-${edge}`).getAttribute("aria-valuenow"));
-  const perPixel = seconds / box.width;
-  // Each drag saves; the next waits for the save, as the timeline takes no press while one is under way.
-  const saved = () => expect(page.locator("#editor-undo")).toHaveAttribute("aria-disabled", "false");
+  const style = () => page.locator(".editor-selection").getAttribute("style");
 
-  // The handles stand outside the kept recording, as iPhone's: the start's right edge and the end's left edge are the
-  // track's ends, so neither covers its pictures.
-  const start = (await page.locator("#editor-trim-start").boundingBox())!;
-  const last = (await page.locator("#editor-trim-end").boundingBox())!;
-  expect(Math.abs(start.x + start.width - box.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(last.x - (box.x + box.width))).toBeLessThanOrEqual(1);
-
-  // Taken hold of in the middle of the bar and let go where it was pressed: the edge stays where it was.
-  await page.mouse.move(start.x + start.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(start.x + start.width / 2 + 1, y);
-  await page.mouse.move(start.x + start.width / 2, y);
-  await page.mouse.up();
-  expect(await value("start")).toBe(0);
-
-  // Moved 100 px: the edge moves 100 px, not 100 px plus where the bar was pressed; the times' row says where it is.
-  await page.mouse.move(start.x + start.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(start.x + start.width / 2 + 100, y, { steps: 5 });
-  await expect(page.locator(".editor-position")).toHaveText(/^The export starts at 0:0\d\.\d\d$/);
-  // Its time shows above it while it moves, and goes when it is let go.
-  await expect(page.locator(".editor-trim-time")).toHaveText(/^0:0\d\.\d\d$/);
-  await page.mouse.up();
-  await expect(page.locator(".editor-trim-time")).toHaveCount(0);
-  expect(await value("start")).toBeCloseTo(100 * perPixel, 1);
-  await saved();
-
-  // Dragged past the timeline's ends, the handles stop at the recording's very start and end.
-  const moved = (await page.locator("#editor-trim-start").boundingBox())!;
-  await page.mouse.move(moved.x + moved.width / 2, y);
+  // Past either end, a range stops at the recording's very start or end.
+  await page.mouse.move(box.x + box.width * 0.3, y);
   await page.mouse.down();
   await page.mouse.move(box.x - 80, y, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => value("start")).toBe(0);
-  await saved();
-  const end = (await page.locator("#editor-trim-end").boundingBox())!;
-  await page.mouse.move(end.x + end.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.7, y, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(() => value("end")).toBeLessThan(seconds * 0.75);
-  await saved();
-  const back = (await page.locator("#editor-trim-end").boundingBox())!;
-  await page.mouse.move(back.x + back.width / 2, y);
+  await expect.poll(style).toMatch(/--from: 0;/);
+  await page.mouse.move(box.x + box.width * 0.7, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width + 80, y, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => value("end")).toBeCloseTo(seconds, 1);
-  await saved();
+  await expect.poll(style).toMatch(/--to: 1;/);
 
-  // From the keyboard, → moves the start a frame, Shift+→ a second; while the handle has the focus, the times' row
-  // says where the export starts.
-  await page.locator("#editor-trim-start").focus();
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(() => value("start")).toBeGreaterThan(0);
-  expect(await value("start")).toBeLessThanOrEqual(0.1);
-  await expect(page.locator(".editor-position")).toHaveText(/^The export starts at 0:00\.0\d$/);
-  await page.keyboard.press("Shift+ArrowRight");
-  await expect.poll(() => value("start")).toBeGreaterThan(1);
-  await saved();
-
-  // Let go outside the window: the timeline loses its hold with no release, and the trim is saved all the same, the
-  // export length with it.
-  const length = () => page.locator(".editor-length").textContent();
-  const before = await length();
-  const grip = (await page.locator("#editor-trim-start").boundingBox())!;
-  await page.mouse.move(grip.x + grip.width / 2, y);
+  // A hold lost outside the window (no release comes): the range ends where it was; a later move chooses nothing.
+  await page.mouse.move(box.x + box.width * 0.4, y);
   await page.mouse.down();
   await page.mouse.move(box.x - 80, y, { steps: 5 });
   await page.evaluate(() => document.querySelector(".editor-trimmer")!.releasePointerCapture(1));
-  // The lost hold is told at the next pointer event.
   await page.mouse.move(box.x - 90, y);
-  await expect.poll(length).not.toBe(before);
-  await expect(page.locator(".editor-length")).toHaveText(`Export length ${await read<string>(page, "(() => { const d = document.querySelector('#editor .editor-stage video').duration; return (Math.floor(d / 60)) + ':' + (d % 60).toFixed(2).padStart(5, '0'); })()")}`);
+  await page.mouse.move(box.x + box.width * 0.9, y + 300);
   await page.mouse.up();
-  expect(await value("start")).toBe(0);
+  await expect.poll(style).toMatch(/--from: 0;/);
+  expect(await style()).not.toMatch(/--to: 1;/);
 
   // The keyboard button opens the shortcuts on a click, too.
   await page.locator("#editor-keys").click();
   await expect(page.locator("#editor-keys-popup")).toBeVisible();
   await expect(page.locator("#editor-keys-popup")).toContainText("Editing shortcuts");
-  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(8);
+  await expect(page.locator("#editor-keys-popup dd")).toHaveCount(7);
   // Shortcuts only: Skimming is in More options (2026-10-26).
   await expect(page.locator("#editor-keys-popup #editor-skim")).toHaveCount(0);
 });
@@ -663,23 +605,19 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   // Nothing chosen: the camera's button floats over a selection only (2026-10-26, B′).
   await expect(toggle).toHaveCount(0);
 
-  // The lane sits under the pictures, inside the panel, the trim handles beside the pictures only.
+  // The lane sits under the pictures, inside the panel, as wide.
   const pictures = (await page.locator(".editor-timeline").boundingBox())!;
   const laneBox = (await lane.boundingBox())!;
   expect(laneBox.y).toBeGreaterThanOrEqual(pictures.y + pictures.height);
   expect(Math.abs(laneBox.x - pictures.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(laneBox.width - pictures.width)).toBeLessThanOrEqual(1);
-  const handle = (await page.locator("#editor-trim-start").boundingBox())!;
-  expect(handle.y + handle.height).toBeLessThanOrEqual(laneBox.y + 1);
   expect(laneBox.height).toBeGreaterThanOrEqual(16);
-  // A click on the lane beside the start's trim handle trims nothing (Codex's review); on a stretch the edit has not set
-  // it is as a click on the pictures: the part there, not the whole recording the stretch spans (2026-10-26, the
-  // maintainer's report).
+  // A click on a stretch the edit has not set is as a click on the pictures: the part there, not the whole recording
+  // the stretch spans (2026-10-26, the maintainer's report).
   await page.mouse.click(laneBox.x + 3, laneBox.y + laneBox.height / 2);
   await expect(page.locator(".editor-part").first()).toHaveAttribute("aria-pressed", "true");
   await expect(stretches.first()).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove part");
-  await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
   await page.keyboard.press("Escape");
 
   // No save dims anything while it runs (2026-10-26, the maintainer's report): watched through the rest of the test,
@@ -778,11 +716,9 @@ test("an editable recording's microphone is muted over a dragged range from the 
   // Nothing chosen: Volume floats over a selection only (2026-10-26, B′).
   await expect(page.locator("#editor-volume")).toHaveCount(0);
 
-  // The lanes under the pictures, the trim handles beside the pictures only.
+  // The lanes under the pictures, inside the panel.
   const pictures = (await page.locator(".editor-timeline").boundingBox())!;
   const lowest = (await page.locator('.editor-camera-lane[data-lane="microphone"]').boundingBox())!;
-  const handle = (await page.locator("#editor-trim-start").boundingBox())!;
-  expect(handle.y + handle.height).toBeLessThanOrEqual(pictures.y + pictures.height + 1);
   expect(lowest.y + lowest.height).toBeLessThanOrEqual((await page.locator(".editor-panel").boundingBox())!.y + (await page.locator(".editor-panel").boundingBox())!.height);
 
   await page.mouse.move(pictures.x + pictures.width * 0.3, pictures.y + pictures.height / 2);
@@ -953,18 +889,17 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(box.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height + 2);
     // And the timeline sits close under the toolbar (the maintainer's review of 2026-10-26: there was too much room).
     expect(pictures.y - (toolbar.y + toolbar.height)).toBeLessThanOrEqual(48);
-    // Their body stays above the selection's top edge and their pointer's tip (5 px under it) just crosses it (the
-    // maintainer's review).
+    // Their body stays just above the timeline's top edge, with no pointer under it (the maintainer's review of
+    // 2026-10-26: the frame says what is chosen).
     expect(box.y + box.height).toBeLessThanOrEqual(pictures.y);
-    expect(box.y + box.height + 5).toBeGreaterThan(pictures.y);
-    expect(box.y + box.height + 5).toBeLessThanOrEqual(pictures.y + 4);
+    expect(box.y + box.height).toBeGreaterThan(pictures.y - 10);
+    await expect(page.locator(".editor-selection-caret")).toHaveCount(0);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
-    // They stand right over the selection, their pointer at its middle; the times give way only where they meet
-    // (the maintainer's review of 2026-10-26), and stay in sight otherwise.
+    // They stand right over the selection, centred on it where the line has room; the times give way only where they
+    // meet (the maintainer's review of 2026-10-26), and stay in sight otherwise.
     const middle = pictures.x + pictures.width * 0.75;
-    const caret = (await page.locator(".editor-selection-caret").boundingBox())!;
-    expect(Math.abs(caret.x + caret.width / 2 - middle)).toBeLessThanOrEqual(3);
+    if (box.x + box.width < line.x + line.width - 1) expect(Math.abs(box.x + box.width / 2 - middle)).toBeLessThanOrEqual(3);
     const times = page.locator(".editor-action-row .editor-readouts");
     const timesBox = (await times.boundingBox())!;
     if (box.x + box.width + 8 > timesBox.x) await expect(times).toHaveAttribute("data-covered", "true");
@@ -1018,10 +953,6 @@ test("a selection's actions float over the line above the timeline, words where 
     await page.mouse.move(micBox.x + micBox.width * 0.9, micBox.y + micBox.height / 2);
     await expect(preview).toHaveCount(1);
     await page.mouse.move(pictures.x + 4, pictures.y - 120);
-    await expect(preview).toHaveCount(0);
-    // None where a press takes hold of a trim handle, on the pictures beside the recording's start (Codex's review).
-    await page.mouse.move(pictures.x + 3, pictures.y + pictures.height / 2);
-    await page.waitForTimeout(100);
     await expect(preview).toHaveCount(0);
     await page.mouse.move(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
     await expect(preview).toHaveCount(1);

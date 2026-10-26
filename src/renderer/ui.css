@@ -2849,92 +2849,39 @@
   .editor-part:disabled {
     cursor: default;
   }
-  /* The trimmer (2026-10-25), as iPhone's and QuickTime's: its sides padded by a handle's width, so the handles stand
-     outside the kept recording, never over its pictures, and one at the very start or end is seen whole. */
+  /* The timeline, the pictures and the lanes under them, the panel's full width (2026-10-26, the maintainer's review:
+     the trim handles either side did what a range and Remove do, and took room from the pictures). */
   .editor-trimmer {
-    --trim-pad: 12px;
     position: relative;
     flex: none;
-    padding: 0 var(--trim-pad);
     touch-action: none;
   }
-  .editor-trim {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 11;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--trim-pad);
-    background: var(--primary);
-    color: var(--primary-foreground);
-    cursor: ew-resize;
-  }
-  .editor-trim svg {
-    width: 12px;
-    height: 12px;
-    stroke-width: 3;
-  }
-  /* The start's right edge and the end's left edge are the cuts. */
-  .editor-trim[data-edge="start"] {
-    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at) - var(--trim-pad));
-    border-radius: 6px 0 0 6px;
-  }
-  .editor-trim[data-edge="end"] {
-    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at));
-    border-radius: 0 6px 6px 0;
-  }
-  .editor-trim:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 1px;
-  }
-  .editor-trim[aria-disabled="true"] {
-    cursor: default;
-    opacity: 0.6;
-  }
-  /* A dragged handle's time, above its cut. */
-  .editor-trim-time {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    z-index: 5;
-    left: calc(var(--trim-pad) + (100% - 2 * var(--trim-pad)) * var(--at));
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: var(--primary);
-    color: var(--primary-foreground);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    pointer-events: none;
-  }
   /* What is chosen, one stretch of time framed across the pictures and every lane (2026-10-26, the maintainer's review:
-     a frame on each track did not say which was chosen, and a lane's actions read as that lane's alone): 1.5 px of the
-     foreground with a hair of the background inside it, so it is seen over the pictures and the lanes in either theme,
-     over a faint fill. Under the playhead. */
+     a frame on each track did not say which was chosen, and a lane's actions read as that lane's alone): a white frame
+     with a hair of dark around it and a soft shadow, lifted like a card, the maintainer's choice of four (a black frame
+     read as heavy in the light theme), seen over the pictures and the lanes in either theme. Under the playhead. */
   .editor-selection,
   .editor-selection-preview {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: calc(var(--trim-pad) + var(--from) * (100% - 2 * var(--trim-pad)));
-    width: calc((var(--to) - var(--from)) * (100% - 2 * var(--trim-pad)));
+    left: calc(var(--from) * 100%);
+    width: calc((var(--to) - var(--from)) * 100%);
     z-index: 4;
     border-radius: 5px;
     pointer-events: none;
   }
   .editor-selection {
-    background: color-mix(in oklab, var(--foreground) 10%, transparent);
-    box-shadow: inset 0 0 0 1.5px var(--foreground), inset 0 0 0 2.5px color-mix(in oklab, var(--background) 70%, transparent);
+    background: color-mix(in oklab, var(--media-foreground) 18%, transparent);
+    box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px color-mix(in oklab, var(--media) 22%, transparent),
+      0 2px 8px color-mix(in oklab, var(--media) 20%, transparent);
   }
   /* What a click under the pointer would choose, faint and red, with no actions. */
   .editor-selection-preview {
     box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--ring) 60%, transparent);
   }
   /* An editable recording's camera lane under the pictures (2026-10-26): where the camera is in the picture, a soft
-     fill with a person, and where it is hidden, an open dashed stretch with the person struck through. The trim handles
-     keep to the pictures above it. */
+     fill with a person, and where it is hidden, an open dashed stretch with the person struck through. */
   /* The lanes are one block under the pictures, each a hair apart from the next (2026-10-26, the maintainer's review:
      they share one clock, so the gaps between them only took height from them): taller in the same room. */
   .editor-trimmer[data-lane] {
@@ -2945,9 +2892,6 @@
   .editor-trimmer[data-lane] .editor-timeline {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-  }
-  .editor-trimmer[data-lane] .editor-trim {
-    bottom: calc(var(--lane-gap) + var(--lanes, 1) * var(--lane));
   }
   /* Sides and foot only: the pictures' own edge is the block's top, and the lines between lanes are drawn inside them,
      under the playhead, so its line runs unbroken from the pictures down. */
@@ -3125,7 +3069,7 @@
   .editor-selection-actions {
     position: absolute;
     bottom: 0;
-    /* Over the pictures and the lanes, under the trim handles, which stay in reach (review of 2026-10-26). */
+    /* Over the pictures and the lanes (review of 2026-10-26). */
     z-index: 10;
     display: flex;
     align-items: center;
@@ -3144,18 +3088,6 @@
     visibility: visible;
   }
   /* A pointer from the actions to the selection's middle, so they are seen to belong to it wherever they had to stand. */
-  .editor-selection-caret {
-    position: absolute;
-    left: var(--caret);
-    bottom: -5px;
-    width: 9px;
-    height: 9px;
-    margin-left: -4.5px;
-    rotate: 45deg;
-    background: var(--popover);
-    box-shadow: 1px 1px 0 0 color-mix(in oklab, var(--foreground) 10%, transparent);
-    pointer-events: none;
-  }
   .editor-selection-length {
     margin-inline-end: 6px;
     color: var(--muted-foreground);
@@ -3200,7 +3132,6 @@
   .editor-ruler {
     position: relative;
     height: 20px;
-    margin-inline: 12px;
     margin-top: -6px;
     overflow: hidden;
     color: var(--muted-foreground);
@@ -3305,7 +3236,7 @@
      read as three), snaps to whole pixels so it stays sharp; the cap keeps its smooth edges. Its height follows the
      lanes without stretching the cap: the line's end is a percentage, the cap in pixels. */
   .editor-trimmer > .editor-playhead {
-    left: calc(var(--trim-pad) + var(--at) * (100% - 2 * var(--trim-pad)));
+    left: calc(var(--at) * 100%);
     top: -1px;
     z-index: 5;
     width: 10px;

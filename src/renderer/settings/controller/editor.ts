@@ -36,8 +36,6 @@ let splits: number[] = [];
 export let selectedFrom: number | undefined;
 /** A range dragged across the timeline (2026-10-25), in the video's timescale: Remove takes it out. */
 export let rangeSelection: EditRange | undefined;
-/** A trim handle being dragged (2026-10-25): where the kept recording would start or end, until it is let go. */
-let trimDraft: { edge: TrimEdge; at: number } | undefined;
 /**
  * Skimming (2026-10-25, the maintainer's choice, as Final Cut Pro's): while on, the preview shows the picture under the
  * pointer as it moves over the timeline, and goes back to the playhead when it leaves. Off by default again since
@@ -48,8 +46,6 @@ export let skimming = false;
 export let skimAt: number | undefined;
 /** The playhead's time before the pointer began skimming, which it returns to; none once a press put it elsewhere. */
 let skimFrom: number | undefined;
-/** The shortest stretch the trim handles leave between them, in seconds. */
-const TRIM_GAP = 0.2;
 /**
  * An edit as Undo restores it: its cuts, an editable recording's scene, and the timeline's splits (2026-10-25: a
  * split is a step Undo takes back too, though it is the view's own and never saved).
@@ -86,8 +82,7 @@ export function editorView(): EditorView | undefined {
 export function timelineParts(editor: EditorView, extra: readonly number[] = splits): TimelinePart[] {
   const frame = editor.timescale / Math.max(1, editor.frameRate);
   const cuts = new Set<number>([0, editor.duration]);
-  const removed = shownRemoved(editor);
-  for (const [from, to] of removed) {
+  for (const [from, to] of editor.removed) {
     cuts.add(from);
     cuts.add(to);
   }
@@ -101,7 +96,7 @@ export function timelineParts(editor: EditorView, extra: readonly number[] = spl
     const from = sorted[index]!, to = sorted[index + 1]!;
     if (to <= from) continue;
     const middle = (from + to) / 2;
-    parts.push({ from, to, removed: removed.some(([a, b]) => middle >= a && middle < b) });
+    parts.push({ from, to, removed: editor.removed.some(([a, b]) => middle >= a && middle < b) });
   }
   return parts;
 }
@@ -133,7 +128,6 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
-  trimDraft = undefined;
   undoStack.length = 0;
   redoStack.length = 0;
   sceneDraft = undefined;
@@ -248,7 +242,6 @@ function finishClose(item: LibraryItemView, restore: boolean): void {
   splits = [];
   selectedFrom = undefined;
   rangeSelection = undefined;
-  trimDraft = undefined;
   undoStack.length = 0;
   redoStack.length = 0;
   sceneDraft = undefined;
@@ -711,101 +704,6 @@ export function selectRange(a: number, b: number): void {
   rangeSelection = to - from >= frame ? [from, to] : undefined;
   if (rangeSelection) selectedFrom = undefined;
   draw();
-}
-
-export type TrimEdge = "start" | "end";
-
-/** Where the kept recording starts and ends: the ends of a removal touching the recording's start or end. */
-export function trimmed(editor: EditorView, removed: readonly EditRange[] = editor.removed): { start: number; end: number } {
-  const frame = editor.timescale / Math.max(1, editor.frameRate);
-  const head = removed.find(([from]) => from < frame);
-  const tail = removed.find(([, to]) => to > editor.duration - frame);
-  return { start: head ? head[1] : 0, end: tail ? tail[0] : editor.duration };
-}
-
-/** The trim handle being moved, if one is. */
-export function trimming(): TrimEdge | undefined {
-  return trimDraft?.edge;
-}
-
-/** The trim handles as drawn: a handle being dragged where it is. */
-export function shownTrim(editor: EditorView): { start: number; end: number } {
-  const now = trimmed(editor);
-  return trimDraft ? { ...now, [trimDraft.edge]: trimDraft.at } : now;
-}
-
-/** The removals as drawn: with a trim handle's drag applied. */
-function shownRemoved(editor: EditorView): EditRange[] {
-  return trimDraft ? trimRemoved(editor, trimDraft.edge, trimDraft.at) : editor.removed;
-}
-
-/**
- * The export's length as drawn, in seconds: while a trim handle is dragged, the saved length changed by what the drag
- * adds or gives back, so it follows the handle without asking main for a plan on every move. The saved plan's own
- * adjustments (a part resuming at a later key frame) are kept; the plan made on letting go replaces the estimate.
- */
-export function shownOutputSeconds(editor: EditorView): number {
-  if (!trimDraft) return editor.outputSeconds;
-  const total = (ranges: readonly EditRange[]): number => ranges.reduce((sum, [from, to]) => sum + to - from, 0);
-  return Math.max(0, editor.outputSeconds + (total(editor.removed) - total(shownRemoved(editor))) / editor.timescale);
-}
-
-/** The removals with the recording's start or end trimmed to `at`: what was trimmed before goes, `at` takes its place. */
-function trimRemoved(editor: EditorView, edge: TrimEdge, at: number): EditRange[] {
-  const now = trimmed(editor);
-  const kept = edge === "start"
-    ? subtract(editor.removed, { from: 0, to: now.start, removed: true })
-    : subtract(editor.removed, { from: now.end, to: editor.duration, removed: true });
-  const range: EditRange | undefined = edge === "start" ? (at > 0 ? [0, at] : undefined) : (at < editor.duration ? [at, editor.duration] : undefined);
-  return normalizeRanges(range ? [...kept, range] : kept);
-}
-
-/** Moves a trim handle while it is dragged or stepped, kept clear of the other one; the preview shows that frame. */
-export function moveTrim(edge: TrimEdge, ticks: number): void {
-  const editor = editorView();
-  // A save under way does not stop it (keys pressed in quick turn): the handle's own save waits for that one.
-  if (!editor || editor.state !== "ready" || editor.export.phase === "exporting") return;
-  const now = trimmed(editor), gap = TRIM_GAP * editor.timescale;
-  const at = Math.round(edge === "start" ? Math.max(0, Math.min(ticks, now.end - gap)) : Math.min(editor.duration, Math.max(ticks, now.start + gap)));
-  trimDraft = { edge, at };
-  rangeSelection = undefined;
-  editorVideo?.pause();
-  seekTo(at / editor.timescale);
-  draw();
-}
-
-/** Saves where a trim handle was let go, as one change Undo takes back. */
-export function commitTrim(): Promise<void> {
-  return inTurn(commitTrimNow);
-}
-
-async function commitTrimNow(): Promise<void> {
-  while (editorSaving) await saveDone;
-  const draft = trimDraft;
-  const editor = editorView();
-  if (!draft || !editor) {
-    trimDraft = undefined;
-    draw();
-    return;
-  }
-  const removed = trimRemoved(editor, draft.edge, draft.at);
-  if (JSON.stringify(removed) === JSON.stringify(editor.removed)) {
-    trimDraft = undefined;
-    draw();
-    return;
-  }
-  undoStack.push(current(editor));
-  const saved = await save(removed);
-  // A handle moved again while this saved (a key pressed in quick turn) keeps its new place, for its own save.
-  if (trimDraft === draft) trimDraft = undefined;
-  if (!saved) {
-    undoStack.pop();
-    draw();
-    return;
-  }
-  redoStack.length = 0;
-  draw();
-  announce(translate(draft.edge === "start" ? "The export starts at {time}" : "The export ends at {time}", view?.language, { time: clock(draft.at / editor.timescale) }));
 }
 
 /** The ranges without `part`. */

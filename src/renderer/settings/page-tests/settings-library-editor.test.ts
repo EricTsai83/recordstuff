@@ -87,16 +87,8 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   await vi.waitFor(() => expect(parts()).toHaveLength(2));
   expect(choices.length).toBe(saves);
 
-  // The export's length follows a trim handle as it moves, before it is saved, and is main's again once it is.
-  const end = document.getElementById("editor-trim-end")!;
-  end.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
-  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:09.00"));
-  expect(choices.length).toBe(saves);
-  end.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
-  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [[810_000, 900_000]], revision: 4 }));
-  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:09.00"));
-  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-  await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:10.00"));
+  // No trim handles (2026-10-26, the maintainer's review): the start and end are cut as any range is.
+  expect(document.querySelector(".editor-trim")).toBeNull();
   await vi.waitFor(() => expect(parts()).toHaveLength(2));
 
   // Escape lets go of the selected part and leaves the view open (2026-10-26).
