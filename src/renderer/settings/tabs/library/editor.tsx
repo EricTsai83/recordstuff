@@ -395,12 +395,15 @@ function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | unde
  * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
  * a selection comes and goes; the actions keep clear of the times.
  */
-function EditorActionRow({ editor, track, span, position, length, shortPosition, shortLength, onTarget, children }: {
-  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string;
-  shortPosition: string; shortLength: string; onTarget: (target: "all" | "camera" | "sound" | undefined) => void; children: ReactNode;
+function EditorActionRow({ editor, track, span, lane, position, length, shortPosition, shortLength, onTarget, children }: {
+  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; lane: model.Lane | undefined; position: string;
+  length: string; shortPosition: string; shortLength: string; onTarget: (target: "all" | "camera" | "sound" | undefined) => void; children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
   const [left, setLeft] = useState<number | undefined>(undefined);
+  // Over a lane, how far above the line's foot the actions stand, and where their pointer meets the selection.
+  const [rise, setRise] = useState(0);
+  const [caret, setCaret] = useState<number | undefined>(undefined);
   // Too narrow for the actions in words beside the export's length (380 px windows, review of 2026-10-26): their icons
   // and keys alone, over the whole line. Decided on their width in words, kept while they show.
   const [compact, setCompact] = useState(false);
@@ -415,20 +418,31 @@ function EditorActionRow({ editor, track, span, position, length, shortPosition,
       if (!shown || from === undefined || to === undefined || !line || !actions || !timeline) return setLeft(undefined);
       const lineBox = line.getBoundingClientRect(), trackBox = timeline.getBoundingClientRect();
       const middle = trackBox.left - lineBox.left + ((from + to) / 2 / editor.duration) * trackBox.width;
-      // The times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for the
-      // actions): the actions take icons and keys alone when their words do not fit beside them.
+      // Chosen on a lane, the actions stand right over that lane's stretch, over the pictures or the lanes above it if
+      // need be (2026-10-26, the maintainer's choice: what they act on is then plain); chosen on the pictures, they
+      // stand on the line over the timeline, beside the times.
+      const laneBox = lane ? line.parentElement?.querySelector(`.editor-camera-lane[data-lane="${lane}"]`)?.getBoundingClientRect() : undefined;
+      setRise(laneBox ? Math.round(lineBox.bottom - laneBox.top) : 0);
+      // On the line the times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for
+      // the actions): the actions take icons and keys alone when their words do not fit beside them. Over a lane the
+      // whole width is theirs.
       if (actions.dataset.compact === undefined) wide.current = actions.offsetWidth;
-      const room = lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      const room = laneBox ? lineBox.width : lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
       setCompact(wide.current > room);
       const width = actions.offsetWidth;
-      setLeft(Math.round(Math.max(0, Math.min(middle - width / 2, room - width))));
+      const placed = Math.round(Math.max(0, Math.min(middle - width / 2, room - width)));
+      setLeft(placed);
+      // The pointer under the actions meets the selection's middle, wherever the actions had to stand.
+      setCaret(Math.round(Math.min(width - 14, Math.max(14, middle - placed))));
     };
     place();
     const observer = typeof ResizeObserver === "function" ? new ResizeObserver(place) : undefined;
     if (row.current) observer?.observe(row.current);
     if (bar.current) observer?.observe(bar.current);
+    // Lanes shown or hidden in Options move the one chosen on, or take it away (review of 2026-10-26).
+    if (row.current?.parentElement) observer?.observe(row.current.parentElement);
     return () => observer?.disconnect();
-  }, [shown, from, to, editor.duration, track, compact]);
+  }, [shown, from, to, editor.duration, track, compact, lane]);
   return (
     <div ref={row} className="editor-action-row">
       {/* How to reach the selection's actions, while none is chosen (2026-10-26: Remove is there only). */}
@@ -449,7 +463,8 @@ function EditorActionRow({ editor, track, span, position, length, shortPosition,
           className="editor-selection-actions"
           data-placed={left !== undefined || undefined}
           data-compact={compact || undefined}
-          style={{ left: left ?? 0 }}
+          data-lane={lane}
+          style={{ left: left ?? 0, bottom: rise, "--caret": `${caret ?? 0}px` } as React.CSSProperties}
           // Which tracks the action under the pointer or the focus changes, for the timeline to mark.
           onPointerOver={(event) => onTarget(targetOf(event.target))}
           onPointerLeave={() => onTarget(undefined)}
@@ -458,6 +473,7 @@ function EditorActionRow({ editor, track, span, position, length, shortPosition,
         >
           <span className="editor-selection-length">{precise(((to ?? 0) - (from ?? 0)) / editor.timescale)}</span>
           {children}
+          <span className="editor-selection-caret" aria-hidden="true" />
         </div>
       )}
     </div>
@@ -564,9 +580,9 @@ function EditorPanel() {
     const fraction = (clientX - box.left) / box.width;
     return Math.round((free ? fraction : Math.min(1, Math.max(0, fraction))) * editor.duration);
   };
-  const placeAt = (ticks: number): void => {
+  const placeAt = (ticks: number, lane?: model.Lane): void => {
     const part = model.partAt(parts, ticks);
-    if (part) model.selectPart(part, false);
+    if (part) model.selectPart(part, false, lane);
     model.seekTo(ticks / editor.timescale);
   };
   const follow = (pointer: number, clientX: number): void => {
@@ -717,6 +733,9 @@ function EditorPanel() {
         editor={editor}
         track={track}
         span={range ?? (selected ? [selected.from, selected.to] : undefined)}
+        // The lane the selection was chosen on: a range's own, else the selected part's (review of 2026-10-26: a lane
+        // kept from an earlier range or click put the actions over the wrong track).
+        lane={range ? model.rangeLane : selected ? model.partLane : undefined}
         position={trimming
           ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
           : translate("Playhead {time}", language, { time: precise(time) })}
@@ -805,7 +824,7 @@ function EditorPanel() {
             if (stretch?.set) {
               model.selectRange(stretch.from, stretch.to, held.lane);
               model.seekTo(ticks / editor.timescale);
-            } else placeAt(ticks);
+            } else placeAt(ticks, held.lane);
           }
           if (held?.pointer === event.pointerId && (held.mode === "start" || held.mode === "end")) void model.commitTrim();
           gesture.current = null;
@@ -882,7 +901,7 @@ function EditorPanel() {
                     if (stretch.hidden) {
                       model.selectRange(stretch.from, stretch.to, "camera");
                       model.seekTo(stretch.from / editor.timescale);
-                    } else placeAt(stretch.from);
+                    } else placeAt(stretch.from, "camera");
                   }}
                 >
                   {stretch.hidden ? <UserRoundX aria-hidden="true" /> : <UserRound aria-hidden="true" />}
@@ -933,7 +952,7 @@ function EditorPanel() {
                       if (stretch.volume !== undefined) {
                         model.selectRange(stretch.from, stretch.to, input);
                         model.seekTo(stretch.from / editor.timescale);
-                      } else placeAt(stretch.from);
+                      } else placeAt(stretch.from, input);
                     }}
                   >
                     <Icon aria-hidden="true" />

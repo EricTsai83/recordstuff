@@ -931,6 +931,46 @@ test("a selection's actions float over the line above the timeline, words where 
     await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeHidden();
     await page.locator("#editor-camera-toggle").hover();
     await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeVisible();
+    // Chosen on a lane, the actions stand right over that lane's stretch, over the pictures above it, their pointer at
+    // the selection's middle; chosen on the pictures again, they go back to the line (2026-10-26, the maintainer's choice).
+    await page.keyboard.press("Escape");
+    const cameraLane = (await page.locator('.editor-camera-lane[data-lane="camera"]').boundingBox())!;
+    await page.mouse.click(cameraLane.x + cameraLane.width * 0.5, cameraLane.y + cameraLane.height / 2);
+    await expect(actions).toBeVisible();
+    await expect(actions).toHaveAttribute("data-lane", "camera");
+    await expect.poll(async () => {
+      const over = (await actions.boundingBox())!;
+      return over.y + over.height <= cameraLane.y + 1 && over.y + over.height >= cameraLane.y - 8 && over.y < pictures.y + pictures.height;
+    }).toBe(true);
+    // Lanes hidden in Options move the one chosen on, or take it away: the actions follow it, or go back to the line
+    // (review of 2026-10-26). The lanes are shown again after, as Options remembers them.
+    if (width === 960) {
+      await page.keyboard.press("Escape");
+      const systemLane = page.locator('.editor-camera-lane[data-lane="system"]');
+      const systemBox = (await systemLane.boundingBox())!;
+      await page.mouse.click(systemBox.x + systemBox.width * 0.5, systemBox.y + systemBox.height / 2);
+      await expect(actions).toHaveAttribute("data-lane", "system");
+      await page.locator("#editor-options").click();
+      await page.locator("#editor-lane-camera").click();
+      await page.keyboard.press("Escape");
+      await expect.poll(async () => {
+        const lane = (await systemLane.boundingBox())!, over = (await actions.boundingBox())!;
+        return Math.abs(over.y + over.height - lane.y) <= 8;
+      }).toBe(true);
+      await page.locator("#editor-options").click();
+      await page.locator("#editor-lane-system").click();
+      await page.keyboard.press("Escape");
+      // The timeline moves as the panel shrinks: measured afresh.
+      await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= (await page.locator(".editor-timeline").boundingBox())!.y).toBe(true);
+      await page.locator("#editor-options").click();
+      await page.locator("#editor-lane-camera").click();
+      await page.locator("#editor-lane-system").click();
+      await page.keyboard.press("Escape");
+    }
+    await page.keyboard.press("Escape");
+    await page.mouse.click(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
+    await expect(actions).not.toHaveAttribute("data-lane");
+    await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= pictures.y).toBe(true);
     // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
     await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");

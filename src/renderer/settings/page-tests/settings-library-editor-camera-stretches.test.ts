@@ -104,6 +104,20 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   const hiddenStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[1]!;
   hiddenStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
   await vi.waitFor(() => expect(hiddenStretch.getAttribute("aria-pressed")).toBe("true"));
+  // Chosen on the lane from the keyboard, its actions stand over the lane; a part chosen on the pictures after it takes
+  // them back to the line, the lane's range no longer counting (review of 2026-10-26).
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBe("camera"));
+  click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[0]!);
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBeUndefined());
+  const shownStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[0]!;
+  shownStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBe("camera"));
+  // A split chooses the part after it on the pictures, whatever lane chose the one before (review of 2026-10-26).
+  video.currentTime = 2;
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true }));
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBeUndefined());
+  hiddenStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  await vi.waitFor(() => expect(hiddenStretch.getAttribute("aria-pressed")).toBe("true"));
   click(toggle());
   await vi.waitFor(() => expect(saves().at(-1)).toEqual({ action: "save", removed: [], revision: 1, scene: START }));
   await vi.waitFor(() => expect(lane()).toEqual([["0:00.0 to 0:10.0, camera shown", false]]));
