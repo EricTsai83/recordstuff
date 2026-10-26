@@ -632,19 +632,18 @@ pub fn export(
     })
 }
 
-/// The plan an edit would export with, for the edit view, without writing: `known` is the re-encoded pictures'
-/// `avcC` learned before for this recording, filled in when it is learned now.
+/// The plan an edit would export with, for the edit view, without writing, from the recording's index as its caller
+/// read it (once: an interrupted recording's index is a read per fragment): `known` is the re-encoded pictures' `avcC`
+/// learned before for this recording, filled in when it is learned now.
 pub fn inspect(
-    source_path: &Path,
+    index: &SourceIndex,
+    source: &dyn ReadAt,
     removed: &[(u64, u64)],
     policy: JoinPolicy,
     codecs: &mut dyn Codecs,
     known: &mut Option<Vec<u8>>,
-) -> Result<(SourceIndex, Plan), ExportError> {
-    let source = File::open(source_path).map_err(|e| ExportError::read(&e))?;
-    let index = source::read(&source)?;
-    let prepared = prepare(&index, &source, removed, policy, codecs, Probe::Known(known))?;
-    Ok((index, prepared.plan))
+) -> Result<Plan, ExportError> {
+    Ok(prepare(index, source, removed, policy, codecs, Probe::Known(known))?.plan)
 }
 
 #[cfg(test)]

@@ -241,7 +241,8 @@ impl Task for InspectTask {
             (request.source.clone(), m.len(), modified)
         });
         let mut known = key.as_ref().and_then(|key| self.1.lock().unwrap().get(key).cloned());
-        let (index, plan) = remux::inspect(&request.source, &request.removed, request.policy, codecs.as_mut(), &mut known).map_err(reject)?;
+        // The index read above, not read again: an interrupted recording's is a read per fragment.
+        let plan = remux::inspect(&index, &file, &request.removed, request.policy, codecs.as_mut(), &mut known).map_err(reject)?;
         if let (Some(key), Some(avcc)) = (key, known) {
             self.1.lock().unwrap().insert(key, avcc);
         }
