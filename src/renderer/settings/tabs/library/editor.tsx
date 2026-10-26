@@ -937,7 +937,7 @@ function EditorPanel() {
             line of its own in each, placed alike, broke where their widths differed), under the selection's actions. */}
         <svg className="editor-playhead" style={{ "--at": Math.min(1, time / Math.max(editor.seconds, 0.001)) } as React.CSSProperties} aria-hidden="true" focusable="false">
           <line x1="5" x2="5" y1="1" y2="100%" shapeRendering="crispEdges" />
-          <path className="editor-playhead-cap" d="M0.5 0.5 H9.5 L5 8.5 Z" />
+          <path className="editor-playhead-cap" d="M0.5 0.5 H9.5 L6 7 H4 Z" />
         </svg>
       </div>
       <div className="editor-ruler" aria-hidden="true">

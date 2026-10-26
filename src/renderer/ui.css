@@ -3248,18 +3248,23 @@
     height: calc(100% + 1px);
     margin-left: -5px;
     overflow: visible;
+    filter: drop-shadow(0 0 1.5px color-mix(in oklab, var(--media-scrim) 70%, transparent));
   }
+  /* One shape (2026-10-27, the maintainer's review: the cap read as a triangle stuck on the line): the cap narrows to
+     the line's own 2 px and runs into it, one fill, no outline of its own, and one soft shade around the whole. */
   .editor-playhead line {
     stroke: var(--media-foreground);
     stroke-width: 2px;
-    filter: drop-shadow(0 0 1.5px color-mix(in oklab, var(--media-scrim) 70%, transparent));
   }
   .editor-playhead-cap {
     fill: var(--media-foreground);
-    stroke: color-mix(in oklab, var(--media-scrim) 55%, transparent);
-    stroke-width: 1px;
-    stroke-linejoin: round;
-    paint-order: stroke;
+  }
+  /* Grey in the light theme (2026-10-27, the maintainer's review: white over the light lanes was hard to see). */
+  :root:not(.dark) .editor-playhead line {
+    stroke: var(--muted-foreground);
+  }
+  :root:not(.dark) .editor-playhead-cap {
+    fill: var(--muted-foreground);
   }
   .editor-note-mark {
     background: var(--warning);
