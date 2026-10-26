@@ -304,6 +304,20 @@ test("the timeline spans the panel, a range dragged past it reaches the recordin
   await expect.poll(style).toMatch(/--from: 0;/);
   expect(await style()).not.toMatch(/--to: 1;/);
 
+  // Removing all of it is refused before it is sent: a note over the actions a moment, the panel unmoved and no note
+  // under the timeline (2026-10-27, the maintainer's review: main's refusal there shifted everything).
+  const panelHeight = async () => (await page.locator("#editor .editor-panel").boundingBox())!.height;
+  const panelBefore = await panelHeight();
+  await page.mouse.click(box.x + box.width * 0.5, y);
+  await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove part");
+  await page.locator("#editor-remove").click();
+  await expect(page.locator("#editor-refusal")).toHaveText("At least one part of the recording must be kept.");
+  await expect(page.locator("#editor .editor-notes")).toHaveCount(0);
+  expect(await panelHeight()).toBeCloseTo(panelBefore, 0);
+  await expect(page.locator(".editor-part[data-removed]")).toHaveCount(0);
+  await expect(page.locator("#editor-refusal")).toHaveCount(0, { timeout: 4000 });
+  await page.keyboard.press("Escape");
+
   // Enlarge preview (2026-10-27): the panel steps aside, the picture takes its room with the player's controls, and the
   // edit still plays as previewed; Escape, or T, or the button again, brings the timeline back.
   const stageHeight = async () => (await page.locator("#editor .editor-stage").boundingBox())!.height;

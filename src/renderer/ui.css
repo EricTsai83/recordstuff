@@ -3108,6 +3108,20 @@
   .editor-selection-actions[data-placed] {
     visibility: visible;
   }
+  /* A removal refused, over the actions as a tooltip is (2026-10-27): drawn above them, taking no room. */
+  .editor-refusal {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--foreground);
+    color: var(--background);
+    font-size: 12px;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
   /* The selection's length, last and apart: information, not an action (2026-10-27). */
   .editor-selection-length {
     margin-inline: 2px 6px;

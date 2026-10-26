@@ -695,6 +695,7 @@ async function toggleNow(): Promise<void> {
   const part = selectedPart(editor);
   if (!part) return;
   const removed = part.removed ? subtract(editor.removed, part) : normalizeRanges([...editor.removed, [part.from, part.to]]);
+  if (refuseKeepingNothing(editor, removed)) return;
   undoStack.push(current(editor));
   const saved = await save(removed);
   if (!saved) undoStack.pop();
@@ -709,8 +710,10 @@ async function toggleNow(): Promise<void> {
 
 /** Removes a range dragged across the timeline, as one change Undo takes back; the part it leaves is selected. */
 async function removeRange(editor: EditorView, [from, to]: EditRange): Promise<void> {
+  const removed = normalizeRanges([...editor.removed, [from, to]]);
+  if (refuseKeepingNothing(editor, removed)) return;
   undoStack.push(current(editor));
-  const saved = await save(normalizeRanges([...editor.removed, [from, to]]));
+  const saved = await save(removed);
   if (!saved) {
     undoStack.pop();
     return;
@@ -722,6 +725,30 @@ async function removeRange(editor: EditorView, [from, to]: EditRange): Promise<v
   // A part chosen by a removal is the pictures', whatever lane chose the one before (review of 2026-10-26).
   draw();
   announce(translate("Removed {from} to {to}", view?.language, { from: clock(from / editor.timescale), to: clock(to / editor.timescale) }));
+}
+
+/**
+ * A removal that would keep less than a frame is refused before it is sent (2026-10-27, the maintainer's review: main's
+ * refusal joined the notes under the timeline and moved everything). The refusal shows a moment over the selection's
+ * actions, where the removal was asked, and is read aloud; main still refuses one that its snapping leaves empty.
+ */
+export let refusal: string | undefined;
+let refusalTimer: ReturnType<typeof setTimeout> | undefined;
+const REFUSAL_MS = 2500;
+
+function refuseKeepingNothing(editor: EditorView, removed: readonly EditRange[]): boolean {
+  const frame = editor.timescale / Math.max(1, editor.frameRate);
+  const gone = removed.reduce((sum, [from, to]) => sum + Math.max(0, Math.min(to, editor.duration) - Math.max(from, 0)), 0);
+  if (editor.duration - gone >= frame) return false;
+  refusal = translate("At least one part of the recording must be kept.", view?.language);
+  announce(refusal);
+  clearTimeout(refusalTimer);
+  refusalTimer = setTimeout(() => {
+    refusal = undefined;
+    draw();
+  }, REFUSAL_MS);
+  draw();
+  return true;
 }
 
 /** Chooses the range between two places on the timeline (the video's timescale), or none when they meet. */

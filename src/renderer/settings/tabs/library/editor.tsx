@@ -504,6 +504,8 @@ function EditorActionRow({ editor, track, span, actions: actionsKey, position, l
           {/* Its length last and apart, information rather than an action (2026-10-27, the maintainer's review). */}
           <span className="editor-selection-divider editor-selection-length-divider" aria-hidden="true" />
           <span className="editor-selection-length">{translate("Length {length}", model.view?.language, { length: precise(((to ?? 0) - (from ?? 0)) / editor.timescale) })}</span>
+          {/* Why a removal was refused, a moment over the actions where it was asked, taking no room (2026-10-27). */}
+          {model.refusal && <span id="editor-refusal" className="editor-refusal" role="status">{model.refusal}</span>}
         </div>
       )}
     </div>
