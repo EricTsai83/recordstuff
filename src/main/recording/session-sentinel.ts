@@ -11,6 +11,7 @@ import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { errnoCode, messageOf } from "../lib/errors";
 import { retryWhileHeldOpen } from "../lib/held-open";
+import { SerialQueue } from "../lib/serial-queue";
 import type { RecordingFailure } from "../../shared/recording-result";
 
 export interface SessionSentinel {
@@ -262,7 +263,7 @@ export class SessionSentinelTracker {
   private failedOnce = false;
   /** The latest write succeeded, so the file exists to be checkpointed; an earlier attempt's failure does not count. */
   private written = false;
-  private ops: Promise<void> = Promise.resolve();
+  private readonly ops = new SerialQueue();
   /** The failure this session is being reported under; every later write keeps it (`SessionSentinel.failureId`). */
   private failureId: string | undefined;
 
@@ -274,9 +275,7 @@ export class SessionSentinelTracker {
 
   /** Runs one operation after the earlier ones; the chain survives a failed one. */
   private op(run: () => Promise<void>): Promise<void> {
-    const next = this.ops.then(run);
-    this.ops = next.catch(() => undefined);
-    return next;
+    return this.ops.run(run);
   }
 
   /** Names `recordingPath` before it exists, so a crash never leaves a temporary file no sentinel names. */

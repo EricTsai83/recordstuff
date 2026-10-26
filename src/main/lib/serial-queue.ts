@@ -2,8 +2,8 @@ import { drainQueue } from "./drain-queue";
 
 /**
  * Runs tasks one after another, in the order they were given: a store's writes to its file (settings, window size,
- * edit records, the export journal), a worker's requests, the folder changes of the Recordings tab. A task that fails
- * rejects its own caller only; the next still runs.
+ * edit records, the export journal, a recording session's interruption sentinel), a worker's requests, the folder
+ * changes of the Recordings tab. A task that fails rejects its own caller only; the next still runs.
  */
 export class SerialQueue {
   private tail: Promise<unknown> = Promise.resolve();
