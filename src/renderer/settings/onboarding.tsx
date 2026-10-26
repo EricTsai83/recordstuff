@@ -36,7 +36,8 @@ function Step({ id, icon, title, badge, about, children }: {
       <span className="onboarding-step-head">
         <span id={`${id}-title`} className="onboarding-step-title">{title}</span>
         <span className="onboarding-badge">{badge}</span>
-        <ControlTooltip label={detail}>
+        {/* Opened at once, as every ? in the app (2026-10-26, the maintainer's request): it is hovered to be read. */}
+        <ControlTooltip label={detail} delay={0}>
           <Button variant="ghost" size="icon-sm" className="onboarding-about" id={`${id}-about`}
             aria-label={translate("More about {label}", model.view?.language, { label: title })} aria-describedby={`${id}-detail`}>
             <CircleHelp aria-hidden="true" />
