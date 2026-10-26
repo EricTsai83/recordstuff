@@ -14,14 +14,14 @@ import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release/release-ma
 export const SITE_NAME = "RecordStuff";
 
 export const meta = {
-  title: "RecordStuff — screen, sound and camera, nothing else",
+  title: "RecordStuff — record, cut, done",
   description:
-    "A free, open-source macOS menu bar app that records your screen and its sound, with your microphone and camera if you want them, to a plain MP4. No account, no editor; files stay on your Mac.",
+    "A free, open-source macOS menu bar app that records your screen and its sound, with your microphone and camera if you want them, to a plain MP4. Cut out what you don't need without touching the original. No account; files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
 export const hero = {
-  title: "Screen, sound and camera. Nothing else.",
+  title: "Record. Cut. Done.",
   primaryCta: "Download for macOS",
   /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
   windowsCta: "Download for Windows",
@@ -51,7 +51,7 @@ export interface Feature {
 }
 
 export const features: Feature[] = [
-  { title: "Watch it right away", body: "Play, rename, reveal or delete recordings in RecordStuff." },
+  { title: "Watch it, cut it", body: "Play, rename or cut recordings. Cuts go to a new file." },
   { title: "Your files stay yours", body: "Plain MP4s in Movies → RecordStuff, or any folder you pick." },
   { title: "Keeps what it can", body: "If a recording fails, it tries to save what was written." },
   { title: "English and 繁體中文", body: "Switch any time, even while recording." },
@@ -159,6 +159,7 @@ export const settings = [
   { tab: "Recording", setting: "Hide menu bar and Dock", options: "On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings", fallback: "Off" },
   { tab: "Recording", setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
   { tab: "Recording", setting: "File name format", options: "A pattern of {date}, {time} and other placeholders", fallback: "{date} {time}" },
+  { tab: "Recording", setting: "Editable recordings", options: "On / Off; keeps the camera and each sound apart, so Edit… can still change them. Files are about twice as large", fallback: "Off" },
   { tab: "Recording", setting: "Countdown", options: "Off / 3 / 5 / 10 s, with an optional tick", fallback: "3 s, tick on" },
   { tab: "Recording", setting: "Microphone", options: "On / Off, also in the menu bar menu; mixed with system audio (use headphones to avoid speaker echo)", fallback: "Off" },
   { tab: "Recording", setting: "Input device", options: "System default or a connected microphone", fallback: "System default" },

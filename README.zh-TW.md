@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
-畫面、聲音與相機，僅此而已。一個選單列 App，把一個螢幕連同系統音訊錄成一般的 MP4，需要時也能加上麥克風與相機。不需要帳號。
+錄、剪、完成。一個選單列 App，把一個螢幕連同系統音訊錄成一般的 MP4，需要時也能加上麥克風與相機；錄完可以剪掉不要的片段，原檔不動。不需要帳號。
 
 [官方網站](https://record.ericts.com) · [下載頁](https://record.ericts.com/download) · [使用說明](https://record.ericts.com/help)（網站為英文）
 

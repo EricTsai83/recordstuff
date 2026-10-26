@@ -1,6 +1,6 @@
 ---
 /**
- * The help text (allowing the app to open, install, record, update, remove,
+ * The help text (allowing the app to open, install, record, camera, edit, update, remove,
  * then the Windows installer). Headings carry ids so other pages can
  * deep-link to a section, such as Download's Open Anyway and Windows links.
  */
@@ -28,7 +28,7 @@ const settingsTabs = [...new Set(settings.map((row) => row.tab))];
 const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 ---
 
-<PlatformSwitch macIds={["open-anyway", "install", "use", "camera", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
+<PlatformSwitch macIds={["open-anyway", "install", "use", "camera", "edit", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
 <div class="prose help">
   <div data-only="mac">
     <H id="open-anyway">App blocked by macOS?</H>
@@ -49,7 +49,7 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
     <ul>
       <li><strong>Start:</strong> click the menu bar icon and choose <em>Start recording</em>, or press <kbd>⇧</kbd><kbd>⌘</kbd><kbd>1</kbd>.</li>
       <li><strong>Cancel or stop:</strong> the same menu or shortcut. Cancelling during the countdown saves nothing.</li>
-      <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Show last recording</em> or <em>Open RecordStuff</em> from the menu. RecordStuff lists your recordings, where you can play, rename, reveal or delete them.</li>
+      <li><strong>Find recordings:</strong> click the saved notification, or choose <em>Show last recording</em> or <em>Open RecordStuff</em> from the menu. RecordStuff lists your recordings, where you can play, rename, edit, reveal or delete them.</li>
     </ul>
     <p>RecordStuff records one whole screen with system audio, and your microphone if you turn it on, to an H.264/AAC MP4. To change how, open RecordStuff (<kbd>⌥</kbd><kbd>⌘</kbd><kbd>,</kbd>):</p>
     {settingsTabs.map((tab) => (
@@ -63,19 +63,27 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
         </table>
       </div>
     ))}
-    <p>While recording, only Icon click, Language and Appearance can change.</p>
+    <p>While recording, only Icon click, Language and Appearance can change, and Input device while Microphone is on.</p>
 
     <H id="camera">Camera</H>
     <p>RecordStuff can draw your camera into the recording as a bubble. It is part of the video only: nothing is shown on your screen, so it never covers or catches clicks meant for the app you record.</p>
     <ul>
-      <li><strong>Turn it on:</strong> check <em>Record camera</em> in the menu bar menu, or turn on <em>Camera</em> in Recording settings, where <em>Camera device</em> picks the camera. macOS asks for camera access the first time.</li>
+      <li><strong>Turn it on:</strong> check <em>Camera</em> under <em>Include in recordings</em> in the menu bar menu, or turn on <em>Camera</em> in Recording settings, where <em>Camera device</em> picks the camera. macOS asks for camera access the first time.</li>
       <li><strong>If access was refused:</strong> click <em>Open camera settings…</em> and allow RecordStuff in <strong>System Settings → Privacy &amp; Security → Camera</strong>, then click <em>Already allowed? Relaunch RecordStuff</em>; macOS shows a new permission to RecordStuff only after a relaunch. While access is off, a recording with Camera on does not start.</li>
       <li><strong>Arrange it:</strong> choose <em>Open Recording Studio…</em> from the menu bar menu. Drag the bubble in the preview (or move it with the arrow keys), and set its width, height, shape, rounding and mirror. Its place is remembered for each display.</li>
-      <li><strong>Check before recording:</strong> click <em>Live preview</em> in the Studio to see the recording as it will look, with level meters for system audio and the microphone. <em>Start recording</em> continues from it without a gap.</li>
+      <li><strong>Check before recording:</strong> turn on <em>Live preview</em> in the Studio to see the recording as it will look, with level meters for system audio and the microphone. <em>Start recording</em> continues from it without a gap.</li>
       <li><strong>While recording:</strong> the bubble can still be moved and resized in the Studio. Choose <em>Hide camera</em> from the menu bar menu, or turn off <em>Show camera in recording</em> in the Studio, to take it out for a while; the next recording shows it again.</li>
-      <li><strong>Volume:</strong> the Studio's Audio panel has a mute and a volume fader for system audio and for the microphone, from silent to +12 dB. Mutes last for one recording; the faders are kept for the next ones.</li>
+      <li><strong>Volume:</strong> the Studio's Audio panel has a mute and a volume for system audio and for the microphone, from 0% to 600%. Mutes last for one recording; volumes are kept for the next ones.</li>
     </ul>
     <p class="dim">The camera is also offered on Windows, where desktop apps must be allowed in Settings → Privacy &amp; security → Camera; it has not been tested with a camera on Windows hardware.</p>
+
+    <H id="edit">Edit</H>
+    <p>Cut out what you don't need. The recording itself is never changed.</p>
+    <ul>
+      <li><strong>Cut:</strong> in RecordStuff's Recordings, open a recording's menu and choose <em>Edit…</em>. Remove parts at the start, the end or anywhere between.</li>
+      <li><strong>Export:</strong> <em>Export</em> saves what is kept as a new file beside it, such as <code>Talk (edited).mp4</code>. The edit is remembered, so it reopens where you left it.</li>
+      <li><strong>Editable recordings:</strong> turn on <em>Editable recordings</em> in Recording settings, or choose <em>Start editable recording</em> from the menu bar menu for one recording. The camera and each sound stay apart, so in Edit… you can still move the camera and set the volumes. Files are about twice as large, and other apps play only the screen with system audio until you export.</li>
+    </ul>
 
     <H id="update">Update</H>
     <p>By default RecordStuff checks for updates at launch and notifies you of a new version. To install it:</p>
