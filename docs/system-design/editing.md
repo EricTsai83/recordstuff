@@ -139,6 +139,15 @@ Undo and Redo restore whole `EditState`s; a step that changes only the splits ne
 
 The view's keys are handled on the dialog's root, which receives them from its popups too, since they render in the dialog's React tree. A text field keeps its keys; a slider takes only Undo and Redo, so its arrows stay its own. Escape is layered: an open popup takes it first (the overall volumes' panel, which stays open while the preview plays, takes it wherever the focus is), then the camera bubble's selection, then the timeline's selection; it never closes the view. When a change removes the focused element (an Undo merging the focused part, say) or sends the focus behind the dialog, the focus goes back to the selected part, else to the timeline, so the keys keep working; that place draws no focus ring, as the selection already shows what is chosen.
 
+### Playing the edit larger
+
+The preview plays an edit live; there is no edited file until Export writes one. Two ways show it larger, both playing the same edit:
+
+- **Enlarge preview** (T, or its button over the picture) is the view's own state: the panel steps aside, the picture takes its room with the player's controls, and Escape, T or the button bring the timeline back. Nothing leaves the page.
+- **Full screen** (F, a double-click, or its button) uses the player's full-screen viewer, a window of its own that covers the display without resizing RecordStuff's (desktop.md). The page waits for any change still saving, then asks main with `edited: true`; main builds a `PlaybackEdit` from the edit it holds (the skipped ranges, and for an editable recording the scene, the sounds and the preview tracks' URLs, once they are copied), never from the page, and hands it to the viewer. The viewer plays it with the same shared module as the preview (`player/edited-playback.ts`: skipping, followers, the mix), and when it is left the preview takes up at the viewer's place. The viewer's seek bar counts the recording's own time; a removed range is skipped as it plays.
+
+A removal that would keep nothing is refused before it is sent, said a moment over the selection's actions, so nothing under the timeline grows; main still refuses one its snapping leaves empty.
+
 ### Edited recordings
 
 `EditStore` reads once at launch which recordings hold a record and keeps the list with every save, discard and move; a recording with a record for the file's present size offers Continue editing… in its menu. An export is a recording of its own, with no link back to its source.
