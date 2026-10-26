@@ -145,8 +145,9 @@ function CameraPanel() {
     <section className="studio-panel studio-panel-camera" aria-labelledby="studio-camera-heading">
       <div className="studio-panel-head">
         <h2 id="studio-camera-heading"><Camera aria-hidden="true" />{camera.label}</h2>
+        {/* Opened at once (2026-10-26, the maintainer's request): a ? is pressed or hovered to read it, unlike a control's name. */}
         {pixels && (
-          <ControlTooltip label={pixels}>
+          <ControlTooltip label={pixels} delay={0}>
             <Button variant="ghost" size="icon-sm" className="studio-help" id="studio-camera-pixels-button"
               aria-label={translate("More about {label}", model.view?.language, { label: camera.label })} aria-describedby="studio-camera-pixels">
               <CircleHelp aria-hidden="true" />
