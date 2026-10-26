@@ -137,10 +137,12 @@ export const Clip = memo(function Clip({
               </span>
             </ControlTooltip>
             <span className="clip-meta">
-              {[item.time, item.size, item.editable].filter(Boolean).join(" · ")}
+              {[item.time, item.size].filter(Boolean).join(" · ")}
+              <EditableMark item={item} />
             </span>
             <span className="clip-detail">
-              {[item.time, item.duration, item.size, item.editable].filter(Boolean).join(" · ")}
+              {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
+              <EditableMark item={item} />
             </span>
           </span>
         </Button>
@@ -304,3 +306,30 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
     </>
   );
 }
+
+/**
+ * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
+ * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
+ * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit….
+ */
+function EditableMark({ item }: { item: LibraryItemView }) {
+  if (!item.editable) return null;
+  return (
+    <>
+      {" · "}
+      <span
+        className="clip-editable"
+        // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void model.openEditor(item);
+        }}
+      >
+        {item.editable}
+      </span>
+    </>
+  );
+}
+

@@ -2521,6 +2521,16 @@
   .clip-detail {
     display: none;
   }
+  /* An editable recording's mark, a click on which opens the edit view (2026-10-26): a link under the pointer, the
+     text's own colour (darker in the light theme, white in the dark) and underlined. */
+  .clip-editable {
+    cursor: pointer;
+    text-underline-offset: 2px;
+  }
+  .clip-editable:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+  }
   /* On the title's line, at its right: the picture's height, then the text's top padding. Larger than the other small
      icons, in the text's colour, so it reads at a glance once the card is under the pointer (2026-10-25, the maintainer's
      request). */
