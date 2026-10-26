@@ -65,6 +65,28 @@ describe("the scope catalog", () => {
     }
   });
 
+  it("tags every case of a spec selected only by tags, so a new case cannot belong to no scope", () => {
+    const tagsOf = new Map<string, Set<string>>();
+    const whole = new Set<string>();
+    for (const scope of TEST_SCOPES) for (const { file, tags } of scope.ui) {
+      if (!tags) whole.add(file);
+      else for (const tag of tags) tagsOf.set(file, (tagsOf.get(file) ?? new Set()).add(tag));
+    }
+    for (const [file, tags] of tagsOf) {
+      if (whole.has(file)) continue;
+      const source = fs.readFileSync(path.join(root, "tests/ui", file), "utf8");
+      // Each case's title, read as the string it is (so words in it such as "async" end nothing), and the options
+      // object after it, where its tags are.
+      const call = /\btest\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)\s*,\s*(\{[^{}]*\})?/g;
+      // A call this cannot read (a title in a variable, say) fails rather than going unchecked.
+      expect([...source.matchAll(call)].length, `${file}: a test( call whose title is not a string literal cannot be checked for its tags`)
+        .toBe(source.match(/\btest\(/g)?.length ?? 0);
+      for (const [, title, options = ""] of source.matchAll(call)) {
+        expect([...tags].some(tag => options.includes(`"${tag}"`)), `${file}: ${title!.slice(0, 80)} carries none of ${[...tags].join(", ")}`).toBe(true);
+      }
+    }
+  });
+
   it("splits tooling into its four tooling-* scopes without leaving a file out", () => {
     const filters = (name: string) => TEST_SCOPES.find(scope => scope.name === name)!.unit;
     const split = TEST_SCOPES.filter(scope => scope.name.startsWith("tooling-")).flatMap(scope => scope.unit);
