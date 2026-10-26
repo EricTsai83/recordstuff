@@ -896,7 +896,7 @@ test("a selection's actions float over the line above the timeline, words where 
     const box = (await actions.boundingBox())!;
     const toolbar = (await page.locator(".editor-toolbar").boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height + 2);
-    expect(box.y + box.height).toBeLessThanOrEqual(pictures.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(pictures.y - 2);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
     // The times stay in sight beside the actions at either width (Codex's computer-use round found a narrow window hid
@@ -908,6 +908,9 @@ test("a selection's actions float over the line above the timeline, words where 
     else {
       await expect(actions).toHaveAttribute("data-compact", "true");
       await expect(page.locator(".editor-readouts-short")).toBeVisible();
+      // Remove keeps its name; the others keep their icons and keys, and the selection's length gives way.
+      await expect(page.locator("#editor-remove .editor-remove-label")).toBeVisible();
+      await expect(page.locator("#editor-camera-toggle .editor-camera-toggle-label")).toBeHidden();
     }
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
     // The action under the pointer marks the tracks it changes (2026-10-26, the maintainer's choice): Remove every one,

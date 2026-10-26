@@ -3071,7 +3071,7 @@
   }
   .editor-selection-actions {
     position: absolute;
-    bottom: -2px;
+    bottom: 0;
     z-index: 4;
     display: flex;
     align-items: center;
@@ -3094,8 +3094,9 @@
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
-  /* Too narrow for their names: icons and keys alone, the names still the buttons' accessible names. */
-  .editor-selection-actions[data-compact] :is(.editor-remove-label, .editor-camera-toggle-label) {
+  /* Too narrow for their names: icons and keys alone but Remove's, the names still the buttons' accessible names, and the selection's length gives way. */
+  /* Remove, the action made most, keeps its name (Codex's computer-use round of 2026-10-26: a lone bin was slow to read). */
+  .editor-selection-actions[data-compact] :is(.editor-camera-toggle-label, .editor-selection-length) {
     display: none;
   }
   .editor-selection-actions[data-compact] :is(.editor-remove, .editor-camera-toggle) {
