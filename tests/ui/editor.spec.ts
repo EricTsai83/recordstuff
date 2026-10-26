@@ -1006,6 +1006,11 @@ test("a selection's actions float over the line above the timeline, words where 
     await expect.poll(ring).not.toBe("none");
     // The playhead is one straight line from the pictures down through the lanes (the maintainer's report of 2026-10-26:
     // the lanes' borders shifted theirs by a pixel or two).
+    // The camera's and the sounds' lanes are one height (the maintainer's request of 2026-10-26).
+    const laneHeights = await page.locator(".editor-camera-lane").evaluateAll((all) => all.map((element) => element.getBoundingClientRect().height));
+    expect(laneHeights.length).toBe(3);
+    expect(Math.max(...laneHeights) - Math.min(...laneHeights)).toBeLessThanOrEqual(0.5);
+    console.log("LANE-HEIGHTS", JSON.stringify(laneHeights));
     // One element from the top of the pictures to the foot of the last lane, where the time is on the pictures.
     const head = (await page.locator(".editor-trimmer > .editor-playhead").boundingBox())!;
     await expect(page.locator(".editor-playhead")).toHaveCount(1);

@@ -2942,7 +2942,7 @@
   /* The lanes are one block under the pictures, each a hair apart from the next (2026-10-26, the maintainer's review:
      they share one clock, so the gaps between them only took height from them): taller in the same room. */
   .editor-trimmer[data-lane] {
-    --lane: 24px;
+    --lane: 28px;
     /* Under the pictures with no gap (the maintainer's request the same day): one block, one playhead line through it. */
     --lane-gap: 0px;
   }
