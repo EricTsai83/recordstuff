@@ -183,8 +183,10 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   now.mockReturnValue(1e9 + 500);
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
   expect(close).not.toHaveBeenCalled();
-  // After a pause, Escape closes the window as before.
+  // After a pause, Escape reaches the window again: it asks before it hides it (2026-10-26), and the next hides it.
   now.mockReturnValue(1e9 + 1200);
+  document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
+  expect(close).not.toHaveBeenCalled();
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
   now.mockRestore();
   expect([quick.defaultPrevented, held.defaultPrevented, closesPlayer.defaultPrevented, close.mock.calls.length]).toEqual([true, true, true, 1]);

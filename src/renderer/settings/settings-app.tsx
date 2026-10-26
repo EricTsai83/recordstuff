@@ -8,6 +8,7 @@ import { Badge } from "../components/ui/badge";
 import { ScrollFades } from "../components/scroll-fades";
 import { ControlTooltip } from "../components/control-tooltip";
 import { TooltipProvider } from "../components/ui/tooltip";
+import { HidePrompt } from "./hide-prompt";
 import { ZoomToast } from "./zoom-toast";
 import type { SettingsStatus } from "../../shared/settings-panel";
 import { translate } from "../../shared/i18n";
@@ -437,6 +438,7 @@ export function SettingsApp() {
       <PlayerDialog />
       <EditorDialog />
       <OnboardingDialog />
+      <HidePrompt />
       <ToastHost />
       <ZoomToast />
     </TooltipProvider>

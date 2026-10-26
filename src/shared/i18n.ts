@@ -666,6 +666,9 @@ export const ZH_TW = {
   "Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.":
     "時間軸上有 {count} 段隱藏相機。選取一段後按 C，即可在那段隱藏或顯示相機。",
   "Camera hidden": "隱藏相機",
+  "Press Esc again to hide the window": "再按一次 Esc 隱藏視窗",
+  "RecordStuff keeps running in the menu bar.": "RecordStuff 會繼續在選單列執行。",
+  "Hide window": "隱藏視窗",
   "Overall volume": "整體音量",
   "Every part of the timeline without a volume of its own plays at these; set one with Volume (V).": "時間軸上沒有自訂音量的部分都套用這裡的音量；要自訂某段，請用「音量」(V)。",
   "Show the {name} lane": "顯示{name}軌",

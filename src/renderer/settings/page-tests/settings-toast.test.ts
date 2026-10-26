@@ -101,7 +101,9 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     document.getElementById("tab-library")!.focus();
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect([state()[0], close.mock.calls.length]).toEqual(["closed", 0]);
-    // The next Escape, with nothing else open, closes the window as before.
+    // The next Escape, with nothing else open, asks before it hides the window (2026-10-26); the one after hides it.
+    document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(close).not.toHaveBeenCalled();
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect(close).toHaveBeenCalledTimes(1);
 

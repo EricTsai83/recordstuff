@@ -66,6 +66,26 @@ export let view: SettingsView | undefined;
 export let selectedTab: SettingsTab = "library";
 export let feedbackText = "";
 export let startupFailed = false;
+/**
+ * Escape asks before it hides the window (2026-10-26, the maintainer's request: a stray Escape hid it too easily): a
+ * first Escape that nothing in the page takes opens a prompt over the window, and a second Escape, or its Hide button,
+ * hides it. ⌘W (Ctrl+W) still hides it at once, as a close is pressed on purpose.
+ */
+export let hidePrompt = false;
+
+/** Leaves the prompt, the window staying (Cancel, a press outside it, the window losing the focus). */
+export function dismissHidePrompt(): void {
+  if (!hidePrompt) return;
+  hidePrompt = false;
+  draw();
+}
+
+/** Hides the window from the prompt. */
+export function confirmHide(): void {
+  hidePrompt = false;
+  draw();
+  window.close();
+}
 /** A setting's save in flight: the choice sent, the control it came from, and its request. */
 export interface Save { choice: string; control: string; request: number }
 /** Why a setting's last choice did not apply, said at its row until it is changed again. */
@@ -607,6 +627,12 @@ export function start(): () => void {
       event.preventDefault();
       return;
     }
+    // The prompt open, its second Escape hides the window.
+    if (event.key === "Escape" && hidePrompt) {
+      event.preventDefault();
+      confirmHide();
+      return;
+    }
     // An open settings or window-actions menu takes Escape itself and closes; the window stays.
     if (
       event.key === "Escape" &&
@@ -661,8 +687,16 @@ export function start(): () => void {
       dismissToast();
       return;
     }
-    if (event.key === "Escape" || isCloseChord(event, platform()))
+    if (isCloseChord(event, platform())) {
       window.close();
+      return;
+    }
+    // Nothing above took it: the first Escape asks, the prompt's own then hides (hidePrompt).
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hidePrompt = true;
+      draw();
+    }
   });
   listen(document, "fullscreenchange", () => {
     if (document.fullscreenElement) {
@@ -675,6 +709,7 @@ export function start(): () => void {
   });
   listen(window, "blur", () => {
     document.documentElement.dataset.window = "inactive";
+    dismissHidePrompt();
     hideInfo();
     closeMenu();
     for (const intent of resultIntents.values()) intent.moved = true;
