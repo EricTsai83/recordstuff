@@ -18,22 +18,37 @@ export interface SkipPlan {
 }
 
 /**
+ * Half a frame either way: a frame's media time is rounded to microseconds and need not fall on the timescale's grid,
+ * so the frame a range ends at could read as just inside it and be sought to again and again, the preview standing
+ * still while it shows Pause.
+ */
+function slackOf(edit: SkipPlan): number {
+  return edit.timescale / Math.max(1, edit.frameRate) / 2;
+}
+
+/**
  * While `video` plays, each frame shown is checked: one in a skipped range jumps to where that range ends, or, at a
- * removed tail, pauses at its start, so what plays is what the export will hold. `frame` is told each frame's time
- * first (an editable recording's volumes follow it). Returns a stop. Nothing where the DOM has no frame callbacks.
+ * removed tail, pauses at its start, so what plays is what the export will hold. Play from there starts the edit
+ * again from its first kept frame, as an ended video plays from its start, rather than stopping at once on the same
+ * removed frame. `frame` is told each frame's time first (an editable recording's volumes follow it). Returns a stop.
+ * Nothing where the DOM has no frame callbacks.
  */
 export function watchSkipped(video: HTMLVideoElement, plan: () => SkipPlan | undefined, frame?: (time: number) => void): () => void {
   if (typeof video.requestVideoFrameCallback !== "function") return () => undefined;
   let callback: number | undefined;
+  const restart = (): void => {
+    const edit = plan();
+    if (!edit) return;
+    const time = video.currentTime * edit.timescale, slack = slackOf(edit);
+    if (!edit.skipped.some(([from, to]) => to >= edit.duration && time >= from - slack)) return;
+    const opening = edit.skipped.find(([from]) => from <= slack);
+    video.currentTime = opening ? opening[1] / edit.timescale : 0;
+  };
   const check = (_now: number, metadata: VideoFrameCallbackMetadata): void => {
     callback = video.requestVideoFrameCallback(check);
     const edit = plan();
     if (!edit || video.paused) return;
-    // Half a frame either way: a frame's media time is rounded to microseconds and need not fall on the timescale's
-    // grid, so the frame a range ends at could read as just inside it and be sought to again and again, the preview
-    // standing still while it shows Pause.
-    const time = metadata.mediaTime * edit.timescale,
-      slack = edit.timescale / Math.max(1, edit.frameRate) / 2;
+    const time = metadata.mediaTime * edit.timescale, slack = slackOf(edit);
     frame?.(time);
     const range = edit.skipped.find(([from, to]) => time >= from - slack && time < to - slack);
     if (!range) return;
@@ -45,7 +60,9 @@ export function watchSkipped(video: HTMLVideoElement, plan: () => SkipPlan | und
     }
   };
   callback = video.requestVideoFrameCallback(check);
+  video.addEventListener("play", restart);
   return () => {
+    video.removeEventListener("play", restart);
     if (callback !== undefined) video.cancelVideoFrameCallback(callback);
     callback = undefined;
   };
