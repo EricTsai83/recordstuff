@@ -2825,10 +2825,6 @@
     border-radius: inherit;
     pointer-events: none;
   }
-  /* Half the ring's strength and thinner, so a hovered part is not taken for the selected one (2026-10-26). */
-  .editor-part:hover {
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ring) 50%, transparent);
-  }
   /* A split, where one part ends and the next begins: 3 px of amber with a black edge (2026-10-26, at the maintainer's request),
      so it is told apart from the white playhead and the red selection. */
   .editor-part[data-split]::after {
@@ -2844,16 +2840,11 @@
   .editor-part[data-removed] {
     background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--card) 80%, transparent) 0 6px, color-mix(in oklab, var(--input) 85%, transparent) 6px 9px);
   }
-  /* 2 px of red, with a white line inside it that keeps it seen over pictures that hold red themselves (2026-10-26, at
-     the maintainer's request, after 1 px read as too thin). */
-  .editor-part[data-selected] {
-    z-index: 1;
-    box-shadow: inset 0 0 0 2px var(--ring), inset 0 0 0 3px var(--media-foreground);
-  }
+  /* With the keyboard's focus, the lanes' 1.5 px frame (2026-10-26). */
   .editor-part:focus-visible {
     z-index: 2;
-    outline: 2px solid var(--ring);
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: inset 0 0 0 1.5px var(--ring);
   }
   .editor-part:disabled {
     cursor: default;
@@ -2918,18 +2909,28 @@
     white-space: nowrap;
     pointer-events: none;
   }
-  /* A chosen range in a neutral light (2026-10-26, the maintainer's choice: the brand's red across every track read as
-     all of it about to be removed): the pictures' faintly filled, the lanes' outlined only; red stays for what is
-     removed. */
-  .editor-range {
+  /* What is chosen, one stretch of time framed across the pictures and every lane (2026-10-26, the maintainer's review:
+     a frame on each track did not say which was chosen, and a lane's actions read as that lane's alone): 1.5 px of the
+     foreground with a hair of the background inside it, so it is seen over the pictures and the lanes in either theme,
+     over a faint fill. Under the playhead. */
+  .editor-selection,
+  .editor-selection-preview {
     position: absolute;
     top: 0;
     bottom: 0;
-    z-index: 2;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--media-foreground) 18%, transparent);
-    box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px var(--media-scrim);
+    left: calc(var(--trim-pad) + var(--from) * (100% - 2 * var(--trim-pad)));
+    width: calc((var(--to) - var(--from)) * (100% - 2 * var(--trim-pad)));
+    z-index: 4;
+    border-radius: 5px;
     pointer-events: none;
+  }
+  .editor-selection {
+    background: color-mix(in oklab, var(--foreground) 10%, transparent);
+    box-shadow: inset 0 0 0 1.5px var(--foreground), inset 0 0 0 2.5px color-mix(in oklab, var(--background) 70%, transparent);
+  }
+  /* What a click under the pointer would choose, faint and red, with no actions. */
+  .editor-selection-preview {
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--ring) 60%, transparent);
   }
   /* An editable recording's camera lane under the pictures (2026-10-26): where the camera is in the picture, a soft
      fill with a person, and where it is hidden, an open dashed stretch with the person struck through. The trim handles
@@ -3033,16 +3034,11 @@
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--muted-foreground) 70%, transparent);
     color: color-mix(in oklab, var(--foreground) 82%, transparent);
   }
-  /* Under the pointer and with the keyboard's focus, one frame, 1.5 px, its four sides over the lanes' edges (the
-     maintainer's review of 2026-10-26: the hover's sides and the last lane's foot were hidden under them, and the
-     focus's 2 px frame read as another style): faint under the pointer, whole with the focus. */
-  .editor-camera-stretch:hover,
+  /* With the keyboard's focus, a 1.5 px frame, its four sides over the lanes' edges (the maintainer's review of
+     2026-10-26); under the pointer the stretch a click would choose is framed across the timeline instead. */
   .editor-camera-stretch:focus-visible {
     z-index: 3;
     outline: none;
-    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--ring) 60%, transparent);
-  }
-  .editor-camera-stretch:focus-visible {
     box-shadow: inset 0 0 0 1.5px var(--ring);
   }
   .editor-camera-stretch:disabled {
@@ -3199,47 +3195,6 @@
     z-index: 1;
     background: color-mix(in oklab, var(--card) 62%, transparent);
     pointer-events: none;
-  }
-  .editor-camera-range {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 2;
-    border-radius: 4px;
-    background: none;
-    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--foreground) 55%, transparent);
-    pointer-events: none;
-    transition: background-color 120ms, box-shadow 120ms, opacity 120ms;
-  }
-  /* A range chosen on a lane is filled there only; on the pictures and the other lanes, outlined (2026-10-26). */
-  .editor-range[data-outline] {
-    background: none;
-  }
-  /* The lane a click chose the range on is filled; the others, and every lane under a range dragged across the
-     pictures, outlined only. */
-  .editor-camera-range[data-chosen] {
-    background: color-mix(in oklab, var(--foreground) 12%, transparent);
-    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--foreground) 80%, transparent);
-  }
-  /* A part chosen by a click is marked on the lanes only while an action names its tracks. */
-  .editor-trimmer:not([data-target]) .editor-camera-range[data-part] {
-    visibility: hidden;
-  }
-  /* The tracks the action under the pointer or the focus changes, lit; the others' outlines fade (2026-10-26). */
-  .editor-trimmer[data-target] .editor-camera-range,
-  .editor-trimmer[data-target] .editor-range {
-    opacity: 0.35;
-  }
-  .editor-trimmer[data-target="all"] :is(.editor-range, .editor-camera-range),
-  .editor-trimmer[data-target="camera"] [data-lane="camera"] .editor-camera-range,
-  .editor-trimmer[data-target="sound"] :is([data-lane="system"], [data-lane="microphone"]) .editor-camera-range {
-    opacity: 1;
-    background: color-mix(in oklab, var(--foreground) 16%, transparent);
-    box-shadow: inset 0 0 0 2px var(--foreground);
-  }
-  .editor-trimmer[data-target="all"] .editor-range {
-    background: color-mix(in oklab, var(--media-foreground) 26%, transparent);
-    box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px var(--media-scrim);
   }
   /* The ruler's times under a band the playhead's mark has to itself (2026-10-26: the mark sat on the times). */
   .editor-ruler {

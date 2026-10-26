@@ -146,7 +146,7 @@ test("a click on the timeline puts the playhead there, a drag from the playhead 
   await page.mouse.up();
   await expect.poll(time).toBeGreaterThan(5.8);
   expect(await time()).toBeLessThan(6.2);
-  await expect(page.locator(".editor-range")).toHaveCount(0);
+  await expect(page.locator("#editor-remove")).not.toHaveAccessibleName("Remove selection");
   await page.locator("#editor-split").click();
   await expect(page.locator(".editor-part")).toHaveCount(2);
   await expect(page.locator("#editor-feedback")).toHaveText(/^Split at 0:0(5\.[89]|6\.[01])$/);
@@ -234,14 +234,14 @@ test("the handles trim the start and the end, a drag across the timeline removes
   const at = () => read<number>(page, "document.querySelector('#editor video').currentTime");
   await expect.poll(at).toBeGreaterThan(duration * 0.6 - 0.2);
   expect(await at()).toBeLessThan(duration * 0.6 + 0.2);
-  await expect(page.locator(".editor-range")).toHaveCount(1);
+  await expect(page.locator(".editor-selection")).toHaveCount(1);
   await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove selection");
   // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
   expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
   // The range's length leads its floating actions over the timeline (2026-10-26, B′).
   await expect(page.locator(".editor-selection-length")).toHaveText(/^Selected 0:01\.\d\d$/);
   await page.locator("#editor-remove").click();
-  await expect(page.locator(".editor-range")).toHaveCount(0);
+  await expect(page.locator("#editor-remove")).not.toHaveAccessibleName("Remove selection");
   await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);
   await expect(page.locator("#editor-feedback")).toHaveText(/^Removed 0:0(3\.[4-9]|4\.[0-9]) to 0:0(4\.[5-9]|5\.[0-2])$/);
   expect(saved()).toHaveLength(3);
@@ -678,7 +678,7 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   await page.mouse.click(laneBox.x + 3, laneBox.y + laneBox.height / 2);
   await expect(page.locator(".editor-part").first()).toHaveAttribute("aria-pressed", "true");
   await expect(stretches.first()).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator(".editor-range")).toHaveCount(0);
+  await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove part");
   await expect(page.locator("#editor-trim-start")).toHaveAttribute("aria-valuenow", "0");
   await page.keyboard.press("Escape");
 
@@ -727,11 +727,16 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   const hidden = (await stretches.nth(1).boundingBox())!;
   await page.mouse.click(hidden.x + hidden.width / 2, hidden.y + hidden.height / 2);
   await expect(stretches.nth(1)).toHaveAttribute("aria-pressed", "true");
-  // Chosen on the camera's lane: filled there only, outlined on the pictures and the inputs' lanes (2026-10-26: a
-  // stretch spanning the recording turned the whole timeline red).
-  await expect(page.locator(".editor-timeline .editor-range")).toHaveAttribute("data-outline", "true");
-  await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range')).not.toHaveAttribute("data-outline", "true");
-  await expect(page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-range')).toHaveAttribute("data-outline", "true");
+  // Chosen on the camera's lane, it is one stretch of time, framed once from the top of the pictures to the foot of the
+  // last lane (the maintainer's review of 2026-10-26: a frame on each track did not say which was chosen).
+  const selection = page.locator(".editor-selection");
+  await expect(selection).toHaveCount(1);
+  const framed = (await selection.boundingBox())!, top = (await page.locator(".editor-timeline").boundingBox())!;
+  const foot = (await page.locator(".editor-camera-lane").last().boundingBox())!;
+  expect(Math.abs(framed.y - top.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(framed.y + framed.height - (foot.y + foot.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(framed.x - hidden.x)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(framed.width - hidden.width)).toBeLessThanOrEqual(1.5);
   await page.keyboard.press("c");
   // Shown throughout again, with nothing removed, the edit changes nothing: its record goes (2026-10-26).
   expect(await eventually(() => record().scene === undefined)).toBe(true);
@@ -989,71 +994,46 @@ test("a selection's actions float over the line above the timeline, words where 
       await page.mouse.up();
     }
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
-    // The action under the pointer marks the tracks it changes (2026-10-26, the maintainer's choice): Remove every one,
-    // the camera's button its lane, Volume the sounds'; nothing marked once the pointer leaves.
-    const trimmer = page.locator(".editor-trimmer");
-    for (const [button, target] of [["#editor-remove", "all"], ["#editor-camera-toggle", "camera"], ["#editor-volume", "sound"]] as const) {
-      await page.locator(button).hover();
-      await expect(trimmer).toHaveAttribute("data-target", target);
-    }
-    await page.mouse.move(pictures.x + 4, pictures.y - 120);
-    await expect(trimmer).not.toHaveAttribute("data-target");
-    // A part chosen by a click is marked on the lanes too, while an action names them (review of 2026-10-26).
-    await page.keyboard.press("Escape");
-    await page.mouse.click(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
-    await expect(actions).toBeVisible();
-    await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeHidden();
-    await page.locator("#editor-camera-toggle").hover();
-    await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range[data-part]')).toBeVisible();
-    // Chosen on a lane, the actions stand right over that lane's stretch, over the pictures above it, their pointer at
-    // the selection's middle; chosen on the pictures again, they go back to the line (2026-10-26, the maintainer's choice).
+    // Chosen on a lane, the actions stand over the timeline as for the pictures, their pointer at the selection's middle
+    // (the maintainer's review of 2026-10-26: over the lane clicked they read as that lane's alone), and the stretch is
+    // framed once across the pictures and every lane.
     await page.keyboard.press("Escape");
     const cameraLane = (await page.locator('.editor-camera-lane[data-lane="camera"]').boundingBox())!;
     await page.mouse.click(cameraLane.x + cameraLane.width * 0.5, cameraLane.y + cameraLane.height / 2);
     await expect(actions).toBeVisible();
-    await expect(actions).toHaveAttribute("data-lane", "camera");
-    await expect.poll(async () => {
-      const over = (await actions.boundingBox())!;
-      const tip = over.y + over.height + 5;
-      return over.y + over.height <= cameraLane.y && tip > cameraLane.y && tip <= cameraLane.y + 4 && over.y < pictures.y + pictures.height;
-    }).toBe(true);
-    // Lanes hidden in Options move the one chosen on, or take it away: the actions follow it, or go back to the line
-    // (review of 2026-10-26). The lanes are shown again after, as Options remembers them.
-    if (width === 960) {
-      await page.keyboard.press("Escape");
-      const systemLane = page.locator('.editor-camera-lane[data-lane="system"]');
-      const systemBox = (await systemLane.boundingBox())!;
-      await page.mouse.click(systemBox.x + systemBox.width * 0.5, systemBox.y + systemBox.height / 2);
-      await expect(actions).toHaveAttribute("data-lane", "system");
-      await page.locator("#editor-options").click();
-      await page.locator("#editor-lane-camera").click();
-      await page.keyboard.press("Escape");
-      await expect.poll(async () => {
-        const lane = (await systemLane.boundingBox())!, over = (await actions.boundingBox())!;
-        const tip = over.y + over.height + 5;
-        return over.y + over.height <= lane.y && tip > lane.y && tip <= lane.y + 4;
-      }).toBe(true);
-      await page.locator("#editor-options").click();
-      await page.locator("#editor-lane-system").click();
-      await page.keyboard.press("Escape");
-      // The timeline moves as the panel shrinks: measured afresh.
-      await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= (await page.locator(".editor-timeline").boundingBox())!.y).toBe(true);
-      await page.locator("#editor-options").click();
-      await page.locator("#editor-lane-camera").click();
-      await page.locator("#editor-lane-system").click();
-      await page.keyboard.press("Escape");
-    }
+    await expect(page.locator(".editor-selection")).toHaveCount(1);
+    await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= pictures.y).toBe(true);
     await page.keyboard.press("Escape");
     await page.mouse.click(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
-    await expect(actions).not.toHaveAttribute("data-lane");
     await expect.poll(async () => (await actions.boundingBox())!.y + (await actions.boundingBox())!.height <= pictures.y).toBe(true);
-    // An unset stretch has no box of its own at rest, and an outline under the pointer (review of 2026-10-26).
+    // An unset stretch has no box of its own; under the pointer, what a click there would choose is framed faintly
+    // across the timeline, and nothing once the pointer leaves (the maintainer's review of 2026-10-26).
     const unset = page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-stretch').first();
-    const ring = (): Promise<string> => unset.evaluate((element) => getComputedStyle(element).boxShadow);
+    expect(await unset.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none");
+    const preview = page.locator(".editor-selection-preview");
+    await page.keyboard.press("Escape");
     await page.mouse.move(pictures.x + 4, pictures.y - 120);
-    expect(await ring()).toBe("none");
-    await unset.hover();
-    await expect.poll(ring).not.toBe("none");
+    await expect(preview).toHaveCount(0);
+    const micBox = (await unset.boundingBox())!;
+    await page.mouse.move(micBox.x + micBox.width * 0.9, micBox.y + micBox.height / 2);
+    await expect(preview).toHaveCount(1);
+    await page.mouse.move(pictures.x + 4, pictures.y - 120);
+    await expect(preview).toHaveCount(0);
+    // None where a press takes hold of a trim handle, on the pictures beside the recording's start (Codex's review).
+    await page.mouse.move(pictures.x + 3, pictures.y + pictures.height / 2);
+    await page.waitForTimeout(100);
+    await expect(preview).toHaveCount(0);
+    await page.mouse.move(pictures.x + pictures.width * 0.15, pictures.y + pictures.height / 2);
+    await expect(preview).toHaveCount(1);
+    // Under a still pointer, a split from the keyboard after it frames what a click would now choose, the part before
+    // the split (Codex's review); S chooses the part after it.
+    const framedSpan = (): Promise<string> => preview.evaluate((element) => `${element.style.getPropertyValue("--from")}-${element.style.getPropertyValue("--to")}`);
+    const before = await framedSpan();
+    await page.locator("#editor .pc video").evaluate((video: HTMLVideoElement) => { video.currentTime = video.duration * 0.3; });
+    await page.locator("#editor .editor-timeline").focus();
+    await page.keyboard.press("s");
+    await expect.poll(framedSpan).not.toBe(before);
+    await page.keyboard.press("ControlOrMeta+z");
     // The playhead is one straight line from the pictures down through the lanes (the maintainer's report of 2026-10-26:
     // the lanes' borders shifted theirs by a pixel or two).
     // The camera's and the sounds' lanes are one height (the maintainer's request of 2026-10-26).
@@ -1072,8 +1052,6 @@ test("a selection's actions float over the line above the timeline, words where 
     // Its cap's point stands on the line's middle (the maintainer's report of 2026-10-26).
     const cap = (await page.locator(".editor-playhead-cap").boundingBox())!;
     expect(Math.abs(cap.x + cap.width / 2 - (head.x + head.width / 2))).toBeLessThanOrEqual(0.25);
-    // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
-    await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
   }

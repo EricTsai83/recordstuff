@@ -132,7 +132,6 @@ export async function openEditor(item: LibraryItemView): Promise<void> {
   exportWatched = undefined;
   splits = [];
   selectedFrom = undefined;
-  partLane = undefined;
   rangeSelection = undefined;
   trimDraft = undefined;
   undoStack.length = 0;
@@ -191,7 +190,6 @@ export function escapeEditor(): boolean {
   }
   if (selectedFrom !== undefined) {
     selectedFrom = undefined;
-    partLane = undefined;
     draw();
     return true;
   }
@@ -249,7 +247,6 @@ function finishClose(item: LibraryItemView, restore: boolean): void {
   exportWatched = undefined;
   splits = [];
   selectedFrom = undefined;
-  partLane = undefined;
   rangeSelection = undefined;
   trimDraft = undefined;
   undoStack.length = 0;
@@ -597,15 +594,8 @@ export function stepPlayhead(frames: number, seconds: number): void {
 }
 
 /** Selects the part at `from` (the video's timescale) and moves the playhead to its start. */
-/**
- * The lane the selected part was chosen on (a click or Enter on a lane's stretch), for its actions to stand over that
- * lane; none for one chosen on the pictures or otherwise. Set with every part chosen, so it never outlives it.
- */
-export let partLane: Lane | undefined;
-
-export function selectPart(part: TimelinePart, seek = true, lane?: Lane): void {
+export function selectPart(part: TimelinePart, seek = true): void {
   selectedFrom = part.from;
-  partLane = lane;
   rangeSelection = undefined;
   const editor = editorView();
   if (seek && editor) seekTo(part.from / editor.timescale);
@@ -635,7 +625,6 @@ function splitNow(at: number): void {
   redoStack.length = 0;
   splits = [...splits, at];
   selectedFrom = at;
-  partLane = undefined;
   rangeSelection = undefined;
   announce(translate("Split at {time}", view?.language, { time: clock(at / editor.timescale) }));
   draw();
@@ -709,30 +698,18 @@ async function removeRange(editor: EditorView, [from, to]: EditRange): Promise<v
   const after = editorView();
   if (after) selectedFrom = partAt(timelineParts(after), Math.round((from + to) / 2))?.from;
   // A part chosen by a removal is the pictures', whatever lane chose the one before (review of 2026-10-26).
-  partLane = undefined;
   draw();
   announce(translate("Removed {from} to {to}", view?.language, { from: clock(from / editor.timescale), to: clock(to / editor.timescale) }));
 }
 
 /** Chooses the range between two places on the timeline (the video's timescale), or none when they meet. */
-/**
- * The lane a range was chosen on, by a click on one of its stretches; none for a range dragged across the pictures. Only
- * that lane is filled as chosen (2026-10-26, the maintainer's report: a stretch spanning the recording filled the whole
- * timeline red, as if all of it were about to go); the pictures and the other lanes outline it.
- */
-export let rangeLane: Lane | undefined;
-
-export function selectRange(a: number, b: number, lane?: Lane): void {
+export function selectRange(a: number, b: number): void {
   const editor = editorView();
   if (!editor) return;
   const from = Math.max(0, Math.min(a, b)), to = Math.min(editor.duration, Math.max(a, b));
   const frame = editor.timescale / Math.max(1, editor.frameRate);
   rangeSelection = to - from >= frame ? [from, to] : undefined;
-  rangeLane = rangeSelection ? lane : undefined;
-  if (rangeSelection) {
-    selectedFrom = undefined;
-    partLane = undefined;
-  }
+  if (rangeSelection) selectedFrom = undefined;
   draw();
 }
 
@@ -1157,7 +1134,6 @@ export function revertToOriginal(): Promise<boolean> {
     const before = current(editor);
     rangeSelection = undefined;
     selectedFrom = undefined;
-    partLane = undefined;
     const saved = editor.removed.length === 0 && sameScene(editorScene(editor), editor.editable?.recorded) ? true : await save([], editor.editable?.recorded);
     if (!saved) {
       draw();

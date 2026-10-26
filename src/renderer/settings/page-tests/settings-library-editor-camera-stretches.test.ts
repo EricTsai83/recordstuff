@@ -104,18 +104,23 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   const hiddenStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[1]!;
   hiddenStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
   await vi.waitFor(() => expect(hiddenStretch.getAttribute("aria-pressed")).toBe("true"));
-  // Chosen on the lane from the keyboard, its actions stand over the lane; a part chosen on the pictures after it takes
-  // them back to the line, the lane's range no longer counting (review of 2026-10-26).
-  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBe("camera"));
+  // Chosen on the lane, it is one stretch of time, framed once across the pictures and every lane, its actions over the
+  // timeline as for any other (the maintainer's review of 2026-10-26).
+  const frames = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>("#editor .editor-selection")];
+  await vi.waitFor(() => expect(frames()).toHaveLength(1));
+  expect(frames()[0]!.style.getPropertyValue("--from")).toBe(String(360_000 / 900_000));
+  expect(document.querySelector("#editor .editor-camera-range, #editor .editor-range")).toBeNull();
+  expect(document.getElementById("editor-selection-actions")!.dataset.lane).toBeUndefined();
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[0]!);
-  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBeUndefined());
+  await vi.waitFor(() => expect(frames()[0]!.style.getPropertyValue("--from")).toBe("0"));
+  expect(frames()).toHaveLength(1);
   const shownStretch = document.querySelectorAll<HTMLButtonElement>(".editor-camera-lane[data-lane=\"camera\"] .editor-camera-stretch")[0]!;
   shownStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
-  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBe("camera"));
-  // A split chooses the part after it on the pictures, whatever lane chose the one before (review of 2026-10-26).
+  await vi.waitFor(() => expect(frames()).toHaveLength(1));
+  // A split chooses the part after it.
   video.currentTime = 2;
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true }));
-  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")?.dataset.lane).toBeUndefined());
+  await vi.waitFor(() => expect(frames()[0]!.style.getPropertyValue("--from")).not.toBe("0"));
   hiddenStretch.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
   await vi.waitFor(() => expect(hiddenStretch.getAttribute("aria-pressed")).toBe("true"));
   click(toggle());

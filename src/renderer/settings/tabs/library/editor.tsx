@@ -388,12 +388,6 @@ function RemoveButton({ id }: { id: string }) {
 /** How far a selection's actions' pointer reaches below them, and how far its tip crosses the selection's top edge. */
 const CARET = 5, CARET_OVERLAP = 2;
 
-/** The tracks the floating action at `target` changes: Remove every one, the camera's button its lane, Volume the sounds'. */
-function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | undefined {
-  const id = (target as HTMLElement | null)?.closest?.("button")?.id;
-  return id === "editor-remove" ? "all" : id === "editor-camera-toggle" ? "camera" : id === "editor-volume" ? "sound" : undefined;
-}
-
 /**
  * The line over the timeline (2026-10-26, B′, then the maintainer's review of it): small, close to the timeline and apart
  * from the toolbar; the playhead's time (or a trim handle's) and the export's length together at its end, how to select
@@ -401,11 +395,11 @@ function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | unde
  * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
  * a selection comes and goes; the actions keep clear of the times.
  */
-function EditorActionRow({ editor, track, span, lane, actions: actionsKey, position, length, shortPosition, shortLength, onTarget, children }: {
-  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; lane: model.Lane | undefined;
+function EditorActionRow({ editor, track, span, actions: actionsKey, position, length, shortPosition, shortLength, children }: {
+  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined;
   /** Which actions it holds, so a change to them (Join previous coming or going) measures them afresh in words. */
   actions: string; position: string;
-  length: string; shortPosition: string; shortLength: string; onTarget: (target: "all" | "camera" | "sound" | undefined) => void; children: ReactNode;
+  length: string; shortPosition: string; shortLength: string; children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
   const [left, setLeft] = useState<number | undefined>(undefined);
@@ -422,8 +416,6 @@ function EditorActionRow({ editor, track, span, lane, actions: actionsKey, posit
   const wide = useRef(0), lengthWide = useRef(0);
   const shown = span !== undefined && editor.export.phase !== "exporting" && model.trimming() === undefined;
   const from = span?.[0], to = span?.[1];
-  // Gone with the selection, the mark goes too.
-  useEffect(() => { if (!shown) onTarget(undefined); }, [shown, onTarget]);
   useLayoutEffect(() => {
     const place = (): void => {
       const line = row.current, actions = bar.current, timeline = track.current;
@@ -435,14 +427,10 @@ function EditorActionRow({ editor, track, span, lane, actions: actionsKey, posit
       }
       const lineBox = line.getBoundingClientRect(), trackBox = timeline.getBoundingClientRect();
       const middle = trackBox.left - lineBox.left + ((from + to) / 2 / editor.duration) * trackBox.width;
-      // Chosen on a lane, the actions stand right over that lane's stretch, over the pictures or the lanes above it if
-      // need be (2026-10-26, the maintainer's choice: what they act on is then plain); chosen on the pictures, they
-      // stand on the line over the timeline, beside the times.
-      const laneBox = lane ? line.parentElement?.querySelector(`.editor-camera-lane[data-lane="${lane}"]`)?.getBoundingClientRect() : undefined;
-      // Their body just above the selection's top edge and their pointer's tip just over it (the maintainer's review of
-      // 2026-10-26), over a lane or over the pictures alike.
-      const edge = laneBox ? laneBox.top : trackBox.top;
-      setRise(Math.round(lineBox.bottom - edge) + CARET - CARET_OVERLAP);
+      // Always over the timeline, wherever the selection was chosen: it is a stretch of time across the pictures and
+      // every lane (the maintainer's review of 2026-10-26: over the lane clicked, the actions read as that lane's). Their
+      // body just above the timeline's top edge and their pointer's tip just over it.
+      setRise(Math.round(lineBox.bottom - trackBox.top) + CARET - CARET_OVERLAP);
       // Their width in words, measured every time with any step taken off for the measure (reviews of 2026-10-26: a
       // width kept from other actions, Join previous coming or going, chose the wrong step), then the step put back.
       const step = actions.dataset.compact;
@@ -459,7 +447,7 @@ function EditorActionRow({ editor, track, span, lane, actions: actionsKey, posit
       const placed = Math.round(Math.max(0, Math.min(middle - width / 2, room - width)));
       setLeft(placed);
       const times = tail.current?.getBoundingClientRect();
-      setCovering(!laneBox && times !== undefined && lineBox.left + placed + width + 8 > times.left);
+      setCovering(times !== undefined && lineBox.left + placed + width + 8 > times.left);
       // The pointer under the actions meets the selection's middle, wherever the actions had to stand.
       setCaret(Math.round(Math.min(width - 14, Math.max(14, middle - placed))));
     };
@@ -470,7 +458,7 @@ function EditorActionRow({ editor, track, span, lane, actions: actionsKey, posit
     // Lanes shown or hidden in Options move the one chosen on, or take it away (review of 2026-10-26).
     if (row.current?.parentElement) observer?.observe(row.current.parentElement);
     return () => observer?.disconnect();
-  }, [shown, from, to, editor.duration, track, compact, lane, actionsKey]);
+  }, [shown, from, to, editor.duration, track, compact, actionsKey]);
   return (
     <div ref={row} className="editor-action-row">
       {/* How to reach the selection's actions, while none is chosen (2026-10-26: Remove is there only). */}
@@ -491,13 +479,7 @@ function EditorActionRow({ editor, track, span, lane, actions: actionsKey, posit
           className="editor-selection-actions"
           data-placed={left !== undefined || undefined}
           data-compact={compact || undefined}
-          data-lane={lane}
           style={{ left: left ?? 0, bottom: rise, "--caret": `${caret ?? 0}px` } as React.CSSProperties}
-          // Which tracks the action under the pointer or the focus changes, for the timeline to mark.
-          onPointerOver={(event) => onTarget(targetOf(event.target))}
-          onPointerLeave={() => onTarget(undefined)}
-          onFocus={(event) => onTarget(targetOf(event.target))}
-          onBlur={() => onTarget(undefined)}
         >
           {/* Named, so the number reads as the selection's length (the maintainer's review of 2026-10-26). */}
           <span className="editor-selection-length">{translate("Selected {length}", model.view?.language, { length: precise(((to ?? 0) - (from ?? 0)) / editor.timescale) })}</span>
@@ -518,9 +500,14 @@ function EditorPanel() {
   const track = useRef<HTMLDivElement | null>(null);
   /** The trim handle with the keyboard's focus, whose edge the times' row keeps saying. */
   const [focusedEdge, setFocusedEdge] = useState<model.TrimEdge | undefined>(undefined);
-  // What the selection's action under the pointer or the focus acts on, marked on the timeline (2026-10-26, the
-  // maintainer's choice): Remove every track, the camera's button its lane, Volume the sounds' lanes.
-  const [actionTarget, setActionTarget] = useState<"all" | "camera" | "sound" | undefined>(undefined);
+  // The stretch of time a click under the pointer would choose, framed faintly across the pictures and every lane
+  // (2026-10-26, the maintainer's review: a selection is one stretch of time, and the pointer says which beforehand).
+  const [hovered, setHovered] = useState<EditRange | undefined>(undefined);
+  // Worked out again from where the pointer rests at every draw, so a split, an Undo or a lane's change under a still
+  // pointer frames what a click would now choose (Codex's review).
+  const pointer = useRef<{ clientX: number; lane: model.Lane | undefined; handle: boolean } | undefined>(undefined);
+  const rehover = useRef<() => void>(() => {});
+  useEffect(() => rehover.current());
   // However a press ends, the gesture does: a release anywhere in the window, or the window losing the pointer.
   useEffect(() => {
     const end = (): void => {
@@ -609,10 +596,48 @@ function EditorPanel() {
     const fraction = (clientX - box.left) / box.width;
     return Math.round((free ? fraction : Math.min(1, Math.max(0, fraction))) * editor.duration);
   };
-  const placeAt = (ticks: number, lane?: model.Lane): void => {
+  const placeAt = (ticks: number): void => {
     const part = model.partAt(parts, ticks);
-    if (part) model.selectPart(part, false, lane);
+    if (part) model.selectPart(part, false);
     model.seekTo(ticks / editor.timescale);
+  };
+  /**
+   * The stretch of time a click at `ticks` chooses: on a lane, a stretch the edit set (hidden, muted, a volume of its
+   * own) whole; anywhere else, the part there. Always across the pictures and every lane (the maintainer's review of
+   * 2026-10-26): where it was clicked says which stretch, never which track.
+   */
+  const setStretchAt = (ticks: number, lane: model.Lane | undefined): { from: number; to: number } | undefined => {
+    if (!lane) return undefined;
+    const list = laneStretches(lane);
+    const stretch = list.find((one) => ticks >= one.from && ticks < one.to) ?? list.at(-1);
+    return stretch?.set ? stretch : undefined;
+  };
+  const spanAt = (ticks: number, lane: model.Lane | undefined): EditRange | undefined => {
+    const stretch = setStretchAt(ticks, lane);
+    if (stretch) return [stretch.from, stretch.to];
+    const part = model.partAt(parts, ticks);
+    return part ? [part.from, part.to] : undefined;
+  };
+  // What a click where the pointer rests would choose, framed faintly; none over a trim handle or beside the recording.
+  rehover.current = () => {
+    const at = pointer.current, ticks = at && ticksAt(at.clientX), box = track.current?.getBoundingClientRect();
+    const next = at && !busy && !at.handle && ticks !== undefined && box && at.clientX >= box.left && at.clientX <= box.right
+      && edgeAt(at.clientX, null, at.lane) === undefined ? spanAt(ticks, at.lane) : undefined;
+    setHovered((now) => (now?.[0] === next?.[0] && now?.[1] === next?.[1] ? now : next));
+  };
+  /** The trim handle a press at `clientX` takes hold of: pressed, or pressed beside within its reach; none on a lane. */
+  const edgeAt = (clientX: number, target: EventTarget | null, lane: model.Lane | undefined): model.TrimEdge | undefined => {
+    const box = track.current?.getBoundingClientRect();
+    if (lane || !box) return undefined;
+    const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
+    const handle = (target as HTMLElement | null)?.closest?.(".editor-trim")?.getAttribute("data-edge");
+    return handle === "start" || handle === "end" ? handle
+      : clientX >= xOf(trim.start) - TRIM_HANDLE - TRIM_REACH && clientX <= xOf(trim.start) + TRIM_REACH ? "start"
+      : clientX <= xOf(trim.end) + TRIM_HANDLE + TRIM_REACH && clientX >= xOf(trim.end) - TRIM_REACH ? "end" : undefined;
+  };
+  const laneAt = (target: EventTarget | null): model.Lane | undefined => {
+    const name = (target as HTMLElement | null)?.closest?.(".editor-camera-lane")?.getAttribute("data-lane");
+    return name === "camera" || name === "system" || name === "microphone" ? name : undefined;
   };
   const follow = (pointer: number, clientX: number): void => {
     const held = gesture.current, ticks = ticksAt(clientX, held?.mode === "start" || held?.mode === "end");
@@ -644,9 +669,10 @@ function EditorPanel() {
   // While a handle moves, the times' row says where the export will start or end, to the hundredth.
   const trimming = model.trimming() ?? focusedEdge;
   const range = model.rangeSelection;
-  // The span the lanes mark: a range, else the selected part, whose mark shows only while an action names its tracks
-  // (review of 2026-10-26: a part chosen by a click had none to light).
-  const laneSpan: EditRange | undefined = range ?? (selected ? [selected.from, selected.to] : undefined);
+  // What is chosen, a range or else the selected part: one stretch of time, framed across the pictures and every lane
+  // (the maintainer's review of 2026-10-26: a frame on each track did not say which was chosen).
+  const chosen: EditRange | undefined = range ?? (selected ? [selected.from, selected.to] : undefined);
+  const frame = (span: EditRange) => ({ "--from": span[0] / editor.duration, "--to": span[1] / editor.duration }) as React.CSSProperties;
   const ruler = rulerMarks(editor.seconds);
   const trimHandle = (edge: model.TrimEdge) => {
     const value = trim[edge];
@@ -763,16 +789,12 @@ function EditorPanel() {
         editor={editor}
         track={track}
         span={range ?? (selected ? [selected.from, selected.to] : undefined)}
-        // The lane the selection was chosen on: a range's own, else the selected part's (review of 2026-10-26: a lane
-        // kept from an earlier range or click put the actions over the wrong track).
-        lane={range ? model.rangeLane : selected ? model.partLane : undefined}
         actions={model.canJoinPrevious(editor) ? "join" : ""}
         position={trimming
           ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
           : translate("Playhead {time}", language, { time: precise(time) })}
         length={translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}
         shortPosition={precise(trimming ? trim[trimming] / editor.timescale : time)}
-        onTarget={setActionTarget}
         shortLength={precise(model.shownOutputSeconds(editor))}
       >
         <RemoveButton id="editor-remove" />
@@ -809,7 +831,6 @@ function EditorPanel() {
       <div
         className="editor-trimmer"
         data-lane={lanes > 0 || undefined}
-        data-target={(range || selected) && actionTarget ? actionTarget : undefined}
         style={{ "--lanes": lanes } as React.CSSProperties}
         onPointerDown={(event) => {
           const ticks = ticksAt(event.clientX);
@@ -820,16 +841,13 @@ function EditorPanel() {
           const now = model.playheadTime() ?? time;
           model.keepSkimmed();
           event.currentTarget.setPointerCapture(event.pointerId);
-          const xOf = (at: number): number => box.left + (at / editor.duration) * box.width;
           // A press on the camera's lane is the lane's, never a trim handle's beside it (Codex's review): the handles
-          // keep to the pictures above it.
-          const laneName = (event.target as HTMLElement).closest?.(".editor-camera-lane")?.getAttribute("data-lane");
-          const lane = laneName === "camera" || laneName === "system" || laneName === "microphone" ? laneName : undefined;
-          // A trim handle, pressed or pressed beside: the start's reaches in from its edge, the end's back from its.
-          const handle = (event.target as HTMLElement).closest?.(".editor-trim")?.getAttribute("data-edge");
-          const edge: model.TrimEdge | undefined = lane ? undefined : handle === "start" || handle === "end" ? handle
-            : event.clientX >= xOf(trim.start) - TRIM_HANDLE - TRIM_REACH && event.clientX <= xOf(trim.start) + TRIM_REACH ? "start"
-            : event.clientX <= xOf(trim.end) + TRIM_HANDLE + TRIM_REACH && event.clientX >= xOf(trim.end) - TRIM_REACH ? "end" : undefined;
+          // keep to the pictures above it. A trim handle, pressed or pressed beside: the start's reaches in from its
+          // edge, the end's back from its.
+          const lane = laneAt(event.target);
+          pointer.current = undefined;
+          setHovered(undefined);
+          const edge = edgeAt(event.clientX, event.target, lane);
           if (edge) {
             gesture.current = { pointer: event.pointerId, startX: event.clientX, start: ticks, mode: edge, offset: (ticksAt(event.clientX, true) ?? ticks) - trim[edge] };
             document.getElementById(`editor-trim-${edge}`)?.focus({ preventScroll: true });
@@ -842,13 +860,19 @@ function EditorPanel() {
           if (onPlayhead) placeAt(ticks);
         }}
         onPointerMove={(event) => {
-          if (gesture.current) follow(event.pointerId, event.clientX);
-          else if (model.skimming && event.pointerType === "mouse") {
-            const ticks = ticksAt(event.clientX);
-            if (ticks !== undefined) model.skimTo(ticks);
-          }
+          if (gesture.current) return follow(event.pointerId, event.clientX);
+          if (event.pointerType !== "mouse") return;
+          const ticks = ticksAt(event.clientX);
+          if (model.skimming && ticks !== undefined) model.skimTo(ticks);
+          // Where it is, read now: the element under it may be redrawn away before the next draw.
+          pointer.current = { clientX: event.clientX, lane: laneAt(event.target), handle: (event.target as HTMLElement).closest?.(".editor-trim") != null };
+          rehover.current();
         }}
-        onPointerLeave={() => { if (!gesture.current) model.endSkim(); }}
+        onPointerLeave={() => {
+          pointer.current = undefined;
+          setHovered(undefined);
+          if (!gesture.current) model.endSkim();
+        }}
         // Where it is let go too: a drag whose moves did not come (a jump of the pointer) still ends there.
         onPointerUp={(event) => {
           follow(event.pointerId, event.clientX);
@@ -858,13 +882,13 @@ function EditorPanel() {
             // button or the Volume popup then acts on; anywhere else on it, as on the pictures: the playhead there and
             // the part there (2026-10-26, the maintainer's report: a lane not yet set is one stretch, and a click chose
             // the whole recording).
-            const list = held.lane ? laneStretches(held.lane) : [];
-            const stretch = held.lane ? list.find((one) => ticks >= one.from && ticks < one.to) ?? list.at(-1) : undefined;
             if (held.lane) model.chooseLaneInput(held.lane === "camera" ? undefined : held.lane);
-            if (stretch?.set) {
-              model.selectRange(stretch.from, stretch.to, held.lane);
+            // As Enter on it: a stretch the lane's edit set is chosen whole, as a range, even where a part has its ends.
+            const stretch = setStretchAt(ticks, held.lane);
+            if (stretch) {
+              model.selectRange(stretch.from, stretch.to);
               model.seekTo(ticks / editor.timescale);
-            } else placeAt(ticks, held.lane);
+            } else placeAt(ticks);
           }
           if (held?.pointer === event.pointerId && (held.mode === "start" || held.mode === "end")) void model.commitTrim();
           gesture.current = null;
@@ -912,7 +936,6 @@ function EditorPanel() {
         {editor.notes.map((note) => (
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
-        {range && <span className="editor-range" data-outline={model.rangeLane ? true : undefined} style={{ left: percent(range[0]), width: percent(range[1] - range[0]) }} aria-hidden="true" />}
         {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         </div>
         {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
@@ -938,9 +961,9 @@ function EditorPanel() {
                     if (event.detail !== 0) return;
                     // From the keyboard as from the pointer: a hidden stretch is chosen, else the part where it starts.
                     if (stretch.hidden) {
-                      model.selectRange(stretch.from, stretch.to, "camera");
+                      model.selectRange(stretch.from, stretch.to);
                       model.seekTo(stretch.from / editor.timescale);
-                    } else placeAt(stretch.from, "camera");
+                    } else placeAt(stretch.from);
                   }}
                 >
                   {stretch.hidden ? <UserRoundX aria-hidden="true" /> : <UserRound aria-hidden="true" />}
@@ -952,7 +975,6 @@ function EditorPanel() {
             {editor.removed.map(([from, to]) => (
               <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
             ))}
-            {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === "camera") || undefined} data-outline={model.rangeLane && model.rangeLane !== "camera" ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
           </div>
         )}
         {/* Each input's lane (2026-10-26): its own volume, or a stretch's, muted or a percent. */}
@@ -988,9 +1010,9 @@ function EditorPanel() {
                       if (event.detail !== 0) return;
                       model.chooseLaneInput(input);
                       if (stretch.volume !== undefined) {
-                        model.selectRange(stretch.from, stretch.to, input);
+                        model.selectRange(stretch.from, stretch.to);
                         model.seekTo(stretch.from / editor.timescale);
-                      } else placeAt(stretch.from, input);
+                      } else placeAt(stretch.from);
                     }}
                   >
                     <Icon aria-hidden="true" />
@@ -1003,10 +1025,12 @@ function EditorPanel() {
               {editor.removed.map(([from, to]) => (
                 <span key={from} className="editor-camera-removed" style={{ left: percent(from), width: percent(to - from) }} aria-hidden="true" />
               ))}
-              {laneSpan && <span className="editor-camera-range" data-part={!range || undefined} data-chosen={(range && model.rangeLane === input) || undefined} data-outline={model.rangeLane && model.rangeLane !== input ? true : undefined} style={{ left: percent(laneSpan[0]), width: percent(laneSpan[1] - laneSpan[0]) }} aria-hidden="true" />}
             </div>
           );
         })}
+        {chosen && <span className="editor-selection" style={frame(chosen)} aria-hidden="true" />}
+        {hovered && !(chosen && hovered[0] === chosen[0] && hovered[1] === chosen[1])
+          && <span className="editor-selection-preview" style={frame(hovered)} aria-hidden="true" />}
         {/* One playhead over the pictures and every lane, as editors draw it (the maintainer's question of 2026-10-26: a
             line of its own in each, placed alike, broke where their widths differed), under the selection's actions. */}
         <svg className="editor-playhead" style={{ "--at": Math.min(1, time / Math.max(editor.seconds, 0.001)) } as React.CSSProperties} aria-hidden="true" focusable="false">
