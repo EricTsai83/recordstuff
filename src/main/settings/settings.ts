@@ -47,6 +47,9 @@ function isTimestamp(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+/** The settings that are on or off, each saved through `setSwitch`. */
+type SwitchSetting = { [K in keyof Settings]-?: Settings[K] extends boolean ? K : never }[keyof Settings];
+
 export interface Settings {
   version: typeof SETTINGS_VERSION;
   outputDir: string;
@@ -319,15 +322,13 @@ export class SettingsStore {
   get hideSystemUi(): boolean { return this.settings.hideSystemUi; }
 
   setHideSystemUi(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported hide system UI: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, hideSystemUi: enabled }));
+    return this.setSwitch("hideSystemUi", enabled, "hide system UI");
   }
 
   get editableRecording(): boolean { return this.settings.editableRecording; }
 
   setEditableRecording(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported editable recording: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, editableRecording: enabled }));
+    return this.setSwitch("editableRecording", enabled, "editable recording");
   }
 
   get outputDir(): string {
@@ -348,15 +349,13 @@ export class SettingsStore {
   get countdownSound(): boolean { return this.settings.countdownSound; }
 
   setCountdownSound(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported countdown sound: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, countdownSound: enabled }));
+    return this.setSwitch("countdownSound", enabled, "countdown sound");
   }
 
   get microphone(): boolean { return this.settings.microphone; }
 
   setMicrophone(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported microphone: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, microphone: enabled }));
+    return this.setSwitch("microphone", enabled, "microphone");
   }
 
   get microphoneDevice(): MicrophoneDevicePreference | undefined {
@@ -382,8 +381,7 @@ export class SettingsStore {
   get camera(): boolean { return this.settings.camera; }
 
   setCamera(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported camera: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, camera: enabled }));
+    return this.setSwitch("camera", enabled, "camera");
   }
 
   get cameraLayout(): CameraLayout { return copyCameraLayout(this.settings.cameraLayout); }
@@ -458,13 +456,11 @@ export class SettingsStore {
   get onboardingDone(): boolean { return this.settings.onboardingDone; }
 
   setOnboardingDone(done: boolean): Promise<void> {
-    if (typeof done !== "boolean") return Promise.reject(new Error(`unsupported onboarding state: ${JSON.stringify(done)}`));
-    return this.save((current) => ({ ...current, onboardingDone: done }));
+    return this.setSwitch("onboardingDone", done, "onboarding state");
   }
 
   setLibraryPreviewSound(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported preview sound: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, libraryPreviewSound: enabled }));
+    return this.setSwitch("libraryPreviewSound", enabled, "preview sound");
   }
 
   get libraryFavorites(): string[] { return [...this.settings.libraryFavorites]; }
@@ -531,8 +527,7 @@ export class SettingsStore {
   get notifications(): boolean { return this.settings.notifications; }
 
   setNotifications(enabled: boolean): Promise<void> {
-    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported notifications setting: ${JSON.stringify(enabled)}`));
-    return this.save((current) => ({ ...current, notifications: enabled }));
+    return this.setSwitch("notifications", enabled, "notifications setting");
   }
 
   get hotkey(): HotkeySettings {
@@ -578,6 +573,12 @@ export class SettingsStore {
       await this.write(next);
       this.settings = next;
     });
+  }
+
+  /** Saves one on/off setting, refusing anything but a boolean: IPC hands main whatever a page sent. */
+  private setSwitch(key: SwitchSetting, enabled: unknown, what: string): Promise<void> {
+    if (typeof enabled !== "boolean") return Promise.reject(new Error(`unsupported ${what}: ${JSON.stringify(enabled)}`));
+    return this.save((current) => ({ ...current, [key]: enabled }));
   }
 
   /** Wait for every previously accepted save before quitting. */
