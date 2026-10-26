@@ -473,9 +473,17 @@ function EditorActionRow({ editor, track, span, actions: actionsKey, position, l
           data-compact={compact || undefined}
           style={{ left: left ?? 0, bottom: rise }}
         >
-          {/* Named, so the number reads as the selection's length (the maintainer's review of 2026-10-26). */}
-          <span className="editor-selection-length">{translate("Selected {length}", model.view?.language, { length: precise(((to ?? 0) - (from ?? 0)) / editor.timescale) })}</span>
+          {/* Leaving the selection first, as a selection bar has it (2026-10-27, the maintainer's choice): what Escape does. */}
+          <ControlTooltip label={model.text("Deselect (Esc)")}>
+            <Button id="editor-deselect" variant="ghost" size="icon-sm" className="editor-deselect" aria-label={model.text("Deselect")} onClick={() => model.deselect()}>
+              <X />
+            </Button>
+          </ControlTooltip>
+          <span className="editor-selection-divider" aria-hidden="true" />
           {children}
+          {/* Its length last and apart, information rather than an action (2026-10-27, the maintainer's review). */}
+          <span className="editor-selection-divider editor-selection-length-divider" aria-hidden="true" />
+          <span className="editor-selection-length">{translate("Length {length}", model.view?.language, { length: precise(((to ?? 0) - (from ?? 0)) / editor.timescale) })}</span>
         </div>
       )}
     </div>
@@ -789,6 +797,10 @@ function EditorPanel() {
         onPointerUp={(event) => {
           follow(event.pointerId, event.clientX);
           const held = gesture.current, ticks = ticksAt(event.clientX);
+          // A range let go: the preview followed its moving end to choose the cut by its picture; the playhead now goes
+          // to its start, so Space plays what was chosen (2026-10-27, the maintainer's choice, as Audacity's).
+          const chose = model.rangeSelection;
+          if (held?.pointer === event.pointerId && held.mode === "range" && chose) model.seekTo(chose[0] / editor.timescale);
           if (held?.pointer === event.pointerId && held.mode === "click" && ticks !== undefined) {
             // On a lane, a stretch the edit set (hidden, muted, a volume of its own) is chosen, as a range the camera
             // button or the Volume popup then acts on; anywhere else on it, as on the pictures: the playhead there and

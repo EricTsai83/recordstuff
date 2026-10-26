@@ -229,20 +229,25 @@ test("a drag past the timeline's start or end and Delete cut the head or the tai
   expect(saved()).toHaveLength(2);
 
   const exportY = (await page.locator("#editor-export").boundingBox())!.y;
-  // A drag across the middle chooses a range, the preview following its moving end; Remove selection takes it out.
+  // A drag across the middle chooses a range, the preview following its moving end while it is held; let go, the
+  // playhead goes to the range's start, so Space plays what was chosen (2026-10-27). Remove selection takes it out.
   await page.mouse.move(box.x + box.width * 0.45, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, y, { steps: 6 });
-  await page.mouse.up();
   const at = () => read<number>(page, "document.querySelector('#editor video').currentTime");
   await expect.poll(at).toBeGreaterThan(duration * 0.6 - 0.2);
   expect(await at()).toBeLessThan(duration * 0.6 + 0.2);
+  await page.mouse.up();
+  await expect.poll(at).toBeLessThan(duration * 0.45 + 0.2);
+  expect(await at()).toBeGreaterThan(duration * 0.45 - 0.2);
   await expect(page.locator(".editor-selection")).toHaveCount(1);
   await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove selection");
   // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
   expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
-  // The range's length leads its floating actions over the timeline (2026-10-26, B′).
-  await expect(page.locator(".editor-selection-length")).toHaveText(/^Selected 0:01\.\d\d$/);
+  // Its actions over the timeline: Deselect first, its length last, as information (2026-10-27).
+  await expect(page.locator("#editor-selection-actions > *").first()).toHaveAttribute("id", "editor-deselect");
+  await expect(page.locator(".editor-selection-length")).toHaveText(/^Length 0:01\.\d\d$/);
+  await expect(page.locator("#editor-selection-actions > *").last()).toHaveClass(/editor-selection-length/);
   await page.locator("#editor-remove").click();
   await expect(page.locator("#editor-remove")).not.toHaveAccessibleName("Remove selection");
   await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);

@@ -415,23 +415,27 @@ async function main(): Promise<number> {
       const before = removed();
       const from = { x: Math.round(left + span * 0.4), y }, to = { x: Math.round(left + span * 0.6), y };
       let heldSelection: string | undefined;
+      let heldAt = -1;
       try {
         await hold(from, to);
         const selection = await textStarting(translate("Selection {from}–{to} ({length})", language, { from: M, to: M, length: M }));
         heldSelection = selection;
+        // While held, the preview is at the moving end.
+        heldAt = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
       } finally { await ax().pointer("up", to.x, to.y); }
       await sleep(400);
       await ax().key(KEY.delete);
       await sleep(1500);
       check({ check: "Range: Delete removes it", expected: "one more removed range", actual: `${before} → ${removed()}`, pass: removed() === before + 1 });
-      // Where the preview was left: the moving end. The player's own clock went with its controls (2026-10-26), so the
-      // view's playhead readout, back once the range is gone, says it.
+      // Let go, the playhead went to the range's start (2026-10-27), where the removal leaves it. The player's own clock
+      // went with its controls (2026-10-26), so the view's playhead readout says it.
       const marker = "\u0003";
       const playheadPrefix = translate("Playhead {time}", language, { time: marker }).split(marker)[0]!;
       const readout = (await texts()).find((t) => t.startsWith(playheadPrefix));
       const shown = clockSeconds(readout ?? "") ?? -1;
-      check({ check: "Range: held across the middle", expected: `a selection, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s`,
-        actual: `"${heldSelection ?? "none"}", then "${readout ?? "no playhead readout"}"`, pass: heldSelection !== undefined && Math.abs(shown - fullSeconds * 0.6) <= 1.2 });
+      check({ check: "Range: held across the middle", expected: `a selection, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s, then the playhead at its start, about ${(fullSeconds * 0.4).toFixed(1)} s`,
+        actual: `"${heldSelection ?? "none"}" at ${heldAt.toFixed(2)} s, then "${readout ?? "no playhead readout"}"`,
+        pass: heldSelection !== undefined && Math.abs(heldAt - fullSeconds * 0.6) <= 1.2 && Math.abs(shown - fullSeconds * 0.4) <= 1.2 });
 
       // Skimming, off by default (2026-10-26), switched on in More options: the preview shows what is under the pointer, and
       // goes back when it leaves. The shortcuts' button reaches AX as a pop-up button, found by name.

@@ -3092,7 +3092,7 @@
     align-items: center;
     gap: 2px;
     height: 32px;
-    padding: 0 3px 0 10px;
+    padding: 0 3px;
     border-radius: 10px;
     color: var(--popover-foreground);
     background: var(--popover);
@@ -3104,22 +3104,26 @@
   .editor-selection-actions[data-placed] {
     visibility: visible;
   }
-  /* A pointer from the actions to the selection's middle, so they are seen to belong to it wherever they had to stand. */
+  /* The selection's length, last and apart: information, not an action (2026-10-27). */
   .editor-selection-length {
-    margin-inline-end: 6px;
+    margin-inline: 2px 6px;
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
+  }
+  .editor-selection-divider {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin-inline: 4px;
+    background: var(--border);
   }
   /* Too narrow for all of it: first the selection's length gives way, then the names but Remove's, which stay the
      buttons' accessible names. */
   /* Remove, the action made most, keeps its name (Codex's computer-use round of 2026-10-26: a lone bin was slow to read). */
-  .editor-selection-actions[data-compact] .editor-selection-length,
+  .editor-selection-actions[data-compact] :is(.editor-selection-length, .editor-selection-length-divider),
   .editor-selection-actions[data-compact="2"] .editor-join-label,
   .editor-selection-actions[data-compact="2"] .editor-camera-toggle-label {
     display: none;
-  }
-  .editor-selection-actions[data-compact] {
-    padding-inline-start: 3px;
   }
   .editor-selection-actions[data-compact="2"] :is(.editor-remove, .editor-camera-toggle) {
     min-width: 0;

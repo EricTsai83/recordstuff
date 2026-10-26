@@ -177,18 +177,23 @@ export function escapeEditor(): boolean {
     document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
     return true;
   }
-  if (rangeSelection || selectedFrom !== undefined) {
-    rangeSelection = undefined;
-    selectedFrom = undefined;
-    // The focus goes with the selection to the timeline, which draws no ring: left on the part a press focused, Escape
-    // (a key) would ring it in red though nothing is chosen any more (a native round's R20, 2026-10-27).
-    if (document.activeElement?.closest(".editor-timeline .editor-part, .editor-camera-lane")) {
-      document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
-    }
-    draw();
-    return true;
+  return deselect();
+}
+
+/**
+ * Lets go of the timeline's selection, a range or a part (Escape, or the selection's ✕), and returns whether there was
+ * one. The focus goes with it to the timeline, which draws no ring: left on the part a press focused, or on the ✕ that
+ * goes with the actions, a key would ring it though nothing is chosen any more (a native round's R20, 2026-10-27).
+ */
+export function deselect(): boolean {
+  if (!rangeSelection && selectedFrom === undefined) return false;
+  rangeSelection = undefined;
+  selectedFrom = undefined;
+  if (document.activeElement?.closest(".editor-timeline .editor-part, .editor-camera-lane, #editor-selection-actions")) {
+    document.querySelector<HTMLElement>("#editor .editor-timeline")?.focus({ preventScroll: true });
   }
-  return false;
+  draw();
+  return true;
 }
 
 /** How long Play on the export's toast waits for the library to list the new file. */

@@ -12,7 +12,7 @@ const ready: EditorView = { id: "a", state: "ready", timescale: 90_000, duration
 /**
  * The edit view's toolbar and its line over the timeline (2026-10-26, the maintainer's choice of layouts, B′): Split and
  * Remove in words in the toolbar, no times there; the line over the timeline holds the playhead's time and the export's
- * length, and a selection's actions float on it while a part or range is chosen, its length first, Remove with its key.
+ * length, and a selection's actions float on it while a part or range is chosen: Deselect first, Remove with its key, its length last.
  */
 it("keeps the toolbar to what acts on the whole recording and floats a selection's actions, Remove among them, over it", async () => {
   document.body.innerHTML = '<div id="root"></div>';
@@ -51,7 +51,8 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")).not.toBeNull());
   const actions = document.getElementById("editor-selection-actions")!;
   expect(actions.getAttribute("role")).toBe("toolbar");
-  expect(actions.querySelector(".editor-selection-length")!.textContent).toBe("Selected 0:06.00");
+  expect(actions.querySelector(".editor-selection-length")!.textContent).toBe("Length 0:06.00");
+  expect(actions.querySelector("#editor-deselect")!.getAttribute("aria-label")).toBe("Deselect");
   expect(actions.querySelector("#editor-remove")!.textContent).toBe("Remove⌫");
   expect(actions.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("false");
   // The hint gives way to the actions (whether the times have room beside them is measured, so the UI tests check it).
@@ -69,4 +70,11 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[0]!);
   await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")).not.toBeNull());
   expect(document.getElementById("editor-join")).toBeNull();
+
+  // Its ✕ lets go of the selection, as Escape does (2026-10-27): the actions go, and nothing is saved.
+  const saves = choose.mock.calls.length;
+  click(document.getElementById("editor-deselect")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")).toBeNull());
+  expect(document.querySelectorAll('.editor-part[aria-pressed="true"]')).toHaveLength(0);
+  expect(choose.mock.calls.length).toBe(saves);
 });
