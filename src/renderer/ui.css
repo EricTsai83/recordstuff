@@ -3006,42 +3006,55 @@
   .editor-remove kbd {
     margin-inline-start: auto;
   }
-  /* Split and Remove in words in the toolbar; Remove as wide as Keep, so nothing after it moves as it turns. */
+  /* Remove as wide as Keep, so nothing after it moves as it turns. */
   .editor-remove {
     min-width: 5.25rem;
     justify-content: flex-start;
   }
-  .editor-tool.editor-remove {
-    min-width: 4.75rem;
-  }
-  /* The line over the timeline (2026-10-26, B′): the playhead's time at its start, the export's length at its end, and
-     a selection's actions floating above the selection. As tall as the actions, chosen or not, so nothing moves. */
+  /* The line over the timeline (2026-10-26, B′, then the maintainer's review): small and close to the timeline, with
+     room above it apart from the toolbar; the times together at its end, how to select at its start. A selection's
+     actions sit on its foot and rise into that room, so they never reach the toolbar; it is always as tall. */
   .editor-action-row {
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 12px;
-    height: 34px;
+    height: 38px;
+    margin-bottom: -6px;
+    /* The smallest the view writes (its UI tests hold every text at 12 px or more). */
+    font-size: 12px;
+    line-height: 16px;
     color: var(--muted-foreground);
   }
-  .editor-action-row .editor-position[data-covered],
-  .editor-action-row .editor-length[data-covered] {
+  .editor-readouts {
+    display: flex;
+    gap: 12px;
+    white-space: nowrap;
+  }
+  .editor-select-hint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .editor-action-row [data-covered] {
     visibility: hidden;
   }
   .editor-selection-actions {
     position: absolute;
-    top: 0;
+    bottom: -2px;
     z-index: 4;
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 34px;
+    height: 32px;
     padding: 0 3px 0 10px;
     border-radius: 10px;
     color: var(--popover-foreground);
     background: var(--popover);
     box-shadow: var(--shadow-md), 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+    font-size: var(--text-xs);
     white-space: nowrap;
     visibility: hidden;
   }

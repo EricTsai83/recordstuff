@@ -49,7 +49,8 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
     .map((part) => [part.getAttribute("aria-label"), part.dataset.removed !== undefined, part.getAttribute("aria-pressed") === "true"]);
   expect(parts()).toEqual([["0:00.0 to 0:10.0, kept", false, false]]);
   expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("true");
-  expect(document.getElementById("editor-remove")?.getAttribute("aria-disabled")).toBe("true");
+  // Remove acts on a selection, so it floats over one and is not there without (2026-10-26).
+  expect(document.getElementById("editor-remove")).toBeNull();
 
   // S splits at the playhead (3 s); the part after it is selected.
   const video = document.querySelector<HTMLVideoElement>("#editor video")!;
@@ -67,22 +68,22 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   expect(document.getElementById("editor-remove")!.getAttribute("aria-label")).toBe("Keep part");
 
   // ⌘Z takes it back.
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 1 }));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Undone"));
   // ⇧⌘Z pressed straight after ⌘Z, while the undo still saves: it waits for that save rather than being lost.
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }));
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [], revision: 3 }));
   expect(choices.filter((choice) => choice.action === "save").at(-2)).toEqual({ action: "save", removed: [[270_000, 900_000]], revision: 2 });
 
   // The split is a step of its own (2026-10-25): Undo takes it back without a save, and Redo makes it again.
   expect(document.getElementById("editor-undo")?.getAttribute("aria-disabled")).toBe("false");
   const saves = choices.length;
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(parts()).toHaveLength(1));
   expect(document.getElementById("editor-undo")?.getAttribute("aria-disabled")).toBe("true");
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }));
   await vi.waitFor(() => expect(parts()).toHaveLength(2));
   expect(choices.length).toBe(saves);
 
@@ -94,7 +95,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   end.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft", shiftKey: true, bubbles: true }));
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [[810_000, 900_000]], revision: 4 }));
   await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:09.00"));
-  document.getElementById("editor-remove")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
   await vi.waitFor(() => expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:10.00"));
   await vi.waitFor(() => expect(parts()).toHaveLength(2));
 

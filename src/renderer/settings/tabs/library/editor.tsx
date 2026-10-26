@@ -353,11 +353,11 @@ const TRIM_HANDLE = 12;
 const TRIM_REACH = 10;
 
 /**
- * Remove (Delete) in words (2026-10-26, B′): the toolbar's, always there since it is the edit made most, and the one in
- * a selection's floating actions, with its key. Keep in place of Remove for a removed part; the same width either way,
- * so nothing after it moves.
+ * Remove (Delete) in words, with its key, among a selection's floating actions (2026-10-26: it acts on the selection,
+ * so it is where the selection is, and only there). Keep in place of Remove for a removed part; as wide either way, so
+ * nothing after it moves.
  */
-function RemoveButton({ id, tool = false }: { id: string; tool?: boolean }) {
+function RemoveButton({ id }: { id: string }) {
   const editor = model.editorView();
   if (!editor) return null;
   const selected = model.selectedPart(editor), range = model.rangeSelection;
@@ -369,23 +369,25 @@ function RemoveButton({ id, tool = false }: { id: string; tool?: boolean }) {
         id={id}
         variant="ghost"
         size="sm"
-        className={tool ? "editor-tool editor-remove" : "editor-remove"}
+        className="editor-remove"
         aria-label={model.text(range ? "Remove selection" : keep ? "Keep part" : "Remove part")}
         aria-disabled={busy || (!selected && !range)}
         onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}
       >
         {keep ? <RotateCcw /> : <Trash2 />}
         <span className="editor-remove-label" aria-hidden="true">{model.text(keep ? "Keep" : "Remove")}</span>
-        {!tool && <Kbd aria-hidden="true">{model.platform() === "darwin" ? "⌫" : "Del"}</Kbd>}
+        <Kbd aria-hidden="true">{model.platform() === "darwin" ? "⌫" : "Del"}</Kbd>
       </Button>
     </ControlTooltip>
   );
 }
 
 /**
- * The line over the timeline (2026-10-26, B′): the playhead's time (or a trim handle's) at its start, the export's length
- * at its end, and, while a part or range is chosen, its actions floating above it, its length first. Always as tall, so
- * nothing below it moves as a selection comes and goes; the actions keep clear of the export's length.
+ * The line over the timeline (2026-10-26, B′, then the maintainer's review of it): small, close to the timeline and apart
+ * from the toolbar; the playhead's time (or a trim handle's) and the export's length together at its end, how to select
+ * at its start while nothing is chosen, and, while a part or range is chosen, its actions floating above it, its length
+ * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
+ * a selection comes and goes; the actions keep clear of the times.
  */
 function EditorActionRow({ editor, track, span, position, length, children }: {
   editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string; children: ReactNode;
@@ -419,8 +421,12 @@ function EditorActionRow({ editor, track, span, position, length, children }: {
   }, [shown, from, to, editor.duration, track, compact]);
   return (
     <div ref={row} className="editor-action-row">
-      <span className="editor-position" data-covered={shown || undefined}>{position}</span>
-      <span ref={tail} className="editor-length" data-covered={(shown && compact) || undefined}>{length}</span>
+      {/* How to reach the selection's actions, while none is chosen (2026-10-26: Remove is there only). */}
+      <span className="editor-select-hint" data-covered={shown || undefined}>{model.text("Click a part or drag across the timeline to select it")}</span>
+      <span ref={tail} className="editor-readouts" data-covered={(shown && compact) || undefined}>
+        <span className="editor-position">{position}</span>
+        <span className="editor-length">{length}</span>
+      </span>
       {shown && (
         <div
           ref={bar}
@@ -644,15 +650,15 @@ function EditorPanel() {
           </Button>
         </ControlTooltip>
         <span className="editor-divider" aria-hidden="true" />
-        {/* Split and Remove in words (2026-10-26, the maintainer's choice of layouts, B′): Remove is the edit made most,
-            so it stays in the toolbar; the camera and the volume, which act on a selection only, float over it. */}
+        {/* The toolbar holds what acts on the whole recording or at the playhead (Split); what acts on a selection, Remove
+            among it, floats over the selection (2026-10-26, the maintainer's rule after B′: an action sits where what it
+            acts on is). */}
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
           <Button id="editor-split" variant="ghost" size="sm" className="editor-tool" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
             <span aria-hidden="true">{model.text("Split")}</span>
           </Button>
         </ControlTooltip>
-        <RemoveButton id="editor-remove" tool />
         <span className="editor-spacer" />
         <EditorOptions editor={editor} />
         {/* The keys, opened by a click as well as named to assistive technology (a
@@ -692,7 +698,7 @@ function EditorPanel() {
           : translate("Playhead {time}", language, { time: precise(time) })}
         length={translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}
       >
-        <RemoveButton id="editor-remove-selection" />
+        <RemoveButton id="editor-remove" />
         {camera && (
           <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
             <Button

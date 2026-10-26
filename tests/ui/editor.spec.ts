@@ -887,16 +887,20 @@ test("a selection's actions float over the line above the timeline, words where 
     await page.mouse.up();
     const actions = page.locator("#editor-selection-actions");
     await expect(actions).toBeVisible();
-    // The line keeps its height with the actions on it, and they stay within it.
+    // The line keeps its height with the actions on it, and they stay within its width, clear of the toolbar above
+    // and of the timeline below (the maintainer's review of 2026-10-26).
     expect((await page.locator(".editor-action-row").boundingBox())!.height).toBeCloseTo(line.height, 0);
     const box = (await actions.boundingBox())!;
+    const toolbar = (await page.locator(".editor-toolbar").boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height + 2);
+    expect(box.y + box.height).toBeLessThanOrEqual(pictures.y);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
     // Wide, in words beside the export's length; narrow, icons and keys alone over the line, still named.
     if (width === 960) {
       await expect(actions).not.toHaveAttribute("data-compact");
-      const length = (await page.locator(".editor-action-row .editor-length").boundingBox())!;
-      expect(box.x + box.width).toBeLessThanOrEqual(length.x);
+      const times = (await page.locator(".editor-action-row .editor-readouts").boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(times.x);
     } else await expect(actions).toHaveAttribute("data-compact", "true");
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
     await page.keyboard.press("Escape");

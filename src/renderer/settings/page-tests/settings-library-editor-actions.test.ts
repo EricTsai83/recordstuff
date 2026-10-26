@@ -14,7 +14,7 @@ const ready: EditorView = { id: "a", state: "ready", timescale: 90_000, duration
  * Remove in words in the toolbar, no times there; the line over the timeline holds the playhead's time and the export's
  * length, and a selection's actions float on it while a part or range is chosen, its length first, Remove with its key.
  */
-it("keeps the toolbar to the edits and floats a selection's actions over the timeline", async () => {
+it("keeps the toolbar to what acts on the whole recording and floats a selection's actions, Remove among them, over it", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
   let revision = 1;
@@ -35,12 +35,12 @@ it("keeps the toolbar to the edits and floats a selection's actions over the tim
 
   const toolbar = document.querySelector("#editor .editor-toolbar")!;
   expect(toolbar.querySelector("#editor-split")!.textContent).toBe("Split");
-  expect(toolbar.querySelector("#editor-remove")!.textContent).toBe("Remove");
-  expect(toolbar.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("true");
+  // What acts on the whole recording or at the playhead; Remove acts on a selection, so it is not here.
+  expect(toolbar.querySelector("#editor-remove")).toBeNull();
   expect(toolbar.textContent).not.toContain("Export length");
   const row = document.querySelector("#editor .editor-action-row")!;
-  expect(row.querySelector(".editor-length")!.textContent).toBe("Export length 0:10.00");
-  expect(row.querySelector(".editor-position")!.textContent).toBe("Playhead 0:00.00");
+  expect(row.querySelector(".editor-readouts")!.textContent).toBe("Playhead 0:00.00Export length 0:10.00");
+  expect(row.querySelector(".editor-select-hint")!.textContent).toBe("Click a part or drag across the timeline to select it");
   expect(document.getElementById("editor-selection-actions")).toBeNull();
 
   // Split at 4 s: the part after it is chosen, and its actions float with its length; Escape lets it go, and them.
@@ -51,7 +51,8 @@ it("keeps the toolbar to the edits and floats a selection's actions over the tim
   const actions = document.getElementById("editor-selection-actions")!;
   expect(actions.getAttribute("role")).toBe("toolbar");
   expect(actions.querySelector(".editor-selection-length")!.textContent).toBe("0:06.00");
-  expect(actions.querySelector("#editor-remove-selection")!.textContent).toBe("Remove⌫");
-  expect(row.querySelector(".editor-position")!.hasAttribute("data-covered")).toBe(true);
-  expect(toolbar.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("false");
+  expect(actions.querySelector("#editor-remove")!.textContent).toBe("Remove⌫");
+  expect(actions.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("false");
+  // The hint gives way to the actions (whether the times have room beside them is measured, so the UI tests check it).
+  expect(row.querySelector(".editor-select-hint")!.hasAttribute("data-covered")).toBe(true);
 });

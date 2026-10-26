@@ -638,6 +638,7 @@ export const ZH_TW = {
   Remove: "移除",
   Keep: "保留",
   Selection: "選取範圍",
+  "Click a part or drag across the timeline to select it": "點選片段，或在時間軸上拖曳選取範圍",
   "Select a part or drag across the timeline, then remove it (Delete)": "先選取片段或在時間軸上拖曳出範圍，再移除（Delete）",
   "Undo (⌘Z)": "還原 (⌘Z)",
   "Undo (Ctrl+Z)": "還原 (Ctrl+Z)",
