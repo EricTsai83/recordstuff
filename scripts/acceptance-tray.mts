@@ -34,7 +34,7 @@ import { AccessibilityBlockedError, FLAG, KEY, captureRect, osascriptAx, type Fr
 import { INTERRUPT_EXIT, escapeRegExp, pgrepPids, recordStuffPattern, recordStuffPids, command } from "./lib/runner/processes.mts";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, readAppSettings, writeAppSettings, runnerArgs } from "./lib/runner/runner-env.mts";
 import { StoredOverride } from "./lib/acceptance/stored-override.mts";
-import { TrayDriver, compareMenu, parseMenuLogLine, structureProblems, type TrayState } from "./lib/acceptance/tray-driver.mts";
+import { TrayDriver, compareMenu, isHeader, parseMenuLogLine, structureProblems, type TrayState } from "./lib/acceptance/tray-driver.mts";
 import { classifyTrayRound, recordingCardOpenId, renderTrayReport, type TrayCase } from "./lib/acceptance/tray-acceptance.mts";
 import { CONTROLLED_TOOL, SETTINGS_FILE_VERSION } from "./lib/acceptance/controlled-acceptance.mts";
 import { playPrefix } from "./lib/acceptance/notification-acceptance.mts";
@@ -469,8 +469,12 @@ async function main(): Promise<void> {
     if (first) {
       await runCase("keyboard", "Arrow keys move the selection, Return chooses Open RecordStuff, ⌘W closes it", language, async c => {
         if (windowsAtStart.some(title => title === "RecordStuff")) { c.status = "not run"; c.details.push("a Settings window was already open"); return; }
+        const from = appLog.end();
         const menu = await driver!.open();
-        const enabled = menu.items.filter(item => item.enabled).map(item => item.title);
+        // The keys pass over a group's heading, which Accessibility reports enabled: the model's log says which it is.
+        const hit = await waitForLog(appLog, from, /\] tray: menu opened in \w+: /, "the menu's `tray: menu opened` line", signal, 10_000);
+        const logged = parseMenuLogLine(hit.line)?.menu ?? [];
+        const enabled = menu.items.filter((item, i) => item.enabled && !isHeader(logged[i])).map(item => item.title);
         const firstDown = await driver!.navigate(KEY.down);
         const secondDown = await driver!.navigate(KEY.down);
         const up = await driver!.navigate(KEY.up);

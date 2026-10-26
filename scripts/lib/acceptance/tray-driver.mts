@@ -16,7 +16,12 @@ import { AccessibilityBlockedError, KEY, centre, type Frame, type NativeAx, type
 export const UI_TIMEOUT_MS = 30_000;
 
 /** One entry of the logged production menu (`menuLogText` in src/main/menus/tray-model.ts). */
-export type LoggedEntry = { separator: true } | { label: string; enabled: boolean; accelerator?: string };
+export type LoggedEntry = { separator: true } | { label: string; enabled: boolean; accelerator?: string; header?: true };
+
+/** A group's heading (macOS's section header, 2026-10-26): Accessibility reports it enabled, but it is never chosen. */
+export function isHeader(entry: LoggedEntry | undefined): boolean {
+  return entry !== undefined && "label" in entry && entry.header === true;
+}
 
 /** `tray: menu opened in <state>: <json>` → the state and the menu Electron was given. */
 export function parseMenuLogLine(line: string): { state: string; menu: LoggedEntry[] } | undefined {
@@ -76,6 +81,7 @@ export function compareMenu(native: readonly NativeMenuItem[], logged: readonly 
     }
     if (isSeparator(actual)) { problems.push(`${at}: expected "${expected.label}", found a separator`); continue; }
     if (actual.title !== expected.label) problems.push(`${at}: label "${actual.title}", model "${expected.label}"`);
+    if (isHeader(expected)) continue;
     if (actual.enabled !== expected.enabled) problems.push(`${at} "${expected.label}": ${actual.enabled ? "enabled" : "disabled"} natively, ${expected.enabled ? "enabled" : "disabled"} in the model`);
     const shown = axAccelerator(actual);
     if (expected.accelerator === undefined) {

@@ -28,6 +28,20 @@ describe("tray menu comparison (plan 063)", () => {
     ]);
   });
 
+  it("takes a group's heading as macOS reads it, enabled, and still compares its label (2026-10-26)", () => {
+    // The idle menu's inputs under their heading, as the app on macOS 26 showed them: Accessibility reports the section
+    // header enabled though it is never chosen.
+    const logged = parseMenuLogLine(`[2026-10-26T07:52:00.000Z] tray: menu opened in idle: [{"label":"開始錄影","enabled":true},{"separator":true},{"label":"錄影時包含","enabled":false,"header":true},{"label":"麥克風","enabled":true,"checked":true}]`)!;
+    const rows: Array<[string, boolean, string, number]> = [["開始錄影", true, "", 0], ["", false, "", 0], ["錄影時包含", true, "", 0], ["麥克風", true, "", 0]];
+    expect(compareMenu(native(rows), logged.menu).problems).toEqual([]);
+    rows[2] = ["錄影包含", true, "", 0];
+    expect(compareMenu(native(rows), logged.menu).problems).toEqual(['entry 3: label "錄影包含", model "錄影時包含"']);
+    // An item that is not a heading is still held to its enabled state.
+    rows[2] = ["錄影時包含", true, "", 0];
+    rows[3] = ["麥克風", false, "", 0];
+    expect(compareMenu(native(rows), logged.menu).problems).toEqual(['entry 4 "麥克風": disabled natively, enabled in the model']);
+  });
+
   it("reports a missing separator, a changed label, a wrong enabled state and a shortcut the model lacks", () => {
     const rows = RECORDED_IDLE.filter((_, i) => i !== 2).map((row): [string, boolean, string, number] => [...row]);
     rows[0] = ["待命", false, "", 0];
