@@ -515,7 +515,6 @@ export const ZH_TW = {
     "請連接麥克風，並在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff；或在錄影設定中關閉「麥克風」。",
   "Connect a microphone and allow desktop apps in Settings → Privacy & security → Microphone, or turn Microphone off in Recording settings.":
     "請連接麥克風，並在「設定 → 隱私權與安全性 → 麥克風」中允許桌面應用程式存取；或在錄影設定中關閉「麥克風」。",
-  "Record microphone": "錄製麥克風",
   "The microphone dropped out during the recording. Only system audio was recorded while it was out.":
     "錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。",
   "RecordStuff cannot use the microphone. Click to open System Settings.": "RecordStuff 無法使用麥克風。按一下以開啟系統設定。",
@@ -555,7 +554,6 @@ export const ZH_TW = {
   H: "高",
   Round: "圓角",
   "100% is a circle, or round ends on a wide or tall bubble.": "100% 為圓形；較寬或較高的泡泡則兩端呈半圓。",
-  "Record camera": "錄製相機",
   Preview: "預覽",
   "Recording Studio": "錄影工作室",
   "Open Recording Studio…": "開啟錄影工作室…",
@@ -666,6 +664,7 @@ export const ZH_TW = {
   "Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.":
     "時間軸上有 {count} 段隱藏相機。選取一段後按 C，即可在那段隱藏或顯示相機。",
   "Camera hidden": "隱藏相機",
+  "Include in recordings": "錄影時包含",
   "Press Esc again to hide the window": "再按一次 Esc 隱藏視窗",
   "RecordStuff keeps running in the menu bar.": "RecordStuff 會繼續在選單列執行。",
   "Hide window": "隱藏視窗",

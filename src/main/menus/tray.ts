@@ -446,6 +446,8 @@ export class AppTray {
 
   private toTemplate(entry: TrayMenuItem): MenuItemConstructorOptions {
     if (entry.kind === "separator") return { type: "separator" };
+    // A group's heading: macOS 14 and later draw it as a section header; elsewhere it is a line that cannot be chosen.
+    if (entry.header && process.platform === "darwin") return { type: "header", label: entry.label };
     const template: MenuItemConstructorOptions = { label: entry.label, enabled: entry.enabled };
     if (entry.checked !== undefined) { template.type = "checkbox"; template.checked = entry.checked; }
     if (entry.toolTip !== undefined) template.toolTip = entry.toolTip;

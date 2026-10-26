@@ -460,13 +460,14 @@ describe("tray menu template (plan 048)", () => {
     rightClick();
     const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]![0] as Electron.MenuItemConstructorOptions[];
     const line = logs.find((message) => message.startsWith("tray: menu opened in idle: "))!;
-    const logged = JSON.parse(line.slice("tray: menu opened in idle: ".length)) as Array<{ separator?: true; label?: string; enabled?: boolean; accelerator?: string; checked?: boolean }>;
+    const logged = JSON.parse(line.slice("tray: menu opened in idle: ".length)) as Array<{ separator?: true; label?: string; enabled?: boolean; accelerator?: string; checked?: boolean; header?: true }>;
     expect(logged).toEqual(template.map((entry) => entry.type === "separator" ? { separator: true }
+      : entry.type === "header" ? { label: entry.label, enabled: false, header: true }
       : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }),
         ...(entry.checked === undefined ? {} : { checked: entry.checked }) }));
-    // Record microphone is a native checkbox (plan 074).
-    expect(template.find((entry) => entry.label === "Record microphone")).toMatchObject({ type: "checkbox", checked: false });
-    expect(logged.find((entry) => entry.label === "Record microphone")).toEqual({ label: "Record microphone", enabled: true, checked: false });
+    // The microphone is a native checkbox (plan 074), under its group's heading (2026-10-26).
+    expect(template.find((entry) => entry.label === "Microphone")).toMatchObject({ type: "checkbox", checked: false });
+    expect(logged.find((entry) => entry.label === "Microphone")).toEqual({ label: "Microphone", enabled: true, checked: false });
     expect(logged.find((entry) => entry.label === "Start recording")).toEqual({ label: "Start recording", enabled: true, accelerator: "CommandOrControl+Shift+1" });
   });
 });

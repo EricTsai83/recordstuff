@@ -6,7 +6,7 @@
  * and the fix when permission, the output folder or an unavailable display blocks recording),
  * Open RecordStuff with Show last recording (the window on Recordings, the newest take focused),
  * the status lines with unread failures, and Quit. The recordings, reviewed failures, the output
- * folder, the log and every preference but Record microphone (plan 074) live in the app's window ([settings-model.ts](../settings/settings-model.ts)); this model never builds a
+ * folder, the log and every preference but the microphone's switch (plan 074) live in the app's window ([settings-model.ts](../settings/settings-model.ts)); this model never builds a
  * submenu, so what it returns is exactly what the menu shows.
  */
 import { failureReason } from "../recording/recording-result";
@@ -36,8 +36,10 @@ export type TrayMenuItem =
       kind: "item"; label: string; enabled: boolean; action?: AppAction; toolTip?: string;
       /** A registered shortcut shown right-aligned in the native menu (plan 048); the menu never registers it. */
       accelerator?: string;
-      /** A checkbox item, checked or not (plan 074's Record microphone); absent is a plain item. */
+      /** A checkbox item, checked or not (plan 074's microphone); absent is a plain item. */
       checked?: boolean;
+      /** A group's heading (2026-10-26): macOS's section header, elsewhere a line that cannot be chosen. */
+      header?: true;
     };
 export interface TrayModel {
   icon: TrayIcon;
@@ -215,13 +217,16 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // Likewise the way back from a chosen display that is gone, as Settings offers it.
       else if (!resolution.ok && primaryDisplayChoosable(ctx.displays)) actions.push(item(text("Use Primary display"), { setDisplay: { kind: "primary" } }));
       // The one preference in the menu (plan 074, the maintainer's choice): narrating is decided per recording, where
-      // recordings start. Idle's only, since a session locks it as Settings does.
+      // recordings start. Idle's only, since a session locks it as Settings does. Under a heading that says what the
+      // ticks mean (2026-10-26, the maintainer's request: "Record microphone" read as an action, or as a permission), the
+      // inputs by name alone, as macOS menus group their choices.
       const microphone = ctx.microphone?.enabled ?? false;
-      actions.push({ kind: "item", label: text("Record microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
+      actions.push(SEPARATOR, { kind: "item", label: text("Include in recordings"), enabled: false, header: true });
+      actions.push({ kind: "item", label: text("Microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
       // The camera's switch beside it (plan 075, D10), where the camera is available.
       if (ctx.camera?.available) {
         const camera = ctx.camera.enabled;
-        actions.push({ kind: "item", label: text("Record camera"), enabled: true, action: { setCamera: !camera }, checked: camera });
+        actions.push({ kind: "item", label: text("Camera"), enabled: true, action: { setCamera: !camera }, checked: camera });
       }
       return model("idle", "", status, actions, lines);
     }
@@ -259,8 +264,11 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
  */
 export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem[] {
   const { model, actions: stateActions, line } = trayParts(state, ctx);
-  // Record microphone stays the tray's: this menu holds what is done now, and the window it stands beside has the switch.
-  const actions = stateActions.filter(entry => entry.kind !== "item" || entry.checked === undefined).map(entry => entry.kind === "item" && entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry);
+  // The microphone's and the camera's switches stay the tray's, with their heading and the line before it: this menu
+  // holds what is done now, and the window it stands beside has the switches.
+  const heading = stateActions.findIndex(entry => entry.kind === "item" && entry.header);
+  const kept = heading > 0 && stateActions[heading - 1]?.kind === "separator" ? stateActions.slice(0, heading - 1) : stateActions;
+  const actions = kept.filter(entry => entry.kind !== "item" || (entry.checked === undefined && !entry.header)).map(entry => entry.kind === "item" && entry.action === "stop" ? { ...entry, label: t("Stop recording", ctx.language) } : entry);
   const last = model.menu.find(entry => entry.kind === "item" && entry.action === "showLastRecording");
   return [...(actions.length ? actions : line ? [line] : []), ...(last ? [SEPARATOR, last] : [])];
 }
@@ -273,7 +281,7 @@ export function recordMenu(state: RecordingState, ctx: AppContext): TrayMenuItem
 export function menuLogText(menu: readonly TrayMenuItem[]): string {
   return JSON.stringify(menu.map(entry => entry.kind === "separator" ? { separator: true }
     : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }),
-      ...(entry.checked === undefined ? {} : { checked: entry.checked }) }));
+      ...(entry.checked === undefined ? {} : { checked: entry.checked }), ...(entry.header ? { header: true } : {}) }));
 }
 
 export interface NotificationText {
