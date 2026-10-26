@@ -412,6 +412,8 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
   // 0 in full; 1 without the selection's length; 2 with Remove alone in words too (the maintainer's review of
   // 2026-10-26: a 460 px window dropped every name at once). Decided on their full width, kept while they show.
   const [compact, setCompact] = useState<0 | 1 | 2>(0);
+  // The actions over the times, which then give way while they show.
+  const [covering, setCovering] = useState(false);
   const wide = useRef(0), lengthWide = useRef(0);
   const shown = span !== undefined && editor.export.phase !== "exporting" && model.trimming() === undefined;
   const from = span?.[0], to = span?.[1];
@@ -420,7 +422,12 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
   useLayoutEffect(() => {
     const place = (): void => {
       const line = row.current, actions = bar.current, timeline = track.current;
-      if (!shown || from === undefined || to === undefined || !line || !actions || !timeline) return setLeft(undefined);
+      if (!shown || from === undefined || to === undefined || !line || !actions || !timeline) {
+        // Gone, they are measured afresh in words when they show again (a narrow window's steps were kept otherwise).
+        setCovering(false);
+        setCompact(0);
+        return setLeft(undefined);
+      }
       const lineBox = line.getBoundingClientRect(), trackBox = timeline.getBoundingClientRect();
       const middle = trackBox.left - lineBox.left + ((from + to) / 2 / editor.duration) * trackBox.width;
       // Chosen on a lane, the actions stand right over that lane's stretch, over the pictures or the lanes above it if
@@ -431,18 +438,20 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
       // 2026-10-26), over a lane or over the pictures alike.
       const edge = laneBox ? laneBox.top : trackBox.top;
       setRise(Math.round(lineBox.bottom - edge) + CARET - CARET_OVERLAP);
-      // On the line the times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for
-      // the actions): the actions take icons and keys alone when their words do not fit beside them. Over a lane the
-      // whole width is theirs.
       if (actions.dataset.compact === undefined) {
         wide.current = actions.offsetWidth;
         lengthWide.current = actions.querySelector<HTMLElement>(".editor-selection-length")?.offsetWidth ?? 0;
       }
-      const room = laneBox ? lineBox.width : lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      // The whole line is theirs: they stand right over the selection, and the times give way only where they meet
+      // (the maintainer's review of 2026-10-26: pushed aside for the times, the actions stood away from a selection at
+      // the end).
+      const room = lineBox.width;
       setCompact(wide.current <= room ? 0 : wide.current - lengthWide.current - 6 <= room ? 1 : 2);
       const width = actions.offsetWidth;
       const placed = Math.round(Math.max(0, Math.min(middle - width / 2, room - width)));
       setLeft(placed);
+      const times = tail.current?.getBoundingClientRect();
+      setCovering(!laneBox && times !== undefined && lineBox.left + placed + width + 8 > times.left);
       // The pointer under the actions meets the selection's middle, wherever the actions had to stand.
       setCaret(Math.round(Math.min(width - 14, Math.max(14, middle - placed))));
     };
@@ -460,7 +469,7 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
       <span className="editor-select-hint" data-covered={shown || undefined}>{model.text("Click a part or drag across the timeline to select it")}</span>
       {/* In words where the line has room; a narrow view keeps the numbers alone, "where / how long", their words still
           read aloud. */}
-      <span ref={tail} className="editor-readouts">
+      <span ref={tail} className="editor-readouts" data-covered={(shown && covering) || undefined}>
         <span className="editor-position">{position}</span>
         <span className="editor-length">{length}</span>
         <span className="editor-readouts-short" aria-hidden="true">{shortPosition} / {shortLength}</span>

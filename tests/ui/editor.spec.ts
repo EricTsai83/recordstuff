@@ -905,23 +905,20 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(box.y + box.height + 5).toBeLessThanOrEqual(pictures.y + 4);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
-    // The times stay in sight beside the actions at either width (Codex's computer-use round found a narrow window hid
-    // them): wide, the actions in words; narrow, the times as numbers alone and the actions as icons and keys.
-    const times = (await page.locator(".editor-action-row .editor-readouts").boundingBox())!;
-    expect(times.width).toBeGreaterThan(20);
-    expect(box.x + box.width).toBeLessThanOrEqual(times.x);
-    if (width === 960) await expect(actions).not.toHaveAttribute("data-compact");
-    else if (width === 560) {
-      // A little narrow: the selection's length gives way first, every action keeping its name (the maintainer's review).
-      await expect(actions).toHaveAttribute("data-compact", "1");
+    // They stand right over the selection, their pointer at its middle; the times give way only where they meet
+    // (the maintainer's review of 2026-10-26), and stay in sight otherwise.
+    const middle = pictures.x + pictures.width * 0.75;
+    const caret = (await page.locator(".editor-selection-caret").boundingBox())!;
+    expect(Math.abs(caret.x + caret.width / 2 - middle)).toBeLessThanOrEqual(3);
+    const times = page.locator(".editor-action-row .editor-readouts");
+    const timesBox = (await times.boundingBox())!;
+    if (box.x + box.width + 8 > timesBox.x) await expect(times).toHaveAttribute("data-covered", "true");
+    else await expect(times).not.toHaveAttribute("data-covered");
+    // Words where the line has room; narrower, the selection's length gives way first, then the names but Remove's.
+    if (width !== 420) {
       await expect(page.locator("#editor-camera-toggle .editor-camera-toggle-label")).toBeVisible();
-    } else {
-      await expect(actions).toHaveAttribute("data-compact", "2");
-      await expect(page.locator(".editor-readouts-short")).toBeVisible();
-      // Remove keeps its name; the others keep their icons and keys, and the selection's length gives way.
-      await expect(page.locator("#editor-remove .editor-remove-label")).toBeVisible();
-      await expect(page.locator("#editor-camera-toggle .editor-camera-toggle-label")).toBeHidden();
-    }
+      if (width === 960) await expect(actions).not.toHaveAttribute("data-compact");
+    } else await expect(page.locator("#editor-remove .editor-remove-label")).toBeVisible();
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
     // The action under the pointer marks the tracks it changes (2026-10-26, the maintainer's choice): Remove every one,
     // the camera's button its lane, Volume the sounds'; nothing marked once the pointer leaves.
