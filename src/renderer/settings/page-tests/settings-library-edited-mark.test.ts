@@ -8,11 +8,11 @@ const item = (id: string, edited?: string): LibraryItemView => ({ id, day: "Toda
   size: "18 MB", thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1`, ...(edited ? { edited } : {}) });
 
 /**
- * A recording that holds an edit (2026-10-26, the maintainer's request): its card says Edited, a click on which opens
- * the edit view where it was left, and its menu offers Continue editing… in place of Edit…; a card without one has
- * neither.
+ * A recording that holds an edit (2026-10-26, the maintainer's request): its card says Edited, a state whose click is
+ * the card's own (the maintainer's review the same day), and its menu offers Continue editing… in place of Edit…; a card
+ * without one has neither.
  */
-it("marks an edited recording, opens its edit from the mark, and offers Continue editing…", async () => {
+it("marks an edited recording as a state, not a link, and offers Continue editing…", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
   let revision = 1;
@@ -38,9 +38,11 @@ it("marks an edited recording, opens its edit from the mark, and offers Continue
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   await vi.waitFor(() => expect(document.getElementById("clip-menu-edit")).toBeNull());
 
+  // A state, not a link: a click on it is the card's, which plays the recording.
   const mark = document.querySelector<HTMLElement>("#clip-a .clip-meta .clip-edited")!;
   expect(mark.textContent).toBe("Edited");
+  expect(mark.classList.contains("clip-editable")).toBe(false);
   click(mark);
-  await vi.waitFor(() => expect(choices).toEqual([["recordingEdit:a", { action: "open" }]]));
-  expect(document.querySelector(".player[data-open]")).toBeNull();
+  await vi.waitFor(() => expect(document.querySelector(".player[data-open]")).not.toBeNull());
+  expect(choices).toEqual([]);
 });

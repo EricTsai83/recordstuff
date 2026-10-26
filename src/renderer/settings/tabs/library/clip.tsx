@@ -2,7 +2,7 @@
  * A recording's card or list row: its thumbnail and hover preview, its title and details, and its menu (open,
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
-import { Fragment, useEffect, useState, useSyncExternalStore, memo } from "react";
+import { useEffect, useState, useSyncExternalStore, memo } from "react";
 import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
@@ -312,26 +312,36 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
  * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
  * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
  * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit…. A recording
- * that holds an edit is marked Edited the same way (the same day), and its menu reads Continue editing….
+ * that holds an edit says Edited beside it, a state only (the maintainer's review the same day): a click there is the
+ * card's, and its menu offers Continue editing….
  */
 function EditableMark({ item }: { item: LibraryItemView }) {
-  const marks = [["clip-editable", item.editable], ["clip-editable clip-edited", item.edited]].filter((mark): mark is [string, string] => Boolean(mark[1]));
-  return marks.map(([className, mark]) => (
-    <Fragment key={className}>
-      {" · "}
-      <span
-        className={className}
-        // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          void model.openEditor(item);
-        }}
-      >
-        {mark}
-      </span>
-    </Fragment>
-  ));
+  return (
+    <>
+      {item.editable && (
+        <>
+          {" · "}
+          <span
+            className="clip-editable"
+            // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void model.openEditor(item);
+            }}
+          >
+            {item.editable}
+          </span>
+        </>
+      )}
+      {item.edited && (
+        <>
+          {" · "}
+          <span className="clip-edited">{item.edited}</span>
+        </>
+      )}
+    </>
+  );
 }
 
