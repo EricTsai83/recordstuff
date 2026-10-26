@@ -55,6 +55,7 @@ import { stackOf } from "./lib/errors";
 import { createRunId, logSessionEvent } from "./recording/session-log";
 import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, openCameraSettings, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
+import { EditableChoice } from "./recording/editable-choice";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
 import { SavedNotification } from "./recording/saved-notification";
@@ -326,8 +327,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // Windows adapters' hardware encoders passed their self-test or failed); the capture process inherits it.
   process.env["RECORDSTUFF_ENGINE_DATA"] = path.join(app.getPath("userData"), "engine");
   let captureAnchor: BaseWindow | undefined;
-  /** The tray's Start editable recording (2026-10-25) was chosen: the recording it starts is editable. */
-  let editableOnce = false;
+  /** Whether the next recording is editable: the setting, or the tray's Start editable recording (2026-10-25) once. */
+  const editable = new EditableChoice({
+    platform: process.platform,
+    setting: () => settings.editableRecording,
+    preview: () => recorder.preview !== undefined,
+    stopPreview: () => { previewPrepared = undefined; recorder.stopPreview(); },
+    log,
+  });
   const cameraPreview = process.platform === "darwin" && cameraPreviewOn(process.env) ? new CameraPreview({
     preloadPath: path.join(__dirname, "../preload/camera-preview.js"),
     devUrl: !app.isPackaged && process.env["ELECTRON_RENDERER_URL"]
@@ -358,7 +365,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
     // Plan 087: the engine records editable files on macOS only.
     // The tray's Start editable recording (2026-10-25) makes one recording editable while the setting stays off.
-    editable: () => process.platform === "darwin" && (settings.editableRecording || editableOnce),
+    editable: () => editable.next(),
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
     // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
@@ -560,7 +567,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const pictureHidden = (): boolean => pictureHiddenFor !== undefined && pictureHiddenFor === recorder.previewSessionId && !recorder.preview;
   /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
   const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.hideSystemUi, settings.outputDir,
-    settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null]);
+    settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null,
+    // A capture process records an editable file or not from its start: Start must not take a preview of the other kind.
+    editable.next()]);
   let previewPrepared: string | undefined;
   /** Follows the Live preview: one prepared with settings since changed is prepared again, while the Studio is open. */
   const followPreview = (): void => {
@@ -911,10 +920,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       },
     },
     inputAccess: (input) => input === "microphone" ? microphoneAccess() : cameraAccess(),
-    editableOnce: () => {
-      editableOnce = true;
-      log("tray: this recording is editable");
-    },
+    editableOnce: () => editable.chooseOnce(),
     studioPicture: (shown) => {
       pictureHiddenFor = shown || recorder.preview ? undefined : recorder.previewSessionId;
       log(`studio: the recording's picture ${pictureHidden() ? "hidden" : "shown"}`);
@@ -977,7 +983,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         if (!preferencesUnlocked(event.state)) host.cancelListing();
         // A Live preview's session is held in an idle state (D20): its process stays until the preview is let go of.
         // One recording made editable from the tray: it has ended, or it never started.
-        if (event.state.type === "idle") editableOnce = false;
+        if (event.state.type === "idle") editable.idle();
         if (preferencesUnlocked(event.state) && !recorder.preview) {
           displayMedia.settle();
           host.destroy();
