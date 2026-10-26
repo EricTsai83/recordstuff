@@ -11,7 +11,8 @@
 //! A window that changes size is scaled to the recording's size as it is, so its picture stretches; the item closing
 //! (the window closed, the display removed) ends the recording as a capture failure.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use windows::Foundation::TypedEventHandler;
 use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession};
@@ -348,6 +349,54 @@ pub struct DisplayCapture {
     session: GraphicsCaptureSession,
     item: GraphicsCaptureItem,
     closed: i64,
+    arrived: i64,
+    gate: Arc<FrameGate>,
+}
+
+/// How long `stop` waits for a frame handler still running; past it, it goes on rather than hang a stop.
+const HANDLER_WAIT: Duration = Duration::from_secs(2);
+
+/// Whether capture has stopped, and how many frame handlers run now (2026-10-27). The frame pool calls its handler on a
+/// thread of its own, and closing it does not wait for a call under way: one still converting a frame on the CPU (a
+/// device with no video processor, as CI's runners) went on after `stop` returned, and in the test's process ended
+/// under it (`STATUS_ACCESS_VIOLATION`). `stop` closes the gate and waits for the calls inside it, so none runs after.
+#[derive(Default)]
+struct FrameGate {
+    state: Mutex<(bool, usize)>,
+    left: Condvar,
+}
+
+/// A frame handler inside the gate: leaving, it says so to a `stop` waiting for it.
+struct InsideGate<'a>(&'a FrameGate);
+
+impl FrameGate {
+    /// Enters, unless capture has stopped.
+    fn enter(&self) -> Option<InsideGate<'_>> {
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.0 {
+            return None;
+        }
+        state.1 += 1;
+        Some(InsideGate(self))
+    }
+
+    /// Lets no handler in again and waits, at most `wait`, for those inside; true when none is left.
+    fn close(&self, wait: Duration) -> bool {
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.0 = true;
+        let (state, _) = self.left.wait_timeout_while(state, wait, |state| state.1 > 0).unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.1 == 0
+    }
+}
+
+impl Drop for InsideGate<'_> {
+    fn drop(&mut self) {
+        let mut state = self.0.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.1 -= 1;
+        if state.1 == 0 {
+            self.0.left.notify_all();
+        }
+    }
 }
 
 unsafe impl Send for DisplayCapture {}
@@ -382,33 +431,38 @@ impl DisplayCapture {
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(&device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, size)
             .map_err(fail("the capture frame pool"))?;
         let device_for_resize = Mta(device);
-        pool.FrameArrived(&TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(move |sender, _| {
-            let Ok(pool) = sender.ok() else { return Ok(()) };
-            let Ok(frame) = pool.TryGetNextFrame() else { return Ok(()) };
-            let result = (|| -> Result<(), String> {
-                let pts = hundreds_to_ns(frame.SystemRelativeTime().map_err(|e| e.to_string())?.Duration);
-                let content = frame.ContentSize().map_err(|e| e.to_string())?;
-                let surface = frame.Surface().map_err(|e| e.to_string())?;
-                let access: IDirect3DDxgiInterfaceAccess = surface.cast().map_err(|e| e.to_string())?;
-                let texture: ID3D11Texture2D = unsafe { access.GetInterface() }.map_err(|e| e.to_string())?;
-                let mut desc = D3D11_TEXTURE2D_DESC::default();
-                unsafe { texture.GetDesc(&mut desc) };
-                let surface_size = SizeInt32 { Width: desc.Width as i32, Height: desc.Height as i32 };
-                let converted = converter.get().lock().unwrap().convert(&texture, surface_size)?;
-                if content != surface_size {
-                    // Later frames come at the new size.
-                    let _ = pool.Recreate(device_for_resize.get(), DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, content);
+        let gate = Arc::new(FrameGate::default());
+        let inside = gate.clone();
+        let arrived = pool
+            .FrameArrived(&TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(move |sender, _| {
+                // Nothing once stopped, and `stop` waits for a frame under way (`FrameGate`).
+                let Some(_inside) = inside.enter() else { return Ok(()) };
+                let Ok(pool) = sender.ok() else { return Ok(()) };
+                let Ok(frame) = pool.TryGetNextFrame() else { return Ok(()) };
+                let result = (|| -> Result<(), String> {
+                    let pts = hundreds_to_ns(frame.SystemRelativeTime().map_err(|e| e.to_string())?.Duration);
+                    let content = frame.ContentSize().map_err(|e| e.to_string())?;
+                    let surface = frame.Surface().map_err(|e| e.to_string())?;
+                    let access: IDirect3DDxgiInterfaceAccess = surface.cast().map_err(|e| e.to_string())?;
+                    let texture: ID3D11Texture2D = unsafe { access.GetInterface() }.map_err(|e| e.to_string())?;
+                    let mut desc = D3D11_TEXTURE2D_DESC::default();
+                    unsafe { texture.GetDesc(&mut desc) };
+                    let surface_size = SizeInt32 { Width: desc.Width as i32, Height: desc.Height as i32 };
+                    let converted = converter.get().lock().unwrap().convert(&texture, surface_size)?;
+                    if content != surface_size {
+                        // Later frames come at the new size.
+                        let _ = pool.Recreate(device_for_resize.get(), DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, content);
+                    }
+                    shared.frame(converted, pts);
+                    Ok(())
+                })();
+                let _ = frame.Close();
+                if let Err(detail) = result {
+                    shared.fail(detail);
                 }
-                shared.frame(converted, pts);
                 Ok(())
-            })();
-            let _ = frame.Close();
-            if let Err(detail) = result {
-                shared.fail(detail);
-            }
-            Ok(())
-        }))
-        .map_err(fail("listening for frames"))?;
+            }))
+            .map_err(fail("listening for frames"))?;
         let session = pool.CreateCaptureSession(item).map_err(fail("the capture session"))?;
         let _ = session.SetIsCursorCaptureEnabled(true);
         // Windows 11 lets the border go; Windows 10 always draws it.
@@ -416,11 +470,16 @@ impl DisplayCapture {
         // Windows 11 24H2 and later deliver at most this often; earlier versions on every change.
         let _ = session.SetMinUpdateInterval(windows::Foundation::TimeSpan { Duration: (min_interval_ns / 100) as i64 });
         session.StartCapture().map_err(fail("starting capture"))?;
-        Ok((Self { pool, session, item: item.clone(), closed }, borderless, cpu))
+        Ok((Self { pool, session, item: item.clone(), closed, arrived, gate }, borderless, cpu))
     }
 
+    /// Ends capture: no frame handler runs once it returns, one under way waited for (`FrameGate`).
     pub fn stop(&self) {
         let _ = self.item.RemoveClosed(self.closed);
+        let _ = self.pool.RemoveFrameArrived(self.arrived);
+        if !self.gate.close(HANDLER_WAIT) {
+            eprintln!("display: a frame handler still ran {} s after the stop; going on", HANDLER_WAIT.as_secs());
+        }
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }
@@ -494,5 +553,54 @@ impl Readback {
         let mut staging = None;
         unsafe { gpu.device.CreateTexture2D(&desc, None, Some(&mut staging))? };
         Ok(staging.unwrap())
+    }
+}
+
+#[cfg(test)]
+mod frame_gate_tests {
+    use super::FrameGate;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    #[test]
+    fn a_handler_enters_until_the_stop_and_none_after() {
+        let gate = FrameGate::default();
+        assert!(gate.enter().is_some());
+        assert!(gate.close(Duration::from_millis(10)));
+        assert!(gate.enter().is_none());
+    }
+
+    #[test]
+    fn the_stop_waits_for_a_handler_under_way() {
+        // By order alone, not by time (Codex's review): the stop is still waiting while the handler holds the gate, and
+        // returns, with none left inside, once it lets go.
+        let gate = Arc::new(FrameGate::default());
+        let inside = gate.enter().expect("not stopped yet");
+        let stopped = Arc::new(AtomicBool::new(false));
+        let stopping = {
+            let (gate, stopped) = (gate.clone(), stopped.clone());
+            std::thread::spawn(move || {
+                let none_left = gate.close(Duration::from_secs(30));
+                stopped.store(true, Ordering::SeqCst);
+                none_left
+            })
+        };
+        // The stop has closed the gate once no handler may enter; until the one inside leaves, it has not returned.
+        while gate.enter().is_some() {
+            std::thread::yield_now();
+        }
+        assert!(!stopped.load(Ordering::SeqCst), "the stop returned while a handler was inside");
+        drop(inside);
+        assert!(stopping.join().unwrap(), "the handler had left");
+        assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn the_stop_goes_on_after_its_wait_when_a_handler_never_leaves() {
+        let gate = FrameGate::default();
+        let inside = gate.enter();
+        assert!(!gate.close(Duration::from_millis(20)));
+        drop(inside);
     }
 }
