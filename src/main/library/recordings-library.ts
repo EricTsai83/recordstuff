@@ -80,7 +80,8 @@ export interface LibraryState {
   /** A file whose delayed move to the Trash failed: it is listed again, and the tab says so until the next action. */
   trashFailed?: string;
 }
-interface Thumbnail { version: string; jpeg: Promise<Buffer | undefined>; made?: boolean }
+/** `made`: whether the picture was made, once settled; `picture`: it, once made. */
+interface Thumbnail { version: string; jpeg: Promise<Buffer | undefined>; made?: boolean; picture?: Buffer }
 /** `ino` and `dev`: the file chosen, so a different file at its path by the time it is moved is never the one moved. */
 interface PendingTrash { path: string; name: string; ino: number; dev: number; timer: ReturnType<typeof setTimeout>; moving?: Promise<void> }
 /** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, or the file system refusing. */
@@ -816,13 +817,22 @@ export class RecordingsLibrary {
       return this.makeThumbnail(file.path);
     });
     const entry: Thumbnail = { version: file.version, jpeg };
-    void jpeg.then(made => { entry.made = made !== undefined; });
+    void jpeg.then(made => { entry.made = made !== undefined; if (made) entry.picture = made; });
     this.thumbnails.set(file.path, entry);
     for (const oldest of this.thumbnails.keys()) {
       if (this.thumbnails.size <= THUMBNAILS_KEPT) break;
       this.thumbnails.delete(oldest);
     }
     return jpeg;
+  }
+
+  /**
+   * The thumbnail already made for this version of `file`, never making one: for a card's drag, which must start while
+   * the pointer is still down rather than wait for the thumbnailer (and its retry) or a queue of pictures being made.
+   */
+  madeThumbnail(file: RecordingFile): Buffer | undefined {
+    const cached = this.thumbnails.get(file.path);
+    return cached?.version === file.version ? cached.picture : undefined;
   }
 
   private async makeThumbnail(filePath: string): Promise<Buffer | undefined> {

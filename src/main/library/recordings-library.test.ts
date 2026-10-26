@@ -222,6 +222,21 @@ describe("RecordingsLibrary", () => {
     expect(await library.thumbnail(other)).toBeUndefined();
     expect((await library.thumbnail(other))?.toString()).toBe("later");
   });
+  it("offers a drag only a thumbnail already made for the file's version, never making one", async () => {
+    touch("clip.mp4");
+    const { library, deps } = setup();
+    await library.refresh();
+    const file = library.state.files[0]!;
+    expect(library.madeThumbnail(file)).toBeUndefined();
+    expect(deps.thumbnail).not.toHaveBeenCalled();
+    const making = library.thumbnail(file);
+    // Still being made: nothing yet, rather than a wait.
+    expect(library.madeThumbnail(file)).toBeUndefined();
+    await making;
+    expect(library.madeThumbnail(file)?.toString()).toBe("jpeg");
+    expect(library.madeThumbnail({ ...file, version: "other" })).toBeUndefined();
+    expect(deps.thumbnail).toHaveBeenCalledTimes(1);
+  });
   it("does not let the page keep a picture read after the file changed under its address", async () => {
     const file = touch("clip.mp4");
     const { library, deps } = setup();

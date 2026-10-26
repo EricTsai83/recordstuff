@@ -745,8 +745,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     drag: async (contents, id) => {
       const file = library.find(id);
       if (!file) return false;
-      // macOS refuses a drag without an image: the thumbnail, else the file's own icon.
-      const jpeg = await library.thumbnail(file);
+      // macOS refuses a drag without an image: the thumbnail if one is made, else the file's own icon. Never one made
+      // now: the drag must start while the pointer is still down.
+      const jpeg = library.madeThumbnail(file);
       const icon = jpeg ? nativeImage.createFromBuffer(jpeg).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
       contents.startDrag({ file: file.path, icon });
       return true;
