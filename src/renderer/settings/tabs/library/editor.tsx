@@ -381,7 +381,7 @@ function RemoveButton({ id }: { id: string }) {
 }
 
 /** How far the selection's actions stand above the timeline's top edge, in CSS pixels. */
-const ACTIONS_GAP = 4;
+const ACTIONS_GAP = 3;
 
 /**
  * The line over the timeline (2026-10-26, B′, then the maintainer's review of it): small, close to the timeline and apart

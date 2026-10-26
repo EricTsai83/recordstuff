@@ -3030,11 +3030,11 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 12px;
-    /* Close to both (2026-10-26, the maintainer's review: the room between the toolbar and the timeline was too much):
-       a selection's actions, as tall as before, rise from its foot a few pixels short of the toolbar above. */
-    height: 34px;
-    margin-top: -4px;
-    margin-bottom: -6px;
+    /* Close to both (2026-10-26 and again 2026-10-27, the maintainer's reviews: the room between the toolbar and the
+       timeline was too much): as tall as a selection's actions, 4 px under the toolbar and 3 px over the timeline. */
+    height: 32px;
+    margin-top: -6px;
+    margin-bottom: -7px;
     /* The smallest the view writes (its UI tests hold every text at 12 px or more). */
     font-size: 12px;
     line-height: 16px;
