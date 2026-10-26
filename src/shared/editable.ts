@@ -88,7 +88,19 @@ export interface EditScene {
   /** Absent for a recording without a camera. */
   camera?: SceneCamera;
   volumes: AudioVolume;
+  /**
+   * Stretches of an input at a volume of their own (2026-10-26, the maintainer's request): each `[from, to, percent]`
+   * in the video's timescale on the recording's own clock, sorted and apart, the percent taking the place of the
+   * input's volume there (0% silent). Absent for an input with none, and altogether when neither has any.
+   */
+  volumeStretches?: Partial<Record<VolumeInput, VolumeStretch[]>>;
 }
+
+/** The inputs a volume stretch belongs to. */
+export type VolumeInput = "system" | "microphone";
+export const VOLUME_INPUTS: readonly VolumeInput[] = ["system", "microphone"];
+/** A stretch of an input at its own volume: `[from, to, percent]`. */
+export type VolumeStretch = [number, number, number];
 
 const isTick = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
@@ -158,11 +170,93 @@ export function withCameraHidden(camera: SceneCamera, ranges: readonly TimeRange
   return hidden.length === 0 ? place : { ...place, hidden };
 }
 
+function isVolumeStretches(value: unknown): value is Partial<Record<VolumeInput, VolumeStretch[]>> {
+  if (!isRecord(value) || Object.keys(value).some((key) => !(VOLUME_INPUTS as readonly string[]).includes(key))) return false;
+  return VOLUME_INPUTS.every((input) => {
+    const list = value[input];
+    return list === undefined || (Array.isArray(list) && list.length <= MAX_CAMERA_HIDDEN && list.every((stretch) =>
+      Array.isArray(stretch) && stretch.length === 3 && isTick(stretch[0]) && isTick(stretch[1]) && stretch[0] < stretch[1] && isVolume(stretch[2])));
+  });
+}
+
 export function isEditScene(value: unknown): value is EditScene {
   if (!isRecord(value)) return false;
   const volumes = value["volumes"];
   return (value["camera"] === undefined || isSceneCamera(value["camera"]))
-    && isRecord(volumes) && isVolume(volumes["system"]) && isVolume(volumes["microphone"]);
+    && isRecord(volumes) && isVolume(volumes["system"]) && isVolume(volumes["microphone"])
+    && (value["volumeStretches"] === undefined || isVolumeStretches(value["volumeStretches"]));
+}
+
+/**
+ * An input's stretches in their one form: each within `[0, duration]`, sorted, apart (a later one in the list wins
+ * where two meet), neighbours at the same volume joined, at most `MAX_CAMERA_HIDDEN` of them.
+ */
+export function normalizeVolumeStretches(list: readonly VolumeStretch[], duration = Number.POSITIVE_INFINITY): VolumeStretch[] {
+  let out: VolumeStretch[] = [];
+  for (const [from, to, percent] of list) {
+    const a = Math.max(0, from), b = Math.min(duration, to);
+    if (b <= a) continue;
+    out = [...cutVolume(out, a, b), [a, b, percent]];
+  }
+  out.sort((x, y) => x[0] - y[0]);
+  const joined: VolumeStretch[] = [];
+  for (const stretch of out) {
+    const last = joined.at(-1);
+    if (last && last[1] === stretch[0] && last[2] === stretch[2]) last[1] = stretch[1];
+    else joined.push([...stretch]);
+  }
+  return joined.slice(0, MAX_CAMERA_HIDDEN);
+}
+
+/** `list` without `[from, to)`: a stretch across it keeps its parts either side. */
+function cutVolume(list: readonly VolumeStretch[], from: number, to: number): VolumeStretch[] {
+  const out: VolumeStretch[] = [];
+  for (const [a, b, percent] of list) {
+    if (b <= from || a >= to) out.push([a, b, percent]);
+    else {
+      if (a < from) out.push([a, from, percent]);
+      if (b > to) out.push([to, b, percent]);
+    }
+  }
+  return out;
+}
+
+/**
+ * `list` with `[from, to)` at `percent`, or given back to the input's own volume there when `percent` is undefined,
+ * in its one form. May hold more than `MAX_CAMERA_HIDDEN` stretches: a caller refuses such a change rather than
+ * dropping one.
+ */
+export function setVolumeOver(list: readonly VolumeStretch[], from: number, to: number, percent: number | undefined, duration: number): VolumeStretch[] {
+  const cut = cutVolume(list, Math.max(0, from), Math.min(duration, to));
+  const next = percent === undefined ? cut : [...cut, [Math.max(0, from), Math.min(duration, to), percent] as VolumeStretch];
+  const sorted = next.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  const joined: VolumeStretch[] = [];
+  for (const stretch of sorted) {
+    const last = joined.at(-1);
+    if (last && last[1] === stretch[0] && last[2] === stretch[2]) last[1] = stretch[1];
+    else joined.push([...stretch]);
+  }
+  return joined;
+}
+
+/** `input`'s stretches in `scene`. */
+export function volumeStretchesOf(scene: EditScene, input: VolumeInput): VolumeStretch[] {
+  return scene.volumeStretches?.[input] ?? [];
+}
+
+/** `scene` with `input`'s stretches set to `list`: no key for an input with none, none at all when neither has any. */
+export function withVolumeStretches(scene: EditScene, input: VolumeInput, list: readonly VolumeStretch[]): EditScene {
+  const { volumeStretches, ...rest } = scene;
+  const next: Partial<Record<VolumeInput, VolumeStretch[]>> = { ...volumeStretches };
+  if (list.length > 0) next[input] = list.map((stretch): VolumeStretch => [...stretch]);
+  else delete next[input];
+  return Object.keys(next).length > 0 ? { ...rest, volumeStretches: next } : rest;
+}
+
+/** `input`'s volume at `time` (the video's timescale): its stretch's there, else its own. */
+export function volumeAt(scene: EditScene, input: VolumeInput, time: number): number {
+  const stretch = volumeStretchesOf(scene, input).find(([from, to]) => time >= from && time < to);
+  return stretch ? stretch[2] : scene.volumes[input];
 }
 
 /** The scene an edit starts from: the camera where the recording put it, shown, and each track as recorded. */
@@ -182,7 +276,13 @@ export function fitScene(scene: EditScene, description: EditableDescription, dur
   const fallback = defaultScene(description);
   let camera = description.camera ? scene.camera ?? fallback.camera! : undefined;
   if (camera && duration !== undefined && duration > 0) camera = withCameraHidden(camera, camera.hidden ?? [], duration);
-  return { ...(camera ? { camera } : {}), volumes: { ...scene.volumes } };
+  // Volume stretches only for an input the recording holds, in their one form.
+  let fitted: EditScene = { ...(camera ? { camera } : {}), volumes: { ...scene.volumes } };
+  for (const input of VOLUME_INPUTS) {
+    const list = description.sounds.includes(input) ? normalizeVolumeStretches(volumeStretchesOf(scene, input), duration && duration > 0 ? duration : undefined) : [];
+    fitted = withVolumeStretches(fitted, input, list);
+  }
+  return fitted;
 }
 
 /** What the engine's rendered export takes (export_api.rs `ExportRender`). */
@@ -191,6 +291,8 @@ export interface ExportRender {
   camera?: EditableCamera;
   /** Where the bubble is left out though composed elsewhere, in the video's timescale on the recording's clock. */
   cameraHidden?: Array<{ from: number; to: number }>;
+  /** Each sound track's stretches at a volume of their own, in dB, in the file's order (as `volumesDb`). */
+  volumeStretchesDb?: Array<Array<{ from: number; to: number; db: number }>>;
   /** Each sound track's volume in dB, in the file's order. */
   volumesDb: number[];
 }
@@ -202,10 +304,12 @@ export function exportRender(description: EditableDescription, scene: EditScene)
     : undefined;
   const hidden = camera && scene.camera ? mergeRanges(scene.camera.hidden ?? []).map(([from, to]) => ({ from, to })) : [];
   const percent = (sound: EditableSound): number => (sound === "microphone" ? scene.volumes.microphone : sound === "system" ? scene.volumes.system : 100);
+  const stretches = description.sounds.map((sound) => sound === "silent" ? [] : volumeStretchesOf(scene, sound).map(([from, to, volume]) => ({ from, to, db: volumeDb(volume) })));
   return {
     ...(camera ? { camera } : {}),
     ...(hidden.length > 0 ? { cameraHidden: hidden } : {}),
     volumesDb: description.sounds.map((sound) => volumeDb(percent(sound))),
+    ...(stretches.some((list) => list.length > 0) ? { volumeStretchesDb: stretches } : {}),
   };
 }
 
@@ -219,5 +323,9 @@ export function isExportRender(value: unknown): value is ExportRender {
   const cameraOk = camera === undefined || (isRecord(camera) && isSize(camera["width"]) && isSize(camera["height"]) && finite(camera["rounding"])
     && (camera["rounding"] as number) >= 0 && (camera["rounding"] as number) <= 1 && isCameraPosition({ x: camera["x"], y: camera["y"] })
     && typeof camera["mirror"] === "boolean");
-  return cameraOk && hiddenOk && Array.isArray(volumes) && volumes.length <= 2 && volumes.every(isGainDb);
+  const stretches = value["volumeStretchesDb"];
+  const stretchesOk = stretches === undefined || (Array.isArray(stretches) && stretches.length <= 2 && stretches.every((list) =>
+    Array.isArray(list) && list.length <= MAX_CAMERA_HIDDEN
+    && list.every((s) => isRecord(s) && isTick(s["from"]) && isTick(s["to"]) && s["from"] < s["to"] && isGainDb(s["db"]))));
+  return cameraOk && hiddenOk && stretchesOk && Array.isArray(volumes) && volumes.length <= 2 && volumes.every(isGainDb);
 }

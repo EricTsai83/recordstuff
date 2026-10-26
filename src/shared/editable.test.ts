@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraHidden, cameraShownAt, defaultScene, exportRender, fitScene, isEditScene, isExportRender, MAX_CAMERA_HIDDEN, parseEditableDescription, withCameraHidden } from "./editable";
+import { cameraHidden, cameraShownAt, defaultScene, exportRender, fitScene, isEditScene, isExportRender, MAX_CAMERA_HIDDEN, normalizeVolumeStretches, parseEditableDescription, setVolumeOver, volumeAt, withCameraHidden, withVolumeStretches } from "./editable";
 import { isEditorChoice, isExportMainMessage } from "./editing";
 
 const camera = { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false };
@@ -89,6 +89,43 @@ describe("an edit's scene", () => {
     expect(isEditScene({ ...scene, camera: { ...scene.camera, hidden: [[3, 3]] } })).toBe(false);
     expect(isEditScene({ ...scene, camera: { ...scene.camera, hidden: "all" } })).toBe(false);
     expect(isExportMainMessage({ type: "export", id: 1, request: { source: "/a.mp4", removed: [], render } })).toBe(true);
+  });
+});
+
+describe("an input's volume over stretches (2026-10-26)", () => {
+  const base = { volumes: { system: 100, microphone: 80 } };
+
+  it("sets a stretch over a range, cutting what it meets, and gives a range back to the input's own volume", () => {
+    let list = setVolumeOver([], 100, 300, 0, 1000);
+    expect(list).toEqual([[100, 300, 0]]);
+    list = setVolumeOver(list, 200, 400, 50, 1000);
+    expect(list).toEqual([[100, 200, 0], [200, 400, 50]]);
+    // Neighbours at one volume join; a range given back splits what crosses it.
+    expect(setVolumeOver(list, 200, 400, 0, 1000)).toEqual([[100, 400, 0]]);
+    expect(setVolumeOver([[100, 400, 0]], 200, 300, undefined, 1000)).toEqual([[100, 200, 0], [300, 400, 0]]);
+    expect(setVolumeOver([], -50, 2000, 30, 1000)).toEqual([[0, 1000, 30]]);
+  });
+
+  it("reads an input's volume at a time, and keeps the stretches in one form", () => {
+    const scene = withVolumeStretches(base, "microphone", [[100, 200, 0]]);
+    expect([volumeAt(scene, "microphone", 99), volumeAt(scene, "microphone", 100), volumeAt(scene, "microphone", 200), volumeAt(scene, "system", 150)]).toEqual([80, 0, 80, 100]);
+    expect(withVolumeStretches(scene, "microphone", [])).toEqual(base);
+    expect(normalizeVolumeStretches([[300, 400, 20], [100, 350, 0], [400, 500, 20], [600, 600, 5]], 450)).toEqual([[100, 350, 0], [350, 450, 20]]);
+    // Only for an input the recording holds, kept within it.
+    const fitted = fitScene({ ...withVolumeStretches(scene, "system", [[0, 5000, 50]]) }, { sounds: ["microphone"], camera: null }, 1000);
+    expect(fitted.volumeStretches).toEqual({ microphone: [[100, 200, 0]] });
+  });
+
+  it("asks the engine for each track's stretches in dB in the file's order, and is checked at every boundary", () => {
+    const scene = withVolumeStretches(base, "microphone", [[100, 200, 0], [300, 400, 200]]);
+    const render = exportRender({ sounds: ["system", "microphone"], camera: null }, scene);
+    expect(render.volumeStretchesDb).toEqual([[], [{ from: 100, to: 200, db: -60 }, { from: 300, to: 400, db: 20 * Math.log10(2) }]]);
+    expect(isExportRender(render)).toBe(true);
+    expect(exportRender({ sounds: ["system", "microphone"], camera: null }, base)).not.toHaveProperty("volumeStretchesDb");
+    expect(isExportRender({ ...render, volumeStretchesDb: [[{ from: 2, to: 1, db: 0 }]] })).toBe(false);
+    expect(isEditScene(scene)).toBe(true);
+    expect(isEditScene({ ...scene, volumeStretches: { speaker: [] } })).toBe(false);
+    expect(isEditScene({ ...scene, volumeStretches: { microphone: [[1, 2, 700]] } })).toBe(false);
   });
 });
 

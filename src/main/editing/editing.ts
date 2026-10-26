@@ -664,7 +664,8 @@ export class Editing {
     }
     run.started = true;
     open.export = { phase: "exporting", progress: 0, cancelling: false };
-    const hiddenNote = render?.cameraHidden ? `, the camera hidden over ${render.cameraHidden.length} stretch(es)` : "";
+    const hiddenNote = (render?.cameraHidden ? `, the camera hidden over ${render.cameraHidden.length} stretch(es)` : "")
+      + (render?.volumeStretchesDb ? `, volume stretches ${render.volumeStretchesDb.map((list) => list.length).join("/")}` : "");
     this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${hiddenNote}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
     this.deps.changed();
     let lastShown = 0;

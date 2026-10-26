@@ -137,5 +137,10 @@ describe("a record's parsing", () => {
     expect(editRecord({ ...fields, scene: { ...scene, camera } }).version).toBe(2);
     expect(editRecord({ ...fields, scene: { ...scene, camera: { ...camera, shown: false } } }).version).toBe(2);
     expect(editRecord(fields).version).toBe(1);
+    // A volume stretch (2026-10-26) is version 3's too, and no version 2 record holds one.
+    const loud = { camera, volumes: { system: 100, microphone: 100 }, volumeStretches: { microphone: [[0, 90_000, 0]] as Array<[number, number, number]> } };
+    expect(editRecord({ ...fields, scene: loud }).version).toBe(3);
+    expect(parseRecord(JSON.stringify({ version: 3, source, timescale: 90_000, removed: [], revision: 4, scene: loud }))).toMatchObject({ version: 3, scene: loud });
+    expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 4, scene: loud }))).toHaveProperty("reason");
   });
 });

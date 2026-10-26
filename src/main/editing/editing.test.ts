@@ -603,6 +603,20 @@ describe("an editable recording (plan 087)", () => {
     expect(ctx.logs.some((line) => /rendering .* the camera hidden over 1 stretch\(es\) \(camera shown, volumes /.test(line))).toBe(true);
   });
 
+  it("saves an input's volume stretches as a version-3 edit, kept within the recording, and asks the export for them in dB", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    const scene = { camera: { x: 0.5, y: 0.5, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 },
+      volumeStretches: { microphone: [[450_000, 2_000_000, 0], [90_000, 180_000, 200]] as Array<[number, number, number]> } };
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 0, scene })).toBe(true);
+    expect(record()).toMatchObject({ version: 3, scene: { volumeStretches: { microphone: [[90_000, 180_000, 200], [450_000, 900_000, 0]] } } });
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    expect(worker.export.mock.calls[0]![0].render!.volumeStretchesDb).toEqual([[], [{ from: 90_000, to: 180_000, db: 20 * Math.log10(2) }, { from: 450_000, to: 900_000, db: -60 }]]);
+    expect(ctx.logs.some((line) => /rendering .*, volume stretches 0\/2 \(camera shown/.test(line))).toBe(true);
+  });
+
   it("shows a recording whose description cannot be read as one that cannot be edited", async () => {
     const ctx = setup({}, runner(undefined, JSON.stringify({ version: 9, sounds: [] })));
     await ctx.editing.choose("rec", { action: "open" });

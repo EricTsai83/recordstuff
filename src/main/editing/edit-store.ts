@@ -20,8 +20,8 @@ import { isEditScene, type EditScene } from "../../shared/editable";
 /**
  * The newest record this version writes. Version 1 (plan 085) holds the cuts; version 2 (plan 087) adds an editable
  * recording's scene, and is written only for one with a scene, so every other edit stays readable by a version that
- * knows only 1. Version 3 (2026-10-26) lets the scene's camera be hidden over stretches of the recording, and is
- * written only for a camera that is: a version that knows only 2 finds such an edit unreadable and keeps it, rather
+ * knows only 1. Version 3 (2026-10-26) lets the scene's camera be hidden over stretches of the recording and an input
+ * be at a volume of its own over stretches, and is written only for a scene with such a stretch: a version that knows only 2 finds such an edit unreadable and keeps it, rather
  * than reading it as a camera shown throughout and saving over the stretches. All three are read; a newer one is
  * unreadable, as before.
  */
@@ -51,11 +51,11 @@ export interface EditRecord {
   scene?: EditScene;
 }
 
-/** A record of the cuts and, when given, the scene: version 3 with a camera hidden over stretches, 2 with a scene, 1 without. */
+/** A record of the cuts and, when given, the scene: version 3 with a camera or volume stretch, 2 with a scene, 1 without. */
 export function editRecord(fields: { source: SourceIdentity; timescale: number; removed: EditRange[]; revision: number; scene?: EditScene | undefined }): EditRecord {
   const { scene, ...rest } = fields;
   if (!scene) return { version: 1, ...rest };
-  return { version: scene.camera?.hidden?.length ? 3 : 2, ...rest, scene };
+  return { version: scene.camera?.hidden?.length || scene.volumeStretches ? 3 : 2, ...rest, scene };
 }
 
 export type LoadedEdit =
@@ -118,7 +118,9 @@ export function parseRecord(text: string): EditRecord | { reason: string } {
   }
   if (version !== 1 && !isEditScene(v["scene"])) return { reason: `the edit's scene is not what version ${version} writes` };
   // Only version 3 hides the camera over stretches: one in an older version's record was not written by it.
-  if (version === 2 && (v["scene"] as EditScene).camera?.hidden !== undefined) return { reason: "the edit's scene is not what version 2 writes" };
+  if (version === 2 && ((v["scene"] as EditScene).camera?.hidden !== undefined || (v["scene"] as EditScene).volumeStretches !== undefined)) {
+    return { reason: "the edit's scene is not what version 2 writes" };
+  }
   const sorted = normalizeRanges(removed as EditRange[]);
   if (JSON.stringify(sorted) !== JSON.stringify(removed)) return { reason: "the edit's ranges overlap or are out of order" };
   const fields = { source: v["source"], timescale: v["timescale"] as number, removed: sorted, revision: v["revision"] as number };
