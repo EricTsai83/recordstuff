@@ -79,7 +79,7 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
   systemGain: "available", microphoneGain: "available",
   "shortcutList:global": "available", "shortcutList:window": "available", "shortcutList:recordings": "available",
-  "shortcutList:player": "available", "shortcutList:fullScreen": "available",
+  "shortcutList:player": "available", "shortcutList:fullScreen": "available", "shortcutList:editor": "available",
 };
 /**
  * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), its input
