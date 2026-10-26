@@ -453,8 +453,10 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
 
 /** A note behind an ⓘ (2026-10-26, version A): its words on hover or focus, and read with the control it describes. */
 function OptionInfo({ id, text }: { id: string; text: string }) {
+  // At once on hover: the ⓘ is there only to be read (2026-10-27, the maintainer's review: the controls' usual delay
+  // read as nothing happening).
   return (
-    <ControlTooltip label={text}>
+    <ControlTooltip label={text} delay={0}>
       <span className="editor-options-info" tabIndex={0} aria-label={text}>
         <Info aria-hidden="true" />
         <span id={id} className="sr-only">{text}</span>
