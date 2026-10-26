@@ -896,6 +896,8 @@ test("a selection's actions float over the line above the timeline, words where 
     const box = (await actions.boundingBox())!;
     const toolbar = (await page.locator(".editor-toolbar").boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height + 2);
+    // And the timeline sits close under the toolbar (the maintainer's review of 2026-10-26: there was too much room).
+    expect(pictures.y - (toolbar.y + toolbar.height)).toBeLessThanOrEqual(44);
     expect(box.y + box.height).toBeLessThanOrEqual(pictures.y - 2);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);

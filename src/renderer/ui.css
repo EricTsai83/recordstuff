@@ -3031,7 +3031,10 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 12px;
-    height: 38px;
+    /* Close to both (2026-10-26, the maintainer's review: the room between the toolbar and the timeline was too much):
+       just tall enough for the actions, which keep a few pixels from the toolbar above and the timeline below. */
+    height: 30px;
+    margin-top: -4px;
     margin-bottom: -6px;
     /* The smallest the view writes (its UI tests hold every text at 12 px or more). */
     font-size: 12px;
@@ -3076,8 +3079,8 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 32px;
-    padding: 0 3px 0 10px;
+    height: 28px;
+    padding: 0 2px 0 10px;
     border-radius: 10px;
     color: var(--popover-foreground);
     background: var(--popover);
@@ -3088,6 +3091,10 @@
   }
   .editor-selection-actions[data-placed] {
     visibility: visible;
+  }
+  .editor-selection-actions button {
+    height: 24px;
+    padding-inline: 8px;
   }
   .editor-selection-length {
     margin-inline-end: 6px;
