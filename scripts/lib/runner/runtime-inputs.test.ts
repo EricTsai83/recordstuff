@@ -28,6 +28,8 @@ describe("runtime inputs", () => {
     write("docs/testing.md", "doc\n");
     write("resources/INSTALL.md", "guide\n");
     write("src/.DS_Store", "finder\n");
+    // The unit tests' own helpers, which only tests import.
+    write("src/renderer/testing/vitest-setup.ts", "setup\n");
     expect(digest()).toBe(base);
     write("electron.vite.config.ts", "config\n");
     const configured = digest();

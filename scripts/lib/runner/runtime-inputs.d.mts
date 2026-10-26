@@ -2,6 +2,7 @@
 export declare const RUNTIME_INPUT_DIRECTORIES: string[];
 export declare const RUNTIME_INPUT_FILES: string[];
 export declare const RUNTIME_TOOL_PACKAGES: string[];
+export declare const TEST_ONLY_DIRECTORIES: string[];
 export declare function runtimeInputFiles(root: string): Record<string, string>;
 export declare function runtimeInputDigest(files: Record<string, string>): string;
 export declare function appArchiveDigest(appPath: string): string | null;

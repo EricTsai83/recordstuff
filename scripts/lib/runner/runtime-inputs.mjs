@@ -17,8 +17,14 @@ export const RUNTIME_INPUT_FILES = [
 /** Installed toolchain, which the lockfile alone does not prove when node_modules was not reinstalled. */
 export const RUNTIME_TOOL_PACKAGES = ["electron", "electron-builder", "electron-vite", "vite"];
 
+/**
+ * Test-only folders under the input directories: the unit tests' DOM setup and input helpers, which only tests may
+ * import (tests/source-boundaries.test.ts), so editing them leaves a built bundle reusable as editing a test does.
+ */
+export const TEST_ONLY_DIRECTORIES = ["src/renderer/testing"];
 // Packaging copies only PNG/ICO from resources/, so its Markdown guide is documentation too.
-const ignoredName = (name) => name === ".DS_Store" || /\.test\.ts$/.test(name) || /\.md$/.test(name);
+const ignored = (relative, name) =>
+  name === ".DS_Store" || /\.test\.ts$/.test(name) || /\.md$/.test(name) || TEST_ONLY_DIRECTORIES.includes(relative);
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 
 /**
@@ -41,7 +47,10 @@ export function runtimeInputFiles(root) {
       const real = realpathSync(absolute);
       if (visited.has(real)) { files[relative] = `cycle:${real}`; return; }
       visited.add(real);
-      for (const name of readdirSync(absolute).sort()) if (!ignoredName(name)) add(path.posix.join(relative, name));
+      for (const name of readdirSync(absolute).sort()) {
+        const entry = path.posix.join(relative, name);
+        if (!ignored(entry, name)) add(entry);
+      }
       visited.delete(real);
     } else if (stat.isFile()) {
       const content = readFileSync(absolute);
