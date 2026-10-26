@@ -2876,6 +2876,11 @@
     box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px color-mix(in oklab, var(--media) 22%, transparent),
       0 2px 8px color-mix(in oklab, var(--media) 20%, transparent);
   }
+  /* The light theme draws it as the dark one shows it, a darker block under the white frame (2026-10-27, the
+     maintainer's review: over light lanes a light fill left the frame faint). */
+  :root:not(.dark) .editor-selection {
+    background: color-mix(in oklab, var(--media) 32%, transparent);
+  }
   /* What a click under the pointer would choose, faint and red, with no actions. */
   .editor-selection-preview {
     box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--ring) 60%, transparent);
@@ -3560,10 +3565,6 @@
   }
   .editor-options-info:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
-  }
-  /* The lanes' switches in a neutral grey: they show or hide what is drawn, not anything of the recording. */
-  .editor-neutral-switch[data-checked] {
-    background: color-mix(in oklab, var(--foreground) 45%, transparent);
   }
   /* Revert last, its note beside it. */
   .editor-options-revert {
