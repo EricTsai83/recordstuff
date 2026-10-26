@@ -389,8 +389,9 @@ function RemoveButton({ id }: { id: string }) {
  * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
  * a selection comes and goes; the actions keep clear of the times.
  */
-function EditorActionRow({ editor, track, span, position, length, children }: {
-  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string; children: ReactNode;
+function EditorActionRow({ editor, track, span, position, length, shortPosition, shortLength, children }: {
+  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string;
+  shortPosition: string; shortLength: string; children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
   const [left, setLeft] = useState<number | undefined>(undefined);
@@ -406,10 +407,11 @@ function EditorActionRow({ editor, track, span, position, length, children }: {
       if (!shown || from === undefined || to === undefined || !line || !actions || !timeline) return setLeft(undefined);
       const lineBox = line.getBoundingClientRect(), trackBox = timeline.getBoundingClientRect();
       const middle = trackBox.left - lineBox.left + ((from + to) / 2 / editor.duration) * trackBox.width;
+      // The times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for the
+      // actions): the actions take icons and keys alone when their words do not fit beside them.
       if (actions.dataset.compact === undefined) wide.current = actions.offsetWidth;
-      const tight = wide.current > lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
-      setCompact(tight);
-      const room = tight ? lineBox.width : lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      const room = lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      setCompact(wide.current > room);
       const width = actions.offsetWidth;
       setLeft(Math.round(Math.max(0, Math.min(middle - width / 2, room - width))));
     };
@@ -423,9 +425,12 @@ function EditorActionRow({ editor, track, span, position, length, children }: {
     <div ref={row} className="editor-action-row">
       {/* How to reach the selection's actions, while none is chosen (2026-10-26: Remove is there only). */}
       <span className="editor-select-hint" data-covered={shown || undefined}>{model.text("Click a part or drag across the timeline to select it")}</span>
-      <span ref={tail} className="editor-readouts" data-covered={(shown && compact) || undefined}>
+      {/* In words where the line has room; a narrow view keeps the numbers alone, "where / how long", their words still
+          read aloud. */}
+      <span ref={tail} className="editor-readouts">
         <span className="editor-position">{position}</span>
         <span className="editor-length">{length}</span>
+        <span className="editor-readouts-short" aria-hidden="true">{shortPosition} / {shortLength}</span>
       </span>
       {shown && (
         <div
@@ -697,6 +702,8 @@ function EditorPanel() {
           ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
           : translate("Playhead {time}", language, { time: precise(time) })}
         length={translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}
+        shortPosition={precise(trimming ? trim[trimming] / editor.timescale : time)}
+        shortLength={precise(model.shownOutputSeconds(editor))}
       >
         <RemoveButton id="editor-remove" />
         {camera && (

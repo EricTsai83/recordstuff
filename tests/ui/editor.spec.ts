@@ -896,12 +896,16 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(box.y + box.height).toBeLessThanOrEqual(pictures.y);
     expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
     expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
-    // Wide, in words beside the export's length; narrow, icons and keys alone over the line, still named.
-    if (width === 960) {
-      await expect(actions).not.toHaveAttribute("data-compact");
-      const times = (await page.locator(".editor-action-row .editor-readouts").boundingBox())!;
-      expect(box.x + box.width).toBeLessThanOrEqual(times.x);
-    } else await expect(actions).toHaveAttribute("data-compact", "true");
+    // The times stay in sight beside the actions at either width (Codex's computer-use round found a narrow window hid
+    // them): wide, the actions in words; narrow, the times as numbers alone and the actions as icons and keys.
+    const times = (await page.locator(".editor-action-row .editor-readouts").boundingBox())!;
+    expect(times.width).toBeGreaterThan(20);
+    expect(box.x + box.width).toBeLessThanOrEqual(times.x);
+    if (width === 960) await expect(actions).not.toHaveAttribute("data-compact");
+    else {
+      await expect(actions).toHaveAttribute("data-compact", "true");
+      await expect(page.locator(".editor-readouts-short")).toBeVisible();
+    }
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);

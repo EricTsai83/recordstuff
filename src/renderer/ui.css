@@ -3031,6 +3031,23 @@
     display: flex;
     gap: 12px;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .editor-readouts-short {
+    display: none;
+  }
+  /* A narrow view keeps the times as numbers alone, so they and a selection's actions both fit on the line. */
+  @container (max-width: 599.98px) {
+    .editor-readouts > :is(.editor-position, .editor-length) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    .editor-readouts-short {
+      display: inline;
+    }
   }
   .editor-select-hint {
     min-width: 0;

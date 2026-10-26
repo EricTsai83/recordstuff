@@ -39,7 +39,8 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   expect(toolbar.querySelector("#editor-remove")).toBeNull();
   expect(toolbar.textContent).not.toContain("Export length");
   const row = document.querySelector("#editor .editor-action-row")!;
-  expect(row.querySelector(".editor-readouts")!.textContent).toBe("Playhead 0:00.00Export length 0:10.00");
+  expect([row.querySelector(".editor-position")!.textContent, row.querySelector(".editor-length")!.textContent, row.querySelector(".editor-readouts-short")!.textContent])
+    .toEqual(["Playhead 0:00.00", "Export length 0:10.00", "0:00.00 / 0:10.00"]);
   expect(row.querySelector(".editor-select-hint")!.textContent).toBe("Click a part or drag across the timeline to select it");
   expect(document.getElementById("editor-selection-actions")).toBeNull();
 
