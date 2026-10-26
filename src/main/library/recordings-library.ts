@@ -131,10 +131,15 @@ const THUMBNAIL_RETRY_MS = 300;
 export const UNDO_TRASH_MS = 30_000;
 /** File-system requests a listing keeps in flight: a large output folder must not hold up main's other reads and writes. */
 const LISTING_CONCURRENCY = 16;
-/** `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp). */
-const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?\.mp4$/;
+/**
+ * `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp), and either followed by
+ * words of the user's or the export's after a space or a bracket: `2026-10-04 14-02-11 Demo.mp4`,
+ * `2026-10-04 14-02-11（已編輯）.mp4` (2026-10-26: a name lengthened in the tab kept its file's time instead, and a copy's
+ * or an old file's could put it on another day, as Codex's computer-use round found).
+ */
+const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?(?:[ \u3000(（].*)?\.mp4$/;
 
-/** The local time an app-named file was started at, or undefined for any other name. */
+/** The local time an app-named file was started at, read from the name's start, or undefined for any other name. */
 export function stampedTime(name: string): number | undefined {
   const match = STAMPED.exec(name);
   if (!match) return undefined;

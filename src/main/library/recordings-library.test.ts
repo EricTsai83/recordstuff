@@ -28,6 +28,13 @@ describe("names", () => {
     expect(["2026-10-04 14-02-11.recording.mp4", ".hidden.mp4", "notes.txt", "clip.webm"].some(isListedName)).toBe(false);
     expect(stampedTime("2026-10-04 14-02-11-2.mp4")).toBe(new Date(2026, 9, 4, 14, 2, 11).getTime());
     expect(stampedTime("Product demo.mp4")).toBeUndefined();
+    // A name lengthened after its stamp keeps the stamp's time (2026-10-26), an export's ending included; the stamp
+    // must stand apart, so a longer number is not read as one.
+    const at = new Date(2026, 9, 26, 16, 11, 53).getTime();
+    for (const name of ["2026-10-26 16-11-53 UX-test.mp4", "2026-10-26 16-11-53 (edited 2).mp4", "2026-10-26 16-11-53（已編輯）.mp4", "2026-10-26 16-11-53-2 Demo.mp4"])
+      expect(stampedTime(name), name).toBe(at);
+    for (const name of ["2026-10-26 16-11-534.mp4", "2026-10-26 16-11-53x.mp4", "Demo 2026-10-26 16-11-53.mp4"])
+      expect(stampedTime(name), name).toBeUndefined();
     expect(fileId("/a/b.mp4")).toBe(fileId("/a/b.mp4"));
     expect(fileId("/a/b.mp4")).not.toBe(fileId("/a/c.mp4"));
   });
