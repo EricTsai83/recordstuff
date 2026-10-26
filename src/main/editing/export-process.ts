@@ -10,6 +10,7 @@
  */
 import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
 import { SerialQueue } from "../lib/serial-queue";
+import { engineRejection } from "../lib/engine-module";
 
 interface NativeExport {
   inspect(request: ExportRequest & { join?: string }): Promise<ExportPlan>;
@@ -35,10 +36,8 @@ export const EXPORT_JOIN_ENV = "RECORDSTUFF_EXPORT_JOIN";
 
 /** The engine's rejection `code|detail`, or a worker failure. */
 export function failureOf(cause: unknown): { code: ExportFailureCode; detail: string } {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  const at = message.indexOf("|");
-  const code = at > 0 ? message.slice(0, at) : "";
-  return isExportFailureCode(code) ? { code, detail: message.slice(at + 1) } : { code: "encode_failed", detail: message };
+  const { code, detail } = engineRejection(cause);
+  return code !== undefined && isExportFailureCode(code) ? { code, detail } : { code: "encode_failed", detail: cause instanceof Error ? cause.message : String(cause) };
 }
 
 export class ExportWorker {

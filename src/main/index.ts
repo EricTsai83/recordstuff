@@ -88,6 +88,7 @@ import { formatFileName } from "../shared/file-name";
 import { EditStore } from "./editing/edit-store";
 import { ExportHost } from "./editing/export-host";
 import { Editing } from "./editing/editing";
+import { engineAddonPath } from "./lib/engine-module";
 
 /** The saved language, read where it is needed; the default until the settings are loaded. One source, nothing to copy. */
 let appLanguage: () => Language = () => DEFAULT_LANGUAGE;
@@ -348,8 +349,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   }
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
-    // Native code cannot load from inside the asar archive; packaging unpacks out/native.
-    addonPath: path.join(__dirname, "../native/recordstuff-capture.node").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+    addonPath: engineAddonPath(__dirname),
     resolveDisplay: (_sessionId, screenAccess) => new Promise((resolve) => displayMedia.answer(() => true, (source) => resolve(source?.display_id || undefined), screenAccess)),
     // Main first: the engine takes its bundle identifier as the prefix of RecordStuff's helpers.
     ownPids: () => [process.pid, ...app.getAppMetrics().map((metric) => metric.pid).filter((pid) => pid !== process.pid)],
@@ -411,7 +411,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     store: new EditStore(editsDir),
     runner: new ExportHost({
       entryPath: path.join(__dirname, "export-process.js"),
-      addonPath: path.join(__dirname, "../native/recordstuff-capture.node").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+      addonPath: engineAddonPath(__dirname),
       log,
     }),
     find: (id) => library.find(id),

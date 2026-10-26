@@ -14,6 +14,7 @@ import { isStudioDrawn, isStudioPreviewDiagnostics, isStudioRate, isStudioViewMe
 import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogram";
 import { PreviewDelivery } from "./preview-delivery";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
+import { engineRejection } from "../lib/engine-module";
 
 interface ProbeResult { width: number; height: number }
 interface PreparedInfo {
@@ -164,9 +165,8 @@ export function engineLoadExit(platform: NodeJS.Platform, message: string): numb
 
 /** The engine rejects with `code|detail`. */
 export function engineFailure(cause: unknown): { code: string; detail: string } {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  const split = message.indexOf("|");
-  return split > 0 ? { code: message.slice(0, split), detail: message.slice(split + 1) } : { code: "capture_start_failed", detail: message };
+  const { code, detail } = engineRejection(cause);
+  return { code: code ?? "capture_start_failed", detail };
 }
 
 type Phase = "preparing" | "prepared" | "recording" | "stopping";
