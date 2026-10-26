@@ -133,17 +133,34 @@ function once(media: HTMLMediaElement, event: string, ms = 5000): Promise<void> 
   });
 }
 
+/** How long the timeline's size must hold before its pictures are read again: a window being resized moves it often. */
+const STRIP_SETTLE_MS = 200;
+
 /**
  * The recording's pictures along the timeline (2026-10-25, at the maintainer's request): one frame per tile, as many
  * tiles as fit the timeline's width at its height, read by a hidden video of its own one seek at a time, so a long
- * recording costs a few dozen decodes, once per view. The parts are drawn over it.
+ * recording costs a few dozen decodes per view. The parts are drawn over it. Read again, once the size settles, when
+ * the window is resized or zoomed (the canvas would otherwise stretch its first pictures), or when the timeline first
+ * gets a width.
  */
 function TimelineStrip({ source }: { source: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState<string>();
+  useEffect(() => {
+    const target = canvas.current;
+    if (!target) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = (): void => setSize(target.clientWidth > 0 ? `${target.clientWidth}×${target.clientHeight}@${window.devicePixelRatio || 1}` : undefined);
+    read();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(read, STRIP_SETTLE_MS); });
+    observer.observe(target);
+    return () => { observer.disconnect(); clearTimeout(timer); };
+  }, []);
   useEffect(() => {
     const target = canvas.current;
     const context = target?.getContext?.("2d");
-    if (!target || !context || target.clientWidth === 0) return;
+    if (!target || !context || !size || target.clientWidth === 0) return;
     const video = document.createElement("video");
     video.muted = true;
     video.preload = "auto";
@@ -172,7 +189,7 @@ function TimelineStrip({ source }: { source: string }) {
       video.removeAttribute("src");
       video.load();
     };
-  }, [source]);
+  }, [source, size]);
   return <canvas ref={canvas} className="editor-strip" aria-hidden="true" />;
 }
 
