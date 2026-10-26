@@ -409,8 +409,10 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
   const [caret, setCaret] = useState<number | undefined>(undefined);
   // Too narrow for the actions in words beside the export's length (380 px windows, review of 2026-10-26): their icons
   // and keys alone, over the whole line. Decided on their width in words, kept while they show.
-  const [compact, setCompact] = useState(false);
-  const wide = useRef(0);
+  // 0 in full; 1 without the selection's length; 2 with Remove alone in words too (the maintainer's review of
+  // 2026-10-26: a 460 px window dropped every name at once). Decided on their full width, kept while they show.
+  const [compact, setCompact] = useState<0 | 1 | 2>(0);
+  const wide = useRef(0), lengthWide = useRef(0);
   const shown = span !== undefined && editor.export.phase !== "exporting" && model.trimming() === undefined;
   const from = span?.[0], to = span?.[1];
   // Gone with the selection, the mark goes too.
@@ -432,9 +434,12 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
       // On the line the times stay in sight (Codex's computer-use round of 2026-10-26 found a narrow window hid them for
       // the actions): the actions take icons and keys alone when their words do not fit beside them. Over a lane the
       // whole width is theirs.
-      if (actions.dataset.compact === undefined) wide.current = actions.offsetWidth;
+      if (actions.dataset.compact === undefined) {
+        wide.current = actions.offsetWidth;
+        lengthWide.current = actions.querySelector<HTMLElement>(".editor-selection-length")?.offsetWidth ?? 0;
+      }
       const room = laneBox ? lineBox.width : lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
-      setCompact(wide.current > room);
+      setCompact(wide.current <= room ? 0 : wide.current - lengthWide.current - 6 <= room ? 1 : 2);
       const width = actions.offsetWidth;
       const placed = Math.round(Math.max(0, Math.min(middle - width / 2, room - width)));
       setLeft(placed);

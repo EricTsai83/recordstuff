@@ -3146,12 +3146,17 @@
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
-  /* Too narrow for their names: icons and keys alone but Remove's, the names still the buttons' accessible names, and the selection's length gives way. */
+  /* Too narrow for all of it: first the selection's length gives way, then the names but Remove's, which stay the
+     buttons' accessible names. */
   /* Remove, the action made most, keeps its name (Codex's computer-use round of 2026-10-26: a lone bin was slow to read). */
-  .editor-selection-actions[data-compact] :is(.editor-camera-toggle-label, .editor-selection-length) {
+  .editor-selection-actions[data-compact] .editor-selection-length,
+  .editor-selection-actions[data-compact="2"] .editor-camera-toggle-label {
     display: none;
   }
-  .editor-selection-actions[data-compact] :is(.editor-remove, .editor-camera-toggle) {
+  .editor-selection-actions[data-compact] {
+    padding-inline-start: 3px;
+  }
+  .editor-selection-actions[data-compact="2"] :is(.editor-remove, .editor-camera-toggle) {
     min-width: 0;
   }
 

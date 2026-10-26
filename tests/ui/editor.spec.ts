@@ -875,7 +875,7 @@ test("a selection's actions float over the line above the timeline, words where 
   fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
   await openEditor();
   await expect(page.locator("#editor-camera")).toBeVisible();
-  for (const width of [960, 420]) {
+  for (const width of [960, 560, 420]) {
     await page.setViewportSize({ width, height: 760 });
     await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
     await page.waitForTimeout(200);
@@ -911,8 +911,12 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(times.width).toBeGreaterThan(20);
     expect(box.x + box.width).toBeLessThanOrEqual(times.x);
     if (width === 960) await expect(actions).not.toHaveAttribute("data-compact");
-    else {
-      await expect(actions).toHaveAttribute("data-compact", "true");
+    else if (width === 560) {
+      // A little narrow: the selection's length gives way first, every action keeping its name (the maintainer's review).
+      await expect(actions).toHaveAttribute("data-compact", "1");
+      await expect(page.locator("#editor-camera-toggle .editor-camera-toggle-label")).toBeVisible();
+    } else {
+      await expect(actions).toHaveAttribute("data-compact", "2");
       await expect(page.locator(".editor-readouts-short")).toBeVisible();
       // Remove keeps its name; the others keep their icons and keys, and the selection's length gives way.
       await expect(page.locator("#editor-remove .editor-remove-label")).toBeVisible();
