@@ -18,7 +18,7 @@ import {
   seedFiles, selfTestFiles, writeSeedFiles, type ControlledArgs, type RunMarker, type Seed,
 } from "./lib/acceptance/controlled-acceptance.mts";
 import { alive, readJson, sendControlled } from "./lib/acceptance/controlled-client.mts";
-import { INTERRUPT_EXIT, escapeRegExp, pgrepProcesses, recordStuffPattern } from "./lib/runner/processes.mts";
+import { INTERRUPT_EXIT, escapeRegExp, groupAlive, pgrepProcesses, recordStuffPattern, stopGroup } from "./lib/runner/processes.mts";
 import { scrubbedEnv } from "./lib/runner/runner-env.mts";
 import { FAULT_MODES, HOLD_TARGETS, type FaultName } from "./fixtures/controlled-modes.ts";
 import type { ControlledCommand, ControlledConfig, ControlledResponse, ControlledSnapshot } from "./fixtures/controlled-acceptance";
@@ -34,6 +34,8 @@ class Interrupted extends Error {}
 
 const env = scrubbedEnv();
 let child: ReturnType<typeof spawn> | undefined;
+/** The process group of the last build or launch step, which `clean` requires gone before it removes the workspace. */
+let stepGroup: number | undefined;
 let cancelled = false;
 /** The first signal names the exit code once cleanup has run (round-exit.mts). */
 let cancelledBy: "SIGINT" | "SIGTERM" | undefined;
@@ -73,12 +75,18 @@ async function run(program: string, args: string[], cwd: string, logFile: string
   try {
     await new Promise<void>((resolve, reject) => {
       const proc = child = spawn(program, args, { cwd, env, stdio: ["ignore", fd, fd], detached: true });
-      const timer = setTimeout(() => { try { if (proc.pid) process.kill(-proc.pid, "SIGTERM"); } catch { /* gone */ } }, timeoutMs);
+      stepGroup = proc.pid;
+      // Its whole group, escalating to SIGKILL (stopGroup): pnpm may exit first and leave electron-vite,
+      // electron-builder or codesign running in the workspace.
+      const timer = setTimeout(() => { void stopGroup(proc.pid).catch(() => undefined); }, timeoutMs);
       proc.on("error", error => { clearTimeout(timer); child = undefined; reject(error); });
       proc.on("exit", (code, signal) => {
         clearTimeout(timer); child = undefined;
-        if (code === 0) resolve();
-        else reject(new Error(`${program} ${args.join(" ")} ${signal ? `ended by ${signal}` : `exited ${code}`}; see ${logFile}`));
+        // Settled only once nothing the step started still runs, so nothing writes into a workspace being removed.
+        void stopGroup(proc.pid).catch(() => undefined).then(() => {
+          if (code === 0) resolve();
+          else reject(new Error(`${program} ${args.join(" ")} ${signal ? `ended by ${signal}` : `exited ${code}`}; see ${logFile}`));
+        });
       });
     });
   } finally { fs.closeSync(fd); }
@@ -190,6 +198,7 @@ async function quitApp(dir: string, stoppable = true): Promise<void> {
 function clean(dir: string): void {
   const running = bundleProcesses(dir);
   if (running.length) throw new Error(`The controlled app still runs; quit it first:\n${running.join("\n")}`);
+  if (groupAlive(stepGroup)) throw new Error(`The build or launch step's processes (group ${stepGroup}) still run; the workspace is kept`);
   fs.rmSync(path.join(dir, "workspace"), { recursive: true, force: true });
 }
 
