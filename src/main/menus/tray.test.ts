@@ -461,10 +461,16 @@ describe("tray menu template (plan 048)", () => {
     const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]![0] as Electron.MenuItemConstructorOptions[];
     const line = logs.find((message) => message.startsWith("tray: menu opened in idle: "))!;
     const logged = JSON.parse(line.slice("tray: menu opened in idle: ".length)) as Array<{ separator?: true; label?: string; enabled?: boolean; accelerator?: string; checked?: boolean; header?: true }>;
-    expect(logged).toEqual(template.map((entry) => entry.type === "separator" ? { separator: true }
-      : entry.type === "header" ? { label: entry.label, enabled: false, header: true }
+    // A group's heading is logged as one whatever the platform draws: macOS's section header, elsewhere an item that
+    // cannot be chosen (2026-10-26).
+    const heading = (i: number): boolean => logged[i]?.header === true;
+    expect(logged).toEqual(template.map((entry, i) => entry.type === "separator" ? { separator: true }
+      : heading(i) ? { label: entry.label, enabled: false, header: true }
       : { label: entry.label, enabled: entry.enabled, ...(entry.accelerator === undefined ? {} : { accelerator: entry.accelerator }),
         ...(entry.checked === undefined ? {} : { checked: entry.checked }) }));
+    // The heading is macOS's section header there, a line that cannot be chosen elsewhere.
+    const head = template.find((entry) => entry.label === "Include in recordings")!;
+    expect(head).toEqual(process.platform === "darwin" ? { type: "header", label: "Include in recordings" } : { label: "Include in recordings", enabled: false });
     // The microphone is a native checkbox (plan 074), under its group's heading (2026-10-26).
     expect(template.find((entry) => entry.label === "Microphone")).toMatchObject({ type: "checkbox", checked: false });
     expect(logged.find((entry) => entry.label === "Microphone")).toEqual({ label: "Microphone", enabled: true, checked: false });
