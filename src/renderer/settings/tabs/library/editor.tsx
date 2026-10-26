@@ -780,7 +780,10 @@ function EditorPanel() {
                 const label = stretch.volume === undefined ? translate("{from} to {to}, {name} at its volume", language, { from, to, name })
                   : muted ? translate("{from} to {to}, {name} muted", language, { from, to, name })
                   : translate("{from} to {to}, {name} at {percent}%", language, { from, to, name, percent: String(stretch.volume) });
-                const Icon = input === "system" ? (muted ? VolumeX : Volume2) : (muted ? MicOff : Mic);
+                // Silent the same way wherever it comes from: a stretch muted, or the overall volume at 0% (2026-10-26,
+                // the maintainer's question); only the hatching says the stretch is the edit's own.
+                const silent = muted || (stretch.volume === undefined && own === 0);
+                const Icon = input === "system" ? (silent ? VolumeX : Volume2) : (silent ? MicOff : Mic);
                 return (
                   <button
                     key={`${stretch.from}-${stretch.to}`}
@@ -804,7 +807,7 @@ function EditorPanel() {
                   >
                     <Icon aria-hidden="true" />
                     <span aria-hidden="true">
-                      {stretch.volume === undefined ? `${name} ${own ?? 100}%` : muted ? model.text("Muted") : `${stretch.volume}%`}
+                      {stretch.volume === undefined ? `${name} ${own === 0 ? model.text("Muted") : `${own ?? 100}%`}` : muted ? model.text("Muted") : `${stretch.volume}%`}
                     </span>
                   </button>
                 );

@@ -97,6 +97,8 @@ it("mutes the microphone over a part from the Volume popup, sets the system's th
   thumb.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
   await vi.waitFor(() => expect(saves().length).toBeGreaterThan(before));
   await vi.waitFor(() => expect(saves().at(-1)!.scene!.volumes.system).toBe(0));
+  // Silent at its overall volume, the lane says Muted as for a muted stretch, not 0% (2026-10-26, the maintainer's question).
+  await vi.waitFor(() => expect(document.querySelector('.editor-camera-lane[data-lane="system"] .editor-camera-stretch')!.textContent).toBe("System audio Muted"));
   key("v");
   await vi.waitFor(() => expect(document.getElementById("editor-volume-mute-system")).not.toBeNull());
   // Muted already (its own volume is 0%): Unmute.

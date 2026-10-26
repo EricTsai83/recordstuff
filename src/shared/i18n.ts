@@ -666,6 +666,8 @@ export const ZH_TW = {
   "Hidden over {count} stretches of the timeline. Select a stretch and press C to hide or show the camera there.":
     "時間軸上有 {count} 段隱藏相機。選取一段後按 C，即可在那段隱藏或顯示相機。",
   "Camera hidden": "隱藏相機",
+  "Overall volume": "整體音量",
+  "Every part of the timeline without a volume of its own plays at these; set one with Volume (V).": "時間軸上沒有自訂音量的部分都套用這裡的音量；要自訂某段，請用「音量」(V)。",
   "Show the {name} lane": "顯示{name}軌",
   "Lanes on the timeline": "時間軸上的軌",
   "Hidden; its one stretch of its own still applies to the export.": "已隱藏；仍有 1 段自訂設定，匯出會套用。",
@@ -682,7 +684,7 @@ export const ZH_TW = {
   "Unmute {name} in the selection": "取消選取範圍的{name}靜音",
   "Set the volume of the selection": "設定選取範圍的音量",
   "Muted": "靜音",
-  "{from} to {to}, {name} at its volume": "{from} 至 {to}，{name}為整體音量",
+  "{from} to {to}, {name} at its volume": "{from} 至 {to}，{name}套用整體音量",
   "{from} to {to}, {name} muted": "{from} 至 {to}，{name}靜音",
   "{from} to {to}, {name} at {percent}%": "{from} 至 {to}，{name} {percent}%",
   "Volumes back to the overall volume from {from} to {to}": "{from} 至 {to} 已恢復整體音量",

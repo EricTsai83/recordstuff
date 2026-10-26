@@ -470,6 +470,9 @@ function SceneControls({ editor, editable, scene }: { editor: EditorView; editab
           <p id="editor-camera-note" className="editor-options-note">{note}</p>
         </div>
       )}
+      {/* The inputs' overall volumes (2026-10-26, the maintainer's question: these and the timeline's muted stretches read
+          as two ways of saying one thing): what every part of the timeline without a volume of its own plays at. */}
+      <p className="editor-scene-subtitle" aria-hidden="true">{model.text("Overall volume")}</p>
       {sounds.has("system") && (
         <VolumeRow id="editor-volume-system" label={model.text("System audio")} value={scene.volumes.system} disabled={busy}
           set={(system, commit) => change({ ...scene, volumes: { ...scene.volumes, system } }, commit)} />
@@ -478,6 +481,7 @@ function SceneControls({ editor, editable, scene }: { editor: EditorView; editab
         <VolumeRow id="editor-volume-microphone" label={model.text("Microphone")} value={scene.volumes.microphone} disabled={busy}
           set={(microphone, commit) => change({ ...scene, volumes: { ...scene.volumes, microphone } }, commit)} />
       )}
+      <p className="editor-options-note">{model.text("Every part of the timeline without a volume of its own plays at these; set one with Volume (V).")}</p>
       <ControlTooltip label={model.text("Put the camera and the volumes back as recorded")}>
         <Button id="editor-scene-reset" variant="ghost" size="sm" className="editor-scene-reset" aria-disabled={busy || unchanged}
           onClick={() => { if (!busy && !unchanged) void model.resetScene(); }}>
