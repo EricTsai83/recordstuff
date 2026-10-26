@@ -51,10 +51,10 @@ it("hides the camera over a part, shows it there again from the lane, and follow
     .map((stretch) => [stretch.getAttribute("aria-label"), stretch.dataset.hidden !== undefined]);
   const toggle = (): HTMLElement => document.getElementById("editor-camera-toggle")!;
 
-  // The lane: the camera shown throughout. Nothing is chosen, so the camera button and C do nothing yet.
+  // The lane: the camera shown throughout. Nothing is chosen, so the camera button is not there (it floats over a
+  // selection, 2026-10-26, B′) and C does nothing yet.
   expect(lane()).toEqual([["0:00.0 to 0:10.0, camera shown", false]]);
-  expect(toggle().getAttribute("aria-disabled")).toBe("true");
-  expect(toggle().getAttribute("aria-label")).toBe("Hide camera in selection");
+  expect(document.getElementById("editor-camera-toggle")).toBeNull();
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(saves()).toEqual([]);
@@ -69,7 +69,8 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   // Split at 4 s, then C: the camera is hidden from there to the end, saved with the cuts as they are.
   video.currentTime = 4;
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true }));
-  await vi.waitFor(() => expect(toggle().getAttribute("aria-disabled")).toBe("false"));
+  await vi.waitFor(() => expect(document.getElementById("editor-camera-toggle")?.getAttribute("aria-disabled")).toBe("false"));
+  expect(toggle().getAttribute("aria-label")).toBe("Hide camera in selection");
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true }));
   await vi.waitFor(() => expect(saves()).toEqual([
     { action: "save", removed: [], revision: 0, scene: { ...START, camera: { ...START.camera!, hidden: [[360_000, 900_000]] } } },
@@ -122,7 +123,8 @@ it("hides the camera over a part, shows it there again from the lane, and follow
   await vi.waitFor(() => expect(saves().at(-1)).toEqual({ action: "save", removed: [], revision: 3, scene: { ...START, camera: { ...stretch, shown: false } } }));
   await vi.waitFor(() => expect(lane()).toEqual([["0:00.0 to 0:10.0, camera hidden", true]]));
   expect(document.getElementById("editor-camera-note")!.textContent).toBe("The export holds no camera. Switched off, the camera follows the timeline again.");
-  expect(toggle().getAttribute("aria-disabled")).toBe("true");
+  // The camera button waits: not there without a selection, unavailable over one.
+  expect(document.getElementById("editor-camera-toggle")?.getAttribute("aria-disabled") ?? "true").toBe("true");
   document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true }));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Turn off Hide the camera throughout in Options to hide or show it over a stretch."));
   expect(saves()).toHaveLength(4);

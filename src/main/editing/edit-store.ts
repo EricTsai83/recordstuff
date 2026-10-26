@@ -130,8 +130,54 @@ export function parseRecord(text: string): EditRecord | { reason: string } {
 export class EditStore {
   /** Writes in order, one record at a time: a later save never lands before an earlier one. */
   private queue: Promise<void> = Promise.resolve();
+  /**
+   * The recordings that hold an edit, by path, with the size their record was made for (2026-10-26, the maintainer's
+   * request: the Recordings tab marks an edited recording and offers Continue editing…). Read from the folder once by
+   * `scan` and kept by every save, discard and move after it, so the tab never reads a record to draw a card.
+   */
+  private index = new Map<string, number>();
 
   constructor(private readonly dir: string) {}
+
+  /**
+   * Reads which recordings hold an edit, once at launch; a record that cannot be read is left out, as it is kept. In
+   * the writes' own queue, so a save or discard made meanwhile lands after it and is never undone by it (review of
+   * 2026-10-26).
+   */
+  scan(): Promise<void> {
+    const run = this.queue.then(() => this.scanNow());
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async scanNow(): Promise<void> {
+    let names: string[];
+    try {
+      names = await fs.promises.readdir(this.dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (!/^[0-9a-f]{32}\.json$/.test(name)) continue;
+      try {
+        const file = path.join(this.dir, name);
+        if ((await fs.promises.stat(file)).size > EDIT_RECORD_LIMIT) continue;
+        const parsed = parseRecord(await fs.promises.readFile(file, "utf8"));
+        if (!("reason" in parsed) && this.fileFor(parsed.source.path) === file) this.note(parsed);
+      } catch {
+        // Gone or unreadable meanwhile: not marked.
+      }
+    }
+  }
+
+  /** The recordings that hold an edit, by path, with the size their record was made for. */
+  edited(): ReadonlyMap<string, number> {
+    return this.index;
+  }
+
+  private note(record: EditRecord): void {
+    this.index.set(path.resolve(record.source.path), record.source.size);
+  }
 
   /** The record's file for a recording at `source`. */
   fileFor(source: string): string {
@@ -169,7 +215,7 @@ export class EditStore {
   save(record: EditRecord): Promise<void> {
     const file = this.fileFor(record.source.path);
     const text = `${JSON.stringify(record, null, 2)}\n`;
-    const write = this.queue.then(() => writeFileAtomic(file, text, { syncDirectory: true }));
+    const write = this.queue.then(() => writeFileAtomic(file, text, { syncDirectory: true })).then(() => this.note(record));
     this.queue = write.catch(() => undefined);
     return write;
   }
@@ -177,7 +223,7 @@ export class EditStore {
   /** Removes the edit for `source` (Discard): only the record, never the recording. */
   discard(source: string): Promise<void> {
     const file = this.fileFor(source);
-    const remove = this.queue.then(() => fs.promises.rm(file, { force: true }));
+    const remove = this.queue.then(() => fs.promises.rm(file, { force: true })).then(() => { this.index.delete(path.resolve(source)); });
     this.queue = remove.catch(() => undefined);
     return remove;
   }

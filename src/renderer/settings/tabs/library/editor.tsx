@@ -9,10 +9,11 @@
  * part, or shows it there again, and a click on the lane selects one of its stretches. Each sound input has a lane too
  * (2026-10-26): its own volume, or a stretch's (muted, or a percent), set over the selection by the Volume popup (V).
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, Keyboard, Mic, MicOff, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
+import type { EditorView, EditRange } from "../../../../shared/editing";
 import type { VolumeInput } from "../../../../shared/editable";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -351,6 +352,94 @@ interface TimelineGesture {
 const TRIM_HANDLE = 12;
 const TRIM_REACH = 10;
 
+/**
+ * Remove (Delete) in words (2026-10-26, B′): the toolbar's, always there since it is the edit made most, and the one in
+ * a selection's floating actions, with its key. Keep in place of Remove for a removed part; the same width either way,
+ * so nothing after it moves.
+ */
+function RemoveButton({ id, tool = false }: { id: string; tool?: boolean }) {
+  const editor = model.editorView();
+  if (!editor) return null;
+  const selected = model.selectedPart(editor), range = model.rangeSelection;
+  const busy = editor.export.phase === "exporting";
+  const keep = !range && Boolean(selected?.removed);
+  return (
+    <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : !selected ? "Select a part or drag across the timeline, then remove it (Delete)" : keep ? "Keep the selected part (Delete)" : "Remove the selected part (Delete)")}>
+      <Button
+        id={id}
+        variant="ghost"
+        size="sm"
+        className={tool ? "editor-tool editor-remove" : "editor-remove"}
+        aria-label={model.text(range ? "Remove selection" : keep ? "Keep part" : "Remove part")}
+        aria-disabled={busy || (!selected && !range)}
+        onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}
+      >
+        {keep ? <RotateCcw /> : <Trash2 />}
+        <span className="editor-remove-label" aria-hidden="true">{model.text(keep ? "Keep" : "Remove")}</span>
+        {!tool && <Kbd aria-hidden="true">{model.platform() === "darwin" ? "⌫" : "Del"}</Kbd>}
+      </Button>
+    </ControlTooltip>
+  );
+}
+
+/**
+ * The line over the timeline (2026-10-26, B′): the playhead's time (or a trim handle's) at its start, the export's length
+ * at its end, and, while a part or range is chosen, its actions floating above it, its length first. Always as tall, so
+ * nothing below it moves as a selection comes and goes; the actions keep clear of the export's length.
+ */
+function EditorActionRow({ editor, track, span, position, length, children }: {
+  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; position: string; length: string; children: ReactNode;
+}) {
+  const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
+  const [left, setLeft] = useState<number | undefined>(undefined);
+  // Too narrow for the actions in words beside the export's length (380 px windows, review of 2026-10-26): their icons
+  // and keys alone, over the whole line. Decided on their width in words, kept while they show.
+  const [compact, setCompact] = useState(false);
+  const wide = useRef(0);
+  const shown = span !== undefined && editor.export.phase !== "exporting" && model.trimming() === undefined;
+  const from = span?.[0], to = span?.[1];
+  useLayoutEffect(() => {
+    const place = (): void => {
+      const line = row.current, actions = bar.current, timeline = track.current;
+      if (!shown || from === undefined || to === undefined || !line || !actions || !timeline) return setLeft(undefined);
+      const lineBox = line.getBoundingClientRect(), trackBox = timeline.getBoundingClientRect();
+      const middle = trackBox.left - lineBox.left + ((from + to) / 2 / editor.duration) * trackBox.width;
+      if (actions.dataset.compact === undefined) wide.current = actions.offsetWidth;
+      const tight = wide.current > lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      setCompact(tight);
+      const room = tight ? lineBox.width : lineBox.width - (tail.current?.offsetWidth ?? 0) - 12;
+      const width = actions.offsetWidth;
+      setLeft(Math.round(Math.max(0, Math.min(middle - width / 2, room - width))));
+    };
+    place();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(place) : undefined;
+    if (row.current) observer?.observe(row.current);
+    if (bar.current) observer?.observe(bar.current);
+    return () => observer?.disconnect();
+  }, [shown, from, to, editor.duration, track, compact]);
+  return (
+    <div ref={row} className="editor-action-row">
+      <span className="editor-position" data-covered={shown || undefined}>{position}</span>
+      <span ref={tail} className="editor-length" data-covered={(shown && compact) || undefined}>{length}</span>
+      {shown && (
+        <div
+          ref={bar}
+          id="editor-selection-actions"
+          role="toolbar"
+          aria-label={model.text("Selection")}
+          className="editor-selection-actions"
+          data-placed={left !== undefined || undefined}
+          data-compact={compact || undefined}
+          style={{ left: left ?? 0 }}
+        >
+          <span className="editor-selection-length">{precise(((to ?? 0) - (from ?? 0)) / editor.timescale)}</span>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditorPanel() {
   const editor = model.editorView();
   const time = usePlayhead();
@@ -419,7 +508,6 @@ function EditorPanel() {
   const busy = editor.export.phase === "exporting";
   const percent = (ticks: number): string => `${(ticks / editor.duration) * 100}%`;
   const at = (seconds: number): string => model.clock(seconds);
-  const removing = selected && !selected.removed;
   // An editable recording's camera, hidden or shown over the selection (2026-10-26).
   const camera = model.hasCamera(editor);
   const cameraTarget = camera ? model.cameraTarget(editor) : undefined;
@@ -556,51 +644,17 @@ function EditorPanel() {
           </Button>
         </ControlTooltip>
         <span className="editor-divider" aria-hidden="true" />
+        {/* Split and Remove in words (2026-10-26, the maintainer's choice of layouts, B′): Remove is the edit made most,
+            so it stays in the toolbar; the camera and the volume, which act on a selection only, float over it. */}
         <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="ghost" size="icon" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
+          <Button id="editor-split" variant="ghost" size="sm" className="editor-tool" aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
+            <span aria-hidden="true">{model.text("Split")}</span>
           </Button>
         </ControlTooltip>
-        <ControlTooltip label={model.text(range ? "Remove the selected range (Delete)" : removing ? "Remove the selected part (Delete)" : "Keep the selected part (Delete)")}>
-          <Button id="editor-remove" variant="ghost" size="icon" aria-label={model.text(range ? "Remove selection" : removing || !selected ? "Remove part" : "Keep part")} aria-disabled={busy || (!selected && !range)} onClick={() => { if (!busy && (selected || range)) void model.toggleSelected(); }}>
-            {range || removing || !selected ? <Trash2 /> : <RotateCcw />}
-          </Button>
-        </ControlTooltip>
-        {camera && (
-          <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : !cameraTarget ? "Select a part or drag across the timeline, then hide or show the camera there (C)" : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
-            {/* Named in words beside its icon (2026-10-26, two computer-use rounds: a person alone read as an account's
-                button); both names are as long, so nothing after it moves as it turns. */}
-            <Button
-              id="editor-camera-toggle"
-              variant="ghost"
-              size="sm"
-              className="editor-camera-toggle"
-              aria-label={model.text(showingCamera ? "Show camera in selection" : "Hide camera in selection")}
-              aria-disabled={busy || !cameraTarget || allHidden}
-              onClick={() => { if (!busy && cameraTarget && !allHidden) void model.toggleCameraInSelection(); }}
-            >
-              {showingCamera ? <UserRound /> : <UserRoundX />}
-              <span className="editor-camera-toggle-label">{model.text(showingCamera ? "Show camera" : "Hide camera")}</span>
-            </Button>
-          </ControlTooltip>
-        )}
-        {inputs.length > 0 && <VolumeButton editor={editor} />}
-        <EditorOptions editor={editor} />
-        <span className="editor-divider" aria-hidden="true" />
-        <span className="editor-times text-muted-foreground">
-          <span className="editor-position">
-            {trimming
-              ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
-              : range
-              ? translate("Selection {from}–{to} ({length})", language, {
-                from: precise(range[0] / editor.timescale), to: precise(range[1] / editor.timescale), length: precise((range[1] - range[0]) / editor.timescale),
-              })
-              : translate("Playhead {time}", language, { time: precise(time) })}
-          </span>
-          {/* To the hundredth, as the times beside it (a hands-on round); following a trim handle as it is dragged. */}
-          <span className="editor-length">{translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}</span>
-        </span>
+        <RemoveButton id="editor-remove" tool />
         <span className="editor-spacer" />
+        <EditorOptions editor={editor} />
         {/* The keys, opened by a click as well as named to assistive technology (a
             hands-on round found a tooltip alone showed nothing on a click). Beside Export, drawn as a key cap rather
             than as one of the edits' tools (2026-10-25, the maintainer's request). */}
@@ -627,6 +681,37 @@ function EditorPanel() {
         <ExportControls />
         </span>
       </div>
+      {/* Over the timeline (2026-10-26, B′): where the playhead is and how long the export runs, a line of its own so
+          the toolbar never wraps; a selection's actions float over it, above the selection, so it never moves. */}
+      <EditorActionRow
+        editor={editor}
+        track={track}
+        span={range ?? (selected ? [selected.from, selected.to] : undefined)}
+        position={trimming
+          ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
+          : translate("Playhead {time}", language, { time: precise(time) })}
+        length={translate("Export length {length}", language, { length: precise(model.shownOutputSeconds(editor)) })}
+      >
+        <RemoveButton id="editor-remove-selection" />
+        {camera && (
+          <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
+            <Button
+              id="editor-camera-toggle"
+              variant="ghost"
+              size="sm"
+              className="editor-camera-toggle"
+              aria-label={model.text(showingCamera ? "Show camera in selection" : "Hide camera in selection")}
+              aria-disabled={busy || !cameraTarget || allHidden}
+              onClick={() => { if (!busy && cameraTarget && !allHidden) void model.toggleCameraInSelection(); }}
+            >
+              {showingCamera ? <UserRound /> : <UserRoundX />}
+              <span className="editor-camera-toggle-label">{model.text(showingCamera ? "Show camera" : "Hide camera")}</span>
+              <Kbd aria-hidden="true">C</Kbd>
+            </Button>
+          </ControlTooltip>
+        )}
+        {inputs.length > 0 && <VolumeButton editor={editor} />}
+      </EditorActionRow>
       {/* The trimmer, as iPhone's and QuickTime's: the handles stand outside the kept recording with ‹ ›, lines join them
           above and below, and the track pads its sides so a handle at the very start or end is seen whole (2026-10-25). */}
       <div

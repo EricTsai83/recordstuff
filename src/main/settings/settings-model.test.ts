@@ -1449,6 +1449,10 @@ describe("the Recordings tab", () => {
   it("says which recordings are editable (plan 087), in the view's language", () => {
     const marked = [{ ...files[0]!, editable: true as const }, files[1]!];
     expect(settingsView(idle, library({ files: marked })).library!.items.map(item => item.editable)).toEqual(["Editable", undefined]);
+    // A recording that holds an edit made for it as it is (2026-10-26); one whose edit was made for another size is not.
+    const edited = new Map([["/tmp/recordings/2026-10-04 14-02-11.mp4", 176_000_000], ["/tmp/recordings/Product demo.mp4", 1]]);
+    expect(settingsView(idle, { ...library({}), editedRecordings: edited }).library!.items.map(item => item.edited)).toEqual(["Edited", undefined]);
+    expect(settingsView(idle, { ...library({}), editedRecordings: edited, language: "zh-TW" }).library!.items[0]!.edited).toBe("已剪輯");
     expect(settingsView(idle, { ...library({ files: marked }), language: "zh-TW" }).library!.items[0]!.editable).toBe("可編輯");
   });
   it("names each recording's subfolder and lists the folders the library offers (plan 071)", () => {

@@ -127,6 +127,35 @@ describe("the edit view", () => {
     expect(ctx.worker.calls.closeIdle).toBe(1);
   });
 
+  it("keeps no record for an edit that changes nothing, and marks only recordings that hold one (2026-10-26)", async () => {
+    const ctx = setup();
+    const file = new EditStore(path.join(dir, "userData", "edits")).fileFor(source);
+    await ctx.editing.choose("rec", { action: "open" });
+    await ctx.editing.choose("rec", { action: "save", removed: [[91_000, 179_000]], revision: 0 });
+    expect([fs.existsSync(file), ctx.editing.edited().get(source)]).toEqual([true, fs.statSync(source).size]);
+    // Every cut kept again: the record goes and the mark with it; the view's revision goes on, so Undo saves again.
+    await ctx.editing.choose("rec", { action: "save", removed: [], revision: 1 });
+    expect([fs.existsSync(file), ctx.editing.edited().has(source), ctx.editing.view()!.revision]).toEqual([false, false, 2]);
+    await ctx.editing.choose("rec", { action: "save", removed: [[91_000, 179_000]], revision: 2 });
+    expect([fs.existsSync(file), ctx.editing.edited().has(source)]).toEqual([true, true]);
+    // Renamed, the record follows and Settings draws again once it has, so the card at its new path is marked.
+    ctx.editing.choose("rec", { action: "close" });
+    const renamed = path.join(path.dirname(source), "Talk.mp4");
+    fs.renameSync(source, renamed);
+    const drawn = ctx.views.length;
+    ctx.editing.moved(source, renamed);
+    await vi.waitFor(() => expect(ctx.editing.edited().has(renamed)).toBe(true));
+    expect(ctx.views.length).toBeGreaterThan(drawn);
+    fs.renameSync(renamed, source);
+    ctx.editing.moved(renamed, source);
+    await vi.waitFor(() => expect(ctx.editing.edited().has(source)).toBe(true));
+    // A new launch reads the marks from the records left.
+    const later = setup();
+    expect(later.editing.edited().size).toBe(0);
+    await later.editing.scanEdits();
+    expect(later.editing.edited().get(source)).toBe(fs.statSync(source).size);
+  });
+
   it("refuses to remove everything, and says so", async () => {
     const ctx = setup();
     await ctx.editing.choose("rec", { action: "open" });

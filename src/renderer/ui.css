@@ -2993,42 +2993,75 @@
   .editor-camera-stretch:disabled {
     cursor: default;
   }
-  /* The camera button's name beside its icon while the toolbar has room for it, its width kept to the longer name so
-     nothing after it moves as it turns; in a narrower window the icon alone, as the other edits, so Export stays on the
-     row (its name is still the tooltip's and assistive technology's). */
   .editor-panel {
     container-type: inline-size;
   }
+  /* The camera's and the volume's buttons in a selection's floating actions (2026-10-26, B′), named in words with their
+     key; the camera's as wide for either name, so nothing after it moves as it turns. */
   .editor-camera-toggle {
-    min-width: 7.75rem;
+    min-width: 8.5rem;
     justify-content: flex-start;
   }
-  /* Measured 2026-10-26: with the longest readout (a selection's) and the Volume button beside the camera's, the row
-     first wraps at 1016 px in English and 856 px in Traditional Chinese, so the icons alone below 1030 px in English and
-     870 px in Chinese (the maintainer's 1060 px window, in Chinese, keeps the words; Codex's computer-use round). */
-  @container (max-width: 1029.98px) {
-    :root:not(:lang(zh-Hant)) .editor-camera-toggle {
-      min-width: 0;
-      padding-inline: 0;
-      width: 1.75rem;
-      height: 1.75rem;
-      justify-content: center;
-    }
-    :root:not(:lang(zh-Hant)) .editor-camera-toggle-label {
-      display: none;
-    }
+  .editor-camera-toggle kbd,
+  .editor-remove kbd {
+    margin-inline-start: auto;
   }
-  @container (max-width: 869.98px) {
-    :root:lang(zh-Hant) .editor-camera-toggle {
-      min-width: 0;
-      padding-inline: 0;
-      width: 1.75rem;
-      height: 1.75rem;
-      justify-content: center;
-    }
-    :root:lang(zh-Hant) .editor-camera-toggle-label {
-      display: none;
-    }
+  /* Split and Remove in words in the toolbar; Remove as wide as Keep, so nothing after it moves as it turns. */
+  .editor-remove {
+    min-width: 5.25rem;
+    justify-content: flex-start;
+  }
+  .editor-tool.editor-remove {
+    min-width: 4.75rem;
+  }
+  /* The line over the timeline (2026-10-26, B′): the playhead's time at its start, the export's length at its end, and
+     a selection's actions floating above the selection. As tall as the actions, chosen or not, so nothing moves. */
+  .editor-action-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 34px;
+    color: var(--muted-foreground);
+  }
+  .editor-action-row .editor-position[data-covered],
+  .editor-action-row .editor-length[data-covered] {
+    visibility: hidden;
+  }
+  .editor-selection-actions {
+    position: absolute;
+    top: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 34px;
+    padding: 0 3px 0 10px;
+    border-radius: 10px;
+    color: var(--popover-foreground);
+    background: var(--popover);
+    box-shadow: var(--shadow-md), 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+    white-space: nowrap;
+    visibility: hidden;
+  }
+  .editor-selection-actions[data-placed] {
+    visibility: visible;
+  }
+  .editor-selection-length {
+    margin-inline-end: 6px;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Too narrow for their names: icons and keys alone, the names still the buttons' accessible names. */
+  .editor-selection-actions[data-compact] :is(.editor-remove-label, .editor-camera-toggle-label) {
+    display: none;
+  }
+  .editor-selection-actions[data-compact] :is(.editor-remove, .editor-camera-toggle) {
+    min-width: 0;
+  }
+  .editor-selection-actions .editor-remove {
+    color: var(--destructive-ink, var(--destructive));
   }
   /* An input's lane (2026-10-26): its own volume quiet, a stretch at a volume of its own in the foreground's fill, a
      muted one hatched as a hidden camera is. */
@@ -3134,7 +3167,8 @@
     border-inline: 5px solid transparent;
     border-top: 6px solid var(--foreground);
   }
-  /* The toolbar over the timeline: the edits, the times, the outcome taking what is left, then the keys (with Skimming) against Export. */
+  /* The toolbar over the timeline (2026-10-26, B′): Play, Undo and Redo, Split and Remove, then Options, the keys and
+     Export at its end; the times have a line of their own under it, so it never wraps at the view's usual widths. */
   .editor-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -3146,11 +3180,6 @@
     height: 16px;
     margin-inline: 4px;
     background: var(--border);
-  }
-  .editor-times {
-    display: flex;
-    gap: 12px;
-    margin-inline-start: 4px;
   }
   .editor-keys-popup {
     width: auto;
@@ -3453,6 +3482,14 @@
   .editor-options-skim + .editor-scene {
     padding-top: 14px;
     border-top: 1px solid var(--border);
+  }
+  /* Revert to original recording, last and apart (2026-10-26). */
+  .editor-options-revert {
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .editor-options-revert > button {
+    margin-inline-start: -8px;
   }
   .editor-scene {
     display: grid;

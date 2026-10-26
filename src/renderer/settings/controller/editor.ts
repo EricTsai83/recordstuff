@@ -1090,6 +1090,39 @@ export function resetScene(): Promise<boolean> {
   return changeScene(recorded, true);
 }
 
+/** Whether the edit changes nothing: every part kept, no split, and an editable recording's scene as recorded. */
+export function isOriginal(editor: EditorView): boolean {
+  return editor.removed.length === 0 && splits.length === 0 && (!editor.editable || sameScene(editorScene(editor), editor.editable.recorded));
+}
+
+/**
+ * Revert to original recording (2026-10-26, the maintainer's request, as Photos' Revert to Original): every cut kept
+ * again, the splits gone and an editable recording's camera and volumes as recorded, as one change Undo takes back. Its
+ * record then goes (main keeps none for an edit that changes nothing), and with it the card's Edited mark.
+ */
+export function revertToOriginal(): Promise<boolean> {
+  return inTurn(async () => {
+    while (editorSaving) await saveDone;
+    const editor = editorView();
+    if (!editor || editor.state !== "ready" || editor.export.phase === "exporting" || isOriginal(editor)) return false;
+    const before = current(editor);
+    rangeSelection = undefined;
+    selectedFrom = undefined;
+    const saved = editor.removed.length === 0 && sameScene(editorScene(editor), editor.editable?.recorded) ? true : await save([], editor.editable?.recorded);
+    if (!saved) {
+      draw();
+      return false;
+    }
+    undoStack.push(before);
+    redoStack.length = 0;
+    splits = [];
+    syncPreviewAudio();
+    draw();
+    announce(translate("Back to the original recording", view?.language));
+    return true;
+  });
+}
+
 /** Whether two scenes place and mix alike. */
 export function sameScene(a: EditScene | undefined, b: EditScene | undefined): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

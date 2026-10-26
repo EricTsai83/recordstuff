@@ -207,6 +207,8 @@ export interface LibraryItemView {
   folder?: string;
   /** Localized "Editable" for an editable recording (plan 087), once its boxes are read; absent otherwise. */
   editable?: string;
+  /** Localized "Edited" for a recording that holds an edit (2026-10-26): its menu offers Continue editing…. */
+  edited?: string;
 }
 /** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
 export interface LibraryFolderView {

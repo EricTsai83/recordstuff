@@ -2,7 +2,7 @@
  * A recording's card or list row: its thumbnail and hover preview, its title and details, and its menu (open,
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
-import { useEffect, useState, useSyncExternalStore, memo } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore, memo } from "react";
 import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
@@ -83,6 +83,7 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                   item.editable,
+                  item.edited,
                 ].filter((part): part is string => Boolean(part)),
                 language,
               ),
@@ -270,7 +271,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
         onClick={() => void model.openEditor(item)}
       >
         <SquarePen />
-        <span className="menu-label">{t("Edit…")}</span>
+        <span className="menu-label">{t(item.edited ? "Continue editing…" : "Edit…")}</span>
       </Item>
       {targets.length > 0 && (
         <Sub>
@@ -310,15 +311,16 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
 /**
  * An editable recording's mark on its card (2026-10-26, the maintainer's request): under the pointer it reads as a link,
  * and a click on it opens the edit view rather than playing the recording. Inside the card's own button, so it is not a
- * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit….
+ * control of its own: the keyboard and assistive technology reach the edit view by the card's menu, Edit…. A recording
+ * that holds an edit is marked Edited the same way (the same day), and its menu reads Continue editing….
  */
 function EditableMark({ item }: { item: LibraryItemView }) {
-  if (!item.editable) return null;
-  return (
-    <>
+  const marks = [["clip-editable", item.editable], ["clip-editable clip-edited", item.edited]].filter((mark): mark is [string, string] => Boolean(mark[1]));
+  return marks.map(([className, mark]) => (
+    <Fragment key={className}>
       {" · "}
       <span
-        className="clip-editable"
+        className={className}
         // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
@@ -327,9 +329,9 @@ function EditableMark({ item }: { item: LibraryItemView }) {
           void model.openEditor(item);
         }}
       >
-        {item.editable}
+        {mark}
       </span>
-    </>
-  );
+    </Fragment>
+  ));
 }
 

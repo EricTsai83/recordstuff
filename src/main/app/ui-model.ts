@@ -202,6 +202,8 @@ export interface AppContext {
   library?: LibraryState;
   /** The edit view, while a recording is being edited (plan 085). */
   editor?: EditorView;
+  /** The recordings that hold an edit, by path, with the size their edit was made for (EditStore `edited`). */
+  editedRecordings?: ReadonlyMap<string, number>;
   /** The running app's version, shown beside the credit in Settings. */
   version?: string;
   quality: QualitySettings;

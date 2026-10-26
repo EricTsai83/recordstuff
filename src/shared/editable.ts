@@ -285,6 +285,18 @@ export function fitScene(scene: EditScene, description: EditableDescription, dur
   return fitted;
 }
 
+/**
+ * Whether two scenes, each fitted (`fitScene`), say the same: the same values, whatever order their keys were written
+ * in. An edit whose scene is the recording's own and that removes nothing is no edit (2026-10-26: its record goes, so
+ * the Recordings tab marks only recordings that hold one).
+ */
+export function sameScene(a: EditScene, b: EditScene): boolean {
+  const plain = (value: unknown): unknown => Array.isArray(value) ? value.map(plain)
+    : isRecord(value) ? Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined).map((key) => [key, plain(value[key])]))
+      : value;
+  return JSON.stringify(plain(a)) === JSON.stringify(plain(b));
+}
+
 /** What the engine's rendered export takes (export_api.rs `ExportRender`). */
 export interface ExportRender {
   /** The bubble to compose, in the camera layout's fractions; absent leaves the camera out. */

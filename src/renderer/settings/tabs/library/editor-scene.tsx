@@ -23,6 +23,7 @@ import type { EditorView } from "../../../../shared/editing";
 import { cameraShownAt, cameraStretches, volumeStretchesOf, type EditableSound, type EditScene, type SceneCamera, type VolumeInput } from "../../../../shared/editable";
 import { translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
+import { Kbd } from "../../../components/ui/kbd";
 import { ControlTooltip } from "../../../components/control-tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Slider } from "../../../components/ui/slider";
@@ -371,9 +372,9 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
   const editable = editor.editable;
   const scene = editable && model.editorScene(editor);
   const name = model.text("Options");
+  const busy = editor.export.phase === "exporting", original = model.isOriginal(editor);
   return (
     <>
-      <span className="editor-divider" aria-hidden="true" />
       <Popover>
         <PopoverTrigger render={<Button variant="ghost" size="sm" />} id="editor-options" className="editor-options-button">
           <SlidersHorizontal aria-hidden="true" />
@@ -391,6 +392,17 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
             </div>
             {editable && scene && <SceneControls editor={editor} editable={editable} scene={scene} />}
             {editable && scene && <LaneControls editor={editor} scene={scene} />}
+            {/* Last, apart from the rest (2026-10-26, the maintainer's request): the whole edit undone in one step. */}
+            <div className="editor-options-revert">
+              <Button id="editor-revert" variant="ghost" size="sm" aria-disabled={busy || original} aria-describedby="editor-revert-note"
+                onClick={() => { if (!busy && !original) void model.revertToOriginal(); }}>
+                <RotateCcw aria-hidden="true" />
+                {model.text("Revert to original recording")}
+              </Button>
+              <p id="editor-revert-note" className="editor-options-note">
+                {model.text(original ? "Nothing is edited yet." : "Keeps every part again and puts everything back as recorded. Undo takes it back.")}
+              </p>
+            </div>
           </div>
         </PopoverContent>
       </Popover>
@@ -521,6 +533,7 @@ export function VolumeButton({ editor }: { editor: EditorView }) {
         >
           <Volume2 aria-hidden="true" />
           <span className="editor-camera-toggle-label">{model.text("Volume")}</span>
+          <Kbd aria-hidden="true">V</Kbd>
         </PopoverTrigger>
       </ControlTooltip>
       <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto gap-0 p-3" aria-label={model.text("Volume of the selection")}>

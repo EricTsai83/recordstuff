@@ -238,7 +238,8 @@ test("the handles trim the start and the end, a drag across the timeline removes
   await expect(page.locator("#editor-remove")).toHaveAccessibleName("Remove selection");
   // The range's readout has a row of its own: the buttons, Export among them, stay where they were.
   expect((await page.locator("#editor-export").boundingBox())!.y).toBeCloseTo(exportY, 0);
-  await expect(page.locator(".editor-position")).toHaveText(/^Selection 0:0\d\.\d\d–0:0\d\.\d\d \(0:01\.\d\d\)$/);
+  // The range's length leads its floating actions over the timeline (2026-10-26, B′).
+  await expect(page.locator(".editor-selection-length")).toHaveText(/^0:01\.\d\d$/);
   await page.locator("#editor-remove").click();
   await expect(page.locator(".editor-range")).toHaveCount(0);
   await expect(page.locator(".editor-part[data-removed]")).toHaveCount(3);
@@ -592,23 +593,23 @@ test("an editable recording's camera is dragged into place, its microphone turne
   expect(await eventually(() => record().scene?.volumes?.system === 100)).toBe(true);
 
   // Reset, in the popup, puts the camera and the volumes back as recorded; Undo takes it back, Redo makes it again.
+  // Nothing removed and the scene as recorded is no edit: its record goes (2026-10-26, the card's Edited mark with it).
   await page.locator("#editor-options").click();
   await page.locator("#editor-scene-reset").click();
-  const recorded = { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 100 } };
-  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
+  expect(await eventually(() => record().scene === undefined)).toBe(true);
   await expect(page.locator("#editor-scene-reset")).toBeDisabled();
   await page.keyboard.press("Escape");
   await page.locator("#editor-undo").click();
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
   await page.locator("#editor-redo").click();
-  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
+  expect(await eventually(() => record().scene === undefined)).toBe(true);
   await expect(page.locator("#editor-redo")).toBeDisabled();
   // And by the keyboard: ⌘Z / Ctrl+Z, then ⇧⌘Z / Ctrl+Shift+Z.
   await page.locator("#editor-undo").focus();
   await page.keyboard.press("ControlOrMeta+z");
   expect(await eventually(() => record().scene?.volumes?.microphone === 95)).toBe(true);
   await page.keyboard.press("ControlOrMeta+Shift+z");
-  expect(await eventually(() => JSON.stringify(record().scene) === JSON.stringify(recorded))).toBe(true);
+  expect(await eventually(() => record().scene === undefined)).toBe(true);
   await page.keyboard.press("Escape");
 });
 
@@ -629,7 +630,8 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   await expect(stretches).toHaveCount(1);
   await expect(stretches.first()).toHaveAccessibleName(/^0:00\.0 to 0:0\d\.\d, camera shown$/);
   const toggle = page.locator("#editor-camera-toggle");
-  await expect(toggle).toHaveAttribute("aria-disabled", "true");
+  // Nothing chosen: the camera's button floats over a selection only (2026-10-26, B′).
+  await expect(toggle).toHaveCount(0);
 
   // The lane sits under the pictures, inside the panel, the trim handles beside the pictures only.
   const pictures = (await page.locator(".editor-timeline").boundingBox())!;
@@ -701,7 +703,8 @@ test("an editable recording's camera is hidden over a dragged range, shown again
   await expect(page.locator('.editor-camera-lane[data-lane="camera"] .editor-camera-range')).not.toHaveAttribute("data-outline", "true");
   await expect(page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-range')).toHaveAttribute("data-outline", "true");
   await page.keyboard.press("c");
-  expect(await eventually(() => record().version === 2 && record().scene?.camera?.hidden === undefined && record().scene?.camera?.shown === true)).toBe(true);
+  // Shown throughout again, with nothing removed, the edit changes nothing: its record goes (2026-10-26).
+  expect(await eventually(() => record().scene === undefined)).toBe(true);
   await expect(stretches).toHaveCount(1);
 
   // Undo hides it over the stretch again.
@@ -737,7 +740,8 @@ test("an editable recording's microphone is muted over a dragged range from the 
   const microphone = page.locator('.editor-camera-lane[data-lane="microphone"] .editor-camera-stretch');
   await expect(microphone).toHaveCount(1);
   await expect(page.locator('.editor-camera-lane[data-lane="system"] .editor-camera-stretch')).toHaveCount(1);
-  await expect(page.locator("#editor-volume")).toHaveAttribute("aria-disabled", "true");
+  // Nothing chosen: Volume floats over a selection only (2026-10-26, B′).
+  await expect(page.locator("#editor-volume")).toHaveCount(0);
 
   // The lanes under the pictures, the trim handles beside the pictures only.
   const pictures = (await page.locator(".editor-timeline").boundingBox())!;
@@ -864,4 +868,38 @@ test("the toolbar keeps one row as the camera button turns, the hidden camera's 
   const rows = await page.locator("#editor-volume-popup .editor-volume-row > span:first-child").allTextContents();
   expect(rows).toEqual(["Microphone", "System audio"]);
   await page.keyboard.press("Escape");
+});
+
+test("a selection's actions float over the line above the timeline, words where there is room and icons where there is not, never past it (2026-10-26, B′)", async () => {
+  const description = { version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: false } };
+  fs.writeFileSync(`${clip}.editable.json`, JSON.stringify(description));
+  await openEditor();
+  await expect(page.locator("#editor-camera")).toBeVisible();
+  for (const width of [960, 420]) {
+    await page.setViewportSize({ width, height: 760 });
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+    await page.waitForTimeout(200);
+    const line = (await page.locator(".editor-action-row").boundingBox())!;
+    const pictures = (await page.locator(".editor-timeline").boundingBox())!;
+    await page.mouse.move(pictures.x + pictures.width * 0.6, pictures.y + pictures.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(pictures.x + pictures.width * 0.9, pictures.y + pictures.height / 2, { steps: 8 });
+    await page.mouse.up();
+    const actions = page.locator("#editor-selection-actions");
+    await expect(actions).toBeVisible();
+    // The line keeps its height with the actions on it, and they stay within it.
+    expect((await page.locator(".editor-action-row").boundingBox())!.height).toBeCloseTo(line.height, 0);
+    const box = (await actions.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(line.x - 0.5);
+    expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 0.5);
+    // Wide, in words beside the export's length; narrow, icons and keys alone over the line, still named.
+    if (width === 960) {
+      await expect(actions).not.toHaveAttribute("data-compact");
+      const length = (await page.locator(".editor-action-row .editor-length").boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(length.x);
+    } else await expect(actions).toHaveAttribute("data-compact", "true");
+    await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
+    await page.keyboard.press("Escape");
+    await expect(actions).toHaveCount(0);
+  }
 });

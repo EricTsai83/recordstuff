@@ -54,8 +54,10 @@ it("mutes the microphone over a part from the Volume popup, sets the system's th
   expect(lane("microphone")).toEqual(["0:00.0 to 0:10.0, Microphone at its volume"]);
   expect(document.querySelector('.editor-camera-lane[data-lane="camera"]')).toBeNull();
   expect(document.getElementById("editor-camera-toggle")).toBeNull();
-  // Nothing selected: the button waits, and V says what to choose.
-  expect(document.getElementById("editor-volume")!.getAttribute("aria-disabled")).toBe("true");
+  // Nothing selected: the selection's actions, Volume among them, are not there (2026-10-26, B′), and V says what to
+  // choose.
+  expect(document.getElementById("editor-selection-actions")).toBeNull();
+  expect(document.getElementById("editor-volume")).toBeNull();
   key("v");
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Select a part or drag across the timeline, then set its volume (V)"));
   expect(document.getElementById("editor-volume-popup")).toBeNull();
@@ -64,7 +66,7 @@ it("mutes the microphone over a part from the Volume popup, sets the system's th
   const video = document.querySelector<HTMLVideoElement>("#editor .pc video")!;
   video.currentTime = 4;
   key("s");
-  await vi.waitFor(() => expect(document.getElementById("editor-volume")!.getAttribute("aria-disabled")).toBe("false"));
+  await vi.waitFor(() => expect(document.getElementById("editor-volume")?.getAttribute("aria-disabled")).toBe("false"));
   key("v");
   await vi.waitFor(() => expect(document.getElementById("editor-volume-popup")).not.toBeNull());
   expect(document.getElementById("editor-volume-popup")!.textContent).toContain("Volume from 0:04.0 to 0:10.0");

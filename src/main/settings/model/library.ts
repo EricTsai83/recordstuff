@@ -52,6 +52,8 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
         ...(file.editable ? { editable: t("Editable", language) } : {}),
+        // Holds an edit made for the file as it is (2026-10-26, the maintainer's request).
+        ...(ctx.editedRecordings?.get(file.path) === file.size ? { edited: t("Edited", language) } : {}),
       };
     }),
     ...(library.folders?.length ? { folders: library.folders.map(({ name, empty }) => ({ name, empty })) } : {}),

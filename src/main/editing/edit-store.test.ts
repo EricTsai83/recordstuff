@@ -97,6 +97,33 @@ describe("edit records", () => {
     expect(fs.existsSync(recording)).toBe(true);
   });
 
+  it("are listed by recording, kept by saves, discards and moves, and read once at launch (2026-10-26)", async () => {
+    const saved = await record();
+    await store.save(saved);
+    expect([...store.edited()]).toEqual([[recording, saved.source.size]]);
+    const moved = path.join(dir, "Talk.mp4");
+    fs.renameSync(recording, moved);
+    await store.moved(recording, moved);
+    expect([...store.edited().keys()]).toEqual([moved]);
+    // Read again by a new store; files that are not records, or are unreadable, are left out.
+    fs.writeFileSync(path.join(dir, "edits", "exports-in-flight.json"), "[]");
+    fs.writeFileSync(path.join(dir, "edits", `${"0".repeat(32)}.json`), "{");
+    const launched = new EditStore(path.join(dir, "edits"));
+    await launched.scan();
+    expect([...launched.edited().keys()]).toEqual([moved]);
+    await launched.discard(moved);
+    expect(launched.edited().size).toBe(0);
+  });
+
+  it("are read at launch in the writes' queue, so a discard made meanwhile is not undone by it (review of 2026-10-26)", async () => {
+    await store.save(await record());
+    const launched = new EditStore(path.join(dir, "edits"));
+    const scanned = launched.scan();
+    const discarded = launched.discard(recording);
+    await Promise.all([scanned, discarded]);
+    expect(launched.edited().size).toBe(0);
+  });
+
   it("follow a recording renamed or moved, when it is the same file", async () => {
     const saved = await record();
     await store.save(saved);

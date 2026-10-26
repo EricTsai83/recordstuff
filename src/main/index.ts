@@ -425,6 +425,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   // What a crash left, in the journal's own queue: an export started meanwhile is journalled after it.
   void editing.removeLeftovers();
+  // Which recordings hold an edit, for the Recordings tab's mark.
+  void editing.scanEdits().then(() => settingsWindow.refresh(), () => undefined);
   void editing.removePreviews();
   editingPreview = (request) => editing.previewResponse(request);
 
@@ -613,6 +615,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     version: app.getVersion(),
     library: library.state,
     ...(() => { const editor = editing.view(); return editor ? { editor } : {}; })(),
+    editedRecordings: editing.edited(),
     quality: quality(),
     countdown: countdownSeconds(),
     countdownSound: countdownSound(),

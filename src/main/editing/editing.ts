@@ -27,7 +27,7 @@ import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { translate, type Language, type PlainMessageKey } from "../../shared/i18n";
 import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type PreviewTrack } from "../../shared/editing";
-import { defaultScene, exportRender, fitScene, parseEditableDescription, type EditableDescription, type EditScene } from "../../shared/editable";
+import { defaultScene, exportRender, fitScene, parseEditableDescription, sameScene, type EditableDescription, type EditScene } from "../../shared/editable";
 import { fileResponse } from "../lib/file-response";
 import { editRecord, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
 import { ExportFailure } from "./export-host";
@@ -606,8 +606,12 @@ export class Editing {
     const description = open.editable?.description;
     const nextScene = description ? (scene ? fitScene(scene, description, plan.duration) : this.sceneOf(open, description)) : undefined;
     const record = editRecord({ source: open.identity, timescale: plan.timescale, removed: snapped, revision: open.record.revision + 1, scene: nextScene });
+    // Nothing removed and the scene the recording's own: no edit is left, so its record goes rather than stay as an
+    // edit that changes nothing (2026-10-26: the Recordings tab marks a recording that holds one). The revision goes
+    // on in the view, so Undo saves it again.
+    const original = snapped.length === 0 && (!description || !nextScene || sameScene(nextScene, fitScene(defaultScene(description), description, plan.duration)));
     try {
-      await this.deps.store.save(record);
+      await (original ? this.deps.store.discard(open.path) : this.deps.store.save(record));
     } catch (cause) {
       this.deps.log(`editing: the edit of ${open.path} could not be saved: ${String(cause)}`);
       if (this.open !== open) return false;
@@ -782,8 +786,19 @@ export class Editing {
    * A recording was renamed or moved to a category: its edit follows it. (Neither can happen while its edit view is
    * open, which is modal; a recording moved in Finder leaves the listing, and the page closes its view.)
    */
+  /** Reads which recordings hold an edit, once at launch (EditStore `scan`). */
+  scanEdits(): Promise<void> {
+    return this.deps.store.scan();
+  }
+
+  /** The recordings that hold an edit, by path, with the size their record was made for. */
+  edited(): ReadonlyMap<string, number> {
+    return this.deps.store.edited();
+  }
+
   moved(from: string, to: string): void {
-    void this.deps.store.moved(from, to).catch((cause: unknown) => this.deps.log(`editing: the edit of ${from} did not follow it to ${to}: ${String(cause)}`));
+    // Settings draws again once it has, so the card at its new path is marked Edited (review of 2026-10-26).
+    void this.deps.store.moved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edit of ${from} did not follow it to ${to}: ${String(cause)}`));
   }
 
   private journalling: Promise<void> = Promise.resolve();
