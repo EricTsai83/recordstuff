@@ -2937,27 +2937,37 @@
   /* The lanes are one block under the pictures, each a hair apart from the next (2026-10-26, the maintainer's review:
      they share one clock, so the gaps between them only took height from them): taller in the same room. */
   .editor-trimmer[data-lane] {
-    --lane: 22px;
-    --lane-gap: 4px;
+    --lane: 24px;
+    /* Under the pictures with no gap (the maintainer's request the same day): one block, one playhead line through it. */
+    --lane-gap: 0px;
+  }
+  .editor-trimmer[data-lane] .editor-timeline {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
   .editor-trimmer[data-lane] .editor-trim {
     bottom: calc(var(--lane-gap) + var(--lanes, 1) * var(--lane));
   }
+  /* Sides and foot only: the pictures' own edge is the block's top, and the lines between lanes are drawn inside them,
+     under the playhead, so its line runs unbroken from the pictures down. */
   .editor-camera-lane {
-    --lane-edge: color-mix(in oklab, var(--foreground) 22%, transparent);
+    --lane-edge: var(--input);
     position: relative;
     height: var(--lane);
     margin-top: var(--lane-gap);
     border: 1px solid var(--lane-edge);
-    border-bottom: 0;
-    border-radius: 4px 4px 0 0;
+    border-block: 0;
     overflow: hidden;
     touch-action: none;
   }
-  .editor-camera-lane + .editor-camera-lane {
-    margin-top: 0;
-    border-top-color: color-mix(in oklab, var(--foreground) 12%, transparent);
-    border-radius: 0;
+  .editor-camera-lane + .editor-camera-lane::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    height: 1px;
+    background: color-mix(in oklab, var(--foreground) 12%, transparent);
+    pointer-events: none;
   }
   .editor-camera-lane:not(:has(+ .editor-camera-lane)) {
     border-bottom: 1px solid var(--lane-edge);
@@ -3210,14 +3220,16 @@
     background: color-mix(in oklab, var(--media-foreground) 26%, transparent);
     box-shadow: inset 0 0 0 2px var(--media-foreground), 0 0 0 1px var(--media-scrim);
   }
+  /* As the pictures' playhead, so the two read as one line through the block. */
   .editor-camera-playhead {
     position: absolute;
     top: 0;
     bottom: 0;
     z-index: 3;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--foreground);
+    width: 3px;
+    margin-left: -1.5px;
+    background: var(--media-foreground);
+    box-shadow: 0 0 0 1px var(--media-scrim);
     pointer-events: none;
   }
   /* The ruler's times under a band the playhead's mark has to itself (2026-10-26: the mark sat on the times). */
