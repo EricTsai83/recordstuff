@@ -3003,12 +3003,14 @@
     color: var(--foreground);
     cursor: pointer;
   }
-  /* A stretch the edit has not set is the lane's own ground, no box of its own, so the lanes read as one block; a set
-     one (hidden, muted, a volume of its own) keeps its outline. As light as the base rule, so :hover still outlines it
+  /* A stretch the edit has not set is the lane's own ground, one shade in every lane, no box of its own, so the lanes
+     read as one block; a set one (hidden, muted, a volume of its own) keeps its outline. As light as the base rule, so :hover still outlines it
      (review of 2026-10-26). */
   .editor-camera-stretch:where(:not([data-hidden]):not([data-custom])) {
     border-radius: 0;
+    background: color-mix(in oklab, var(--foreground) 8%, transparent);
     box-shadow: none;
+    color: color-mix(in oklab, var(--foreground) 85%, transparent);
   }
 
   .editor-camera-stretch svg {
@@ -3176,12 +3178,8 @@
 
   /* An input's lane (2026-10-26): its own volume quiet, a stretch at a volume of its own in the foreground's fill, a
      muted one hatched as a hidden camera is. */
-  /* Its words at the foreground's strength, as the camera lane's (Codex's computer-use round: in the dark theme the
-     muted grey read as disabled). */
-  .editor-volume-stretch:not([data-custom]) {
-    background: color-mix(in oklab, var(--foreground) 6%, transparent);
-    color: color-mix(in oklab, var(--foreground) 85%, transparent);
-  }
+  /* Its ground and words are every lane's (the maintainer's report of 2026-10-26: the camera's lane stood darker than
+     the sounds' under one timeline). */
   .editor-volume-stretch[data-custom]:not([data-hidden]) {
     background: color-mix(in oklab, var(--foreground) 18%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 35%, transparent);
