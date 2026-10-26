@@ -239,7 +239,9 @@ pub fn plan(video: &VideoTrack, audio: Option<&AudioTrack>, removed: &[(u64, u64
     if parts.is_empty() {
         return Err(error("nothing_kept", "every frame is removed"));
     }
-    let removed = merged.iter().map(|&(a, b)| (time(a), time(b))).collect();
+    // A removal from the first frame is from the recording's start, before which nothing is drawn: a first frame stamped
+    // a little after zero would otherwise leave a sliver the edit view showed as kept (a native round of 2026-10-27).
+    let removed = merged.iter().map(|&(a, b)| (if a == 0 { 0 } else { time(a) }, time(b))).collect();
     let audio = audio.filter(|a| !a.samples.is_empty());
     let (duration, audio) = match audio {
         Some(audio) => {
@@ -467,6 +469,20 @@ mod tests {
         assert_eq!(plan(&v, None, &[(10, 5)], JoinRule::SmartCut).unwrap_err().code, "invalid_range");
         let many: Vec<(u64, u64)> = (0..MAX_RANGES as u64 + 1).map(|n| (n * 10, n * 10 + 5)).collect();
         assert_eq!(plan(&v, None, &many, JoinRule::SmartCut).unwrap_err().code, "too_many_ranges");
+    }
+
+    #[test]
+    fn a_removed_head_starts_at_zero_though_the_first_frame_is_stamped_later() {
+        let mut v = video(150, 3000, 30);
+        for t in &mut v.times {
+            *t += 1500;
+        }
+        let p = plan(&v, None, &[(0, 30 * 3000 + 1500)], JoinRule::SmartCut).unwrap();
+        assert_eq!(p.removed, [(0, 30 * 3000 + 1500)]);
+        assert_eq!(p.parts[0].first, 30);
+        // Removed from inside, it keeps the frame's own start.
+        let p = plan(&v, None, &[(10 * 3000 + 1500, 30 * 3000 + 1500)], JoinRule::SmartCut).unwrap();
+        assert_eq!(p.removed, [(10 * 3000 + 1500, 30 * 3000 + 1500)]);
     }
 
     #[test]
