@@ -132,16 +132,7 @@ export function canRedo(): boolean {
 export async function openEditor(item: LibraryItemView): Promise<void> {
   forgetMenu();
   editingItem = item;
-  exportWatched = undefined;
-  enlarged = false;
-  splits = [];
-  selectedFrom = undefined;
-  rangeSelection = undefined;
-  undoStack.length = 0;
-  redoStack.length = 0;
-  sceneDraft = undefined;
-  editorPreviewError = "";
-  dropReload();
+  resetViewState();
   // The dialog keeps its player between views: one that failed last time loads again rather than stay broken.
   if (editorVideo?.error && editingItem.video === editorVideo.getAttribute("src")) editorVideo.load();
   draw();
@@ -252,8 +243,11 @@ async function saved(): Promise<void> {
   }
 }
 
-function finishClose(item: LibraryItemView, restore: boolean): void {
-  editingItem = undefined;
+/**
+ * What one recording's view holds and the next must not inherit: its selection, splits, undo, draft, panels, preview
+ * error and a refusal still showing (one made just before closing read over the next recording's view).
+ */
+function resetViewState(): void {
   editorPreviewError = "";
   dropReload();
   volumeOpen = false;
@@ -266,6 +260,14 @@ function finishClose(item: LibraryItemView, restore: boolean): void {
   undoStack.length = 0;
   redoStack.length = 0;
   sceneDraft = undefined;
+  refusal = undefined;
+  clearTimeout(refusalTimer);
+  refusalTimer = undefined;
+}
+
+function finishClose(item: LibraryItemView, restore: boolean): void {
+  editingItem = undefined;
+  resetViewState();
   draw();
   void window.settings.choose(`recordingEdit:${item.id}`, { action: "close" } satisfies EditorChoice).then((result) => render(result.view), () => undefined);
   if (restore) focus(`clip-${item.id}-open`);
