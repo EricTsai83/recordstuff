@@ -919,6 +919,25 @@ test("a selection's actions float over the line above the timeline, words where 
       await expect(page.locator("#editor-camera-toggle .editor-camera-toggle-label")).toBeVisible();
       if (width === 960) await expect(actions).not.toHaveAttribute("data-compact");
     } else await expect(page.locator("#editor-remove .editor-remove-label")).toBeVisible();
+    // The part after a split offers Join previous; with it the actions are measured afresh and still fit the line
+    // (review of 2026-10-26).
+    if (width === 560) {
+      await page.keyboard.press("Escape");
+      await page.mouse.click(pictures.x + pictures.width * 0.4, pictures.y + pictures.height / 2);
+      await page.keyboard.press("s");
+      await expect(page.locator("#editor-join")).toBeVisible();
+      await expect.poll(async () => {
+        const over = (await actions.boundingBox())!, row = (await page.locator(".editor-action-row").boundingBox())!;
+        return over.x >= row.x - 0.5 && over.x + over.width <= row.x + row.width + 0.5;
+      }).toBe(true);
+      await page.locator("#editor-join").click();
+      await expect(page.locator("#editor-join")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await page.mouse.move(pictures.x + pictures.width * 0.6, pictures.y + pictures.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(pictures.x + pictures.width * 0.9, pictures.y + pictures.height / 2, { steps: 8 });
+      await page.mouse.up();
+    }
     await expect(page.locator("#editor-camera-toggle")).toHaveAccessibleName("Hide camera in selection");
     // The action under the pointer marks the tracks it changes (2026-10-26, the maintainer's choice): Remove every one,
     // the camera's button its lane, Volume the sounds'; nothing marked once the pointer leaves.

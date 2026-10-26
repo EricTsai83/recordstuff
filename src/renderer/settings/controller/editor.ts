@@ -641,6 +641,36 @@ function splitNow(at: number): void {
   draw();
 }
 
+/**
+ * Whether the selected part can join the one before it (2026-10-26, the maintainer's request: a split had no way back
+ * but Undo, and only while it was the last change): when it starts at a split of the timeline's own and the two read
+ * as one part without it. A boundary a cut makes is not a split, so it stays.
+ */
+export function canJoinPrevious(editor: EditorView): boolean {
+  const part = rangeSelection ? undefined : selectedPart(editor);
+  if (!part || !splits.includes(part.from)) return false;
+  return timelineParts(editor, splits.filter((at) => at !== part.from)).length < timelineParts(editor).length;
+}
+
+/** Joins the selected part to the one before it, its split gone, as one step Undo takes back; the joined part chosen. */
+export function joinPrevious(): Promise<void> {
+  return inTurn(async () => {
+    while (editorSaving) await saveDone;
+    const editor = editorView();
+    if (!editor || editor.state !== "ready" || editor.export.phase === "exporting" || !canJoinPrevious(editor)) return;
+    const part = selectedPart(editor)!;
+    undoStack.push(current(editor));
+    redoStack.length = 0;
+    splits = splits.filter((at) => at !== part.from);
+    const joined = partAt(timelineParts(editor), Math.max(0, part.from - 1));
+    selectedFrom = joined?.from;
+    announce(translate("Joined to the part before, from {from} to {to}", view?.language, {
+      from: clock((joined?.from ?? 0) / editor.timescale), to: clock((joined?.to ?? part.to) / editor.timescale),
+    }));
+    draw();
+  });
+}
+
 /** Removes the selected part, or keeps it again when it was removed. */
 export function toggleSelected(): Promise<void> {
   return inTurn(toggleNow);

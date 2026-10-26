@@ -10,7 +10,7 @@
  * (2026-10-26): its own volume, or a stretch's (muted, or a percent), set over the selection by the Volume popup (V).
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
-import { ChevronLeft, ChevronRight, Keyboard, Mic, MicOff, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Keyboard, Merge, Mic, MicOff, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import type { EditorView, EditRange } from "../../../../shared/editing";
@@ -398,8 +398,10 @@ function targetOf(target: EventTarget | null): "all" | "camera" | "sound" | unde
  * first, rising into the room above the line rather than over the toolbar. Always as tall, so nothing below it moves as
  * a selection comes and goes; the actions keep clear of the times.
  */
-function EditorActionRow({ editor, track, span, lane, position, length, shortPosition, shortLength, onTarget, children }: {
-  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; lane: model.Lane | undefined; position: string;
+function EditorActionRow({ editor, track, span, lane, actions: actionsKey, position, length, shortPosition, shortLength, onTarget, children }: {
+  editor: EditorView; track: RefObject<HTMLDivElement | null>; span: EditRange | undefined; lane: model.Lane | undefined;
+  /** Which actions it holds, so a change to them (Join previous coming or going) measures them afresh in words. */
+  actions: string; position: string;
   length: string; shortPosition: string; shortLength: string; onTarget: (target: "all" | "camera" | "sound" | undefined) => void; children: ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), tail = useRef<HTMLSpanElement>(null);
@@ -438,10 +440,13 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
       // 2026-10-26), over a lane or over the pictures alike.
       const edge = laneBox ? laneBox.top : trackBox.top;
       setRise(Math.round(lineBox.bottom - edge) + CARET - CARET_OVERLAP);
-      if (actions.dataset.compact === undefined) {
-        wide.current = actions.offsetWidth;
-        lengthWide.current = actions.querySelector<HTMLElement>(".editor-selection-length")?.offsetWidth ?? 0;
-      }
+      // Their width in words, measured every time with any step taken off for the measure (reviews of 2026-10-26: a
+      // width kept from other actions, Join previous coming or going, chose the wrong step), then the step put back.
+      const step = actions.dataset.compact;
+      delete actions.dataset.compact;
+      wide.current = actions.offsetWidth;
+      lengthWide.current = actions.querySelector<HTMLElement>(".editor-selection-length")?.offsetWidth ?? 0;
+      if (step !== undefined) actions.dataset.compact = step;
       // The whole line is theirs: they stand right over the selection, and the times give way only where they meet
       // (the maintainer's review of 2026-10-26: pushed aside for the times, the actions stood away from a selection at
       // the end).
@@ -462,7 +467,7 @@ function EditorActionRow({ editor, track, span, lane, position, length, shortPos
     // Lanes shown or hidden in Options move the one chosen on, or take it away (review of 2026-10-26).
     if (row.current?.parentElement) observer?.observe(row.current.parentElement);
     return () => observer?.disconnect();
-  }, [shown, from, to, editor.duration, track, compact, lane]);
+  }, [shown, from, to, editor.duration, track, compact, lane, actionsKey]);
   return (
     <div ref={row} className="editor-action-row">
       {/* How to reach the selection's actions, while none is chosen (2026-10-26: Remove is there only). */}
@@ -757,6 +762,7 @@ function EditorPanel() {
         // The lane the selection was chosen on: a range's own, else the selected part's (review of 2026-10-26: a lane
         // kept from an earlier range or click put the actions over the wrong track).
         lane={range ? model.rangeLane : selected ? model.partLane : undefined}
+        actions={model.canJoinPrevious(editor) ? "join" : ""}
         position={trimming
           ? translate(trimming === "start" ? "The export starts at {time}" : "The export ends at {time}", language, { time: precise(trim[trimming] / editor.timescale) })
           : translate("Playhead {time}", language, { time: precise(time) })}
@@ -766,6 +772,15 @@ function EditorPanel() {
         shortLength={precise(model.shownOutputSeconds(editor))}
       >
         <RemoveButton id="editor-remove" />
+        {/* A part that starts at a split of the timeline's own joins the one before it (2026-10-26). */}
+        {model.canJoinPrevious(editor) && (
+          <ControlTooltip label={model.text("Join this part to the one before it, taking its split away")}>
+            <Button id="editor-join" variant="ghost" size="sm" aria-label={model.text("Join previous")} aria-disabled={busy} onClick={() => { if (!busy) void model.joinPrevious(); }}>
+              <Merge />
+              <span className="editor-join-label">{model.text("Join previous")}</span>
+            </Button>
+          </ControlTooltip>
+        )}
         {camera && (
           <ControlTooltip label={model.text(allHidden ? "Turn off Hide the camera throughout in Options to hide or show it over a stretch." : showingCamera ? "Show the camera in the selection again (C)" : "Hide the camera in the selection (C)")}>
             <Button

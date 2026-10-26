@@ -3150,6 +3150,7 @@
      buttons' accessible names. */
   /* Remove, the action made most, keeps its name (Codex's computer-use round of 2026-10-26: a lone bin was slow to read). */
   .editor-selection-actions[data-compact] .editor-selection-length,
+  .editor-selection-actions[data-compact="2"] .editor-join-label,
   .editor-selection-actions[data-compact="2"] .editor-camera-toggle-label {
     display: none;
   }

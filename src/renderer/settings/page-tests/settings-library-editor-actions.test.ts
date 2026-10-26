@@ -56,4 +56,17 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   expect(actions.querySelector("#editor-remove")!.getAttribute("aria-disabled")).toBe("false");
   // The hint gives way to the actions (whether the times have room beside them is measured, so the UI tests check it).
   expect(row.querySelector(".editor-select-hint")!.hasAttribute("data-covered")).toBe(true);
+
+  // The part after a split joins the one before it (2026-10-26): the split goes, the joined part is chosen, and Undo
+  // brings the split back. The first part has no split before it, so it offers none.
+  expect(actions.querySelector("#editor-join")!.textContent).toBe("Join previous");
+  click(actions.querySelector<HTMLElement>("#editor-join")!);
+  await vi.waitFor(() => expect(document.querySelectorAll(".editor-part")).toHaveLength(1));
+  expect(document.getElementById("editor-feedback")!.textContent).toBe("Joined to the part before, from 0:00.0 to 0:10.0");
+  await vi.waitFor(() => expect(document.getElementById("editor-join")).toBeNull());
+  document.getElementById("editor-split")!.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelectorAll(".editor-part")).toHaveLength(2));
+  click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[0]!);
+  await vi.waitFor(() => expect(document.getElementById("editor-selection-actions")).not.toBeNull());
+  expect(document.getElementById("editor-join")).toBeNull();
 });
