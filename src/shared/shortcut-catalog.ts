@@ -67,14 +67,15 @@ export function playerKeyAction(
   return undefined;
 }
 
-export type ShortcutCategory = "global" | "window" | "recordings" | "player" | "fullScreen";
-export const SHORTCUT_CATEGORIES: readonly ShortcutCategory[] = ["global", "window", "recordings", "player", "fullScreen"];
+export type ShortcutCategory = "global" | "window" | "recordings" | "player" | "fullScreen" | "editor";
+export const SHORTCUT_CATEGORIES: readonly ShortcutCategory[] = ["global", "window", "recordings", "player", "fullScreen", "editor"];
 export const SHORTCUT_CATEGORY_LABELS: Record<ShortcutCategory, PlainMessageKey> = {
   global: "Anywhere",
   window: "RecordStuff window",
   recordings: "Recordings",
   player: "Player",
   fullScreen: "Full-screen video",
+  editor: "Edit view",
 };
 
 /** Ids main fills in with the user's current choice and registration status. */
@@ -102,7 +103,8 @@ export function shortcutCatalog(platform: string): readonly CatalogShortcut[] {
   return [
     { id: "record", category: "global", label: "Start or stop recording", keys: [DEFAULT_HOTKEY.accelerator] },
     { id: "open", category: "global", label: "Open RecordStuff", keys: [settingsShortcut(platform)] },
-    { id: "close", category: "window", label: "Close the window", keys: [accelerator(CLOSE_KEY), "Escape"] },
+    // Escape closes what is open in the window, never the window itself (2026-10-26, the maintainer's request).
+    { id: "close", category: "window", label: "Close the window", keys: [accelerator(CLOSE_KEY)] },
     { id: "undoTrash", category: "window", label: "Undo Move to Trash", keys: [accelerator(UNDO_KEY)] },
     { id: "zoomIn", category: "window", label: "Zoom In", keys: ["CommandOrControl+Plus"] },
     { id: "zoomOut", category: "window", label: "Zoom Out", keys: ["CommandOrControl+-"] },
@@ -116,6 +118,17 @@ export function shortcutCatalog(platform: string): readonly CatalogShortcut[] {
     { id: "seekPage", category: "player", label: "Forward or back 10 seconds", keys: ["PageUp", "PageDown"], where: "On the seek bar" },
     { id: "seekEnds", category: "player", label: "Jump to the start or end", keys: ["Home", "End"], where: "On the seek bar" },
     { id: "leaveFullScreen", category: "fullScreen", label: "Leave full screen", keys: ["Escape", accelerator(CLOSE_KEY), "F"], gesture: "Double-click" },
+    // The edit view's keys (2026-10-26, the maintainer's request: they were only in the view's own keyboard button),
+    // as editor.tsx binds them.
+    { id: "editPlay", category: "editor", label: "Play or pause", keys: ["Space"] },
+    { id: "editFrame", category: "editor", label: "Move a frame", keys: ["Left", "Right"], where: "On the timeline" },
+    { id: "editSecond", category: "editor", label: "Move a second", keys: ["Shift+Left", "Shift+Right"], where: "On the timeline" },
+    { id: "editSplit", category: "editor", label: "Split", keys: ["S"] },
+    { id: "editRemove", category: "editor", label: "Remove the selection", keys: [platform === "darwin" ? "Backspace" : "Delete"] },
+    { id: "editUndo", category: "editor", label: "Undo", keys: [accelerator(UNDO_KEY)] },
+    { id: "editRedo", category: "editor", label: "Redo", keys: platform === "darwin" ? ["CommandOrControl+Shift+Z"] : ["Control+Y", "Control+Shift+Z"] },
+    { id: "editCamera", category: "editor", label: "Hide or show the camera in the selection", keys: ["C"], where: "In an editable recording" },
+    { id: "editVolume", category: "editor", label: "Set the volume of the selection", keys: ["V"], where: "In an editable recording" },
   ];
 }
 
@@ -124,7 +137,7 @@ export function shortcutCatalog(platform: string): readonly CatalogShortcut[] {
  * a word in the list on macOS too, as its own menus write it: `␣` reads aloud as a symbol, not as a key (review 073).
  */
 const KEY_NAMES: Record<string, string> = {
-  Plus: "+", Escape: "Esc", PageUp: "Page Up", PageDown: "Page Down", Up: "↑", Down: "↓", Left: "←", Right: "→", "␣": "Space",
+  Plus: "+", Escape: "Esc", Backspace: "Delete", PageUp: "Page Up", PageDown: "Page Down", Up: "↑", Down: "↓", Left: "←", Right: "→", "␣": "Space",
 };
 
 /** The keys of one alternative as shown, one per key, with the platform's modifier symbols or names. */

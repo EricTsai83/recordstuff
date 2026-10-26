@@ -1,7 +1,7 @@
 /**
  * The icons Settings rows and section headings carry, by group and section id, and the About links' marks.
  */
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, Clapperboard, Circle, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, Clapperboard, Circle, Scissors, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, Play, Power, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Webcam } from "lucide-react";
 
 const icons = {
   screen: Monitor,
@@ -57,6 +57,7 @@ const sectionIcons = {
   "shortcutList:recordings": Film,
   "shortcutList:player": Play,
   "shortcutList:fullScreen": Maximize,
+  "shortcutList:editor": Scissors,
 };
 export function SectionIcon({ id }: { id: string }) {
   const Icon = sectionIcons[id as keyof typeof sectionIcons];

@@ -32,6 +32,7 @@ const mock = vi.hoisted(() => {
     isFullScreen = () => this.fullScreen;
     getSize = vi.fn(() => [this.options.width, this.options.height]);
     getBounds = () => ({ x: 0, y: 0, width: this.options.width, height: this.options.height });
+    getPosition = vi.fn(() => [this.options.x, this.options.y]);
     loadFile = vi.fn(() => load());
     loadURL = vi.fn(() => load());
     destroyed = false;
@@ -806,6 +807,37 @@ describe("settings window size", () => {
     saved.panel.show();
     expect(saved.window().options).toMatchObject({ width: 1440, height: 900 });
     saved.panel.destroy();
+  });
+  it("opens where it was last, on the display it lay on, and centred when that display has gone (2026-10-26)", async () => {
+    const { screen } = await import("electron");
+    const portrait = { x: -1080, y: -400, width: 1080, height: 1895 };
+    const matching = vi.spyOn(screen, "getDisplayMatching").mockReturnValue({ bounds: portrait, workArea: portrait } as never);
+    vi.useFakeTimers();
+    try {
+      const geometry = { size: { width: 1060, height: 1400 }, save: vi.fn(), position: { x: -1070, y: -117 } as { x: number; y: number } | undefined,
+        savePosition: vi.fn((place: { x: number; y: number }) => { geometry.position = place; }) };
+      const s = setup({ geometry }); s.panel.show();
+      const last = () => mock.windows.at(-1)!;
+      // On the portrait display, at its place and size, not centred on the display under the pointer.
+      expect(s.window().options).toMatchObject({ x: -1070, y: -117, width: 1060, height: 1400 });
+      // A move is saved once it settles, and the place again as the window closes.
+      s.window().getPosition.mockReturnValue([-1000, -100]); s.window().events.get("move")!();
+      expect(geometry.savePosition).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(250);
+      expect(geometry.savePosition).toHaveBeenCalledExactlyOnceWith({ x: -1000, y: -100 });
+      s.window().getPosition.mockReturnValue([-990, -90]);
+      s.window().close();
+      expect(geometry.savePosition).toHaveBeenLastCalledWith({ x: -990, y: -90 });
+      // A zoomed window's place is not saved.
+      s.panel.show(); last().isMaximized.mockReturnValue(true); last().getPosition.mockReturnValue([0, 0]);
+      last().close();
+      expect(geometry.position).toEqual({ x: -990, y: -90 });
+      // The display gone: the window opens centred on the display under the pointer, as a new window does.
+      matching.mockReturnValue({ bounds: { x: 0, y: 0, width: 1440, height: 900 }, workArea: { x: 0, y: 0, width: 1440, height: 900 } } as never);
+      s.panel.show();
+      expect(last().options).toMatchObject({ x: 190, y: 0, width: 1060, height: 900 });
+      s.panel.destroy();
+    } finally { vi.useRealTimers(); matching.mockRestore(); }
   });
   it("debounces resize writes and flushes the final size before closing/reopening", () => {
     vi.useFakeTimers();

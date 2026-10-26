@@ -101,11 +101,9 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     document.getElementById("tab-library")!.focus();
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect([state()[0], close.mock.calls.length]).toEqual(["closed", 0]);
-    // The next Escape, with nothing else open, asks before it hides the window (2026-10-26); the one after hides it.
+    // The next Escape, with nothing else open, leaves the window as it is: Escape never closes it (2026-10-26).
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     expect(close).not.toHaveBeenCalled();
-    document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-    expect(close).toHaveBeenCalledTimes(1);
 
     // A newer trash while the last toast is still sliding out shows a toast of its own, which stays (review of
     // 2026-10-07, [1]): it must not inherit the leaving toast's removal.

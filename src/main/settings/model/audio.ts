@@ -18,7 +18,11 @@ export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
   const microphone = ctx.microphone ?? { enabled: false };
   const result: Group = { ...group("microphone", t("Microphone", language), enabled,
     switchChoices(language, microphone.enabled, (value) => ({ setMicrophone: value }))),
-  info: t("Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.", language) };
+  // An editable recording keeps the microphone on a track of its own (plan 087), so the note says so rather than
+  // "one track" (Codex's computer-use round of 2026-10-26 found the two notes contradicting each other).
+  info: t(ctx.editableRecording
+    ? "Kept on a track of its own while Editable recordings is on, so its volume can be set after recording. Use headphones so the microphone does not record your speakers a second time."
+    : "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.", language) };
   if (ctx.platform !== "darwin") return result;
   const refused = microphone.access === "denied" || microphone.access === "restricted";
   // Off because macOS refused it (a refusal turns the switch off, 2026-10-26): said, with the pane that allows it,

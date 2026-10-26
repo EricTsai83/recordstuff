@@ -5,6 +5,8 @@ import { drainQueue } from "../lib/drain-queue";
 import { errnoCode } from "../lib/errors";
 
 export interface WindowSize { width: number; height: number }
+/** Where the window's top-left corner was, in the screen's points (any display's, so either sign). */
+export interface WindowPosition { x: number; y: number }
 /**
  * Room for the sidebar beside three recording cards in a row and unhurried settings rows (2026-10-04);
  * narrower windows put the tabs on top. A smaller work area still fits it down (`fitSettingsSize`).
@@ -19,6 +21,12 @@ function validSize(value: unknown): value is WindowSize {
   return Number.isSafeInteger(size.width) && size.width > 0 && Number.isSafeInteger(size.height) && size.height > 0;
 }
 
+function validPosition(value: unknown): value is WindowPosition {
+  if (!value || typeof value !== "object") return false;
+  const place = value as WindowPosition;
+  return Number.isSafeInteger(place.x) && Number.isSafeInteger(place.y);
+}
+
 /** The page's zoom (⌘+ and ⌘-, settings-window.ts `ZOOM_STEPS`); anything outside these bounds reads as 100%. */
 function validZoom(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0.5 && value <= 3;
@@ -31,6 +39,12 @@ export class SettingsWindowState {
   /** The size the file holds, which an older default may keep from opening the window: a zoom saved alone keeps it. */
   private stored: WindowSize | undefined;
   private currentZoom = 1;
+  /**
+   * Where the window was last (2026-10-26, the maintainer's request: closed and opened again it came back centred on the
+   * display under the pointer, as a new window, rather than where it was, as macOS's windows do). Written with the
+   * size; a file without it, or an older version's, opens the window centred as before.
+   */
+  private place: WindowPosition | undefined;
   private resetPending = false;
   private backedUp = false;
   private newerOnDisk = false;
@@ -50,6 +64,7 @@ export class SettingsWindowState {
       }
       const zoom = (size as { zoom?: unknown } | null)?.zoom;
       if (validZoom(zoom)) this.currentZoom = zoom;
+      if (validPosition(size)) this.place = { x: size.x, y: size.y };
       const sized = typeof size === "object" && size !== null && ("width" in size || "height" in size);
       if (!sized) return;
       if (!validSize(size)) throw new Error("invalid window size");
@@ -60,6 +75,12 @@ export class SettingsWindowState {
   }
   get size(): WindowSize { return { ...this.current }; }
   get zoom(): number { return this.currentZoom; }
+  get position(): WindowPosition | undefined { return this.place ? { ...this.place } : undefined; }
+  savePosition(position: WindowPosition): void {
+    if (!validPosition(position) || (position.x === this.place?.x && position.y === this.place?.y)) return;
+    this.place = { ...position };
+    this.write("position");
+  }
   save(size: WindowSize): void {
     if (!validSize(size)) return;
     // Remember within this process even if disk is temporarily unavailable.
@@ -72,9 +93,10 @@ export class SettingsWindowState {
     this.currentZoom = zoom;
     this.write("zoom");
   }
-  /** The size the user chose (none yet: the file keeps no size) and the zoom, written together so neither drops the other. */
+  /** The size the user chose (none yet: the file keeps no size), the place and the zoom, written together so none drops another. */
   private write(what: string): void {
-    const snapshot = { layout: LAYOUT, ...(this.stored ? { width: this.stored.width, height: this.stored.height } : {}), ...(this.currentZoom !== 1 ? { zoom: this.currentZoom } : {}) };
+    const snapshot = { layout: LAYOUT, ...(this.stored ? { width: this.stored.width, height: this.stored.height } : {}),
+      ...(this.place ? { x: this.place.x, y: this.place.y } : {}), ...(this.currentZoom !== 1 ? { zoom: this.currentZoom } : {}) };
     this.queue = this.queue.then(async () => {
       if (this.newerOnDisk) throw new Error("Window state is from a newer app version; refusing to overwrite it");
       if (this.resetPending && !this.backedUp) { await keepFile(this.file, "reset-backup"); this.backedUp = true; }
@@ -93,4 +115,19 @@ export function fitSettingsSize(size: WindowSize, workArea: WindowSize): WindowS
     width: Math.min(workArea.width, Math.max(MIN_SETTINGS_SIZE.width, size.width)),
     height: Math.min(workArea.height, Math.max(MIN_SETTINGS_SIZE.height, size.height)),
   };
+}
+
+/**
+ * Where a window of `size` (already fitted) reopens: at `saved` on the display it lies on when at least half of it is
+ * still within that display's work area, nudged wholly inside it; otherwise `undefined`, for the caller's centred
+ * default (a display since unplugged, or rearranged out from under it).
+ */
+export function restoredPosition(saved: WindowPosition | undefined, size: WindowSize,
+  workArea: { x: number; y: number; width: number; height: number }): WindowPosition | undefined {
+  if (!saved) return undefined;
+  const overlapX = Math.min(saved.x + size.width, workArea.x + workArea.width) - Math.max(saved.x, workArea.x);
+  const overlapY = Math.min(saved.y + size.height, workArea.y + workArea.height) - Math.max(saved.y, workArea.y);
+  if (overlapX <= 0 || overlapY <= 0 || overlapX * overlapY < (size.width * size.height) / 2) return undefined;
+  const within = (at: number, length: number, start: number, room: number): number => Math.min(Math.max(at, start), start + room - length);
+  return { x: within(saved.x, size.width, workArea.x, workArea.width), y: within(saved.y, size.height, workArea.y, workArea.height) };
 }

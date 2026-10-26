@@ -474,6 +474,9 @@ export const ZH_TW = {
   "RecordStuff window": "RecordStuff 視窗",
   Player: "播放器",
   "Full-screen video": "全螢幕影片",
+  "Edit view": "編輯",
+  "On the timeline": "在時間軸上",
+  "In an editable recording": "可編輯的錄影",
   "Start or stop recording": "開始或停止錄影",
   "Close the window": "關閉視窗",
   "Undo Move to Trash": "還原「丟到垃圾桶」",
@@ -490,6 +493,8 @@ export const ZH_TW = {
   // The microphone (plan 074).
   Audio: "音訊",
   Microphone: "麥克風",
+  "Kept on a track of its own while Editable recordings is on, so its volume can be set after recording. Use headphones so the microphone does not record your speakers a second time.":
+    "開啟「可編輯錄影」時，麥克風會保存在自己的音軌，錄完後可以單獨調整音量。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
   "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.":
     "與系統音訊混成同一條音軌。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
   "Microphone access is off": "未允許取用麥克風",
@@ -667,9 +672,6 @@ export const ZH_TW = {
     "時間軸上有 {count} 段隱藏相機。選取一段後按 C，即可在那段隱藏或顯示相機。",
   "Camera hidden": "隱藏相機",
   "Include in recordings": "錄影時包含",
-  "Press Esc again to hide the window": "再按一次 Esc 隱藏視窗",
-  "RecordStuff keeps running in the menu bar.": "RecordStuff 會繼續在選單列執行。",
-  "Hide window": "隱藏視窗",
   "Overall volume": "整體音量",
   "Every part of the timeline without a volume of its own plays at these; set one with Volume (V).": "時間軸上沒有自訂音量的部分都套用這裡的音量；要自訂某段，請用「音量」(V)。",
   "Show the {name} lane": "顯示{name}軌",

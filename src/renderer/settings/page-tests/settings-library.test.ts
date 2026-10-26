@@ -183,13 +183,11 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   now.mockReturnValue(1e9 + 500);
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
   expect(close).not.toHaveBeenCalled();
-  // After a pause, Escape reaches the window again: it asks before it hides it (2026-10-26), and the next hides it.
+  // After a pause Escape reaches the window again, which it never closes (2026-10-26).
   now.mockReturnValue(1e9 + 1200);
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
-  expect(close).not.toHaveBeenCalled();
-  document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape", cancelable: true  }));
   now.mockRestore();
-  expect([quick.defaultPrevented, held.defaultPrevented, closesPlayer.defaultPrevented, close.mock.calls.length]).toEqual([true, true, true, 1]);
+  expect([quick.defaultPrevented, held.defaultPrevented, closesPlayer.defaultPrevented, close.mock.calls.length]).toEqual([true, true, true, 0]);
   close.mockClear();
   click(first.querySelector("button")!); player = document.querySelector(".player") ?? player;
   // An entry while it plays (another saved notification) closes it first, then lands on the card (review pass 1, F1).

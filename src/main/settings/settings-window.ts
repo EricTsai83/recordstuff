@@ -8,7 +8,7 @@
  * freshly built model and hands the resulting action to the same handler the
  * tray uses. Closing the window does not quit the menu-bar app.
  */
-import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, type SettingsWindowState, type WindowSize } from "./settings-window-state";
+import { DEFAULT_SETTINGS_SIZE, MIN_SETTINGS_SIZE, fitSettingsSize, restoredPosition, type SettingsWindowState, type WindowPosition, type WindowSize } from "./settings-window-state";
 import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
 import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, ZOOM_STEPS, isFolderChoice, isMoveChoice, isRenameChoice, type FolderChoice, type MoveChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
@@ -48,17 +48,19 @@ export function zoomRequest(input: { type: string; key: string; meta: boolean; c
 /**
  * The one description of the Settings window, for the app and for the Settings fixture alike, so the fixture's
  * screenshots show the window the app opens (same frame, same content size) and cannot drift from it: `size`
- * is fitted to `workArea` and centred in it, and the minimum follows `MIN_SETTINGS_SIZE` within it.
+ * is fitted to `workArea` and placed at `position` when it is given and still on it (`restoredPosition`), else centred
+ * in it, and the minimum follows `MIN_SETTINGS_SIZE` within it.
  */
 export function settingsWindowOptions(options: {
-  platform: NodeJS.Platform; preloadPath: string; title: string; size: WindowSize; workArea: Rectangle;
+  platform: NodeJS.Platform; preloadPath: string; title: string; size: WindowSize; workArea: Rectangle; position?: WindowPosition;
 }): BrowserWindowConstructorOptions & WindowSize {
   const { workArea } = options;
   const size = fitSettingsSize(options.size, workArea);
+  const placed = restoredPosition(options.position, size, workArea);
   return {
     ...size,
-    x: Math.round(workArea.x + (workArea.width - size.width) / 2),
-    y: Math.round(workArea.y + (workArea.height - size.height) / 2),
+    x: placed?.x ?? Math.round(workArea.x + (workArea.width - size.width) / 2),
+    y: placed?.y ?? Math.round(workArea.y + (workArea.height - size.height) / 2),
     minWidth: Math.min(MIN_SETTINGS_SIZE.width, workArea.width),
     minHeight: Math.min(MIN_SETTINGS_SIZE.height, workArea.height),
     show: false,
@@ -90,7 +92,7 @@ export interface SettingsWindowOptions {
    */
   act: (action: AppAction) => Promise<boolean | void>;
   capture?: (armed: boolean) => void;
-  geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom">>;
+  geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom" | "position" | "savePosition">>;
   /** Renames a listed recording (recordings-library.ts `rename`): its new id, or why it was not renamed. */
   rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem }>;
   /** Moves a listed recording into a listed folder, or with `null` into the output folder (recordings-library.ts `move`). */
@@ -376,9 +378,14 @@ export class SettingsWindow {
     // A new window starts from the first page, however far the previous one paged.
     this.historyLimit = HISTORY_PAGE_ROWS;
     const view = this.view();
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    // Where it was last, on the display it lay on (2026-10-26, the maintainer's request); a new window, or one whose
+    // display has gone, opens centred on the display under the pointer, as before.
+    const savedSize = this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, saved = this.options.geometry?.position;
+    const display = saved ? screen.getDisplayMatching({ ...saved, ...savedSize }) : undefined;
+    const position = display && restoredPosition(saved, fitSettingsSize(savedSize, display.workArea), display.workArea) ? saved : undefined;
+    const workArea = position ? display!.workArea : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
     const options = settingsWindowOptions({ platform: process.platform, preloadPath: path.join(__dirname, "../preload/settings.js"),
-      title: view.title, size: this.options.geometry?.size ?? DEFAULT_SETTINGS_SIZE, workArea: display.workArea });
+      title: view.title, size: savedSize, workArea, ...(position ? { position } : {}) });
     const size = { width: options.width, height: options.height };
     const madeAt = performance.now();
     const window = new BrowserWindow(options);
@@ -402,6 +409,16 @@ export class SettingsWindow {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => this.flushSize(), 250);
     });
+    // Where it is, for the next window: saved once a move settles and as it closes; a zoomed or full-screen window's
+    // place is not one to reopen at.
+    const place = (): void => {
+      if (window.isDestroyed() || window.isMinimized() || window.isMaximized() || window.isFullScreen()) return;
+      const [x, y] = window.getPosition();
+      if (x !== undefined && y !== undefined) this.options.geometry?.savePosition?.({ x, y });
+    };
+    let moveTimer: ReturnType<typeof setTimeout> | undefined;
+    window.on("move", () => { clearTimeout(moveTimer); moveTimer = setTimeout(place, 250); });
+    window.on("close", () => { clearTimeout(moveTimer); place(); });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     // `ready-to-show` is the first frame, painted before the page has read its view, so

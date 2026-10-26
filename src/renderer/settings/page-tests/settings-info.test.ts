@@ -70,7 +70,8 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   expect(expanded()).toBe("true");
   info.click();
   expect(expanded()).toBe("false");
-  // Keyboard focus shows it; Escape closes it and leaves the window open, a second Escape closes the window.
+  // Keyboard focus shows it; Escape closes it and leaves the window open, and so does every Escape after it: Escape
+  // never closes the window (2026-10-26).
   info.focus();
   expect(expanded()).toBe("true");
   // The pointer leaving does not close what keyboard focus opened.
@@ -79,12 +80,9 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
   expect(expanded()).toBe("false");
   expect(close).not.toHaveBeenCalled();
-  // The next asks before it hides the window (2026-10-26), the one after hides it.
+  document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
   expect(close).not.toHaveBeenCalled();
-  await vi.waitFor(() => expect(document.getElementById("hide-prompt")).not.toBeNull());
-  document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
-  expect(close).toHaveBeenCalledOnce();
   info.blur();
 
   // A language change relabels it; an explanation that goes away closes and hides it.
@@ -98,8 +96,8 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   expect(info.hidden).toBe(true);
   expect(document.getElementById("setting-countdownSound")!.hasAttribute("aria-describedby")).toBe(false);
 
-  // A rebuild (here another tab) drops an open explanation with its nodes, so the next Escape is the window's: it asks
-  // (2026-10-26), and the one after hides it.
+  // A rebuild (here another tab) drops an open explanation with its nodes; the next Escape finds nothing to close, and
+  // the window stays.
   current = view("en", "The tick is not recorded."); push(current);
   const reopened = document.getElementById("setting-countdownSound-info-button")!;
   reopened.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -107,7 +105,5 @@ it("shows the explanation on hover and focus, pins it on click, closes it with E
   document.getElementById("tab-general")!.click();
   expect(document.getElementById("setting-countdownSound-info-button")).toBeNull();
   document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
-  expect(close).toHaveBeenCalledTimes(1);
-  document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape"  }));
-  expect(close).toHaveBeenCalledTimes(2);
+  expect(close).not.toHaveBeenCalled();
 });

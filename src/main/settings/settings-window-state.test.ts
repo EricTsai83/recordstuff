@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS_SIZE, SettingsWindowState, fitSettingsSize } from "./settings-window-state";
+import { DEFAULT_SETTINGS_SIZE, SettingsWindowState, fitSettingsSize, restoredPosition } from "./settings-window-state";
 let dir: string;
 let file: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-window-")); file = path.join(dir, "settings-window.json"); });
@@ -107,4 +107,31 @@ it("retains old window state after a failed reset and retries on restart", async
   fs.rmSync(`${file}.tmp`, { recursive: true });
   await new SettingsWindowState(file).flush();
   expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ width: 960, height: 640, layout: 3 });
+});
+
+it("remembers where the window was beside its size, and ignores a place that is not one (2026-10-26)", async () => {
+  const store = new SettingsWindowState(file);
+  expect(store.position).toBeUndefined();
+  store.save({ width: 1060, height: 1400 });
+  store.savePosition({ x: -1070, y: -117 });
+  await store.flush();
+  const again = new SettingsWindowState(file);
+  expect([again.size, again.position]).toEqual([{ width: 1060, height: 1400 }, { x: -1070, y: -117 }]);
+  again.savePosition({ x: 1.5, y: 0 });
+  expect(again.position).toEqual({ x: -1070, y: -117 });
+  // A file written before positions were kept opens centred, its size kept.
+  fs.writeFileSync(file, JSON.stringify({ layout: 3, width: 800, height: 600 }));
+  expect([new SettingsWindowState(file).size, new SettingsWindowState(file).position]).toEqual([{ width: 800, height: 600 }, undefined]);
+});
+
+it("reopens at a place still mostly on its display, nudged inside it, and nowhere else", () => {
+  const area = { x: 0, y: 0, width: 1440, height: 900 };
+  const size = { width: 800, height: 600 };
+  expect(restoredPosition({ x: 100, y: 50 }, size, area)).toEqual({ x: 100, y: 50 });
+  // A little past the edge: nudged wholly inside.
+  expect(restoredPosition({ x: 700, y: 400 }, size, area)).toEqual({ x: 640, y: 300 });
+  // Less than half on the display, or none of it: the caller's centred default.
+  expect(restoredPosition({ x: 1100, y: 0 }, size, area)).toBeUndefined();
+  expect(restoredPosition({ x: -2000, y: 0 }, size, area)).toBeUndefined();
+  expect(restoredPosition(undefined, size, area)).toBeUndefined();
 });

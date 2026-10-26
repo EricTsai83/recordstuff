@@ -62,7 +62,8 @@ describe("the shortcut catalog (plan 073)", () => {
   it("lists the window keys the page and main compare", () => {
     const rows = shortcutCatalog("darwin");
     const keysOf = (id: string) => rows.find((row) => row.id === id)!.keys;
-    expect(keysOf("close")).toEqual([`CommandOrControl+${CLOSE_KEY.toUpperCase()}`, "Escape"]);
+    // Escape never closes the window (2026-10-26).
+    expect(keysOf("close")).toEqual([`CommandOrControl+${CLOSE_KEY.toUpperCase()}`]);
     expect(keysOf("undoTrash")).toEqual([`CommandOrControl+${UNDO_KEY.toUpperCase()}`]);
     expect(keysOf("leaveFullScreen")).toContain(`CommandOrControl+${CLOSE_KEY.toUpperCase()}`);
     expect([...keysOf("zoomIn"), ...keysOf("zoomOut"), ...keysOf("zoomReset")].map((key) => key.split("+")[1]))

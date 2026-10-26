@@ -100,6 +100,7 @@ describe("settingsView", () => {
       "shortcutList:recordings",
       "shortcutList:player",
       "shortcutList:fullScreen",
+      "shortcutList:editor",
       "log",
       "localData",
       "about",
@@ -1019,7 +1020,7 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
     ["language", "segmented", "display"], ["appearance", "segmented", "display"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["setupGuide", "menu", "setup"],
-    ...["global", "window", "recordings", "player", "fullScreen"].map(category => [`shortcutList:${category}`, undefined, `shortcutList:${category}`]),
+    ...["global", "window", "recordings", "player", "fullScreen", "editor"].map(category => [`shortcutList:${category}`, undefined, `shortcutList:${category}`]),
     ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
   ]);
   // Appearance is three icons, one click each (2026-10-05); no other row is.
@@ -1272,11 +1273,11 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["systemAudio", "Audio"], ["studioControls", "Recording controls"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["setupGuide", "Getting started"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
-      ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"],
+      ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"], ["shortcutList:editor", "Edit view"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
     expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "音訊", "錄影控制", "影像", "操作與通知", "語言與外觀", "更新", "開始使用",
-      "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "診斷工具", "重設與清理"]);
+      "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "編輯", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
 });
@@ -1571,7 +1572,8 @@ describe("Keyboard Shortcuts tab (plan 073)", () => {
     const groups = settingsView(idle, context).groups.filter(g => g.kind === "shortcutList");
     expect(groups.every(g => g.tab === "shortcuts" && g.choices.length === 0 && g.actions === undefined)).toBe(true);
     expect(rows(context).map(entry => entry.id)).toEqual(["record", "open", "close", "undoTrash", "zoomIn", "zoomOut", "zoomReset",
-      "clearSearch", "playPause", "seek", "volume", "mute", "fullScreen", "seekPage", "seekEnds", "leaveFullScreen"]);
+      "clearSearch", "playPause", "seek", "volume", "mute", "fullScreen", "seekPage", "seekEnds", "leaveFullScreen",
+      "editPlay", "editFrame", "editSecond", "editSplit", "editRemove", "editUndo", "editRedo", "editCamera", "editVolume"]);
     for (const group of groups) expect(settingsAction(idle, context, group.id, "record"), group.id).toBeUndefined();
   });
 
@@ -1580,8 +1582,14 @@ describe("Keyboard Shortcuts tab (plan 073)", () => {
     expect([row(win, "record").keys, row(win, "record").spoken]).toEqual([[["Ctrl", "Shift", "1"]], ["Ctrl+Shift+1"]]);
     expect(row(context, "open").spoken).toEqual(["⌥⌘,"]);
     expect(row(win, "open").spoken).toEqual(["Ctrl+Shift+,"]);
-    expect(row(context, "close").spoken).toEqual(["⌘W", "Esc"]);
-    expect(row(win, "close").spoken).toEqual(["Ctrl+W", "Esc"]);
+    // Escape never closes the window (2026-10-26).
+    expect(row(context, "close").spoken).toEqual(["⌘W"]);
+    expect(row(win, "close").spoken).toEqual(["Ctrl+W"]);
+    // The edit view's keys, as each platform presses them (2026-10-26).
+    expect(row(context, "editSecond").spoken).toEqual(["⇧←", "⇧→"]);
+    expect([row(context, "editRemove").spoken, row(win, "editRemove").spoken]).toEqual([["Delete"], ["Delete"]]);
+    expect([row(context, "editRedo").spoken, row(win, "editRedo").spoken]).toEqual([["⇧⌘Z"], ["Ctrl+Y", "Ctrl+Shift+Z"]]);
+    expect(row(context, "editCamera")).toMatchObject({ spoken: ["C"], where: "In an editable recording" });
     expect(row(context, "zoomIn").keys).toEqual([["⌘", "+"]]);
     expect(row(win, "zoomOut").keys).toEqual([["Ctrl", "-"]]);
     expect(row(win, "seek").keys).toEqual([["←"], ["→"]]);
@@ -1608,5 +1616,14 @@ describe("Keyboard Shortcuts tab (plan 073)", () => {
       .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Another app may be using ⌥⌘,." });
     expect(row({ ...win, settingsShortcut: { kind: "conflict" } }, "open").status)
       .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Ctrl+Shift+, is the recording shortcut, so it does not open RecordStuff." });
+  });
+});
+
+describe("the microphone's note", () => {
+  // An editable recording keeps the microphone apart (plan 087), so its note no longer says "one track" then
+  // (Codex's computer-use round of 2026-10-26 found the two notes contradicting each other).
+  it("says where the microphone is recorded, mixed in or on a track of its own", () => {
+    expect(group(idle, context, "microphone")?.info).toMatch(/^Mixed with system audio into one track\./);
+    expect(group(idle, { ...context, editableRecording: true }, "microphone")?.info).toMatch(/^Kept on a track of its own while Editable recordings is on/);
   });
 });
