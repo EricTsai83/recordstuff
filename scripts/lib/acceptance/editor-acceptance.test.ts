@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bubbleRadius, bubbleRect, cameraCrop, insideBubble, type CameraLayout, type CameraPosition } from "../../../src/shared/camera-layout.ts";
 import type { RgbFrame } from "./capture-settings.mts";
-import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, redShare, sceneLayout } from "./editor-acceptance.mts";
+import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, redShare, sceneLayout } from "./editor-acceptance.mts";
 
 const box = (type: string, payload: Buffer): Buffer => {
   const head = Buffer.alloc(8);
@@ -102,6 +102,11 @@ describe("an export's frame", () => {
     const unmirrored = { ...layout, mirror: false };
     const wrong = judgeComposite(composed(screen, camera, unmirrored, placed), screen, camera, layout, placed);
     expect(wrong.verdicts[0]!.pass).toBe(false);
+  });
+
+  it("passes a frame the camera is hidden in only when the bubble's place holds the screen's picture (2026-10-26)", () => {
+    expect(judgeScreenOnly(screen, screen, layout, placed, 5).pass).toBe(true);
+    expect(judgeScreenOnly(composed(screen, camera, layout, placed), screen, layout, placed, 5).pass).toBe(false);
   });
 
   it("leaves a flat camera's picture unjudged instead of passing or failing it", () => {

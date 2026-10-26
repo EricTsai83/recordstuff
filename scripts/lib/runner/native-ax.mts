@@ -531,7 +531,7 @@ export function parseAxResult<T>(output: string, what: string): T {
 }
 
 /** Key codes and CGEventFlags the runners post. */
-export const KEY = { escape: 53, left: 123, right: 124, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12, a: 0, c: 8, z: 6, delete: 51, minus: 27 } as const;
+export const KEY = { escape: 53, left: 123, right: 124, down: 125, up: 126, return: 36, tab: 48, m: 46, w: 13, r: 15, i: 34, q: 12, a: 0, c: 8, s: 1, z: 6, delete: 51, minus: 27 } as const;
 export const FLAG = { command: 0x100000, shift: 0x20000, option: 0x80000 } as const;
 
 export interface NativeAx {

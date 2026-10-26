@@ -26,7 +26,7 @@ function parseDescription(text: string): EditableDescription | undefined {
   return { sounds: sounds as EditableDescription["sounds"], camera: camera as unknown as NonNullable<EditableDescription["camera"]> };
 }
 
-/** An edit record's scene in the shape version 2 writes. */
+/** An edit record's scene in the shape versions 2 and 3 write (3 adds the camera's hidden stretches, `camera.hidden`). */
 function isScene(value: unknown): value is EditScene {
   if (!isObject(value) || !isObject(value["volumes"]) || !finite(value["volumes"]["system"]) || !finite(value["volumes"]["microphone"])) return false;
   const camera = value["camera"];
@@ -174,6 +174,23 @@ export function judgeComposite(output: RgbFrame, screen: RgbFrame, camera: RgbFr
       actual: `${screenDifference.toFixed(2)} over ${outside} px`, pass: screenDifference <= MAX_SCREEN_DIFFERENCE, judged: true },
   ];
   return { bubble, cameraSpread, ...(correlation === undefined ? {} : { correlation }), screenDifference, verdicts };
+}
+
+/**
+ * A frame the camera is hidden in (2026-10-26): the screen's picture everywhere, the bubble's place included, so no
+ * camera picture was composed there.
+ */
+export function judgeScreenOnly(output: RgbFrame, screen: RgbFrame, layout: CameraLayout, position: CameraPosition, at: number): Verdict & { judged: boolean } {
+  const bubble = grow(bubbleRect(layout, position, output.width, output.height), -EDGE_MARGIN_PX);
+  let inside = 0, insideDifference = 0, all = 0, difference = 0;
+  for (let y = 0; y < output.height; y += 2) for (let x = 0; x < output.width; x += 2) {
+    const d = Math.abs(luma(output, x, y) - luma(screen, x, y));
+    all++; difference += d;
+    if (x >= bubble.x && x < bubble.x + bubble.width && y >= bubble.y && y < bubble.y + bubble.height) { inside++; insideDifference += d; }
+  }
+  const whole = all ? difference / all : Infinity, place = inside ? insideDifference / inside : Infinity;
+  return { check: `Export: the camera left out at ${at.toFixed(2)} s, in a stretch it is hidden over`, expected: `the screen's picture in the bubble's place and everywhere else, mean luma difference ≤ ${MAX_SCREEN_DIFFERENCE}`,
+    actual: `${place.toFixed(2)} in the bubble's place over ${inside} px, ${whole.toFixed(2)} over the frame`, pass: place <= MAX_SCREEN_DIFFERENCE && whole <= MAX_SCREEN_DIFFERENCE, judged: true };
 }
 
 /** Seconds from the edit view's clock, `m:ss.ss` or `m:ss` (as the player shows it), or undefined. */

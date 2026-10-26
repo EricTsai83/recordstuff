@@ -14,10 +14,14 @@
  * - **Resize.** The bubble is clicked, which selects it, and − pressed 5 times (2026-10-25: the size slider went, its
  *   corner handles and + / − resize it); the record must save the bubble smaller by 5 points with its shape kept
  *   (`judgeResize`).
- * - **Hide and Undo.** Show camera, in the toolbar's Options popup (2026-10-26, Camera and sound before), is switched off (the record says hidden and the bubble leaves the view), then Undo is
+ * - **Hide and Undo.** Hide the camera throughout, in the toolbar's Options popup (2026-10-26, Show camera before), is switched on (the record says hidden and the bubble leaves the view), then Undo is
  *   pressed (shown again, the resize kept).
  * - **Volume.** In the toolbar's Options popup, the microphone's slider is clicked and moved to 50% by the arrow keys; the record must say 50 and the
  *   slider keep the keyboard's focus throughout (a save between presses once took it).
+ * - **Stretch** (2026-10-26). A click on the camera's lane, then Shift+→ to 4 s, S and C, Shift+→ to 7 s, S and C: the
+ *   record must hold the camera hidden from 4 to 7 s alone (version 3); paused at 5 s the bubble must be gone from the
+ *   view and back at 2 s. The export must be asked to hide it over that one stretch, and a frame at 5.5 s must be the
+ *   screen's picture alone (`judgeScreenOnly`), the composite judged at a frame before the stretch.
  * - **Export.** Export is pressed; main must log the render with the camera shown and the volumes the scene gives, and
  *   publish `<name> (edited).mp4` (「（已剪輯）」 in Traditional Chinese), read from its log line. Its middle frame must hold the camera track's own picture where the scene put the
  *   bubble and the screen track's everywhere else (`judgeComposite`); a camera too flat to recognise (a covered lens)
@@ -56,7 +60,7 @@ import { nativeDrag } from "./lib/runner/native-drag.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
 import { frameRgb, hasTool, probe, requireMediaTimeout } from "./lib/verification/media-tools.mts";
-import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, readEditableDescription, recordScene, redShare, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
+import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, redShare, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
 import type { Verdict } from "./lib/acceptance/capture-settings.mts";
 import { AUDIO_VOLUME_STEP, volumeDb } from "../src/shared/audio-volume.ts";
 import type { EditableDescription, EditScene } from "../src/shared/editable.ts";
@@ -76,6 +80,9 @@ const SECONDS = 12;
 const AIM = { x: 0.1, y: 0.85 };
 const SIZE_STEPS = 5;
 const MICROPHONE = 50;
+/** Where the camera is hidden in the Stretch step, in seconds of the 12-second recording. */
+const HIDE_FROM = 4;
+const HIDE_TO = 7;
 /** How long a saved change may take to reach the edit record. */
 const SAVE_MS = 5000;
 
@@ -450,7 +457,8 @@ async function main(): Promise<number> {
       await click(keysButton);
 
       // Every change undone from the keyboard, the focus kept in the view throughout.
-      await click(await handle("end"));
+      // The start's handle, on screen however the window lies across displays (the end's may not be).
+      await click(await handle("start"));
       for (let i = 0; i < 12 && removed() > 0; i++) { await ax().key(KEY.z, FLAG.command); await sleep(700); }
       check({ check: "Undo: every timeline change taken back by ⌘Z", expected: "nothing removed", actual: `${removed()} removed`, pass: removed() === 0 });
       await shot("11-undone.png");
@@ -483,11 +491,11 @@ async function main(): Promise<number> {
     await click(await find("Options button", (e) => e.title === translate("Options", language)));
     await sleep(400);
     before = revision();
-    await click(await find("Show camera switch", (e) => e.role === "AXCheckBox" && e.title === translate("Show camera", language)));
+    await click(await find("Hide the camera throughout switch", (e) => e.role === "AXCheckBox" && e.title === translate("Hide the camera throughout", language)));
     scene = await saved(before, (s) => s.camera?.shown === false);
     await sleep(500);
     const bubbleGone = !(await elements()).some(isBubble);
-    check({ check: "Hide: Show camera switched off", expected: "the record says hidden and the bubble leaves the view",
+    check({ check: "Hide: Hide the camera throughout switched on", expected: "the record says hidden and the bubble leaves the view",
       actual: `record ${scene?.camera?.shown === false ? "hidden" : `shown=${String(scene?.camera?.shown)}`}, bubble ${bubbleGone ? "gone" : "still drawn"}`, pass: scene?.camera?.shown === false && bubbleGone });
     await shot("4-hidden.png");
     before = revision();
@@ -522,6 +530,48 @@ async function main(): Promise<number> {
         pass: scene?.volumes.microphone === MICROPHONE && kept });
       await shot("6-volume.png");
     }
+    // Hidden over a stretch (2026-10-26): a click on the camera's lane selects it there and focuses the timeline, the
+    // playhead is stepped to 4 s by Shift+→, S splits there (the part after it selected) and C hides the camera from
+    // there on; stepped on to 7 s, S and C show it again after that, leaving it hidden from 4 to 7 s.
+    const stretchMarker = "\u0002";
+    const shownSuffix = translate("{from} to {to}, camera shown", language, { from: stretchMarker, to: stretchMarker }).split(stretchMarker).at(-1)!;
+    // The Options popup, open from the volume, hides the rest of the window from accessibility: Escape closes it.
+    await ax().key(KEY.escape);
+    await sleep(500);
+    // A stretch is a pressed-or-not button, which Chromium gives macOS as a toggle (AXCheckBox).
+    await click(await find("camera lane", (e) => (e.role === "AXButton" || e.role === "AXCheckBox") && e.title.endsWith(shownSuffix)));
+    await sleep(500);
+    const step = async (code: number, times: number, flags?: number): Promise<void> => {
+      for (let i = 0; i < times; i++) { await ax().key(code, flags); await sleep(150); }
+    };
+    await step(KEY.left, Math.ceil(sourceDuration) + 2, FLAG.shift);
+    await step(KEY.right, HIDE_FROM, FLAG.shift);
+    await step(KEY.s, 1);
+    before = revision();
+    await step(KEY.c, 1);
+    scene = await saved(before, (s) => Boolean(s.camera?.hidden?.length));
+    await step(KEY.right, HIDE_TO - HIDE_FROM, FLAG.shift);
+    await step(KEY.s, 1);
+    before = revision();
+    await step(KEY.c, 1);
+    const tolerance = 0.05 * 90_000;
+    scene = await saved(before, (s) => s.camera?.hidden?.length === 1 && Math.abs(s.camera.hidden[0]![1] - HIDE_TO * 90_000) <= tolerance);
+    const stretch = scene?.camera?.hidden?.[0];
+    const stretchOk = scene?.camera?.shown === true && scene.camera.hidden?.length === 1 && stretch !== undefined
+      && Math.abs(stretch[0] - HIDE_FROM * 90_000) <= tolerance && Math.abs(stretch[1] - HIDE_TO * 90_000) <= tolerance;
+    check({ check: `Stretch: the camera hidden from ${HIDE_FROM} s to ${HIDE_TO} s by S and C`, expected: `the record holds one hidden stretch [${HIDE_FROM}, ${HIDE_TO}) s (±0.05)`,
+      actual: scene?.camera ? `shown=${String(scene.camera.shown)}, hidden ${JSON.stringify((scene.camera.hidden ?? []).map(([a, b]) => [+(a / 90_000).toFixed(3), +(b / 90_000).toFixed(3)]))} s` : "no camera", pass: stretchOk });
+    await shot("6b-hidden-stretch.png");
+    // The preview in the stretch, paused: the bubble is not drawn there; before it, it is.
+    await step(KEY.left, 2, FLAG.shift);
+    await sleep(800);
+    const goneInStretch = !(await elements()).some(isBubble);
+    await shot("6c-preview-in-stretch.png");
+    await step(KEY.left, 3, FLAG.shift);
+    const backBefore = await find("camera bubble", isBubble, 3000).then(() => true, () => false);
+    check({ check: "Stretch: the preview follows the playhead", expected: `no bubble at ${HIDE_TO - 2} s, the bubble at ${HIDE_TO - 5} s`,
+      actual: `${goneInStretch ? "none" : "a bubble"} at ${HIDE_TO - 2} s, ${backBefore ? "the bubble" : "none"} at ${HIDE_TO - 5} s`, pass: goneInStretch && backBefore });
+
     const final = readScene()?.scene ?? fail("no scene saved");
 
     // Export.
@@ -535,6 +585,8 @@ async function main(): Promise<number> {
     const asked = /\(camera (shown|left out), volumes ([-\d./]+) dB\)/.exec(rendering.line);
     check({ check: "Export: rendered with the scene", expected: `camera shown, volumes ${volumes} dB`, actual: asked ? `camera ${asked[1]}, volumes ${asked[2]} dB` : rendering.line,
       pass: asked?.[1] === "shown" && asked[2] === volumes });
+    const stretches = /the camera hidden over (\d+) stretch\(es\)/.exec(rendering.line)?.[1];
+    check({ check: "Export: the camera left out over its stretch", expected: "the render asked to hide the camera over 1 stretch", actual: stretches ? `over ${stretches}` : "no stretch asked", pass: stretches === "1" });
     if (!published) fail(`the export did not publish: ${done.line}`);
     files.push(published!);
     await sleep(1000);
@@ -545,14 +597,19 @@ async function main(): Promise<number> {
     check({ check: "Export: an ordinary file of the whole recording", expected: `one picture and one sound track, ${sourceDuration.toFixed(1)} s (±0.2)`,
       actual: `${outVideos.length} picture, ${outSounds.length} sound, ${outDuration.toFixed(2)} s`, pass: outVideos.length === 1 && outSounds.length === 1 && Math.abs(outDuration - sourceDuration) <= 0.2 });
 
-    // The middle frame: the camera's own picture in the bubble, the screen's elsewhere.
-    const at = Math.min(sourceDuration, outDuration) / 2;
+    // A frame before the hidden stretch: the camera's own picture in the bubble, the screen's elsewhere.
+    const at = Math.min(sourceDuration, outDuration, HIDE_FROM) / 2;
     const exported = frameRgb(published!, at, width, height, path.join(dir, "export-frame.png"));
     const screenFrame = frameRgb(source, at, width, height, path.join(dir, "source-screen.png"), 0);
     const cameraFrame = frameRgb(source, at, cameraTrack!.width!, cameraTrack!.height!, path.join(dir, "source-camera.png"), 1);
     const placed = final.camera ?? fail("the final scene has no camera");
     const composite = judgeComposite(exported, screenFrame, cameraFrame, sceneLayout(placed, shape), placed);
     for (const verdict of composite.verdicts) check(verdict, verdict.judged);
+    // A frame in the hidden stretch: the screen's alone.
+    const hiddenAt = (HIDE_FROM + HIDE_TO) / 2;
+    const hiddenFrame = frameRgb(published!, hiddenAt, width, height, path.join(dir, "export-frame-hidden.png"));
+    const hiddenScreen = frameRgb(source, hiddenAt, width, height, path.join(dir, "source-screen-hidden.png"), 0);
+    check(judgeScreenOnly(hiddenFrame, hiddenScreen, sceneLayout(placed, shape), placed, hiddenAt));
 
     await timeline();
 
