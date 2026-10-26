@@ -2955,10 +2955,20 @@
     position: relative;
     height: var(--lane);
     margin-top: var(--lane-gap);
-    border: 1px solid var(--lane-edge);
-    border-block: 0;
     overflow: hidden;
     touch-action: none;
+  }
+  /* The block's sides (and the last lane's foot) drawn over the lane rather than as its border, so a lane is exactly
+     as wide as the pictures and its playhead, placed by the same fraction, stands in one line with theirs (the
+     maintainer's report of 2026-10-26: a 1 px border shifted it). Under the playhead. */
+  .editor-camera-lane::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-inline: 1px solid var(--lane-edge);
+    border-radius: inherit;
+    pointer-events: none;
   }
   .editor-camera-lane + .editor-camera-lane::after {
     content: "";
@@ -2970,9 +2980,11 @@
     pointer-events: none;
   }
   .editor-camera-lane:not(:has(+ .editor-camera-lane)) {
-    border-bottom: 1px solid var(--lane-edge);
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
+  }
+  .editor-camera-lane:not(:has(+ .editor-camera-lane))::before {
+    border-bottom: 1px solid var(--lane-edge);
   }
   .editor-camera-stretch {
     position: absolute;
@@ -2990,7 +3002,8 @@
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
     color: var(--foreground);
     cursor: pointer;
-  }  /* A stretch the edit has not set is the lane's own ground, no box of its own, so the lanes read as one block; a set
+  }
+  /* A stretch the edit has not set is the lane's own ground, no box of its own, so the lanes read as one block; a set
      one (hidden, muted, a volume of its own) keeps its outline. As light as the base rule, so :hover still outlines it
      (review of 2026-10-26). */
   .editor-camera-stretch:where(:not([data-hidden]):not([data-custom])) {

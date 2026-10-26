@@ -1004,6 +1004,12 @@ test("a selection's actions float over the line above the timeline, words where 
     expect(await ring()).toBe("none");
     await unset.hover();
     await expect.poll(ring).not.toBe("none");
+    // The playhead is one straight line from the pictures down through the lanes (the maintainer's report of 2026-10-26:
+    // the lanes' borders shifted theirs by a pixel or two).
+    const heads = await page.locator(".editor-playhead, .editor-camera-playhead").evaluateAll((all) =>
+      all.map((element) => { const r = element.getBoundingClientRect(); return r.left + r.width / 2; }));
+    expect(heads.length).toBeGreaterThan(1);
+    expect(Math.max(...heads) - Math.min(...heads)).toBeLessThanOrEqual(0.5);
     // A range dragged across the pictures is chosen on no lane in particular: none of the lanes is filled as the chosen one.
     await expect(page.locator(".editor-camera-range[data-chosen]")).toHaveCount(0);
     await page.keyboard.press("Escape");
