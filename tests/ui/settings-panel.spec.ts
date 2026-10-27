@@ -874,7 +874,7 @@ test("S136–S137 Live preview: a switch of the preview's own, apart from Start,
   await host.evaluate(h => h.setSize(560, 680));
 });
 
-test("S142 the Studio's choices over the preview and its title line: Live preview in the title line, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said by its picker, so nothing moves (plan 090; plan 097, D2)", { tag: "@studio" }, async () => {
+test("S142 the Studio's choices over the preview and the toolbar's end: Live preview on the record control's line, nothing laid over the picture to press; what the camera is doing while a recording gives no picture of it is said by its picker, so nothing moves (plan 090; plan 097, D2)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   const recording = (state?: "waiting" | "notReady" | "lost") => host.evaluate((h, state) => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
@@ -886,15 +886,11 @@ test("S142 the Studio's choices over the preview and its title line: Live previe
   await recording("waiting");
   await page.locator("#tab-studio").click();
   const head = page.locator(".studio-head");
-  await expect(head.getByRole("switch", { name: "Live preview" }), "S142 Live preview is in the title line").toBeVisible();
+  await expect(head.getByRole("switch", { name: "Live preview" }), "S142 Live preview is on the record control's line").toBeVisible();
   await expect(head.getByRole("combobox", { name: "Preview view" }), "S142 with the view").toBeVisible();
-  // The page's head drags the window on macOS: each of its controls takes its own clicks (the desktop round of
-  // 2026-10-28 found Live preview there answering none).
-  if (process.platform === "darwin") {
-    for (const control of [head.getByRole("combobox", { name: "Preview view" }), head.getByRole("switch", { name: "Live preview" }), head.getByRole("button", { name: "Preview rate" })]) {
-      await expect(control, "S142 a head control is no drag surface").toHaveCSS("-webkit-app-region", "no-drag");
-    }
-  }
+  // On the record control's line since 2026-10-28, out of the page's head, which drags the window on macOS.
+  await expect(page.locator(".settings-head .studio-head"), "S142 not in the page's head").toHaveCount(0);
+  await expect(page.locator(".studio-toolbar-row").locator(".studio-choices + .studio-head"), "S142 on the record control's line").toHaveCount(1);
   await expect(page.locator(".camera-preview-stage").getByRole("switch"), "S142 nothing laid over the picture").toHaveCount(0);
   // Said once, by the Camera picker (plan 097, D2): not over the stage, and with no status dot.
   const picker = page.locator("#setting-studioCameraDevice");
@@ -957,7 +953,7 @@ test("S143–S145 the Studio's preview: Power saving by default, no camera opene
   });
   await page.locator("#tab-studio").click();
   const stage = page.locator(".studio-stage .camera-preview-stage");
-  // The rate, set now and then, behind ⋯ at the end of the title line (plan 097).
+  // The rate, set now and then, behind ⋯ at the toolbar's end (plan 097).
   const more = page.locator(".studio-head").getByRole("button", { name: "Preview rate" });
   const rateChoice = (name: string) => page.getByRole("radiogroup", { name: "Preview rate" }).getByRole("radio", { name: new RegExp(`^${name}`) });
   await more.click();
@@ -982,7 +978,7 @@ test("S143–S145 the Studio's preview: Power saving by default, no camera opene
   await page.waitForTimeout(500);
   expect(await host.evaluate(h => [...h.previewWatches]), "S143 no picture asked for while hidden").toEqual([]);
 
-  // S144 the rate: behind ⋯ in the title line, every choice saying what it does.
+  // S144 the rate: behind ⋯ at the toolbar's end, every choice saying what it does.
   await expect(page.locator(".studio-stage").getByRole("button", { name: "Preview rate" }), "S144 nothing over the stage").toHaveCount(0);
   await more.click();
   await expect(page.getByRole("radiogroup", { name: "Preview rate" }).getByRole("radio"), "S144 three rates, no Off: Live preview is the picture's switch").toHaveCount(3);
@@ -1018,11 +1014,11 @@ test("S143–S145 the Studio's preview: Power saving by default, no camera opene
     h.push(h.settingsView(h.state.cameraState!, h.state.cameraContext));
   });
 
-  // S145 the view: a menu in the title line (plan 097), named by the picture it shows, every choice saying what it
+  // S145 the view: a menu at the toolbar's end (plan 097), named by the picture it shows, every choice saying what it
   // shows; switched while watching. Two views: Screen only was removed (plan 097).
   const view = page.locator(".studio-head").getByRole("combobox", { name: "Preview view" });
   const chooseView = async (name: string): Promise<void> => { await view.click(); await page.getByRole("option", { name: new RegExp(`^${name}`) }).click(); };
-  await expect(view, "S145 in the title line").toBeVisible();
+  await expect(view, "S145 at the toolbar's end").toBeVisible();
   await expect(view, "S145 named by the picture it shows").toHaveText(/As recorded/);
   await expect(view, "S145 described by what it shows").toHaveAccessibleDescription("The screen and the camera, as the recording has them.");
   await view.click();
@@ -1241,7 +1237,7 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   await page.mouse.up();
   await expect.poll(async () => (await calls()).map(([group, choice]) => [group, ...String(choice).split(",").map(Number)]), { message: "S146 dragged to the middle of a large stage" })
     .toEqual([["cameraPreview", expect.closeTo(0.5, 1), expect.closeTo(0.5, 1)]]);
-  // The view and Live preview in the title line, the choices over the stage and the live controls under it (plan 097,
+  // The view and Live preview at the toolbar's end, the choices over the stage and the live controls under it (plan 097,
   // D1), all in sight without scrolling at the default size.
   await show("landscape", true);
   await host.evaluate(h => h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]));
@@ -1293,12 +1289,12 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await page.getByRole("option", { name: /^Editable recording/ }).click();
   await expect.poll(calls, { message: "S149 the type is the Editable recordings setting" }).toEqual([["studioType", "editable"]]);
   await expect(type).toHaveText(/Editable recording/);
-  // S150 an editable recording records every input as it comes: its meters alone, and where the rest is set.
+  // S150 an editable recording records every input as it comes: its meters alone, with no line under them (2026-10-28).
   await expect(live.getByRole("meter"), "S150 its meters stay").toHaveCount(2);
   await expect(live.getByRole("button", { name: /Don't record/ }), "S150 no Don't record").toHaveCount(0);
   await expect(live.getByRole("slider"), "S150 no fader").toHaveCount(0);
   await expect(live.getByRole("switch", { name: "Camera" }), "S150 no Show / Hide").toHaveCount(0);
-  await expect(live, "S150 one line says where they are set").toContainText("Set the volumes and hide the camera afterwards in Edit…");
+  await expect(live.locator(".studio-note"), "S150 no line under them").toHaveCount(0);
   // Locked while recording, the type the recording has.
   await host.evaluate(h => {
     h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };

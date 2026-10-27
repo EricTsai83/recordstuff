@@ -809,7 +809,6 @@ export const ZH_TW = {
   "Editable recording": "可編輯錄影",
   "Move the camera and set the volumes afterwards in Edit…. Export it before sharing; files are about twice as large.":
     "錄完後可在「編輯…」移動相機、調整音量。分享前請先匯出；檔案約大一倍。",
-  "Set the volumes and hide the camera afterwards in Edit…": "音量與隱藏相機可在錄完後於「編輯…」設定",
   "Shown or hidden while recording.": "錄影時可顯示或隱藏。",
   "This recording has no camera.": "這次錄影沒有相機。",
   "What is recorded": "錄製內容",

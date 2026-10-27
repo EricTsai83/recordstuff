@@ -1310,48 +1310,80 @@
       transition: none;
     }
   }
-  /* The Recording Studio's title line (plan 097, D1), at the end of the page's head: the view, Live preview and ⋯. */
-  .settings-head-studio {
-    flex: 1 1 auto;
-    display: flex;
-    justify-content: flex-end;
-    align-self: center;
-    min-width: 0;
+  /* The Studio's toolbar over the preview (2026-10-28): its one set of tokens. Every control takes its height, corner,
+     padding and icon from here (CONTROL in studio.tsx), so a menu, a picker and a button always match. */
+  .studio-toolbar {
+    --studio-control-height: 32px;
+    --studio-control-radius: var(--radius-md);
+    --studio-control-px: 12px;
+    --studio-control-icon: 14px;
+    --studio-toolbar-gap: 8px;
+    display: grid;
+    gap: 6px;
   }
+  .studio-toolbar[data-density="icons"] {
+    --studio-toolbar-gap: 6px;
+  }
+  /* What is recorded at the start, what is watched at the end; in the narrowest window the end wraps under, still
+     at the end. */
+  .studio-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--studio-toolbar-gap);
+  }
+  .studio-choices,
   .studio-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
-    gap: 6px 8px;
+    gap: var(--studio-toolbar-gap);
+    min-width: 0;
   }
-  .studio-head > .studio-failure {
-    flex-basis: 100%;
-    text-align: end;
+  /* The choices share what the end leaves them, the pickers shrinking first (the densities' widths keep them legible);
+     folded to icons in the narrowest window, the end wraps under them instead. */
+  .studio-choices {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+  }
+  .studio-toolbar[data-density="icons"] .studio-choices {
+    flex: 0 1 auto;
+  }
+  .studio-head {
+    flex: none;
+    margin-inline-start: auto;
+  }
+  .studio-toolbar > .studio-failure {
+    margin: 0;
   }
   .studio-more svg {
     width: 16px;
     height: 16px;
   }
-  /* Over the preview (plan 097, D1): what is recorded, in one line that wraps in a narrow window. */
-  .studio-choices {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 8px;
-  }
-  .studio-choices > .studio-failure {
-    flex-basis: 100%;
-  }
   /* A picker: the device's name while fine, kept short; the problem in its place with the warning look (D2). */
-  /* As wide whatever it says, so a problem said or gone never moves the line or the stage under it: its width comes
-     from the line it is in, two to a line in a narrow window, so the preview keeps its room. */
+  /* As wide whatever it says, so a problem said or gone never moves the line or the stage under it: it shares what the
+     line leaves, until the toolbar folds it to its icon. */
   .studio-picker {
-    flex: 1 1 9.5rem;
-    width: auto;
-    min-width: 0;
-    max-width: 12.5rem;
+    flex: 0 1 12.5rem;
+    min-width: 6.5rem;
     justify-content: flex-start;
+  }
+  /* Folded to its icon, a control keeps its lock as a badge at its corner, so it neither grows nor hides that it is
+     locked. */
+  [data-icon-only] {
+    position: relative;
+  }
+  [data-icon-only] > .studio-picker-lock {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 14px;
+    height: 14px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--background);
+    box-shadow: 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
   }
   .studio-picker > .studio-picker-chevron,
   .studio-picker > .studio-picker-lock {
@@ -1374,12 +1406,6 @@
   }
   .studio-picker[data-off] {
     color: var(--muted-foreground);
-  }
-  .studio-picker[data-problem],
-  .studio-picker[data-problem]:hover {
-    border-color: var(--warning-border);
-    background: var(--warning-surface);
-    color: var(--warning);
   }
   .studio-picker[data-problem] .studio-picker-chevron,
   .studio-picker[data-problem] .studio-picker-lock {

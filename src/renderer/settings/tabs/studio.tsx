@@ -1,11 +1,11 @@
 /**
- * The Recording Studio (plan 075, D19; laid out again by plan 097, D1): the title line holds what only changes what is
- * watched (the view, Live preview and the preview's rate); over the preview what is recorded (the record control, the
- * recording type and the screen, camera and microphone pickers); under it what is watched and changed while recording,
- * which follows the recording's type. Quiet when fine: a picker shows its device's name, and says a problem in its place
+ * The Recording Studio (plan 075, D19; laid out again by plan 097, D1, and 2026-10-28): one toolbar over the preview,
+ * what is recorded at its start (the record control, the recording type and the screen, camera and microphone pickers)
+ * and what only changes what is watched at its end (the view, Live preview and the preview's rate); under the preview
+ * what is watched and changed while recording, which follows the recording's type. Quiet when fine: a picker shows its device's name, and says a problem in its place
  * (D2). Every control is still a group main offers and answers (settings-model.ts), chosen as anywhere in Settings.
  */
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
@@ -13,6 +13,7 @@ import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOf
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
+import { cn } from "../../lib/utils";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { usePendingValue } from "../../lib/use-pending-value";
 import * as model from "../settings-controller";
@@ -24,6 +25,17 @@ import { paceStudio, type StudioPacer } from "./studio-pace";
 import { setPreviewView } from "./studio-feed";
 
 const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.find((group) => group.id === id && group.tab === "studio");
+
+/**
+ * The toolbar's one shape (2026-10-28): every control as tall, as rounded and as padded, on the same surface, from the
+ * --studio-control-* tokens (ui.css). Given here, over each primitive's own, so a menu and a button never differ. Only
+ * colours ease: a control folding to its icon snaps, so its first fold as the Studio opens is never seen.
+ */
+const CONTROL = "transition-[color,background-color,border-color,box-shadow] h-(--studio-control-height) data-[size=default]:h-(--studio-control-height) gap-1.5 rounded-(--studio-control-radius) px-(--studio-control-px) text-xs border-border bg-input/20 hover:bg-input/50 dark:bg-input/30 dark:hover:bg-input/50 [&_svg:not([class*='size-'])]:size-(--studio-control-icon)";
+/** A control folded to its icon: square, its words kept for assistive technology and its tooltip. */
+const ICON_ONLY = "w-(--studio-control-height) min-w-0 flex-none justify-center px-0 [&>[data-slot=select-value]~svg:not(.studio-picker-lock)]:hidden";
+/** A picker's problem in the warning look (D2), over the surface in either theme and under the pointer. */
+const PROBLEM = "data-problem:border-warning-border data-problem:bg-warning-surface data-problem:text-warning dark:data-problem:bg-warning-surface hover:data-problem:bg-warning-surface dark:hover:data-problem:bg-warning-surface";
 
 /** A failed choice among `groups`, said under them, as a row says its own. */
 function Failures({ groups }: { groups: (SettingsGroup | undefined)[] }) {
@@ -148,7 +160,7 @@ const PICKER_ICONS = {
  * input's switch, the devices to choose from and the rows that go with them; while a recording locks it, it shows a
  * lock and does not open.
  */
-function Picker({ group }: { group: SettingsGroup }) {
+function Picker({ group, iconOnly }: { group: SettingsGroup; iconOnly: boolean }) {
   const picker = group.picker!;
   const id = `setting-${group.id}`;
   const problem = picker.problem !== undefined && !picker.waiting;
@@ -161,17 +173,21 @@ function Picker({ group }: { group: SettingsGroup }) {
   const fields = rest.filter((part) => part.number);
   const switches = rest.filter((part) => part.control === "switch");
   const pixels = fields[0]?.note;
+  const name = `${group.label}: ${shown}`;
   return (
     <Popover>
-      <PopoverTrigger render={
-        <Button id={id} variant="outline" className="studio-picker h-8 gap-1.5 rounded-full px-3 text-xs" data-input={picker.input}
-          data-problem={problem || undefined} data-waiting={picker.waiting || undefined} data-off={(picker.off && !problem) || undefined}
-          disabled={picker.locked} aria-label={`${group.label}: ${shown}`} />
-      }>
-        <Icon aria-hidden="true" />
-        <span className="studio-picker-name">{shown}</span>
-        {picker.locked ? <Lock className="studio-picker-lock" aria-hidden="true" /> : <ChevronDown className="studio-picker-chevron" aria-hidden="true" />}
-      </PopoverTrigger>
+      <ControlTooltip label={name} enabled={iconOnly}>
+        <PopoverTrigger render={
+          <Button id={id} variant="outline" className={cn(CONTROL, PROBLEM, "studio-picker", iconOnly ? ICON_ONLY : "shrink")} data-input={picker.input}
+            data-icon-only={iconOnly || undefined} data-problem={problem || undefined} data-waiting={picker.waiting || undefined}
+            data-off={(picker.off && !problem) || undefined} disabled={picker.locked} aria-label={name} />
+        }>
+          <Icon aria-hidden="true" />
+          <span className={iconOnly ? "sr-only" : "studio-picker-name"}>{shown}</span>
+          {picker.locked ? <Lock className="studio-picker-lock" aria-hidden="true" />
+            : !iconOnly && <ChevronDown className="studio-picker-chevron" aria-hidden="true" />}
+        </PopoverTrigger>
+      </ControlTooltip>
       <PopoverContent align="start" className="studio-picker-menu w-80 gap-2">
         {on && <SwitchRow group={on} />}
         <div role="radiogroup" aria-label={group.label} className="studio-picker-choices" data-disabled={!group.enabled || undefined}>
@@ -213,20 +229,23 @@ function Picker({ group }: { group: SettingsGroup }) {
  * The recording type (plan 097, D6), first among the choices: Plain or Editable, each saying in a line what it gives
  * while the menu is open; where editable recordings are unavailable, listed unavailable with why, never hidden.
  */
-function TypePicker({ type }: { type: SettingsGroup }) {
+function TypePicker({ type, iconOnly }: { type: SettingsGroup; iconOnly: boolean }) {
   const chosen = model.committed(type);
   if (!chosen) return null;
   const id = `setting-${type.id}`;
-  const description = type.choices.find((choice) => choice.id === chosen)?.description;
+  const current = type.choices.find((choice) => choice.id === chosen);
+  const description = current?.description;
   return (<>
     <Select id={id} value={chosen} items={type.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!type.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(type.id, next, id); }}>
-      <SelectTrigger id={id} data-value={chosen} aria-label={type.label} aria-describedby={description ? `${id}-description` : undefined}
-        className="studio-type">
-        {chosen === "editable" ? <Film aria-hidden="true" /> : <Video aria-hidden="true" />}<SelectValue />
-        {/* Kept in place while unlocked, so the line does not move as a recording starts. */}
-        <Lock className="studio-picker-lock" aria-hidden="true" data-shown={!type.enabled || undefined} />
-      </SelectTrigger>
+      <ControlTooltip label={`${type.label}: ${current?.label ?? chosen}`} enabled={iconOnly}>
+        <SelectTrigger id={id} data-value={chosen} aria-label={type.label} aria-describedby={description ? `${id}-description` : undefined}
+          data-icon-only={iconOnly || undefined} className={cn(CONTROL, "studio-type", iconOnly ? ICON_ONLY : "shrink-0")}>
+          {chosen === "editable" ? <Film aria-hidden="true" /> : <Video aria-hidden="true" />}<SelectValue className={iconOnly ? "sr-only" : undefined} />
+          {/* Kept in place while unlocked, so the line does not move as a recording starts. */}
+          <Lock className="studio-picker-lock" aria-hidden="true" data-shown={!type.enabled || undefined} />
+        </SelectTrigger>
+      </ControlTooltip>
       <SelectContent alignItemWithTrigger={false} align="start">
         {type.choices.map((choice) => (
           <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
@@ -245,22 +264,25 @@ function TypePicker({ type }: { type: SettingsGroup }) {
 const VIEW_ICONS: Record<StudioView, typeof Monitor> = { composed: PictureInPicture2, camera: Video };
 
 /**
- * What the stage shows (plan 092, D3), a menu in the title line: its trigger names the picture shown, and every choice
+ * What the stage shows (plan 092, D3), a menu at the toolbar's end: its trigger names the picture shown, and every choice
  * says in one line what it shows while the menu is open: As recorded, or Check camera (plan 097: Screen only removed).
  */
-function ViewMenu({ view }: { view: SettingsGroup }) {
+function ViewMenu({ view, iconOnly }: { view: SettingsGroup; iconOnly: boolean }) {
   const chosen = model.committed(view);
   if (!chosen) return null;
   const id = `setting-${view.id}`;
-  const description = view.choices.find((choice) => choice.id === chosen)?.description;
+  const current = view.choices.find((choice) => choice.id === chosen);
+  const description = current?.description;
   const icon = (choice: string) => { const Icon = isStudioView(choice) ? VIEW_ICONS[choice] : Monitor; return <Icon aria-hidden="true" />; };
   return (<>
     <Select id={id} value={chosen} items={view.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!view.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(view.id, next, id); }}>
-      <SelectTrigger id={id} data-value={chosen} aria-label={view.label} aria-describedby={description ? `${id}-description` : undefined}
-        className="studio-view darwin:window-no-drag">
-        {icon(chosen)}<SelectValue />
-      </SelectTrigger>
+      <ControlTooltip label={`${view.label}: ${current?.label ?? chosen}`} enabled={iconOnly}>
+        <SelectTrigger id={id} data-value={chosen} aria-label={view.label} aria-describedby={description ? `${id}-description` : undefined}
+          data-icon-only={iconOnly || undefined} className={cn(CONTROL, "studio-view", iconOnly && ICON_ONLY)}>
+          {icon(chosen)}<SelectValue className={iconOnly ? "sr-only" : undefined} />
+        </SelectTrigger>
+      </ControlTooltip>
       <SelectContent alignItemWithTrigger={false} align="end">
         {view.choices.map((choice) => (
           <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
@@ -279,20 +301,23 @@ function ViewMenu({ view }: { view: SettingsGroup }) {
   </>);
 }
 
-/** Live preview, a switch in the title line (2026-10-23): always in sight. On, its signal is green, not the recording's red. */
-function LiveSwitch({ live }: { live: SettingsGroup }) {
+/** Live preview, a switch at the toolbar's end (2026-10-23): always in sight. On, its signal is green, not the recording's red. */
+function LiveSwitch({ live, iconOnly }: { live: SettingsGroup; iconOnly: boolean }) {
   const on = model.committed(live) === "on";
   return (
-    <Button id={`setting-${live.id}`} variant="outline" role="switch" aria-checked={on} className="studio-live darwin:window-no-drag h-8 gap-1.5 rounded-full px-3.5 text-xs"
-      disabled={!live.enabled} aria-describedby={live.note ? `setting-${live.id}-note` : undefined}
-      onClick={() => void model.choose(live.id, on ? "off" : "on", `setting-${live.id}`)}>
-      <Radio aria-hidden="true" />{live.label}
-    </Button>
+    <ControlTooltip label={live.label} enabled={iconOnly}>
+      <Button id={`setting-${live.id}`} variant="outline" role="switch" aria-checked={on} aria-label={live.label}
+        className={cn(CONTROL, "studio-live", iconOnly && ICON_ONLY)} data-icon-only={iconOnly || undefined}
+        disabled={!live.enabled} aria-describedby={live.note ? `setting-${live.id}-note` : undefined}
+        onClick={() => void model.choose(live.id, on ? "off" : "on", `setting-${live.id}`)}>
+        <Radio aria-hidden="true" /><span className={iconOnly ? "sr-only" : undefined}>{live.label}</span>
+      </Button>
+    </ControlTooltip>
   );
 }
 
 /**
- * The preview's rate (plan 092, D1), behind ⋯ at the end of the title line (plan 097): set now and then, so out of the
+ * The preview's rate (plan 092, D1), behind ⋯ at the toolbar's end (plan 097): set now and then, so out of the
  * way; every choice says in one line what it does.
  */
 function RateMenu({ rate }: { rate: SettingsGroup }) {
@@ -300,9 +325,12 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
   const id = `setting-${rate.id}`;
   return (
     <Popover>
-      <PopoverTrigger render={<Button id={`${id}-more`} variant="ghost" size="icon-sm" className="studio-more darwin:window-no-drag" aria-label={rate.label} />}>
-        <Ellipsis aria-hidden="true" />
-      </PopoverTrigger>
+      <ControlTooltip label={rate.label}>
+        <PopoverTrigger render={<Button id={`${id}-more`} variant="ghost" className={cn(CONTROL, ICON_ONLY, "studio-more border-transparent bg-transparent dark:bg-transparent")}
+          data-icon-only aria-label={rate.label} />}>
+          <Ellipsis aria-hidden="true" />
+        </PopoverTrigger>
+      </ControlTooltip>
       <PopoverContent align="end" className="studio-picker-menu w-72 gap-2">
         <div role="radiogroup" aria-label={rate.label} className="studio-picker-choices">
           <span className="studio-switch-name">{rate.label}</span>
@@ -328,21 +356,18 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
 }
 
 /**
- * The Studio's title line, at the end of the page's head (plan 097, D1): what only changes what is watched, never the
- * file. Shown with the Recording Studio's tab only. The head drags the window on macOS, so each control takes its own
- * clicks (the desktop round of 2026-10-28: without it, Live preview there answered no click).
+ * The toolbar's end (plan 097, D1; moved from the page's title line to the record control's line on 2026-10-28, at the
+ * maintainer's request): what only changes what is watched, never the file.
  */
-export function StudioHead() {
-  const view = groupOf("studioPreviewView");
-  const live = groupOf("studioLive");
-  const rate = groupOf("studioPreviewRate");
+function StudioHead({ view, live, rate, iconOnly }: {
+  view: SettingsGroup | undefined; live: SettingsGroup | undefined; rate: SettingsGroup | undefined; iconOnly: boolean;
+}) {
   if (!view && !live && !rate) return null;
   return (
     <div className="studio-head">
-      {view && <ViewMenu view={view} />}
-      {live && <LiveSwitch live={live} />}
+      {view && <ViewMenu view={view} iconOnly={iconOnly} />}
+      {live && <LiveSwitch live={live} iconOnly={iconOnly} />}
       {rate && <RateMenu rate={rate} />}
-      <Failures groups={[view, live]} />
     </div>
   );
 }
@@ -363,7 +388,7 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
     <div className="studio-record">
       {choice && id && (
         <Button id={id} data-action={choice.id} variant="outline"
-          className={`h-8 gap-1.5 rounded-full px-3.5 text-xs ${filled ? "border-foreground bg-foreground text-background hover:bg-foreground/85 hover:text-background dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/85" : ""}`}
+          className={cn(CONTROL, filled && "border-foreground bg-foreground text-background hover:bg-foreground/85 hover:text-background dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/85")}
           disabled={!controls.enabled || !choice.enabled} aria-disabled={busy || !controls.enabled || !choice.enabled}
           onClick={() => { if (!busy && controls.enabled && choice.enabled) void model.choose(controls.id, choice.id, id); }}>
           {choice.id === "stop" && <Square className="size-2.5 fill-current text-primary" aria-hidden="true" />}
@@ -377,20 +402,56 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 }
 
 /**
- * Over the preview (plan 097, D1): what is recorded. The record control, the recording type, then the screen, camera
- * and microphone pickers, wrapping in a narrow window; the type, the screen and the camera locked while recording.
+ * How much the toolbar says (2026-10-28): every control with its name while all fit; then the recording type and the
+ * pickers as icons; then the view and Live preview as well. Record keeps its words always. An icon names itself in a
+ * tooltip and opens the same menu. Decided by the toolbar's own width, so the sidebar or zoom count as the window does.
  */
-function Choices({ controls }: { controls: SettingsGroup | undefined }) {
+type Density = "full" | "compact" | "icons";
+/** The narrowest toolbar (CSS px) each density fits in, its labels at their usual lengths; narrower still, it wraps. */
+const DENSITY_WIDTHS: [Density, number][] = [["full", 1100], ["compact", 620]];
+
+function useDensity(toolbar: RefObject<HTMLDivElement | null>): Density {
+  const [density, setDensity] = useState<Density>("full");
+  // Measured before the first paint, so a narrow window never shows the full toolbar for a frame.
+  useLayoutEffect(() => {
+    const element = toolbar.current;
+    if (!element) return;
+    const fit = (): void => setDensity(DENSITY_WIDTHS.find(([, width]) => element.clientWidth >= width)?.[0] ?? "icons");
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [toolbar]);
+  return density;
+}
+
+/**
+ * Over the preview (plan 097, D1; one line since 2026-10-28): what is recorded at its start, the record control, the
+ * recording type, then the screen, camera and microphone pickers, the type, the screen and the camera locked while
+ * recording; what is watched at its end. Narrower, the choices fold into icons before anything wraps.
+ */
+function Toolbar({ controls }: { controls: SettingsGroup | undefined }) {
+  const toolbar = useRef<HTMLDivElement>(null);
+  const density = useDensity(toolbar);
   const type = groupOf("studioType");
+  const view = groupOf("studioPreviewView");
+  const live = groupOf("studioLive");
+  const rate = groupOf("studioPreviewRate");
   const pickers = ["studioScreen", "studioCameraDevice", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
   return (
-    <section className="studio-choices" data-phase={controls?.phase} aria-labelledby="studio-choices-heading">
-      <h2 id="studio-choices-heading" className="sr-only">{controls?.sectionHeading ?? model.text("What is recorded")}</h2>
-      {controls && <RecordControl controls={controls} />}
-      {type && <TypePicker type={type} />}
-      {pickers.map((group) => <Picker key={group.id} group={group} />)}
+    <div ref={toolbar} className="studio-toolbar" data-density={density}>
+      <div className="studio-toolbar-row">
+        <section className="studio-choices" data-phase={controls?.phase} aria-labelledby="studio-choices-heading">
+          <h2 id="studio-choices-heading" className="sr-only">{controls?.sectionHeading ?? model.text("What is recorded")}</h2>
+          {controls && <RecordControl controls={controls} />}
+          {type && <TypePicker type={type} iconOnly={density !== "full"} />}
+          {pickers.map((group) => <Picker key={group.id} group={group} iconOnly={density !== "full"} />)}
+        </section>
+        <StudioHead view={view} live={live} rate={rate} iconOnly={density === "icons"} />
+      </div>
       <Failures groups={[controls, type]} />
-    </section>
+      <Failures groups={[view, live]} />
+    </div>
   );
 }
 
@@ -415,8 +476,8 @@ function Channel({ group }: { group: SettingsGroup }) {
 
 /**
  * Under the preview (plan 097, D6): the live controls of the recording's type. A plain recording's camera Show / Hide
- * and each input's Don't record, meter and fader; an editable recording's meters alone, with one line saying where its
- * volumes and the camera are set.
+ * and each input's Don't record, meter and fader; an editable recording's meters alone (the line saying where its
+ * volumes and the camera are set removed on 2026-10-28 at the maintainer's request: the type's own description says it).
  */
 function LiveRow({ type }: { type: SettingsGroup | undefined }) {
   const shown = groupOf("cameraShown");
@@ -433,7 +494,6 @@ function LiveRow({ type }: { type: SettingsGroup | undefined }) {
         )}
         {channels.map((group) => <Channel key={group.id} group={group} />)}
       </div>
-      {type?.footnote && <p className="studio-note">{type.footnote}</p>}
       <Failures groups={[shown, ...channels, groupOf("systemGain"), groupOf("microphoneGain")]} />
     </section>
   );
@@ -441,7 +501,7 @@ function LiveRow({ type }: { type: SettingsGroup | undefined }) {
 
 /**
  * Over the stage while Live preview is off (2026-10-25, at the maintainer's request): a glass button that shows while
- * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the title line does.
+ * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the toolbar does.
  */
 function StageStart({ live }: { live: SettingsGroup }) {
   const id = `setting-${live.id}-stage`;
@@ -506,7 +566,7 @@ export function Studio() {
   const shown = usePreviewChoice(rate, view, live, preview?.cameraPreview?.mode === "recording");
   return (
     <div className="studio">
-      <Choices controls={controls} />
+      <Toolbar controls={controls} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}
           style={{ ["--preview-ratio" as string]: preview.cameraPreview.display.width / preview.cameraPreview.display.height }}>

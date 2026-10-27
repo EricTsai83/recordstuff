@@ -466,7 +466,8 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
     expect(group(recording, editable, "microphoneAudio")).toMatchObject({ control: "meter", choices: [] });
     for (const id of ["systemGain", "microphoneGain", "cameraShown"]) expect(group(recording, editable, id), id).toBeUndefined();
     expect(settingsAction(recording, editable, "microphoneAudio", "mute")).toBeUndefined();
-    expect(group(recording, editable, "studioType")).toMatchObject({ recordingType: "editable", footnote: "Set the volumes and hide the camera afterwards in Edit…" });
+    expect(group(recording, editable, "studioType")).toMatchObject({ recordingType: "editable" });
+    expect(group(recording, editable, "studioType")).not.toHaveProperty("footnote");
     // Before a session, the type the next recording takes: the setting, or the tray's once.
     expect(group(idle, { ...context, editableNext: true }, "studioType")?.recordingType).toBe("editable");
     expect(group(idle, { ...context, editableNext: true }, "systemGain")).toBeUndefined();

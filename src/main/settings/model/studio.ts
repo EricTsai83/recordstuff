@@ -83,8 +83,7 @@ function studioTypeGroup(ctx: AppContext, unlocked: boolean): Group {
       description: darwin ? t("Move the camera and set the volumes afterwards in Edit…. Export it before sharing; files are about twice as large.", language)
         : t("Editable recordings are available on macOS only.", language),
       enabled: darwin, checked: editable, action: { setEditableRecording: true } },
-  ]), recordingType: type,
-  ...(type === "editable" ? { footnote: t("Set the volumes and hide the camera afterwards in Edit…", language) } : {}) };
+  ]), recordingType: type };
 }
 
 const pickerProblem = (problem: InputProblem | undefined): { problem?: string; waiting?: boolean } =>
