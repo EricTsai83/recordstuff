@@ -153,7 +153,8 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
 
   it("idle: Camera beside Microphone, under Include in recordings, where the camera is available (plan 075, D10)", () => {
     const shown = trayModel({ type: "idle" }, { ...mac, camera: { enabled: true, available: true } });
-    const item = shown.menu.find((entry) => entry.kind === "item" && entry.label === "相機");
+    // On, named with its device (plan 097): the system default's name while none is listed.
+    const item = shown.menu.find((entry) => entry.kind === "item" && entry.label === "相機：跟隨系統");
     expect(item).toMatchObject({ checked: true, action: { setCamera: false } });
     expect(trayModel({ type: "idle" }, { ...mac, camera: { enabled: false, available: true } }).menu
       .find((entry) => entry.kind === "item" && entry.label === "相機")).toMatchObject({ checked: false, action: { setCamera: true } });
@@ -299,6 +300,35 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.menu.find((i) => i.kind === "item" && i.label === "開啟選用功能…")).toMatchObject({ action: "openOptionalFeatures" });
   });
 
+  it("idle: a known problem adds a line under its input that opens the Recording Studio, in the picker's words (plan 097)", () => {
+    const ctx: AppContext = { ...mac, language: "en", microphone: { enabled: true, device: { id: "usb", label: "USB Mic" }, devices: [{ id: "built-in", name: "MacBook Pro Microphone", default: true }] },
+      camera: { enabled: true, available: true, access: "denied" } };
+    const menu = trayModel({ type: "idle" }, ctx).menu;
+    expect(below(menu, "Microphone — USB Mic")).toMatchObject({ label: "USB Mic not found", enabled: true, action: "openStudio" });
+    expect(below(menu, "Camera — System default")).toMatchObject({ label: "No camera access", enabled: true, action: "openStudio" });
+    expect(trayModel({ type: "idle" }, ctx).tooltip).toContain("USB Mic not found");
+    // Fine: no line under either.
+    const fine = trayModel({ type: "idle" }, { ...ctx, microphone: { enabled: true }, camera: { enabled: true, available: true, access: "granted" } }).menu;
+    expect(fine.filter((entry) => entry.kind === "item" && entry.action === "openStudio").map((entry) => entry.kind === "item" && entry.label)).toEqual(["Open Recording Studio…"]);
+  });
+
+  it("recording: a problem that starts mid-recording and an input left out are said in the menu and tooltip, never for an editable one's mutes (plan 097, D5, D6)", () => {
+    const recording = { type: "recording" as const, startedAt: "2026-10-27T00:00:00Z" };
+    const ctx: AppContext = { ...mac, language: "en", microphone: { enabled: true }, camera: { enabled: true, available: true, session: { hidden: false, state: "lost" } },
+      audioSession: { systemMuted: true, microphone: { muted: false } } };
+    const m = trayModel(recording, ctx);
+    const alerts = m.menu.filter((entry) => entry.kind === "item" && entry.action === "openStudio" && entry.label !== "Open Recording Studio…");
+    expect(alerts.map((entry) => entry.kind === "item" && entry.label)).toEqual(["The camera dropped out", "System audio not recorded"]);
+    expect(m.tooltip.split("\n")).toEqual(["RecordStuff: Recording", "The camera dropped out", "System audio not recorded"]);
+    // The camera starting is no problem to warn of.
+    const waiting = trayModel(recording, { ...ctx, camera: { enabled: true, available: true, session: { hidden: false, state: "waiting" } }, audioSession: { systemMuted: false } });
+    expect(waiting.tooltip).toBe("RecordStuff: Recording");
+    // An editable recording records every input: no Hide camera, and no input left out.
+    const editable = trayModel(recording, { ...ctx, camera: { enabled: true, available: true, session: { hidden: false } }, audioSession: { systemMuted: true, editable: true } });
+    expect(labels(editable.menu)).not.toContain("Hide camera");
+    expect(labels(editable.menu)).not.toContain("System audio not recorded");
+  });
+
   it("is a flat command list in every state: no preference renders in the tray but idle's microphone and camera (plan 074)", () => {
     for (const state of STATES) {
       const menu = trayModel(state, { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "available", version: "9.0.0" }, enabled: true } }).menu;
@@ -312,8 +342,11 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
   it("offers the microphone as a checkbox in idle only, toggling the stored switch (plan 074)", () => {
     const find = (state: RecordingState, ctx: AppContext) => trayModel(state, ctx).menu.find((entry) => entry.kind === "item" && entry.checked !== undefined);
     expect(find({ type: "idle" }, mac)).toMatchObject({ label: "麥克風", enabled: true, checked: false, action: { setMicrophone: true } });
+    // On, named with its device (plan 097).
     expect(find({ type: "idle" }, { ...mac, language: "en", microphone: { enabled: true } }))
-      .toMatchObject({ label: "Microphone", checked: true, action: { setMicrophone: false } });
+      .toMatchObject({ label: "Microphone — System default", checked: true, action: { setMicrophone: false } });
+    expect(find({ type: "idle" }, { ...mac, language: "en", microphone: { enabled: true, devices: [{ id: "a", name: "MacBook Pro Microphone", default: true }] } }))
+      .toMatchObject({ label: "Microphone — MacBook Pro Microphone" });
     for (const state of STATES.filter((candidate) => candidate.type !== "idle")) expect(find(state, { ...mac, microphone: { enabled: true } }), state.type).toBeUndefined();
     // Not in the Record menu: the window it stands beside has the switch.
     expect(recordMenu({ type: "idle" }, mac).some((entry) => entry.kind === "item" && entry.checked !== undefined)).toBe(false);

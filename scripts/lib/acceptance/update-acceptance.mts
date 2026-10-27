@@ -72,8 +72,12 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   // The Recording Studio's Start, Cancel and Stop (plan 075, D19) act on the session itself.
   studioControls: { lockedChoices: ["saving"] },
   systemAudio: "session", microphoneAudio: "session",
-  // Switches the microphone of a recording that records one (plan 079, D3); Search for devices waits for the end.
-  microphoneDevice: { session: true, lockedChoices: ["search"] },
+  // Switches the microphone of a recording that records one (plan 079, D3); Search for devices waits for the end. The
+  // Studio's microphone picker is the same choice (plan 097).
+  microphoneDevice: { session: true, lockedChoices: ["search"] }, studioMicrophoneDevice: { session: true, lockedChoices: ["search"] },
+  // The Studio's choices over the preview (plan 097, D1): the recording type, the screen and the microphone's switch,
+  // the same settings as Recording settings', locked with them.
+  studioType: "locked", studioScreen: "locked", studioHideSystemUi: "locked", studioMicrophone: "locked",
   // The input's level between recordings (plan 079, D1): at rest while busy.
   microphoneLevel: "locked",
   // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
@@ -120,10 +124,10 @@ export function assertLockContract(s: LockSnapshot): void {
     const countdownOff = s.settings.groups.find(g => g.id === "countdown")?.choices.some(c => c.checked && c.id === "0");
     // Hide taskbar on Windows is unavailable at all times, and says why in its note (plan 076, D6).
     // Shown unavailable with why on Windows, where the engine cannot (hideSystemUi, D6; editableRecording, plan 087).
-    const unavailable = (group.id === "hideSystemUi" || group.id === "editableRecording") && group.note !== undefined;
+    const unavailable = (group.id === "hideSystemUi" || group.id === "studioHideSystemUi" || group.id === "editableRecording") && group.note !== undefined;
     // The input device follows the microphone's switch even when idle (plan 074).
     const microphoneOff = s.settings.groups.find(g => g.id === "microphone")?.choices.some(c => c.checked && c.id === "off");
-    const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !(group.id === "microphoneDevice" && microphoneOff) && !unavailable;
+    const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !((group.id === "microphoneDevice" || group.id === "studioMicrophoneDevice") && microphoneOff) && !unavailable;
     const session = policy === "session" || (typeof policy === "object" && policy.session === true);
     if (!session || (typeof policy === "object" && !busy)) assert.equal(group.enabled, enabled, `settings group ${group.id} while ${state}`);
     // A permitted group must stay usable choice by choice, not only as a group; a partly locked one locks exactly its listed choices.

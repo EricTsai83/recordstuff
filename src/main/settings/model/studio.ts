@@ -1,20 +1,22 @@
 /**
- * The Recording Studio's rows (plan 075, D19, D20): what is watched and changed around a recording, and its Start,
- * Cancel or Stop.
+ * The Recording Studio's rows (plan 075, D19, D20; laid out again by plan 097, D1): over the preview what is recorded
+ * (the record control, the recording type and the screen, camera and microphone pickers), the preview with its view,
+ * Live preview and rate, and under it what is watched and changed while recording, which follows the recording's type.
  */
 import { failureReason } from "../../recording/recording-result";
 import { translate as t, type PlainMessageKey } from "../../../shared/i18n";
 import type { RecordingState } from "../../../shared/state";
 import type { AppAction, AppContext } from "../../app/ui-model";
-import { studioAudioGroups } from "./audio";
-import { cameraPreviewGroup, cameraShapeGroups } from "./camera";
+import { microphoneDeviceGroup, microphoneGroup, studioAudioGroups } from "./audio";
+import { cameraGroups, cameraPreviewGroup, cameraShapeGroups } from "./camera";
 import { type Group, group, switchChoices } from "./group";
+import { inputNames, inputProblems, type InputProblem, type InputProblems } from "./inputs";
+import { hideSystemUiGroup, screenGroup } from "./recording";
 import { DEFAULT_STUDIO_PREVIEW, STUDIO_PREVIEW_RATES, STUDIO_VIEWS, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 
 const VIEW_LABELS: Record<StudioView, [PlainMessageKey, PlainMessageKey]> = {
   composed: ["As recorded", "The screen and the camera, as the recording has them."],
-  screen: ["Screen only", "No camera; its bubble is an outline you can still drag."],
-  camera: ["Camera only", "The camera enlarged, to check framing, light and focus."],
+  camera: ["Check camera", "The camera enlarged, to check framing, light and focus."],
 };
 
 const RATE_LABELS: Record<StudioPreviewRate, [PlainMessageKey, PlainMessageKey]> = {
@@ -40,29 +42,133 @@ function studioPreviewGroups(ctx: AppContext): Group[] {
 }
 
 /**
- * The Recording Studio (plan 075, D19): the preview, the camera's switch, its showing in the recording in progress
- * (D13), its shape, and Start, Cancel or Stop with the elapsed time, each a row of its own sections.
+ * The Recording Studio (plan 097): the record control, the recording type and the three pickers over the preview;
+ * the preview with its view, Live preview and rate; under it the live controls of the recording's type.
  */
 export function studioGroups(state: RecordingState, ctx: AppContext, unlocked: boolean): Group[] {
-  const camera = ctx.camera;
-  const language = ctx.language;
-  const camerasRows: Group[] = [];
-  if (camera?.available) {
-    const preview = cameraPreviewGroup(ctx, unlocked);
-    if (preview) camerasRows.push(preview, ...studioPreviewGroups(ctx));
-    camerasRows.push({ ...group("studioCamera", t("Camera", language), unlocked,
-      switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
-    ...(unlocked ? {} : { note: t("Turned on or off between recordings.", language) }) });
-    if (camera.session) {
-      camerasRows.push(group("cameraShown", t("Show camera in recording", language), true,
-        switchChoices(language, !camera.session.hidden, (value) => ({ setCameraHidden: !value }))));
-    }
-    camerasRows.push(...cameraShapeGroups(ctx, unlocked));
-  }
+  const problems = inputProblems(state, ctx);
+  const preview = ctx.camera?.available ? cameraPreviewGroup(ctx) : undefined;
   const live = studioLiveGroup(state, ctx);
-  return [...camerasRows, ...(live ? [live] : []), ...studioAudioGroups(ctx), studioControlsGroup(state, ctx)];
+  return [
+    studioControlsGroup(state, ctx),
+    studioTypeGroup(ctx, unlocked),
+    ...studioScreenGroups(ctx, unlocked, problems),
+    ...studioCameraGroups(ctx, unlocked, problems),
+    ...studioMicrophoneGroups(ctx, unlocked, problems),
+    ...(preview ? [preview, ...studioPreviewGroups(ctx)] : []),
+    ...(live ? [live] : []),
+    ...studioLiveGroups(state, ctx),
+  ];
 }
 
+/** The type of the recording the live controls follow (D6): the session's, else the next recording's. */
+export function liveRecordingType(ctx: AppContext): "plain" | "editable" {
+  return (ctx.editableSession ?? ctx.editableNext ?? false) ? "editable" : "plain";
+}
+
+/**
+ * The recording type (D6): the same Editable recordings setting as Recording settings' switch, locked while recording,
+ * where it shows the recording's own type (the tray's Start editable recording makes one editable while the setting
+ * stays off). Where the engine records no editable file (Windows), Editable recording is listed but unavailable, with why.
+ */
+function studioTypeGroup(ctx: AppContext, unlocked: boolean): Group {
+  const language = ctx.language;
+  const darwin = ctx.platform === "darwin";
+  const editable = !unlocked && ctx.editableSession !== undefined ? ctx.editableSession : darwin && (ctx.editableRecording ?? false);
+  const type = liveRecordingType(ctx);
+  return { ...group("studioType", t("Recording type", language), unlocked, [
+    { id: "plain", label: t("Plain recording", language), description: t("Ready to share as soon as it stops.", language),
+      enabled: true, checked: !editable, action: { setEditableRecording: false } },
+    { id: "editable", label: t("Editable recording", language),
+      description: darwin ? t("Move the camera and set the volumes afterwards in Edit…. Export it before sharing; files are about twice as large.", language)
+        : t("Editable recordings are available on macOS only.", language),
+      enabled: darwin, checked: editable, action: { setEditableRecording: true } },
+  ]), recordingType: type,
+  ...(type === "editable" ? { footnote: t("Set the volumes and hide the camera afterwards in Edit…", language) } : {}) };
+}
+
+const pickerProblem = (problem: InputProblem | undefined): { problem?: string; waiting?: boolean } =>
+  problem ? { problem: problem.text, ...(problem.waiting ? { waiting: true } : {}) } : {};
+
+/** The screen's picker: the displays, as Recording settings lists them, and Hide menu bar and Dock (or the taskbar's). */
+function studioScreenGroups(ctx: AppContext, unlocked: boolean, problems: InputProblems): Group[] {
+  const screen = screenGroup(ctx, unlocked);
+  const hide = hideSystemUiGroup(ctx, unlocked);
+  return [
+    { ...group("studioScreen", screen.label, unlocked, screen.choices),
+      picker: { input: "screen", name: inputNames(ctx).screen, ...pickerProblem(problems.screen), locked: !unlocked, parts: ["studioHideSystemUi"] },
+      ...(screen.recovery ? { recovery: screen.recovery } : {}) },
+    { ...hide, ...group("studioHideSystemUi", hide.label, hide.enabled, hide.choices), control: "switch",
+      ...(hide.note ? { note: hide.note } : {}), ...(hide.info ? { info: hide.info } : {}) },
+  ];
+}
+
+/**
+ * The camera's picker (where the camera is available): its switch at the top of its menu, the devices, then the
+ * bubble's shape and mirror, all chosen before recording and locked with the picker; the bubble's place is dragged in
+ * the preview at any time.
+ */
+function studioCameraGroups(ctx: AppContext, unlocked: boolean, problems: InputProblems): Group[] {
+  const camera = ctx.camera;
+  if (!camera?.available) return [];
+  const language = ctx.language;
+  const device = cameraGroups(ctx, unlocked)[0]!;
+  const on = { ...group("studioCamera", t("Camera", language), unlocked, switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))) };
+  return [
+    { ...group("studioCameraDevice", t("Camera", language), unlocked && camera.enabled, device.choices),
+      picker: { input: "camera", name: inputNames(ctx).camera, off: !camera.enabled, ...pickerProblem(problems.camera), locked: !unlocked,
+        parts: ["studioCamera", "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror"] } },
+    on,
+    ...cameraShapeGroups(ctx, unlocked),
+  ];
+}
+
+/**
+ * The microphone's picker: its switch, then the inputs, the system default and a chosen input that is not connected
+ * included (plan 074). The switch is locked while recording; the input stays switchable (plan 079, D3).
+ */
+function studioMicrophoneGroups(ctx: AppContext, unlocked: boolean, problems: InputProblems): Group[] {
+  const language = ctx.language;
+  const device = microphoneDeviceGroup(ctx, unlocked);
+  const on = microphoneGroup(ctx, unlocked);
+  return [
+    { ...group("studioMicrophoneDevice", t("Microphone", language), device.enabled, device.choices),
+      ...(device.actions ? { actions: device.actions } : {}),
+      picker: { input: "microphone", name: inputNames(ctx).microphone, off: !(ctx.microphone?.enabled ?? false), ...pickerProblem(problems.microphone),
+        parts: ["studioMicrophone"] } },
+    { ...group("studioMicrophone", t("Microphone", language), on.enabled, on.choices), control: "switch" },
+  ];
+}
+
+/**
+ * Under the preview (D6): a plain recording's camera Show / Hide, and each input's Don't record, meter and fader; an
+ * editable recording's meters alone, since it records every input as it comes and Edit… sets them afterwards.
+ */
+function studioLiveGroups(state: RecordingState, ctx: AppContext): Group[] {
+  const type = liveRecordingType(ctx);
+  const rows = studioAudioGroups(ctx, type);
+  if (type === "editable" || !ctx.camera?.available) return rows;
+  return [cameraShownGroup(state, ctx), ...rows];
+}
+
+/**
+ * Show or hide the camera in the recording in progress (plan 075, D13), a plain recording's only: unavailable before
+ * a recording, which records nothing yet, and during one without the camera, which it joins from the next recording.
+ */
+function cameraShownGroup(state: RecordingState, ctx: AppContext): Group {
+  const language = ctx.language;
+  const camera = ctx.camera!;
+  const recording = state.type === "countdown" || state.type === "recording";
+  const session = recording ? camera.session : undefined;
+  const result = group("cameraShown", t("Camera", language), session !== undefined,
+    switchChoices(language, session ? !session.hidden : camera.enabled, (value) => ({ setCameraHidden: !value })));
+  if (!session) {
+    result.note = !recording ? t("Shown or hidden while recording.", language)
+      : camera.enabled ? t("The camera joins from the next recording.", language) : t("This recording has no camera.", language);
+    result.noteKind = "status";
+  }
+  return { ...result, control: "switch" };
+}
 
 /**
  * Live preview (D20) as a switch of the preview's own, apart from the recording's controls (2026-10-21): between

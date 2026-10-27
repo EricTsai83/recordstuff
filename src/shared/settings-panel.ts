@@ -75,7 +75,12 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "inputMeter";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "inputMeter" | "cameraTest";
+  /**
+   * A `cameraTest` (plan 097, D4): the Recording tab's Test camera, which shows the chosen camera in the page, matched to
+   * Chromium's list by `name`; absent is the system default. Opened only while the user has it on.
+   */
+  cameraTest?: { name?: string };
   /**
    * A `slider`'s range and value, whole steps in `unit`; the page sends the value let go of as the choice, which main
    * validates (plan 075's camera size and rounding, and D21's volumes). `scale: "volume"` lays a volume out as the
@@ -97,6 +102,26 @@ export interface SettingsGroup {
   elapsedSince?: string;
   /** The Recording Studio's controls: where the recording is, which the page draws its state with (2026-10-21). */
   phase?: "idle" | "blocked" | "starting" | "countdown" | "recording" | "saving";
+  /**
+   * One of the Recording Studio's input pickers (plan 097): what it shows when the input is fine (the device's name, or
+   * that it is off), its problem in place of that name when it has one (D2), and whether it is locked by a recording. Its
+   * menu holds the group's own choices, the devices, with the switch and the other groups named in `parts`.
+   */
+  picker?: {
+    input: "screen" | "camera" | "microphone";
+    name: string;
+    off?: boolean;
+    problem?: string;
+    /** The problem is the camera starting: said, without the warning look. */
+    waiting?: boolean;
+    locked?: boolean;
+    /** The groups shown in its menu with the devices: its on/off switch first, then further rows (the bubble's shape). */
+    parts?: string[];
+  };
+  /** The recording type the Studio's live controls follow (plan 097, D6): the session's, or the next recording's. */
+  recordingType?: "plain" | "editable";
+  /** A device row's problem, in the words the Studio's picker uses (plan 097, D2). */
+  problem?: string;
   /** A `cameraPreview`'s stage and bubble (plan 075 step 7); the page sends a new position as the choice `x,y`. */
   cameraPreview?: CameraPreviewView;
   /** Segments drawn as icons named by their labels (Appearance's screen, sun and moon); presentation only. */

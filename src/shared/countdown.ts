@@ -122,6 +122,16 @@ export function tickFrequencyHz(digit: number): number {
 
 /** The overlay page's query parameter that turns the tick on; the page has no other input than main's values. */
 export const COUNTDOWN_SOUND_QUERY = "sound";
+/**
+ * The overlay page's query parameter holding the line it shows under the digit (plan 097): a problem the recording
+ * starts with, such as a missing camera, so the user can still cancel. Absent shows the digit alone, as before.
+ */
+export const COUNTDOWN_NOTICE_QUERY = "notice";
+/**
+ * The line's room beside and under the digit, in points: the window grows to this width and by this height, the digit
+ * keeping its size and its place in the top-right corner.
+ */
+export const COUNTDOWN_NOTICE = { widthPt: 320, heightPt: 56 } as const;
 
 export interface Rectangle {
   x: number;
@@ -141,14 +151,16 @@ export function overlayFontPt(displayBounds: Rectangle): number {
  * The overlay window's bounds on a display, in whole points: sized from the
  * whole display (so the Dock cannot change it) and placed inside its work area.
  */
-export function overlayBounds(displayBounds: Rectangle, workArea: Rectangle): Rectangle {
+export function overlayBounds(displayBounds: Rectangle, workArea: Rectangle, notice = false): Rectangle {
   const { windowPerFont, rightInsetPt, topInsetPt } = COUNTDOWN_OVERLAY;
   const side = Math.round(overlayFontPt(displayBounds) * windowPerFont);
+  // With a line under the digit (plan 097) the window is wider and taller; the digit keeps its square at the top right.
+  const width = notice ? Math.max(side, COUNTDOWN_NOTICE.widthPt) : side;
   return {
-    x: Math.round(workArea.x + workArea.width - rightInsetPt - side),
+    x: Math.round(workArea.x + workArea.width - rightInsetPt - width),
     y: Math.round(workArea.y + topInsetPt),
-    width: side,
-    height: side,
+    width,
+    height: notice ? side + COUNTDOWN_NOTICE.heightPt : side,
   };
 }
 

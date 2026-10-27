@@ -56,6 +56,7 @@ import { createRunId, logSessionEvent } from "./recording/session-log";
 import { PermissionWatcher, askCameraAccess, askMicrophoneAccess, cameraAccess, openCameraSettings, microphoneAccess, openMicrophoneSettings, openNotificationSettings, openOptionalFeatures, openScreenCaptureSettings } from "./permission/permission";
 import { missingMediaComponents } from "./recording/media-components";
 import { EditableChoice } from "./recording/editable-choice";
+import { startProblems } from "./settings/model/inputs";
 import { Recorder } from "./recording/recorder";
 import { SessionSentinels, reportInterruptions } from "./recording/session-sentinel";
 import { SavedNotification } from "./recording/saved-notification";
@@ -363,9 +364,6 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     } } : {}),
     // D6: only ScreenCaptureKit can leave the system's chrome out.
     hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
-    // Plan 087: the engine records editable files on macOS only.
-    // The tray's Start editable recording (2026-10-25) makes one recording editable while the setting stays off.
-    editable: () => editable.next(),
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
     // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
@@ -466,6 +464,15 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
     // The volumes (D21): autorecord's are 0 dB, its sound as the inputs give it.
     audioVolume: () => autoRecord?.ok ? { ...DEFAULT_AUDIO_VOLUME } : settings.audioVolume,
+    // Plan 087: the engine records editable files on macOS only. The tray's Start editable recording (2026-10-25) makes
+    // one recording editable while the setting stays off; the session keeps what it began as (plan 097, D6).
+    editable: () => editable.next(),
+    // What the recording starts without (plan 097), under the countdown's digit so it can still be cancelled.
+    countdownNotice: () => {
+      if (autoRecord?.ok) return undefined;
+      const problems = startProblems(recorder.state, appContext());
+      return problems.length ? problems.join(settings.language === "zh-TW" ? "、" : " · ") : undefined;
+    },
     countdown: overlay,
     // Only RecordStuff's own folders are created; a chosen one that is missing may be an offline drive.
     ensureWritableDir: dir => ensureWritableDir(dir, undefined,
@@ -614,8 +621,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
     ...(() => {
       const audio = recorder.audio;
-      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}) } } : {};
+      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}),
+        ...(audio.editable ? { editable: true as const } : {}) } } : {};
     })(),
+    ...(recorder.editable === undefined ? {} : { editableSession: recorder.editable }),
+    editableNext: editable.next(),
     audioVolume: settings.audioVolume,
     platform: process.platform,
     ...(mediaComponentsMissing ? { mediaComponentsMissing } : {}),
@@ -803,6 +813,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     microphoneMonitor.sync();
   }
   renderUi(recorder.state);
+  /** The inputs that are on, listed with Settings closed too (plan 097); Settings lists them again as it comes forward. */
+  const listInputsInUse = (): void => { void devices.refreshInUse({ microphone: settings.microphone, camera: settings.camera }); };
+  listInputsInUse();
   faultWiring.recorder = recorder;
   faultWiring.refresh = refreshUi;
   shortcuts.start();
@@ -985,6 +998,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         // A Live preview's session is held in an idle state (D20): its process stays until the preview is let go of.
         // One recording made editable from the tray: it has ended, or it never started.
         if (event.state.type === "idle") editable.idle();
+        // A recording ended: what the next one would open, said with the Studio closed (plan 097).
+        if (event.state.type === "idle" && !recorder.preview) listInputsInUse();
         if (preferencesUnlocked(event.state) && !recorder.preview) {
           displayMedia.settle();
           host.destroy();

@@ -28,25 +28,30 @@ export function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "editableRecording", "microphone", "camera", "studioCamera", "cameraShown", "cameraMirror"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "editableRecording", "microphone", "camera", "studioCamera",
+  "studioMicrophone", "studioHideSystemUi", "cameraShown", "cameraMirror"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
 /** A row's tab follows its section, so a section is never split. */
 const RECORDING_SECTIONS = new Set(["source", "countdown", "audio", "camera", "video"]);
 const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
-/** The Recording Studio's (plan 075, D19): what is watched and changed around a recording. */
-const STUDIO_SECTIONS = new Set(["studioPreview", "studioCamera", "studioAudio", "studioControls"]);
+/**
+ * The Recording Studio's (plan 075, D19; plan 097, D1): over the preview what is recorded, the preview, and under it
+ * what is watched and changed while recording.
+ */
+const STUDIO_SECTIONS = new Set(["studioChoices", "studioPreview", "studioLive"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source", editableRecording: "source",
   countdown: "countdown", countdownSound: "countdown",
   microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
-  camera: "camera", cameraDevice: "camera", cameraStudio: "camera",
-  studioControls: "studioControls", cameraPreview: "studioPreview", studioPreviewRate: "studioPreview", studioPreviewView: "studioPreview", studioLive: "studioPreview", systemAudio: "studioAudio", microphoneAudio: "studioAudio",
-  systemGain: "studioAudio", microphoneGain: "studioAudio",
-  studioCamera: "studioCamera", cameraShown: "studioCamera", cameraWidth: "studioCamera", cameraHeight: "studioCamera",
-  cameraRounding: "studioCamera", cameraMirror: "studioCamera",
+  camera: "camera", cameraDevice: "camera", cameraTest: "camera", cameraStudio: "camera",
+  studioControls: "studioChoices", studioType: "studioChoices", studioScreen: "studioChoices", studioHideSystemUi: "studioChoices",
+  studioCameraDevice: "studioChoices", studioCamera: "studioChoices", cameraWidth: "studioChoices", cameraHeight: "studioChoices",
+  cameraRounding: "studioChoices", cameraMirror: "studioChoices", studioMicrophoneDevice: "studioChoices", studioMicrophone: "studioChoices",
+  cameraPreview: "studioPreview", studioPreviewRate: "studioPreview", studioPreviewView: "studioPreview", studioLive: "studioPreview",
+  cameraShown: "studioLive", systemAudio: "studioLive", microphoneAudio: "studioLive", systemGain: "studioLive", microphoneGain: "studioLive",
   videoQuality: "video", resolutionCap: "video", frameRate: "video",
   trayClick: "controls", hotkey: "controls", notifications: "controls",
   language: "display", appearance: "display",
@@ -59,9 +64,8 @@ const SECTION_HEADINGS: Record<string, PlainMessageKey> = {
   countdown: "Before recording",
   audio: "Audio",
   camera: "Camera",
-  studioCamera: "Camera",
-  studioAudio: "Audio",
-  studioControls: "Recording controls",
+  studioChoices: "What is recorded",
+  studioLive: "While recording",
   video: "Video",
   controls: "Controls and notifications",
   display: "Language and appearance",

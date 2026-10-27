@@ -59,13 +59,13 @@ it("says its rate and view on each new port and when they change, and closes the
   feed.setPreviewRate(5);
   feed.setPreviewRate(5);
   feed.setPreviewRate(15);
-  feed.setPreviewView("screen");
-  feed.setPreviewView("screen");
-  expect(first.posted).toEqual([...told, { type: "rate", fps: 5 }, { type: "rate", fps: 15 }, { type: "view", view: "screen" }]);
+  feed.setPreviewView("camera");
+  feed.setPreviewView("camera");
+  expect(first.posted).toEqual([...told, { type: "rate", fps: 5 }, { type: "rate", fps: 15 }, { type: "view", view: "camera" }]);
   give(second);
   expect(first.closed).toBe(true);
   // A new session's preview starts at 10 and composed: the page says its own.
-  expect(second.posted).toEqual([{ type: "rate", fps: 15 }, { type: "view", view: "screen" }]);
+  expect(second.posted).toEqual([{ type: "rate", fps: 15 }, { type: "view", view: "camera" }]);
   stop();
 });
 

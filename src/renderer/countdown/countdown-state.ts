@@ -6,6 +6,8 @@
  * window silences it.
  */
 import {
+  COUNTDOWN_NOTICE,
+  COUNTDOWN_NOTICE_QUERY,
   COUNTDOWN_OVERLAY,
   COUNTDOWN_SOUND_QUERY,
   COUNTDOWN_TICK,
@@ -49,6 +51,8 @@ export function overlayStyle(): Record<string, string> {
     "--outline-width-strong": em(reducedTransparency.outline.widthPx),
     "--outline-strong": reducedTransparency.outline.color,
     "--shadow-strong": shadowOf(reducedTransparency.shadows),
+    "--notice-height": `${COUNTDOWN_NOTICE.heightPt}px`,
+    "--window-per-font": String(windowPerFont),
     "--fade-in": `${COUNTDOWN_TIMING.fadeInMs}ms`,
     "--fade-out": `${COUNTDOWN_TIMING.fadeOutMs}ms`,
     "--crossfade": `${COUNTDOWN_TIMING.crossfadeMs}ms`,
@@ -95,6 +99,12 @@ export function playTick(context: TickContext, digit: number): void {
     oscillator.start(at);
     oscillator.stop(end);
   }
+}
+
+/** The line main loaded this page with, under the digit (plan 097); none when absent or empty. */
+export function noticeRequested(search: string): string | undefined {
+  const notice = new URLSearchParams(search).get(COUNTDOWN_NOTICE_QUERY)?.trim();
+  return notice ? notice : undefined;
 }
 
 /** Whether main loaded this page with the tick on. */

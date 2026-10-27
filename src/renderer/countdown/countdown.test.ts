@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { COUNTDOWN_OVERLAY, COUNTDOWN_TICK, COUNTDOWN_TIMING } from "../../shared/countdown";
-import { createCountdownState, overlayStyle, playTick, soundRequested, type TickContext } from "./countdown-state";
+import { createCountdownState, noticeRequested, overlayStyle, playTick, soundRequested, type TickContext } from "./countdown-state";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -22,6 +22,28 @@ function renderCountdown(element: HTMLElement, onDigit?: (digit: number) => void
  return value => flushSync(() => root.render(createElement(CountdownFaces, { frame: update(value) })));
 }
 const faces = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>(".face")).map((face) => [face.textContent, face.classList.contains("front")]);
+
+describe("the line under the digit (plan 097)", () => {
+  it("reads the line main loaded the page with, and none when absent or blank", () => {
+    expect(noticeRequested("?notice=Camera%20not%20found&sound=1")).toBe("Camera not found");
+    expect(noticeRequested("?sound=1")).toBeUndefined();
+    expect(noticeRequested("?notice=%20%20")).toBeUndefined();
+  });
+
+  it("draws the line under the digit only when there is one", () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = createRoot(document.getElementById("root")!);
+    const frame = createCountdownState()(3);
+    flushSync(() => root.render(createElement(CountdownFaces, { frame, notice: "USB Mic not found" })));
+    const element = document.getElementById("stage")!;
+    expect(element.classList.contains("with-notice")).toBe(true);
+    expect(element.querySelector(".notice")?.textContent).toBe("USB Mic not found");
+    flushSync(() => root.render(createElement(CountdownFaces, { frame })));
+    expect(element.classList.contains("with-notice")).toBe(false);
+    expect(element.querySelector(".notice")).toBeNull();
+    root.unmount();
+  });
+});
 
 describe("countdown overlay page", () => {
   it("fades the first digit in, crossfades between digits and fades out on null", () => {

@@ -135,12 +135,14 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
 }
 
 /**
- * An input's level and its mute, in the Audio panel (2026-10-24): the mute says Mute in words beside its icon, the same
- * width muted or not, its state the button's pressed look; assistive technology hears what a press does.
+ * An input's level and, in a plain recording, whether it is recorded (plan 097, D6: Don't record, the mute until then,
+ * which read as a monitor's mute), its state the button's pressed look; assistive technology hears what a press does.
+ * An editable recording's input has no such button: it records every input as it comes.
  */
 export function AudioMeter({ group, source, muted, disabled, describedBy }: {
   group: SettingsGroup; source: "system" | "microphone"; muted: boolean; disabled: boolean; describedBy: string | undefined;
 }) {
+  const recordable = group.choices.some((choice) => choice.id === "mute");
   const id = `setting-${group.id}`;
   const [track, setTrack] = useState<HTMLDivElement | null>(null);
   const [cover, setCover] = useState<HTMLDivElement | null>(null);
@@ -163,20 +165,20 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
         <div className="audio-meter-fill" />
         <div ref={setCover} className="audio-meter-cover" />
       </div>
-      <Button
+      {recordable && <Button
         id={id}
         variant="outline"
         size="sm"
         className="audio-meter-mute"
         disabled={disabled}
         aria-pressed={muted}
-        aria-label={translate(muted ? "Unmute {label}" : "Mute {label}", language, { label: group.label })}
+        aria-label={translate(muted ? "Record {label}" : "Don't record {label}", language, { label: group.label })}
         aria-describedby={describedBy}
         onClick={() => void model.choose(group.id, muted ? "unmute" : "mute", id)}
       >
         <Icon aria-hidden="true" />
-        <span aria-hidden="true">{translate("Mute", language)}</span>
-      </Button>
+        <span aria-hidden="true">{translate("Don't record", language)}</span>
+      </Button>}
     </div>
   );
 }

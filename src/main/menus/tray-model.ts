@@ -21,6 +21,7 @@ import type { ErrorCode, RecordingState } from "../../shared/state";
 import { describeAccelerator, settingsShortcut as openShortcut, type HotkeyAccelerator } from "../../shared/hotkey";
 
 import { QUITTING_TEXT, abbreviateHome, type AppAction, type AppContext } from "../app/ui-model";
+import { inputNames, inputProblems } from "../settings/model/inputs";
 import { APP_NAME } from "../lib/app-name";
 import { preferencesUnlocked } from "../recording/recording-lock";
 
@@ -163,7 +164,7 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
    * `lead` puts them above the actions instead, which only the permission line needs: its steps mean nothing
    * without it, and nothing can be recorded.
    */
-  const model = (icon: TrayIcon, title: string, status: string, actions: TrayMenuItem[], lines: string[] = [], lead = false) => {
+  const model = (icon: TrayIcon, title: string, status: string, actions: TrayMenuItem[], lines: string[] = [], lead = false, alerts: string[] = []) => {
     const leading = lead ? lines.map(disabled) : [];
     const statusGroup = [...(lead ? [] : lines), ...notes].map(disabled);
     return {
@@ -171,7 +172,7 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
         icon: icon === "idle" && unread.length > 0 ? "warning" : icon,
         title,
         // The state and what it holds back, nothing about clicking: what a click does is the user's choice (2026-10-04).
-        tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
+        tooltip: fitTooltip(ctx.platform, [`${APP_NAME}: ${status}`, ...alerts, ...notes, ...(unread.length > 0 ? [unreadText] : [])].join("\n")),
         menu: settled(grouped([...leading, ...actions], windows, [...statusGroup, ...unreadGroup], app)),
       },
       actions: settled(actions),
@@ -220,15 +221,24 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       // recordings start. Idle's only, since a session locks it as Settings does. Under a heading that says what the
       // ticks mean (2026-10-26, the maintainer's request: "Record microphone" read as an action, or as a permission), the
       // inputs by name alone, as macOS menus group their choices.
+      // Each input on is named with its device (plan 097), and a known problem adds a line under it that opens the
+      // Recording Studio, where it is fixed; a problem only a session can tell waits for one.
       const microphone = ctx.microphone?.enabled ?? false;
+      const names = inputNames(ctx);
+      const problems = inputProblems(state, ctx);
+      const named = (input: PlainMessageKey, on: boolean, device: string): string => on ? t("{input} — {device}", language, { input: text(input), device }) : text(input);
+      const problemLine = (problem: { text: string; waiting?: true } | undefined): TrayMenuItem[] =>
+        problem && !problem.waiting ? [item(problem.text, "openStudio", text("Opens the Recording Studio."))] : [];
       actions.push(SEPARATOR, { kind: "item", label: text("Include in recordings"), enabled: false, header: true });
-      actions.push({ kind: "item", label: text("Microphone"), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
+      actions.push({ kind: "item", label: named("Microphone", microphone, names.microphone), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
+      actions.push(...problemLine(problems.microphone));
       // The camera's switch beside it (plan 075, D10), where the camera is available.
       if (ctx.camera?.available) {
         const camera = ctx.camera.enabled;
-        actions.push({ kind: "item", label: text("Camera"), enabled: true, action: { setCamera: !camera }, checked: camera });
+        actions.push({ kind: "item", label: named("Camera", camera, names.camera), enabled: true, action: { setCamera: !camera }, checked: camera });
+        actions.push(...problemLine(problems.camera));
       }
-      return model("idle", "", status, actions, lines);
+      return model("idle", "", status, actions, lines, false, [problems.microphone, problems.camera].filter((problem) => problem && !problem.waiting).map((problem) => problem!.text));
     }
     case "starting":
       // The shortcut cancels too once the start has lasted a second (plan 065), so it is named as in the countdown.
@@ -243,14 +253,26 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
         item(text("Cancel recording"), "cancelCountdown", shortcutHint(ctx, "Cancel recording with {value}"), shortcut),
       ]);
     }
-    case "recording":
+    case "recording": {
+      // A problem that starts mid-recording, and an input a plain recording leaves out (plan 097, D5): said here, with
+      // the Studio closed too, and in the tooltip; each opens the Recording Studio. No notification over the recording.
+      const problems = inputProblems(state, ctx);
+      const audio = ctx.audioSession;
+      const alerts = [
+        ...[problems.camera, problems.microphone].filter((problem) => problem?.session && !problem.waiting).map((problem) => problem!.text),
+        ...(audio && !audio.editable && audio.microphone?.muted ? [text("Microphone not recorded")] : []),
+        ...(audio && !audio.editable && audio.systemMuted ? [text("System audio not recorded")] : []),
+      ];
       // `REC` beside the icon and Stop say it; the line is gone (2026-10-05).
       return model("recording", "REC", text("Recording"), [
         item(text("Stop"), "stop", shortcutHint(ctx, "Start / stop recording with {value}"), shortcut),
-        // Hide and show the camera while recording (plan 075, D13); no global shortcut.
-        ...(ctx.camera?.session ? [{ kind: "item" as const, label: text(ctx.camera.session.hidden ? "Show camera" : "Hide camera"), enabled: true,
+        // Hide and show the camera while a plain recording runs (plan 075, D13); no global shortcut. An editable
+        // recording's camera is hidden afterwards in Edit… (plan 097, D6).
+        ...(ctx.camera?.session && !audio?.editable ? [{ kind: "item" as const, label: text(ctx.camera.session.hidden ? "Show camera" : "Hide camera"), enabled: true,
           action: { setCameraHidden: !ctx.camera.session.hidden } }] : []),
-      ]);
+        ...alerts.map((alert) => item(alert, "openStudio", text("Opens the Recording Studio."))),
+      ], [], false, alerts);
+    }
     case "stopping":
       return model("busy", "", text("Saving…"), [], [text("Saving…")]);
   }

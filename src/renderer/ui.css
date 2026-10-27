@@ -942,8 +942,7 @@
     display: none;
   }
   /* With the preview off (plan 092) the stage is empty, so the bubble is drawn as before a session, and so it is over the
-     picture while the camera gives none yet (2026-10-25); the Screen view's picture has no camera, so the bubble is an
-     outline over it, still dragged. */
+     picture while the camera gives none yet (2026-10-25). With the camera off or hidden there is no bubble (plan 097). */
   .camera-preview[data-mode="recording"]:is([data-off], [data-awaited]) .camera-preview-bubble {
     background: var(--camera-preview-glass);
     box-shadow: var(--camera-preview-glass-shadow);
@@ -955,10 +954,6 @@
       box-shadow: var(--camera-preview-bubble-shadow);
       backdrop-filter: none;
     }
-  }
-  .camera-preview[data-mode="recording"][data-view="screen"]:not([data-off]) .camera-preview-bubble {
-    outline: 1.5px dashed var(--display-ink);
-    outline-offset: -1.5px;
   }
   /* The Camera view (plan 094) shows the camera alone on the stage's own grey, with no display drawn around it
      (2026-10-24, at the maintainer's request: a dark display inside the grey read as a frame in a frame); the engine's
@@ -1039,17 +1034,6 @@
   .studio-stage .camera-preview-stage {
     width: min(calc(100cqw - var(--bezel)), calc((100cqh - var(--bezel)) * var(--preview-ratio, 16 / 9)));
   }
-  /* The preview's panel (plan 092): the rate's menu and the view's segments, each on a line with its name. */
-  .studio-preview-choices {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
-    font-size: 12px;
-  }
-  .studio-preview-label {
-    color: var(--muted-foreground);
-  }
   .studio-preview-option {
     display: grid;
     gap: 1px;
@@ -1062,62 +1046,6 @@
   /* Two columns while each has 248 px, one below that (2026-10-26): the preview's and the camera's sections stacked in
      the first, the audio's in the second; 248 px keeps the camera's three fields on one line (in English, the widest,
      they take 241 px). No cards (the maintainer's request, the same day): each section is its heading and its controls
-     on the page, so columns of unequal height leave nothing drawn empty, and the wide gap between columns parts them. */
-  .studio-panels {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 248px), 1fr));
-    gap: 20px 36px;
-    padding-top: 4px;
-  }
-  .studio-panels-side {
-    display: grid;
-    align-content: start;
-    gap: 20px;
-    min-width: 0;
-  }
-  .studio-panels-side:empty {
-    display: none;
-  }
-  .studio-panel {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    min-width: 0;
-  }
-  .studio-panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-height: 24px;
-  }
-  .studio-panel-head h2 {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .studio-panel-head h2 svg {
-    width: 15px;
-    height: 15px;
-    color: var(--primary);
-  }
-  /* One label column for every row, so the controls line up; the shape's segments share the row's width. */
-  .studio-shape-row {
-    display: grid;
-    grid-template-columns: 6.4em minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-  }
-  .studio-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 0;
-  }
   /* The bubble's width, height and rounding side by side (2026-10-21): three number fields on one line, wrapping in a
      narrow panel rather than cutting a value off; tighter since 2026-10-26, so the three share one line at the default size. */
   .studio-fields {
@@ -1224,36 +1152,6 @@
     height: 14px;
     color: var(--success);
   }
-  /* The camera's head: its title and ?, then Mirror's icon beside the switch at the end. */
-  .studio-head-end {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-inline-start: auto;
-  }
-  .studio-lock + .studio-head-end {
-    margin-inline-start: 0;
-  }
-  .studio-help {
-    margin-inline-start: -4px;
-    margin-inline-end: auto;
-    color: var(--muted-foreground);
-  }
-  .studio-help svg {
-    width: 14px;
-    height: 14px;
-  }
-  .studio-icon-toggle[aria-pressed="true"] {
-    color: var(--primary);
-    background: color-mix(in oklch, var(--primary) 12%, transparent);
-  }
-  /* In the line of controls, as tall and round as Live preview beside it. */
-  .studio-quick .studio-icon-toggle {
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-  }
   /* A number field with its short name inside it, as a design tool's: the name is dragged sideways to change it. */
   .number-setting {
     flex: 1 1 0;
@@ -1308,33 +1206,12 @@
     padding-right: 8px;
     color: var(--muted-foreground);
   }
-  /* Said in the camera's head while a recording runs, in place of a line under it, so the panel keeps its height. */
-  .studio-lock {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    overflow: hidden;
-    margin-inline-start: auto;
-    font-size: 11px;
-    color: var(--muted-foreground);
-    white-space: nowrap;
-  }
-  .studio-lock svg {
-    flex: none;
-    width: 12px;
-    height: 12px;
-  }
-  .studio-mixer {
-    display: grid;
-    gap: 10px;
-  }
   .studio-channel {
     display: grid;
     gap: 2px;
     font-size: 12px;
   }
-  /* The input's name over its fader; its level and mute are in the line of controls (plan 095, D2). */
+  /* An input under the preview (plan 097): its name, then its level with Don't record, then its fader. */
   .studio-channel-head {
     display: flex;
     align-items: center;
@@ -1345,20 +1222,13 @@
     flex: 1;
     min-width: 0;
   }
-  /* Each input in the Audio panel (2026-10-24): its name, then its level now with its mute, then, under a rule, the
-     volume it is recorded at; a caption names each line, one column wide, so the meter and the fader line up. */
   .studio-channel-head > span {
     font-weight: 600;
   }
-  .studio-channel-row {
-    display: grid;
-    grid-template-columns: 5em minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    min-height: 28px;
-  }
-  .studio-channel-caption {
-    color: var(--muted-foreground);
+  .studio-channel-head > svg {
+    flex: none;
+    width: 14px;
+    height: 14px;
   }
   /* The level in segments, a reading of the sound, unlike the fader's long track. */
   .studio-channel .audio-meter {
@@ -1379,13 +1249,6 @@
   /* Room for "−60 dB" so the track holds still as the value changes. */
   .studio-channel .slider-setting-value {
     min-width: 6ch;
-  }
-  /* One line over the preview (2026-10-21): the recording's phase on the left, Live preview and its action on the right. */
-  .studio-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 12px;
   }
   /* A Live preview's start or failure, over the foot of the stage rather than a line under it, which would shrink the
      picture while it is said (2026-10-24), and what the camera is doing while it gives no picture (2026-10-25). */
@@ -1447,9 +1310,205 @@
       transition: none;
     }
   }
-  .studio-controls > .studio-note,
-  .studio-controls > .studio-failure {
+  /* The Recording Studio's title line (plan 097, D1), at the end of the page's head: the view, Live preview and ⋯. */
+  .settings-head-studio {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-self: center;
+    min-width: 0;
+  }
+  .studio-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px 8px;
+  }
+  .studio-head > .studio-failure {
     flex-basis: 100%;
+    text-align: end;
+  }
+  .studio-more svg {
+    width: 16px;
+    height: 16px;
+  }
+  /* Over the preview (plan 097, D1): what is recorded, in one line that wraps in a narrow window. */
+  .studio-choices {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+  }
+  .studio-choices > .studio-failure {
+    flex-basis: 100%;
+  }
+  /* A picker: the device's name while fine, kept short; the problem in its place with the warning look (D2). */
+  /* As wide whatever it says, so a problem said or gone never moves the line or the stage under it: its width comes
+     from the line it is in, two to a line in a narrow window, so the preview keeps its room. */
+  .studio-picker {
+    flex: 1 1 9.5rem;
+    width: auto;
+    min-width: 0;
+    max-width: 12.5rem;
+    justify-content: flex-start;
+  }
+  .studio-picker > .studio-picker-chevron,
+  .studio-picker > .studio-picker-lock {
+    margin-inline-start: auto;
+  }
+  .studio-picker svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+  .studio-picker-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .studio-picker-chevron,
+  .studio-picker-lock {
+    color: var(--muted-foreground);
+  }
+  .studio-picker[data-off] {
+    color: var(--muted-foreground);
+  }
+  .studio-picker[data-problem],
+  .studio-picker[data-problem]:hover {
+    border-color: var(--warning-border);
+    background: var(--warning-surface);
+    color: var(--warning);
+  }
+  .studio-picker[data-problem] .studio-picker-chevron,
+  .studio-picker[data-problem] .studio-picker-lock {
+    color: currentColor;
+  }
+  .studio-picker:disabled {
+    opacity: 1;
+  }
+  .studio-picker-menu {
+    max-height: min(70vh, 32rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .studio-picker-choices {
+    display: grid;
+    gap: 1px;
+  }
+  .studio-picker-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 6px;
+    border-radius: var(--radius-sm);
+    text-align: start;
+    font-size: 12px;
+  }
+  .studio-picker-choice:hover:not(:disabled) {
+    background: var(--accent);
+  }
+  .studio-picker-choice:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+  .studio-picker-choice:disabled {
+    color: var(--muted-foreground);
+  }
+  .studio-picker-check {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    visibility: hidden;
+  }
+  .studio-picker-check[data-checked] {
+    visibility: visible;
+  }
+  .studio-type {
+    gap: 6px;
+  }
+  .studio-type .studio-picker-lock:not([data-shown]) {
+    visibility: hidden;
+  }
+  .studio-type > svg:first-child {
+    width: 14px;
+    height: 14px;
+    color: var(--muted-foreground);
+  }
+  /* An on/off line in a picker's menu or the live row: its name, its switch at the end, what it says under them. */
+  .studio-switch-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 10px;
+    min-height: 28px;
+    font-size: 12px;
+  }
+  .studio-switch-name {
+    font-weight: 600;
+  }
+  .studio-switch-note {
+    grid-column: 1 / -1;
+    color: var(--muted-foreground);
+  }
+  /* Under the preview (plan 097, D6): the live controls of the recording's type, side by side while they fit. */
+  .studio-live-row {
+    display: grid;
+    gap: 6px;
+  }
+  .studio-live-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 12px 28px;
+  }
+  .studio-live-row > .studio-note,
+  .studio-live-row > .studio-failure {
+    margin: 0;
+  }
+  /* An input not recorded: the whole input in the warning look, saying so in place of its name (D6). */
+  .studio-channel[data-problem] {
+    margin: -4px -6px;
+    padding: 4px 6px;
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-md);
+    background: var(--warning-surface);
+  }
+  .studio-channel[data-problem] .studio-channel-head {
+    color: var(--warning);
+  }
+  /* A device row's problem in the Recording tab, in the Studio picker's words (plan 097, D2). */
+  .row-problem {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--warning);
+  }
+  .row-problem svg {
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+  /* Test camera's picture (plan 097, D4), under its row while the test is on. */
+  .camera-test {
+    margin-top: 8px;
+  }
+  .camera-test-picture {
+    display: block;
+    width: min(100%, 320px);
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-md);
+    background: var(--display-bezel);
+    object-fit: cover;
+  }
+  .camera-test-failed {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted-foreground);
   }
   .studio-record {
     display: inline-flex;
@@ -1482,16 +1541,6 @@
     height: 14px;
     margin-top: 2px;
     flex: none;
-  }
-  /* What is pressed often, at the end of the line of controls (plan 095, D2): the levels and mutes and the camera's
-     showing while recording, the view and Live preview, wrapping under Start in a narrow window. */
-  .studio-quick {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px 10px;
-    margin-inline-start: auto;
   }
   /* Live preview at the end of the Studio's line of controls (2026-10-23), beside Start and Stop: always in sight, and
      nothing over the picture. On, its signal is green, not the recording's red. */

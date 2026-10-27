@@ -13,7 +13,7 @@
  * digit (plan 046) is fixed when the page loads, by a query parameter.
  */
 import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
-import { COUNTDOWN_SOUND_QUERY, COUNTDOWN_TIMING, COUNTDOWN_VALUE_CHANNEL, overlayBounds, type CountdownValue, type Rectangle } from "../../shared/countdown";
+import { COUNTDOWN_NOTICE_QUERY, COUNTDOWN_SOUND_QUERY, COUNTDOWN_TIMING, COUNTDOWN_VALUE_CHANNEL, overlayBounds, type CountdownValue, type Rectangle } from "../../shared/countdown";
 import type { CountdownPresentation, CountdownPresenter } from "./recorder";
 
 export interface OverlayDisplay {
@@ -69,18 +69,23 @@ export function overlayWindowOptions(bounds: Rectangle, preloadPath: string, pla
   };
 }
 
-/** The development page URL with the same flag `loadFile` passes as a query. */
-function withSound(devUrl: string, sound: boolean): string {
-  if (!sound) return devUrl;
+/** What the page learns when it loads: the tick (plan 046) and the line under the digit (plan 097). */
+function pageQuery(presentation: CountdownPresentation): Record<string, string> {
+  return { ...(presentation.sound ? { [COUNTDOWN_SOUND_QUERY]: "1" } : {}), ...(presentation.notice ? { [COUNTDOWN_NOTICE_QUERY]: presentation.notice } : {}) };
+}
+
+/** The development page URL with the same query `loadFile` passes. */
+function withQuery(devUrl: string, query: Record<string, string>): string {
   const url = new URL(devUrl);
-  url.searchParams.set(COUNTDOWN_SOUND_QUERY, "1");
+  for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
   return url.href;
 }
 
 export class CountdownOverlay implements CountdownPresenter {
   private window: BrowserWindow | undefined;
-  /** Whether the current window's page was loaded with the tick on. */
+  /** Whether the current window's page was loaded with the tick on, and with which line under the digit. */
   private sound = false;
+  private notice: string | undefined;
   private loaded = false;
   /** The latest value, sent once the page has loaded. */
   private value: CountdownValue | undefined;
@@ -91,14 +96,15 @@ export class CountdownOverlay implements CountdownPresenter {
 
   prepare(presentation: CountdownPresentation): void {
     if (this.window && !this.window.isDestroyed()) {
-      if (this.sound === presentation.sound) return;
-      // The page learns the flag only when it loads, so a different one needs a new page.
+      if (this.sound === presentation.sound && this.notice === presentation.notice) return;
+      // The page learns the flag and the line only when it loads, so different ones need a new page.
       this.close();
     }
     const primary = this.options.primaryDisplay();
-    const window = new BrowserWindow(overlayWindowOptions(overlayBounds(primary.bounds, primary.workArea), this.options.preloadPath, this.options.platform));
+    const window = new BrowserWindow(overlayWindowOptions(overlayBounds(primary.bounds, primary.workArea, presentation.notice !== undefined), this.options.preloadPath, this.options.platform));
     this.window = window;
     this.sound = presentation.sound;
+    this.notice = presentation.notice;
     this.loaded = false;
     this.value = undefined;
     this.visible = false;
@@ -124,9 +130,10 @@ export class CountdownOverlay implements CountdownPresenter {
     window.on("closed", () => {
       if (this.window === window) this.forget();
     });
+    const query = pageQuery(presentation);
     const load = this.options.devUrl
-      ? window.loadURL(withSound(this.options.devUrl, presentation.sound))
-      : window.loadFile(this.options.htmlPath, presentation.sound ? { query: { [COUNTDOWN_SOUND_QUERY]: "1" } } : {});
+      ? window.loadURL(withQuery(this.options.devUrl, query))
+      : window.loadFile(this.options.htmlPath, Object.keys(query).length ? { query } : {});
     void load.catch((cause: unknown) => {
       if (this.window !== window) return;
       this.options.log(`countdown overlay: page failed to load: ${String(cause)}`);
@@ -142,7 +149,7 @@ export class CountdownOverlay implements CountdownPresenter {
     const display = resolved ?? this.options.primaryDisplay();
     if (!resolved) this.options.log(`countdown overlay: the recorded display is unknown; using the primary display ${display.id}`);
     // Sized for this display before the first value, so the digit never draws at the primary display's size.
-    const bounds = overlayBounds(display.bounds, display.workArea);
+    const bounds = overlayBounds(display.bounds, display.workArea, presentation.notice !== undefined);
     window.setBounds(bounds);
     const whole = display.bounds;
     this.options.log(`countdown overlay: display ${display.id} at ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height} in display bounds ${whole.x},${whole.y} ${whole.width}x${whole.height}`);
@@ -193,6 +200,7 @@ export class CountdownOverlay implements CountdownPresenter {
   private forget(): void {
     this.window = undefined;
     this.sound = false;
+    this.notice = undefined;
     this.loaded = false;
     this.value = undefined;
     this.visible = false;

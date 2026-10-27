@@ -261,8 +261,11 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const cameraLayout = field("cameraLayout", isCameraLayout, defaults.cameraLayout, "cameraLayout is invalid: using the default bubble");
   const cameraDevice = field<CameraDevicePreference | undefined>("cameraDevice", isCameraDevicePreference, undefined, "cameraDevice is invalid: using the system default camera");
   // Off was a rate until 2026-10-25 (Live preview is now the picture's one switch): read as Power saving, without a warning.
-  const storedPreview = record["studioPreview"] as { rate?: unknown } | undefined;
+  const storedPreview = record["studioPreview"] as { rate?: unknown; view?: unknown } | undefined;
   if (storedPreview && typeof storedPreview === "object" && storedPreview.rate === "off") record["studioPreview"] = { ...storedPreview, rate: "power" };
+  // Screen only was a view until plan 097 (2026-10-27): read as the composed picture, without a warning.
+  const migratedPreview = record["studioPreview"] as { view?: unknown } | undefined;
+  if (migratedPreview && typeof migratedPreview === "object" && migratedPreview.view === "screen") record["studioPreview"] = { ...migratedPreview, view: "composed" };
   const studioPreview = field("studioPreview", isStudioPreviewSettings, defaults.studioPreview, "studioPreview is invalid: using Power saving and the recorded picture");
   const trayClick = field("trayClick", isTrayClick, defaults.trayClick, `trayClick is unsupported: using ${defaults.trayClick}`);
   // Only a pattern stored as it would be saved: trimmed and usable.

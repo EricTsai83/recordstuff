@@ -1,14 +1,16 @@
 /**
- * The Recording Studio (plan 075, D19), laid out as OBS lays out its main window: the preview across the top, and under
- * it the recording controls as a bar, then panels side by side, the camera's and the audio mixer, instead of a list of rows. Every control is
- * still a group main offers and answers (settings-model.ts), chosen the same way as anywhere in Settings.
+ * The Recording Studio (plan 075, D19; laid out again by plan 097, D1): the title line holds what only changes what is
+ * watched (the view, Live preview and the preview's rate); over the preview what is recorded (the record control, the
+ * recording type and the screen, camera and microphone pickers); under it what is watched and changed while recording,
+ * which follows the recording's type. Quiet when fine: a picker shows its device's name, and says a problem in its place
+ * (D2). Every control is still a group main offers and answers (settings-model.ts), chosen as anywhere in Settings.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { AudioLines, Camera, CameraOff, CircleHelp, Eye, FlipHorizontal2, Lock, Monitor, MonitorPlay, PictureInPicture2, Radio, Square, UserRound, UserRoundX, Video } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
-import { translate, type PlainMessageKey } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { ControlTooltip } from "../../components/control-tooltip";
@@ -23,33 +25,10 @@ import { setPreviewView } from "./studio-feed";
 
 const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.find((group) => group.id === id && group.tab === "studio");
 
-/** A panel's failed choice, said under it, as a row says its own. */
+/** A failed choice among `groups`, said under them, as a row says its own. */
 function Failures({ groups }: { groups: (SettingsGroup | undefined)[] }) {
   const failure = groups.map((group) => group && model.failureOf(group.id)).find(Boolean);
   return failure ? <p className="studio-failure" role="alert">{failure.text}</p> : null;
-}
-
-/**
- * An on/off group drawn as an icon alone, pressed while on, named by its tooltip and to assistive technology (2026-10-26,
- * the maintainer's choice of a compact camera panel): Mirror, in the camera's head, and showing the camera while a
- * recording composes it, in the line of controls, where words would wrap the line and move the stage under it.
- */
-function IconToggle({ group, icon: OnIcon, offIcon: OffIcon, onTip }: {
-  group: SettingsGroup; icon: typeof Eye; offIcon?: typeof Eye; onTip: PlainMessageKey;
-}) {
-  const on = model.committed(group) === "on";
-  const Icon = !on && OffIcon ? OffIcon : OnIcon;
-  // The tooltip says what a press does now (2026-10-26, the maintainer's request): the name while off, its undoing while
-  // on. The accessible name stays the setting's, its state said by aria-pressed, so a screen reader hears one control.
-  return (
-    <ControlTooltip label={on ? model.text(onTip) : group.label}>
-      <Button id={`setting-${group.id}`} variant="ghost" size="icon-sm" className="studio-icon-toggle" aria-pressed={on} aria-label={group.label}
-        disabled={!group.enabled} aria-describedby={group.info ? `setting-${group.id}-info` : undefined}
-        onClick={() => void model.choose(group.id, on ? "off" : "on", `setting-${group.id}`)}>
-        <Icon aria-hidden="true" />
-      </Button>
-    </ControlTooltip>
-  );
 }
 
 /** Pixels moved sideways on a field's name for each step of its value. */
@@ -83,7 +62,7 @@ function NumberSetting({ group, field, disabled, describedBy }: {
       event.preventDefault();
       return typed();
     }
-    // Escape gives up what was typed first; with nothing typed it closes the window as anywhere else.
+    // Escape gives up what was typed first; with nothing typed it closes the menu it is in, as anywhere else.
     if (event.key === "Escape" && draft !== undefined) {
       event.preventDefault();
       event.stopPropagation();
@@ -137,101 +116,137 @@ function NumberSetting({ group, field, disabled, describedBy }: {
   );
 }
 
-function CameraPanel() {
-  const camera = groupOf("studioCamera");
-  if (!camera) return null;
-  const mirror = groupOf("cameraMirror");
-  const fields = ["cameraWidth", "cameraHeight", "cameraRounding"].map(groupOf);
-  // What the pixels are counted on: the recording's size on the display it would capture now, at the quality's cap.
-  const pixels = fields[0]?.note;
-  // Compact (2026-10-26, the maintainer's choice of mockups): the shape's three fields in one row, what their pixels
-  // are counted on behind a ? beside the title, Mirror an icon in the head. Showing the camera, a recording's own
-  // choice, is in the line of controls while a recording composes it (Toolbar); the panel never changes height.
+/**
+ * An on/off group as a line of its own: its name, what it says, and its switch at the end. `steady` keeps the line under
+ * it while there is nothing to say, so the live row keeps its height as a recording starts.
+ */
+function SwitchRow({ group, steady }: { group: SettingsGroup; steady?: boolean }) {
+  const id = `setting-${group.id}`;
+  const on = model.committed(group) === "on";
+  const said = group.note ?? group.info;
   return (
-    <section className="studio-panel studio-panel-camera" aria-labelledby="studio-camera-heading">
-      <div className="studio-panel-head">
-        <h2 id="studio-camera-heading"><Camera aria-hidden="true" />{camera.label}</h2>
-        {/* Opened at once (2026-10-26, the maintainer's request): a ? is pressed or hovered to read it, unlike a control's name. */}
-        {pixels && (
-          <ControlTooltip label={pixels} delay={0}>
-            <Button variant="ghost" size="icon-sm" className="studio-help" id="studio-camera-pixels-button"
-              aria-label={translate("More about {label}", model.view?.language, { label: camera.label })} aria-describedby="studio-camera-pixels">
-              <CircleHelp aria-hidden="true" />
-            </Button>
-          </ControlTooltip>
-        )}
-        {/* Locked while a recording runs: said in the head's own line, so the panel keeps its height (2026-10-24). */}
-        {camera.note && <span className="studio-lock" aria-hidden="true"><Lock />{model.text("Locked")}</span>}
-        <span className="studio-head-end">
-          {mirror && <IconToggle group={mirror} icon={FlipHorizontal2} onTip="Stop mirroring in recording" />}
-          <Switch id={`setting-${camera.id}`} aria-labelledby="studio-camera-heading" checked={model.committed(camera) === "on"}
-            disabled={!camera.enabled} aria-describedby={camera.note ? "setting-studioCamera-note" : undefined}
-            onCheckedChange={(checked) => void model.choose(camera.id, checked ? "on" : "off", `setting-${camera.id}`)} />
-        </span>
-      </div>
-      {camera.note && <span id="setting-studioCamera-note" className="sr-only">{camera.note}</span>}
-      {pixels && <span id="studio-camera-pixels" className="sr-only">{pixels}</span>}
-      <div className="studio-fields">
-        {fields.map((group) => group?.number && (
-          <NumberSetting key={group.id} group={group} field={group.number} disabled={!group.enabled}
-            describedBy={pixels && group.number.unit === "px" ? "studio-camera-pixels" : undefined} />
-        ))}
-      </div>
-      <Failures groups={[camera, groupOf("cameraShown"), mirror, ...fields]} />
-    </section>
+    <div className="studio-switch-row" data-disabled={!group.enabled || undefined}>
+      <span id={`${id}-label`} className="studio-switch-name">{group.label}</span>
+      <Switch id={id} aria-labelledby={`${id}-label`} checked={on} disabled={!group.enabled}
+        aria-describedby={said ? `${id}-note` : undefined}
+        onCheckedChange={(checked) => void model.choose(group.id, checked ? "on" : "off", id)} />
+      {said ? <span id={`${id}-note`} className="studio-switch-note">{said}</span>
+        : steady && <span className="studio-switch-note" aria-hidden="true">{"\u00a0"}</span>}
+    </div>
   );
 }
 
-/** The inputs the Studio meters: the system's sound and the microphone, each with its level, mute and fader. */
-const audioRows = (): SettingsGroup[] => ["systemAudio", "microphoneAudio"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.meter));
-
-function AudioPanel() {
-  const rows = audioRows();
-  if (rows.length === 0) return null;
-  const note = rows.find((group) => group.note)?.note;
-  return (
-    <section className="studio-panel" aria-labelledby="studio-audio-heading">
-      <div className="studio-panel-head"><h2 id="studio-audio-heading"><AudioLines aria-hidden="true" />{rows[0]!.sectionHeading ?? model.text("Audio")}</h2></div>
-      <div className="studio-mixer">
-        {rows.map((group) => {
-          // Each input under its name (2026-10-24, from the line of controls, where its icon alone said nothing): the
-          // volume it is recorded at, then its level now with its mute, with no rule between them, as nowhere else has
-          // one (2026-10-25, the maintainer's request). Both always there, the level at silence and the mute unavailable
-          // while no session runs, so nothing moves as a recording starts.
-          const fader = groupOf(`${group.meter!.source}Gain`);
-          return (
-            <div key={group.id} className="studio-channel">
-              {/* By its name alone (2026-10-26, the maintainer's request: the icon the same day gave it beside the name went). */}
-              <div className="studio-channel-head">
-                <span id={`setting-${group.id}-label`}>{group.label}</span>
-              </div>
-              {fader?.slider && (
-                <div className="studio-channel-row">
-                  <span className="studio-channel-caption" aria-hidden="true">{model.text("Recorded")}</span>
-                  <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />
-                </div>
-              )}
-              <div className="studio-channel-row">
-                <span className="studio-channel-caption" aria-hidden="true">{model.text("Level")}</span>
-                <AudioMeter group={group} source={group.meter!.source} muted={model.committed(group) === "mute"}
-                  disabled={!group.enabled} describedBy={note ? "studio-audio-note" : undefined} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {note && <p id="studio-audio-note" className="studio-note">{note}</p>}
-      <Failures groups={[groupOf("systemGain"), groupOf("microphoneGain")]} />
-    </section>
-  );
-}
-
-const VIEW_ICONS: Record<StudioView, typeof Monitor> = { composed: PictureInPicture2, screen: Monitor, camera: Video };
+const PICKER_ICONS = {
+  screen: [Monitor, MonitorOff],
+  camera: [Camera, CameraOff],
+  microphone: [Mic, MicOff],
+} as const;
 
 /**
- * What the stage shows (plan 092, D3), a menu in the line of controls (2026-10-24, in place of three segments, at the
- * maintainer's request): its trigger names the picture shown, so no label is needed beside Live preview, and every
- * choice says in one line what it shows while the menu is open, as the rate's do.
+ * One input's picker over the preview (plan 097): the device's name while it is fine, the problem in its place with
+ * the warning look and the icon struck through when it is not (D2), Off while the input is off. Its menu holds the
+ * input's switch, the devices to choose from and the rows that go with them; while a recording locks it, it shows a
+ * lock and does not open.
+ */
+function Picker({ group }: { group: SettingsGroup }) {
+  const picker = group.picker!;
+  const id = `setting-${group.id}`;
+  const problem = picker.problem !== undefined && !picker.waiting;
+  const [OnIcon, OffIcon] = PICKER_ICONS[picker.input];
+  const Icon = problem || picker.off ? OffIcon : OnIcon;
+  const shown = picker.problem ?? (picker.off ? model.text("Off") : picker.name);
+  const parts = (picker.parts ?? []).map(groupOf).filter((part): part is SettingsGroup => part !== undefined);
+  const on = parts[0]?.control === "switch" && (parts[0].id === "studioCamera" || parts[0].id === "studioMicrophone") ? parts[0] : undefined;
+  const rest = parts.filter((part) => part !== on);
+  const fields = rest.filter((part) => part.number);
+  const switches = rest.filter((part) => part.control === "switch");
+  const pixels = fields[0]?.note;
+  return (
+    <Popover>
+      <PopoverTrigger render={
+        <Button id={id} variant="outline" className="studio-picker h-8 gap-1.5 rounded-full px-3 text-xs" data-input={picker.input}
+          data-problem={problem || undefined} data-waiting={picker.waiting || undefined} data-off={(picker.off && !problem) || undefined}
+          disabled={picker.locked} aria-label={`${group.label}: ${shown}`} />
+      }>
+        <Icon aria-hidden="true" />
+        <span className="studio-picker-name">{shown}</span>
+        {picker.locked ? <Lock className="studio-picker-lock" aria-hidden="true" /> : <ChevronDown className="studio-picker-chevron" aria-hidden="true" />}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="studio-picker-menu w-80 gap-2">
+        {on && <SwitchRow group={on} />}
+        <div role="radiogroup" aria-label={group.label} className="studio-picker-choices" data-disabled={!group.enabled || undefined}>
+          {group.choices.map((choice) => {
+            const checked = model.committed(group) === choice.id;
+            return (
+              <button key={choice.id} type="button" role="radio" aria-checked={checked} id={`${id}-${choice.id}`}
+                className="studio-picker-choice" disabled={!group.enabled || !choice.enabled}
+                onClick={() => { if (!checked) void model.choose(group.id, choice.id, `${id}-${choice.id}`); }}>
+                <Check className="studio-picker-check" aria-hidden="true" data-checked={checked || undefined} />
+                <span>{choice.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {group.actions?.map((action) => (
+          <Button key={action.id} id={`${id}-${action.id}`} variant="ghost" size="sm" className="justify-start"
+            disabled={!action.enabled || action.busy} onClick={() => void model.choose(group.id, action.id, `${id}-${action.id}`)}>
+            {action.label}
+          </Button>
+        ))}
+        {fields.length > 0 && (
+          <div className="studio-fields">
+            {fields.map((part) => (
+              <NumberSetting key={part.id} group={part} field={part.number!} disabled={!part.enabled}
+                describedBy={pixels && part.number!.unit === "px" ? `${id}-pixels` : undefined} />
+            ))}
+          </div>
+        )}
+        {pixels && <p id={`${id}-pixels`} className="studio-note">{pixels}</p>}
+        {switches.map((part) => <SwitchRow key={part.id} group={part} />)}
+        <Failures groups={[group, ...parts]} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The recording type (plan 097, D6), first among the choices: Plain or Editable, each saying in a line what it gives
+ * while the menu is open; where editable recordings are unavailable, listed unavailable with why, never hidden.
+ */
+function TypePicker({ type }: { type: SettingsGroup }) {
+  const chosen = model.committed(type);
+  if (!chosen) return null;
+  const id = `setting-${type.id}`;
+  const description = type.choices.find((choice) => choice.id === chosen)?.description;
+  return (<>
+    <Select id={id} value={chosen} items={type.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!type.enabled}
+      onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(type.id, next, id); }}>
+      <SelectTrigger id={id} data-value={chosen} aria-label={type.label} aria-describedby={description ? `${id}-description` : undefined}
+        className="studio-type">
+        {chosen === "editable" ? <Film aria-hidden="true" /> : <Video aria-hidden="true" />}<SelectValue />
+        {/* Kept in place while unlocked, so the line does not move as a recording starts. */}
+        <Lock className="studio-picker-lock" aria-hidden="true" data-shown={!type.enabled || undefined} />
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="start">
+        {type.choices.map((choice) => (
+          <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
+            <span className="studio-preview-option">
+              <span>{choice.label}</span>
+              {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+    {description && <span id={`${id}-description`} className="sr-only">{description}</span>}
+  </>);
+}
+
+const VIEW_ICONS: Record<StudioView, typeof Monitor> = { composed: PictureInPicture2, camera: Video };
+
+/**
+ * What the stage shows (plan 092, D3), a menu in the title line: its trigger names the picture shown, and every choice
+ * says in one line what it shows while the menu is open: As recorded, or Check camera (plan 097: Screen only removed).
  */
 function ViewMenu({ view }: { view: SettingsGroup }) {
   const chosen = model.committed(view);
@@ -243,7 +258,7 @@ function ViewMenu({ view }: { view: SettingsGroup }) {
     <Select id={id} value={chosen} items={view.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!view.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(view.id, next, id); }}>
       <SelectTrigger id={id} data-value={chosen} aria-label={view.label} aria-describedby={description ? `${id}-description` : undefined}
-        className="studio-view">
+        className="studio-view darwin:window-no-drag">
         {icon(chosen)}<SelectValue />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} align="end">
@@ -264,18 +279,71 @@ function ViewMenu({ view }: { view: SettingsGroup }) {
   </>);
 }
 
-/**
- * Live preview, a switch in the Studio's one line of controls beside Start and Stop (2026-10-23): always in sight, and
- * nothing laid over the picture it shows. On, its signal is green, not the recording's red.
- */
+/** Live preview, a switch in the title line (2026-10-23): always in sight. On, its signal is green, not the recording's red. */
 function LiveSwitch({ live }: { live: SettingsGroup }) {
   const on = model.committed(live) === "on";
   return (
-    <Button id={`setting-${live.id}`} variant="outline" role="switch" aria-checked={on} className="studio-live h-8 gap-1.5 rounded-full px-3.5 text-xs"
+    <Button id={`setting-${live.id}`} variant="outline" role="switch" aria-checked={on} className="studio-live darwin:window-no-drag h-8 gap-1.5 rounded-full px-3.5 text-xs"
       disabled={!live.enabled} aria-describedby={live.note ? `setting-${live.id}-note` : undefined}
       onClick={() => void model.choose(live.id, on ? "off" : "on", `setting-${live.id}`)}>
       <Radio aria-hidden="true" />{live.label}
     </Button>
+  );
+}
+
+/**
+ * The preview's rate (plan 092, D1), behind ⋯ at the end of the title line (plan 097): set now and then, so out of the
+ * way; every choice says in one line what it does.
+ */
+function RateMenu({ rate }: { rate: SettingsGroup }) {
+  const chosen = model.committed(rate);
+  const id = `setting-${rate.id}`;
+  return (
+    <Popover>
+      <PopoverTrigger render={<Button id={`${id}-more`} variant="ghost" size="icon-sm" className="studio-more darwin:window-no-drag" aria-label={rate.label} />}>
+        <Ellipsis aria-hidden="true" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="studio-picker-menu w-72 gap-2">
+        <div role="radiogroup" aria-label={rate.label} className="studio-picker-choices">
+          <span className="studio-switch-name">{rate.label}</span>
+          {rate.choices.map((choice) => {
+            const checked = chosen === choice.id;
+            return (
+              <button key={choice.id} type="button" role="radio" aria-checked={checked} id={`${id}-${choice.id}`} data-value={choice.id}
+                className="studio-picker-choice" disabled={!rate.enabled || !choice.enabled}
+                onClick={() => { if (!checked) void model.choose(rate.id, choice.id, `${id}-${choice.id}`); }}>
+                <Check className="studio-picker-check" aria-hidden="true" data-checked={checked || undefined} />
+                <span className="studio-preview-option">
+                  <span>{choice.label}</span>
+                  {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <Failures groups={[rate]} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The Studio's title line, at the end of the page's head (plan 097, D1): what only changes what is watched, never the
+ * file. Shown with the Recording Studio's tab only. The head drags the window on macOS, so each control takes its own
+ * clicks (the desktop round of 2026-10-28: without it, Live preview there answered no click).
+ */
+export function StudioHead() {
+  const view = groupOf("studioPreviewView");
+  const live = groupOf("studioLive");
+  const rate = groupOf("studioPreviewRate");
+  if (!view && !live && !rate) return null;
+  return (
+    <div className="studio-head">
+      {view && <ViewMenu view={view} />}
+      {live && <LiveSwitch live={live} />}
+      {rate && <RateMenu rate={rate} />}
+      <Failures groups={[view, live]} />
+    </div>
   );
 }
 
@@ -293,7 +361,6 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
   const filled = choice?.id === "start" || choice?.id === "stop";
   return (
     <div className="studio-record">
-      <span className={shown ? "studio-state" : "sr-only"} id="setting-studioControls-label">{controls.label}</span>
       {choice && id && (
         <Button id={id} data-action={choice.id} variant="outline"
           className={`h-8 gap-1.5 rounded-full px-3.5 text-xs ${filled ? "border-foreground bg-foreground text-background hover:bg-foreground/85 hover:text-background dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/85" : ""}`}
@@ -304,82 +371,77 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
           {controls.elapsedSince && <Elapsed since={controls.elapsedSince} />}
         </Button>
       )}
+      <span className={shown ? "studio-state" : "sr-only"} id="setting-studioControls-label">{controls.label}</span>
     </div>
   );
 }
 
 /**
- * One line over the preview (2026-10-21): the recording's phase and action, and at its end the view and Live preview
- * (2026-10-23). Nothing joins it as a recording starts (2026-10-24: each input's level and mute and the camera's showing
- * went back to their panels, where they are named), nor while the camera gives no picture (said over the stage since
- * 2026-10-25: in a narrow window it wrapped the line and moved the stage), and its buttons keep their widths, so the
- * stage under it never moves. No bar or card of its own.
+ * Over the preview (plan 097, D1): what is recorded. The record control, the recording type, then the screen, camera
+ * and microphone pickers, wrapping in a narrow window; the type, the screen and the camera locked while recording.
  */
-function Toolbar({ controls, live }: { controls: SettingsGroup | undefined; live: SettingsGroup | undefined }) {
-  if (!controls) return null;
-  const view = groupOf("studioPreviewView");
-  const shown = groupOf("cameraShown");
+function Choices({ controls }: { controls: SettingsGroup | undefined }) {
+  const type = groupOf("studioType");
+  const pickers = ["studioScreen", "studioCameraDevice", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
   return (
-    <section className="studio-controls" data-phase={controls.phase} aria-labelledby="studio-controls-heading">
-      <h2 id="studio-controls-heading" className="sr-only">{controls.sectionHeading ?? controls.label}</h2>
-      <RecordControl controls={controls} />
-      <div className="studio-quick">
-        {/* Showing the camera, while a recording composes it (2026-10-26, from the camera's panel, where it stood
-            disabled the rest of the time): the recording's own choice, pressed while shown. */}
-        {/* A person, struck through while hidden (2026-10-26, the maintainer's choice of icons: an eye did not say it). */}
-        {shown && <IconToggle group={shown} icon={UserRound} offIcon={UserRoundX} onTip="Hide camera in recording" />}
-        {view && <ViewMenu view={view} />}
-        {live && <LiveSwitch live={live} />}
-      </div>
-      {controls.note && <p className="studio-note" role="status">{controls.note}</p>}
-      <Failures groups={[controls, view, ...audioRows()]} />
+    <section className="studio-choices" data-phase={controls?.phase} aria-labelledby="studio-choices-heading">
+      <h2 id="studio-choices-heading" className="sr-only">{controls?.sectionHeading ?? model.text("What is recorded")}</h2>
+      {controls && <RecordControl controls={controls} />}
+      {type && <TypePicker type={type} />}
+      {pickers.map((group) => <Picker key={group.id} group={group} />)}
+      <Failures groups={[controls, type]} />
     </section>
   );
 }
 
 /**
- * The preview's own panel beside the camera's and the mixer (plan 092, D1; placed there at the maintainer's request on
- * 2026-10-23): its rate, a menu whose every choice says in one line what it does while it is open, set now and then;
- * its view, switched while watching, is in the line of controls (plan 095, D2). Chosen at any time, a Live preview's or
- * a recording's alike.
+ * One input under the preview: its name and, in a plain recording, Don't record; its level; its fader. Not recorded,
+ * the whole input takes the warning look and says so in place of its name (plan 097, D6), not only a greyed meter.
  */
-function PreviewPanel({ rate }: { rate: SettingsGroup }) {
-  const chosen = model.committed(rate);
-  const description = rate.choices.find((choice) => choice.id === chosen)?.description;
-  const id = `setting-${rate.id}`;
+function Channel({ group }: { group: SettingsGroup }) {
+  const fader = groupOf(`${group.meter!.source}Gain`);
+  const muted = model.committed(group) === "mute";
   return (
-    <section className="studio-panel studio-panel-preview" aria-labelledby="studio-preview-heading">
-      <div className="studio-panel-head"><h2 id="studio-preview-heading"><MonitorPlay aria-hidden="true" />{model.text("Preview")}</h2></div>
-      <div className="studio-preview-choices">
-        <span id={`${id}-label`} className="studio-preview-label">{rate.label}</span>
-        <Select id={id} value={chosen} items={rate.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!rate.enabled}
-          onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(rate.id, next, id); }}>
-          <SelectTrigger id={id} data-value={chosen} aria-labelledby={`${id}-label ${id}`}
-            aria-describedby={description ? `${id}-description` : undefined} className="studio-preview-rate">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
-            {rate.choices.map((choice) => (
-              <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
-                <span className="studio-preview-option">
-                  <span>{choice.label}</span>
-                  {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {/* What the chosen rate does, said to assistive technology; on screen the open menu says it (2026-10-23). */}
-        {description && <span id={`${id}-description`} className="sr-only">{description}</span>}
+    <div className="studio-channel" data-problem={group.problem ? true : undefined}>
+      <div className="studio-channel-head">
+        {group.problem && <TriangleAlert aria-hidden="true" />}
+        <span id={`setting-${group.id}-label`}>{group.problem ?? group.label}</span>
       </div>
-      <Failures groups={[rate]} />
+      <AudioMeter group={group} source={group.meter!.source} muted={muted} disabled={!group.enabled} describedBy={undefined} />
+      {fader?.slider && <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />}
+    </div>
+  );
+}
+
+/**
+ * Under the preview (plan 097, D6): the live controls of the recording's type. A plain recording's camera Show / Hide
+ * and each input's Don't record, meter and fader; an editable recording's meters alone, with one line saying where its
+ * volumes and the camera are set.
+ */
+function LiveRow({ type }: { type: SettingsGroup | undefined }) {
+  const shown = groupOf("cameraShown");
+  const channels = ["systemAudio", "microphoneAudio"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.meter));
+  if (!shown && channels.length === 0) return null;
+  return (
+    <section className="studio-live-row" data-type={type?.recordingType} aria-labelledby="studio-live-heading">
+      <h2 id="studio-live-heading" className="sr-only">{channels[0]?.sectionHeading ?? shown?.sectionHeading ?? model.text("While recording")}</h2>
+      <div className="studio-live-controls">
+        {shown && (
+          <div className="studio-channel studio-camera-shown">
+            <SwitchRow group={shown} steady />
+          </div>
+        )}
+        {channels.map((group) => <Channel key={group.id} group={group} />)}
+      </div>
+      {type?.footnote && <p className="studio-note">{type.footnote}</p>}
+      <Failures groups={[shown, ...channels, groupOf("systemGain"), groupOf("microphoneGain")]} />
     </section>
   );
 }
 
 /**
  * Over the stage while Live preview is off (2026-10-25, at the maintainer's request): a glass button that shows while
- * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the line of controls does.
+ * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the title line does.
  */
 function StageStart({ live }: { live: SettingsGroup }) {
   const id = `setting-${live.id}-stage`;
@@ -396,10 +458,8 @@ function StageStart({ live }: { live: SettingsGroup }) {
 
 /**
  * Paces the Studio at the chosen rate (studio-pace.ts) and tells the capture process the chosen view; returns what
- * the stage shows of them. Power saving's rate in use is not shown: the rate's own line says what it does (the
- * maintainer, 2026-10-23, in place of D1's corner label). The picture is off until a session's picture is shown (2026-10-25:
- * Live preview is its one switch, the rate no longer offers Off), so the Studio opens no camera of its own; main's word
- * on the switch decides, not a choice still saving, so a picture is not let go and asked for again while it saves.
+ * the stage shows of them. The picture is off until a session's picture is shown (2026-10-25: Live preview is its one
+ * switch), so the Studio opens no camera of its own; main's word on the switch decides, not a choice still saving.
  */
 function usePreviewChoice(rate: SettingsGroup | undefined, view: SettingsGroup | undefined, live: SettingsGroup | undefined,
   session: boolean): PreviewShown {
@@ -441,40 +501,27 @@ export function Studio() {
   const live = groupOf("studioLive");
   const rate = groupOf("studioPreviewRate");
   const view = groupOf("studioPreviewView");
+  const type = groupOf("studioType");
   // Its preview and meters at the chosen rate (plan 092, D1), and the chosen view (D3).
   const shown = usePreviewChoice(rate, view, live, preview?.cameraPreview?.mode === "recording");
-  // What the camera is doing while a session gives no picture of it (plan 090): over the stage, or, in the Camera view,
-  // which shows it in its own picture, to assistive technology only, still announced as it changes.
-  const cameraStatus = preview?.cameraPreview?.mode === "recording" ? preview.cameraPreview.status : undefined;
-  const cameraSaid = shown.view !== "camera" ? cameraStatus : undefined;
   return (
     <div className="studio">
-      <Toolbar controls={controls} live={live} />
+      <Choices controls={controls} />
       {preview?.cameraPreview && (
         <section className="studio-stage" aria-label={preview.label}
           style={{ ["--preview-ratio" as string]: preview.cameraPreview.display.width / preview.cameraPreview.display.height }}>
           <CameraPreview group={preview} preview={preview.cameraPreview} disabled={!preview.enabled} statusOutside shown={live ? shown : undefined}
             overlay={live && shown.off && live.enabled && model.committed(live) !== "on" ? <StageStart live={live} /> : undefined}
             describedBy={preview.info ? "setting-cameraPreview-info" : undefined} />
-          {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24), and so
-              what the camera is doing while it gives no picture (plan 090; the Camera view says it in its own picture). */}
-          {live?.note ? <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>
-            : cameraSaid && <p className="studio-stage-note" role="status"><CameraOff aria-hidden="true" />{cameraSaid}</p>}
-          {shown.view === "camera" && cameraStatus && <p className="sr-only" role="status">{cameraStatus}</p>}
+          {/* Over the stage, not under it, so the picture keeps its size while a Live preview starts (2026-10-24). The
+              camera's own state is its picker's to say (plan 097, D2). */}
+          {live?.note && <p id="setting-studioLive-note" className="studio-stage-note" role="status">{live.note}</p>}
           {/* How to move the bubble, for assistive technology only: on screen the bubble shows it can be dragged. */}
           {preview.info && <p id="setting-cameraPreview-info" className="sr-only">{preview.info}</p>}
-          <Failures groups={[preview, live]} />
+          <Failures groups={[preview]} />
         </section>
       )}
-      {/* Two columns while they fit (2026-10-26, the maintainer's choice of mockups): the preview's and the camera's short
-          panels stacked beside the audio's taller one, so both columns end level; one column in a narrow window. */}
-      <div className="studio-panels">
-        <div className="studio-panels-side">
-          {preview?.cameraPreview && rate && <PreviewPanel rate={rate} />}
-          <CameraPanel />
-        </div>
-        <AudioPanel />
-      </div>
+      <LiveRow type={type} />
     </div>
   );
 }

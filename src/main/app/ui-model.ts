@@ -183,8 +183,18 @@ export interface AppContext {
   microphone?: MicrophoneContext;
   /** The camera (plan 075); absent is off and not shown. */
   camera?: CameraContext;
-  /** The recording in progress's audio while it can be changed (plan 075, D19): what is muted, and whether it has a microphone. */
-  audioSession?: { systemMuted: boolean; microphone?: { muted: boolean } };
+  /**
+   * The recording in progress's audio while it can be changed (plan 075, D19): what is muted, whether it has a microphone,
+   * and whether the session is editable, which records every input as it comes (plan 097, D6).
+   */
+  audioSession?: { systemMuted: boolean; microphone?: { muted: boolean }; editable?: true };
+  /**
+   * Whether the session in progress, a Live preview's or a recording's, records an editable file (plan 087), which the
+   * Studio's live controls follow (plan 097, D6); absent without a session.
+   */
+  editableSession?: boolean;
+  /** Whether the next recording is editable: the setting, or the tray's Start editable recording once (plan 087). */
+  editableNext?: boolean;
   /** The inputs' saved volumes in dB (plan 075, D21); absent is 0 dB. */
   audioVolume?: AudioVolume;
   /**

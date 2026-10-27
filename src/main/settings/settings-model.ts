@@ -30,6 +30,7 @@ import { libraryView } from "./model/library";
 import { countdownGroup, countdownSoundGroup, editableRecordingGroup, fileNameGroup, hideSystemUiGroup, outputFolderGroup, qualityGroups, screenGroup } from "./model/recording";
 import { STATUS_ACTIONS, settingsStatus } from "./model/status";
 import { studioGroups } from "./model/studio";
+import { inputProblems } from "./model/inputs";
 import { onboardingAction, onboardingChecked, onboardingGuideGroup, onboardingView } from "./model/onboarding";
 
 // The model is split by tab under model/; these are its public API, as they were before the split.
@@ -38,7 +39,18 @@ export { proposesHotkey } from "./model/general";
 export { settingsStatus } from "./model/status";
 
 function settingsGroups(state: RecordingState, ctx: AppContext): Group[] {
-  return withSectionHeadings(ungroupedSettings(state, ctx), ctx.language);
+  return withSectionHeadings(withDeviceProblems(state, ctx, ungroupedSettings(state, ctx)), ctx.language);
+}
+
+/** The Recording tab's device rows say an input's problem in the Studio picker's words (plan 097, D2). */
+const DEVICE_ROWS = { screen: "screen", cameraDevice: "camera", microphoneDevice: "microphone" } as const;
+function withDeviceProblems(state: RecordingState, ctx: AppContext, groups: Group[]): Group[] {
+  const problems = inputProblems(state, ctx);
+  return groups.map((group) => {
+    const input = Object.hasOwn(DEVICE_ROWS, group.id) ? DEVICE_ROWS[group.id as keyof typeof DEVICE_ROWS] : undefined;
+    const problem = input ? problems[input] : undefined;
+    return problem && !problem.waiting ? { ...group, problem: problem.text } : group;
+  });
 }
 
 function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {

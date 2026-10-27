@@ -45,6 +45,8 @@ export interface SessionCapture {
   microphone?: MicrophoneChoice;
   /** Present only when the camera is on (plan 075). */
   camera?: SessionCamera;
+  /** Plan 087: the screen, each sound and the camera on tracks of their own; present only for an editable recording. */
+  editable?: true;
 }
 
 /** The camera setting as a session reads it (plan 075): the device and the layout, whose position the host picks for the display. */
@@ -87,6 +89,8 @@ export interface RecorderHost {
 export interface CountdownPresentation {
   /** A tick plays with each digit (plan 046). */
   sound: boolean;
+  /** A line under the digit (plan 097): the problems the recording starts with, so the user can still cancel. */
+  notice?: string;
 }
 
 /**
@@ -105,6 +109,9 @@ export interface CountdownPresenter {
   close(): void;
 }
 
+/** What an editable recording records each input at (plan 097, D6): as it comes. */
+const EDITABLE_VOLUME: AudioVolume = { system: 100, microphone: 100 };
+
 export interface RecorderDeps {
   host: RecorderHost;
   /** Windows lacks Media Foundation (plan 078), found at launch: a start is refused, as the tray and Settings explain. */
@@ -116,12 +123,20 @@ export interface RecorderDeps {
   countdownSeconds?: () => CountdownSeconds;
   /** Read once per session with the countdown; absent means silent. */
   countdownSound?: () => boolean;
+  /** The problems a recording starts with (plan 097), read once per session with the countdown; absent or empty is none. */
+  countdownNotice?: () => string | undefined;
   /** Read once per session like quality (plan 074); absent means off. */
   microphone?: () => SessionMicrophone;
   /** The same for the camera (plan 075); absent, or undefined from it, means off. */
   camera?: () => SessionCamera | undefined;
   /** The inputs' volumes (plan 075, D21), read when a session is prepared and sent again by `updateGains`; absent is 0 dB. */
   audioVolume?: () => AudioVolume;
+  /**
+   * Whether the session records an editable file (plan 087): the setting, or the tray's Start editable recording once.
+   * Read once per session like quality; absent is never. An editable session records every input as it comes (plan 097,
+   * D6): at 100%, never muted, the camera never hidden; Edit… sets them afterwards.
+   */
+  editable?: () => boolean;
   countdown?: CountdownPresenter;
   /** Monotonic milliseconds for countdown anchors and timing logs; defaults to `performance.now()`. */
   monotonic?: () => number;
@@ -261,6 +276,8 @@ interface Session {
   countdownSeconds: CountdownSeconds;
   /** Whether the countdown ticks; taken with `countdownSeconds`, and false without a countdown. */
   countdownSound: boolean;
+  /** Said under the countdown's digit (plan 097). */
+  countdownNotice?: string;
   /** Microphone snapshot taken when the session was created (plan 074). */
   microphone: SessionMicrophone;
   /** The engine told that the microphone stopped while recording. */
@@ -291,6 +308,8 @@ interface Session {
   /** Muted from the Recording Studio (plan 075, D19), for this recording only. */
   systemMuted?: boolean;
   microphoneMuted?: boolean;
+  /** An editable recording (plan 087), read once when the session begins; it records every input as it comes (plan 097, D6). */
+  editable?: boolean;
   /** Quit or sleep arrived before capture was prepared: cancel instead of counting down or recording. */
   cancelOnPrepared?: CancelReason;
   /** What `prepared` reported; carried on `captureStarted`. */
@@ -566,17 +585,34 @@ export class Recorder {
    * The recording in progress's audio while it can be changed (plan 075, D19): from its countdown, or without one its
    * start, until it stops, as `camera`; whether it records the microphone, and what is muted.
    */
-  get audio(): { sessionId: string; systemMuted: boolean; microphone?: { muted: boolean } } | undefined {
+  get audio(): { sessionId: string; systemMuted: boolean; microphone?: { muted: boolean }; editable?: true } | undefined {
     const session = this.liveSession();
     if (!session) return undefined;
     return { sessionId: session.id, systemMuted: session.systemMuted === true,
-      ...(session.microphone.enabled ? { microphone: { muted: session.microphoneMuted === true } } : {}) };
+      ...(session.microphone.enabled ? { microphone: { muted: session.microphoneMuted === true } } : {}),
+      ...(session.editable ? { editable: true as const } : {}) };
   }
 
-  /** Mutes the recording's system audio or microphone, or not, from their next sound on (D19); false without one. */
+  /**
+   * Whether the session in progress, a Live preview's or a recording's, records an editable file (plan 087), from its
+   * start until its file is handed to be saved; undefined without one.
+   */
+  get editable(): boolean | undefined {
+    const session = this.session;
+    return session ? session.editable === true : undefined;
+  }
+
+  /**
+   * Mutes the recording's system audio or microphone, or not, from their next sound on (D19); false without one. An
+   * editable recording refuses: it records every input as it comes, set afterwards in Edit… (plan 097, D6).
+   */
   updateAudio(change: { system?: boolean; microphone?: boolean }): boolean {
     const session = this.liveSession();
     if (!session) return false;
+    if (session.editable) {
+      this.deps.log(`recorder: session ${session.id} is editable; its inputs are recorded as they come, not muted`);
+      return false;
+    }
     if (change.system !== undefined) session.systemMuted = change.system;
     if (change.microphone !== undefined) session.microphoneMuted = change.microphone;
     this.deps.log(`recorder: session ${session.id} system audio ${session.systemMuted ? "muted" : "on"}, microphone ${session.microphoneMuted ? "muted" : "on"}`);
@@ -641,7 +677,9 @@ export class Recorder {
   }
 
   private sendGains(session: Session): boolean {
-    const gain = this.deps.audioVolume?.();
+    // An editable recording keeps each input at 100% in its track, whatever the faders say (plan 097, D6): the saved
+    // volumes stay for plain recordings, and Edit… sets an editable one's.
+    const gain = session.editable ? EDITABLE_VOLUME : this.deps.audioVolume?.();
     if (!gain || !this.deps.host.setGains) return false;
     try {
       this.deps.host.setGains(session.id, gain);
@@ -680,6 +718,12 @@ export class Recorder {
   updateCamera(change: { layout?: CameraLayout; hidden?: boolean }): boolean {
     const session = this.cameraSession();
     if (!session?.camera) return false;
+    // An editable recording's camera track is never hidden (plan 097, D6): Edit… hides stretches of it afterwards.
+    if (session.editable && change.hidden !== undefined) {
+      this.deps.log(`recorder: session ${session.id} is editable; its camera is not hidden while it records`);
+      if (!change.layout) return false;
+      change = { layout: change.layout };
+    }
     if (change.layout) session.camera = { ...session.camera, layout: change.layout };
     if (change.hidden !== undefined) session.cameraHidden = change.hidden;
     this.deps.log(`recorder: session ${session.id} camera ${change.layout ? "layout changed" : ""}${change.layout && change.hidden !== undefined ? ", " : ""}` +
@@ -878,6 +922,9 @@ export class Recorder {
     session.requestedAt = this.monotonic();
     session.countdownSeconds = this.deps.countdownSeconds?.() ?? 0;
     session.countdownSound = session.countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false);
+    const notice = session.countdownSeconds > 0 ? this.deps.countdownNotice?.() : undefined;
+    if (notice) session.countdownNotice = notice;
+    else delete session.countdownNotice;
     // A recording now, which a crash leaves evidence of; the preview left none (it is no recording's).
     session.sentinel = new SessionSentinelTracker(this.deps.sentinels, { id: session.id, startedAt: session.startedAt }, this.deps.log);
     const recordingPath = session.writer?.recordingPath;
@@ -894,7 +941,7 @@ export class Recorder {
     delete session.preview;
     if (session.countdownSeconds > 0 && this.deps.countdown) {
       session.overlay = true;
-      this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
+      this.present("prepare", (presenter) => presenter.prepare?.(this.presentation(session)));
     }
     if (session.countdownSeconds > 0) this.beginCountdown(session);
     else this.record(session);
@@ -932,8 +979,10 @@ export class Recorder {
       quality: this.deps.quality(),
       countdownSeconds,
       countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
+      ...(() => { const notice = countdownSeconds > 0 ? this.deps.countdownNotice?.() : undefined; return notice ? { countdownNotice: notice } : {}; })(),
       microphone: this.deps.microphone?.() ?? { enabled: false },
       ...(() => { const camera = this.deps.camera?.(); return camera ? { camera } : {}; })(),
+      ...(this.deps.editable?.() ? { editable: true } : {}),
       overlay: false,
       requestedAt: this.monotonic(),
       finalizing: false,
@@ -1013,11 +1062,12 @@ export class Recorder {
     }, this.deps.captureRequestTimeoutMs);
     if (!session.preview && session.countdownSeconds > 0 && this.deps.countdown) {
       session.overlay = true;
-      this.present("prepare", (presenter) => presenter.prepare?.({ sound: session.countdownSound }));
+      this.present("prepare", (presenter) => presenter.prepare?.(this.presentation(session)));
     }
     try {
       const { label: _label, ...microphone } = session.microphone;
-      const capture: SessionCapture = { ...(microphone.enabled ? { microphone } : {}), ...(session.camera ? { camera: session.camera } : {}) };
+      const capture: SessionCapture = { ...(microphone.enabled ? { microphone } : {}), ...(session.camera ? { camera: session.camera } : {}),
+        ...(session.editable ? { editable: true as const } : {}) };
       await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, Object.keys(capture).length ? capture : undefined);
     } catch (cause) {
       if (this.cancelMarked(session, "capture request failed", messageOf(cause))) return;
@@ -1241,6 +1291,11 @@ export class Recorder {
   }
 
   /** Media can exist only after `record`, and not once the finalizer owns the attempt. */
+  /** What the countdown's overlay shows with each digit: the tick, and the line under it. */
+  private presentation(session: Session): CountdownPresentation {
+    return { sound: session.countdownSound, ...(session.countdownNotice ? { notice: session.countdownNotice } : {}) };
+  }
+
   private cameraStateChanged(session: Session, state: NonNullable<Session["cameraState"]>): void {
     if (session.cameraState === state) return;
     session.cameraState = state;
@@ -1282,7 +1337,7 @@ export class Recorder {
     this.setState({ type: "countdown", remaining: seconds });
     if (this.deps.countdown) {
       session.overlay = true;
-      this.present("show", (presenter) => presenter.show(seconds, { sound: session.countdownSound }));
+      this.present("show", (presenter) => presenter.show(seconds, this.presentation(session)));
     }
     const at = (offsetMs: number, run: () => void): void => {
       countdown.timers.push(setTimeout(run, Math.max(0, countdown.anchor + offsetMs - this.monotonic())));

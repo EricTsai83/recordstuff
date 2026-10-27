@@ -176,7 +176,8 @@ describe("the camera (plan 075)", () => {
     second.say({ type: "rate", fps: 10 });
     second.say({ type: "view", view: "composed" });
     expect(setPreviewRate.mock.calls).toEqual([[5], [15], [10]]);
-    expect(setPreviewView.mock.calls).toEqual([["screen"], ["camera"], ["composed"]]);
+    // Screen only was a view until plan 097: refused as any other unknown view.
+    expect(setPreviewView.mock.calls).toEqual([["camera"], ["composed"]]);
   });
 
   it("forwards the engine's camera loss and return for the session", async () => {

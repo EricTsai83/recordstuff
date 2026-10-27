@@ -482,6 +482,44 @@ describe("the camera (plan 075)", () => {
     expect(ctx.recorder.audio, "not while stopping").toBeUndefined();
   });
 
+  it("records an editable session's inputs as they come: 100% whatever the faders, no mute, the camera never hidden (plan 097, D6)", async () => {
+    const logs: string[] = [];
+    let editable = true;
+    const ctx = setup({ log: (line) => logs.push(line), deps: { editable: () => editable, audioVolume: () => ({ system: 40, microphone: 50 }),
+      microphone: () => ({ enabled: true }), camera: () => ({ layout }) } });
+    expect(ctx.recorder.editable, "no session").toBeUndefined();
+    await startRecording(ctx);
+    expect(ctx.host.capturedWith[0], "the host records the kind the session began as").toMatchObject({ editable: true });
+    expect(ctx.recorder.editable).toBe(true);
+    // Changed meanwhile, the setting does not change the session in progress.
+    editable = false;
+    expect(ctx.recorder.editable).toBe(true);
+    expect(ctx.host.gains).toEqual([["s1", { system: 100, microphone: 100 }]]);
+    expect(ctx.recorder.updateGains(), "a fader moved while it records still sends 100%").toBe(true);
+    expect(ctx.host.gains.at(-1)).toEqual(["s1", { system: 100, microphone: 100 }]);
+    expect(ctx.recorder.audio).toMatchObject({ editable: true, systemMuted: false, microphone: { muted: false } });
+    expect(ctx.recorder.updateAudio({ microphone: true })).toBe(false);
+    expect(ctx.host.mutes).toEqual([]);
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
+    expect(ctx.recorder.camera).toMatchObject({ hidden: false });
+    // Its bubble's place and shape still change, the hiding left out.
+    expect(ctx.recorder.updateCamera({ layout, hidden: true })).toBe(true);
+    expect(ctx.host.cameraChanges.at(-1)).toMatchObject({ hidden: false });
+    expect(logs).toContainEqual(expect.stringContaining("is editable; its inputs are recorded as they come"));
+  });
+
+  it("keeps a plain session's saved volumes, mutes and hiding, and does not ask for an editable file (plan 097, D6)", async () => {
+    const ctx = setup({ deps: { editable: () => false, audioVolume: () => ({ system: 40, microphone: 50 }), microphone: () => ({ enabled: true }), camera: () => ({ layout }) } });
+    await startRecording(ctx);
+    expect(ctx.host.capturedWith[0]).not.toHaveProperty("editable");
+    expect(ctx.recorder.editable).toBe(false);
+    expect(ctx.host.gains).toEqual([["s1", { system: 40, microphone: 50 }]]);
+    expect(ctx.recorder.audio).not.toHaveProperty("editable");
+    expect(ctx.recorder.updateAudio({ microphone: true })).toBe(true);
+    expect(ctx.recorder.updateCamera({ hidden: true })).toBe(true);
+    expect(ctx.recorder.camera).toMatchObject({ hidden: true });
+  });
+
   it("has no camera to change without one, or between recordings", async () => {
     const ctx = setup({});
     expect(ctx.recorder.updateCamera({ hidden: true })).toBe(false);
@@ -3105,6 +3143,24 @@ describe("Recorder countdown (plan 040)", () => {
     ctx.host.emit(prepared("s1"));
     expect(ctx.presenter.presentations).toEqual([["prepare", { sound: true }], ["show 3", { sound: true }]]);
     expect(ctx.logs).toContainEqual(expect.stringContaining("prepared after 0 ms; countdown 3 s; sound on"));
+  });
+
+  it("passes the problems the recording starts with as the line under the digit, read once when it starts (plan 097)", async () => {
+    let notice: string | undefined = "Camera not found";
+    const ctx = counting(3, { countdownNotice: () => notice });
+    ctx.recorder.toggle();
+    await flush();
+    notice = undefined;
+    ctx.host.emit(prepared("s1"));
+    expect(ctx.presenter.presentations).toEqual([["prepare", { sound: false, notice: "Camera not found" }], ["show 3", { sound: false, notice: "Camera not found" }]]);
+    // None: the digit alone; and none without a countdown, which has no overlay to say it.
+    const fine = counting(3, { countdownNotice: () => undefined });
+    await fine.prepare();
+    expect(fine.presenter.presentations.every(([, presentation]) => !("notice" in presentation))).toBe(true);
+    const asked = vi.fn(() => "Camera not found");
+    const none = counting(0, { countdownNotice: asked });
+    await none.prepare();
+    expect(asked).not.toHaveBeenCalled();
   });
 
   it("is silent without the dependency, when the switch is off and when the countdown is Off", async () => {

@@ -104,6 +104,13 @@ describe("overlay placement", () => {
     expect(overlayBounds(...at(0, 0, 1366, 768, 24))).toEqual({ x: 1181, y: 36, width: 169, height: 169 });
   });
 
+  it("grows the window for a line under the digit, keeping the digit's square at the top right (plan 097)", () => {
+    // 216 pt digit window: 320 pt wide for the line, 56 pt taller, still 16 pt from the work area's right.
+    expect(overlayBounds(PRIMARY.bounds, PRIMARY.workArea, true)).toEqual({ x: 1280 + 216 - 320, y: 37, width: 320, height: 216 + 56 });
+    // A digit window already wider than the line's keeps its width.
+    expect(overlayBounds(...at(0, 0, 3840, 2160), true)).toEqual({ x: 3485, y: 12, width: 339, height: 339 + 56 });
+  });
+
   it("places it on a secondary display with a negative origin", () => {
     expect(overlayBounds(SECONDARY.bounds, SECONDARY.workArea)).toEqual({ x: -254, y: 12, width: 238, height: 238 });
   });

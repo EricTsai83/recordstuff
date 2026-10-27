@@ -943,26 +943,30 @@ describe("the file name pattern and the Recordings layout (2026-10-05)", () => {
     expect(defaultSettings("/a").studioPreview).toEqual({ rate: "power", view: "composed" });
     expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY }))).toMatchObject({ settings: { studioPreview: { rate: "power" } }, warnings: [] });
     // Off was a rate until 2026-10-25: a stored one keeps its view and reads as Power saving, without a warning.
+    // Screen only was a view until plan 097: a stored one reads as the composed picture, also without a warning.
     expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: { rate: "off", view: "screen" } })))
-      .toMatchObject({ settings: { studioPreview: { rate: "power", view: "screen" } }, warnings: [] });
+      .toMatchObject({ settings: { studioPreview: { rate: "power", view: "composed" } }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: { rate: "smooth", view: "screen" } })))
+      .toMatchObject({ settings: { studioPreview: { rate: "smooth", view: "composed" } }, warnings: [] });
     for (const bad of ["standard", { rate: "fast", view: "composed" }, { rate: "standard" }, { rate: "standard", view: "selfie" }, { rate: "off" }]) {
       expect(parseSettings(JSON.stringify({ version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY, studioPreview: bad })), JSON.stringify(bad))
         .toMatchObject({ settings: { studioPreview: { rate: "power", view: "composed" } }, warnings: ["studioPreview is invalid: using Power saving and the recorded picture"] });
     }
     const s = store();
     await s.setStudioPreview({ rate: "smooth" });
-    await s.setStudioPreview({ view: "screen" });
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ studioPreview: { rate: "smooth", view: "screen" } });
-    expect(store().studioPreview).toEqual({ rate: "smooth", view: "screen" });
+    await s.setStudioPreview({ view: "camera" });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ studioPreview: { rate: "smooth", view: "camera" } });
+    expect(store().studioPreview).toEqual({ rate: "smooth", view: "camera" });
+    await expect(s.setStudioPreview({ view: "screen" }), "plan 097 removed Screen only").rejects.toThrow("unsupported Studio preview");
     await expect(s.setStudioPreview({ rate: "fast" })).rejects.toThrow("unsupported Studio preview");
     await expect(s.setStudioPreview({ view: "selfie" })).rejects.toThrow("unsupported Studio preview");
     await s.setStudioPreview({ view: "camera" });
     expect(store().studioPreview, "plan 094's Camera view is kept").toEqual({ rate: "smooth", view: "camera" });
-    await s.setStudioPreview({ view: "screen" });
+    await s.setStudioPreview({ view: "composed" });
     await expect(s.setStudioPreview({})).rejects.toThrow("unsupported Studio preview");
     await expect(s.setStudioPreview({ rate: "off" } as never), "Off is no longer a rate").rejects.toThrow("unsupported Studio preview");
     await s.setStudioPreview({ rate: "power" });
-    expect(store().studioPreview).toEqual({ rate: "power", view: "screen" });
+    expect(store().studioPreview).toEqual({ rate: "power", view: "composed" });
   });
 
   it("keeps the previews' sound off until it is turned on, and remembers it (2026-10-14)", async () => {

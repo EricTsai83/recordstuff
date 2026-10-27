@@ -49,6 +49,14 @@ export class DeviceLists {
     )).finally(() => { this.listingCameras = undefined; this.deps.changed(); });
   }
 
+  /**
+   * The inputs that are on, with Settings closed too (plan 097): at launch and as each recording ends, so the tray and
+   * the countdown can say a chosen device is missing before anyone opens the Studio. An input off is not listed.
+   */
+  refreshInUse(inUse: { microphone: boolean; camera: boolean }): Promise<void> {
+    return Promise.all([inUse.microphone ? this.refreshMicrophones() : undefined, inUse.camera ? this.refreshCameras() : undefined]).then(() => undefined);
+  }
+
   /** Both kinds, as Settings comes forward. */
   refresh(): void {
     void this.refreshMicrophones();

@@ -201,14 +201,14 @@ async function run(): Promise<void> {
       await show(window, "recording");
       await shoot(window, `recording-state-${lang}-${scheme}.png`, `recording in progress · ${lang} · ${scheme}`, { state: "recording" });
       // The Studio during a recording with its picture hidden by Live preview (2026-10-25: the rate has no Off), then
-      // shown at Power saving in each view.
+      // shown at Power saving in each view (plan 097: As recorded and Check camera).
       studio = { showing: false, pictureHidden: true };
       await show(window, "studio");
       await shoot(window, `studio-recording-off-${lang}-${scheme}.png`, `the Studio while recording, the preview off · ${lang} · ${scheme}`, { state: "recording-preview-off" });
       studio = { showing: true };
-      studioPreview = { rate: "power", view: "screen" };
+      studioPreview = { rate: "power", view: "composed" };
       await show(window, "studio");
-      await shoot(window, `studio-recording-screen-${lang}-${scheme}.png`, `the Studio while recording, Power saving, the Screen view · ${lang} · ${scheme}`, { state: "recording-screen" });
+      await shoot(window, `studio-recording-composed-${lang}-${scheme}.png`, `the Studio while recording, Power saving, As recorded · ${lang} · ${scheme}`, { state: "recording-composed" });
       // The Camera view (plan 094): the camera alone at the bubble's shape on the stage's grey, the picture clipped to it.
       studioPreview = { rate: "power", view: "camera" };
       await show(window, "studio");

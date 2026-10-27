@@ -52,8 +52,6 @@ export interface NativeCaptureHostOptions {
   /** RecordStuff's processes, main first, whose windows and sound the recording leaves out. */
   ownPids: () => number[];
   hideSystemUi: () => boolean;
-  /** Plan 087: whether recordings are editable; absent is never. */
-  editable?: () => boolean;
   /**
    * Before a recording with the microphone (plan 074): asks macOS for access if it never has, so the prompt comes
    * while the session starts, the recorder's capture-request deadline covering it, and not as a silent refusal.
@@ -212,7 +210,8 @@ export class NativeCaptureHost implements RecorderHost {
       ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
       ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
-      ...(this.options.editable?.() ? { editable: true } : {}),
+      // The recorder's choice for the session (plan 087), read once when it began, so its controls match its file.
+      ...(capture?.editable ? { editable: true } : {}),
     } });
   }
 

@@ -48,30 +48,34 @@ export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
 }
 
 /**
- * The recording's inputs (D19): each one's level and mute, for the recording in progress only; the microphone's
- * while the recording takes it, or before one while its switch is on.
+ * The recording's inputs under the Studio's preview (D19; plan 097, D6): each one's level, for the session in progress
+ * only; the microphone's while the session takes it, or before one while its switch is on. A plain recording's also say
+ * whether the input is recorded (Don't record, the mute until plan 097) and its fader; an editable recording's are the
+ * level alone, since it records every input as it comes.
  */
-export function studioAudioGroups(ctx: AppContext): Group[] {
+export function studioAudioGroups(ctx: AppContext, type: "plain" | "editable"): Group[] {
   const language = ctx.language;
   const session = ctx.audioSession;
   const row = (id: string, label: PlainMessageKey, source: "system" | "microphone", muted: boolean): Group => ({
-    ...group(id, t(label, language), session !== undefined, [
-      { id: "mute", label: t("Mute", language), enabled: true, checked: muted, action: { setAudioMuted: { source, muted: true } } },
-      { id: "unmute", label: t("Unmute", language), enabled: true, checked: !muted, action: { setAudioMuted: { source, muted: false } } },
+    ...group(id, t(label, language), session !== undefined, type === "editable" ? [] : [
+      { id: "mute", label: t("Don't record", language), enabled: true, checked: muted, action: { setAudioMuted: { source, muted: true } } },
+      { id: "unmute", label: t("Record", language), enabled: true, checked: !muted, action: { setAudioMuted: { source, muted: false } } },
     ]),
     control: "meter", meter: { source },
+    ...(muted && type === "plain" ? { problem: t(source === "system" ? "System audio not recorded" : "Microphone not recorded", language) } : {}),
   });
-  // Each input's fader (D21): a setting, so offered before, during and between recordings alike.
-  const fader = (id: AudioVolumeGroup, label: PlainMessageKey): Group => {
+  // Each input's fader (D21): a setting, so offered before, during and between plain recordings alike.
+  const fader = (id: AudioVolumeGroup, label: PlainMessageKey): Group[] => {
+    if (type === "editable") return [];
     const source = AUDIO_VOLUME_GROUPS[id];
     const value = (ctx.audioVolume ?? DEFAULT_AUDIO_VOLUME)[source];
-    return { ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: `${value}%`,
+    return [{ ...group(id, t("{label} volume", language, { label: t(label, language) }), true, [{ id: String(value), label: `${value}%`,
       enabled: true, checked: true, action: { setAudioVolume: { source, volume: value } } }]),
-      control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent", scale: "volume" } };
+      control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent", scale: "volume" } }];
   };
-  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), fader("systemGain", "System audio")];
+  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), ...fader("systemGain", "System audio")];
   if (session ? session.microphone : ctx.microphone?.enabled) {
-    rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false), fader("microphoneGain", "Microphone"));
+    rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false), ...fader("microphoneGain", "Microphone"));
   }
   return rows;
 }

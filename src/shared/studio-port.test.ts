@@ -20,17 +20,17 @@ describe("the Recording Studio's port (plan 081)", () => {
 
   it("takes from the page only the views the Studio offers, and refuses another (plan 092, D3)", () => {
     expect(isStudioViewMessage({ type: "view", view: "composed" })).toBe(true);
-    expect(isStudioViewMessage({ type: "view", view: "screen" })).toBe(true);
     expect(isStudioViewMessage({ type: "view", view: "camera" })).toBe(true);
-    for (const view of ["Camera", "", 1, undefined]) expect(isStudioViewMessage({ type: "view", view }), String(view)).toBe(false);
+    // Screen only was a view until plan 097.
+    for (const view of ["screen", "Camera", "", 1, undefined]) expect(isStudioViewMessage({ type: "view", view }), String(view)).toBe(false);
     expect(isStudioViewMessage({ type: "rate", fps: 10 })).toBe(false);
   });
 
   it("reads a stored rate choice only whole (plan 092)", () => {
-    expect(isStudioPreviewSettings({ rate: "standard", view: "screen" })).toBe(true);
+    expect(isStudioPreviewSettings({ rate: "standard", view: "composed" })).toBe(true);
     expect(isStudioPreviewSettings({ rate: "power", view: "camera" })).toBe(true);
     // Off was a rate until 2026-10-25; settings.ts reads a stored one as Power saving before this check.
-    for (const bad of [{ rate: "off", view: "composed" }, { rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "selfie" }, [], null]) {
+    for (const bad of [{ rate: "standard", view: "screen" }, { rate: "off", view: "composed" }, { rate: "fast", view: "composed" }, { rate: "power" }, { rate: "power", view: "selfie" }, [], null]) {
       expect(isStudioPreviewSettings(bad), JSON.stringify(bad)).toBe(false);
     }
   });

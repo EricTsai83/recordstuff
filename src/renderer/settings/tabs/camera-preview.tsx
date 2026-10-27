@@ -91,8 +91,8 @@ function useRecordingPreview(canvas: HTMLCanvasElement | null, on: boolean): boo
 
 /**
  * What the Recording Studio chose to show (plan 092): with the preview off, nothing is drawn and no camera opened, the
- * stage keeping its frame and the bubble to place; the Screen view leaves the camera out; the Camera view (plan 094)
- * shows the camera alone, enlarged at the bubble's shape and rounding, with nothing to place.
+ * stage keeping its frame and the bubble to place; the Check camera view (plan 094, renamed by plan 097) shows the
+ * camera alone, enlarged at the bubble's shape and rounding, with nothing to place.
  */
 export interface PreviewShown {
   off: boolean;
@@ -113,7 +113,6 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   const inSight = useInSight(stage);
   const size = useSize(stage);
   const off = shown?.off === true;
-  const screenOnly = shown?.view === "screen";
   const cameraOnly = shown?.view === "camera" && !off;
   const drawing = useRecordingPreview(canvas, preview.mode === "recording" && inSight && !off);
   /** Where the bubble shows while it is moved or its new place saves; the view's place otherwise. */
@@ -182,15 +181,14 @@ export function CameraPreview({ group, preview, disabled, describedBy, statusOut
   // In the Camera view the engine's picture is the camera itself.
   const draggable = preview.composed && !cameraOnly;
   // The engine's picture composes the camera, which gives none yet: its place is marked as before a session (2026-10-25).
-  const awaited = preview.mode === "recording" && !off && !screenOnly && !cameraOnly && preview.composed && preview.cameraAwaited === true;
+  const awaited = preview.mode === "recording" && !off && !cameraOnly && preview.composed && preview.cameraAwaited === true;
   const showsBubble = cameraOnly ? preview.composed && preview.mode !== "recording" : preview.composed;
   const box = cameraOnly ? { left: enlarged.x, top: enlarged.y, width: enlarged.width, height: enlarged.height, borderRadius: enlargedRadius }
     : { left: bubble.x, top: bubble.y, width: bubble.width, height: bubble.height, borderRadius: radius };
   // The Camera view says why it has no camera at once: that is about the camera, not the engine's first frame.
   const status = off ? undefined
     : cameraOnly ? preview.cameraStatus
-    : preview.mode === "recording" && !drawing ? undefined
-    : screenOnly && preview.mode !== "recording" ? undefined : preview.status;
+    : preview.mode === "recording" && !drawing ? undefined : preview.status;
   return (
     <div className="camera-preview" data-mode={preview.mode} data-off={off || undefined} data-awaited={awaited || undefined} data-view={shown?.view}>
       <div

@@ -95,13 +95,12 @@ export function recordedShorterSide(ctx: AppContext): number {
 }
 
 /**
- * Whether the bubble's size, rounding and mirror may change: at any time, the camera off included (2026-10-22, at the
- * maintainer's request, as the bubble's place), except while a recording that is to compose the camera cannot take a
- * change yet, during its start.
+ * Whether the bubble's size, rounding and mirror may change: between recordings, the camera off included (2026-10-22,
+ * at the maintainer's request), and locked with the Camera picker while one records (plan 097: chosen before
+ * recording). Its place is dragged at any time.
  */
 export function cameraShapeEnabled(ctx: AppContext, unlocked: boolean): boolean {
-  if (!ctx.camera) return false;
-  return unlocked || ctx.camera.session !== undefined || !ctx.camera.enabled;
+  return ctx.camera !== undefined && unlocked;
 }
 
 /**
@@ -131,13 +130,20 @@ export function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
     device.note = t("Recordings use the system default camera until {label} is connected.", language, { label: stored.label });
     device.noteKind = "status";
   }
+  // The camera's live picture (plan 097, D4): opened only by Test camera, until pressed again or the tab is left, so
+  // visiting the tab turns on no camera light. Between recordings, the camera on and allowed: a recording holds it.
+  const granted = camera.access === undefined || camera.access === "granted";
+  const test: Group = { ...group("cameraTest", t("Test camera", language), unlocked && camera.enabled && granted, []), control: "cameraTest",
+    cameraTest: { ...(stored && !missing ? { name: stored.label } : {}) },
+    info: t("Shows the chosen camera here to check that it works. Nothing is recorded.", language),
+    ...(unlocked ? {} : { note: t("While recording, the Recording Studio shows the camera.", language), noteKind: "status" as const }) };
   // Its place and shape are the Recording Studio's (D19), one step away, whether the device may change now or not.
   const studio: Group = { ...group("cameraStudio", t("Bubble position and shape", language), true,
     [{ id: "openStudio", label: t("Arrange in Recording Studio…", language), enabled: true, checked: false, action: "openStudio" }]), kind: "actions" };
-  return [device, studio];
+  return [device, test, studio];
 }
 
-/** The bubble's size, shape, rounding and mirror (D1–D3, D8), changed in the Recording Studio, also while recording (D7). */
+/** The bubble's size, shape, rounding and mirror (D1–D3, D8), in the Recording Studio's Camera picker, between recordings (plan 097). */
 export function cameraShapeGroups(ctx: AppContext, unlocked: boolean): Group[] {
   const camera = ctx.camera!;
   const language = ctx.language;
@@ -163,10 +169,12 @@ export function cameraShapeGroups(ctx: AppContext, unlocked: boolean): Group[] {
 
 /**
  * The preview (plan 075 step 7): the display the recording will capture, to scale, with the bubble where it will be
- * composed, which can be dragged there. Before recording the page shows the camera itself in the bubble; while a
- * recording composes the camera, the engine's preview of the picture. None without a display to show.
+ * composed, which can be dragged there; while a session makes one, the engine's preview of the picture. The bubble can
+ * be dragged only where the preview shows the camera (plan 097): its picture, or before it (Live preview off, the camera
+ * starting) the glass bubble; with the camera off or hidden from the recording there is nothing to drag. None without a
+ * display to show.
  */
-export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | undefined {
+export function cameraPreviewGroup(ctx: AppContext): Group | undefined {
   const camera = ctx.camera;
   const display = previewDisplay(ctx);
   if (!camera || !display) return undefined;
@@ -178,17 +186,21 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
   // Not while Live preview is switched off during the recording: the bubble's place then, as before it (2026-10-21).
   const hidden = ctx.studio?.pictureHidden === true;
   const showing = !hidden && (camera.session !== undefined || ctx.studio?.showing === true);
-  const mode = showing ? "recording" : !camera.enabled ? "off" : unlocked && granted ? "live" : "off";
+  // A session runs, its picture shown or not: the bubble is then the session's camera, or nothing.
+  const session = showing || hidden;
+  const mode = showing ? "recording" : !camera.enabled || !granted || session ? "off" : "live";
   // While the engine's picture is shown, a word only when the camera gives none (plan 090); nothing while it is hidden.
   const missing = camera.session && !camera.session.hidden ? camera.session.state : undefined;
-  const status = showing ? (missing === "waiting" ? t("Waiting for the camera…", language) : missing === "notReady" ? t("The camera is not ready.", language)
-    : missing === "lost" ? t("The camera dropped out. Reconnecting…", language) : undefined) : hidden ? t("Live preview is off.", language) : !camera.enabled ? t("Turn on Camera to see it here.", language)
-    : mode === "off" ? (unlocked ? t("Allow camera access to see it here.", language) : t("Shown here once the recording starts.", language))
-    : undefined;
-  // What the Studio's Camera view (plan 094) says when it has no camera to enlarge: why, in a session's picture too.
-  const cameraStatus = !showing ? status
+  // The Camera picker says the camera's state (plan 097, D2); the stage says only what its own picture lacks.
+  const status = showing ? undefined : hidden ? t("Live preview is off.", language) : undefined;
+  // What the Studio's Check camera view (plan 094) says when it has no camera to enlarge: why, in a session's picture
+  // too, where it keeps the camera's own state (plan 090) since it shows that camera alone.
+  const cameraStatus = !showing ? (status ?? (!camera.enabled ? t("Turn on Camera to see it here.", language)
+      : !granted ? t("Allow camera access to see it here.", language) : undefined))
     : !camera.session ? (camera.enabled ? t("The camera joins from the next recording.", language) : t("Turn on Camera to see it here.", language))
-    : camera.session.hidden ? t("The camera is hidden from the recording.", language) : status;
+    : camera.session.hidden ? t("The camera is hidden from the recording.", language)
+    : missing === "waiting" ? t("Waiting for the camera…", language) : missing === "notReady" ? t("The camera is not ready.", language)
+    : missing === "lost" ? t("The camera dropped out. Reconnecting…", language) : undefined;
   const id = `${x},${y}`;
   return {
     // The bubble is placed at any time, the camera off, a countdown or a recording in progress: a setting, as its shape (D7).
@@ -200,9 +212,8 @@ export function cameraPreviewGroup(ctx: AppContext, unlocked: boolean): Group | 
       mode,
       display: { width: display.logicalWidth, height: display.logicalHeight },
       bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
-      // The picture holds a camera to place only while its session composes one, and before a session only while the
-      // camera is on (2026-10-26, the maintainer's request: with it off there is nothing to place, nor to wait for).
-      composed: showing ? camera.session !== undefined : camera.enabled,
+      // The bubble rule (plan 097): a session's camera unless hidden from the recording; before a session the camera on.
+      composed: session ? camera.session !== undefined && !camera.session.hidden : camera.enabled,
       x, y,
       ...(status ? { status } : {}),
       ...(cameraStatus ? { cameraStatus } : {}),

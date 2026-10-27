@@ -13,7 +13,7 @@ import { isSettingsTab, type SettingsStatus } from "../../shared/settings-panel"
 import { translate } from "../../shared/i18n";
 import * as model from "./settings-controller";
 import { Preferences } from "./tabs/preferences";
-import { Studio } from "./tabs/studio";
+import { Studio, StudioHead } from "./tabs/studio";
 import { WindowActions } from "./window-actions";
 import { Troubleshooting } from "./tabs/troubleshooting";
 import { Library, LibraryHead, LibrarySummary, RenameDialog, FolderDialog, PlayerDialog, EditorDialog } from "./tabs/library";
@@ -338,6 +338,8 @@ export function SettingsApp() {
                 <div className="settings-head-tools" hidden={model.selectedTab !== "library"}>
                   <LibrarySummary />
                 </div>
+                {/* The Recording Studio's title line (plan 097, D1): the view, Live preview and the preview's rate. */}
+                {model.selectedTab === "studio" && <div className="settings-head-studio"><StudioHead /></div>}
                 {/* The search and folder controls take a line of their own under the title (2026-10-09). */}
                 <div className="settings-head-controls" hidden={model.selectedTab !== "library"}>
                   <LibraryHead />

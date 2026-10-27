@@ -26,6 +26,22 @@ function setup(overrides: Partial<DeviceListsDeps> = {}) {
 }
 
 describe("DeviceLists", () => {
+  it("lists only the inputs that are on, with Settings closed, and nothing while a session runs (plan 097)", async () => {
+    const both = setup();
+    await both.lists.refreshInUse({ microphone: true, camera: true });
+    expect(both.order).toEqual(["microphones", "cameras"]);
+    expect([both.lists.microphones, both.lists.cameras]).toEqual([[mic], [cam]]);
+    const camera = setup();
+    await camera.lists.refreshInUse({ microphone: false, camera: true });
+    expect(camera.order, "the microphone off: not listed").toEqual(["cameras"]);
+    const none = setup();
+    await none.lists.refreshInUse({ microphone: false, camera: false });
+    expect(none.order).toEqual([]);
+    const busy = setup({ allowed: vi.fn(() => false) });
+    await busy.lists.refreshInUse({ microphone: true, camera: true });
+    expect(busy.order, "a recording runs: nothing listed").toEqual([]);
+  });
+
   it("lists each kind once at a time: a second request waits for the listing in flight", async () => {
     const pending = deferred<MicrophoneDevice[]>();
     const { lists, deps } = setup({ listMicrophones: vi.fn(() => pending.promise) });

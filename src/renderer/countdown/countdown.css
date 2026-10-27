@@ -30,6 +30,44 @@ body,
   transition: opacity var(--fade-in) ease-out;
 }
 
+/* The digit's square: the whole window, or with a line under it (plan 097) the window's top right, its size unchanged. */
+.digit {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#stage.with-notice .digit {
+  width: calc(100vh - var(--notice-height));
+  height: calc(100vh - var(--notice-height));
+}
+
+#stage.with-notice .face {
+  font-size: calc((100vh - var(--notice-height)) / var(--window-per-font));
+}
+
+/* What the recording starts without, right-aligned under the digit in the system's text, light over a dark pill. */
+.notice {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: calc(var(--notice-height) - 6px);
+  margin: 0;
+  padding: 5px 10px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: right;
+}
+
 .face {
   position: absolute;
   inset: 0;
@@ -62,6 +100,10 @@ body,
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  .notice {
+    background: #000;
+  }
+
   .face {
     color: var(--digit-opaque);
     -webkit-text-stroke: var(--outline-width-strong) var(--outline-strong);

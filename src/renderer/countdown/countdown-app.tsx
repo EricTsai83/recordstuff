@@ -2,23 +2,28 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   createCountdownState,
+  noticeRequested,
   overlayStyle,
   playTick,
   soundRequested,
   type CountdownFrame,
 } from "./countdown-state";
 
-export function CountdownFaces({ frame }: { frame: CountdownFrame }) {
+export function CountdownFaces({ frame, notice }: { frame: CountdownFrame; notice?: string | undefined }) {
   return (
-    <div id="stage" role="timer" className={frame.visible ? "visible" : ""}>
-      {frame.faces.map((digit, index) => (
-        <span
-          key={index}
-          className={`face${index === frame.front && digit ? " front" : ""}`}
-        >
-          {digit}
-        </span>
-      ))}
+    <div id="stage" role="timer" className={`${frame.visible ? "visible" : ""}${notice ? " with-notice" : ""}`}>
+      <div className="digit">
+        {frame.faces.map((digit, index) => (
+          <span
+            key={index}
+            className={`face${index === frame.front && digit ? " front" : ""}`}
+          >
+            {digit}
+          </span>
+        ))}
+      </div>
+      {/* What the recording starts without (plan 097), so it can still be cancelled; fixed when the page loads. */}
+      {notice && <p className="notice">{notice}</p>}
     </div>
   );
 }
@@ -59,5 +64,5 @@ export function CountdownApp() {
       void context?.close().catch(() => {});
     };
   }, []);
-  return <CountdownFaces frame={frame} />;
+  return <CountdownFaces frame={frame} notice={noticeRequested(location.search)} />;
 }
