@@ -1,27 +1,27 @@
 {
-  "version": "2.2.0",
-  "tag": "v2.2.0",
-  "sourceCommit": "2b304763f826257c29eb9783d653e33353759cc2",
-  "publishedAt": "2026-10-09T20:54:36Z",
+  "version": "3.0.0",
+  "tag": "v3.0.0",
+  "sourceCommit": "2a756283af80dbd28babc4cd117dd311940b1059",
+  "publishedAt": "2026-10-27T00:22:50Z",
   "platform": "darwin-arm64",
   "architecture": "arm64",
   "dmg": {
-    "name": "RecordStuff-2.2.0-arm64-selfsigned.dmg",
-    "size": 133203733,
-    "sha256": "b90ffe197c4d1b5e1d6a4f47a4d4bfb719ec97973d880777ba1478965f73b59c",
-    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v2.2.0/RecordStuff-2.2.0-arm64-selfsigned.dmg"
+    "name": "RecordStuff-3.0.0-arm64-selfsigned.dmg",
+    "size": 134009677,
+    "sha256": "654f55e322c1eedf9e90d19fdc05d3b98ead38d2b43d84e128a5934b96e9f307",
+    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v3.0.0/RecordStuff-3.0.0-arm64-selfsigned.dmg"
   },
-  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v2.2.0/SHA256SUMS",
+  "sha256sumsUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v3.0.0/SHA256SUMS",
   "windows": {
     "platform": "win32-x64",
-    "name": "RecordStuff-2.2.0-x64-unsigned-setup.exe",
-    "size": 102752678,
-    "sha256": "3dc930eb66072a93596aabd796ef2ac164df4c0050139e053b5f1d17c4a9d994",
-    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v2.2.0/RecordStuff-2.2.0-x64-unsigned-setup.exe",
-    "recordUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v2.2.0/release-win32-x64.json"
+    "name": "RecordStuff-3.0.0-x64-unsigned-setup.exe",
+    "size": 103351520,
+    "sha256": "8efb8887ff92f93b362f8c1f2e8905c4c2ce0fe5a7b3ec25304e2ca975819570",
+    "url": "https://github.com/EricTsai83/recordstuff/releases/download/v3.0.0/RecordStuff-3.0.0-x64-unsigned-setup.exe",
+    "recordUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v3.0.0/release-win32-x64.json"
   },
-  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v2.2.0/release.json",
-  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v2.2.0",
-  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v2.2.0",
-  "verifiedAt": "2026-10-09T20:56:06.809Z"
+  "releaseJsonUrl": "https://github.com/EricTsai83/recordstuff/releases/download/v3.0.0/release.json",
+  "releaseUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v3.0.0",
+  "notesUrl": "https://github.com/EricTsai83/recordstuff/releases/tag/v3.0.0",
+  "verifiedAt": "2026-10-27T00:24:21.473Z"
 }
