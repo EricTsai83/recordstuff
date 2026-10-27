@@ -18,7 +18,10 @@ export function windowDragFailed(results: WindowDragResults | undefined, exit: n
   const top = ["top-left", "top-middle", "top-right"], sidebar = ["sidebar-blank", "tab-no-drag", "tab-click", "menu-button-no-drag", "menu-click", "menu-overlay-no-drag"];
   const expected = ["wide-100", "wide-150"].flatMap(profile => [...top.map(name => `${profile}-${name}`),
     ...[...sidebar, "brand", "toggle-no-drag"].map(name => `${profile}-full-${name}`), ...[...sidebar, "toggle-no-drag"].map(name => `${profile}-collapsed-${name}`)]);
-  expected.push(...[...top, ...sidebar].map(name => `narrow-100-${name}`), "console");
+  expected.push(...[...top, ...sidebar].map(name => `narrow-100-${name}`));
+  // The window's drag handle while a modal is open (2026-10-27).
+  expected.push("modal-handle-hidden-away-from-top", "modal-handle-shown-near-top", "modal-handle-drag", "modal-handle-closes-nothing",
+    "modal-backdrop-still-dismisses", "console");
   return exit !== 0 || Boolean(stopped) || !results?.complete || Boolean(results.error)
     || results.cases.length !== expected.length || expected.some(name => !results.cases.some(test => test.name === name));
 }

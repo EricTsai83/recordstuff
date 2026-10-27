@@ -70,7 +70,7 @@ export const TEST_SCOPES: readonly TestScope[] = [
   {
     name: "layout",
     covers: "Settings as a whole: shared components, themes, zoom, window chrome, focus drawing, every page's root and the visual matrix of every tab",
-    unit: ["src/renderer/components/", "src/renderer/lib/mount-root.test.ts", `${PAGE}settings-busy.test.ts`, `${PAGE}settings-quiet.test.ts`, `${PAGE}settings-info.test.ts`, "src/renderer/settings/zoom-toast.test.ts"],
+    unit: ["src/renderer/components/", "src/renderer/lib/mount-root.test.ts", `${PAGE}settings-busy.test.ts`, `${PAGE}settings-quiet.test.ts`, `${PAGE}settings-info.test.ts`, `${PAGE}settings-modal-drag-handle.test.ts`, "src/renderer/settings/zoom-toast.test.ts"],
     ui: [{ file: "settings-layout.spec.ts" }, { file: "settings-sidebar.spec.ts" }, { file: "settings-scroll-fades.spec.ts" }, { file: "settings-theme.spec.ts" }, { file: "settings-matrix.spec.ts" },
       { file: "components.spec.ts", tags: ["@layout"] }, { file: "settings-panel.spec.ts", tags: ["@layout"] }, { file: "settings-results.spec.ts", tags: ["@layout"] }],
   },

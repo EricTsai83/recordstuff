@@ -94,12 +94,14 @@ const ctx: AppContext = {
   notifications: false, updates: { enabled: true, state: { kind: "idle" } }, display: { kind: "primary" },
   displays: [{ id: "1", label: "Fixture display", logicalWidth: 1920, logicalHeight: 1080, scaleFactor: 2, internal: true, primary: true }],
 };
-const view = settingsView({ type: "idle" }, ctx);
+let view = settingsView({ type: "idle" }, ctx);
+/** Every choice the page sends, so a dialog's dismissal by its backdrop shows here (the model never applies one). */
+const chosen: Array<{ group: string; choice: string }> = [];
 ipcMain.handle("settings:read", () => view);
 ipcMain.handle("settings:ready", () => {});
 ipcMain.handle("settings:zoom", () => {});
 ipcMain.handle("settings:capture", () => view);
-ipcMain.handle("settings:choose", () => ({ view, applied: false }));
+ipcMain.handle("settings:choose", (_event, group: string, choice: string) => { chosen.push({ group, choice }); return { view, applied: false }; });
 app.on("window-all-closed", () => {});
 // Let a cancelled drag release its button before quitting; the parent still bounds cleanup.
 process.on("SIGTERM", () => controller.abort());
@@ -173,9 +175,62 @@ async function run(): Promise<void> {
     }
     if (profile.wide) await setSidebar("full");
   }
+  await modalCases(work);
   record("console", consoleErrors.length === 0, consoleErrors);
   complete = true;
 }
+
+/**
+ * The window's drag handle while a modal is open (2026-10-27): the welcome guide, a production dialog the idle model
+ * opens, stands for every modal (one handle serves them all). Away from the top it is hidden and the backdrop's
+ * dismissal is unchanged; near the top it shows, drags the window natively, and a click on it closes nothing.
+ */
+async function modalCases(work: Electron.Rectangle): Promise<void> {
+  window!.webContents.setZoomFactor(1);
+  window!.setBounds({ x: work.x + 50, y: work.y + 50, width: 900, height: 600 });
+  view = settingsView({ type: "idle" }, { ...ctx, onboarding: { open: true } });
+  window!.webContents.send("settings:changed", view);
+  const open = (): Promise<boolean> => read<boolean>(`Boolean(document.querySelector('#onboarding[data-open]') && document.querySelector('[data-slot="dialog-overlay"][data-open]'))`);
+  if (!await until(open)) throw new Error("The welcome guide did not open; cannot test the modal drag handle");
+  await delay(400, undefined, { signal: controller.signal });
+  const handleState = `(() => { const el = document.querySelector("#modal-drag-handle"); const style = el && getComputedStyle(el);
+    return { near: Boolean(el?.hasAttribute("data-near")), visibility: style?.visibility, opacity: style?.opacity, region: style?.getPropertyValue("-webkit-app-region") }; })()`;
+  type HandleState = { near: boolean; visibility: string; opacity: string; region: string };
+  const bounds = window!.getContentBounds();
+  // Away from the top: hidden, and not a drag region.
+  await restorePointer({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+  await delay(HIDE_WAIT_MS, undefined, { signal: controller.signal });
+  const away = await read<HandleState>(handleState);
+  record("modal-handle-hidden-away-from-top", !away.near && away.visibility === "hidden" && away.region !== "drag", away);
+  // Near the top: shown, and a drag region.
+  const handle = centre(await rect("#modal-drag-handle"));
+  await restorePointer(handle);
+  const shown = await until(async () => { const state = await read<HandleState>(handleState); return state.near && state.visibility === "visible" && state.region === "drag"; });
+  const near = await read<HandleState>(handleState);
+  record("modal-handle-shown-near-top", shown, near);
+  if (!shown) throw new Error("The modal drag handle did not show near the top");
+  await delay(300, undefined, { signal: controller.signal }); // its fade, and the drag region's update
+  const before = chosen.length;
+  await dragCase("modal-handle-drag", centre(await rect("#modal-drag-handle")), true);
+  // dragCase put the window back; the handle is where the pointer is not, so show it again before the click.
+  await restorePointer(centre(await rect("#modal-drag-handle")));
+  await until(async () => (await read<HandleState>(handleState)).near);
+  await delay(300, undefined, { signal: controller.signal });
+  await click("#modal-drag-handle");
+  await delay(300, undefined, { signal: controller.signal });
+  const kept = await open();
+  record("modal-handle-closes-nothing", kept && chosen.length === before, { open: kept, choices: chosen.slice(before) });
+  // Elsewhere the backdrop still dismisses the dialog, as before.
+  const content = window!.getContentBounds();
+  await ax.mouse("left", content.x + 40, content.y + content.height - 40);
+  const dismissed = await until(async () => chosen.slice(before).some(item => item.group === "onboarding"));
+  record("modal-backdrop-still-dismisses", dismissed, { choices: chosen.slice(before) });
+  view = settingsView({ type: "idle" }, ctx);
+  window!.webContents.send("settings:changed", view);
+  if (!await until(async () => !await open())) throw new Error("The welcome guide did not close after the modal cases");
+}
+/** Longer than the handle's hide delay (modal-drag-handle.tsx), so a hidden state is settled. */
+const HIDE_WAIT_MS = 500;
 
 app.whenReady().then(run).catch(cause => {
   blocked = cause instanceof AccessibilityBlockedError || cause instanceof Blocked;

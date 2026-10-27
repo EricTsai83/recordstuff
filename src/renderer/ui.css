@@ -2065,6 +2065,64 @@
   :root:not([data-platform="darwin"]) .titlebar {
     display: none;
   }
+  /* The window's drag handle while a modal is open (modal-drag-handle.tsx, 2026-10-27): on macOS only, where an open
+     dialog's backdrop covers the title bar's strip; while no menu, list or popover is open, whose outside click must
+     still close it; shown while the pointer is near the top. A drag region only while shown, so hidden it takes
+     nothing. Windows keeps its native frame, which always drags. */
+  .modal-drag-handle {
+    --ease-out-quart-handle: cubic-bezier(0.165, 0.84, 0.44, 1);
+    position: fixed;
+    top: 6px;
+    left: 50%;
+    z-index: 60;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px 0 8px;
+    /* It comes down the last 4 px as it fades in, so it reads as arriving from the window's edge. */
+    transform: translate(-50%, -4px);
+    border: 1px solid color-mix(in oklab, var(--media-foreground) 22%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--media-foreground) 16%, transparent);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(12px);
+    color: var(--media-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: default;
+    user-select: none;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    /* Out a little faster than in (2026-10-27, at the maintainer's request: both were too slow). */
+    transition: opacity 80ms var(--ease-out-quart-handle), transform 80ms var(--ease-out-quart-handle), visibility 0s linear 80ms;
+    -webkit-app-region: no-drag;
+  }
+  .modal-drag-handle svg {
+    width: 14px;
+    height: 14px;
+  }
+  /* A dialog's popup is positioned by no trigger; a popover's, an explanation's included, carries the side it sits on. */
+  :root[data-platform="darwin"]:has([role="dialog"][data-open]:not([data-side])):not(:has([role="menu"][data-open], [role="listbox"][data-open], [role="dialog"][data-side][data-open])) .modal-drag-handle {
+    display: inline-flex;
+    &[data-near] {
+      pointer-events: auto;
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+      transition: opacity 100ms var(--ease-out-quart-handle), transform 100ms var(--ease-out-quart-handle), visibility 0s;
+      -webkit-app-region: drag;
+      @media (prefers-reduced-motion: reduce) {
+        transition: none;
+      }
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .modal-drag-handle {
+      transition: none;
+    }
+  }
   /* Hide the scroll chrome while retaining wheel, touchpad and keyboard scrolling. */
   .settings-panel::-webkit-scrollbar {
     display: none;

@@ -601,6 +601,7 @@ export const ZH_TW = {
   "Elapsed {time}": "已錄 {time}",
   "Starting…": "啟動中…",
   "Drag the bubble, or move it with the arrow keys (Shift for larger steps).": "拖曳泡泡，或用方向鍵移動（按住 Shift 移動較多）。",
+  "Drag to move the window": "拖曳以移動視窗",
   "{x}% from the left, {y}% from the top": "距左側 {x}%，距上方 {y}%",
   "Turn on Camera to see it here.": "開啟「相機」後即可在此預覽。",
   "Allow camera access to see it here.": "允許取用相機後即可在此預覽。",
