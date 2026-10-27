@@ -293,6 +293,8 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
   // Electron recognises its windows by constructor name (`BrowserWindow.getAllWindows`, `fromWebContents`).
   Object.defineProperty(ContainedWindow, "name", { value: "BrowserWindow" });
 
+  /** The pages that committed a document: one that never did (its load aborted at quit) has nothing to play a sound. */
+  const documented = new WeakSet<Electron.WebContents>();
   // Every page this process makes is muted, the full-screen video's and the countdown's too.
   // A request to unmute is a violation at once, and the page stays muted: sound must never reach the desk.
   electron.app.on("web-contents-created", (_event, contents) => {
@@ -307,6 +309,11 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
     const remute = (): void => { if (!contents.isDestroyed()) setAudioMuted(true); };
     contents.on("did-start-loading", remute);
     contents.on("dom-ready", remute);
+    // And as each navigation commits, finishes or fails (macOS CI, 2026-10-28: the full-screen video's standby page,
+    // made at launch, was still loading when a 1.6 s test quit, its load was aborted, and the audit found it unmuted).
+    contents.on("did-navigate", () => { documented.add(contents); remute(); });
+    contents.on("did-finish-load", remute);
+    contents.on("did-fail-load", remute);
   });
   electron.app.on("browser-window-created", (_event, window) => {
     if (!(window instanceof ContainedWindow)) violate("window:uncontained", `window ${window.id} was not made through the boundary`);
@@ -462,7 +469,9 @@ export function createBoundary(electron: Electron, options: { trashDir: string; 
       if (!window.webContents.isAudioMuted()) violate("audio:unmuted", `window ${label(window)}`);
     }
     for (const contents of electron.webContents.getAllWebContents()) {
-      if (!contents.isDestroyed() && !contents.isAudioMuted() && contents.getType() !== "remote") violate("audio:unmuted", `web contents ${contents.id} (${contents.getType()})`);
+      if (!contents.isDestroyed() && !contents.isAudioMuted() && contents.getType() !== "remote" && documented.has(contents)) {
+        violate("audio:unmuted", `web contents ${contents.id} (${contents.getType()})`);
+      }
     }
     return violations;
   };
