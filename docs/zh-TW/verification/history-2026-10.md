@@ -4,6 +4,19 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 097 結案 — 2026-10-28
+
+Plan 097（重新設計錄影工作室：選擇放在預覽上方、即時控制放在下方）於 2026-10-28 結案。Claude 在 `927b45cc` 上實作（依要求未提交），經過兩輪唯讀 Codex GPT-6.1 Sol review，並在維護者回覆「好了」後執行一輪桌面驗收（參考機 M1 Pro、macOS 26.6.2、筆電闔上、BenQ GW2785TC 為主螢幕、Studio 在 BL2480T、維護者的 iPhone 為系統預設相機、BenQ Monitor 的 USB 麥克風為預設輸入）。設計見[錄影工作室](../system-design/desktop.md#錄影工作室)、[可剪輯錄影](../system-design/editing.md#可剪輯錄影)、[倒數](../system-design/recording.md#倒數)。
+
+- **做了什麼。** 預覽上方是錄影鍵、錄影類型（`editableRecording` 設定，Windows 上顯示不可用並說明原因）與螢幕／相機／麥克風 picker；檢視、即時預覽與 ⋯ 裡的預覽速率移到頁首；預覽下方，一般錄影有相機顯示／隱藏與各輸入的「不錄製」、音量表、fader，可編輯錄影只有音量表與一行說明。問題由該輸入自己的 picker 說明，與錄影設定的裝置列、tray、倒數用同一套文字（`inputProblems`），不用狀態燈。可編輯 session 一律以 100%、不靜音、相機軌不隱藏的方式錄下各輸入；類型只讀一次並傳給擷取程序（`SessionCapture.editable`）。泡泡只在預覽顯示相機時可拖曳；移除「只看螢幕」（已儲存的會讀成錄影畫面），「只看相機」改名為「檢查相機」。錄影設定加入「測試相機」（D4：按下才開）。tray 為各輸入標上裝置名稱，已知問題下方多一行；錄影中相機中斷與一般錄影未錄製的輸入也各有一行（D5：不發通知）；倒數數字下方會寫出已知問題。
+- **決策與偏離。** D1、D2、D6 依 plan 採用；D4（按下才開的測試相機）與 D5（只用 tray）是維護者 2026-10-27 的選擇。D3（麥克風太小聲的提醒：整個 session 在擷取程序中監看音量，峰值低於 −60 dBFS 持續 10 秒）曾實作並在桌面量測：闔上的內建麥克風會在 10 秒內提醒，但正常的 BenQ 麥克風在安靜房間約 17 秒後也被誤判；20 秒的 `ffmpeg` 擷取量到其峰值為 −78 到 −84 dBFS（從未低於 −90；該樣本中低於 −60 最長連續 5.7 秒）。維護者因此取消這項功能（「在意錄影狀況的使用者會開 Studio 看」），連同其協定訊息與持續監看音量一併移除（[決策](../system-design/decisions.md)）。泡泡形狀改為錄影中隨相機 picker 鎖定（plan 075 的 D7 原本允許），符合 plan 的 picker 設計。開啟中的輸入改在啟動時與每次錄影結束時列出（桌面驗收發現的偏離，見下）。
+- **桌面回合**（2026-10-28 本地時間 00:25–00:44，`pnpm start:app` 的 bundle，執行者以 `pnpm native:input` 操作、以 `screencapture` 截圖，由 Claude 判讀；屬觀察，不是 runner 判定）。觀察到正常：兩種類型錄影前與錄影中的 Studio 版面；可編輯錄影 live row 只有音量表與說明行；類型 picker 的兩個選項與說明；錄影中類型、螢幕、相機 picker 鎖定並顯示鎖頭；麥克風 picker 以警示外觀顯示蓋子已闔上；錄影設定列下的「找不到 USB Camera」；測試相機顯示 iPhone 相機，按停止與離開分頁後消失；一般錄影中隱藏相機後沒有泡泡或虛線框；倒數數字下方的「找不到 USB Camera」（視窗 320 × 294 pt）。log 顯示：idle 的 tray 選單有「麥克風：BenQ Monitor」「相機：USB Camera」與「找不到 USB Camera」；錄影中未錄製麥克風時有「未錄製麥克風」；可編輯錄影的選單沒有隱藏相機；fader 存為 50% 時可編輯 session 的增益為 `system 0.0 dB, microphone 0.0 dB`，一般 session 為 `microphone -6.0 dB`。**回合中發現並修正：** 頁首的檢視選單、即時預覽與 ⋯ 點了沒反應，因為頁首是 macOS 的拖曳區而這些控制項沒有標成不拖曳（background 套件沒有拖曳區；S142 現在會在 macOS 上檢查）；以及啟動後還沒開過 Settings 時不知道裝置清單，tray 與倒數都不知道已儲存的相機不見（改在啟動時與每次錄影結束時呼叫 `DeviceLists.refreshInUse`）。兩者重建後都觀察到正常。picker 選單多出的水平捲軸也已移除。
+- **媒體。** 一般錄影中兩次未錄製麥克風（5.3–12.7 秒與 76.2–99.6 秒），這兩段剛好是數位靜音（每 0.5 秒 RMS 為 −inf），其他時間是麥克風底噪（−84 到 −90 dBFS）；長 105.6 秒，可完整解碼。可編輯錄影有畫面、兩條聲音與相機軌，長 42.7 秒，可完整解碼；`ffmpeg` 解碼時對相機軌的重複時間戳發出警告，這是本 plan 沒有改動的檔案格式，維持現狀。一般錄影在第 7.5 秒隱藏相機，第 4 秒畫面有相機、第 20 秒沒有；長 54.9 秒，可完整解碼。`pnpm verify` 只有視訊位元率一項沒過，因為畫面是暫停的網頁。
+- **CPU**（`pnpm measure:cpu -- --skip-settings --skip-playback --minutes 1`，報告 `2026-10-27T16-40-07-255Z-cpu`，僅本機，當時仍保有 no-sound 監看）：待命 0.041%，30 fps 錄影（開麥克風、無相機）13.0%（95th 13.6%），錄完後 0.047%；PASS。D3 移除後，錄影只有在 Studio 顯示音量時才監看，因此這是出貨版本的上限。
+- **檢查。** 桌面回合前 `pnpm check` 通過；回合的修正與 D3 移除後，`pnpm typecheck`、完整單元測試（214 檔）與 `pnpm test:scope -- studio recording-settings tray countdown layout recording platform`（57 個單元檔、971 個測試、18 個原生、129 個 background UI 案例）通過。
+- **Review。** Codex GPT-6.1 Sol 第一輪（桌面回合前的實作）沒有 findings；第二輪涵蓋桌面修正、D3 移除與文件，同樣沒有 findings。
+- **未驗證。** Windows（只有 CI）；錄影中在桌面上拔掉相機或拒絕相機權限（狀態有單元與 UI 測試）；外接 USB 相機；新 picker 的 VoiceOver；預設尺寸以外的視窗大小下中英文 Studio 的實機外觀（background 套件已量測）。
+
 ## Plan 087 結案 — 2026-10-25
 
 Plan 087（選用的可剪輯錄影：錄完後調整相機位置與音量）於 2026-10-25 結案，是 [083–087 系列](../../../plans/README.zh-TW.md#glide-參考演進083087)的最後一項。Claude 從 `d49310fa` 實作到 `c7da0d38`，經過兩輪唯讀 Codex GPT-6.1 Sol review，每個桌面回合都在維護者回覆「好了」後執行（參考機 M1 Pro、macOS 26.6.2、兩台 BenQ 螢幕、維護者的 iPhone 作為接續互通相機、BenQ 螢幕的麥克風）。設計見[可剪輯錄影](../system-design/editing.md#可剪輯錄影)；第一步與 D1 見[下方](#plan-087-第一步可剪輯錄影的成本--2026-10-24)。
