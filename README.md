@@ -36,7 +36,7 @@ Updates, removal and data locations: [installation guide](resources/INSTALL.md).
 1. Launch RecordStuff and grant screen and system-audio recording permission.
 2. Press **⇧⌘1** (Ctrl+Shift+1 on Windows), or choose **Start recording** from the menu bar icon. Recording starts after a 3-second countdown. Do the same to stop.
 3. Recordings are saved to `~/Movies/RecordStuff` (`Videos\RecordStuff` on Windows). Click the notification or choose **Open RecordStuff** to play, rename, reveal or delete them.
-4. To add your camera, check **Camera** under **Include in recordings** in the menu bar menu, then choose **Open Recording Studio…**. There you drag the camera bubble into place, set its size, shape, rounding and mirror, watch a **Live preview** with sound meters, and set the volume of system audio and the microphone. During a recording you can still move and resize the bubble there, or hide it from the menu bar menu. The camera is drawn into the video, not shown on your screen.
+4. To add your camera, check **Camera** under **Include in recordings** in the menu bar menu, then choose **Open Recording Studio…**. Above its preview you choose the recording type (plain, or editable on macOS), the screen, the camera and the microphone; a problem, such as a camera that is not found, is said on its own button. In the Camera button you also set the bubble's size, rounding and mirror, and you drag the bubble into place in the preview; **Live preview** shows the picture. Under the preview a plain recording offers showing or hiding the camera, **Don't record** for each sound and its volume; an editable recording keeps everything and lets you set it afterwards in **Edit…**. The camera is drawn into the video, not shown on your screen.
 
 Open settings with **⌥⌘,**:
 

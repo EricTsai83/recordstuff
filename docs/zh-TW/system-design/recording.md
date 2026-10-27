@@ -48,6 +48,7 @@ stateDiagram-v2
 - Recorder 以 N 進入 `countdown`，從 `prepared` 當下取得的同一個單調時間起點每秒 tick 一次；每個 tick 都依這個起點排程，timer 延遲不會累積。每個 tick 都重新發出狀態，App log 寫 `state → countdown (n)`。
 - 在 N 秒前 300 ms 要求 overlay 離開：數字以 120 ms 淡出，main 再等一個穩定間隔（34 ms）後銷毀視窗。Recorder 最多等這個確認 500 ms；逾時就銷毀視窗、寫 log 並繼續擷取。`record` 在 N 秒送出；若 dismissal 更晚完成，則在它完成時送出。
 - Overlay（見[桌面設計](desktop.md#倒數-overlay)）以具備 `show`、`update`、`dismiss`、`close` 的 presenter 注入，Recorder 因此不依賴 Electron。Presenter 錯誤只寫 log，永不讓錄影失敗；tray 仍會顯示倒數。
+- 開始錄影時若有已知問題，會寫在數字下方（plan 097）：`countdownNotice` 每個 session 與倒數一起讀取一次，內容是 Studio picker 會說、且不需要 session 就能知道的問題（裝置不見、沒有權限、螢幕無法使用），合成一行。overlay 頁面載入時以 `notice` query 取得它，視窗加寬到 320 pt、加高 56 pt，數字仍在右上角、大小不變；沒有問題時一切照舊。倒數關閉時沒有 overlay，也就不會顯示。
 - 倒數音效（plan 046，預設開啟，可在「設定 → 錄影」切換）在每個 session 與倒數一起讀取一次並傳給 presenter；`prepared` log 行以 `sound on` 或 `sound off` 結尾。overlay 頁面在每個新數字時播放一聲 −20 dBFS、523 Hz 的柔和馬林巴般提示音，數字 1 升高五度；歸零、取消或倒數關閉時都不響。每聲從該數字的 tick 時間起持續 140 ms，因此最後一聲（數字 1）在 `record` 前 860 ms 就結束，遠早於 overlay 離開：錄影靠時間上的分離保持乾淨（與數字相同），此外引擎也會把 RecordStuff 自己的聲音排除在外（見[音訊](#音訊)）。`pnpm acceptance` 會以兩個音高檢查有音效的 session 錄影前 500 ms 的音訊。autorecord 永遠不發聲，因此矩陣與音訊品質錄影只有素材本身的聲音。
 - 送出 `record` 前，toggle、tray 選單的「取消錄影」或快捷鍵都會取消這次嘗試：清除 timer、停止 host、關閉 overlay、abandon writer 讓空的暫存檔被刪除，並回到嘗試前的 idle。`cancelled` 事件帶取消原因（`toggle`、`menu`、`quit` 或 `sleep`），log 寫 `cancelled: session … (reason); no media was recorded`。不產生失敗狀態、歷史項目、通知或螢幕診斷。
 - 送出 `record` 後，toggle 會變成既有的「開始後停止」要求，等 `started` 到達再套用，因此幾毫秒的競態不會讓擷取持續進行。若擷取在第一個 frame 之前就停止，表示什麼都沒錄到：這次嘗試以該取消（或結束、睡眠）收場，而非開始失敗。倒數設為「關」時，`record` 在 `prepared` 就送出，狀態仍是 starting，因此選單的「取消錄影」或超過寬限時間的 toggle 也會變成同一個要求。倒數期間開啟的 tray 選單在開著時不會更新（見[桌面設計](desktop.md#tray-與通知)），所以擷取開始後才點選其中的「取消錄影」，會停止錄影並存檔。
@@ -167,6 +168,8 @@ CaptureReport 保留原有欄位，因此 Recorder 的 log 與提醒不變：輸
 - **Windows。**2026-10-18 建置，依 plan 075 對 Windows 的範圍只由 CI 檢查：合成器的六個像素測試（沒有相機時逐位元組相同、圓角泡泡及其顏色、隱藏、下一個影格採用新配置、鏡像、預覽的縮放、從記憶體上傳的螢幕）與預覽串流的測試在 `windows-2025` runner（WARP）上通過。Windows 上的真實相機（開啟、影格、中斷與恢復、停止時的指示燈）未測試：手邊沒有附相機的 Windows 機器。
 
 ### 可剪輯錄影
+
+可剪輯的 session 一律照原樣錄下每個輸入（plan 097，D6）：Recorder 在 session 開始時讀取一次類型（`RecorderDeps.editable`，即設定或 tray 的單次「開始可編輯錄影」），並以 `SessionCapture.editable` 傳給擷取程序，讓擷取程序錄的種類與 session 的控制一致；不論已存的音量為何，兩個輸入都送 100%（log 為 `audio: system 0.0 dB, microphone 0.0 dB`），拒絕靜音，也拒絕隱藏相機（版面變更仍會套用）。一般 session 照舊使用已存的音量、靜音與相機隱藏。
 
 開啟「可編輯錄影」時（plan 087，macOS；`NativeStart.editable`），引擎寫入不含相機的畫面；相機由第二個 VideoToolbox session 寫成自己的 1280×720 軌（其他尺寸的相機會縮放；隱藏時為黑畫面；畫面第一個影格之前的相機 sample 最多保留 8 MiB）；每個聲音輸入各自經過共用時鐘上的單輸入 mixer，寫成自己的 AAC 軌。Muxer 加入描述 box `moov/udta/rsed`；每種只有第一條軌啟用。遺失、暫停與停止對每條軌都依上述規則；相機沒有送來影格（遺失）時，最後一張影格會延續，所以軌不會有空缺。預設的錄影不變。檔案內容與剪輯方式見[剪輯](editing.md#可剪輯錄影)。
 
