@@ -234,11 +234,13 @@ test("P01–P10, P16–P19 the player: a card plays the clip; named controls; re
         for (const hit of document.elementsFromPoint(x, y)) if (hit !== dialog && dialog.contains(hit)) found.add(hit.id || hit.className || hit.tagName);
       return { covered: [...found] }; })()`);
     expect.soft(corner.covered, `P10 no part of the player lies under the window controls`).toEqual([]);
-    // While the player is open the title bar strip does not drag, so a click there, on the backdrop, closes it.
+    // While the player is open the title bar strip does not drag, so a click there, on the backdrop, closes it. Its
+    // middle holds the drag handle while a dialog is open (2026-10-27), which moves the window and closes nothing, so
+    // the click is a quarter of the way across, clear of it.
     const region = `getComputedStyle(document.querySelector(".titlebar")).getPropertyValue("-webkit-app-region") || getComputedStyle(document.querySelector(".titlebar")).getPropertyValue("app-region")`;
     const strip = await read<string>(page, region);
     const width = await read<number>(page, "innerWidth");
-    await page.mouse.click(width / 2, 12);
+    await page.mouse.click(Math.round(width / 4), 12);
     const backdropClosed = await eventually(async () => !(await read<boolean>(page, `document.querySelector(".player")?.hasAttribute("data-open")`)));
     const dragsAgain = await read<string>(page, region);
     expect.soft({ strip, backdropClosed, dragsAgain }, "P16 while the player is open the title bar strip does not drag, a click there closes the player, and closed it drags again")
