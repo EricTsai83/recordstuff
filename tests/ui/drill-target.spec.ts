@@ -12,6 +12,9 @@ test("drill target: launches the app, then times out or waits for SIGINT", async
   test.skip(!marker || !mode, "only cleanup drills D03 and D07 run this");
   test.setTimeout(mode === "timeout" ? 8_000 : 120_000);
   const app = await launchApp();
-  fs.writeFileSync(marker!, JSON.stringify({ pid: app.pid, data: app.data }));
+  // Written whole, then renamed into place: the drill polls for the file and reads it at once, and a plain write let it
+  // read an empty file (CI, 2026-10-28: "Unexpected end of JSON input" in D07).
+  fs.writeFileSync(`${marker!}.tmp`, JSON.stringify({ pid: app.pid, data: app.data }));
+  fs.renameSync(`${marker!}.tmp`, marker!);
   await new Promise(() => {});
 });
