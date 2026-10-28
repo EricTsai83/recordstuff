@@ -92,7 +92,11 @@ it("groups cards by day, drags a file out through main, and plays, trashes and c
   expect(Boolean(document.querySelector(".player[data-open]"))).toBe(false);
   // The outline is the entry's, once: after it has faded, a language switch remounts the cards (their day headings
   // are the groups' keys) and later views still carry the entry, but nothing is outlined again.
-  document.getElementById("clip-c")!.dispatchEvent(new Event("animationend", { bubbles: true }));
+  const clip = document.getElementById("clip-c")!;
+  // A child's own animation ending leaves the outline; only the outline's own end takes it off.
+  clip.querySelector(".clip-open")!.dispatchEvent(Object.assign(new Event("animationend", { bubbles: true }), { animationName: "pc-spin" }));
+  expect(clip.classList.contains("arrived")).toBe(true);
+  clip.dispatchEvent(Object.assign(new Event("animationend", { bubbles: true }), { animationName: "arrival" }));
   await vi.waitFor(() => expect(document.getElementById("clip-c")!.classList.contains("arrived")).toBe(false));
   push({ ...base, revision: 2.1, resultFocus: 1, entryTab: "library", libraryFocus: "c", language: "zh-TW",
     library: { ...base.library!, items: base.library!.items.map(entry => ({ ...entry, day: entry.day === "Today" ? "今天" : "昨天" })) } });

@@ -8,6 +8,7 @@ import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
+import { clearArrival, flashArrival } from "../../../lib/arrival";
 import { useTruncated } from "../../../lib/use-truncated";
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "../../../components/ui/context-menu";
 import { Card } from "../../../components/ui/card";
@@ -32,14 +33,13 @@ export const Clip = memo(function Clip({
   const sound = model.previewSound();
   const [failed, setFailed] = useState(false),
     [portrait, setPortrait] = useState(false),
-    [arrived, setArrived] = useState(false),
     title = useTruncated<HTMLSpanElement>();
   useEffect(() => {
     setFailed(false);
     setPortrait(false);
   }, [item.thumbnail]);
   useEffect(() => {
-    if (model.takeArrival(item.id)) setArrived(true);
+    if (model.takeArrival(item.id)) flashArrival(document.getElementById(`clip-${item.id}`));
   });
   return (
     <ContextMenu
@@ -51,7 +51,7 @@ export const Clip = memo(function Clip({
     >
       <ContextMenuTrigger render={<Card />}
         id={`clip-${item.id}`}
-        className={`clip gap-0 overflow-visible rounded-[14px] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent${arrived ? " arrived" : ""}`}
+        className="clip gap-0 overflow-visible rounded-[14px] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent"
         data-id={item.id}
         draggable
         onDragStart={(event) => {
@@ -59,8 +59,7 @@ export const Clip = memo(function Clip({
           // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
           if (!pressedOnBar()) void model.fileAction(item.id, "drag");
         }}
-        onAnimationEnd={() => setArrived(false)}
-        onBlur={() => setArrived(false)}
+        onBlur={(event) => clearArrival(event.currentTarget)}
       >
         <Button
           variant="ghost"

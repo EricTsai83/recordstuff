@@ -807,6 +807,38 @@
     min-height: 52px;
     padding: 12px 0;
   }
+  /* Where a jump landed (lib/arrival.ts): outlined in the primary accent, which then fades. An element with an
+     `::after` of its own (a recording card's state line) keeps its shape; others take one from --arrival-inset and
+     --arrival-radius. */
+  :where(.arrived) {
+    position: relative;
+  }
+  :where(.arrived)::after {
+    content: "";
+    position: absolute;
+    inset: var(--arrival-inset, 0);
+    border-radius: var(--arrival-radius, inherit);
+    pointer-events: none;
+  }
+  .arrived::after {
+    border-width: 2px;
+    border-style: solid;
+    animation: arrival 2.4s ease-out forwards;
+  }
+  @keyframes arrival {
+    0%,
+    60% {
+      border-color: var(--primary);
+    }
+    100% {
+      border-color: transparent;
+    }
+  }
+  /* A settings row's outline stands a little clear of its text. */
+  .inset-list > .row {
+    --arrival-inset: 2px -10px;
+    --arrival-radius: 10px;
+  }
   .row-line {
     display: flex;
     align-items: center;
@@ -2678,7 +2710,7 @@
     inset: -5px;
     z-index: 1;
     border-radius: inherit;
-    border: 0 solid transparent;
+    border-color: transparent;
     pointer-events: none;
   }
   .clip-thumb {
@@ -2796,21 +2828,8 @@
     /* An opaque line stays visible over both light and dark thumbnail pixels. */
     border: 2px solid var(--ring);
   }
-  /* The entry focuses the card itself, so the outline plays over its focus line; once it has faded (or the card is
-     blurred) the class goes and the focus line, if shown, is back (review of 2026-10-07). */
-  .clip.arrived::after {
-    border-width: 2px;
-    animation: arrived 2.4s ease-out forwards;
-  }
-  @keyframes arrived {
-    0%,
-    60% {
-      border-color: var(--primary);
-    }
-    100% {
-      border-color: transparent;
-    }
-  }
+  /* The entry focuses the card itself, so the arrival outline plays over its focus line; once it has faded (or the card
+     is blurred) the class goes and the focus line, if shown, is back (review of 2026-10-07). */
   /* The hover preview (clip-preview.tsx): the recording plays muted over its picture, a seek bar along its foot. While
      it shows, the duration badge steps aside, as YouTube's do. */
   .clip-thumb.previewing > .clip-duration {

@@ -58,6 +58,8 @@ it("lists the shortcuts read-only on their own tab, says each one's keys in word
   document.getElementById("shortcut-record-change")!.click();
   expect(document.querySelector('[role="tab"][aria-selected="true"]')!.id).toBe("tab-general");
   expect(document.activeElement?.id).toBe("setting-hotkey");
+  // The row it lands on flashes once, so the eye finds it.
+  expect(document.getElementById("setting-hotkey-row")!.classList.contains("arrived")).toBe(true);
   expect(choose).not.toHaveBeenCalled();
 
   // While a recording locks the Shortcut card, Change… still reaches it: its row takes the focus, the control stays locked.

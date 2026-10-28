@@ -3,6 +3,7 @@
  * announcements, and the subscriptions `start` holds. Each other concern keeps its own state beside this module.
  */
 import { flushSync } from "react-dom";
+import { flashArrival } from "../../lib/arrival";
 import { browserPlatform, isCloseChord } from "../../lib/shortcut-capture";
 import { UNDO_KEY } from "../../../shared/shortcut-catalog";
 import {
@@ -261,6 +262,7 @@ export function showShortcutCard(): void {
   // A recording or a save in progress disables the control; the card's row takes the focus then, still locked.
   if (document.activeElement !== control) focus("setting-hotkey-row");
   control?.scrollIntoView({ block: "nearest" });
+  flashArrival(document.getElementById("setting-hotkey-row"));
 }
 /** An action (a link, a folder, a system pane) saves nothing: its retry repeats the action and is labelled so. */
 export async function choose(
