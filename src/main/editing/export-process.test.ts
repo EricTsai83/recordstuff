@@ -83,12 +83,12 @@ describe("the export worker", () => {
 describe("a preview track's extraction (plan 087)", () => {
   it("is served in turn, and its failure is the engine's", async () => {
     const { post, sent, settled, extracts } = setup();
-    post({ type: "extract", id: 3, request: { source: "/a.mp4", track: "secondSound", output: "/p/a-sound.mp4" } });
+    post({ type: "extract", id: 3, request: { source: "/a.mp4", track: "sound1", output: "/p/a-sound.mp4" } });
     post({ type: "extract", id: 4, request: { source: "/broken.mp4", track: "camera", output: "/p/b-camera.mp4" } });
     post({ type: "extract", id: 5, request: { source: "/a.mp4", track: "speaker", output: "/p/x.mp4" } });
     await settled();
     await settled();
-    expect(extracts).toEqual(["/a.mp4:secondSound>/p/a-sound.mp4", "/broken.mp4:camera>/p/b-camera.mp4"]);
+    expect(extracts).toEqual(["/a.mp4:sound1>/p/a-sound.mp4", "/broken.mp4:camera>/p/b-camera.mp4"]);
     expect(sent).toContainEqual({ type: "extracted", id: 3, bytes: 7 });
     expect(sent).toContainEqual({ type: "failed", id: 4, code: "unsupported", detail: "the recording has no camera track" });
     expect(sent.some((m) => "id" in m && m.id === 5)).toBe(false);

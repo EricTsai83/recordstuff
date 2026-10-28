@@ -6,7 +6,7 @@
  * are bounded however the engine is doing; main then removes the export's unfinished file.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
+import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack } from "../../shared/editing";
 import { pipeLines } from "../lib/pipe-lines";
 
 /** A failed inspection or export: the engine's code, or the worker's own. */
@@ -66,7 +66,7 @@ export class ExportHost {
   }
 
   /** Copies an editable recording's `track` into `output`, which must not exist, for the edit view's preview (plan 087). */
-  extract(request: { source: string; track: PreviewTrack; output: string }): Promise<number> {
+  extract(request: { source: string; track: ExtractTrack; output: string }): Promise<number> {
     return this.request("extract", request) as Promise<number>;
   }
 
@@ -110,7 +110,7 @@ export class ExportHost {
   }
 
   /** A request is pending from now on, while the worker starts too, so cancel and quit reach it there. */
-  private request(kind: Pending["kind"], request: ExportRequest | { source: string; track: PreviewTrack; output: string }, progress?: (fraction: number) => void): Promise<unknown> {
+  private request(kind: Pending["kind"], request: ExportRequest | { source: string; track: ExtractTrack; output: string }, progress?: (fraction: number) => void): Promise<unknown> {
     const id = this.nextId++;
     const settled = new Promise((resolve, reject) => {
       this.pending.set(id, { kind, sent: false, resolve, reject, ...(progress ? { progress } : {}) });

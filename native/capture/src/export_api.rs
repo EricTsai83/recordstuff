@@ -53,8 +53,12 @@ pub struct ExportRender {
     pub camera_hidden: Option<Vec<ExportRange>>,
     /// Each sound track's stretches at a volume of their own (2026-10-26), in the file's order, in dB.
     pub volume_stretches_db: Option<Vec<Vec<ExportVolumeStretch>>>,
-    /// Each sound track's volume in dB, in the file's order (the Studio's faders, src/shared/audio-volume.ts).
+    /// Each sound track's volume in dB, in the file's order or `sound_tracks`' (the Studio's faders,
+    /// src/shared/audio-volume.ts).
     pub volumes_db: Vec<f64>,
+    /// The sound tracks mixed, by their place among the file's (0 the one players play), in the order of `volumes_db`:
+    /// a recording with a mix (plan 098) names its inputs' own tracks. Absent: every one in the file's order.
+    pub sound_tracks: Option<Vec<u32>>,
 }
 
 /// A stretch of a sound track at its own volume: `[from, to)` in the video's timescale, the volume in dB.
@@ -210,6 +214,12 @@ fn parse(request: ExportRequest) -> Result<Parsed> {
                 .iter()
                 .map(|list| list.iter().map(|s| Ok((tick(s.from)?, tick(s.to)?, gain_factor(s.db)))).collect::<Result<Vec<_>>>())
                 .collect::<Result<Vec<_>>>()?,
+            sound_tracks: match render.sound_tracks {
+                Some(places) if places.len() != render.volumes_db.len() || places.iter().any(|&n| n > 2) => {
+                    return Err(failure("invalid_range", format!("sound tracks {places:?} for {} volume(s)", render.volumes_db.len())));
+                }
+                places => places.map(|places| places.into_iter().map(|n| n as usize).collect()),
+            },
         }),
         None => None,
     };
@@ -390,13 +400,15 @@ impl NativeExport {
         AsyncTask::new(CopyTask { source: PathBuf::from(source), output: PathBuf::from(output) })
     }
 
-    /// Copies `source`'s `track` (`camera` or `secondSound`) into `output`, which must not exist, as it is: the edit
-    /// view plays it beside the recording (plan 087). The bytes written.
+    /// Copies `source`'s `track` (`camera`, or `sound1` or `sound2`, its disabled sound tracks in order) into
+    /// `output`, which must not exist, as it is: the edit view plays it beside the recording (plan 087, 098). The bytes
+    /// written.
     #[napi(ts_return_type = "Promise<number>")]
     pub fn extract(&self, source: String, track: String, output: String) -> Result<AsyncTask<ExtractTask>> {
         let which = match track.as_str() {
             "camera" => render::Extract::Camera,
-            "secondSound" => render::Extract::SecondSound,
+            "sound1" => render::Extract::Sound(1),
+            "sound2" => render::Extract::Sound(2),
             other => return Err(failure("invalid_range", format!("no track {other:?} to extract"))),
         };
         Ok(AsyncTask::new(ExtractTask { source: PathBuf::from(source), output: PathBuf::from(output), which }))

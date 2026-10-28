@@ -13,17 +13,34 @@ import type { RgbFrame, Verdict } from "./capture-settings.mts";
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A description's JSON as the engine writes it (version 1); the app checks it fully (shared/editable.ts). */
+/**
+ * A description's JSON as the engine writes it (version 1, or 2 with its inputs mixed on the first sound track, plan
+ * 098); the app checks it fully (shared/editable.ts).
+ */
 function parseDescription(text: string): EditableDescription | undefined {
   let value: unknown;
   try { value = JSON.parse(text); } catch { return undefined; }
-  if (!isObject(value) || value["version"] !== 1 || !Array.isArray(value["sounds"])) return undefined;
+  if (!isObject(value) || (value["version"] !== 1 && value["version"] !== 2) || !Array.isArray(value["sounds"])) return undefined;
+  if (value["version"] === 2 && value["mix"] !== true) return undefined;
   const sounds = value["sounds"] as unknown[];
   if (!sounds.every((s) => s === "system" || s === "microphone" || s === "silent")) return undefined;
+  const head = { sounds: sounds as EditableDescription["sounds"], ...(value["version"] === 2 ? { mix: true as const } : {}) };
   const camera = value["camera"];
-  if (camera === null || camera === undefined) return { sounds: sounds as EditableDescription["sounds"], camera: null };
+  if (camera === null || camera === undefined) return { ...head, camera: null };
   if (!isObject(camera) || !["width", "height", "rounding", "x", "y"].every((k) => finite(camera[k])) || typeof camera["mirror"] !== "boolean") return undefined;
-  return { sounds: sounds as EditableDescription["sounds"], camera: camera as unknown as NonNullable<EditableDescription["camera"]> };
+  return { ...head, camera: camera as unknown as NonNullable<EditableDescription["camera"]> };
+}
+
+/**
+ * The preview tracks the edit view copies for a recording `description` describes (main's `extractTrack`): the camera,
+ * the second sound, and with a mix (plan 098) the first sound too.
+ */
+export function expectedPreviewTracks(description: EditableDescription): string[] {
+  return [
+    ...(description.camera ? ["camera"] : []),
+    ...(description.mix ? ["firstSound"] : []),
+    ...(description.sounds.length > 1 ? ["secondSound"] : []),
+  ];
 }
 
 /** An edit record's scene in the shape versions 2 and 3 write (3 adds the camera's hidden stretches, `camera.hidden`). */

@@ -166,10 +166,13 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   // Only an export holds the scene still: a change saving meanwhile queues (controller's changeScene), so the controls
   // keep the keyboard's focus.
   const busy = editor.export.phase === "exporting";
-  // The second sound plays beside the recording whether or not a camera is shown.
-  const sound = editable?.preview.secondSound
-    ? <audio key={editable.preview.secondSound} ref={model.attachPreviewSound} src={editable.preview.secondSound} crossOrigin="anonymous" preload="auto" hidden />
-    : null;
+  // The second sound (with a mix, plan 098, the first too) plays beside the recording whether or not a camera is shown.
+  const sound = (
+    <>
+      {editable?.preview.firstSound && <audio key={editable.preview.firstSound} ref={model.attachPreviewFirstSound} src={editable.preview.firstSound} crossOrigin="anonymous" preload="auto" hidden />}
+      {editable?.preview.secondSound && <audio key={editable.preview.secondSound} ref={model.attachPreviewSound} src={editable.preview.secondSound} crossOrigin="anonymous" preload="auto" hidden />}
+    </>
+  );
   if (!editable?.camera || !scene || !camera || frame.width === 0 || frame.height === 0) {
     grab.current = undefined;
     return <div ref={setOverlay} className="editor-overlay">{sound}</div>;

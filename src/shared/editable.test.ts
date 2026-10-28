@@ -17,6 +17,24 @@ describe("an editable recording's description (plan 087)", () => {
       expect(parseEditableDescription(text)).toBeUndefined();
     }
   });
+
+  it("reads version 2's mix of two inputs (plan 098), and refuses a mix of one, of silence, of an input twice or unsaid", () => {
+    expect(parseEditableDescription(JSON.stringify({ version: 2, mix: true, sounds: ["system", "microphone"], camera }))).toEqual({ sounds: ["system", "microphone"], mix: true, camera });
+    expect(parseEditableDescription('{"version":2,"mix":true,"sounds":["system","microphone"],"camera":null}')).toEqual({ sounds: ["system", "microphone"], mix: true, camera: null });
+    // Version 1 has no mix, whatever else it holds.
+    expect(parseEditableDescription(JSON.stringify({ version: 1, mix: true, sounds: ["system", "microphone"], camera: null }))).toEqual({ sounds: ["system", "microphone"], camera: null });
+    for (const value of [
+      { version: 2, sounds: ["system", "microphone"], camera: null },
+      { version: 2, mix: false, sounds: ["system", "microphone"], camera: null },
+      { version: 2, mix: true, sounds: ["system"], camera: null },
+      { version: 2, mix: true, sounds: ["system", "silent"], camera: null },
+      { version: 2, mix: true, sounds: ["microphone", "microphone"], camera: null },
+      { version: 2, mix: true, sounds: ["system", "microphone"], camera: { ...camera, width: 2 } },
+      { version: 3, mix: true, sounds: ["system", "microphone"], camera: null },
+    ]) {
+      expect(parseEditableDescription(JSON.stringify(value))).toBeUndefined();
+    }
+  });
 });
 
 describe("an edit's scene", () => {
@@ -41,6 +59,11 @@ describe("an edit's scene", () => {
     expect(exportRender({ sounds: ["silent"], camera: null }, scene)).toEqual({ volumesDb: [0] });
     expect(isExportRender(exportRender({ sounds: ["system", "microphone"], camera }, scene))).toBe(true);
     expect(isExportRender({ volumesDb: [99] })).toBe(false);
+    // With a mix (plan 098) the inputs' own tracks are named, never the mix.
+    const mixed = exportRender({ sounds: ["system", "microphone"], mix: true, camera: null }, scene);
+    expect(mixed).toEqual({ volumesDb: [-60, 20 * Math.log10(2)], soundTracks: [1, 2] });
+    expect(isExportRender(mixed)).toBe(true);
+    for (const soundTracks of [[1], [1, 1], [0, 3], [0.5, 1], "1,2"]) expect(isExportRender({ volumesDb: [0, 0], soundTracks })).toBe(false);
     expect(isExportRender({ camera: { ...camera, x: 2 }, volumesDb: [] })).toBe(false);
   });
 

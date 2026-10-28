@@ -187,11 +187,19 @@ impl Rig {
     }
 
     fn made(name: &str, inputs: usize, separate: bool) -> Self {
+        Self::made_with(name, inputs, separate, true)
+    }
+
+    /// As `made`, `mix` false leaving the mixed track out of separate tracks before the encoders are made (plan 098).
+    fn made_with(name: &str, inputs: usize, separate: bool, mix: bool) -> Self {
         let path = std::env::temp_dir().join(format!("recordstuff-core-{name}-{}.mp4", std::process::id()));
         let file = File::create(&path).unwrap();
         let heard = Arc::new(Heard::default());
         let core = Core::<Fake>::new(heard.clone(), 30, 192_000, inputs, file);
         core.separate_sound(separate);
+        if !mix {
+            core.leave_out_mix();
+        }
         let encoded = Arc::new(Mutex::new(Vec::new()));
         let fail = Arc::new(AtomicBool::new(false));
         let audio_fail = Arc::new(AtomicBool::new(false));
@@ -1399,12 +1407,16 @@ fn composing_again_is_the_camera_s_return_only_while_it_delivers_a_picture() {
 }
 
 /// Plan 087's editable recording: each input's sound on a track of its own, every track as long as the video, one
-/// input's silence not holding another's track back or shifting it.
+/// input's silence not holding another's track back or shifting it; with several inputs, a first track of them mixed
+/// (plan 098), the one players play, as long as the others.
 #[test]
-fn an_editable_recording_keeps_each_input_on_its_own_track_to_the_stop() {
+fn an_editable_recording_mixes_its_inputs_first_then_keeps_each_on_its_own_track_to_the_stop() {
     let mut rig = Rig::editable("editable-sound", 2);
     rig.core.watch_microphone(1);
-    assert_eq!(rig.core.sound_tracks(), 2);
+    assert!(rig.core.mixed_sound());
+    assert_eq!(rig.core.sound_tracks(), 3);
+    // Each input's own track after the mix.
+    let own = 1;
     rig.shared.frame(1, Fake::now_ns());
     rig.core.record().unwrap();
     wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
@@ -1425,21 +1437,52 @@ fn an_editable_recording_keeps_each_input_on_its_own_track_to_the_stop() {
     }
     {
         let audio = rig.shared.audio.lock().unwrap();
-        // The system's track follows its sound; the microphone's goes on with the clock past its silence.
-        assert!(audio.mixed(0) > 48_000, "system: {} frames", audio.mixed(0));
-        assert!(audio.mixed(1) > 24_000, "microphone: {} frames", audio.mixed(1));
+        // The system's track follows its sound; the microphone's and the mix go on with the clock past its silence.
+        assert!(audio.mixed(own) > 48_000, "system: {} frames", audio.mixed(own));
+        assert!(audio.mixed(own + 1) > 24_000, "microphone: {} frames", audio.mixed(own + 1));
+        assert!(audio.mixed(0) > 24_000, "the mix: {} frames", audio.mixed(0));
     }
     let (_, stopped, _) = rig.stop();
     // One entry per input, as today's single mixer reports them.
     assert_eq!(stopped.late_audio_frames, [0, 0]);
+    assert_eq!(stopped.audio_corrections.len(), 2);
+    // The mix sums both inputs at unity: louder than either alone.
+    assert_eq!(f32::from_bits(rig.loudest.load(Ordering::Acquire)), 0.75);
     let file = rig.file();
-    assert_eq!(file.tracks.len(), 3);
+    assert_eq!(file.tracks.len(), 4);
     let video_ms = file.tracks[0].duration as f64 * 1000.0 / f64::from(file.tracks[0].timescale);
     for track in &file.tracks[1..] {
         let audio_ms = track.edit.expect("an edit list skips the priming").0 as f64 * 1000.0 / 48_000.0;
         assert!((video_ms - audio_ms).abs() < 1.0, "video {video_ms} ms, audio {audio_ms} ms");
     }
+    // Only the mix is presented; each input's own track is its disabled alternate.
     let presented: Vec<(bool, u16)> = file.tracks.iter().map(|t| (t.enabled, t.alternate_group)).collect();
+    assert_eq!(presented, [(true, 0), (true, 2), (false, 2), (false, 2)]);
+}
+
+/// Plan 087's file, which `pnpm bench:editable` compares with (plan 098): with the mix left out before the encoders
+/// are made, each input on its own track, the first presented.
+#[test]
+fn an_editable_recording_without_its_mix_has_a_track_per_input() {
+    let mut rig = Rig::made_with("editable-without-mix", 2, true, false);
+    rig.core.watch_microphone(1);
+    assert!(!rig.core.mixed_sound());
+    assert_eq!(rig.core.sound_tracks(), 2);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    for n in 0..30u64 {
+        let at = t0 + n * 480 * NANOS_PER_SECOND / 48_000;
+        rig.shared.sound(0, at, 480, |_, _| 0.25).unwrap();
+        rig.shared.sound(1, at, 480, |_, _| 0.5).unwrap();
+    }
+    std::thread::sleep(Duration::from_millis(400));
+    let (_, stopped, _) = rig.stop();
+    assert_eq!(stopped.late_audio_frames, [0, 0]);
+    // Nothing sums them: the loudest is the microphone's own.
+    assert_eq!(f32::from_bits(rig.loudest.load(Ordering::Acquire)), 0.5);
+    let presented: Vec<(bool, u16)> = rig.file().tracks.iter().map(|t| (t.enabled, t.alternate_group)).collect();
     assert_eq!(presented, [(true, 0), (true, 2), (false, 2)]);
 }
 
@@ -1447,6 +1490,8 @@ fn an_editable_recording_keeps_each_input_on_its_own_track_to_the_stop() {
 fn an_editable_recording_with_one_input_has_today_s_one_track() {
     let rig = Rig::editable("editable-one", 1);
     assert_eq!(rig.core.sound_tracks(), 1);
+    // Nothing to mix (plan 098): its description stays version 1.
+    assert!(!rig.core.mixed_sound());
 }
 
 /// The camera's own track (plan 087): its first frame at the recording's start, then each newer one at its capture,

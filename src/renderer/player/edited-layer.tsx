@@ -14,6 +14,8 @@ export function EditedLayer({ video, edit }: { video: HTMLVideoElement | null; e
   const layer = useRef<HTMLDivElement>(null);
   const camera = useRef<HTMLVideoElement>(null);
   const sound = useRef<HTMLAudioElement>(null);
+  /** With a mix (plan 098), the first input's own sound. */
+  const firstSound = useRef<HTMLAudioElement>(null);
   const mix = useRef<EditMix | undefined>(undefined);
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const [frame, setFrame] = useState({ width: 0, height: 0 });
@@ -48,9 +50,11 @@ export function EditedLayer({ video, edit }: { video: HTMLVideoElement | null; e
     // Whether the camera is in the picture at `time` (the video's timescale), and each sound at its volume there.
     const at = (time: number): void => {
       if (sceneCamera) setShown(sceneCamera.shown && (!sceneCamera.hidden?.length || cameraShownAt(sceneCamera, Math.min(time, edit.duration - 1))));
-      if (editable && scene && mix.current) mixScene(mix.current, video, sound.current, editable.sounds, scene, time);
+      if (editable && scene && mix.current) {
+        mixScene(mix.current, video, { sounds: editable.sounds, ...(editable.mix ? { mix: true } : {}), first: firstSound.current, second: sound.current }, scene, time);
+      }
     };
-    const followers = (): HTMLMediaElement[] => [camera.current, sound.current].filter((media): media is HTMLMediaElement => media !== null);
+    const followers = (): HTMLMediaElement[] => [camera.current, firstSound.current, sound.current].filter((media): media is HTMLMediaElement => media !== null);
     const listeners = FOLLOWED_EVENTS.map(([name, exact]): [string, () => void] => [name, () => {
       if (name === "play") mix.current?.resume();
       for (const media of followers()) followMedia(video, media, exact);
@@ -65,7 +69,7 @@ export function EditedLayer({ video, edit }: { video: HTMLVideoElement | null; e
     return () => {
       stop();
       for (const [name, listener] of listeners) video.removeEventListener(name, listener);
-      if (sound.current) mix.current?.release(sound.current);
+      for (const media of [firstSound.current, sound.current]) if (media) mix.current?.release(media);
     };
   }, [video, edit, editable, scene, sceneCamera]);
 
@@ -81,6 +85,7 @@ export function EditedLayer({ video, edit }: { video: HTMLVideoElement | null; e
   }
   return (
     <div ref={layer} className="edited-layer" aria-hidden="true">
+      {editable?.preview.firstSound && <audio ref={firstSound} src={editable.preview.firstSound} crossOrigin="anonymous" preload="auto" hidden />}
       {editable?.preview.secondSound && <audio ref={sound} src={editable.preview.secondSound} crossOrigin="anonymous" preload="auto" hidden />}
       {editable?.preview.camera && (
         // Its element stays while the camera is hidden, so it keeps following and shows again at once.

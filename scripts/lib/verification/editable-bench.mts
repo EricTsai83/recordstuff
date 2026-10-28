@@ -2,11 +2,17 @@
  * The judging half of `pnpm bench:editable` (plan 087, step 1): each recording's figures, the medians per mode, and
  * the prototype's provisional budgets. The engine's share is measured on synthetic capture; the app's is estimated by
  * adding the engine's increase to the app's recorded R with the camera, which only a recording of the packaged app can
- * confirm (087's closure).
+ * confirm (087's closure). Plan 098's pair (`--pair mix`) compares the editable recording with and without its mixed
+ * sound track against the gates the maintainer froze at its D1 (`judgeMix`).
  */
 import { distribution } from "./finalization-timing.mts";
 
-export type Mode = "direct" | "editable";
+/** `editable` holds its inputs mixed on its first sound track (plan 098); `editable-unmixed` is 087's file without it. */
+export type Mode = "direct" | "editable" | "editable-unmixed";
+
+/** The modes a pair compares, the before first: 087's budgets, or plan 098's mixed track. */
+export type Pair = "direct" | "mix";
+export const PAIR_MODES: Record<Pair, readonly [Mode, Mode]> = { direct: ["direct", "editable"], mix: ["editable-unmixed", "editable"] };
 
 /** What the engine's bench line reports for one track. */
 export interface BenchTrack { descriptions: string[]; samples: number; bytes: number; seconds: number; enabled: boolean }
@@ -75,6 +81,36 @@ export function judge(direct: ModeFigures, editable: ModeFigures, appR = APP_CAM
   ];
 }
 
+/**
+ * Plan 098's gates, frozen by the maintainer at its D1 (2026-10-28): the mixed track may add at most a point of one
+ * core to the engine (M1), 2.5 MB a minute to the file (M3) and 16 MiB to its resident memory (M4); the encoder
+ * service is reported (M5). The app's own CPU (M2) is measured on the signed bundle, not here.
+ */
+export const MIX_CPU_GATE = 1.0;
+export const MIX_DISK_GATE_BYTES = 2.5e6;
+export const MIX_MEMORY_GATE_BYTES = 16 * 1024 ** 2;
+
+/** Plan 098's pair: `editable` against `editable-unmixed`, the mixed track's cost alone. */
+export function judgeMix(unmixed: ModeFigures, mixed: ModeFigures): Verdict[] {
+  const cpu = mixed.engineCpu - unmixed.engineCpu;
+  const disk = mixed.fileBytesPerMinute - unmixed.fileBytesPerMinute;
+  const memory = mixed.residentBytes - unmixed.residentBytes;
+  const signed = (value: number, digits: number): string => `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+  return [
+    { check: "M1 engine CPU added by the mixed track", limit: `≤ +${MIX_CPU_GATE.toFixed(1)} point`, actual: `${signed(cpu, 2)} points (${unmixed.engineCpu.toFixed(2)}% → ${mixed.engineCpu.toFixed(2)}%)`, verdict: cpu <= MIX_CPU_GATE ? "pass" : "fail" },
+    { check: "M3 disk a minute", limit: `≤ +${(MIX_DISK_GATE_BYTES / 1e6).toFixed(1)} MB`, actual: `${signed(disk / 1e6, 2)} MB (${(unmixed.fileBytesPerMinute / 1e6).toFixed(1)} → ${(mixed.fileBytesPerMinute / 1e6).toFixed(1)} MB)`, verdict: disk <= MIX_DISK_GATE_BYTES ? "pass" : "fail" },
+    { check: "M4 resident memory", limit: `≤ +${MIX_MEMORY_GATE_BYTES / 1024 ** 2} MiB`, actual: `${signed(memory / 1024 ** 2, 1)} MiB`, verdict: memory <= MIX_MEMORY_GATE_BYTES ? "pass" : "fail" },
+    { check: "M5 encoder service", limit: "reported", actual: `${unmixed.encoderCpu.toFixed(2)}% → ${mixed.encoderCpu.toFixed(2)}%`, verdict: "report" },
+  ];
+}
+
+/** The tracks each mode's file holds, in order. */
+const MODE_TRACKS: Record<Mode, readonly string[]> = {
+  direct: ["avc1", "mp4a"],
+  editable: ["avc1", "mp4a", "mp4a", "mp4a", "avc1"],
+  "editable-unmixed": ["avc1", "mp4a", "mp4a", "avc1"],
+};
+
 /** The recording's frame rate: every video track must hold nearly this many pictures a second. */
 export const FRAME_RATE = 30;
 /** The share of the frame rate's pictures a video track must hold for its CPU to count: fewer is less work done. */
@@ -89,7 +125,7 @@ export function problems(run: Run): string[] {
   const found: string[] = [...run.line.failures];
   if (run.line.fragmented) found.push("the file stayed fragmented");
   if (run.line.cameraLost) found.push(`the camera was told lost ${run.line.cameraLost} time(s)`);
-  const expected = run.mode === "editable" ? ["avc1", "mp4a", "mp4a", "avc1"] : ["avc1", "mp4a"];
+  const expected = MODE_TRACKS[run.mode];
   const kinds = run.line.tracks.map((track) => track.descriptions[0] ?? "?");
   if (kinds.join() !== expected.join()) found.push(`tracks ${kinds.join(", ")} instead of ${expected.join(", ")}`);
   const presented = run.line.tracks.map((track) => track.enabled);

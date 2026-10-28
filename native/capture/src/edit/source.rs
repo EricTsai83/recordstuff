@@ -167,11 +167,15 @@ pub struct AudioTrack {
 pub struct SourceIndex {
     /// The picture players show: the screen, with the camera composed in today's recordings.
     pub video: VideoTrack,
-    /// The sound players play: every input mixed in today's recordings, the first input's in an editable one.
+    /// The sound players play: every input mixed in today's recordings and in an editable one with several inputs
+    /// (plan 098), the first input's in one made before it.
     pub audio: Option<AudioTrack>,
-    /// An editable recording's (plan 087) camera, a disabled video track, and its second sound, a disabled sound track.
+    /// An editable recording's (plan 087) camera, a disabled video track.
     pub camera: Option<VideoTrack>,
-    pub second_audio: Option<AudioTrack>,
+    /// An editable recording's disabled sound tracks, in the file's order: its second input's (plan 087), or both
+    /// inputs' after their mix (plan 098). None for one an interrupted recording wrote nothing of yet, so each keeps
+    /// its place.
+    pub alternate_audio: Vec<Option<AudioTrack>>,
     /// An editable recording's description (`udta/rsed`, editable.rs) as written, for main to read.
     pub description: Option<String>,
     /// Whether the file was read as fragments (an interrupted recording).
@@ -300,6 +304,16 @@ struct TrakInfo {
     syncs: Option<Vec<u32>>,
 }
 
+/// The most disabled sound tracks an editable recording has: each of two inputs' own, after their mix (plan 098).
+const MAX_ALTERNATE_SOUNDS: usize = 2;
+
+impl SourceIndex {
+    /// The file's `n`th sound track (0 the one players play, then its disabled ones in order), if it holds any sound.
+    pub fn sound(&self, n: usize) -> Option<&AudioTrack> {
+        if n == 0 { self.audio.as_ref() } else { self.alternate_audio.get(n - 1)?.as_ref() }
+    }
+}
+
 /// Reads the index of `source`, an MP4 the engine wrote.
 pub fn read(source: &dyn ReadAt) -> Result<SourceIndex> {
     let length = source.size().map_err(ReadError::io)?;
@@ -343,13 +357,18 @@ pub fn read(source: &dyn ReadAt) -> Result<SourceIndex> {
     // The enabled track of each kind is what players present; an editable recording (plan 087), and only one, adds a
     // disabled one of each kind and describes itself in its `udta`.
     let description = editable_description(m, body, end)?;
-    let (mut video, mut audio, mut camera, mut second_audio) = (None, None, None, None);
+    let (mut video, mut audio, mut camera) = (None, None, None);
+    let mut alternates = Vec::new();
     for t in traks {
         let slot = match (&t.description, t.enabled) {
             (Description::Avc { .. }, true) => &mut video,
             (Description::Aac { .. }, true) => &mut audio,
             (Description::Avc { .. }, false) => &mut camera,
-            (Description::Aac { .. }, false) => &mut second_audio,
+            (Description::Aac { .. }, false) if alternates.len() < MAX_ALTERNATE_SOUNDS => {
+                alternates.push(t);
+                continue;
+            }
+            (Description::Aac { .. }, false) => return Err(ReadError::unsupported("more than two disabled sound tracks")),
         };
         if slot.is_some() {
             return Err(ReadError::unsupported(match t.description {
@@ -359,24 +378,23 @@ pub fn read(source: &dyn ReadAt) -> Result<SourceIndex> {
         }
         *slot = Some(t);
     }
-    if (camera.is_some() || second_audio.is_some()) && description.is_none() {
+    if (camera.is_some() || !alternates.is_empty()) && description.is_none() {
         return Err(ReadError::unsupported("a disabled track in a file that is not an editable recording"));
     }
     let video = video.ok_or_else(|| ReadError::unsupported("no video track"))?;
     let video = video_track(video)?;
     let audio = audio.map(|a| audio_track(a, movie_timescale)).transpose()?;
-    // A recording that ended without its stop may hold no fragment of the camera or the second sound yet, though its
-    // header names them: what it does hold, the screen and its sound, is kept (plan 087's recovery), the empty track
-    // left out.
+    // A recording that ended without its stop may hold no fragment of the camera or an input's own sound yet, though
+    // its header names them: what it does hold, the screen and its sound, is kept (plan 087's recovery), the empty
+    // track left out.
     let camera = camera.filter(|t| !t.samples.is_empty()).map(video_track).transpose()?;
-    let second_audio = second_audio.filter(|t| !t.samples.is_empty()).map(|a| audio_track(a, movie_timescale)).transpose()?;
-    for samples in [Some(&video.samples), audio.as_ref().map(|a| &a.samples), camera.as_ref().map(|c| &c.samples), second_audio.as_ref().map(|a| &a.samples)]
-        .into_iter()
-        .flatten()
-    {
+    let alternate_audio =
+        alternates.into_iter().map(|t| if t.samples.is_empty() { Ok(None) } else { audio_track(t, movie_timescale).map(Some) }).collect::<Result<Vec<_>>>()?;
+    let sounds = audio.iter().chain(alternate_audio.iter().flatten()).map(|a| &a.samples);
+    for samples in [Some(&video.samples), camera.as_ref().map(|c| &c.samples)].into_iter().flatten().chain(sounds) {
         check_sizes(samples, length)?;
     }
-    Ok(SourceIndex { video, audio, camera, second_audio, description, fragmented })
+    Ok(SourceIndex { video, audio, camera, alternate_audio, description, fragmented })
 }
 
 fn video_track(t: TrakInfo) -> Result<VideoTrack> {
@@ -875,6 +893,12 @@ pub(crate) mod tests {
     /// An editable recording (plan 087) as the writer lays it out: screen, system sound, microphone, camera, and its
     /// description; `finish` or as an interrupted recording leaves it.
     pub(crate) fn editable_recording(fragments: usize, finish: bool) -> Vec<u8> {
+        editable_recording_with(fragments, finish, false)
+    }
+
+    /// As `editable_recording`, with `mix` the inputs mixed on the first sound track (plan 098), its samples marked 5:
+    /// screen, mix, system sound, microphone, camera.
+    pub(crate) fn editable_recording_with(fragments: usize, finish: bool, mix: bool) -> Vec<u8> {
         let audio = TrackConfig { skip: 2112, ..audio_config() };
         let camera = TrackConfig {
             codec: crate::mux::mp4::Codec::H264 {
@@ -886,22 +910,29 @@ pub(crate) mod tests {
         };
         let description = crate::editable::Description {
             sounds: vec![crate::editable::Sound::System, crate::editable::Sound::Microphone],
+            mix,
             camera: Some(crate::camera_layout::Layout::default()),
         };
-        let mut mp4 = HybridMp4::create_with_metadata(Vec::new(), vec![video_config(), audio.clone(), audio, camera], Some(description.to_bytes())).unwrap();
+        let mut tracks = vec![video_config(), audio.clone(), audio.clone(), camera];
+        if mix {
+            tracks.insert(1, audio);
+        }
+        let first = usize::from(mix);
+        let sounds: Vec<(usize, u8)> = if mix { vec![(1, 5), (2, 2), (3, 3)] } else { vec![(1, 2), (2, 3)] };
+        let mut mp4 = HybridMp4::create_with_metadata(Vec::new(), tracks, Some(description.to_bytes())).unwrap();
         for f in 0..fragments {
-            for (track, mark) in [(0usize, 1u8), (3, 4)] {
+            for (track, mark) in [(0usize, 1u8), (3 + first, 4)] {
                 let chunk: Vec<Vec<u8>> = (0..30).map(|n| vec![mark, (f * 30 + n) as u8]).collect();
                 let samples: Vec<Sample> = chunk.iter().enumerate().map(|(n, d)| Sample { data: d, duration: 3000, sync: n == 0 }).collect();
                 mp4.write_fragment(track, &samples).unwrap();
             }
-            for (track, mark) in [(1usize, 2u8), (2, 3)] {
+            for &(track, mark) in &sounds {
                 let sound = vec![vec![mark; 9]; 47];
                 let samples: Vec<Sample> = sound.iter().map(|d| Sample { data: d, duration: 1024, sync: true }).collect();
                 mp4.write_fragment(track, &samples).unwrap();
             }
         }
-        for track in [1, 2] {
+        for &(track, _) in &sounds {
             mp4.set_presented(track, fragments as u64 * 47 * 1024 - 2112);
         }
         if finish { mp4.finish().unwrap().1 } else { mp4.output().clone() }
@@ -918,17 +949,63 @@ pub(crate) mod tests {
             let camera = index.camera.as_ref().expect("the camera track");
             assert_eq!((camera.width, camera.height, camera.times.len()), (1280, 720, 60));
             assert_eq!(sample_bytes(&file, &camera.samples, 31), [4, 31]);
-            assert_eq!(sample_bytes(&file, &index.second_audio.as_ref().unwrap().samples, 3), [3; 9]);
+            assert_eq!(index.alternate_audio.len(), 1);
+            assert_eq!(sample_bytes(&file, &index.sound(1).unwrap().samples, 3), [3; 9]);
             let description: serde_json::Value = serde_json::from_str(index.description.as_deref().unwrap()).unwrap();
             assert_eq!(description["sounds"], serde_json::json!(["system", "microphone"]));
         }
     }
 
     #[test]
+    fn an_editable_recording_with_a_mix_reads_the_mix_first_then_each_input_finished_or_interrupted() {
+        for finish in [true, false] {
+            let file = editable_recording_with(2, finish, true);
+            let index = read(&file).unwrap();
+            let marks: Vec<u8> = (0..3).map(|n| sample_bytes(&file, &index.sound(n).unwrap().samples, 0)[0]).collect();
+            assert_eq!(marks, [5, 2, 3]);
+            assert!(index.sound(3).is_none());
+            assert_eq!(sample_bytes(&file, &index.camera.as_ref().unwrap().samples, 31), [4, 31]);
+            let description: serde_json::Value = serde_json::from_str(index.description.as_deref().unwrap()).unwrap();
+            assert_eq!((description["version"].as_u64(), description["mix"].as_bool()), (Some(2), Some(true)));
+        }
+    }
+
+    #[test]
+    fn an_interrupted_recording_whose_system_sound_wrote_nothing_yet_keeps_the_microphone_in_its_place() {
+        let audio = TrackConfig { skip: 2112, ..audio_config() };
+        let description =
+            crate::editable::Description { sounds: vec![crate::editable::Sound::System, crate::editable::Sound::Microphone], mix: true, camera: None };
+        let tracks = vec![video_config(), audio.clone(), audio.clone(), audio];
+        let mut mp4 = HybridMp4::create_with_metadata(Vec::new(), tracks, Some(description.to_bytes())).unwrap();
+        let screen: Vec<Vec<u8>> = (0..30).map(|n| vec![1, n as u8]).collect();
+        mp4.write_fragment(0, &screen.iter().enumerate().map(|(n, d)| Sample { data: d, duration: 3000, sync: n == 0 }).collect::<Vec<_>>()).unwrap();
+        for (track, mark) in [(1usize, 5u8), (3, 3)] {
+            let sound = vec![vec![mark; 9]; 47];
+            mp4.write_fragment(track, &sound.iter().map(|d| Sample { data: d, duration: 1024, sync: true }).collect::<Vec<_>>()).unwrap();
+        }
+        let file = mp4.output().clone();
+        let index = read(&file).unwrap();
+        assert!(index.sound(1).is_none(), "the system's own track holds nothing yet");
+        assert_eq!(sample_bytes(&file, &index.sound(2).unwrap().samples, 0), [3; 9]);
+    }
+
+    #[test]
+    fn more_than_two_disabled_sound_tracks_are_not_a_recording_the_engine_wrote() {
+        let description = crate::editable::Description { sounds: vec![crate::editable::Sound::System], mix: false, camera: None };
+        let tracks = vec![video_config(), audio_config(), audio_config(), audio_config(), audio_config()];
+        let mut mp4 = HybridMp4::create_with_metadata(Vec::new(), tracks, Some(description.to_bytes())).unwrap();
+        let samples = [Sample { data: &[1], duration: 3000, sync: true }];
+        mp4.write_fragment(0, &samples).unwrap();
+        let (_, file) = mp4.finish().unwrap();
+        let error = read(&file).unwrap_err();
+        assert!(error.detail.contains("more than two disabled sound tracks"), "{}", error.detail);
+    }
+
+    #[test]
     fn today_s_recording_has_no_camera_second_sound_or_description() {
         let (file, _) = recording(2, true);
         let index = read(&file).unwrap();
-        assert!(index.camera.is_none() && index.second_audio.is_none() && index.description.is_none());
+        assert!(index.camera.is_none() && index.alternate_audio.is_empty() && index.description.is_none());
     }
 
     #[test]
@@ -949,6 +1026,7 @@ pub(crate) mod tests {
         let audio = TrackConfig { skip: 2112, ..audio_config() };
         let description = crate::editable::Description {
             sounds: vec![crate::editable::Sound::System, crate::editable::Sound::Microphone],
+            mix: false,
             camera: Some(crate::camera_layout::Layout::default()),
         };
         let mut mp4 =
@@ -960,6 +1038,6 @@ pub(crate) mod tests {
         let file = mp4.output().clone();
         let index = read(&file).unwrap();
         assert_eq!(index.video.times.len(), 30);
-        assert!(index.audio.is_some() && index.camera.is_none() && index.second_audio.is_none() && index.description.is_some());
+        assert!(index.audio.is_some() && index.camera.is_none() && index.sound(1).is_none() && index.description.is_some());
     }
 }

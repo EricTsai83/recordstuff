@@ -6,7 +6,7 @@
  * Electron or DOM import.
  */
 import { isEditScene, type EditableSound, type EditScene } from "./editable";
-import type { EditRange } from "./editing";
+import { PREVIEW_TRACKS, type EditRange, type PreviewTrack } from "./editing";
 
 /** Where a video is and what it does: handed to the fullscreen window and handed back when it ends. */
 export interface PlaybackState {
@@ -53,15 +53,17 @@ export interface PlaybackEdit {
   skipped: EditRange[];
   editable?: {
     sounds: EditableSound[];
+    /** The recording plays its inputs mixed (plan 098); each input's own track is a preview track. */
+    mix?: true;
     camera?: { rounding: number; mirror: boolean };
     scene: EditScene;
-    preview: { camera?: string; secondSound?: string };
+    preview: Partial<Record<PreviewTrack, string>>;
   };
 }
 
 /** At most as many skipped ranges as an edit record holds, both its own and its plan's joins. */
 const MAX_SKIPPED = 512;
-const PREVIEW_URL = /^recordstuff-media:\/\/preview\/\d+\/(camera|secondSound)$/;
+const PREVIEW_URL = /^recordstuff-media:\/\/preview\/\d+\/(camera|firstSound|secondSound)$/;
 
 /** An edit from another process, or undefined: every number finite, every range ordered, every URL a preview's. */
 export function playbackEdit(value: unknown): PlaybackEdit | undefined {
@@ -80,8 +82,9 @@ export function playbackEdit(value: unknown): PlaybackEdit | undefined {
   const edit: PlaybackEdit = { timescale, duration, frameRate, skipped: ranges };
   if (editable === undefined) return edit;
   if (!editable || typeof editable !== "object") return undefined;
-  const { sounds, camera, scene, preview } = editable as Record<string, unknown>;
+  const { sounds, mix, camera, scene, preview } = editable as Record<string, unknown>;
   if (!Array.isArray(sounds) || sounds.length > 2 || !sounds.every((sound) => sound === "system" || sound === "microphone" || sound === "silent")) return undefined;
+  if (mix !== undefined && mix !== true) return undefined;
   if (!isEditScene(scene)) return undefined;
   let shape: { rounding: number; mirror: boolean } | undefined;
   if (camera !== undefined) {
@@ -90,14 +93,14 @@ export function playbackEdit(value: unknown): PlaybackEdit | undefined {
     shape = { rounding, mirror };
   }
   if (!preview || typeof preview !== "object") return undefined;
-  const urls: { camera?: string; secondSound?: string } = {};
-  for (const track of ["camera", "secondSound"] as const) {
+  const urls: Partial<Record<PreviewTrack, string>> = {};
+  for (const track of PREVIEW_TRACKS) {
     const url = (preview as Record<string, unknown>)[track];
     if (url === undefined) continue;
-    if (typeof url !== "string" || !PREVIEW_URL.test(url)) return undefined;
+    if (typeof url !== "string" || !PREVIEW_URL.test(url) || !url.endsWith(`/${track}`)) return undefined;
     urls[track] = url;
   }
-  return { ...edit, editable: { sounds: sounds as EditableSound[], ...(shape ? { camera: shape } : {}), scene, preview: urls } };
+  return { ...edit, editable: { sounds: sounds as EditableSound[], ...(mix ? { mix: true } : {}), ...(shape ? { camera: shape } : {}), scene, preview: urls } };
 }
 
 /** A state from another process, or undefined: numbers finite and in range, flags boolean. */

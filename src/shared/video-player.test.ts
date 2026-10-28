@@ -16,6 +16,9 @@ it("reads an edit for the full-screen viewer, a plain recording's cuts and an ed
   expect(playbackEdit(edit)).toEqual(edit);
   expect(playbackEdit(editable)).toEqual(editable);
   expect(playbackEdit({ ...edit, skipped: [] })).toEqual({ ...edit, skipped: [] });
+  // With a mix (plan 098), each input's own sound is a preview track.
+  const mixed = { ...editable, editable: { ...editable.editable!, mix: true as const, preview: { ...editable.editable!.preview, firstSound: "recordstuff-media://preview/3/firstSound" } } };
+  expect(playbackEdit(mixed)).toEqual(mixed);
 });
 
 it("refuses an edit with a number out of range, a range out of order or a URL that is not a preview track's", () => {
@@ -28,6 +31,9 @@ it("refuses an edit with a number out of range, a range out of order or a URL th
   const preview = (url: string): unknown => ({ ...editable, editable: { ...editable.editable, preview: { camera: url } } });
   expect(playbackEdit(preview("file:///etc/passwd"))).toBeUndefined();
   expect(playbackEdit(preview("recordstuff-media://preview/3/other"))).toBeUndefined();
+  // A preview track's URL under another track's name, and a mix that is not `true`.
+  expect(playbackEdit(preview("recordstuff-media://preview/3/secondSound"))).toBeUndefined();
+  expect(playbackEdit({ ...editable, editable: { ...editable.editable, mix: false } })).toBeUndefined();
   expect(playbackEdit({ ...editable, editable: { ...editable.editable, sounds: ["speaker"] } })).toBeUndefined();
   expect(playbackEdit({ ...editable, editable: { ...editable.editable, scene: { volumes: "loud" } } })).toBeUndefined();
 });

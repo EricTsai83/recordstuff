@@ -8,7 +8,7 @@
  * this process: main hears only plans, progress and results. A crash in native code ends this process only; main
  * sees it exit and removes the export's unfinished file. The recording is opened read-only by the engine.
  */
-import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type PreviewTrack } from "../../shared/editing";
+import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack } from "../../shared/editing";
 import { SerialQueue } from "../lib/serial-queue";
 import { engineRejection } from "../lib/engine-module";
 
@@ -18,7 +18,7 @@ interface NativeExport {
   cancel(): void;
   streamCopy?(source: string, output: string): Promise<number>;
   /** Plan 087: an editable recording's track copied into a file of its own, for the edit view's preview. */
-  extract(source: string, track: PreviewTrack, output: string): Promise<number>;
+  extract(source: string, track: ExtractTrack, output: string): Promise<number>;
 }
 
 interface EngineModule {

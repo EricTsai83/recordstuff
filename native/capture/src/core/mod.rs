@@ -452,7 +452,8 @@ struct VideoState<P: Platform> {
 
 struct AudioState<A> {
     /// One per sound track, in the file's order: today one, every input mixed into it; an editable recording's one
-    /// per input (plan 087). Empty until made, and again once finished or released.
+    /// per input (plan 087), after a track of them mixed when it has several (plan 098). Empty until made, and again
+    /// once finished or released.
     encoders: Vec<A>,
     /// One per sound track, made at `record`, when the tracks' start is known.
     mixers: Vec<Mixer>,
@@ -460,6 +461,9 @@ struct AudioState<A> {
     inputs: usize,
     /// Each input on a sound track of its own (plan 087's editable recording) rather than mixed.
     separate: bool,
+    /// With `separate` and several inputs, a first track of them all mixed, the one players play (plan 098). Only
+    /// `pnpm bench:editable`'s comparison leaves it out.
+    mix: bool,
     priming: u32,
     scratch: Vec<f32>,
 }
@@ -470,14 +474,48 @@ impl<A: AudioEncode> AudioState<A> {
         target.store(frames, Ordering::Release);
     }
 
-    /// How many sound tracks the recording has: one unless each of several inputs has its own.
-    fn tracks(&self) -> usize {
-        if self.separate && self.inputs > 1 { self.inputs } else { 1 }
+    /// Whether each of several inputs has a track of its own.
+    fn split(&self) -> bool {
+        self.separate && self.inputs > 1
     }
 
-    /// The track `input` is on, and which of that track's mixer's inputs it is.
-    fn route(&self, input: usize) -> (usize, usize) {
-        if self.tracks() > 1 { (input, 0) } else { (0, input) }
+    /// How many sound tracks the recording has: one unless each of several inputs has its own, and then a track of
+    /// them mixed before theirs (plan 098).
+    fn tracks(&self) -> usize {
+        match (self.split(), self.mix) {
+            (false, _) => 1,
+            (true, true) => 1 + self.inputs,
+            (true, false) => self.inputs,
+        }
+    }
+
+    /// How many inputs `track`'s mixer sums: all of them on a mixed track, one on an input's own.
+    fn track_inputs(&self, track: usize) -> usize {
+        if !self.split() || (self.mix && track == 0) { self.inputs } else { 1 }
+    }
+
+    /// The tracks `input` is on, each with which of that track's mixer's inputs it is: the mixed track's, and with
+    /// separate tracks its own (both, with a mix).
+    fn routes(&self, input: usize) -> impl Iterator<Item = (usize, usize)> {
+        let (mixed, own) = match (self.split(), self.mix) {
+            (false, _) => (Some((0, input)), None),
+            (true, true) => (Some((0, input)), Some((1 + input, 0))),
+            (true, false) => (None, Some((input, 0))),
+        };
+        mixed.into_iter().chain(own)
+    }
+
+    /// Per input, in their order: the frames it delivered too late to be mixed, and the silence inserted and dropped
+    /// to keep it on the clock (see mixer.rs). With a mix, an input is in two mixers: their aligners place it alike, and
+    /// its late frames are the more of the two.
+    fn per_input(&self) -> (Vec<u64>, Vec<(u64, u64)>) {
+        if !self.split() || !self.mix {
+            return (self.mixers.iter().flat_map(Mixer::late).collect(), self.mixers.iter().flat_map(Mixer::corrections).collect());
+        }
+        let Some(mixed) = self.mixers.first() else { return (Vec::new(), Vec::new()) };
+        let own: Vec<u64> = self.mixers[1..].iter().flat_map(Mixer::late).collect();
+        let late = mixed.late().iter().enumerate().map(|(n, &late)| late.max(own.get(n).copied().unwrap_or(0))).collect();
+        (late, mixed.corrections())
     }
 
     /// Mixes `track` up to `until` into its encoder; returns the packets it made.
@@ -822,27 +860,29 @@ impl<P: Platform> Shared<P> {
         // After `stop`, sound only up to it: the track ends where the video does. `audio_target` is only changed under
         // this lock, so a buffer is cut by the target in force while it is placed.
         let target = self.audio_target.load(Ordering::Acquire);
-        let (track, slot) = audio.route(input);
-        let Some(mixer) = audio.mixers.get_mut(track) else { return Ok(()) };
-        // Input frame n is what played at t0 + n / rate; the file's edit list skips the encoder's priming, so sound at
-        // presentation time t is what played at t0 + t.
-        mixer.add(slot, pts, frames, sample, target);
-        let until = mixer.ready().min(target);
-        let packets = match audio.advance(track, until) {
-            Ok(packets) => packets,
-            // The encoder's failure is the recording's, whichever input's sound reached it first: a microphone's
-            // caller would take an error for the microphone's own and tell it lost.
-            Err(detail) if self.is_microphone(input) => {
-                drop(guard);
-                self.fail(detail);
-                return Ok(());
+        let routes: Vec<(usize, usize)> = audio.routes(input).collect();
+        for (track, slot) in routes {
+            let Some(mixer) = audio.mixers.get_mut(track) else { continue };
+            // Input frame n is what played at t0 + n / rate; the file's edit list skips the encoder's priming, so sound
+            // at presentation time t is what played at t0 + t.
+            mixer.add(slot, pts, frames, sample, target);
+            let until = mixer.ready().min(target);
+            let packets = match audio.advance(track, until) {
+                Ok(packets) => packets,
+                // The encoder's failure is the recording's, whichever input's sound reached it first: a microphone's
+                // caller would take an error for the microphone's own and tell it lost.
+                Err(detail) if self.is_microphone(input) => {
+                    drop(guard);
+                    self.fail(detail);
+                    return Ok(());
+                }
+                Err(detail) => return Err(detail),
+            };
+            // Sent under the audio lock: packets carry no time, so the writer's order is the track's, and another
+            // input or the clock must not send theirs in between.
+            for data in packets {
+                self.send(Media::Audio { data, track });
             }
-            Err(detail) => return Err(detail),
-        };
-        // Sent under the audio lock: packets carry no time, so the writer's order is the track's, and another input
-        // or the clock must not send theirs in between.
-        for data in packets {
-            self.send(Media::Audio { data, track });
         }
         Ok(())
     }
@@ -993,7 +1033,15 @@ impl<P: Platform> Core<P> {
             failed: AtomicBool::new(false),
             failure: Mutex::new(None),
             video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0 }),
-            audio: Mutex::new(AudioState { encoders: Vec::new(), mixers: Vec::new(), inputs: audio_inputs, separate: false, priming: 0, scratch: Vec::new() }),
+            audio: Mutex::new(AudioState {
+                encoders: Vec::new(),
+                mixers: Vec::new(),
+                inputs: audio_inputs,
+                separate: false,
+                mix: true,
+                priming: 0,
+                scratch: Vec::new(),
+            }),
             writer: Mutex::new(None),
             frames_seen: AtomicU64::new(0),
             frame_rate,
@@ -1029,10 +1077,24 @@ impl<P: Platform> Core<P> {
         *self.shared.camera.lock().unwrap() = Some(camera);
     }
 
-    /// Puts each sound input on a track of its own instead of mixing them (plan 087's editable recording); before
-    /// `make_encoders`, which then makes one encoder per track.
+    /// Puts each sound input on a track of its own instead of mixing them (plan 087's editable recording), after a
+    /// track of them mixed when there are several (plan 098); before `make_encoders`, which then makes one encoder per
+    /// track.
     pub fn separate_sound(&self, on: bool) {
         self.shared.audio.lock().unwrap().separate = on;
+    }
+
+    /// Whether the recording's sound tracks begin with its inputs mixed: with separate tracks and several inputs.
+    pub fn mixed_sound(&self) -> bool {
+        let audio = self.shared.audio.lock().unwrap();
+        audio.split() && audio.mix
+    }
+
+    /// Leaves the mixed track out of separate tracks, plan 087's file (`pnpm bench:editable`'s comparison, plan 098):
+    /// tests only, so no recording can be made without it.
+    #[cfg(test)]
+    pub fn leave_out_mix(&self) {
+        self.shared.audio.lock().unwrap().mix = false;
     }
 
     /// How many sound tracks the recording has, and so how many encoders `make_encoders` asks for.
@@ -1162,9 +1224,9 @@ impl<P: Platform> Core<P> {
                 return Err(CaptureError::new("capture_start_failed", "prepared without an audio encoder"));
             }
             // Before the phase lets sound in, which it does only once the first frame is encoded. Separate tracks each
-            // take one input; a single track mixes them all.
-            let inputs = if tracks > 1 { 1 } else { audio.inputs };
-            audio.mixers = (0..tracks).map(|_| Mixer::new(SAMPLE_RATE, t0, inputs, AUDIO_TOLERANCE_FRAMES, MIX_LATENCY_FRAMES)).collect();
+            // take one input; a mixed track takes them all.
+            audio.mixers =
+                (0..tracks).map(|track| Mixer::new(SAMPLE_RATE, t0, audio.track_inputs(track), AUDIO_TOLERANCE_FRAMES, MIX_LATENCY_FRAMES)).collect();
             audio
                 .encoders
                 .iter()
@@ -1326,9 +1388,8 @@ impl<P: Platform> Core<P> {
                 }
                 audio_frames.push(frames);
             }
-            // Per input, in their order: one mixer's inputs, or each track's one.
-            late_audio_frames = audio.mixers.iter().flat_map(Mixer::late).collect();
-            audio_corrections = audio.mixers.iter().flat_map(Mixer::corrections).collect();
+            // Per input, in their order.
+            (late_audio_frames, audio_corrections) = audio.per_input();
             limited_audio_samples = audio.mixers.iter().map(Mixer::limited).sum();
         }
         for (track, data) in packets {

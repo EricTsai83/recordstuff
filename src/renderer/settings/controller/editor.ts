@@ -294,9 +294,13 @@ export function attachEditorVideo(video: HTMLVideoElement | null): void {
   if (video) queueMicrotask(draw);
 }
 
-/** An editable recording's camera and second sound (plan 087), played beside the recording for its preview. */
+/**
+ * An editable recording's camera and second sound (plan 087), and with a mix its first sound (plan 098), played beside
+ * the recording for its preview.
+ */
 let previewCamera: HTMLVideoElement | null = null;
 let previewSound: HTMLAudioElement | null = null;
+let previewFirstSound: HTMLAudioElement | null = null;
 export function attachPreviewCamera(video: HTMLVideoElement | null): void {
   previewCamera = video;
   if (video && editorVideo) followMedia(editorVideo, video, true);
@@ -306,15 +310,24 @@ export function attachPreviewSound(media: HTMLAudioElement | null): void {
   // A view's element goes with its view: its sound graph is released, so none is kept for an element no longer shown.
   if (previewSound && previewSound !== media) mix.release(previewSound);
   previewSound = media;
-  if (media) {
-    if (editorVideo) followMedia(editorVideo, media, true);
-    syncPreviewAudio();
-  }
+  attachedSound(media);
+}
+
+export function attachPreviewFirstSound(media: HTMLAudioElement | null): void {
+  if (previewFirstSound && previewFirstSound !== media) mix.release(previewFirstSound);
+  previewFirstSound = media;
+  attachedSound(media);
+}
+
+function attachedSound(media: HTMLAudioElement | null): void {
+  if (media && editorVideo) followMedia(editorVideo, media, true);
+  // Also when one goes: with a mix, the recording's own sound plays again until both inputs' are back.
+  syncPreviewAudio();
 }
 
 function followAll(exact: boolean): void {
   if (!editorVideo) return;
-  for (const media of [previewCamera, previewSound]) if (media) followMedia(editorVideo, media, exact);
+  for (const media of [previewCamera, previewFirstSound, previewSound]) if (media) followMedia(editorVideo, media, exact);
 }
 
 /** The recording's events its followers take (`FOLLOWED_EVENTS`), the sound's gains with some. */
@@ -333,7 +346,8 @@ export function editorScene(editor: EditorView): EditScene | undefined {
 }
 
 /**
- * Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second. Any other
+ * Sets each sound's gain to the scene shown: the recording plays the first sound, the follower the second (with a mix,
+ * plan 098, the followers each input's own and the recording's mix is silent). Any other
  * recording plays as it is: the edit view's player keeps its element, and so its gain, from one recording to the next.
  */
 export function syncPreviewAudio(): void {
@@ -345,7 +359,9 @@ export function syncPreviewAudio(): void {
     mix.unity(editorVideo);
     return;
   }
-  mixScene(mix, editorVideo, previewSound, editor.editable.sounds, scene, Math.round((editorVideo.currentTime || 0) * editor.timescale));
+  const { sounds, mix: mixed } = editor.editable;
+  const playing = { sounds, ...(mixed ? { mix: true as const } : {}), first: previewFirstSound, second: previewSound };
+  mixScene(mix, editorVideo, playing, scene, Math.round((editorVideo.currentTime || 0) * editor.timescale));
 }
 
 /** How many scene changes wait to be saved (in turn with the timeline's, `inTurn`); the draft stays until the last. */

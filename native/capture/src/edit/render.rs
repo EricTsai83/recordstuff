@@ -50,12 +50,15 @@ pub struct RenderOptions {
     /// Where the bubble is left out though `camera` is given: `[from, to)` in the video's timescale on the recording's
     /// own clock. A picture whose time falls in one is the screen's alone, and no camera picture is decoded for it.
     pub camera_hidden: Vec<(u64, u64)>,
-    /// Each sound track's volume as a linear factor, in the file's order; a missing one is 1.
+    /// Each sound track's volume as a linear factor, in the file's order (or `sound_tracks`'); a missing one is 1.
     pub gains: Vec<f32>,
     /// Each sound track's stretches at a volume of their own (2026-10-26): `(from, to, factor)` in the video's
     /// timescale on the recording's own clock, sorted and apart, in the file's order; the factor takes the place of the
     /// track's volume there, eased in over `GAIN_RAMP_SECONDS` at each change so it does not click.
     pub gain_stretches: Vec<Vec<(u64, u64, f32)>>,
+    /// The sound tracks mixed, by their place among the file's (`SourceIndex::sound`), in the order of `gains`: a
+    /// recording with a mix (plan 098) names its inputs' own tracks, never the mix. None: every one in the file's order.
+    pub sound_tracks: Option<Vec<usize>>,
 }
 
 /// The platform's half: pictures decoded, composed and encoded, and sound decoded and encoded.
@@ -134,11 +137,12 @@ pub fn export(
 }
 
 /// An editable recording's track the edit view plays beside the recording for its preview (plan 087): the recording
-/// itself shows the screen with the first sound; these are the camera and the second sound.
+/// itself shows the screen with the first sound; these are the camera and a disabled sound track, by its place among
+/// the file's sound tracks (`SourceIndex::sound`): the second input's (plan 087), or with a mix each input's (plan 098).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Extract {
     Camera,
-    SecondSound,
+    Sound(usize),
 }
 
 /// Copies one of `source_path`'s tracks, as it is, into a file of its own at `output_path`, which must not exist: its
@@ -154,8 +158,11 @@ pub fn extract(source_path: &Path, output_path: &Path, which: Extract, cancel: &
             let codec = Codec::H264 { avcc: camera.avcc.clone(), width: camera.width, height: camera.height };
             (TrackConfig { codec, timescale: camera.timescale, skip: 0 }, (&camera.samples, Some(&camera.sync)), None)
         }
-        Extract::SecondSound => {
-            let sound = index.second_audio.as_ref().ok_or_else(|| ExportError::new("unsupported", "the recording has no second sound track"))?;
+        Extract::Sound(n) => {
+            let sound = index
+                .sound(n)
+                .filter(|_| n > 0)
+                .ok_or_else(|| ExportError::new("unsupported", format!("the recording has no sound in its disabled sound track {n}")))?;
             let codec = Codec::Aac {
                 config: sound.config.clone(),
                 sample_rate: sound.sample_rate,
@@ -484,12 +491,16 @@ fn render(
     let encode = |e: String| ExportError::new("encode_failed", e);
     let mut video = renderer.video(&screen_format, camera_format.as_ref().zip(camera.map(|(_, layout)| layout)), remux::bitrate(index)).map_err(encode)?;
 
-    // The sound tracks, in the file's order, at the edit's volumes.
-    let tracks: Vec<MixTrack> = index
-        .audio
-        .iter()
-        .chain(index.second_audio.iter())
+    // The sound tracks the edit names (every one in the file's order unless it names them), at its volumes; one an
+    // interrupted recording wrote nothing of is left out, the others keeping their volumes.
+    let named: Vec<Option<&AudioTrack>> = match &options.sound_tracks {
+        Some(places) => places.iter().map(|&n| index.sound(n)).collect(),
+        None => std::iter::once(index.audio.as_ref()).chain(index.alternate_audio.iter().map(Option::as_ref)).collect(),
+    };
+    let tracks: Vec<MixTrack> = named
+        .into_iter()
         .enumerate()
+        .filter_map(|(n, track)| track.map(|track| (n, track)))
         .map(|(n, track)| {
             // The stretches in the track's own frames, as its sound is counted.
             let rate = u128::from(track.sample_rate);
@@ -617,7 +628,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::edit::source::tests::editable_recording;
+    use crate::edit::source::tests::{editable_recording, editable_recording_with};
     use crate::mux::parse::parse;
 
     /// What the fake pipeline was asked to do.
@@ -724,7 +735,16 @@ mod tests {
     /// Renders a 2-second editable recording (editable_recording: screen `[1, n]`, camera `[4, n]`, system sound 0.02,
     /// microphone 0.03) without `removed`, as `options` say.
     fn rendered(name: &str, removed: &[(u64, u64)], options: RenderOptions, cancel: bool) -> (Result<(u64, u64), ExportError>, Calls, std::path::PathBuf) {
-        let file = editable_recording(2, true);
+        rendered_from(editable_recording(2, true), name, removed, options, cancel)
+    }
+
+    fn rendered_from(
+        file: Vec<u8>,
+        name: &str,
+        removed: &[(u64, u64)],
+        options: RenderOptions,
+        cancel: bool,
+    ) -> (Result<(u64, u64), ExportError>, Calls, std::path::PathBuf) {
         let index = source::read(&file).unwrap();
         let plan = render_plan(&index, removed).unwrap();
         let calls = Arc::new(Mutex::new(Calls::default()));
@@ -742,7 +762,7 @@ mod tests {
         let (result, calls, path) = rendered(
             "composed",
             &[(30_000, 120_000)],
-            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(layout), gains: vec![1.0, 1.0] },
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(layout), gains: vec![1.0, 1.0], sound_tracks: None },
             false,
         );
         let (_, frames) = result.unwrap();
@@ -766,8 +786,12 @@ mod tests {
 
     #[test]
     fn a_hidden_camera_is_neither_decoded_nor_composed() {
-        let (result, calls, path) =
-            rendered("hidden", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] }, false);
+        let (result, calls, path) = rendered(
+            "hidden",
+            &[],
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0], sound_tracks: None },
+            false,
+        );
         result.unwrap();
         assert_eq!(calls.camera_asked, None);
         assert!(calls.cameras.is_empty() && calls.composed.iter().all(|(_, camera)| camera.is_none()));
@@ -780,7 +804,13 @@ mod tests {
         // Pictures 20–39 (0.67–1.33 s at 30 fps, 3000 ticks apart) hidden; a cut over 10–15 keeps the stretch on the
         // recording's own clock, not the export's.
         let layout = Layout { x: 0.0, y: 1.0, ..Layout::default() };
-        let options = RenderOptions { camera: Some(layout), camera_hidden: vec![(60_000, 120_000)], gain_stretches: Vec::new(), gains: vec![1.0, 1.0] };
+        let options = RenderOptions {
+            camera: Some(layout),
+            camera_hidden: vec![(60_000, 120_000)],
+            gain_stretches: Vec::new(),
+            gains: vec![1.0, 1.0],
+            sound_tracks: None,
+        };
         let (result, calls, path) = rendered("hidden-stretch", &[(30_000, 45_000)], options, false);
         result.unwrap();
         assert_eq!(calls.camera_asked, Some(layout));
@@ -805,7 +835,7 @@ mod tests {
         let (result, calls, path) = rendered(
             "mixed",
             &[(30_000, 60_000)],
-            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.5, 2.0] },
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.5, 2.0], sound_tracks: None },
             false,
         );
         result.unwrap();
@@ -831,12 +861,44 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
 
+    /// Plan 098: a recording with a mix exports its inputs' own tracks at their volumes, as the same inputs without the
+    /// mix do, and never the mix (0.05) with them.
+    #[test]
+    fn a_recording_with_a_mix_exports_its_inputs_own_tracks_never_the_mix() {
+        let options = |sound_tracks| RenderOptions {
+            gain_stretches: vec![vec![], vec![(45_000, 90_000, 0.0)]],
+            camera_hidden: Vec::new(),
+            camera: None,
+            gains: vec![0.5, 2.0],
+            sound_tracks,
+        };
+        let (plain, without, plain_path) = rendered("without-mix", &[(30_000, 60_000)], options(None), false);
+        let mixed_file = editable_recording_with(2, true, true);
+        let (mixed, with, mixed_path) = rendered_from(mixed_file.clone(), "with-mix", &[(30_000, 60_000)], options(Some(vec![1, 2])), false);
+        assert_eq!(plain.unwrap(), mixed.unwrap());
+        assert_eq!(without.mixed.len(), with.mixed.len());
+        assert!(without.mixed == with.mixed, "the export holds the inputs' tracks alone");
+        assert!((with.mixed[2000] - 0.07).abs() < 1e-6, "{}", with.mixed[2000]);
+        // Unnamed, every track is taken in the file's order, the mix too: main always names them for such a file.
+        let (_, every, every_path) =
+            rendered_from(mixed_file, "every-track", &[], RenderOptions { sound_tracks: None, gains: vec![1.0, 1.0, 1.0], ..options(None) }, false);
+        assert!((every.mixed[2000] - 0.10).abs() < 1e-6, "{}", every.mixed[2000]);
+        for path in [plain_path, mixed_path, every_path] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     #[test]
     fn a_stretch_of_a_track_at_its_own_volume_takes_its_place_there_eased_in_and_out() {
         // The microphone (0.03) silent from 0.5 s to 1 s on the recording's clock (frames 24,000 to 48,000 at 48 kHz),
         // the system (0.02) at its own volume throughout: 0.02 inside, 0.05 outside, 10 ms (480 frames) to move.
-        let options =
-            RenderOptions { gain_stretches: vec![vec![], vec![(45_000, 90_000, 0.0)]], camera_hidden: Vec::new(), camera: None, gains: vec![1.0, 1.0] };
+        let options = RenderOptions {
+            gain_stretches: vec![vec![], vec![(45_000, 90_000, 0.0)]],
+            camera_hidden: Vec::new(),
+            camera: None,
+            gains: vec![1.0, 1.0],
+            sound_tracks: None,
+        };
         let (result, calls, path) = rendered("volume-stretch", &[], options, false);
         result.unwrap();
         let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
@@ -851,8 +913,13 @@ mod tests {
     #[test]
     fn a_track_silent_but_for_a_stretch_is_heard_there_alone() {
         // The system silent, but at 200% from 0.5 s to 1 s.
-        let options =
-            RenderOptions { gain_stretches: vec![vec![(45_000, 90_000, 2.0)], vec![]], camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 0.0] };
+        let options = RenderOptions {
+            gain_stretches: vec![vec![(45_000, 90_000, 2.0)], vec![]],
+            camera_hidden: Vec::new(),
+            camera: None,
+            gains: vec![0.0, 0.0],
+            sound_tracks: None,
+        };
         let (result, calls, path) = rendered("volume-stretch-alone", &[], options, false);
         result.unwrap();
         let left: Vec<f32> = calls.mixed.iter().step_by(2).copied().collect();
@@ -864,8 +931,12 @@ mod tests {
 
     #[test]
     fn a_muted_track_is_left_out_and_the_other_plays_alone() {
-        let (result, calls, path) =
-            rendered("muted", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 1.0] }, false);
+        let (result, calls, path) = rendered(
+            "muted",
+            &[],
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![0.0, 1.0], sound_tracks: None },
+            false,
+        );
         result.unwrap();
         // The microphone's 0.03 alone while its track lasts (94,144 frames), silence after.
         let (heard, after) = calls.mixed.split_at(94_144 * 2);
@@ -876,8 +947,12 @@ mod tests {
 
     #[test]
     fn a_cancel_stops_it_and_removing_everything_or_a_plain_recording_is_refused() {
-        let (result, _, path) =
-            rendered("cancel", &[], RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![] }, true);
+        let (result, _, path) = rendered(
+            "cancel",
+            &[],
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![], sound_tracks: None },
+            true,
+        );
         assert_eq!(result.unwrap_err().code, "cancelled");
         std::fs::remove_file(&path).unwrap();
 
@@ -887,7 +962,7 @@ mod tests {
         let plain = temp("plain-source");
         std::fs::write(&plain, crate::edit::remux::tests::recording(2)).unwrap();
         let output = temp("plain-output");
-        let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![] };
+        let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![], sound_tracks: None };
         let error = export(&plain, &output, &[], &options, &mut FakeRenderer(Arc::default()), &mut |_| {}, &AtomicBool::new(false)).err().unwrap();
         assert_eq!(error.code, "unsupported");
         assert!(!output.exists(), "nothing is created for a refused export");
@@ -899,7 +974,7 @@ mod tests {
         let source = temp("extract-source");
         std::fs::write(&source, editable_recording(2, true)).unwrap();
         let index = source::read(&std::fs::read(&source).unwrap()).unwrap();
-        for (which, name) in [(Extract::Camera, "extract-camera"), (Extract::SecondSound, "extract-sound")] {
+        for (which, name) in [(Extract::Camera, "extract-camera"), (Extract::Sound(1), "extract-sound")] {
             let output = temp(name);
             extract(&source, &output, which, &AtomicBool::new(false)).unwrap();
             let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
@@ -913,7 +988,7 @@ mod tests {
                     assert_eq!(track.samples.iter().map(|s| s.decode_time).collect::<Vec<_>>(), camera.times);
                     assert!(track.samples[30].sync && !track.samples[31].sync);
                 }
-                Extract::SecondSound => {
+                Extract::Sound(_) => {
                     assert!(track.samples.iter().all(|s| s.data == [3; 9]));
                     // Its priming skipped as the recording's is, so it plays from the same moment.
                     assert_eq!(track.edit.map(|(_, media)| media), Some(2112));
@@ -923,9 +998,24 @@ mod tests {
             assert_eq!(extract(&source, &output, which, &AtomicBool::new(false)).unwrap_err().code, "output_exists");
             std::fs::remove_file(&output).unwrap();
         }
+        // The sound players play is never a preview track, nor a track the recording does not have.
+        let output = temp("extract-none");
+        for which in [Extract::Sound(0), Extract::Sound(2)] {
+            assert_eq!(extract(&source, &output, which, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
+            assert!(!output.exists());
+        }
+        // With a mix (plan 098), each input's own track, in order.
+        let mixed = temp("extract-mixed-source");
+        std::fs::write(&mixed, editable_recording_with(2, true, true)).unwrap();
+        for (n, mark) in [(1, 2u8), (2, 3)] {
+            extract(&mixed, &output, Extract::Sound(n), &AtomicBool::new(false)).unwrap();
+            let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
+            assert!(copied.tracks[0].samples.iter().all(|s| s.data == [mark; 9]), "track {n}");
+            std::fs::remove_file(&output).unwrap();
+        }
+        std::fs::remove_file(&mixed).unwrap();
         let plain = temp("extract-plain");
         std::fs::write(&plain, crate::edit::remux::tests::recording(1)).unwrap();
-        let output = temp("extract-none");
         assert_eq!(extract(&plain, &output, Extract::Camera, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
         assert!(!output.exists());
         std::fs::remove_file(&plain).unwrap();
@@ -938,11 +1028,12 @@ mod tests {
     fn an_interrupted_editable_recording_renders_what_it_holds() {
         let file = editable_recording(2, false);
         let index = source::read(&file).unwrap();
-        assert!(index.fragmented && index.camera.is_some() && index.second_audio.is_some() && index.description.is_some());
+        assert!(index.fragmented && index.camera.is_some() && index.sound(1).is_some() && index.description.is_some());
         let plan = render_plan(&index, &[]).unwrap();
         let calls = Arc::new(Mutex::new(Calls::default()));
         let path = temp("interrupted");
-        let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0] };
+        let options =
+            RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0], sound_tracks: None };
         let (_, frames) =
             render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &AtomicBool::new(false))
                 .unwrap();

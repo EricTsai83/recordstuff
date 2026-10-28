@@ -17,16 +17,16 @@
  *
  * **An editable recording (plan 087)** describes itself through the engine's plan: its edit also holds a scene (the
  * camera's place and size, when it is shown, each input's volume), and its export is rendered rather than
- * remuxed, so it can be exported with no cut at all. While its view is open, its camera and second sound are copied
- * into files of their own in userData (`edits/preview`) for the page to play beside the recording; they are removed
- * when the view closes, and any left by a crash at the next launch.
+ * remuxed, so it can be exported with no cut at all. While its view is open, its camera and second sound (with a mix,
+ * plan 098, both inputs' own sounds) are copied into files of their own in userData (`edits/preview`) for the page to
+ * play beside the recording; they are removed when the view closes, and any left by a crash at the next launch.
  */
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { translate, type Language, type PlainMessageKey } from "../../shared/i18n";
-import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type PreviewTrack } from "../../shared/editing";
+import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type ExtractTrack, PREVIEW_TRACKS, type PreviewTrack } from "../../shared/editing";
 import type { PlaybackEdit } from "../../shared/video-player";
 import { defaultScene, exportRender, fitScene, parseEditableDescription, sameScene, type EditableDescription, type EditScene } from "../../shared/editable";
 import { fileResponse } from "../lib/file-response";
@@ -42,7 +42,7 @@ export interface ExportRunner {
   inspect(request: { source: string; removed: Array<{ from: number; to: number }> }): Promise<ExportPlan>;
   export(request: ExportRequest & { output: string }, progress: (fraction: number) => void): Promise<{ plan: ExportPlan; bytes: number }>;
   /** Plan 087: an editable recording's camera or second sound copied into `output` for the preview. */
-  extract(request: { source: string; track: PreviewTrack; output: string }): Promise<number>;
+  extract(request: { source: string; track: ExtractTrack; output: string }): Promise<number>;
   cancel(): void;
   closeIdle(): void;
   close(): void;
@@ -302,7 +302,18 @@ interface Open {
 
 /** The preview tracks' URLs: `recordstuff-media://preview/<generation>/<track>`, served by `previewResponse`. */
 const PREVIEW_HOST = "preview";
-const PREVIEW_TRACKS: readonly PreviewTrack[] = ["camera", "secondSound"];
+
+/**
+ * The track the worker copies for each preview track of a recording `description` describes, or none: the camera; the
+ * second input's own sound, the file's first disabled one; and with a mix (plan 098) each input's own, both disabled.
+ */
+function extractTrack(track: PreviewTrack, description: EditableDescription): ExtractTrack | undefined {
+  switch (track) {
+    case "camera": return description.camera ? "camera" : undefined;
+    case "firstSound": return description.mix ? "sound1" : undefined;
+    case "secondSound": return description.sounds.length < 2 ? undefined : description.mix ? "sound2" : "sound1";
+  }
+}
 
 /** An export from Export to its end: `started` once the worker has it; until then a cancel only stops it starting. */
 interface ExportRun { part: string; promise: Promise<void>; cancelled: boolean; started: boolean }
@@ -380,7 +391,7 @@ export class Editing {
     const { timescale, duration, frameRate, skipped, editable } = editor;
     return {
       timescale, duration, frameRate, skipped,
-      ...(editable ? { editable: { sounds: editable.sounds, ...(editable.camera ? { camera: editable.camera } : {}), scene: editable.scene, preview: editable.preview } } : {}),
+      ...(editable ? { editable: { sounds: editable.sounds, ...(editable.mix ? { mix: true as const } : {}), ...(editable.camera ? { camera: editable.camera } : {}), scene: editable.scene, preview: editable.preview } } : {}),
     };
   }
 
@@ -390,6 +401,7 @@ export class Editing {
     for (const track of PREVIEW_TRACKS) if (preview[track]) urls[track] = `recordstuff-media://${PREVIEW_HOST}/${this.generation}/${track}`;
     return {
       sounds: description.sounds,
+      ...(description.mix ? { mix: true as const } : {}),
       ...(description.camera ? { camera: { rounding: description.camera.rounding, mirror: description.camera.mirror } } : {}),
       scene: this.sceneOf(open, description),
       recorded: defaultScene(description),
@@ -416,7 +428,8 @@ export class Editing {
   }
 
   /**
-   * Copies the open editable recording's camera and second sound for its preview, each told when it is ready. Once it
+   * Copies the open editable recording's camera and second sound (with a mix, both inputs' own sounds) for its
+   * preview, each told when it is ready. Once it
    * ends, however it ends, a worker it kept busy for a view since closed goes (Codex's review of plan 087).
    */
   private async preparePreview(open: Open, generation: number): Promise<void> {
@@ -430,18 +443,21 @@ export class Editing {
   private async copyPreviewTracks(open: Open, generation: number): Promise<void> {
     const editable = open.editable;
     if (!editable) return;
-    const tracks = PREVIEW_TRACKS.filter((track) => (track === "camera" ? editable.description.camera !== null : editable.description.sounds.length > 1));
+    const tracks = PREVIEW_TRACKS.flatMap((track) => {
+      const extract = extractTrack(track, editable.description);
+      return extract ? [{ track, extract }] : [];
+    });
     if (!tracks.length) return;
     try { await fs.promises.mkdir(this.deps.previewDir, { recursive: true }); } catch (cause) {
       this.deps.log(`editing: no preview folder: ${String(cause)}`);
       return;
     }
     const stem = createHash("sha256").update(open.path).digest("hex").slice(0, 16);
-    for (const track of tracks) {
+    for (const { track, extract } of tracks) {
       const file = path.join(this.deps.previewDir, `${stem}-${generation}-${track}.mp4`);
       try {
         await fs.promises.rm(file, { force: true });
-        await this.deps.runner.extract({ source: open.path, track, output: file });
+        await this.deps.runner.extract({ source: open.path, track: extract, output: file });
       } catch (cause) {
         this.deps.log(`editing: the preview's ${track} of ${open.path} could not be made: ${String(cause)}`);
         await fs.promises.rm(file, { force: true }).catch(() => undefined);
@@ -459,6 +475,7 @@ export class Editing {
         return;
       }
       editable.preview[track] = file;
+      this.deps.log(`editing: the preview's ${track} of ${open.path} is ready (the file's ${extract})`);
       this.deps.changed();
     }
   }
@@ -702,7 +719,8 @@ export class Editing {
     run.started = true;
     open.export = { phase: "exporting", progress: 0, cancelling: false };
     const hiddenNote = (render?.cameraHidden ? `, the camera hidden over ${render.cameraHidden.length} stretch(es)` : "")
-      + (render?.volumeStretchesDb ? `, volume stretches ${render.volumeStretchesDb.map((list) => list.length).join("/")}` : "");
+      + (render?.volumeStretchesDb ? `, volume stretches ${render.volumeStretchesDb.map((list) => list.length).join("/")}` : "")
+      + (render?.soundTracks ? `, sound tracks ${render.soundTracks.join("/")}` : "");
     this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${hiddenNote}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
     this.deps.changed();
     let lastShown = 0;

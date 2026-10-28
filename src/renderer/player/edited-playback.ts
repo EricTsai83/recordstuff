@@ -1,7 +1,8 @@
 /**
  * An edit played as it will export, without an export (plan 085's preview, 2026-10-27 shared with the full-screen
  * viewer): the recording plays, a frame in a removed range jumps to where the export goes on, an editable recording's
- * camera and second sound follow it, and the sounds go through Web Audio at the scene's volumes and the export's soft
+ * camera and second sound (with a mix, plan 098, both inputs' own sounds) follow it, and the sounds go through Web
+ * Audio at the scene's volumes and the export's soft
  * limit. The edit view's preview and the full-screen viewer play an edit with these, so both play it alike.
  */
 import { softLimit } from "../../shared/audio-volume";
@@ -187,13 +188,28 @@ export function soundGain(scene: EditScene, sound: EditableSound | undefined, ti
   return percent / 100;
 }
 
+/** An editable recording's sounds as the page plays them: what the recording holds and its preview's sound elements. */
+export interface SceneSounds {
+  sounds: readonly EditableSound[];
+  /** The recording plays its inputs mixed (plan 098). */
+  mix?: true;
+  /** With a mix, the first input's own track; without, none: the recording plays it. */
+  first: HTMLMediaElement | null;
+  second: HTMLMediaElement | null;
+}
+
 /**
- * Each sound of an editable recording at `scene`'s volume for `time`: `main` plays the first sound, `second` (if any)
- * the second, then the player's own volume after the limit.
+ * Each sound of an editable recording at `scene`'s volume for `time`, then the player's own volume after the limit.
+ * Without a mix `main` plays the first sound and `second` (if any) the second. With one (plan 098) `main` plays both
+ * mixed: once both inputs' own tracks are shown, they play at their volumes and the mix is silent, so nothing is heard
+ * twice; until then the mix plays as recorded and they are silent.
  */
-export function mixScene(mix: EditMix, main: HTMLMediaElement, second: HTMLMediaElement | null, sounds: readonly EditableSound[], scene: EditScene, time: number): void {
+export function mixScene(mix: EditMix, main: HTMLMediaElement, sounds: SceneSounds, scene: EditScene, time: number): void {
   mix.master(main);
-  const pairs: Array<[HTMLMediaElement | null, EditableSound | undefined]> = [[main, sounds[0]], [second, sounds[1]]];
-  for (const [media, sound] of pairs) if (media) mix.set(media, soundGain(scene, sound, time));
+  const own = !sounds.mix || (sounds.first !== null && sounds.second !== null);
+  const pairs: Array<[HTMLMediaElement | null, number]> = sounds.mix
+    ? [[main, own ? 0 : 1], [sounds.first, own ? soundGain(scene, sounds.sounds[0], time) : 0], [sounds.second, own ? soundGain(scene, sounds.sounds[1], time) : 0]]
+    : [[main, soundGain(scene, sounds.sounds[0], time)], [sounds.second, soundGain(scene, sounds.sounds[1], time)]];
+  for (const [media, gain] of pairs) if (media) mix.set(media, gain);
   mix.master(main);
 }

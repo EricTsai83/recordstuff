@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bubbleRadius, bubbleRect, cameraCrop, insideBubble, type CameraLayout, type CameraPosition } from "../../../src/shared/camera-layout.ts";
 import type { RgbFrame } from "./capture-settings.mts";
-import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, sceneLayout } from "./editor-acceptance.mts";
+import { clockSeconds, dragFor, expectedPreviewTracks, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, sceneLayout } from "./editor-acceptance.mts";
 
 const box = (type: string, payload: Buffer): Buffer => {
   const head = Buffer.alloc(8);
@@ -15,6 +15,15 @@ describe("an editable recording's description", () => {
   it("is read from its udta/rsed box, wherever the moov puts it", () => {
     const file = Buffer.concat([box("ftyp", Buffer.from("isom")), box("mdat", Buffer.alloc(64, 7)), box("moov", box("udta", box("rsed", Buffer.from(DESCRIPTION))))]);
     expect(readEditableDescription(file)).toEqual({ sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.5, x: 0.97, y: 0.05, mirror: true } });
+  });
+
+  it("reads version 2's mix (plan 098), and names the preview tracks the edit view copies for each kind", () => {
+    const mixed = '{"version":2,"mix":true,"sounds":["system","microphone"],"camera":null}';
+    const description = readEditableDescription(Buffer.concat([box("ftyp", Buffer.from("isom")), box("moov", box("udta", box("rsed", Buffer.from(mixed))))]));
+    expect(description).toEqual({ sounds: ["system", "microphone"], mix: true, camera: null });
+    expect(expectedPreviewTracks(description!)).toEqual(["firstSound", "secondSound"]);
+    expect(expectedPreviewTracks(readEditableDescription(box("moov", box("udta", box("rsed", Buffer.from(DESCRIPTION)))))!)).toEqual(["camera", "secondSound"]);
+    expect(expectedPreviewTracks({ sounds: ["system"], camera: null })).toEqual([]);
   });
 
   it("is absent from a plain recording, and the bytes 'rsed' inside media are not one", () => {

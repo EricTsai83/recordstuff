@@ -7,7 +7,10 @@
 //!
 //! - `direct`: today's recording with a camera: the camera composed into every screen frame on the GPU, every slot
 //!   encoded, both inputs mixed into one sound track.
-//! - `editable`: the screen alone at today's pace, the camera on its own track, each input on its own sound track.
+//! - `editable`: the screen alone at today's pace, the camera on its own track, both inputs mixed on the first sound
+//!   track (plan 098) and each on its own after it.
+//! - `editable-unmixed`: `editable` without the mixed track, plan 087's file: `pnpm bench:editable -- --pair mix`
+//!   compares the two, so the difference is the mixed track's cost alone.
 //!
 //! Set `EDITABLE_BENCH_MODE`, `EDITABLE_BENCH_SECONDS` and `EDITABLE_BENCH_OUT` (the file); prints
 //! `EDITABLE_BENCH_RECORDING` when the recording starts and `EDITABLE_BENCH {json}` at its end. Ignored unless asked
@@ -97,10 +100,11 @@ fn frame(width: usize, height: usize, n: usize) -> CFRetained<CVPixelBuffer> {
 #[ignore = "pnpm bench:editable runs it"]
 fn editable_bench() {
     let Ok(mode) = std::env::var("EDITABLE_BENCH_MODE") else { return };
-    let editable = match mode.as_str() {
-        "direct" => false,
-        "editable" => true,
-        other => panic!("EDITABLE_BENCH_MODE {other:?} is neither direct nor editable"),
+    let (editable, mix) = match mode.as_str() {
+        "direct" => (false, false),
+        "editable" => (true, true),
+        "editable-unmixed" => (true, false),
+        other => panic!("EDITABLE_BENCH_MODE {other:?} is none of direct, editable and editable-unmixed"),
     };
     let seconds: u64 = std::env::var("EDITABLE_BENCH_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
     let path = std::path::PathBuf::from(std::env::var("EDITABLE_BENCH_OUT").expect("EDITABLE_BENCH_OUT"));
@@ -113,6 +117,9 @@ fn editable_bench() {
     let file = std::fs::File::create(&path).unwrap();
     let core = Core::<Mac>::new(events.clone(), FRAME_RATE, AUDIO_BITRATE, 2, file);
     core.separate_sound(editable);
+    if editable && !mix {
+        core.leave_out_mix();
+    }
     core.watch_microphone(1);
     let feed = Arc::new(crate::mac::camera::Feed::default());
     let compositor = Arc::new(Compositor::new(WIDTH, HEIGHT, Layout::default(), feed.clone()).unwrap());
@@ -230,7 +237,14 @@ fn editable_bench() {
         tracks.join(",")
     );
     assert!(failures.is_empty(), "{failures:?}");
-    assert_eq!(parsed.tracks.len(), if editable { 4 } else { 2 });
+    assert_eq!(
+        parsed.tracks.len(),
+        match (editable, mix) {
+            (false, _) => 2,
+            (true, true) => 5,
+            (true, false) => 4,
+        }
+    );
 }
 
 /// Codex's first review of plan 087 (finding 1): hidden, the camera's track is black on the clock, whether the camera
@@ -340,7 +354,8 @@ fn flat(width: usize, height: usize, luma: u8) -> CFRetained<CVPixelBuffer> {
 }
 
 /// An editable recording of `seconds` through the session's own core and encoders: a dark 640×360 screen, a bright
-/// camera, a 440 Hz tone as the system's sound and a 660 Hz one as the microphone's.
+/// camera, a 440 Hz tone as the system's sound and a 660 Hz one as the microphone's, mixed on the first sound track
+/// (plan 098) before each on its own.
 pub(crate) fn record_editable(path: &std::path::Path, seconds: f64) {
     let events = Arc::new(Counted::default());
     let mut core = Core::<Mac>::new(events.clone(), FRAME_RATE, AUDIO_BITRATE, 2, std::fs::File::create(path).unwrap());
@@ -350,7 +365,7 @@ pub(crate) fn record_editable(path: &std::path::Path, seconds: f64) {
     let track = CameraTrack::new(&core.shared(), FRAME_RATE, 2_000_000).unwrap();
     core.camera_track(track.spec.clone());
     let camera_layout = Layout::default();
-    core.metadata(Description { sounds: vec![Sound::System, Sound::Microphone], camera: Some(camera_layout) }.to_bytes());
+    core.metadata(Description { sounds: vec![Sound::System, Sound::Microphone], mix: core.mixed_sound(), camera: Some(camera_layout) }.to_bytes());
     let composition = Composition::new(core.shared().events(), None);
     let made = core
         .make_encoders(move |sink, tracks| {
@@ -420,7 +435,9 @@ fn a_rendered_export_composes_the_camera_where_the_edit_puts_it_and_mixes_at_its
     record_editable(&source, 2.5);
     let before = std::fs::read(&source).unwrap();
     let corner = Layout { x: 0.0, y: 1.0, ..Layout::default() };
-    let options = RenderOptions { camera: Some(corner), camera_hidden: Vec::new(), gain_stretches: Vec::new(), gains: vec![0.0, 1.0] };
+    // The inputs' own tracks, after the mix (plan 098), as main names them.
+    let options =
+        RenderOptions { camera: Some(corner), camera_hidden: Vec::new(), gain_stretches: Vec::new(), gains: vec![0.0, 1.0], sound_tracks: Some(vec![1, 2]) };
     // Half a second removed from the middle (90 kHz ticks).
     let removed = [(90_000u64, 135_000u64)];
     let report = render::export(&source, &output, &removed, &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
@@ -452,6 +469,119 @@ fn a_rendered_export_composes_the_camera_where_the_edit_puts_it_and_mixes_at_its
     if let Ok(keep) = std::env::var("RECORDSTUFF_RENDER_OUT") {
         std::fs::copy(&output, keep).unwrap();
     }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The decoded sound of `file`'s track `n` (`crate::mac::edit_test::tracks`), with the AAC configuration `config`.
+fn decoded(file: &crate::mux::parse::Mp4, n: usize, config: &[u8]) -> Vec<f32> {
+    let packets: Vec<Vec<u8>> = file.tracks[n].samples.iter().map(|s| s.data.clone()).collect();
+    let format = crate::edit::remux::AudioFormat { config: config.to_vec(), sample_rate: 48_000, channels: 2 };
+    crate::mac::edit::AacDecoder::new(&format).unwrap().decode(&packets).unwrap()
+}
+
+/// Plan 098: an editable recording with both inputs plays both in any player: its first sound track, the only one
+/// enabled, holds the system's 440 Hz and the microphone's 660 Hz each at its own level (within 0.5 dB of its own
+/// track's), and starts and ends with the inputs' own tracks (within one AAC frame); its description says so.
+#[test]
+fn an_editable_recording_with_both_inputs_plays_both_on_its_first_sound_track() {
+    let dir = std::env::temp_dir().join(format!("recordstuff-mixed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("source.mp4");
+    record_editable(&source, 2.5);
+    let index = crate::edit::source::read(&std::fs::File::open(&source).unwrap()).unwrap();
+    let description: serde_json::Value = serde_json::from_str(index.description.as_deref().unwrap()).unwrap();
+    assert_eq!(description["version"], 2);
+    assert_eq!(description["mix"], true);
+    assert_eq!(description["sounds"], serde_json::json!(["system", "microphone"]));
+    let file = crate::mac::edit_test::tracks(&source);
+    // Screen, mix, system, microphone, camera; only the screen and the mix are presented.
+    let enabled: Vec<bool> = file.tracks.iter().map(|t| t.enabled).collect();
+    assert_eq!(enabled, [true, true, false, false, false]);
+    let presented: Vec<u64> = (1..4).map(|n| file.tracks[n].edit.expect("an edit list skips the priming").0).collect();
+    let (shortest, longest) = (presented.iter().min().unwrap(), presented.iter().max().unwrap());
+    assert!(longest - shortest <= 1024, "the sound tracks present {presented:?} frames");
+    let config = index.audio.as_ref().unwrap().config.clone();
+    let (mix, system, microphone) = (decoded(&file, 1, &config), decoded(&file, 2, &config), decoded(&file, 3, &config));
+    let middle = |sound: &[f32]| sound[sound.len() / 4..sound.len() * 3 / 4].to_vec();
+    let (mix, system, microphone) = (middle(&mix), middle(&system), middle(&microphone));
+    let db = |a: f64, b: f64| 10.0 * (a / b).log10();
+    let (mix_440, own_440) = (tone_energy(&mix, 440.0), tone_energy(&system, 440.0));
+    let (mix_660, own_660) = (tone_energy(&mix, 660.0), tone_energy(&microphone, 660.0));
+    eprintln!("the mix: 440 Hz {:+.3} dB, 660 Hz {:+.3} dB from their own tracks; presented {presented:?}", db(mix_440, own_440), db(mix_660, own_660));
+    assert!(db(mix_440, own_440).abs() <= 0.5, "the system's tone in the mix: {:.2} dB from its own", db(mix_440, own_440));
+    assert!(db(mix_660, own_660).abs() <= 0.5, "the microphone's tone in the mix: {:.2} dB from its own", db(mix_660, own_660));
+    // Each input's own track holds it alone.
+    assert!(own_440 > 100.0 * tone_energy(&system, 660.0) && own_660 > 100.0 * tone_energy(&microphone, 440.0));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Plan 098's null comparison: the same inputs written with and without their mix (the same encoded packets), each
+/// rendered with the microphone at 50%, export the same sound: the mix is never in the export.
+#[test]
+fn a_recording_with_a_mix_exports_the_sound_the_same_inputs_without_it_do() {
+    use crate::edit::render::{self, RenderOptions};
+    use crate::mux::mp4::{Codec, HybridMp4, Sample, TrackConfig};
+    let dir = std::env::temp_dir().join(format!("recordstuff-mix-null-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let screens: Vec<_> = (0..RING).map(|n| frame(640, 360, n)).collect();
+    let (avcc, screen) = one_second(640, 360, &screens, 2_000_000);
+    // A second of each sound encoded once: the system's 440 Hz, the microphone's 660 Hz, and the two summed.
+    let tone = |n: usize, hz: f32| ((n / 2) as f32 * hz * std::f32::consts::TAU / 48_000.0).sin() * 0.25;
+    let sounds: Vec<Box<dyn Fn(usize) -> f32>> =
+        vec![Box::new(move |n| tone(n, 440.0) + tone(n, 660.0)), Box::new(move |n| tone(n, 440.0)), Box::new(move |n| tone(n, 660.0))];
+    /// A sound's AAC configuration, priming and packets.
+    type Encoded = (Vec<u8>, u32, Vec<Vec<u8>>);
+    let encoded: Vec<Encoded> = sounds
+        .iter()
+        .map(|sound| {
+            let mut aac = AacEncoder::new(48_000, 2, AUDIO_BITRATE).unwrap();
+            aac.push(&(0..3 * 48_000 * 2).map(sound).collect::<Vec<f32>>());
+            let mut packets = Vec::new();
+            aac.drain(&mut |p| packets.push(p)).unwrap();
+            (aac.audio_specific_config(), aac.priming, packets)
+        })
+        .collect();
+    let write = |path: &std::path::Path, mix: bool| {
+        let audio = |(config, priming, _): &Encoded| TrackConfig {
+            codec: Codec::Aac { config: config.clone(), sample_rate: 48_000, channels: 2, average_bitrate: AUDIO_BITRATE, max_bitrate: AUDIO_BITRATE },
+            timescale: 48_000,
+            skip: *priming,
+        };
+        let sounds: Vec<&Encoded> = encoded.iter().skip(usize::from(!mix)).collect();
+        let mut tracks = vec![TrackConfig { codec: Codec::H264 { avcc: avcc.clone(), width: 640, height: 360 }, timescale: 90_000, skip: 0 }];
+        tracks.extend(sounds.iter().map(|s| audio(s)));
+        let description = Description { sounds: vec![Sound::System, Sound::Microphone], mix, camera: None };
+        let file = std::fs::File::create(path).unwrap();
+        let mut mp4 = HybridMp4::create_with_metadata(file, tracks, Some(description.to_bytes())).unwrap();
+        let pictures: Vec<Sample> = screen.iter().map(|(d, s)| Sample { data: d, duration: 3000, sync: *s }).collect();
+        mp4.write_fragment(0, &pictures).unwrap();
+        for (n, (_, _, packets)) in sounds.iter().enumerate() {
+            let chunk: Vec<Sample> = packets.iter().take(48).map(|data| Sample { data, duration: 1024, sync: true }).collect();
+            mp4.write_fragment(1 + n, &chunk).unwrap();
+            mp4.set_presented(1 + n, 48_000);
+        }
+        mp4.finish().unwrap();
+    };
+    let options = |sound_tracks| RenderOptions { camera: None, camera_hidden: Vec::new(), gain_stretches: Vec::new(), gains: vec![1.0, 0.5], sound_tracks };
+    let mut exported = Vec::new();
+    for (mix, sound_tracks) in [(false, None), (true, Some(vec![1, 2]))] {
+        let (source, output) = (dir.join(format!("source-{mix}.mp4")), dir.join(format!("export-{mix}.mp4")));
+        let _ = std::fs::remove_file(&output);
+        write(&source, mix);
+        render::export(&source, &output, &[], &options(sound_tracks), &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+        let file = crate::mac::edit_test::tracks(&output);
+        let config = crate::edit::source::read(&std::fs::File::open(&output).unwrap()).unwrap().audio.unwrap().config;
+        exported.push(decoded(&file, 1, &config));
+    }
+    let (without, with) = (&exported[0], &exported[1]);
+    assert_eq!(without.len(), with.len());
+    let worst = without.iter().zip(with).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+    eprintln!("the exports with and without the mix differ by up to {worst}");
+    assert!(worst < 1e-3, "the exports differ by up to {worst}");
+    // And it is the inputs at their volumes: the microphone's tone at half the system's (6 dB, as energy 4×).
+    let middle = &with[with.len() / 4..with.len() / 2];
+    let ratio = 10.0 * (tone_energy(middle, 440.0) / tone_energy(middle, 660.0)).log10();
+    assert!((ratio - 6.02).abs() < 0.5, "440 Hz is {ratio:.2} dB over 660 Hz");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -505,7 +635,7 @@ fn editable_source(path: &std::path::Path, seconds: u64) {
     };
     let video = |avcc: &Vec<u8>, width: u16, height: u16| TrackConfig { codec: Codec::H264 { avcc: avcc.clone(), width, height }, timescale: 90_000, skip: 0 };
     let tracks = vec![video(&screen_avcc, 1920, 1080), audio(0), audio(1), video(&camera_avcc, 1280, 720)];
-    let description = Description { sounds: vec![Sound::System, Sound::Microphone], camera: Some(Layout::default()) };
+    let description = Description { sounds: vec![Sound::System, Sound::Microphone], mix: false, camera: Some(Layout::default()) };
     let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path).unwrap();
     let mut mp4 = HybridMp4::create_with_metadata(file, tracks, Some(description.to_bytes())).unwrap();
     let mut written = 0u64;
@@ -546,6 +676,7 @@ fn render_bench() {
         camera_hidden: Vec::new(),
         gain_stretches: Vec::new(),
         gains: vec![1.0, 1.0],
+        sound_tracks: None,
     };
     let output = dir.join("export.mp4");
     let began = Instant::now();

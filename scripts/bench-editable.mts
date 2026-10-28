@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `pnpm bench:editable [-- --seconds 60] [--repeat 3] [--label name] [--app-r 12.2]`
+ * `pnpm bench:editable [-- --seconds 60] [--repeat 3] [--label name] [--app-r 12.2] [--pair direct|mix]`
  *
  * Plan 087's step 1: what the editable recording costs over today's, without a desktop. Each recording runs the
  * engine's own core, VideoToolbox encoders, AAC encoders and writer on synthetic capture at real time
@@ -16,6 +16,10 @@
  * Line Tools; no screen, camera or microphone permission, and it never records the screen. Evidence goes to
  * `docs/verification/measurements/<timestamp>-editable-<label>/`. Exit 1 when a budget failed or a recording's
  * evidence is unusable, 2 when blocked or given bad arguments.
+ *
+ * `--pair mix` (plan 098) compares the editable recording with its mixed sound track against the same without it,
+ * `editable-unmixed`, which only the engine's tests can make: the mixed track's engine CPU (M1), disk (M3), memory (M4)
+ * and the encoder service (M5), judged against the gates frozen at 098's D1.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -23,19 +27,19 @@ import os from "node:os";
 import path from "node:path";
 import { runnerArgs, scrubbedEnv } from "./lib/runner/runner-env.mts";
 import { ENCODER_SERVICE, CpuSampler, SamplerBlockedError, compileSampler, intervals, summarize } from "./lib/verification/cpu-sampler.mts";
-import { APP_CAMERA_R_30, figures, judge, problems, type BenchLine, type Mode, type Run } from "./lib/verification/editable-bench.mts";
+import { APP_CAMERA_R_30, PAIR_MODES, figures, judge, judgeMix, problems, type BenchLine, type Mode, type Pair, type Run } from "./lib/verification/editable-bench.mts";
 import { MEASUREMENTS_DIR, REPO_ROOT } from "./lib/verification/verify-recording.mts";
 
-interface Options { seconds: number; repeat: number; label: string; appR: number }
+interface Options { seconds: number; repeat: number; label: string; appR: number; pair: Pair }
 
 function usage(message?: string): never {
   if (message) console.error(message);
-  console.error("usage: pnpm bench:editable -- [--seconds 60] [--repeat 3] [--label name] [--app-r 12.2]");
+  console.error("usage: pnpm bench:editable -- [--seconds 60] [--repeat 3] [--label name] [--app-r 12.2] [--pair direct|mix]");
   process.exit(2);
 }
 
 function parseOptions(argv: string[]): Options {
-  const options: Options = { seconds: 60, repeat: 3, label: "", appR: APP_CAMERA_R_30 };
+  const options: Options = { seconds: 60, repeat: 3, label: "", appR: APP_CAMERA_R_30, pair: "direct" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     const value = (): string => { const next = argv[++i]; if (next === undefined || next.startsWith("--")) usage(`${arg} needs a value`); return next; };
@@ -43,6 +47,11 @@ function parseOptions(argv: string[]): Options {
     else if (arg === "--repeat") options.repeat = Number(value());
     else if (arg === "--label") options.label = value();
     else if (arg === "--app-r") options.appR = Number(value());
+    else if (arg === "--pair") {
+      const pair = value();
+      if (pair !== "direct" && pair !== "mix") usage("--pair must be direct or mix");
+      options.pair = pair;
+    }
     else usage(`unknown argument ${arg}`);
   }
   if (!(Number.isInteger(options.seconds) && options.seconds >= 20 && options.seconds <= 600)) usage("--seconds must be 20–600");
@@ -115,9 +124,10 @@ async function main(): Promise<void> {
   console.log(`Editable recording benchmark: ${options.repeat} recording(s) a mode of ${options.seconds} s, alternating; evidence ${out}`);
   const runs: Run[] = [];
   const failures: string[] = [];
+  const [before, after] = PAIR_MODES[options.pair];
   for (let round = 1; round <= options.repeat; round += 1) {
     // Alternated, so neither mode always runs on a warmer machine.
-    for (const mode of (round % 2 ? ["direct", "editable"] : ["editable", "direct"]) as Mode[]) {
+    for (const mode of (round % 2 ? [before, after] : [after, before]) as Mode[]) {
       const run = await record(binary, sampler, mode, round, options, out);
       if (typeof run === "string") { failures.push(run); console.error(`FAILED: ${run}`); continue; }
       const found = problems(run);
@@ -126,17 +136,22 @@ async function main(): Promise<void> {
       console.log(`${mode} round ${round}: engine ${run.engineCpu.toFixed(2)}%, encoder service ${run.encoderCpu.toFixed(2)}%, resident ${(run.residentBytes / 1024 ** 2).toFixed(0)} MiB, ${run.line.tracks.length} tracks, ${(run.line.fileBytes / 1024 ** 2).toFixed(1)} MiB${found.length ? ` — ${found.join("; ")}` : ""}`);
     }
   }
-  const direct = figures(runs, "direct"), editable = figures(runs, "editable");
-  const verdicts = direct && editable ? judge(direct, editable, options.appR) : [];
-  const failed = failures.length > 0 || !direct || !editable || verdicts.some((verdict) => verdict.verdict === "fail");
+  const first = figures(runs, before), second = figures(runs, after);
+  const verdicts = first && second ? (options.pair === "mix" ? judgeMix(first, second) : judge(first, second, options.appR)) : [];
+  const failed = failures.length > 0 || !first || !second || verdicts.some((verdict) => verdict.verdict === "fail");
   const mib = (bytes: number): string => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
-  const trackNames = ["screen", "system sound", "microphone", "camera"];
+  const trackNames: Record<Mode, string[]> = {
+    direct: ["screen with camera", "mixed sound"],
+    editable: ["screen", "mixed sound", "system sound", "microphone", "camera"],
+    "editable-unmixed": ["screen", "system sound", "microphone", "camera"],
+  };
   const summary = [
     `# Editable recording benchmark — ${options.label || "unlabelled"}`,
     "",
     `- Run: ${new Date().toISOString()} on ${os.cpus()[0]?.model ?? "?"}, macOS ${os.release()}; ${options.repeat} recording(s) a mode of ${options.seconds} s, alternating, medians below`,
     "- Synthetic capture through the engine's own core, encoders and writer at real time: 1920×1080 at 60 Hz, a 1280×720 camera at 30 fps, two inputs' sound; recorded at 30 fps, 12 Mbps",
-    `- CPU is percent of one core, the bench process judged from its fifth second to five before its end; the app's is estimated as R ${options.appR}% (with the camera, 30 fps) plus the engine's increase`,
+    `- Pair ${options.pair}: ${before} against ${after}${options.pair === "mix" ? " (plan 098: the mixed sound track's cost alone)" : ""}`,
+    `- CPU is percent of one core, the bench process judged from its fifth second to five before its end${options.pair === "direct" ? `; the app's is estimated as R ${options.appR}% (with the camera, 30 fps) plus the engine's increase` : ""}`,
     "",
     "| Check | Limit | Actual | Verdict |",
     "| --- | --- | --- | --- |",
@@ -144,8 +159,8 @@ async function main(): Promise<void> {
     "",
     "| Mode | Engine CPU | Encoder service | Resident peak | File a minute | Tracks a minute |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...([["direct", direct], ["editable", editable]] as const).map(([mode, f]) => (f
-      ? `| ${mode} | ${f.engineCpu.toFixed(2)}% | ${f.encoderCpu.toFixed(2)}% | ${mib(f.residentBytes)} | ${mib(f.fileBytesPerMinute)} | ${f.trackBytesPerMinute.map((bytes, index) => `${mode === "direct" ? ["screen with camera", "mixed sound"][index] : trackNames[index]} ${mib(bytes)}`).join(", ")} |`
+    ...([[before, first], [after, second]] as const).map(([mode, f]) => (f
+      ? `| ${mode} | ${f.engineCpu.toFixed(2)}% | ${f.encoderCpu.toFixed(2)}% | ${mib(f.residentBytes)} | ${mib(f.fileBytesPerMinute)} | ${f.trackBytesPerMinute.map((bytes, index) => `${trackNames[mode][index] ?? `track ${index + 1}`} ${mib(bytes)}`).join(", ")} |`
       : `| ${mode} | — | — | — | — | — |`)),
     "",
     ...(failures.length ? ["## Problems", "", ...failures.map((failure) => `- ${failure}`), ""] : []),
@@ -157,7 +172,7 @@ async function main(): Promise<void> {
     "",
   ].join("\n");
   fs.writeFileSync(path.join(out, "summary.md"), summary);
-  fs.writeFileSync(path.join(out, "result.json"), JSON.stringify({ options, runs, direct, editable, verdicts, failures }, null, 2));
+  fs.writeFileSync(path.join(out, "result.json"), JSON.stringify({ options, runs, [before]: first, [after]: second, verdicts, failures }, null, 2));
   console.log(`\n${summary.split("## Every recording")[0]}`);
   console.log(failed ? "Result: FAIL" : "Result: PASS");
   process.exit(failed ? 1 : 0);

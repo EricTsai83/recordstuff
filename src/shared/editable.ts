@@ -30,8 +30,16 @@ export interface EditableCamera {
 }
 
 export interface EditableDescription {
-  /** The file's sound tracks, in order: the first plays with the picture in any player, the second only in the edit. */
+  /**
+   * The inputs' own sound tracks, in the file's order. Without a mix the first plays with the picture in any player and
+   * the second only in the edit; with one, both follow the mix and play only in the edit.
+   */
   sounds: EditableSound[];
+  /**
+   * Version 2 (plan 098): the file's first sound track holds `sounds` mixed, the one any player plays, and the inputs'
+   * own tracks follow it. Absent in version 1, whose first sound track is `sounds[0]`.
+   */
+  mix?: true;
   /** Where the bubble was when the recording started; null without a camera track. */
   camera: EditableCamera | null;
 }
@@ -46,20 +54,26 @@ function isSize(value: unknown): value is number {
   return finite(value) && value >= CAMERA_MIN_SIZE && value <= CAMERA_MAX_SIZE;
 }
 
-/** A description the engine wrote (version 1), or undefined for anything else: absent, too large or malformed. */
+/**
+ * A description the engine wrote (version 1, or 2 with a mix, plan 098), or undefined for anything else: absent, too
+ * large or malformed. A mix is of two different inputs, system and microphone, never of silence.
+ */
 export function parseEditableDescription(text: string | undefined | null): EditableDescription | undefined {
   if (typeof text !== "string" || text.length > EDITABLE_DESCRIPTION_LIMIT) return undefined;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return undefined; }
-  if (!isRecord(value) || value["version"] !== 1) return undefined;
+  if (!isRecord(value) || (value["version"] !== 1 && value["version"] !== 2)) return undefined;
   const sounds = value["sounds"];
   if (!Array.isArray(sounds) || sounds.length < 1 || sounds.length > 2 || !sounds.every((s) => (SOUNDS as readonly unknown[]).includes(s))) return undefined;
+  const mixed = value["version"] === 2;
+  if (mixed && (value["mix"] !== true || sounds.length !== 2 || sounds.includes("silent") || sounds[0] === sounds[1])) return undefined;
+  const head = { sounds: sounds as EditableSound[], ...(mixed ? { mix: true as const } : {}) };
   const camera = value["camera"];
-  if (camera === null || camera === undefined) return { sounds: sounds as EditableSound[], camera: null };
+  if (camera === null || camera === undefined) return { ...head, camera: null };
   if (!isRecord(camera)) return undefined;
   const { width, height, rounding, x, y, mirror } = camera;
   if (!isSize(width) || !isSize(height) || !finite(rounding) || rounding < 0 || rounding > 1 || !isCameraPosition({ x, y }) || typeof mirror !== "boolean") return undefined;
-  return { sounds: sounds as EditableSound[], camera: { width, height, rounding, x: x as number, y: y as number, mirror } };
+  return { ...head, camera: { width, height, rounding, x: x as number, y: y as number, mirror } };
 }
 
 /** A stretch of the recording, `[from, to)` in the video's timescale (shared/editing.ts `EditRange`). */
@@ -305,8 +319,14 @@ export interface ExportRender {
   cameraHidden?: Array<{ from: number; to: number }>;
   /** Each sound track's stretches at a volume of their own, in dB, in the file's order (as `volumesDb`). */
   volumeStretchesDb?: Array<Array<{ from: number; to: number; db: number }>>;
-  /** Each sound track's volume in dB, in the file's order. */
+  /** Each sound track's volume in dB, in the file's order, or in `soundTracks`' when given. */
   volumesDb: number[];
+  /**
+   * The file's sound tracks the export mixes, by their place among its sound tracks (0 the one players play), in the
+   * order of `volumesDb` (plan 098): a recording with a mix names its inputs' own tracks, never the mix. Absent: every
+   * sound track in the file's order.
+   */
+  soundTracks?: number[];
 }
 
 /** The engine's request for `scene` on a recording `description` describes. */
@@ -322,8 +342,12 @@ export function exportRender(description: EditableDescription, scene: EditScene)
     ...(hidden.length > 0 ? { cameraHidden: hidden } : {}),
     volumesDb: description.sounds.map((sound) => volumeDb(percent(sound))),
     ...(stretches.some((list) => list.length > 0) ? { volumeStretchesDb: stretches } : {}),
+    ...(description.mix ? { soundTracks: description.sounds.map((_, n) => n + 1) } : {}),
   };
 }
+
+/** The most sound tracks a recording has: a mix and two inputs (plan 098). */
+const MAX_SOUND_TRACKS = 3;
 
 export function isExportRender(value: unknown): value is ExportRender {
   if (!isRecord(value)) return false;
@@ -339,5 +363,8 @@ export function isExportRender(value: unknown): value is ExportRender {
   const stretchesOk = stretches === undefined || (Array.isArray(stretches) && stretches.length <= 2 && stretches.every((list) =>
     Array.isArray(list) && list.length <= MAX_CAMERA_HIDDEN
     && list.every((s) => isRecord(s) && isTick(s["from"]) && isTick(s["to"]) && s["from"] < s["to"] && isGainDb(s["db"]))));
-  return cameraOk && hiddenOk && stretchesOk && Array.isArray(volumes) && volumes.length <= 2 && volumes.every(isGainDb);
+  const tracks = value["soundTracks"];
+  const tracksOk = tracks === undefined || (Array.isArray(tracks) && Array.isArray(volumes) && tracks.length === volumes.length
+    && tracks.every((n) => Number.isInteger(n) && n >= 0 && n < MAX_SOUND_TRACKS) && new Set(tracks).size === tracks.length);
+  return cameraOk && hiddenOk && stretchesOk && tracksOk && Array.isArray(volumes) && volumes.length <= 2 && volumes.every(isGainDb);
 }

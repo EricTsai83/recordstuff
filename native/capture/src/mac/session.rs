@@ -512,7 +512,8 @@ impl Session {
             None => None,
         };
         if request.editable {
-            // What each sound track holds, in the file's order (core's `route`), and the camera's first place.
+            // What each input's own sound track holds, in the file's order (core's `routes`), whether their mix comes
+            // first (plan 098), and the camera's first place.
             let sounds = match (system_input, microphone_input) {
                 (Some(_), Some(_)) => vec![Sound::System, Sound::Microphone],
                 (Some(_), None) => vec![Sound::System],
@@ -520,7 +521,7 @@ impl Session {
                 (None, None) => vec![Sound::Silent],
             };
             let camera = camera_track.as_ref().and(camera_request.as_ref()).map(|wanted| wanted.layout);
-            core.metadata(Description { sounds, camera }.to_bytes());
+            core.metadata(Description { sounds, mix: core.mixed_sound(), camera }.to_bytes());
         }
         // The encoders are made while the stream starts, so preparing takes the longer of the two instead of their sum.
         let (width, height, frame_rate, video_bitrate, audio_bitrate) =

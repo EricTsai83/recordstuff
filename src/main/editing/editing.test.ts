@@ -19,6 +19,8 @@ const hash = (file: string): string => createHash("sha256").update(fs.readFileSy
 
 /** An editable recording's description (plan 087), as the engine writes it. */
 const DESCRIPTION = JSON.stringify({ version: 1, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: true } });
+/** One with its inputs mixed on its first sound track (plan 098). */
+const MIXED_DESCRIPTION = JSON.stringify({ version: 2, mix: true, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.3, rounding: 0.15, x: 0.97, y: 0.05, mirror: true } });
 
 function planFor(removed: Array<{ from: number; to: number }>, editable?: string): ExportPlan {
   // Snapped to whole frames of 3000 ticks, as the engine does.
@@ -596,6 +598,37 @@ describe("an editable recording (plan 087)", () => {
     // Closed, its preview goes.
     ctx.editing.choose("rec", { action: "close" });
     await vi.waitFor(() => expect(previews()).toEqual([]));
+  });
+
+  it("with its inputs mixed (plan 098), previews and exports each input's own track, never the mix", async () => {
+    const worker = runner(undefined, MIXED_DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    await vi.waitFor(() => expect(Object.keys(ctx.editing.view()?.editable?.preview ?? {})).toHaveLength(3), { timeout: 5000, interval: 5 });
+    // The camera, then each input's own sound: the file's first and second disabled sound tracks.
+    expect(worker.extract.mock.calls.map(([request]) => request.track)).toEqual(["camera", "sound1", "sound2"]);
+    const view = ctx.editing.view()!;
+    expect(view.editable).toMatchObject({ sounds: ["system", "microphone"], mix: true });
+    const { firstSound, secondSound } = view.editable!.preview;
+    expect(firstSound).toMatch(/^recordstuff-media:\/\/preview\/\d+\/firstSound$/);
+    expect(await (await ctx.editing.previewResponse(new Request(firstSound!))!).text()).toBe("the sound1");
+    expect(await (await ctx.editing.previewResponse(new Request(secondSound!))!).text()).toBe("the sound2");
+    expect(await ctx.editing.playback("rec")).toMatchObject({ editable: { mix: true, preview: { firstSound, secondSound } } });
+    const scene = { camera: { x: 0.97, y: 0.05, width: 0.2, height: 0.3, shown: true }, volumes: { system: 100, microphone: 50 } };
+    expect(await ctx.editing.choose("rec", { action: "save", removed: [], revision: 0, scene })).toBe(true);
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    expect(worker.export.mock.calls[0]![0].render).toMatchObject({ volumesDb: [0, 20 * Math.log10(0.5)], soundTracks: [1, 2] });
+  });
+
+  it("previews a version-1 recording's second sound from its first disabled track", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    await ready(ctx);
+    expect(worker.extract.mock.calls.map(([request]) => request.track)).toEqual(["camera", "sound1"]);
+    expect(ctx.editing.view()!.editable).not.toHaveProperty("mix");
+    expect(ctx.editing.view()!.editable!.preview).not.toHaveProperty("firstSound");
   });
 
   it("saves the scene with the cuts as a version-2 edit, keeps it across saves of cuts alone, and exports it rendered", async () => {

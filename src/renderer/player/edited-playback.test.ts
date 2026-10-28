@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { watchSkipped, type SkipPlan } from "./edited-playback";
+import { mixScene, watchSkipped, type EditMix, type SkipPlan } from "./edited-playback";
 
 /** A video's frame callbacks and play, driven by hand: what `watchSkipped` reads of a <video>. */
 function fakeVideo() {
@@ -58,5 +58,32 @@ describe("watchSkipped", () => {
     stop();
     video.play();
     expect(video.currentTime).toBe(8);
+  });
+});
+
+describe("mixScene", () => {
+  /** The gains `mixScene` sets, by element. */
+  function recorder() {
+    const gains = new Map<string, number>();
+    const mix = { master() {}, set(media: HTMLMediaElement, factor: number) { gains.set(media.id, factor); } } as unknown as EditMix;
+    return { mix, gains };
+  }
+  const media = (id: string): HTMLMediaElement => ({ id }) as HTMLMediaElement;
+  const scene = { volumes: { system: 50, microphone: 200 } };
+  const sounds = ["system", "microphone"] as const;
+
+  it("without a mix, plays the first sound in the recording and the second beside it, each at its volume", () => {
+    const { mix, gains } = recorder();
+    mixScene(mix, media("main"), { sounds, first: null, second: media("second") }, scene, 0);
+    expect(Object.fromEntries(gains)).toEqual({ main: 0.5, second: 2 });
+  });
+
+  it("with a mix (plan 098), silences the recording's mix once both inputs' own tracks play, and plays the mix as recorded until then", () => {
+    const both = recorder();
+    mixScene(both.mix, media("main"), { sounds, mix: true, first: media("first"), second: media("second") }, scene, 0);
+    expect(Object.fromEntries(both.gains)).toEqual({ main: 0, first: 0.5, second: 2 });
+    const waiting = recorder();
+    mixScene(waiting.mix, media("main"), { sounds, mix: true, first: null, second: media("second") }, scene, 0);
+    expect(Object.fromEntries(waiting.gains)).toEqual({ main: 1, second: 0 });
   });
 });

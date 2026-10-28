@@ -50,8 +50,16 @@ export interface ExportRequest {
   render?: ExportRender;
 }
 
-/** An editable recording's track the edit view plays beside it (plan 087): the camera, or its second sound. */
-export type PreviewTrack = "camera" | "secondSound";
+/**
+ * An editable recording's track the edit view plays beside it (plan 087): the camera, or the description's second
+ * sound; with a mix (plan 098), its first sound too, since the recording itself then plays the mix.
+ */
+export type PreviewTrack = "camera" | "firstSound" | "secondSound";
+export const PREVIEW_TRACKS: readonly PreviewTrack[] = ["camera", "firstSound", "secondSound"];
+
+/** A track the export worker copies for the preview: the camera, or a disabled sound track by its place (plan 098). */
+export type ExtractTrack = "camera" | "sound1" | "sound2";
+const EXTRACT_TRACKS: readonly ExtractTrack[] = ["camera", "sound1", "sound2"];
 
 /** Why an export or an inspection failed, as the engine and the worker name it. */
 export type ExportFailureCode =
@@ -77,7 +85,7 @@ export type ExportMainMessage =
   /** `pnpm bench:export`'s speed reference, served only under `EXPORT_BENCH_ENV`; main never sends it. */
   | { type: "copy"; id: number; request: { source: string; output: string } }
   /** Copies an editable recording's track into a file of its own for the edit view's preview (plan 087). */
-  | { type: "extract"; id: number; request: { source: string; track: PreviewTrack; output: string } };
+  | { type: "extract"; id: number; request: { source: string; track: ExtractTrack; output: string } };
 
 /** The worker serves `copy` only with this set to `1` (`pnpm bench:export`). */
 export const EXPORT_BENCH_ENV = "RECORDSTUFF_EXPORT_BENCH";
@@ -142,7 +150,7 @@ export function isExportMainMessage(value: unknown): value is ExportMainMessage 
     case "ping": return isCount(value["id"]);
     case "copy": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string";
     case "extract": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string"
-      && (request["track"] === "camera" || request["track"] === "secondSound");
+      && (EXTRACT_TRACKS as readonly unknown[]).includes(request["track"]);
     default: return false;
   }
 }
@@ -190,8 +198,10 @@ export interface EditorView {
 
 /** What the edit view needs of an editable recording: what it holds, the scene as saved and the preview's tracks. */
 export interface EditorEditable {
-  /** The file's sound tracks, in order: the recording itself plays the first. */
+  /** The inputs' own sound tracks, in order: the recording itself plays the first, or with `mix` both mixed. */
   sounds: EditableSound[];
+  /** The recording plays its inputs mixed (plan 098): the preview plays each input's own track instead. */
+  mix?: true;
   /** The bubble's shape as recorded; absent without a camera track. */
   camera?: { rounding: number; mirror: boolean };
   scene: EditScene;
@@ -199,9 +209,10 @@ export interface EditorEditable {
   recorded: EditScene;
   /**
    * The preview's other tracks, as media URLs the page plays beside the recording (`recordstuff-media://preview/…`),
-   * once made: the camera, and the second sound. Absent while they are made, or when they could not be.
+   * once made: the camera, the second sound, and with a mix the first. Absent while they are made, or when they could
+   * not be.
    */
-  preview: { camera?: string; secondSound?: string };
+  preview: Partial<Record<PreviewTrack, string>>;
 }
 
 export type EditorExport =

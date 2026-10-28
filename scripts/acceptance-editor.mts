@@ -62,7 +62,7 @@ import { nativeDrag } from "./lib/runner/native-drag.mts";
 import { developmentAppPath } from "./lib/runner/verification-timing.mts";
 import { TrayDriver } from "./lib/acceptance/tray-driver.mts";
 import { frameRgb, hasTool, probe, requireMediaTimeout } from "./lib/verification/media-tools.mts";
-import { clockSeconds, dragFor, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
+import { clockSeconds, dragFor, expectedPreviewTracks, judgeComposite, judgePlace, judgeResize, judgeScreenOnly, readEditableDescription, recordScene, sceneLayout } from "./lib/acceptance/editor-acceptance.mts";
 import type { Verdict } from "./lib/acceptance/capture-settings.mts";
 import { AUDIO_VOLUME_STEP, volumeDb } from "../src/shared/audio-volume.ts";
 import type { EditableDescription, EditScene } from "../src/shared/editable.ts";
@@ -294,9 +294,13 @@ async function main(): Promise<number> {
     const videos = sourceInfo.streams.filter((s) => s.codec_type === "video");
     const screen = videos[0], cameraTrack = videos[1];
     const sourceDuration = Number(sourceInfo.format.duration);
-    check({ check: "Recording: an editable file from the tray's Start editable recording, the setting off", expected: `the screen and the camera apart, ${microphone ? 2 : 1} sound track(s), a description with a camera`,
-      actual: `${videos.length} picture and ${sourceInfo.streams.filter((s) => s.codec_type === "audio").length} sound track(s), sounds ${description.sounds.join("/")}, camera ${description.camera ? "described" : "none"}`,
-      pass: videos.length === 2 && description.camera !== null && description.sounds.length === (microphone ? 2 : 1) });
+    // With the microphone too (plan 098): both inputs mixed on the first sound track, then each on its own.
+    const soundTracks = sourceInfo.streams.filter((s) => s.codec_type === "audio").length;
+    check({ check: "Recording: an editable file from the tray's Start editable recording, the setting off",
+      expected: `the screen and the camera apart, ${microphone ? "3 sound tracks (the inputs mixed, then each), a version-2 description" : "1 sound track"} with a camera`,
+      actual: `${videos.length} picture and ${soundTracks} sound track(s), sounds ${description.sounds.join("/")}${description.mix ? " after their mix" : ""}, camera ${description.camera ? "described" : "none"}`,
+      pass: videos.length === 2 && description.camera !== null && description.sounds.length === (microphone ? 2 : 1)
+        && soundTracks === (microphone ? 3 : 1) && Boolean(description.mix) === microphone });
     if (!screen?.width || !screen.height || !cameraTrack?.width || !cameraTrack.height || !description.camera) fail("the recording is not one this round can edit");
     const shape = { rounding: description.camera!.rounding, mirror: description.camera!.mirror };
     note(`recorded ${source} (${screen!.width}×${screen!.height}, ${sourceDuration.toFixed(1)} s; camera ${cameraStop![1]}, ${cameraStop![2]} frame(s))`);
@@ -339,6 +343,11 @@ async function main(): Promise<number> {
     // The preview's camera track is copied when the view opens: a moment for it to load and draw.
     await sleep(3000);
     await shot("1-opened.png");
+    // Its tracks copied for the preview: with a mix, both inputs' own sounds (plan 098).
+    const copied = log.since(pressFrom).lines.map((line) => /editing: the preview's (\w+) of .* is ready/.exec(line.text)?.[1]).filter((track): track is string => track !== undefined);
+    const wanted = expectedPreviewTracks(description);
+    check({ check: "Edit view: the preview's tracks copied", expected: wanted.join(", "), actual: copied.join(", ") || "none",
+      pass: wanted.every((track) => copied.includes(track)) && copied.length === wanted.length });
     note(`edit view open; the bubble drawn at ${bubble.frame.x},${bubble.frame.y} ${bubble.frame.width}×${bubble.frame.height}`);
 
     const recordFile = path.join(EDITS, `${createHash("sha256").update(path.resolve(source)).digest("hex").slice(0, 32)}.json`);
@@ -389,6 +398,10 @@ async function main(): Promise<number> {
       };
       const left = whole.x, right = whole.x + whole.width, y = Math.round(whole.y + whole.height / 2);
       const top = whole.y, span = right - left;
+      // The volume's stretch is still selected, and a selection's actions cover the times in a narrow view (2026-10-26):
+      // Deselect lets it go first.
+      const deselect = await find("Deselect button", (e) => e.role === "AXButton" && e.title === translate("Deselect", language), 1000).catch(() => undefined);
+      if (deselect) { await click(deselect); await sleep(400); }
       const full = await textStarting(lengthText) ?? fail("no export length shown");
       const fullSeconds = clockSeconds(full) ?? fail(`unreadable export length: ${full}`);
       const hold = async (from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> => {
@@ -624,6 +637,9 @@ async function main(): Promise<number> {
     const asked = /\(camera (shown|left out), volumes ([-\d./]+) dB\)/.exec(rendering.line);
     check({ check: "Export: rendered with the scene", expected: `camera shown, volumes ${volumes} dB`, actual: asked ? `camera ${asked[1]}, volumes ${asked[2]} dB` : rendering.line,
       pass: asked?.[1] === "shown" && asked[2] === volumes });
+    const tracksAsked = /sound tracks ([\d/]+)/.exec(rendering.line)?.[1];
+    check({ check: "Export: each input's own track, never the mix", expected: description.mix ? "sound tracks 1/2" : "every sound track (none named)",
+      actual: tracksAsked ? `sound tracks ${tracksAsked}` : "none named", pass: description.mix ? tracksAsked === "1/2" : tracksAsked === undefined });
     const asked2 = /volume stretches ([\d/]+)/.exec(rendering.line)?.[1];
     check({ check: "Export: the inputs' volume stretches asked", expected: `one stretch for ${inputs.join(" and ")}`, actual: asked2 ? `stretches ${asked2}` : "none asked",
       pass: asked2 !== undefined && description.sounds.every((sound, n) => asked2.split("/")[n] === (sound === "silent" ? "0" : "1")) });
