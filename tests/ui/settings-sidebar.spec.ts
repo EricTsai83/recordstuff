@@ -38,8 +38,12 @@ const PROBLEMS = `(() => {
   if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) problems.push("the page runs past the window");
   const list = document.getElementById("settings-tabs"), tabs = [...list.querySelectorAll('[role="tab"]')], listBox = box(list);
   if (!inside(listBox, view)) problems.push("the tabs run past the window " + JSON.stringify(listBox));
-  // One spacing and one size for every tab, wherever a count or dot is shown, and every icon in one column.
-  const steps = tabs.slice(1).map((tab, i) => tab.offsetTop - tabs[i].offsetTop);
+  // One spacing within each group of tabs and one size for every tab, wherever a count or dot is shown, and every icon in
+  // one column. The groups (2026-10-28): what is used, what is set, and help, a tab starting one when a line comes just
+  // before it.
+  const apart = tab => Boolean(tab.previousElementSibling?.matches(".tabs-separator"));
+  const steps = tabs.slice(1).filter(tab => !apart(tab)).map(tab => tab.offsetTop - tabs[tabs.indexOf(tab) - 1].offsetTop);
+  for (const line of list.querySelectorAll(".tabs-separator")) if (!shown(line)) problems.push("a line between the groups is not shown");
   if (new Set(steps).size > 1) problems.push("the tabs' spacing differs: " + steps.join(","));
   if (new Set(tabs.map(tab => tab.offsetHeight)).size > 1) problems.push("the tabs' heights differ");
   if (new Set(tabs.map(tab => Math.round(box(tab.querySelector(".tab-icon")).left))).size > 1) problems.push("the icons are not in one column");

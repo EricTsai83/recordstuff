@@ -1,5 +1,5 @@
 /** The settings window's shell: the tabs, the status card, the page each tab draws, the footer and the overlays. */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Bell, Film, Wrench, Video, Settings, Lock, Keyboard, MonitorPlay, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
@@ -32,6 +32,8 @@ const tabIcons = {
 };
 const isPermissionStatus = (status?: SettingsStatus): boolean => status?.tone === "attention" &&
   (status.action?.id === "permission" || status.action?.id === "relaunch");
+/** The tab each later group of the sidebar starts at: what is set, then help. */
+const SIDEBAR_GROUP_STARTS = new Set(["recording", "failures"]);
 /** Where a collapsed sidebar is remembered (2026-10-17, plan 075 D19's larger preview): this window's own look only. */
 const SIDEBAR_KEY = "recordstuff.sidebarCollapsed";
 const remembered = (): boolean => { try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; } };
@@ -287,41 +289,47 @@ export function SettingsApp() {
               {current?.tabs.map((tab) => {
                 const Icon = tabIcons[tab.id],
                   count = /^(.*?)(\s?[（(])(\d+)([)）])$/.exec(tab.label);
+                // The tabs in groups (2026-10-28, the maintainer's request): what is used, what is set, and help, each
+                // later group after a line; Troubleshooting with the others, not at the sidebar's foot.
+                const divided = SIDEBAR_GROUP_STARTS.has(tab.id) && current?.tabs[0]?.id !== tab.id;
                 return (
-                  <ControlTooltip key={tab.id} label={rail || tab.id === "failures" ? tab.label : undefined} {...(rail ? { side: "right" as const } : {})}>
-                    <TabsTrigger
-                      id={`tab-${tab.id}`}
-                      value={tab.id}
-                      aria-label={tab.accessibleLabel ?? tab.label}
-                      className={`darwin:window-no-drag min-h-9 justify-start gap-2.5 ${rail
-                        ? "relative short:min-h-8 group-data-[variant=sidebar]/tabs-list:px-2.5" : ""}`}
-                    >
-                      {/* A collapsed sidebar marks unread items with a dot on the icon's corner; the count stays in the
-                          tab's name. */}
-                      <span className="notice-icon">
-                        <Icon className="tab-icon size-4" strokeWidth={2} />
-                        {count && <span className="notice-dot tab-dot" aria-hidden="true" />}
-                      </span>
-                      {count ? (
-                        <span className="inline-flex min-w-0 items-center gap-1.5">
-                          <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>
-                          <>
-                            <span className="sr-only">{count[2]}</span>
-                            <Badge
-                              className={`tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums ${rail ? "hidden" : ""}`}
-                              variant="default"
-                              size="md"
-                            >
-                              {count[3]}
-                            </Badge>
-                            <span className="sr-only">{count[4]}</span>
-                          </>
+                  <Fragment key={tab.id}>
+                    {divided && <div className="tabs-separator" aria-hidden="true" />}
+                    <ControlTooltip label={rail || tab.id === "failures" ? tab.label : undefined} {...(rail ? { side: "right" as const } : {})}>
+                      <TabsTrigger
+                        id={`tab-${tab.id}`}
+                        value={tab.id}
+                        aria-label={tab.accessibleLabel ?? tab.label}
+                        className={`darwin:window-no-drag min-h-9 justify-start gap-2.5 ${rail
+                          ? "relative short:min-h-8 group-data-[variant=sidebar]/tabs-list:px-2.5" : ""}`}
+                      >
+                        {/* A collapsed sidebar marks unread items with a dot on the icon's corner; the count stays in the
+                            tab's name. */}
+                        <span className="notice-icon">
+                          <Icon className="tab-icon size-4" strokeWidth={2} />
+                          {count && <span className="notice-dot tab-dot" aria-hidden="true" />}
                         </span>
-                      ) : (
-                        <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{tab.label}</span>
-                      )}
-                    </TabsTrigger>
-                  </ControlTooltip>
+                        {count ? (
+                          <span className="inline-flex min-w-0 items-center gap-1.5">
+                            <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{count[1]}</span>
+                            <>
+                              <span className="sr-only">{count[2]}</span>
+                              <Badge
+                                className={`tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums ${rail ? "hidden" : ""}`}
+                                variant="default"
+                                size="md"
+                              >
+                                {count[3]}
+                              </Badge>
+                              <span className="sr-only">{count[4]}</span>
+                            </>
+                          </span>
+                        ) : (
+                          <span className="tab-name min-w-0 overflow-hidden text-ellipsis">{tab.label}</span>
+                        )}
+                      </TabsTrigger>
+                    </ControlTooltip>
+                  </Fragment>
                 );
               })}
             </TabsList>

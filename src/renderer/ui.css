@@ -4308,6 +4308,17 @@
     grid-row: 5;
     position: relative;
   }
+  /* The line before each later group of tabs (2026-10-28): what is used, what is set, and help. */
+  .tabs-separator {
+    flex: none;
+    height: 1px;
+    margin: 6px 10px;
+    background: var(--sidebar-border);
+  }
+  /* As far below the tab over it either way, so each icon stays where it was as the sidebar collapses. */
+  main[data-sidebar="collapsed"] .tabs-separator {
+    margin-inline: 6px;
+  }
   /* A collapsed sidebar (2026-10-20), and a narrow window's, too narrow for the full one: its plane gives way to
      floating toolbars of icons, each named by its tooltip, the tabs above and the window's own actions below. Every
      icon stays where it was in the full sidebar, and the page takes the width. */
@@ -4343,7 +4354,13 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    margin-top: 8px;
     margin-bottom: 12px;
+  }
+  /* The window's actions follow the tabs' toolbar, a small gap apart, not at the window's foot (2026-10-28, the
+     maintainer's request): the room left over goes under them. A short window still scrolls the tabs, never them. */
+  main[data-sidebar="collapsed"] {
+    grid-template-rows: auto minmax(0, max-content) auto auto auto minmax(0, 1fr);
   }
   /* A short window keeps both toolbars whole: the tabs rise past the brand's room, on macOS to just under the window
      controls, and the icons take a smaller tile (settings-app). */
