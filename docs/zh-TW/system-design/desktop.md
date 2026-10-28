@@ -37,7 +37,7 @@ TrayModel 是純函式產物，包含 icon、title、tooltip 與一份扁平的�
 
 ## 設定視窗
 
-兩種外觀的強調色控制項共用 `--primary`：開啟的開關、徽章、鍵盤焦點框、新錄影外框及快捷鍵擷取的跳動條。填色控制項的圖示與開關圓點使用 `--primary-foreground`，錄影標記與光暈獨立使用固定的錄影紅色。
+兩種外觀的強調色控制項共用 `--primary`：開啟的開關、徽章、鍵盤焦點框、標示跳轉落點的外框及快捷鍵擷取的跳動條。這個外框在所有使用處共用同一套規則（`lib/arrival.ts` 與 `ui.css` 的 `.arrived`，2026-10-28）：在 2.4 秒的前 60% 維持，之後淡出，再跳一次會重新開始；錄影卡片沿用它自己狀態線的形狀，其他元素以 `--arrival-inset` 與 `--arrival-radius` 設定自己的形狀。填色控制項的圖示與開關圓點使用 `--primary-foreground`，錄影標記與光暈獨立使用固定的錄影紅色。
 
 目前設計（2026-10-07）遵循維護者最新提供的 shadcn 紅色參考與[官方 base-mira 元件樣式](https://ui.shadcn.com/r/styles/base-mira/button.json)。[ui.css](../../../src/renderer/ui.css) 保留提供的明暗 tokens、字型、圓角、字距與陰影。主要按鈕使用 `hover:bg-primary/80`（淺色參考的 hover 白字對比約 3.75:1，低於小字 AA 的 4.5:1；不另加客製深色覆寫）；outline 按鈕使用 input 邊框與 hover；secondary、ghost 按鈕直接採用 registry 規則。輸入框與 Switch 使用 30% 不透明度的 2 px 焦點環，Toggle 與 Tabs 使用 registry 的 3 px 焦點環。偏好選項以 muted 表示選取，移除凸起底色與陰影；選取 icon 使用 primary token，文字維持 foreground；導覽試看版的窄版分頁使用 primary 底線，與內容保留 24 px 排版間距；sidebar 以前方的 sidebar-primary 直線表示選取，選取文字與 icon 使用 sidebar-selected-foreground；190 px 欄位採用 14 px 粗體、42 px 列高與 4 px 列間距，保留加粗 icon，hover 時不換色。原本的 `chosen`、`selected`、客製 hover／陰影別名、細線焦點 utilities 與無分層焦點覆寫均已移除；下文較早的外觀規則僅為歷史，不再覆蓋目前設計。保留的 App 擴充限於響應式排版、文字換行、錄影入口提示、影片對比、強制色彩與小字可讀性（控制文字 13 px、metadata 12 px、destructive ink 配對）。品牌顏色固定不變。Inter 與 JetBrains Mono 隨 App 本機提供，主題切換一次提交完整配色。
 
@@ -127,7 +127,7 @@ OS 拒絕註冊（其他 App 佔用，或 `register` 擲出）不會被吞掉：
 
 來源：[shortcut-catalog.ts](../../../src/shared/shortcut-catalog.ts)、[model/general.ts](../../../src/main/settings/model/general.ts) 的 `shortcutListGroups`、[shortcut-list.tsx](../../../src/renderer/settings/tabs/shortcut-list.tsx)。Plan 073（2026-10-14）讓視窗有一個地方列出 RecordStuff 提供的所有鍵盤快捷鍵，以及每一個現在能否使用。依維護者選擇，它是獨立的「鍵盤快捷鍵」分頁，位於「一般」與「疑難排解」之間；macOS「輔助說明」選單的「鍵盤快捷鍵」會開啟視窗並切到這個分頁（`openShortcutList`，與快捷鍵橫幅的入口相同）。
 
-分頁唯讀，每個類別一個區段：任何地方（開始或停止錄影；開啟 RecordStuff）、RecordStuff 視窗（⌘W 關閉、還原「丟到垃圾桶」、放大、縮小、實際大小）、錄影檔（Esc 清除搜尋）、播放器（Space 或 K、← →、↑ ↓、M、F，進度列上另有 Page Up/Down 與 Home/End）、全螢幕影片（Esc、⌘W、F 或按兩下離開），以及 2026-10-26 起的編輯（時間軸上的 Space、← → 逐格與 ⇧← → 逐秒、S、Delete、⌘Z、⇧⌘Z，可編輯錄影另有 C 與 V；先前只列在編輯畫面自己的鍵盤按鈕裡）。按鍵透過 `acceleratorKeys` 以平台的修飾鍵顯示：macOS 為 ⌘⌥⇧⌃，其他平台為 Ctrl、Alt、Shift，與 Shortcut 卡片及選單使用同一個格式化函式；每一列另以一段文字向輔助技術唸出按鍵，畫出的按鍵則對輔助技術隱藏。只有 main 知道兩個全域快捷鍵是否有效，所以由 main 產生這些列：錄影列顯示目前的組合，關閉時顯示「關閉」，註冊失敗時顯示「無法使用」；「開啟 RecordStuff」在註冊失敗或被錄影快捷鍵佔用時顯示「無法使用」；原因沿用 Shortcut 卡片的說明。錄影列標題旁的箭頭（名稱為「在「一般」中更改」）會切到「一般」並聚焦 Shortcut 卡片，這是唯一能更改快捷鍵的地方；清單不會傳送任何東西給 main，它的群組也不提供 main 會執行的選項。
+分頁唯讀，每個類別一個區段：任何地方（開始或停止錄影；開啟 RecordStuff）、RecordStuff 視窗（⌘W 關閉、還原「丟到垃圾桶」、放大、縮小、實際大小）、錄影檔（Esc 清除搜尋）、播放器（Space 或 K、← →、↑ ↓、M、F，進度列上另有 Page Up/Down 與 Home/End）、全螢幕影片（Esc、⌘W、F 或按兩下離開），以及 2026-10-26 起的編輯（時間軸上的 Space、← → 逐格與 ⇧← → 逐秒、S、Delete、⌘Z、⇧⌘Z，可編輯錄影另有 C 與 V；先前只列在編輯畫面自己的鍵盤按鈕裡）。按鍵透過 `acceleratorKeys` 以平台的修飾鍵顯示：macOS 為 ⌘⌥⇧⌃，其他平台為 Ctrl、Alt、Shift，與 Shortcut 卡片及選單使用同一個格式化函式；每一列另以一段文字向輔助技術唸出按鍵，畫出的按鍵則對輔助技術隱藏。只有 main 知道兩個全域快捷鍵是否有效，所以由 main 產生這些列：錄影列顯示目前的組合，關閉時顯示「關閉」，註冊失敗時顯示「無法使用」；「開啟 RecordStuff」在註冊失敗或被錄影快捷鍵佔用時顯示「無法使用」；原因沿用 Shortcut 卡片的說明。錄影列標題旁的箭頭（名稱為「在「一般」中更改」）會切到「一般」並聚焦 Shortcut 卡片，這是唯一能更改快捷鍵的地方，該列隨即顯示跳轉落點的外框，方便視線找到它；清單不會傳送任何東西給 main，它的群組也不提供 main 會執行的選項。
 
 `shortcut-catalog.ts` 是唯一來源：包含各列，以及各 handler 比對的常數——播放器的 `playerKeyAction`、`zoomRequest` 的 `ZOOM_KEYS`、`isCloseChord` 的 `CLOSE_KEY` 與還原的 `UNDO_KEY`——因此清單不會與按鍵處理脫節。測試雙向檢查：清單上的每個播放器與縮放按鍵都會觸發對應 handler，播放器處理的每個按鍵也都在清單上。清單不列平台本身的編輯與選單按鍵（⌘C、⌘V、⌘Q、⌘H 等）、清單與對話框中的一般鍵盤導覽（Tab、方向鍵、Enter、Esc 取消），以及快捷鍵編輯器錄入時按下的按鍵：這些是平台慣例，不是 RecordStuff 的功能。沒有任何快捷鍵因此變成可設定或改變按鍵。
 
