@@ -167,7 +167,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -276,7 +276,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -296,7 +296,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
   });
 
@@ -350,7 +350,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -450,7 +450,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -736,6 +736,26 @@ describe("editable recordings (plan 087)", () => {
     expect(store().editableRecording).toBe(true);
     await expect(first.setEditableRecording(1 as never)).rejects.toThrow("unsupported editable recording");
     expect(store().editableRecording).toBe(true);
+  });
+});
+
+describe("open the Recording Studio as a recording starts (2026-10-28)", () => {
+  const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+
+  it("reads a file written before the field existed as off, silently, and a non-boolean as off with a warning", () => {
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { studioOnStart: false }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...current, studioOnStart: "yes" }))).toMatchObject({
+      settings: { studioOnStart: false }, warnings: ["studioOnStart is not a boolean: using off"],
+    });
+  });
+
+  it("saves the switch with the other fields, and refuses a non-boolean", async () => {
+    const first = store();
+    await first.setStudioOnStart(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, studioOnStart: true });
+    expect(store().studioOnStart).toBe(true);
+    await expect(first.setStudioOnStart(1 as never)).rejects.toThrow("unsupported Recording Studio on start");
+    expect(store().studioOnStart).toBe(true);
   });
 });
 

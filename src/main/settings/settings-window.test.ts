@@ -24,6 +24,7 @@ const mock = vi.hoisted(() => {
     isMaximized = vi.fn(() => false);
     restore = vi.fn();
     show = vi.fn();
+    showInactive = vi.fn();
     focus = vi.fn();
     setTitle = vi.fn();
     fullScreen = false;
@@ -350,6 +351,35 @@ describe("settings window lifecycle", () => {
     expect(opened).toHaveBeenCalledTimes(1);
     s.panel.show();
     expect(opened).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens the Recording Studio behind the app in use as a recording starts: shown without the keys, the Dock icon and menus once clicked into (2026-10-28)", () => {
+    const opened = vi.fn();
+    const s = setup({ opened });
+    s.panel.showStudio(true);
+    expect(mock.focus).not.toHaveBeenCalled();
+    expect(opened).not.toHaveBeenCalled();
+    ready(s.window());
+    expect(s.window().showInactive).toHaveBeenCalledOnce();
+    expect(s.window().show).not.toHaveBeenCalled();
+    expect(s.window().focus).not.toHaveBeenCalled();
+    expect(s.read(s.event())).toMatchObject({ entryTab: "studio" });
+    s.window().events.get("focus")!();
+    expect(opened).toHaveBeenCalledOnce();
+    s.window().events.get("focus")!();
+    expect(opened).toHaveBeenCalledOnce();
+    // In sight already: left as it is, never brought forward. Hidden: shown again, still without the keys.
+    s.panel.showStudio(true);
+    expect(s.window().showInactive).toHaveBeenCalledOnce();
+    s.window().visible = false;
+    s.panel.showStudio(true);
+    expect(s.window().showInactive).toHaveBeenCalledTimes(2);
+    expect(s.window().show).not.toHaveBeenCalled();
+    expect(mock.focus).not.toHaveBeenCalled();
+    // Opened as ever, it takes the keys.
+    s.panel.show();
+    expect(s.window().show).toHaveBeenCalledOnce();
+    expect(s.window().focus).toHaveBeenCalledOnce();
   });
 
   it("opens one sandboxed window, brings the menu-bar app forward, and reuses it", () => {

@@ -27,7 +27,7 @@ import { hotkeyGroup, languageGroup, notificationsGroup, proposesHotkey, shortcu
 import { type Group, group, withSectionHeadings } from "./model/group";
 import { dateFormats, failuresTab, projectResult, resultActions } from "./model/history";
 import { libraryView } from "./model/library";
-import { countdownGroup, countdownSoundGroup, editableRecordingGroup, fileNameGroup, hideSystemUiGroup, outputFolderGroup, qualityGroups, screenGroup } from "./model/recording";
+import { countdownGroup, countdownSoundGroup, editableRecordingGroup, studioOnStartGroup, fileNameGroup, hideSystemUiGroup, outputFolderGroup, qualityGroups, screenGroup } from "./model/recording";
 import { STATUS_ACTIONS, settingsStatus } from "./model/status";
 import { studioGroups } from "./model/studio";
 import { inputProblems } from "./model/inputs";
@@ -63,6 +63,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     editableRecordingGroup(ctx, unlocked),
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
+    studioOnStartGroup(ctx, unlocked),
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
     ...(() => { const level = microphoneLevelGroup(ctx, unlocked); return level ? [level] : []; })(),

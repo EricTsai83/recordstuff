@@ -77,6 +77,7 @@ describe("settingsView", () => {
       "editableRecording",
       "countdown",
       "countdownSound",
+      "studioOnStart",
       "microphone",
       "microphoneDevice",
       // The Recording Studio (plan 097, D1): what is recorded, then under the preview what is watched while recording.
@@ -208,7 +209,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "source", "source", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "source", "countdown", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
   });
 });
 
@@ -935,7 +936,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "studioOnStart", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -1013,6 +1014,12 @@ describe("countdown sound (plan 046)", () => {
     expect(settingsAction(idle, context, "countdownSound", "off")).toEqual({ setCountdownSound: false });
     expect(settingsAction(idle, context, "countdownSound", "on")).toEqual({ setCountdownSound: true });
     expect(settingsAction(idle, context, "countdownSound", "loud")).toBeUndefined();
+    // Open Recording Studio when recording starts (2026-10-28): off by default, under the countdown, saying it opens behind.
+    expect(checked(idle, context, "studioOnStart")).toBe("off");
+    expect(checked(idle, { ...context, studioOnStart: true }, "studioOnStart")).toBe("on");
+    expect(settingsAction(idle, context, "studioOnStart", "on")).toEqual({ setStudioOnStart: true });
+    expect(group(idle, { ...context, language: "zh-TW" }, "studioOnStart")).toMatchObject({ label: "開始錄影時開啟錄影工作室",
+      info: "在背景開啟並顯示錄影預覽，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。" });
   });
 
   it("is disabled while the countdown is Off, keeping its value", () => {
@@ -1140,7 +1147,7 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"],
+    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"], ["studioOnStart", "switch", "countdown"],
     ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioChoices"], ["studioType", "menu", "studioChoices"],
     ["studioScreen", "menu", "studioChoices"], ["studioHideSystemUi", "switch", "studioChoices"], ["studioMicrophoneDevice", "menu", "studioChoices"],
     ["studioMicrophone", "switch", "studioChoices"], ["systemAudio", "meter", "studioLive"], ["systemGain", "slider", "studioLive"],

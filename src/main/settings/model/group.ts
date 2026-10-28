@@ -28,7 +28,7 @@ export function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "hideSystemUi", "editableRecording", "microphone", "camera", "studioCamera",
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "studioOnStart", "hideSystemUi", "editableRecording", "microphone", "camera", "studioCamera",
   "studioMicrophone", "studioHideSystemUi", "cameraShown", "cameraMirror"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
@@ -44,7 +44,7 @@ const STUDIO_SECTIONS = new Set(["studioChoices", "studioPreview", "studioLive"]
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
   screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source", editableRecording: "source",
-  countdown: "countdown", countdownSound: "countdown",
+  countdown: "countdown", countdownSound: "countdown", studioOnStart: "countdown",
   microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
   camera: "camera", cameraDevice: "camera", cameraTest: "camera", cameraStudio: "camera",
   studioControls: "studioChoices", studioType: "studioChoices", studioScreen: "studioChoices", studioHideSystemUi: "studioChoices",

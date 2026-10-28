@@ -100,6 +100,8 @@ export type AppAction =
   | { setHideSystemUi: boolean }
   /** Plan 087: editable recordings, macOS only. */
   | { setEditableRecording: boolean }
+  /** Open the Recording Studio as a recording starts (2026-10-28). */
+  | { setStudioOnStart: boolean }
   | { setMicrophone: boolean }
   /** The Camera switch (plan 075, D10). */
   | { setCamera: boolean }
@@ -179,6 +181,8 @@ export interface AppContext {
   hideSystemUi?: boolean;
   /** The stored switch for editable recordings (plan 087); absent is off. */
   editableRecording?: boolean;
+  /** The stored switch that opens the Recording Studio as a recording starts (2026-10-28); absent is off. */
+  studioOnStart?: boolean;
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
   /** The camera (plan 075); absent is off and not shown. */

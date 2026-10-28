@@ -34,7 +34,7 @@ export interface ActionDeps {
   log(line: string): void;
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
-  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "editableRecording" | "setEditableRecording" | "setUpdates" | "notifications" | "setNotifications"
+  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "editableRecording" | "setEditableRecording" | "studioOnStart" | "setStudioOnStart" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setStudioPreview" | "setAppearance"
     | "studioPreview" | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
@@ -132,6 +132,12 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         locked: true,
         write: () => settings.setEditableRecording(action.setEditableRecording),
         applied: () => log(`settings: editable recordings ${settings.editableRecording ? "on" : "off"}`),
+      });
+    } else if ("setStudioOnStart" in action) {
+      await deps.savePreference("Recording Studio on start", {
+        locked: true,
+        write: () => settings.setStudioOnStart(action.setStudioOnStart),
+        applied: () => log(`settings: open the Recording Studio as a recording starts ${settings.studioOnStart ? "on" : "off"}`),
       });
     } else if ("setMicrophone" in action) {
       const turningOn = action.setMicrophone && !settings.microphone;

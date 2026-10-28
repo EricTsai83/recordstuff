@@ -432,6 +432,9 @@ export const ZH_TW = {
   "Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.": "錄影中不會出現選單列、Dock、桌面圖示與小工具，你的螢幕上仍看得到。你打開的選單仍會被錄進去，因為它屬於該 App。",
   "Hide taskbar": "隱藏工作列",
   "Windows cannot leave the taskbar out of a recording.": "Windows 無法把工作列排除在錄影之外。",
+  "Open Recording Studio when recording starts": "開始錄影時開啟錄影工作室",
+  "Opens behind the app you are using with the recording's preview, so your keys still go to that app. It is not recorded.":
+    "在背景開啟並顯示錄影預覽，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。",
   "More about {label}": "{label}的說明",
   "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.":
     "無法註冊 {value}，可能被其他 App 佔用。請開啟 RecordStuff 改用其他快捷鍵。",

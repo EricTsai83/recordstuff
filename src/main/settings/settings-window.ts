@@ -176,6 +176,10 @@ export class SettingsWindow {
   private painted = false;
   /** Shows the current window once its page reports its first content, or `ready-to-show` plus a fallback. */
   private reveal: (() => void) | undefined;
+  /** The last show asked for the window behind the app in use, without taking the keys (a recording's start). */
+  private behind = false;
+  /** Shown behind: the app takes its Dock icon and menus (`opened`) only once the user clicks into the window. */
+  private openedOnFocus = false;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
   private currentZoom: number | undefined;
@@ -302,9 +306,12 @@ export class SettingsWindow {
     this.showEntry("library");
   }
 
-  /** The Recording Studio (plan 075, D19), from the tray and the Camera section's link. */
-  showStudio(): void {
-    this.showEntry("studio");
+  /**
+   * The Recording Studio (plan 075, D19), from the tray and the Camera section's link; `behind` as a recording starts
+   * with Open Recording Studio when recording starts on (2026-10-28), so the app being recorded keeps the keys.
+   */
+  showStudio(behind = false): void {
+    this.showEntry("studio", behind);
   }
 
   /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
@@ -313,10 +320,10 @@ export class SettingsWindow {
   }
 
   /** An explicit entry: a new token makes the page select `tab` once, however it was left. */
-  private showEntry(tab: SettingsTab): void {
+  private showEntry(tab: SettingsTab, behind = false): void {
     this.entryTab = tab;
     this.resultFocus++;
-    this.show(true);
+    this.show(true, behind);
   }
 
   /**
@@ -355,24 +362,35 @@ export class SettingsWindow {
     });
   }
 
-  show(resultEntry = false): void {
+  /**
+   * `behind` (2026-10-28): shown over other windows without making RecordStuff the active app, so the keys stay with
+   * the app in use; the Dock icon and the app's menus come once the user clicks into the window (opened, below).
+   */
+  show(resultEntry = false, behind = false): void {
     this.hiddenByUser = false;
     this.resultEntry = resultEntry;
+    this.behind = behind;
+    this.openedOnFocus = behind;
     // A menu-bar app has no Dock icon, so showing a window does not bring the
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
-    this.options.opened?.();
+    if (!behind) this.options.opened?.();
     // A video played full screen from this window starts from a page already loaded (video-fullscreen.ts).
     this.options.fullScreen?.prepare?.();
-    if (process.platform === "darwin") app.focus({ steal: true });
+    if (process.platform === "darwin" && !behind) app.focus({ steal: true });
     this.options.activated?.();
     const existing = this.window;
     if (existing && !existing.isDestroyed()) {
-      // A window still loading would show blank; its own reveal shows and focuses it.
+      // A window still loading would show blank; its own reveal shows it. Behind, a window in sight stays as it is and a
+      // minimized one stays minimized: only a hidden one is brought back, without the keys.
       if (this.painted) {
-        if (existing.isMinimized()) existing.restore();
-        existing.show();
-        existing.focus();
+        if (behind) {
+          if (!existing.isVisible() && !existing.isMinimized()) existing.showInactive();
+        } else {
+          if (existing.isMinimized()) existing.restore();
+          existing.show();
+          existing.focus();
+        }
       }
       this.refresh();
       return;
@@ -435,6 +453,10 @@ export class SettingsWindow {
       this.options.log?.(`settings: window shown ${Math.round(performance.now() - madeAt)} ms after it was made`);
       // Painted while hidden: it stays hidden, and the next open shows it as it is.
       if (this.hiddenByUser) return;
+      if (this.behind) {
+        window.showInactive();
+        return;
+      }
       window.show();
       window.focus();
     };
@@ -466,6 +488,10 @@ export class SettingsWindow {
     window.webContents.on("did-finish-load", () => { if (!window.isDestroyed()) window.webContents.setZoomFactor(this.zoomFactor()); });
     window.on("focus", () => {
       if (this.window !== window) return;
+      if (this.openedOnFocus) {
+        this.openedOnFocus = false;
+        this.options.opened?.();
+      }
       if (this.watched.microphoneLevel && window.isVisible()) this.options.microphoneLevel?.(window.webContents);
       this.options.activated?.();
     });

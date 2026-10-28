@@ -69,6 +69,11 @@ export interface Settings {
    * the camera's place and the volumes are chosen after recording and an export renders them; off by default.
    */
   editableRecording: boolean;
+  /**
+   * Whether a recording's start opens the Recording Studio behind the app in use, showing the recording's picture
+   * (2026-10-28, the maintainer's request); off by default.
+   */
+  studioOnStart: boolean;
   /** Seconds before capture begins; 0 is Off (plan 040). */
   countdown: CountdownSeconds;
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
@@ -155,6 +160,8 @@ export function defaultSettings(outputDir: string): Settings {
     hideSystemUi: false,
     // Off: an ordinary recording plays everywhere as it was recorded; an editable one needs an export first.
     editableRecording: false,
+    // Off: a recording starts as it always has, with no window opening over the app being recorded.
+    studioOnStart: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
     microphone: true,
@@ -248,6 +255,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
   const hideSystemUi = field("hideSystemUi", isBoolean, defaults.hideSystemUi, `hideSystemUi is not a boolean: using ${defaults.hideSystemUi ? "on" : "off"}`);
   const editableRecording = field("editableRecording", isBoolean, defaults.editableRecording, `editableRecording is not a boolean: using ${defaults.editableRecording ? "on" : "off"}`);
+  const studioOnStart = field("studioOnStart", isBoolean, defaults.studioOnStart, `studioOnStart is not a boolean: using ${defaults.studioOnStart ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
   const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
@@ -277,7 +285,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
   // Absent in every file written before the guide: done, so only a new install, which has no file, sees it.
   const onboardingDone = field("onboardingDone", isBoolean, true, "onboardingDone is not a boolean: the guide stays closed");
-  return { settings: { appearance, display, hideSystemUi, editableRecording, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
+  return { settings: { appearance, display, hideSystemUi, editableRecording, studioOnStart, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
@@ -332,6 +340,12 @@ export class SettingsStore {
 
   setEditableRecording(enabled: boolean): Promise<void> {
     return this.setSwitch("editableRecording", enabled, "editable recording");
+  }
+
+  get studioOnStart(): boolean { return this.settings.studioOnStart; }
+
+  setStudioOnStart(enabled: boolean): Promise<void> {
+    return this.setSwitch("studioOnStart", enabled, "Recording Studio on start");
   }
 
   get outputDir(): string {

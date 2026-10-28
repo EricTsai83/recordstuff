@@ -601,7 +601,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
-    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, editableRecording: settings.editableRecording, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, editableRecording: settings.editableRecording, studioOnStart: settings.studioOnStart, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(devices.microphones ? { devices: devices.microphones } : {}), ...(access ? { access } : {}),
@@ -987,12 +987,22 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   // A session keeps the display awake, so idle sleep cannot end its capture (plan 050).
   const keepAwake = new KeepAwake(powerSaveBlocker, log);
+  /** The state before the one each event brings: a recording's start is the step out of waiting. */
+  let lastState = recorder.state.type;
   recorder.subscribe((event) => {
     logSessionEvent(log, runId, event);
     switch (event.type) {
       case "state": {
+        const before = lastState;
+        lastState = event.state.type;
         // renderUi below draws the cleared line.
         quit.clearDeferred(false);
+        // A recording starts, from the tray, the shortcut or the Studio itself: with the switch on, the Studio opens
+        // behind the app in use, showing the recording's picture (2026-10-28). Once per start, not at each step.
+        if (event.state.type === "starting" && (before === "idle" || before === "needsPermission") && settings.studioOnStart) {
+          log("studio: opened behind the app in use as a recording starts");
+          settingsWindow.showStudio(true);
+        }
         // No input is listed while a session runs (plan 074): a listing still in flight ends now.
         if (!preferencesUnlocked(event.state)) host.cancelListing();
         // A Live preview's session is held in an idle state (D20): its process stays until the preview is let go of.
