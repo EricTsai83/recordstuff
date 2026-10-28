@@ -171,7 +171,7 @@ export function editableRecordingGroup(ctx: AppContext, enabled: boolean): Group
 export function countdownSoundGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   return { ...group("countdownSound", t("Countdown sound", language), enabled && ctx.countdown !== 0,
-    switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value }))), info: t("The tick is not recorded.", language) };
+    switchChoices(language, ctx.countdownSound, (value) => ({ setCountdownSound: value }))) };
 }
 
 export function qualityGroups(ctx: AppContext, enabled: boolean): Group[] {

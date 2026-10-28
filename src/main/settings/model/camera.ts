@@ -20,8 +20,7 @@ export function cameraGroup(ctx: AppContext, enabled: boolean): Group | undefine
   if (!camera?.available) return undefined;
   const language = ctx.language;
   const result: Group = { ...group("camera", t("Camera", language), enabled,
-    switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))),
-  info: t("Shows your camera in the recording as a bubble.", language) };
+    switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))) };
   // Off because macOS refused it, as the microphone's (native round, 2026-10-26).
   if (!camera.enabled && ctx.platform === "darwin" && (camera.access === "denied" || camera.access === "restricted")) {
     result.note = t("macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.", language);
@@ -135,7 +134,6 @@ export function cameraGroups(ctx: AppContext, unlocked: boolean): Group[] {
   const granted = camera.access === undefined || camera.access === "granted";
   const test: Group = { ...group("cameraTest", t("Test camera", language), unlocked && camera.enabled && granted, []), control: "cameraTest",
     cameraTest: { ...(stored && !missing ? { name: stored.label } : {}) },
-    info: t("Shows the chosen camera here to check that it works. Nothing is recorded.", language),
     ...(unlocked ? {} : { note: t("While recording, the Recording Studio shows the camera.", language), noteKind: "status" as const }) };
   // Its place and shape are the Recording Studio's (D19), one step away, whether the device may change now or not.
   const studio: Group = { ...group("cameraStudio", t("Bubble position and shape", language), true,

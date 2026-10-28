@@ -11,18 +11,14 @@ import { type Group, group, relaunchChoice, switchChoices } from "./group";
 /**
  * The microphone (plan 074): off by default and locked while recording. Turning it on asks macOS for access then and
  * there (actions.ts), so the prompt follows the user's own click; a denial keeps the setting and is shown here with
- * the pane that changes it, since a recording would be refused before its countdown.
+ * the pane that changes it, since a recording would be refused before its countdown. No ⓘ (2026-10-28, the
+ * maintainer's request): the switch says enough.
  */
 export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   const microphone = ctx.microphone ?? { enabled: false };
   const result: Group = { ...group("microphone", t("Microphone", language), enabled,
-    switchChoices(language, microphone.enabled, (value) => ({ setMicrophone: value }))),
-  // An editable recording keeps the microphone on a track of its own (plan 087), so the note says so rather than
-  // "one track" (Codex's computer-use round of 2026-10-26 found the two notes contradicting each other).
-  info: t(ctx.editableRecording
-    ? "Kept on a track of its own while Editable recordings is on, so its volume can be set after recording. Use headphones so the microphone does not record your speakers a second time."
-    : "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.", language) };
+    switchChoices(language, microphone.enabled, (value) => ({ setMicrophone: value }))) };
   if (ctx.platform !== "darwin") return result;
   const refused = microphone.access === "denied" || microphone.access === "restricted";
   // Off because macOS refused it (a refusal turns the switch off, 2026-10-26): said, with the pane that allows it,
@@ -141,15 +137,15 @@ export function microphoneDeviceGroup(ctx: AppContext, unlocked: boolean): Group
 }
 
 /**
- * The input level (plan 079, D1): the chosen input's level between recordings, read by the engine as a recording would,
- * while the microphone is on and macOS allows it; while recording the Recording Studio shows the recording's own.
+ * Test microphone (plan 079, D1; a press since 2026-10-28, as Test camera is): the chosen input's level between
+ * recordings, read by the engine as a recording would only while the test is on, so visiting the tab opens no
+ * microphone; while the microphone is on and macOS allows it. While recording the Recording Studio shows the level.
  */
 export function microphoneLevelGroup(ctx: AppContext, unlocked: boolean): Group | undefined {
   const language = ctx.language;
   const microphone = ctx.microphone;
   if (!microphone?.enabled || (microphone.access !== undefined && microphone.access !== "granted")) return undefined;
-  const result: Group = { ...group("microphoneLevel", t("Input level", language), unlocked, []), control: "inputMeter",
-    info: t("Speak to check that the microphone hears you. Nothing is recorded.", language) };
+  const result: Group = { ...group("microphoneLevel", t("Test microphone", language), unlocked, []), control: "microphoneTest" };
   if (!unlocked) {
     result.note = t("While recording, the Recording Studio shows the level.", language);
     result.noteKind = "status";

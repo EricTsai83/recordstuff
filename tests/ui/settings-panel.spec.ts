@@ -247,7 +247,7 @@ test("S117–S120 microphone: the switch asks main, the input device follows it,
   await expect(page.getByRole("button", { name: "開啟麥克風設定…" })).toBeVisible();
 });
 
-test("S139–S141 the Input level, Search for devices and the input device while recording (plan 079)", { tag: "@recording-settings" }, async () => {
+test("S139–S141 Test microphone, Search for devices and the input device while recording (plan 079)", { tag: "@recording-settings" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); h.microphoneLevelWatches.length = 0; });
   await page.locator("#tab-recording").click();
   const devices = [{ id: "built-in", name: "MacBook Pro Microphone", default: true }, { id: "usb-mic", name: "USB Microphone", default: false }];
@@ -258,15 +258,27 @@ test("S139–S141 the Input level, Search for devices and the input device while
     h.push(h.settingsView(h.state.microphoneState ?? { type: "idle" }, h.state.microphoneContext));
   }, [devices, recording, more] as const);
   await show(false);
+  const test = page.locator("#setting-microphoneLevel");
   const meter = page.getByRole("meter", { name: "Input level" });
-  await meter.scrollIntoViewIfNeeded();
-  await expect(meter, "S139 the Input level under the input device while the microphone is on").toBeVisible();
-  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 the meter in sight asks for the input's level" }).toEqual([true]);
+  await test.scrollIntoViewIfNeeded();
+  await expect(test, "S139 Test microphone under the input device while the microphone is on").toBeVisible();
+  await page.waitForTimeout(300);
+  expect(await host.evaluate(h => [...h.microphoneLevelWatches]), "S139 visiting the tab opens no microphone").toEqual([]);
+  await test.click();
+  await expect(meter, "S139 the input's level shown at the press").toBeVisible();
+  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 the test asks for the input's level" }).toEqual([true]);
   await host.evaluate(h => h.pushMicrophoneLevel({ peak: 0.1, rms: 0.05 }));
   await expect(meter, "S139 its level in dB below full scale").toHaveAttribute("aria-valuetext", "-20 dB");
+  await expect(page.locator(".input-meter-value"), "S139 and in words a user reads").toHaveText("Good level");
   await keep("input-level.png");
   await expect.poll(async () => Number(await meter.getAttribute("aria-valuenow")),
     { message: "S139 it falls back when the input is silent", timeout: 3000 }).toBeLessThan(-30);
+  await expect(test, "S139 pressed again stops it").toHaveText("Stop test");
+  await test.click();
+  await expect(meter).toHaveCount(0);
+  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 and lets the input's level go" }).toEqual([true, false]);
+  await test.click();
+  await expect(meter).toBeVisible();
 
   await clearCalls();
   await page.getByRole("button", { name: "Search for devices" }).click();
@@ -275,8 +287,9 @@ test("S139–S141 the Input level, Search for devices and the input device while
   await expect(page.getByRole("button", { name: "Searching…" }), "S140 busy while it searches").toBeDisabled();
 
   await show(true);
-  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 a recording lets the input's level go" }).toEqual([true, false]);
-  await expect(meter, "S139 and the meter rests").toHaveAttribute("aria-valuenow", "-60");
+  await expect.poll(() => host.evaluate(h => [...h.microphoneLevelWatches]), { message: "S139 a recording ends the test" }).toEqual([true, false, true, false]);
+  await expect(meter, "S139 and its meter goes").toHaveCount(0);
+  await expect(test).toBeDisabled();
   const device = page.locator("#setting-microphoneDevice");
   await expect(device, "S141 the input device stays open while the recording records the microphone").toBeEnabled();
   await expect(page.locator("#setting-microphoneDevice-note")).toHaveText("Switches this recording's microphone at once.");
@@ -289,7 +302,7 @@ test("S139–S141 the Input level, Search for devices and the input device while
   await host.evaluate(h => { h.state.microphoneState = undefined; });
 
   await show(false, { language: "zh-TW" });
-  await expect(page.getByRole("meter", { name: "輸入音量" }), "S139 zh-TW").toBeVisible();
+  await expect(page.getByRole("button", { name: "測試麥克風", exact: true }), "S139 zh-TW").toBeEnabled();
   await expect(page.getByRole("button", { name: "搜尋裝置" })).toBeEnabled();
 });
 
@@ -1344,19 +1357,19 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await page.waitForTimeout(300);
   expect((await cameraCalls()).opened, "S151 visiting the tab opens no camera").toEqual([]);
   await test.click();
-  await expect(page.locator(".camera-test-picture"), "S151 the camera shown at the press").toBeVisible();
+  await expect(page.locator(".device-stage-frame video"), "S151 the camera shown at the press").toBeVisible();
   await expect.poll(async () => (await cameraCalls()).opened, { message: "S151 the chosen camera, matched by name" }).toEqual([expect.stringContaining("web-iphone")]);
   await expect(test, "S151 pressed again stops it").toHaveText("Stop test");
   await test.click();
-  await expect(page.locator(".camera-test-picture")).toHaveCount(0);
+  await expect(page.locator(".device-stage-frame video")).toHaveCount(0);
   await expect.poll(async () => (await cameraCalls()).stopped, { message: "S151 every track stopped" }).toBeGreaterThan(0);
   await test.click();
-  await expect(page.locator(".camera-test-picture")).toBeVisible();
+  await expect(page.locator(".device-stage-frame video")).toBeVisible();
   const stopped = (await cameraCalls()).stopped;
   await page.locator("#tab-general").click();
   await expect.poll(async () => (await cameraCalls()).stopped, { message: "S151 leaving the tab stops it" }).toBeGreaterThan(stopped);
   await page.locator("#tab-recording").click();
-  await expect(page.locator(".camera-test-picture"), "S151 and it stays off on return").toHaveCount(0);
+  await expect(page.locator(".device-stage-frame video"), "S151 and it stays off on return").toHaveCount(0);
   // A device problem in the Studio picker's words (D2).
   await host.evaluate(h => {
     h.state.cameraContext = { ...h.state.cameraContext!, camera: { ...h.state.cameraContext!.camera!, device: { id: "usb", label: "USB Camera" } } };
@@ -1403,31 +1416,32 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
       return { open: Boolean(popover?.hasAttribute("data-open")), expanded: document.getElementById(id + "-info-button").getAttribute("aria-expanded"), text: document.getElementById(id + "-info").textContent,
         inside: Boolean(r && r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
         describes: (control?.getAttribute("aria-describedby") ?? "").split(" ").includes(id + "-info") }; })()`);
-    const at = await centre(page, "#setting-countdownSound-info-button");
+    const at = await centre(page, "#setting-editableRecording-info-button");
     await page.mouse.move(at.x, at.y);
-    await until(page, `document.getElementById("setting-countdownSound-info-popup")?.hasAttribute("data-open")`);
+    await until(page, `document.getElementById("setting-editableRecording-info-popup")?.hasAttribute("data-open")`);
     // Measured once the explanation's opening transition has finished, as the former fixture's pause allowed.
-    await until(page, `document.getElementById("setting-countdownSound-info-popup").getAnimations({ subtree: true }).every(a => a.playState !== "running")`);
-    const hovered = await infoState("countdownSound");
+    await until(page, `document.getElementById("setting-editableRecording-info-popup").getAnimations({ subtree: true }).every(a => a.playState !== "running")`);
+    const hovered = await infoState("editableRecording");
     await keep(`info-hover-${lang}-light-${size}.png`);
     // A point between the button and its explanation, wherever the design places it.
     const geometry = await read<{ gap: { x: number; y: number }; onto: { x: number; y: number } }>(page, `(() => {
-      const b = document.getElementById("setting-countdownSound-info-button").getBoundingClientRect(), r = document.getElementById("setting-countdownSound-info-popup").getBoundingClientRect();
+      const b = document.getElementById("setting-editableRecording-info-button").getBoundingClientRect(), r = document.getElementById("setting-editableRecording-info-popup").getBoundingClientRect();
       const x = Math.round(b.x + b.width / 2), y = Math.round(b.y + b.height / 2);
       const gap = r.bottom <= b.top ? { x, y: Math.floor((r.bottom + b.top) / 2) } : r.top >= b.bottom ? { x, y: Math.ceil((b.bottom + r.top) / 2) }
         : r.right <= b.left ? { x: Math.floor((r.right + b.left) / 2), y } : r.left >= b.right ? { x: Math.ceil((b.right + r.left) / 2), y } : { x, y };
       return { gap, onto: { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }; })()`);
     await page.mouse.move(geometry.gap.x, geometry.gap.y); await page.waitForTimeout(300);
-    const inGap = await infoState("countdownSound");
+    const inGap = await infoState("editableRecording");
     await page.mouse.move(geometry.onto.x, geometry.onto.y); await page.waitForTimeout(300);
-    const kept = await infoState("countdownSound");
+    const kept = await infoState("editableRecording");
     await page.mouse.move(4, 4);
-    await until(page, `!document.getElementById("setting-countdownSound-info-popup")?.hasAttribute("data-open")`);
-    const left = await infoState("countdownSound");
+    await until(page, `!document.getElementById("setting-editableRecording-info-popup")?.hasAttribute("data-open")`);
+    const left = await infoState("editableRecording");
     expect.soft({ open: hovered.open, expanded: hovered.expanded, inside: hovered.inside, describes: hovered.describes, text: hovered.text,
       inGap: inGap.open, kept: kept.open, left: left.open, leftExpanded: left.expanded },
     `S042 ${lang}/${size}: hovering the ⓘ shows its explanation inside the window, it stays through a pause in the gap and while the pointer is on it, and leaving both hides it`)
-      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "The tick is not recorded." : "提示音不會被錄進影片。",
+      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps show the screen with system audio until you export it from Edit…."
+          : "把螢幕、相機與各個聲音分開保存，錄完後可在「編輯…」中擺放相機、調整音量。檔案約大一倍；從「編輯…」匯出前，其他 App 只會顯示螢幕與系統聲音。",
         inGap: true, kept: true, left: false, leftExpanded: "false" });
     await page.locator("#setting-videoQuality button[aria-pressed=true]").focus();
     await page.keyboard.press("Tab");

@@ -14,8 +14,8 @@ import { ShortcutEditor } from "./shortcut-editor";
 import { ShortcutRows } from "./shortcut-list";
 import { DisplayArrangement } from "./display-arrangement";
 import { CameraPreview } from "./camera-preview";
-import { AudioMeter, InputMeter } from "./audio-meter";
-import { CameraTestButton, CameraTestPicture } from "./camera-test";
+import { AudioMeter } from "./audio-meter";
+import { DeviceTestStage } from "./device-test";
 import { Action } from "./row-parts/action";
 import { Elapsed } from "./row-parts/elapsed";
 import { Explanation } from "./row-parts/explanation";
@@ -24,6 +24,8 @@ import { SliderSetting } from "./row-parts/slider";
 import { TextSetting } from "./row-parts/text-setting";
 
 function SettingRow({ group }: { group: SettingsGroup }) {
+  if (group.control === "cameraTest" || group.control === "microphoneTest")
+    return <DeviceTestStage group={group} kind={group.control === "cameraTest" ? "camera" : "microphone"} />;
   return group.kind === "shortcutList" ? <ShortcutRows group={group} /> : <PreferenceRow group={group} />;
 }
 function PreferenceRow({ group }: { group: SettingsGroup }) {
@@ -76,8 +78,6 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
         .groupControl(group.id, model.savingOf(group.id)?.choice ?? ownFailure?.choice)
         ?.focus({ preventScroll: true });
   });
-  // Test camera's picture (plan 097, D4) lasts while the row is shown and pressed: leaving the tab ends it.
-  const [testing, setTesting] = useState(false);
   const Row = group.kind === "actions" ? "div" : Field;
   return (
     <Row
@@ -101,7 +101,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           </div>
         ) : <div className="group-title">
           <GroupIcon id={group.id} />
-          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" || group.control === "meter" || group.control === "inputMeter" || group.control === "cameraTest" ? (
+          {group.kind === "actions" || group.control === "segmented" || group.control === "arrangement" || group.control === "cameraPreview" || group.control === "meter" ? (
             <FieldTitle
               id={`${id}-label`}
               className="group-label text-xs leading-[1.35]"
@@ -159,10 +159,6 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             <DisplayArrangement group={group} value={value} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "meter" && group.meter ? (
             <AudioMeter group={group} source={group.meter.source} muted={value === "mute"} disabled={!group.enabled} describedBy={description || undefined} />
-          ) : group.control === "inputMeter" ? (
-            <InputMeter group={group} disabled={!group.enabled} describedBy={description || undefined} />
-          ) : group.control === "cameraTest" ? (
-            <CameraTestButton group={group} on={testing} onChange={setTesting} describedBy={description || undefined} />
           ) : group.control === "cameraPreview" && group.cameraPreview ? (
             <CameraPreview group={group} preview={group.cameraPreview} disabled={!group.enabled} describedBy={description || undefined} />
           ) : group.control === "slider" && group.slider ? (
@@ -276,7 +272,6 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
       </div>
       {/* A device's problem in the words the Studio's picker uses (plan 097, D2). */}
       {group.problem && <p id={`${id}-problem`} className="row-problem"><TriangleAlert aria-hidden="true" />{group.problem}</p>}
-      {group.control === "cameraTest" && <CameraTestPicture group={group} on={testing} onChange={setTesting} />}
       {group.kind === "shortcut" && <ShortcutEditor group={group} />}
       <div
         id={`${id}-diagnostics`}

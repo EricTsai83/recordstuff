@@ -432,7 +432,6 @@ export const ZH_TW = {
   "Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.": "錄影中不會出現選單列、Dock、桌面圖示與小工具，你的螢幕上仍看得到。你打開的選單仍會被錄進去，因為它屬於該 App。",
   "Hide taskbar": "隱藏工作列",
   "Windows cannot leave the taskbar out of a recording.": "Windows 無法把工作列排除在錄影之外。",
-  "The tick is not recorded.": "提示音不會被錄進影片。",
   "More about {label}": "{label}的說明",
   "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.":
     "無法註冊 {value}，可能被其他 App 佔用。請開啟 RecordStuff 改用其他快捷鍵。",
@@ -492,10 +491,6 @@ export const ZH_TW = {
   // The microphone (plan 074).
   Audio: "音訊",
   Microphone: "麥克風",
-  "Kept on a track of its own while Editable recordings is on, so its volume can be set after recording. Use headphones so the microphone does not record your speakers a second time.":
-    "開啟「可編輯錄影」時，麥克風會保存在自己的音軌，錄完後可以單獨調整音量。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
-  "Mixed with system audio into one track. Use headphones so the microphone does not record your speakers a second time.":
-    "與系統音訊混成同一條音軌。請戴耳機，以免麥克風把喇叭的聲音再錄一次。",
   "Microphone access is off": "未允許取用麥克風",
   "Allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off.":
     "請在「系統設定 → 隱私權與安全性 → 麥克風」中允許 RecordStuff，或關閉「麥克風」。",
@@ -512,7 +507,6 @@ export const ZH_TW = {
   "Searching…": "正在搜尋…",
   "Switches this recording's microphone at once.": "會立即切換這次錄影的麥克風。",
   "Input level": "輸入音量",
-  "Speak to check that the microphone hears you. Nothing is recorded.": "說話時音量條會跳動，可確認麥克風收得到聲音，不會錄下任何內容。",
   "While recording, the Recording Studio shows the level.": "錄影中的音量請在錄影工作室查看。",
   "The microphone was unavailable, so recording did not start.": "麥克風無法使用，因此沒有開始錄影",
   "Connect a microphone and allow RecordStuff in System Settings → Privacy & Security → Microphone, or turn Microphone off in Recording settings.":
@@ -525,7 +519,6 @@ export const ZH_TW = {
   "RecordStuff cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.": "RecordStuff 無法使用麥克風。請到「系統設定 → 隱私權與安全性 → 麥克風」允許。",
   // The camera (plan 075).
   Camera: "相機",
-  "Shows your camera in the recording as a bubble.": "以泡泡的形式在錄影中顯示你的相機畫面。",
   "Camera access is off": "未允許取用相機",
   "Recordings leave the camera out until it is allowed.": "允許之前，錄影不會帶入相機。",
   "Recordings leave the microphone out until it is allowed.": "允許之前，錄影不會帶入麥克風。",
@@ -820,9 +813,15 @@ export const ZH_TW = {
   "Microphone not recorded": "未錄製麥克風",
   "Test camera": "測試相機",
   "Stop test": "停止測試",
-  "Shows the chosen camera here to check that it works. Nothing is recorded.": "在這裡顯示所選的相機，確認它能正常運作。不會錄下任何內容。",
   "While recording, the Recording Studio shows the camera.": "錄影時請到錄影工作室查看相機。",
   "The camera could not be shown here.": "無法在這裡顯示相機。",
+  "Test microphone": "測試麥克風",
+  "Speak as you would in a recording.": "請用錄影時的音量說話。",
+  "No sound": "沒有聲音",
+  "Too quiet": "太小聲",
+  "Good level": "音量剛好",
+  "Too loud": "太大聲",
+  "Shown only here. Nothing is recorded.": "只在這裡顯示，不會錄下任何內容。",
   "{input} — {device}": "{input}：{device}",
   "Opens the Recording Studio.": "開啟錄影工作室。",
   /** Between a shortcut's alternatives, ⌘W or Esc. */

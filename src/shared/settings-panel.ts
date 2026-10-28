@@ -75,10 +75,12 @@ export interface SettingsGroup {
    * checked choice's id; the page sends what was typed as the choice, which main validates (the file name pattern).
    * `arrangement` draws the screens where they stand on the desktop, from their choices' `display` frames.
    */
-  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "inputMeter" | "cameraTest";
+  control?: "switch" | "segmented" | "menu" | "text" | "arrangement" | "slider" | "number" | "cameraPreview" | "meter" | "cameraTest" | "microphoneTest";
   /**
    * A `cameraTest` (plan 097, D4): the Recording tab's Test camera, which shows the chosen camera in the page, matched to
-   * Chromium's list by `name`; absent is the system default. Opened only while the user has it on.
+   * Chromium's list by `name`; absent is the system default. Opened only while the user has it on. A `microphoneTest`
+   * (plan 079, D1; a press since 2026-10-28) is Test microphone: the chosen input's level between recordings, which the
+   * page asks main for apart from the view, only while the user has the test on.
    */
   cameraTest?: { name?: string };
   /**
@@ -93,8 +95,7 @@ export interface SettingsGroup {
    */
   number?: { min: number; max: number; step: number; value: number; unit: "px" | "percent"; short: string };
   /**
-   * `inputMeter` (plan 079, D1) is the chosen input's level between recordings, which the page gets apart from the
-   * view while it shows it. A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
+   * A `meter`'s input (plan 075, D19): its level, which the page gets apart from the view, and its mute, the choices
    * `mute` and `unmute`, one checked.
    */
   meter?: { source: "system" | "microphone" };

@@ -668,10 +668,11 @@ describe("microphone (plan 074)", () => {
   const on = (microphone: Partial<NonNullable<AppContext["microphone"]>> = {}): AppContext =>
     ({ ...context, microphone: { enabled: true, devices, access: "granted", ...microphone } });
 
-  it("is a switch, off by default, in the Recording tab's Audio section after the countdown, and says to use headphones", () => {
+  it("is a switch, off by default, in the Recording tab's Audio section after the countdown, without an ⓘ", () => {
     const row = group(idle, context, "microphone")!;
     expect(row).toMatchObject({ label: "Microphone", control: "switch", tab: "recording", section: "audio" });
-    expect(row.info).toContain("headphones");
+    // No ⓘ (2026-10-28, the maintainer's request): the switch says enough.
+    expect(row).not.toHaveProperty("info");
     expect(checked(idle, context, "microphone")).toBe("off");
     expect(checked(idle, on(), "microphone")).toBe("on");
     expect(settingsAction(idle, context, "microphone", "on")).toEqual({ setMicrophone: true });
@@ -792,13 +793,13 @@ describe("microphone (plan 074)", () => {
     expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneDevice")?.actions?.[0]?.label).toBe("搜尋裝置");
   });
 
-  it("shows the Input level under the picker while the microphone is on and allowed (plan 079, D1)", () => {
+  it("offers Test microphone under the picker while the microphone is on and allowed (plan 079, D1)", () => {
     const row = group(idle, on(), "microphoneLevel")!;
-    expect(row).toMatchObject({ label: "Input level", control: "inputMeter", tab: "recording", section: "audio", enabled: true, choices: [] });
-    expect(row.info).toContain("Nothing is recorded");
+    expect(row).toMatchObject({ label: "Test microphone", control: "microphoneTest", tab: "recording", section: "audio", enabled: true, choices: [] });
+    expect(row).not.toHaveProperty("info");
     const ids = settingsView(idle, on()).groups.map((entry) => entry.id);
     expect(ids.indexOf("microphoneLevel")).toBe(ids.indexOf("microphoneDevice") + 1);
-    // Off, denied or not yet asked: no meter, the card's guidance instead.
+    // Off, denied or not yet asked: no test, the card's guidance instead.
     for (const microphone of [{ enabled: false }, { access: "denied" as const }, { access: "not-determined" as const }, { access: "restricted" as const }]) {
       expect(group(idle, on(microphone), "microphoneLevel"), JSON.stringify(microphone)).toBeUndefined();
     }
@@ -807,7 +808,7 @@ describe("microphone (plan 074)", () => {
     for (const state of busy) {
       expect(group(state, on(), "microphoneLevel"), state.type).toMatchObject({ enabled: false, note: "While recording, the Recording Studio shows the level." });
     }
-    expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneLevel")?.label).toBe("輸入音量");
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphoneLevel")?.label).toBe("測試麥克風");
   });
 });
 
@@ -997,15 +998,14 @@ describe("countdown group (plan 040)", () => {
 });
 
 describe("countdown sound (plan 046)", () => {
-  it("is a switch directly after Countdown whose ⓘ says the tick is not recorded, in both languages", () => {
+  it("is a switch directly after Countdown, without an ⓘ (2026-10-28), in both languages", () => {
     const sound = group(idle, context, "countdownSound")!;
     expect(sound).toMatchObject({ label: "Countdown sound", control: "switch", tab: "recording", section: "countdown", noteKind: "explanation", enabled: true });
     expect(sound.choices.map((c) => [c.id, c.label, c.checked])).toEqual([["on", "On", true], ["off", "Off", false]]);
     expect(sound).not.toHaveProperty("note");
-    expect(sound.info).toBe("The tick is not recorded.");
+    expect(sound).not.toHaveProperty("info");
     const zh = group(idle, { ...context, language: "zh-TW" }, "countdownSound")!;
     expect([zh.label, ...zh.choices.map((c) => c.label)]).toEqual(["倒數音效", "開啟", "關閉"]);
-    expect(zh.info).toBe("提示音不會被錄進影片。");
     expect(checked(idle, { ...context, countdownSound: false }, "countdownSound")).toBe("off");
   });
 
@@ -1749,14 +1749,5 @@ describe("Keyboard Shortcuts tab (plan 073)", () => {
       .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Another app may be using ⌥⌘,." });
     expect(row({ ...win, settingsShortcut: { kind: "conflict" } }, "open").status)
       .toEqual({ kind: "unavailable", label: "Unavailable", reason: "Ctrl+Shift+, is the recording shortcut, so it does not open RecordStuff." });
-  });
-});
-
-describe("the microphone's note", () => {
-  // An editable recording keeps the microphone apart (plan 087), so its note no longer says "one track" then
-  // (Codex's computer-use round of 2026-10-26 found the two notes contradicting each other).
-  it("says where the microphone is recorded, mixed in or on a track of its own", () => {
-    expect(group(idle, context, "microphone")?.info).toMatch(/^Mixed with system audio into one track\./);
-    expect(group(idle, { ...context, editableRecording: true }, "microphone")?.info).toMatch(/^Kept on a track of its own while Editable recordings is on/);
   });
 });

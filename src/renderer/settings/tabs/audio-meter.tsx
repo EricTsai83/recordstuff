@@ -1,8 +1,8 @@
 /**
  * The Recording Studio's level meters (plan 075, D19): each input's level as it arrives, before muting, from about
  * 60 dB below full scale to full scale, and its mute. The page asks main for levels only while a meter is shown and
- * the window is in sight; one subscription serves every meter. The Recording tab's Input level (plan 079, D1) is drawn
- * the same way from the chosen input's levels between recordings, which main gives only to a focused window.
+ * the window is in sight; one subscription serves every meter. The Recording tab's Test microphone (plan 079, D1) draws
+ * the same way the chosen input's levels between recordings, which main gives only to a focused window.
  */
 import { useEffect, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
@@ -53,7 +53,7 @@ const inputListeners = new Set<(level: MicrophoneLevel) => void>();
 let inputUnsubscribe: (() => void) | undefined;
 let inputWatching = false;
 
-/** Watches the chosen input while an Input level is shown and the window is in sight (plan 079, D1). */
+/** Watches the chosen input while Test microphone's meter is shown and the window is in sight (plan 079, D1). */
 function rewatchInput(): void {
   const wanted = inputListeners.size > 0 && document.visibilityState === "visible";
   if (wanted === inputWatching) return;
@@ -84,16 +84,31 @@ function decibels(peak: number): number {
   return peak > 0 ? Math.min(0, Math.max(FLOOR_DB, 20 * Math.log10(peak))) : FLOOR_DB;
 }
 
+/**
+ * Test microphone's level in words (2026-10-28, the maintainer's request: a level in dB means nothing to most users),
+ * by the bands the meter's colours draw: green up to −12 dB, amber to −3 dB, red above it.
+ */
+type Loudness = "silent" | "quiet" | "good" | "loud";
+const LOUDNESS_WORDS = { silent: "No sound", quiet: "Too quiet", good: "Good level", loud: "Too loud" } as const;
+function loudness(db: number): Loudness {
+  return db <= -50 ? "silent" : db < -30 ? "quiet" : db <= -3 ? "good" : "loud";
+}
+/** The words hold a level through the pauses of speech, then fall back faster than the bar, so silence is said soon. */
+const HELD_MS = 1000;
+const HELD_FALL_DB_PER_SECOND = 30;
+
 /** How often the level is said to assistive technology, at most: 4 times a second, not each level. */
 const SPOKEN_MS = 250;
 
 /**
  * Draws `source`'s level into the meter's elements as it comes, up at once and falling back slowly with time, as
  * meters do, also when no level comes (an input that delivers nothing in silence); at the floor while `off`, so a next
- * recording starts from silence. The elements are written directly, a transform for the bar, and React renders
- * nothing per level: at 15 levels and 15 steps a second, a render each cost the page more than the preview it shows.
+ * recording starts from silence. The elements are written directly, a transform for the bar and the `readout`'s words,
+ * and React renders nothing per level: at 15 levels and 15 steps a second, a render each cost the page more than the
+ * preview it shows.
  */
-function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, source: "system" | "microphone" | "input", off: boolean): void {
+function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, source: "system" | "microphone" | "input", off: boolean,
+  readout?: HTMLElement | null): void {
   useEffect(() => {
     if (!track || !cover) return;
     let shown = FLOOR_DB, drawn = Number.NaN, spoken = Number.NaN, spokenAt = 0;
@@ -114,24 +129,32 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
     paint(true);
     if (off) return;
     // Levels only raise what the next frame shows; frames fall back and paint, on the Studio's one clock.
-    let heard = FLOOR_DB, frameAt = performance.now();
+    let heard = FLOOR_DB, frameAt = performance.now(), held = FLOOR_DB, heldAt = 0, said: Loudness | undefined;
     const stop = source === "input"
       ? subscribeInput((level) => { heard = Math.max(heard, decibels(level.peak)); })
       : subscribe((levels) => {
         heard = Math.max(heard, decibels(source === "system" ? levels.system : levels.microphone ?? 0));
       });
     const stopFrames = onFrame(() => {
-      const now = performance.now();
-      const fallen = Math.max(FLOOR_DB, shown - FALL_DB_PER_SECOND * (now - frameAt) / 1000);
+      const now = performance.now(), seconds = (now - frameAt) / 1000;
+      const fallen = Math.max(FLOOR_DB, shown - FALL_DB_PER_SECOND * seconds);
       frameAt = now;
       // A level rising is said at once; only its falling back is held to SPOKEN_MS, which a later frame says.
       const rose = heard > fallen;
       shown = Math.max(heard, fallen);
+      // The words follow a level held longer than the bar's, so a breath between words does not read as silence.
+      if (shown >= held) { held = shown; heldAt = now; } else if (now - heldAt > HELD_MS) held = Math.max(shown, held - HELD_FALL_DB_PER_SECOND * seconds);
+      const verdict = loudness(held);
+      if (readout && verdict !== said) {
+        readout.textContent = model.text(LOUDNESS_WORDS[verdict]);
+        readout.dataset.loudness = verdict;
+        said = verdict;
+      }
       heard = FLOOR_DB;
       paint(rose);
     });
     return () => { stop(); stopFrames(); };
-  }, [track, cover, source, off]);
+  }, [track, cover, source, off, readout]);
 }
 
 /**
@@ -184,25 +207,24 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
 }
 
 /**
- * The Recording tab's Input level (plan 079, D1): the chosen input's peak between recordings, so the user can check
- * that it hears them without recording; at the floor while disabled (a recording runs, whose own levels the Recording
- * Studio shows).
+ * Test microphone's meter (plan 079, D1): the chosen input's peak between recordings, so the user can check that it
+ * hears them without recording. Only a meter not `off` asks main for the levels; an `off` one shows where they will
+ * be, hidden from assistive technology. `segmented`, the bar is drawn in steps, with its level in words beside it when
+ * `readout`.
  */
-export function InputMeter({ group, disabled, describedBy }: { group: SettingsGroup; disabled: boolean; describedBy: string | undefined }) {
-  const id = `setting-${group.id}`;
+export function InputMeter({ segmented, readout, off = false }: { segmented?: boolean; readout?: boolean; off?: boolean }) {
   const [track, setTrack] = useState<HTMLDivElement | null>(null);
   const [cover, setCover] = useState<HTMLDivElement | null>(null);
-  useMeter(track, cover, "input", disabled);
+  const [value, setValue] = useState<HTMLSpanElement | null>(null);
+  useMeter(track, cover, "input", off, value);
   return (
-    <div className="audio-meter">
+    <div className="audio-meter input-meter" data-segmented={segmented || undefined} data-off={off || undefined} aria-hidden={off || undefined}>
       {/* The value is written by useMeter as levels come, never by a render. */}
       <div
         ref={setTrack}
-        id={id}
         className="audio-meter-track"
         role="meter"
-        aria-labelledby={`${id}-label`}
-        aria-describedby={describedBy}
+        aria-label={model.text("Input level")}
         aria-valuemin={FLOOR_DB}
         aria-valuemax={0}
         aria-valuenow={FLOOR_DB}
@@ -210,6 +232,7 @@ export function InputMeter({ group, disabled, describedBy }: { group: SettingsGr
         <div className="audio-meter-fill" />
         <div ref={setCover} className="audio-meter-cover" />
       </div>
+      {readout && <span ref={setValue} className="input-meter-value" aria-hidden="true" />}
     </div>
   );
 }
