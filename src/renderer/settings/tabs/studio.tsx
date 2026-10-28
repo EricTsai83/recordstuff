@@ -403,12 +403,14 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
 
 /**
  * How much the toolbar says (2026-10-28): every control with its name while all fit; then the recording type and the
- * pickers as icons; then the view and Live preview as well. Record keeps its words always. An icon names itself in a
- * tooltip and opens the same menu. Decided by the toolbar's own width, so the sidebar or zoom count as the window does.
+ * pickers as icons; then the view and Live preview as well; narrower still, Record takes a line of its own over every
+ * icon (the maintainer's request: not the end left hanging under the line). Record keeps its words always. An icon
+ * names itself in a tooltip and opens the same menu. Decided by the toolbar's own width, so the sidebar or zoom count
+ * as the window does.
  */
-type Density = "full" | "compact" | "icons";
-/** The narrowest toolbar (CSS px) each density fits in, its labels at their usual lengths; narrower still, it wraps. */
-const DENSITY_WIDTHS: [Density, number][] = [["full", 1100], ["compact", 620]];
+type Density = "full" | "compact" | "icons" | "stacked";
+/** The narrowest toolbar (CSS px) each density fits in, its labels at their usual lengths. */
+const DENSITY_WIDTHS: [Density, number][] = [["full", 1100], ["compact", 620], ["icons", 430]];
 
 function useDensity(toolbar: RefObject<HTMLDivElement | null>): Density {
   const [density, setDensity] = useState<Density>("full");
@@ -416,7 +418,7 @@ function useDensity(toolbar: RefObject<HTMLDivElement | null>): Density {
   useLayoutEffect(() => {
     const element = toolbar.current;
     if (!element) return;
-    const fit = (): void => setDensity(DENSITY_WIDTHS.find(([, width]) => element.clientWidth >= width)?.[0] ?? "icons");
+    const fit = (): void => setDensity(DENSITY_WIDTHS.find(([, width]) => element.clientWidth >= width)?.[0] ?? "stacked");
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(element);
@@ -447,7 +449,7 @@ function Toolbar({ controls }: { controls: SettingsGroup | undefined }) {
           {type && <TypePicker type={type} iconOnly={density !== "full"} />}
           {pickers.map((group) => <Picker key={group.id} group={group} iconOnly={density !== "full"} />)}
         </section>
-        <StudioHead view={view} live={live} rate={rate} iconOnly={density === "icons"} />
+        <StudioHead view={view} live={live} rate={rate} iconOnly={density === "icons" || density === "stacked"} />
       </div>
       <Failures groups={[controls, type]} />
       <Failures groups={[view, live]} />

@@ -1353,11 +1353,10 @@
     display: grid;
     gap: 6px;
   }
-  .studio-toolbar[data-density="icons"] {
+  .studio-toolbar:is([data-density="icons"], [data-density="stacked"]) {
     --studio-toolbar-gap: 6px;
   }
-  /* What is recorded at the start, what is watched at the end; in the narrowest window the end wraps under, still
-     at the end. */
+  /* What is recorded at the start, what is watched at the end. */
   .studio-toolbar-row {
     display: flex;
     flex-wrap: wrap;
@@ -1372,18 +1371,38 @@
     gap: var(--studio-toolbar-gap);
     min-width: 0;
   }
-  /* The choices share what the end leaves them, the pickers shrinking first (the densities' widths keep them legible);
-     folded to icons in the narrowest window, the end wraps under them instead. */
+  /* The choices share what the end leaves them, the pickers shrinking first (the densities' widths keep them legible). */
   .studio-choices {
     flex: 1 1 0;
     flex-wrap: nowrap;
   }
-  .studio-toolbar[data-density="icons"] .studio-choices {
-    flex: 0 1 auto;
-  }
   .studio-head {
     flex: none;
     margin-inline-start: auto;
+  }
+  /* Too narrow for one line: Record across the toolbar, and under it one line of every icon, the choices' at its start
+     and the view's at its end (2026-10-28). */
+  .studio-toolbar[data-density="stacked"] .studio-toolbar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+  }
+  .studio-toolbar[data-density="stacked"] .studio-choices {
+    grid-column: 1 / -1;
+    grid-row: 1 / 3;
+    flex-wrap: wrap;
+    align-content: start;
+  }
+  .studio-toolbar[data-density="stacked"] .studio-record {
+    flex: 1 0 100%;
+  }
+  .studio-toolbar[data-density="stacked"] .studio-record > button {
+    flex: 1 1 auto;
+  }
+  .studio-toolbar[data-density="stacked"] .studio-head {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: end;
   }
   .studio-toolbar > .studio-failure {
     margin: 0;
@@ -1517,10 +1536,16 @@
     display: grid;
     gap: 6px;
   }
+  /* Each control at most 340px wide, from the start (2026-10-28): system audio alone does not run across the window. */
   .studio-live-controls {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 12px 28px;
+  }
+  .studio-live-controls > * {
+    flex: 1 1 220px;
+    min-width: 0;
+    max-width: 340px;
   }
   .studio-live-row > .studio-note,
   .studio-live-row > .studio-failure {
