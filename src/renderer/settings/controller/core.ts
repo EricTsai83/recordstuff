@@ -69,6 +69,8 @@ export let view: SettingsView | undefined;
  * The tab a new window opens on: the one last shown (2026-10-26, the maintainer's request, as macOS's settings windows
  * come back to their last pane; formerly always Recordings), kept in this window's storage as the sidebar's state is.
  * An entry that names a tab (the Recording Studio from the tray, a notification's recording) still opens on it.
+ * The Recording Studio is never the one kept (2026-10-28, the maintainer's request): it is opened for a recording, by the
+ * tray or as one starts, so the window opened on its own comes back to the page shown before it.
  */
 const TAB_KEY = "recordstuff.settingsTab";
 function rememberedTab(): SettingsTab {
@@ -80,6 +82,7 @@ function rememberedTab(): SettingsTab {
   }
 }
 function rememberTab(): void {
+  if (selectedTab === "studio") return;
   try { localStorage.setItem(TAB_KEY, selectedTab); } catch { /* a page without storage opens on Recordings */ }
 }
 export let selectedTab: SettingsTab = rememberedTab();

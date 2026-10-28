@@ -22,6 +22,15 @@ it("opens on the tab last shown, and remembers each tab chosen", async () => {
   expect(localStorage.getItem("recordstuff.settingsTab")).toBe("shortcuts");
 });
 
+it("never keeps the Recording Studio: the window opened on its own comes back to the page shown before it (2026-10-28)", async () => {
+  vi.resetModules();
+  localStorage.setItem("recordstuff.settingsTab", "general");
+  const controller = await import("../settings-controller");
+  controller.activateTab("studio");
+  expect(controller.selectedTab).toBe("studio");
+  expect(localStorage.getItem("recordstuff.settingsTab")).toBe("general");
+});
+
 it("opens on Recordings when the stored tab is not one", async () => {
   vi.resetModules();
   localStorage.setItem("recordstuff.settingsTab", "elsewhere");
