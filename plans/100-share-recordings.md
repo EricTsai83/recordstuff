@@ -1,8 +1,8 @@
-# 099 — Sharing a recording: the right file by default, every version on purpose
+# 100 — Sharing a recording: the right file by default, every version on purpose
 
-[English](099-share-recordings.md) | [繁體中文](099-share-recordings.zh-TW.md)
+[English](100-share-recordings.md) | [繁體中文](100-share-recordings.zh-TW.md)
 
-Status: planned; not started; decisions D1–D8 answered on 2026-10-28, D6 revised, D2 and D7 refined, the share sheet removed and Copy given ⌘C at the plan's review the same day; D9 set provisionally by the agent on 2026-10-29, for the maintainer to adjust. Created: 2026-10-28 at the maintainer's request, rewritten the same day after the maintainer's review to put the experience first. Hard dependencies: none open. It builds on the closed 085 (cutting a recording, export and publication), 087 and 098 (editable recordings and their tracks) and 071 (the Recordings tab). Execute in order under the [plan index](README.md). This task writes the plan only. Nothing below has been implemented or measured yet.
+Status: planned; not started; decisions D1–D8 answered on 2026-10-28, D6 revised, D2 and D7 refined, the share sheet removed and Copy given ⌘C at the plan's review the same day; D9 set provisionally by the agent on 2026-10-29, for the maintainer to adjust. Created: 2026-10-28 at the maintainer's request as 099, renumbered 100 on 2026-10-29 when its branch was rebased onto main, whose 099 is the system interface crop; rewritten the same day after the maintainer's review to put the experience first. Hard dependencies: none open. It builds on the closed 085 (cutting a recording, export and publication), 087 and 098 (editable recordings and their tracks) and 071 (the Recordings tab). Execute in order under the [plan index](README.md). This task writes the plan only. Nothing below has been implemented or measured yet.
 
 The maintainer's brief (2026-10-28): design the best experience, not the smallest change; people do not know what a track is and just drag what they recorded to someone; some do want the sources, the finished video, or both; work out how the versions of a recording are shared, how they are managed and how sharing looks on screen. Making every recording editable is out of scope (maintainer, 2026-10-28).
 
