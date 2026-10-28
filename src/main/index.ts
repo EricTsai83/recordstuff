@@ -998,9 +998,10 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         // renderUi below draws the cleared line.
         quit.clearDeferred(false);
         // A recording starts, from the tray, the shortcut or the Studio itself: with the switch on, the Studio opens
-        // behind the app in use, showing the recording's picture (2026-10-28). Once per start, not at each step.
+        // without taking the keys from the app in use, showing the recording's picture (2026-10-28). Once per start, not
+        // at each step.
         if (event.state.type === "starting" && (before === "idle" || before === "needsPermission") && settings.studioOnStart) {
-          log("studio: opened behind the app in use as a recording starts");
+          log("studio: opened without taking the keys as a recording starts");
           settingsWindow.showStudio(true);
         }
         // No input is listed while a session runs (plan 074): a listing still in flight ends now.

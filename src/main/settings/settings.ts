@@ -70,7 +70,7 @@ export interface Settings {
    */
   editableRecording: boolean;
   /**
-   * Whether a recording's start opens the Recording Studio behind the app in use, showing the recording's picture
+   * Whether a recording's start opens the Recording Studio without taking the keys, showing the recording's picture
    * (2026-10-28, the maintainer's request); off by default.
    */
   studioOnStart: boolean;

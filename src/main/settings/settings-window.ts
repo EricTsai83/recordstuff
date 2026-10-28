@@ -176,9 +176,9 @@ export class SettingsWindow {
   private painted = false;
   /** Shows the current window once its page reports its first content, or `ready-to-show` plus a fallback. */
   private reveal: (() => void) | undefined;
-  /** The last show asked for the window behind the app in use, without taking the keys (a recording's start). */
-  private behind = false;
-  /** Shown behind: the app takes its Dock icon and menus (`opened`) only once the user clicks into the window. */
+  /** The last show asked for the window without taking the keys from the app in use (a recording's start). */
+  private inactive = false;
+  /** Shown inactive: the app takes its Dock icon and menus (`opened`) only once the user clicks into the window. */
   private openedOnFocus = false;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSize: WindowSize | undefined;
@@ -307,11 +307,11 @@ export class SettingsWindow {
   }
 
   /**
-   * The Recording Studio (plan 075, D19), from the tray and the Camera section's link; `behind` as a recording starts
+   * The Recording Studio (plan 075, D19), from the tray and the Camera section's link; `inactive` as a recording starts
    * with Open Recording Studio when recording starts on (2026-10-28), so the app being recorded keeps the keys.
    */
-  showStudio(behind = false): void {
-    this.showEntry("studio", behind);
+  showStudio(inactive = false): void {
+    this.showEntry("studio", inactive);
   }
 
   /** The capture-warning banner's entry: Recording, where the resolution warning is shown. */
@@ -320,10 +320,10 @@ export class SettingsWindow {
   }
 
   /** An explicit entry: a new token makes the page select `tab` once, however it was left. */
-  private showEntry(tab: SettingsTab, behind = false): void {
+  private showEntry(tab: SettingsTab, inactive = false): void {
     this.entryTab = tab;
     this.resultFocus++;
-    this.show(true, behind);
+    this.show(true, inactive);
   }
 
   /**
@@ -363,28 +363,28 @@ export class SettingsWindow {
   }
 
   /**
-   * `behind` (2026-10-28): shown over other windows without making RecordStuff the active app, so the keys stay with
+   * `inactive` (2026-10-28): shown over other windows without making RecordStuff the active app, so the keys stay with
    * the app in use; the Dock icon and the app's menus come once the user clicks into the window (opened, below).
    */
-  show(resultEntry = false, behind = false): void {
+  show(resultEntry = false, inactive = false): void {
     this.hiddenByUser = false;
     this.resultEntry = resultEntry;
-    this.behind = behind;
-    this.openedOnFocus = behind;
+    this.inactive = inactive;
+    this.openedOnFocus = inactive;
     // A menu-bar app has no Dock icon, so showing a window does not bring the
     // app forward on its own; without this the panel can open behind the
     // frontmost app, the same reason index.ts focuses before a file dialog.
-    if (!behind) this.options.opened?.();
+    if (!inactive) this.options.opened?.();
     // A video played full screen from this window starts from a page already loaded (video-fullscreen.ts).
     this.options.fullScreen?.prepare?.();
-    if (process.platform === "darwin" && !behind) app.focus({ steal: true });
+    if (process.platform === "darwin" && !inactive) app.focus({ steal: true });
     this.options.activated?.();
     const existing = this.window;
     if (existing && !existing.isDestroyed()) {
-      // A window still loading would show blank; its own reveal shows it. Behind, a window in sight stays as it is and a
+      // A window still loading would show blank; its own reveal shows it. Inactive, a window in sight stays as it is and a
       // minimized one stays minimized: only a hidden one is brought back, without the keys.
       if (this.painted) {
-        if (behind) {
+        if (inactive) {
           if (!existing.isVisible() && !existing.isMinimized()) existing.showInactive();
         } else {
           if (existing.isMinimized()) existing.restore();
@@ -453,7 +453,7 @@ export class SettingsWindow {
       this.options.log?.(`settings: window shown ${Math.round(performance.now() - madeAt)} ms after it was made`);
       // Painted while hidden: it stays hidden, and the next open shows it as it is.
       if (this.hiddenByUser) return;
-      if (this.behind) {
+      if (this.inactive) {
         window.showInactive();
         return;
       }

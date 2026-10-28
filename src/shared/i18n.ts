@@ -433,8 +433,8 @@ export const ZH_TW = {
   "Hide taskbar": "隱藏工作列",
   "Windows cannot leave the taskbar out of a recording.": "Windows 無法把工作列排除在錄影之外。",
   "Open Recording Studio when recording starts": "開始錄影時開啟錄影工作室",
-  "Opens behind the app you are using with the recording's preview, so your keys still go to that app. It is not recorded.":
-    "在背景開啟並顯示錄影預覽，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。",
+  "Opens with the recording's preview without taking keyboard focus, so your keys still go to the app you are using. It is not recorded.":
+    "開啟並顯示錄影預覽，不會搶走鍵盤焦點，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。",
   "More about {label}": "{label}的說明",
   "Could not register {value}; another app may be using it. Open RecordStuff to choose another shortcut.":
     "無法註冊 {value}，可能被其他 App 佔用。請開啟 RecordStuff 改用其他快捷鍵。",

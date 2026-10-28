@@ -353,7 +353,7 @@ describe("settings window lifecycle", () => {
     expect(opened).toHaveBeenCalledTimes(2);
   });
 
-  it("opens the Recording Studio behind the app in use as a recording starts: shown without the keys, the Dock icon and menus once clicked into (2026-10-28)", () => {
+  it("opens the Recording Studio without taking the keys as a recording starts: shown inactive, the Dock icon and menus once clicked into (2026-10-28)", () => {
     const opened = vi.fn();
     const s = setup({ opened });
     s.panel.showStudio(true);

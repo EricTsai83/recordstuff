@@ -1019,7 +1019,7 @@ describe("countdown sound (plan 046)", () => {
     expect(checked(idle, { ...context, studioOnStart: true }, "studioOnStart")).toBe("on");
     expect(settingsAction(idle, context, "studioOnStart", "on")).toEqual({ setStudioOnStart: true });
     expect(group(idle, { ...context, language: "zh-TW" }, "studioOnStart")).toMatchObject({ label: "開始錄影時開啟錄影工作室",
-      info: "在背景開啟並顯示錄影預覽，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。" });
+      info: "開啟並顯示錄影預覽，不會搶走鍵盤焦點，按鍵仍會送到你正在使用的 App。錄影工作室不會被錄進影片。" });
   });
 
   it("is disabled while the countdown is Off, keeping its value", () => {

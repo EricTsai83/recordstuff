@@ -166,14 +166,14 @@ export function editableRecordingGroup(ctx: AppContext, enabled: boolean): Group
 
 /**
  * Opens the Recording Studio as a recording starts, from the tray or the shortcut (2026-10-28, the maintainer's
- * request): behind the app in use, which keeps the keys, showing the recording's picture. Locked while recording, as
+ * request): without taking the keys from the app in use, showing the recording's picture. Locked while recording, as
  * every recording preference is; RecordStuff's windows are left out of every recording.
  */
 export function studioOnStartGroup(ctx: AppContext, enabled: boolean): Group {
   const language = ctx.language;
   return { ...group("studioOnStart", t("Open Recording Studio when recording starts", language), enabled,
     switchChoices(language, ctx.studioOnStart ?? false, (value) => ({ setStudioOnStart: value }))),
-  info: t("Opens behind the app you are using with the recording's preview, so your keys still go to that app. It is not recorded.", language) };
+  info: t("Opens with the recording's preview without taking keyboard focus, so your keys still go to the app you are using. It is not recorded.", language) };
 }
 
 /**
