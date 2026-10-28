@@ -5,6 +5,7 @@ import type { SettingsGroup, ShortcutRowView } from "../../../shared/settings-pa
 import { ControlTooltip } from "../../components/control-tooltip";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { FieldTitle } from "../../components/ui/field";
 import { Kbd, KbdGroup } from "../../components/ui/kbd";
 import * as model from "../settings-controller";
 
@@ -15,7 +16,7 @@ function ShortcutRow({ row }: { row: ShortcutRowView }) {
     <div id={`${id}-row`} className="row block gap-0" data-status={row.status?.kind}>
       <div className="row-line">
         <div className="group-title">
-          <span id={`${id}-label`} className="group-label text-xs leading-[1.35]">{row.label}</span>
+          <FieldTitle id={`${id}-label`} className="group-label text-xs leading-[1.35]">{row.label}</FieldTitle>
           {row.status && (
             <Badge id={`${id}-status`} size="md" variant={row.status.kind === "unavailable" ? "destructive" : "secondary"}>
               {row.status.label}
