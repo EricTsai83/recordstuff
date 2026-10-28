@@ -64,7 +64,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", hideSystemUi: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideSystemUi: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The first-launch guide's way back (2026-10-26): opening it changes nothing a recording holds; its inputs lock in it.
