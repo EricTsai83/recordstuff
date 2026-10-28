@@ -6,7 +6,7 @@
  * small screen cuts neither. Positions are percentages of the arrangement's box: the picture scales with CSS alone, with
  * no measuring or observers.
  */
-import { type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
 import { Check } from "lucide-react";
 import type { SettingsChoice, SettingsGroup } from "../../../shared/settings-panel";
 import { Switch } from "../../components/ui/switch";
@@ -104,11 +104,35 @@ export function DisplayArrangement({
     const choice = group.choices.find((item) => `${id}-${item.id}` === next.id);
     if (choice) choose(choice);
   };
+  const desk = useRef<HTMLDivElement>(null);
+  // The room past the desk is what its labels take (2026-10-28, the maintainer's request), measured once they are laid
+  // out, again as the desk resizes and once the fonts are in: the reserve for two lines (ui.css) holds only until then.
+  useLayoutEffect(() => {
+    const element = desk.current;
+    if (!element) return;
+    const fit = (): void => {
+      const box = element.getBoundingClientRect();
+      let below = 0, above = 0;
+      for (const label of element.querySelectorAll(".display-label")) {
+        const rect = label.getBoundingClientRect();
+        below = Math.max(below, rect.bottom - box.bottom);
+        above = Math.max(above, box.top - rect.top);
+      }
+      element.style.setProperty("--label-room-below", `${Math.ceil(below)}px`);
+      element.style.setProperty("--label-room-above", `${Math.ceil(above)}px`);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    void document.fonts?.ready.then(fit);
+    return () => observer.disconnect();
+  });
   return (
     <div id={id} role="group" className="arrangement" aria-labelledby={`${id}-label`} aria-describedby={describedBy}>
       <div className="arrangement-stage">
         <div role="radiogroup" className="arrangement-screens" aria-labelledby={`${id}-label`} onKeyDown={onKeyDown}>
         <div
+          ref={desk}
           className="arrangement-desk"
           data-room-below={roomBelow || undefined}
           data-room-above={roomAbove || undefined}
@@ -143,7 +167,7 @@ export function DisplayArrangement({
                 <span
                   className="display-label"
                   data-place={label.place}
-                  style={label.maxWidth === undefined ? undefined : { maxWidth: `min(180px, ${percent(label.maxWidth)})` }}
+                  style={label.maxWidth === undefined ? undefined : { maxWidth: `min(calc(180px * var(--arrangement-scale, 1)), ${percent(label.maxWidth)})` }}
                 >
                   <span className="display-name">{frame.name}</span>
                   <span className="display-pixels">{frame.pixels}</span>

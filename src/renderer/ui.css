@@ -1845,7 +1845,10 @@
   .controls:has(> .arrangement) {
     max-width: 100%;
   }
+  /* Everything drawn inside the stage scales by one factor (2026-10-28, the maintainer's request: the screens, their
+     labels and the room between them a little larger), the stage itself as it was. */
   .arrangement {
+    --arrangement-scale: 1.2;
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
@@ -1858,20 +1861,21 @@
      corner and takes no line of its own, the screens keeping clear of its column so it never covers a screen or a
      label; a narrow one gives it a line under them. */
   .arrangement-stage {
-    --stage-height: 128px;
+    --stage-height: calc(128px * var(--arrangement-scale, 1));
     position: relative;
     container: arrangement / inline-size;
     display: grid;
     justify-items: center;
-    gap: 6px;
-    padding: 18px 12px 8px 16px;
+    gap: 12px;
+    /* 16px clear of a screen on every side: over the screens, less the room each keeps for its ring. */
+    padding: calc(16px - 8px * var(--arrangement-scale, 1)) 12px 16px 16px;
     border-radius: 10px;
     background: var(--muted);
   }
   .arrangement-stage > .arrangement-options {
     position: absolute;
     right: 12px;
-    bottom: 8px;
+    bottom: 12px;
   }
   .arrangement-stage > .arrangement-screens {
     --follow-room: 40px;
@@ -1904,19 +1908,20 @@
     position: relative;
     width: min(100%, calc(var(--stage-height) * var(--desk-ratio)));
   }
-  /* The labels of the screens along the desk's foot (or head) are written past it: room for two lines. */
+  /* The labels of the screens along the desk's foot (or head) are written past it: the room they take, measured
+     (display-arrangement.tsx), or until then room for two lines. */
   .arrangement-desk[data-room-below] {
-    margin-bottom: 51px;
+    margin-bottom: var(--label-room-below, calc(51px * var(--arrangement-scale, 1)));
   }
   .arrangement-desk[data-room-above] {
-    margin-top: 38px;
+    margin-top: var(--label-room-above, calc(38px * var(--arrangement-scale, 1)));
   }
   .display-tile {
-    --tile-room: 8px;
+    --tile-room: calc(8px * var(--arrangement-scale, 1));
     position: absolute;
     padding: var(--tile-room);
     border: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--arrangement-scale, 1));
     background: none;
     cursor: pointer;
     outline: none;
@@ -1948,8 +1953,8 @@
     position: absolute;
     top: calc(100% - var(--tile-room) - 2px);
     left: 50%;
-    width: clamp(22px, 58%, 46px);
-    height: 7px;
+    width: clamp(calc(22px * var(--arrangement-scale, 1)), 58%, calc(46px * var(--arrangement-scale, 1)));
+    height: calc(7px * var(--arrangement-scale, 1));
     transform: translateX(-50%);
     border-radius: 50%;
     background: var(--display-stand);
@@ -1966,7 +1971,7 @@
     transition: border-color 120ms ease-out;
   }
   .display-tile[data-stand]::before {
-    bottom: calc(var(--tile-room) - 10px);
+    bottom: calc(var(--tile-room) - 10px * var(--arrangement-scale, 1));
   }
   .display-tile:not(:disabled):hover::before {
     border-color: color-mix(in oklab, var(--primary) 35%, transparent);
@@ -1987,17 +1992,17 @@
     flex-direction: column;
     align-items: center;
     width: max-content;
-    max-width: 180px;
+    max-width: calc(180px * var(--arrangement-scale, 1));
     transform: translateX(-50%);
     text-align: center;
     line-height: 1.25;
     pointer-events: none;
   }
   .display-label[data-place="below"] {
-    top: calc(100% - var(--tile-room) + 15px);
+    top: calc(100% - var(--tile-room) + 15px * var(--arrangement-scale, 1));
   }
   .display-label[data-place="above"] {
-    bottom: calc(100% - var(--tile-room) + 6px);
+    bottom: calc(100% - var(--tile-room) + 6px * var(--arrangement-scale, 1));
   }
   .display-label[data-place="inside"] {
     top: 50%;
@@ -2016,14 +2021,14 @@
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
-    font-size: 12px;
+    font-size: calc(12px * var(--arrangement-scale, 1));
     font-weight: 600;
     overflow-wrap: anywhere;
   }
   .display-pixels {
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 12px;
+    font-size: calc(12px * var(--arrangement-scale, 1));
     font-variant-numeric: tabular-nums;
     color: var(--muted-foreground);
   }
@@ -2033,11 +2038,11 @@
   }
   .display-check {
     position: absolute;
-    right: 4px;
-    bottom: 4px;
-    width: 14px;
-    height: 14px;
-    padding: 2px;
+    right: calc(4px * var(--arrangement-scale, 1));
+    bottom: calc(4px * var(--arrangement-scale, 1));
+    width: calc(14px * var(--arrangement-scale, 1));
+    height: calc(14px * var(--arrangement-scale, 1));
+    padding: calc(2px * var(--arrangement-scale, 1));
     border-radius: 50%;
     background: var(--primary);
     color: var(--primary-foreground);
