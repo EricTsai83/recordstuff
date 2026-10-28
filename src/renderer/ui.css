@@ -1857,13 +1857,10 @@
   }
   /* The desk is the arrangement's bounding box, scaled to fit the stage's height or width, whichever runs out first;
      each screen is placed in it by percentages. */
-  /* The screens centred in the stage; on a wide stage the Follow the primary display switch sits in its bottom-right
-     corner and takes no line of its own, the screens keeping clear of its column so it never covers a screen or a
-     label; a narrow one gives it a line under them. */
+  /* The screens centred in the stage, across its width: Follow the primary display is on the row's title line
+     (2026-10-28, formerly the stage's bottom-right corner). */
   .arrangement-stage {
     --stage-height: calc(128px * var(--arrangement-scale, 1));
-    position: relative;
-    container: arrangement / inline-size;
     display: grid;
     justify-items: center;
     gap: 12px;
@@ -1872,32 +1869,9 @@
     border-radius: 10px;
     background: var(--muted);
   }
-  .arrangement-stage > .arrangement-options {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-  }
   .arrangement-stage > .arrangement-screens {
-    --follow-room: 40px;
     justify-self: center;
     width: 100%;
-    max-width: calc(100% - 2 * var(--follow-room));
-  }
-  @container arrangement (min-width: 570px) {
-    .arrangement-stage > .arrangement-screens {
-      --follow-room: 190px;
-    }
-  }
-  /* A narrow stage has no corner to spare: the switch and its name take a line of their own under the screens
-     (2026-10-26, formerly the switch alone, its name only on hover). */
-  @container arrangement (max-width: 569.98px) {
-    .arrangement-stage > .arrangement-options {
-      position: static;
-      justify-self: end;
-    }
-    .arrangement-stage > .arrangement-screens {
-      --follow-room: 0px;
-    }
   }
   .arrangement-screens {
     display: grid;
@@ -2075,8 +2049,14 @@
     cursor: default;
   }
   .arrangement .arrangement-option:disabled,
-  .arrangement .arrangement-option:has(:disabled) label {
+  .arrangement .arrangement-option:has(:disabled) label,
+  .arrangement-follow:has(:disabled) label {
     opacity: 0.5;
+  }
+  /* At the title line's end, after the row's name and its ⓘ. */
+  .arrangement-follow {
+    flex: none;
+    margin-left: auto;
   }
   .arrangement-option:focus-visible {
     outline: 2px solid var(--ring);

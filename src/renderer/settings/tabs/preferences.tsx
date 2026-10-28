@@ -12,7 +12,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import * as model from "../settings-controller";
 import { ShortcutEditor } from "./shortcut-editor";
 import { ShortcutRows } from "./shortcut-list";
-import { DisplayArrangement } from "./display-arrangement";
+import { DisplayArrangement, FollowPrimary } from "./display-arrangement";
 import { CameraPreview } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
 import { DeviceTestStage } from "./device-test";
@@ -120,6 +120,8 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
             </FieldLabel>
           )}
           <Explanation group={group} />
+          {/* The Screen row follows the primary display from its title line (2026-10-28, the maintainer's request). */}
+          {group.control === "arrangement" && <FollowPrimary group={group} value={value} disabled={!group.enabled} />}
         </div>}
         {group.id !== "log" && <div
           className="controls"

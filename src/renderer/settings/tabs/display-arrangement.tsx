@@ -1,7 +1,8 @@
 /**
  * The Screen row as the desktop's arrangement (2026-10-08): every screen drawn where it stands, as macOS's Displays pane
- * draws them, and picked by a click. Following the primary display is a switch in the picture's bottom-right corner,
- * since it names whichever screen holds the menu bar rather than one of them: turning it off keeps today's primary
+ * draws them, and picked by a click. Following the primary display is a switch on the row's title line (FollowPrimary;
+ * 2026-10-28, the maintainer's request, formerly the picture's bottom-right corner, a line of its own under a narrow
+ * one), since it names whichever screen holds the menu bar rather than one of them: turning it off keeps today's primary
  * screen chosen, no longer following. Each screen's name and size are written beside it, as macOS writes them, so a
  * small screen cuts neither. Positions are percentages of the arrangement's box: the picture scales with CSS alone, with
  * no measuring or observers.
@@ -53,6 +54,46 @@ export function placeLabels(boxes: Box[]): Array<{ place: LabelPlace; maxWidth: 
   });
 }
 
+/**
+ * Chooses a screen, or following the primary, for the row. While another screen is being saved, choosing the committed
+ * one again is a newer intent that replaces it.
+ */
+function chooser(group: SettingsGroup, value: string, disabled: boolean) {
+  const saving = model.savingOf(group.id);
+  const pending = saving !== undefined && saving.choice !== value;
+  const choose = (choice: SettingsChoice, control = `setting-${group.id}-${choice.id}`) => {
+    if (!disabled && choice.enabled && (choice.id !== value || pending)) void model.choose(group.id, choice.id, control);
+  };
+  // The switch shows the newest intent, so a click while another screen saves turns following on rather than off.
+  return { choose, intended: pending ? saving.choice : value };
+}
+
+/** Follow the primary display, on the Screen row's title line beside its name; nothing when the row cannot follow. */
+export function FollowPrimary({ group, value, disabled }: { group: SettingsGroup; value: string; disabled: boolean }) {
+  const id = `setting-${group.id}`;
+  const follow = group.choices.find((choice) => choice.id === "primary");
+  const primaryScreen = group.choices.find((choice) => choice.display?.primary);
+  if (!follow) return null;
+  const { choose, intended } = chooser(group, value, disabled);
+  const followIntended = intended === "primary";
+  return (
+    <div className="arrangement-option arrangement-follow">
+      <Switch
+        id={`${id}-primary`}
+        size="sm"
+        checked={followIntended}
+        disabled={disabled || (followIntended ? !primaryScreen?.enabled : !follow.enabled)}
+        onCheckedChange={(checked) => {
+          const next = checked ? follow : primaryScreen;
+          if (next) choose(next, `${id}-primary`);
+        }}
+      />
+      {/* Written at every width (2026-10-26: a narrow stage had dropped it, leaving a switch nobody could name). */}
+      <label htmlFor={`${id}-primary`} className="arrangement-follow-text">{model.text("Follow the primary display")}</label>
+    </div>
+  );
+}
+
 export function DisplayArrangement({
   group,
   value,
@@ -68,7 +109,6 @@ export function DisplayArrangement({
   const placed = group.choices.filter((choice): choice is SettingsChoice & { display: NonNullable<SettingsChoice["display"]> } => Boolean(choice.display));
   // A screen that cannot be placed (an unavailable one still chosen) is listed under the picture.
   const others = group.choices.filter((choice) => !choice.display && choice.id !== "primary");
-  const follow = group.choices.find((choice) => choice.id === "primary");
   const primaryScreen = placed.find((choice) => choice.display.primary);
   const left = Math.min(...placed.map((choice) => choice.display.x)),
     top = Math.min(...placed.map((choice) => choice.display.y)),
@@ -80,14 +120,7 @@ export function DisplayArrangement({
   const roomBelow = labels.some((label, index) => label.place === "below" && boxes[index]!.y + boxes[index]!.h > 1 - LABEL_BAND),
     roomAbove = labels.some((label, index) => label.place === "above" && boxes[index]!.y < LABEL_BAND);
   const following = value === "primary";
-  // While another screen is being saved, choosing the committed one again is a newer intent that replaces it.
-  const saving = model.savingOf(group.id);
-  const pending = saving !== undefined && saving.choice !== value;
-  const choose = (choice: SettingsChoice, control = `${id}-${choice.id}`) => {
-    if (!disabled && choice.enabled && (choice.id !== value || pending)) void model.choose(group.id, choice.id, control);
-  };
-  // The switch shows the newest intent, so a click while another screen saves turns following on rather than off.
-  const followIntended = (pending ? saving.choice : value) === "primary";
+  const { choose } = chooser(group, value, disabled);
   const screens = [...placed, ...others];
   // One stop in the Tab order; the arrows move between the screens, choosing as they go.
   const focusable = (screens.find((choice) => choice.id === value && choice.enabled) ??
@@ -197,24 +230,6 @@ export function DisplayArrangement({
         </div>
         )}
         </div>
-        {follow && (
-          <div className="arrangement-options">
-            <div className="arrangement-option">
-              <Switch
-                id={`${id}-primary`}
-                size="sm"
-                checked={followIntended}
-                disabled={disabled || (followIntended ? !primaryScreen?.enabled : !follow.enabled)}
-                onCheckedChange={(checked) => {
-                  const next = checked ? follow : primaryScreen;
-                  if (next) choose(next, `${id}-primary`);
-                }}
-              />
-              {/* Written at every width (2026-10-26: a narrow stage had dropped it, leaving a switch nobody could name). */}
-              <label htmlFor={`${id}-primary`} className="arrangement-follow-text">{model.text("Follow the primary display")}</label>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
