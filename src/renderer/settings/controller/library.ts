@@ -4,7 +4,7 @@
  */
 import { sentences, translate } from "../../../shared/i18n";
 import type { LibraryLayout } from "../../../shared/appearance";
-import type { FailureHelp, FolderChoice, LibraryItemView, LibraryView } from "../../../shared/settings-panel";
+import type { FailureHelp, FolderChoice, LibraryItemView, LibraryView, ShareChoice } from "../../../shared/settings-panel";
 import { fileNameProblem, fileNameProblemText, folderNameProblem, folderProblemText } from "../../../shared/file-name";
 import {
   announce,
@@ -211,6 +211,69 @@ export function openMenu(id: string, kind: typeof menuKind = "dropdown"): void {
   menuKind = kind;
   menuId = id;
   draw();
+}
+/**
+ * Share… (plan 100 step 3): the recording whose versions are shown, whether More is open, the versions selected (the
+ * recommended one as it opens; ⌘-click adds or takes one away), and what the last action said.
+ */
+export let sharing: { id: string; more: boolean; selected: string[]; status?: string | undefined; busy?: boolean } | undefined;
+const versionsOf = (id: string) => view?.library?.items.find((entry) => entry.id === id)?.share?.versions ?? [];
+export function openShare(id: string): void {
+  if (!view?.library?.items.some((entry) => entry.id === id)) return;
+  menuId = undefined;
+  const recommended = versionsOf(id).find((version) => version.recommended)?.kind;
+  sharing = { id, more: false, selected: recommended ? [recommended] : [] };
+  draw();
+  focus(recommended ? `share-${id}-${recommended}` : `share-${id}-close`);
+  // What it offers and is not made yet is prepared now: a clear sign it will be wanted.
+  // Their progress arrives with main's pushes, so the answer itself is not drawn.
+  void window.settings.choose(`recordingShare:${id}`, { action: "open" }).catch(() => undefined);
+}
+export function closeShare(): void {
+  const id = sharing?.id;
+  sharing = undefined;
+  draw();
+  if (id) focus(`clip-${id}-more`);
+}
+export function toggleShareMore(): void {
+  if (!sharing) return;
+  // Into More, its first file is selected; back out, the recommended one again.
+  const versions = versionsOf(sharing.id);
+  const more = !sharing.more;
+  const first = more ? versions.find((version) => version.more)?.kind : versions.find((version) => version.recommended)?.kind;
+  sharing = { ...sharing, more, selected: first ? [first] : [], status: undefined };
+  draw();
+  if (first) focus(`share-${sharing.id}-${first}`);
+}
+/** Selects `kind` alone, or with `extend` (⌘-click) adds it to the selection or takes it away. */
+export function selectShareVersion(kind: string, extend = false): void {
+  if (!sharing) return;
+  const selected = !extend ? [kind]
+    : sharing.selected.includes(kind) ? sharing.selected.filter((entry) => entry !== kind) : [...sharing.selected, kind];
+  sharing = { ...sharing, selected, status: undefined };
+  draw();
+}
+/**
+ * Copy, Save to… or a drag of the versions `kinds` of the recording `id` (the selection when none are named): a copy or
+ * a save waits for what is still being prepared; a drag must have its files now. What happened is said in the bar.
+ */
+export async function shareAction(id: string, action: "copy" | "save" | "drag", kinds?: string[]): Promise<void> {
+  const chosen = kinds ?? (sharing?.id === id ? sharing.selected : ["video"]);
+  if (!chosen.length) return;
+  const labels = view?.library?.items.find((entry) => entry.id === id)?.share?.labels;
+  if (sharing?.id === id && action !== "drag") { sharing = { ...sharing, busy: true, status: undefined }; draw(); }
+  try {
+    const result = await window.settings.choose(`recordingShare:${id}`, { action, kinds: chosen } as ShareChoice);
+    render(result.view);
+    const status = result.applied ? (action === "copy" ? labels?.copied : action === "save" ? labels?.saved : undefined) : result.failure;
+    if (sharing?.id === id) sharing = { ...sharing, busy: false, status };
+    else if (!result.applied && result.failure) libraryError = result.failure;
+    if (status) announce(status);
+  } catch {
+    if (sharing?.id === id) sharing = { ...sharing, busy: false, status: failedText() };
+  } finally {
+    draw();
+  }
 }
 export function closeMenu(): void {
   const id = menuId;

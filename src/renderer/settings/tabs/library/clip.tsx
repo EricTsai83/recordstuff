@@ -3,7 +3,8 @@
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen, Share } from "lucide-react";
+import { ShareOverlay } from "./share";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -27,7 +28,7 @@ export const Clip = memo(function Clip({
   useSyncExternalStore(
     model.subscribe,
     () =>
-      `${model.menuId === item.id ? model.menuKind : ""}/${model.arrivingAt(item.id)}/${model.previewSound()}`,
+      `${model.menuId === item.id ? model.menuKind : ""}/${model.arrivingAt(item.id)}/${model.previewSound()}/${model.sharing?.id === item.id ? `${model.sharing.more}:${model.sharing.selected.join("+")}:${model.sharing.status ?? ""}:${model.sharing.busy ?? ""}` : ""}`,
   );
   const preview = useSyncExternalStore(subscribePreview, () => previewing() === item.id);
   const sound = model.previewSound();
@@ -61,6 +62,13 @@ export const Clip = memo(function Clip({
           if (!pressedOnBar()) void model.fileAction(item.id, event.altKey ? "dragOriginal" : "drag");
         }}
         onBlur={(event) => clearArrival(event.currentTarget)}
+        // ⌘C on a card copies its Video, what a drag gives (plan 100 step 3); inside Share… the panel's own ⌘C copies.
+        onKeyDown={(event) => {
+          if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "c" || !item.share || model.sharing?.id === item.id) return;
+          if ((event.target as Element).closest("input, textarea, [contenteditable]")) return;
+          event.preventDefault();
+          void model.shareAction(item.id, "copy", ["video"]);
+        }}
       >
         <Button
           variant="ghost"
@@ -179,6 +187,9 @@ export const Clip = memo(function Clip({
             </Button>
           </ControlTooltip>
         )}
+        {model.sharing?.id === item.id && (
+          <ShareOverlay item={item} layout={document.getElementById("library")?.getAttribute("data-layout") === "list" ? "list" : "grid"} />
+        )}
         <DropdownMenu
           open={model.menuId === item.id && model.menuKind === "dropdown"}
           onOpenChange={(open) => {
@@ -255,6 +266,12 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
   ];
   return (
     <>
+      {item.share && (
+        <Item id={`${prefix}-share`} onClick={() => model.openShare(item.id)}>
+          <Share />
+          <span className="menu-label">{t("Share…")}</span>
+        </Item>
+      )}
       <Item
         id={`${prefix}-reveal`}
         onClick={() => void model.fileAction(item.id, "reveal")}

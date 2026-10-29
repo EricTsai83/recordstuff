@@ -2661,6 +2661,249 @@
   [data-layout="list"] .clip-preparing-hint {
     display: none;
   }
+  /* Share… (plan 100 step 3): the card as a little folder of the files it can give. Over the whole card in the grid,
+     below the row in the list; the card's own surface, hairline, radius and shadow. */
+  .share-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px 10px;
+    border-radius: 14px;
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .share-over-card {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    overflow: auto;
+  }
+  .share-popover {
+    width: min(340px, calc(100vw - 32px));
+  }
+  .share-head {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 4px;
+  }
+  .share-title {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .share-crumb {
+    width: 14px;
+    height: 14px;
+    color: var(--muted-foreground);
+  }
+  .share-back {
+    margin-left: -6px;
+    padding-inline: 4px 6px;
+    color: var(--muted-foreground);
+    font-size: 13px;
+  }
+  .share-subject {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    padding-left: 6px;
+    color: var(--muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .share-files {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    align-content: center;
+    gap: 2px;
+  }
+  .share-file {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 4px 6px;
+    border-radius: 10px;
+    color: inherit;
+    text-align: center;
+    cursor: grab;
+  }
+  .share-file:hover {
+    background: var(--accent);
+  }
+  .share-file[data-picked] {
+    background: var(--selection);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  .share-file:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+  .share-icon {
+    position: relative;
+    display: grid;
+    width: 44px;
+    height: 48px;
+    margin-bottom: 4px;
+    place-items: center;
+  }
+  .share-doc {
+    width: 38px;
+    height: 46px;
+    filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--foreground) 10%, transparent));
+  }
+  .share-doc-page {
+    fill: var(--card);
+    stroke: color-mix(in srgb, var(--foreground) 22%, transparent);
+    stroke-width: 1.2;
+  }
+  .share-doc-sign {
+    fill: none;
+    stroke: var(--muted-foreground);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .share-doc-play {
+    fill: currentColor;
+    stroke: none;
+  }
+  .share-icon .share-doc-sign {
+    color: var(--muted-foreground);
+  }
+  .share-icon[data-kind="video"] .share-doc-sign {
+    color: var(--primary);
+    stroke: var(--primary);
+  }
+  .share-icon[data-kind="video"] .share-doc-page {
+    stroke: color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  .share-doc-extension {
+    fill: var(--muted-foreground);
+    font-family: var(--font-sans);
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .share-icon[data-kind="video"] .share-doc-extension {
+    fill: var(--primary);
+  }
+  .share-folder {
+    width: 44px;
+    height: 38px;
+    filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--foreground) 10%, transparent));
+  }
+  .share-folder-back {
+    fill: color-mix(in srgb, var(--muted-foreground) 45%, var(--card));
+  }
+  .share-folder-front {
+    fill: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
+  }
+  .share-mark {
+    position: absolute;
+    top: -2px;
+    right: -3px;
+    display: grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px var(--popover);
+  }
+  .share-mark > svg {
+    width: 10px;
+    height: 10px;
+  }
+  .share-mark-recommended {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .share-mark-warning {
+    background: var(--warning-surface);
+    color: var(--warning);
+    box-shadow: 0 0 0 2px var(--popover), inset 0 0 0 1px var(--warning-border);
+  }
+  /* A name and its detail take two lines each at most: a narrow card or a longer language still reads whole words. */
+  .share-name,
+  .share-detail {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .share-name {
+    font-weight: 600;
+  }
+  .share-detail {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+
+  /* A version being prepared: a ring of its progress over the page's top right corner, so every file keeps its two
+     lines below it. */
+  .share-mark-progress {
+    background: conic-gradient(var(--primary) var(--share-progress, 0%), color-mix(in srgb, var(--foreground) 14%, var(--popover)) 0);
+  }
+  .share-mark-progress::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--popover);
+  }
+  .share-mark-failed {
+    background: var(--destructive);
+    color: var(--primary-foreground);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .share-icon[data-state="failed"] .share-doc,
+  .share-icon[data-state="failed"] .share-folder {
+    opacity: 0.55;
+  }
+  .share-body {
+    display: contents;
+  }
+  .share-bar {
+    display: flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .share-picked {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .share-picked-name {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .share-picked-note,
+  .share-hint {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .share-picked-warning {
+    color: var(--warning);
+  }
   .clip-text {
     /* Room on the title's line for the ⋮ button at its right. */
     padding: 10px 32px 0 2px;
