@@ -46,6 +46,7 @@
 | `permission/` | 螢幕錄影權限偵測與其通知 |
 | `library/` | 磁碟上的錄影檔：錄影檔分頁的資料庫、MP4 長度、輸出資料夾與全螢幕影片視窗 |
 | `editing/` | 剪輯錄影（plan 085）：剪輯畫面的擁有者（`editing.ts`）、剪輯紀錄（`edit-store.ts`）、匯出 worker 的監管（`export-host.ts`）與 worker 本身（`export-process.ts`） |
+| `sharing/` | 分享錄影（plan 100）：拖曳時給出的版本（`sharing.ts`），在匯出 worker 中預先準備，以及版本所在的快取（`version-cache.ts`） |
 | `shortcuts/` | 全域快捷鍵註冊：錄影鍵與設定鍵 |
 | `app/` | App 層級的語彙與生命週期：兩個介面共用的 action 與 context（`ui-model.ts`）、結束與其回饋、Windows 工作階段結束、再次開啟、未捕捉的錯誤、本機資料清除與更新檢查 |
 | `settings/` | 偏好設定與其視窗：持久化 store、偏好設定的副作用、面板模型、視窗與其記住的大小 |
@@ -87,12 +88,13 @@ Crate 內的依賴依慣例朝單一方向，沒有測試強制：`timing` ← `
 資料夾之間的匯入只朝一個方向，因此資料夾在這個順序中的位置就是它的契約：
 
 ```text
-main:      lib ← recording, display, permission, library, shortcuts, editing ← app ← settings ← menus ← actions ← index.ts
+main:      lib ← recording, display, permission, library, shortcuts, editing ← sharing ← app ← settings ← menus ← actions ← index.ts
 renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← 入口檔
 ```
 
 - **功能資料夾**（`recording/`、`display/`、`permission/`、`library/`、`shortcuts/`、`editing/`）只匯入 `lib/`、`src/shared/` 與自己，彼此不互相匯入。兩者需要同一樣東西時，把它移到 `lib/` 或 `src/shared/`，或由 `index.ts` 接起來。
+- **`sharing/`**（plan 100）位於 `editing/` 與 `library/` 之上：它在剪輯畫面的匯出 worker 中，依錄影的剪輯做出各個版本，所以兩者都會讀；它下方的資料夾都不匯入它。
 - **`app/`** 可以使用功能資料夾。`settings/` 還可以使用 `app/`，`menus/` 還可以使用 `settings/`，`actions/` 則可以使用以上全部。沒有任何匯入往上走。
 - **沒有任何模組匯入 `index.ts`。** 它是 composition root；action 實際做的事放在 `actions/`，因此它只負責建立與接線。更新與受控驗收 runner 會依文字錨點修改它的副本，這也是它留在 `src/main/` 頂層的原因之一。
 - **Renderer 頁面彼此不互相匯入。** 兩個頁面共用的東西放在 `player/`、`components/` 或 `lib/`。只有測試會匯入 `testing/`。`camera-preview/` 是計畫 075 步驟 2 以開發用開關啟用的量測頁面，只匯入 `src/shared/`。

@@ -25,6 +25,8 @@ import type { SettingsHotkeyStatus } from "../shortcuts/settings-hotkey";
 import type { UpdateState } from "./updates";
 import type { QuitDeferral } from "./quit-feedback";
 import type { LibraryState, RecordingFileAction } from "../library/recordings-library";
+import type { VideoState } from "../sharing/sharing";
+import type { KeptEdit } from "../sharing/housekeeping";
 import type { MicrophoneDevice } from "../../shared/protocol";
 
 export type AppAction =
@@ -81,6 +83,10 @@ export type AppAction =
   | "openOutputDir"
   | "changeOutputDir"
   | "revealLog"
+  /** Settings → General: clears the versions prepared for sharing, keeping those still held (plan 100). */
+  | "clearVersionCache"
+  /** Settings → General: removes the edits kept for recordings not in the Recordings tab (plan 100). */
+  | "removeKeptEdits"
   | "quit"
   /** A quit held only by saves in the background: exit now, leaving them to be reported at the next launch. */
   | "quitWithoutWaiting"
@@ -227,6 +233,12 @@ export interface AppContext {
   editor?: EditorView;
   /** The recordings that hold an edit, by path, with the size their edit was made for (EditStore `edited`). */
   editedRecordings?: ReadonlyMap<string, number>;
+  /** Recordings whose Video is being prepared for sharing, or could not be, by path (plan 100). */
+  preparingVideos?: ReadonlyMap<string, VideoState>;
+  /** Edits kept for recordings not in the Recordings tab (plan 100): Settings lists them and offers to remove them. */
+  keptEdits?: readonly KeptEdit[];
+  /** The bytes the versions prepared for sharing take in the cache (plan 100). */
+  versionCacheBytes?: number;
   /** The running app's version, shown beside the credit in Settings. */
   version?: string;
   quality: QualitySettings;

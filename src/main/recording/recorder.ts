@@ -21,6 +21,7 @@ import { SessionSentinelTracker, type SentinelStore } from "./session-sentinel";
 import { EARLY_STOP_TEXT, type EarlyStop, type FailureOutcome, type SessionTiming } from "../../shared/session-record";
 import { NO_MEDIA_DETAIL, type FinishTimings } from "./file-writer";
 import { errnoCode, messageOf } from "../lib/errors";
+import { EDITABLE_MARKER } from "../../shared/versions";
 
 export interface RecorderWriter {
   readonly recordingPath?: string;
@@ -198,7 +199,9 @@ export type RecorderEvent =
    * picture in the time it has to start, and the recording shows the screen alone until it did (plan 090). `microphones`: the devices recorded
    * in turn, when the user switched while recording (plan 079, D3).
    */
-  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; cameraNotReady?: true; microphones?: string[]; session: SessionTrace }
+  | { type: "saved"; path: string; stoppedEarly?: EarlyStop; microphoneLost?: true; cameraLost?: true; cameraNotReady?: true; microphones?: string[]; session: SessionTrace;
+    /** An editable recording (plan 087), whose Video is prepared once it is saved (plan 100, D2). */
+    editable?: true }
   /** The microphone stopped while recording; the recording goes on without it. Told once per session (plan 074). */
   | { type: "microphoneLost"; sessionId: string; detail: string }
   /** The camera stopped while recording; the recording goes on without it. Told once per session (plan 075). */
@@ -368,6 +371,15 @@ const CHECK_UNANSWERED = Symbol("check unanswered");
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 
 /** `2026-09-11 14-30-00`, local time, safe on every file system. */
+/**
+ * The saved file's name for `stem`: `<stem>.mp4`, or for an editable recording `<stem>.recordstuff.mp4` (plan 100, D3),
+ * so it is not taken for the video to send. The marker is only for people: the app knows an editable recording by the
+ * description inside it, never by its name.
+ */
+export function savedName(stem: string, editable: boolean | undefined): string {
+  return `${stem}${editable ? EDITABLE_MARKER : ""}.mp4`;
+}
+
 export function formatTimestamp(date: Date): string {
   const two = (n: number): string => String(n).padStart(2, "0");
   return (
@@ -916,7 +928,7 @@ export class Recorder {
     // Taken once: the name, the countdown and the start's time are this Start's, however long preparing still takes.
     const requested = this.deps.now();
     const stamp = (this.deps.fileName ?? formatTimestamp)(requested);
-    session.claimedTarget = path.join(session.dir, `${stamp}.mp4`);
+    session.claimedTarget = path.join(session.dir, savedName(stamp, session.editable));
     session.writer?.retarget?.(session.claimedTarget);
     session.startedAt = requested.toISOString();
     session.requestedAt = this.monotonic();
@@ -1109,7 +1121,7 @@ export class Recorder {
       // Named before it exists, so a crash never leaves a temporary file no sentinel names.
       await session.sentinel.mark(recordingPath);
       try {
-        return await this.deps.openWriter(recordingPath, path.join(session.dir, `${name}.mp4`));
+        return await this.deps.openWriter(recordingPath, path.join(session.dir, savedName(name, session.editable)));
       } catch (cause) {
         // `FileWriteError` wraps the open error as its cause.
         const errno = errnoCode(cause instanceof Error ? cause.cause : undefined);
@@ -1561,6 +1573,7 @@ export class Recorder {
       ...(session.microphoneLost ? { microphoneLost: true as const } : {}), ...(session.cameraLost ? { cameraLost: true as const } : {}),
       ...(session.cameraNotReady ? { cameraNotReady: true as const } : {}),
       ...((session.microphones?.length ?? 0) > 1 ? { microphones: session.microphones } : {}),
+      ...(session.editable ? { editable: true as const } : {}),
       session: this.trace(session) });
     await session.sentinel.clear();
   }

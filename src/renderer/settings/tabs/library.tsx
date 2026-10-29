@@ -6,6 +6,7 @@ import { useDeferredValue, useEffect, useMemo } from "react";
 import { Film, Folder, SearchX } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
+import { Button } from "../../components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "../../components/ui/empty";
 import * as model from "../settings-controller";
 import { stopPreview } from "./clip-preview";
@@ -52,6 +53,15 @@ export function Library() {
         hidden={!model.libraryError && !library?.notice}
       >
         {model.libraryError ?? library?.notice}
+        {/* A failure's way out (plan 100), while the error it came with is the one shown. */}
+        {model.libraryError && model.libraryHelp?.for === model.libraryError && (
+          <>
+            {" "}
+            <Button id="library-error-help" variant="link" size="sm" className="h-auto px-0 align-baseline" onClick={() => void model.runFailureHelp(model.libraryHelp!)}>
+              {model.libraryHelp.label}
+            </Button>
+          </>
+        )}
       </p>
       <p className="library-status" hidden={!library?.status}>
         {library?.status}

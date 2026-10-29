@@ -4,7 +4,7 @@
  */
 import { sentences, translate } from "../../../shared/i18n";
 import type { LibraryLayout } from "../../../shared/appearance";
-import type { FolderChoice, LibraryItemView, LibraryView } from "../../../shared/settings-panel";
+import type { FailureHelp, FolderChoice, LibraryItemView, LibraryView } from "../../../shared/settings-panel";
 import { fileNameProblem, fileNameProblemText, folderNameProblem, folderProblemText } from "../../../shared/file-name";
 import {
   announce,
@@ -22,6 +22,18 @@ import { playingItem } from "./player";
 import { showToast, toastNode } from "./toast";
 
 export let libraryError: string | undefined;
+/** A way out beside `libraryError` (plan 100), only while that error is the one it came with. */
+export let libraryHelp: (FailureHelp & { for: string }) | undefined;
+/** Opens a failure's way out (System Settings' Storage, RecordStuff's data folder, the log) and says if it could not. */
+export async function runFailureHelp(help: FailureHelp): Promise<void> {
+  try {
+    const result = await window.settings.choose("failureHelp", help.action);
+    render(result.view);
+    if (!result.applied) announce(failedText(result.failure));
+  } catch {
+    announce(failedText());
+  }
+}
 export let menuId: string | undefined;
 export let menuKind: "dropdown" | "context" = "dropdown";
 export let renaming:
@@ -30,6 +42,8 @@ export let renaming:
       name: string;
       extension: string;
       error: string;
+      /** A way out beside `error` (plan 100). */
+      help?: FailureHelp | undefined;
       pending: boolean;
     }
   | undefined;
@@ -83,7 +97,7 @@ export let query = "";
 export let queryNow = false;
 /** New folder or Rename folder…, while its dialog is open. */
 export let folderDialog:
-  | { folder?: string; name: string; error: string; pending: boolean }
+  | { folder?: string; name: string; error: string; help?: FailureHelp | undefined; pending: boolean }
   | undefined;
 let folderPending = false;
 let undoing = false;
@@ -208,7 +222,9 @@ export function openRename(id: string): void {
   const item = view?.library?.items.find((item) => item.id === id);
   if (!item) return;
   menuId = undefined;
-  const extension = /\.[^.]+$/.exec(item.name)?.[0] ?? "";
+  // An editable recording's marker stays with the extension (plan 100, D3): the field holds its title alone.
+  const extension = item.title && item.name.startsWith(item.title) && item.name.length > item.title.length
+    ? item.name.slice(item.title.length) : /\.[^.]+$/.exec(item.name)?.[0] ?? "";
   renaming = {
     id,
     extension,
@@ -233,6 +249,7 @@ export function renameDraft(name: string): void {
   if (renaming) {
     renaming.name = name;
     renaming.error = "";
+    renaming.help = undefined;
     draw();
   }
 }
@@ -246,13 +263,15 @@ export async function submitRename(): Promise<void> {
     return;
   }
   const problem = fileNameProblem(name);
-  const fail = (message: string): void => {
+  const fail = (message: string, help?: FailureHelp): void => {
     if (renaming === current) {
       current.error = message;
+      current.help = help;
       draw();
       focus("clip-rename-input");
     } else {
       libraryError = message;
+      libraryHelp = help ? { ...help, for: message } : undefined;
       draw();
     }
     announce(message);
@@ -284,6 +303,7 @@ export async function submitRename(): Promise<void> {
         cancelRename(false);
       fail(
         result.failure ?? text("Could not rename the recording. Try again."),
+        result.failureHelp,
       );
     }
   } catch {
@@ -295,11 +315,12 @@ export async function submitRename(): Promise<void> {
 }
 export async function fileAction(
   id: string,
-  action: "reveal" | "open" | "trash" | "drag",
+  action: "reveal" | "open" | "trash" | "drag" | "dragOriginal",
 ): Promise<void> {
   menuId = undefined;
   draw();
-  if (action !== "drag") {
+  const dragging = action === "drag" || action === "dragOriginal";
+  if (!dragging) {
     focus(`clip-${id}-more`);
     queueMicrotask(() => {
       if (
@@ -333,7 +354,7 @@ export async function fileAction(
       showToast("trashed", title, view?.library?.trashed?.name ?? "", 8000);
     }
   } catch {
-    if (action !== "drag")
+    if (!dragging)
       libraryError = failedText();
   } finally {
     fileActionsPending.delete(id);
@@ -400,7 +421,10 @@ export async function moveTo(id: string, folder: string | null): Promise<void> {
       announce(translate("Moved {name} to {folder}", view?.language, { name: item.name, folder: folder ?? text("Uncategorized") }));
       const moved = result.renamed && view?.library?.items.find((entry) => entry.id === result.renamed);
       if (focused && moved && isShown(moved) && document.hasFocus()) focus(`clip-${moved.id}-open`);
-    } else libraryError = failedText(result.failure);
+    } else {
+      libraryError = failedText(result.failure);
+      libraryHelp = result.failureHelp ? { ...result.failureHelp, for: libraryError } : undefined;
+    }
   } catch {
     libraryError = failedText();
   } finally {
@@ -418,6 +442,7 @@ export function folderDraft(name: string): void {
   if (folderDialog) {
     folderDialog.name = name;
     folderDialog.error = "";
+    folderDialog.help = undefined;
     draw();
   }
 }
@@ -427,7 +452,7 @@ export function cancelFolderDialog(): void {
   draw();
   focus(renamingFolder ? "library-category-settings" : "library-category");
 }
-async function folderAction(choice: FolderChoice): Promise<{ applied: boolean; folder?: string; failure?: string }> {
+async function folderAction(choice: FolderChoice): Promise<{ applied: boolean; folder?: string; failure?: string; failureHelp?: FailureHelp }> {
   try {
     const result = await window.settings.choose("libraryFolder", choice);
     render(result.view);
@@ -445,13 +470,15 @@ export async function submitFolderDialog(): Promise<void> {
     cancelFolderDialog();
     return;
   }
-  const fail = (message: string): void => {
+  const fail = (message: string, help?: FailureHelp): void => {
     if (folderDialog === current) {
       current.error = message;
+      current.help = help;
       draw();
       focus("library-folder-input");
     } else {
       libraryError = message;
+      libraryHelp = help ? { ...help, for: message } : undefined;
       draw();
     }
     announce(message);
@@ -468,7 +495,7 @@ export async function submitFolderDialog(): Promise<void> {
     : { action: "renameFolder", folder: current.folder, name });
   current.pending = false;
   if (!result.applied) {
-    fail(failedText(result.failure));
+    fail(failedText(result.failure), result.failureHelp);
     return;
   }
   // Only the dialog that asked, still open, takes the page to its folder and the focus with it: one cancelled meanwhile,

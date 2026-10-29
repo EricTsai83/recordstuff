@@ -243,6 +243,13 @@ export interface LibraryItemView {
   editable?: string;
   /** Localized "Edited" for a recording that holds an edit (2026-10-26): its menu offers Continue editing…. */
   edited?: string;
+  /**
+   * Plan 100: its Video while it is being prepared, or when it could not be, localized; absent when a drag gives it at
+   * once. A drag waits meanwhile (D1), and `hint` says ⌥-drag gives the original.
+   */
+  preparing?: { state: "preparing" | "failed"; label: string; hint: string; progress?: number };
+  /** Localized tooltip of the Editable mark: what an editable recording is and how to send it (plan 100). */
+  editableHint?: string;
 }
 /** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
 export interface LibraryFolderView {
@@ -397,6 +404,15 @@ export interface SettingsChoiceResult {
   renamed?: string;
   /** The folder a folder action made or renamed, so the tab can show it. */
   folder?: string;
+  /** A way out beside `failure` (plan 100), chosen as group `failureHelp` with its action. */
+  failureHelp?: FailureHelp;
+}
+/** What a failure's way out opens: System Settings' Storage, RecordStuff's data folder, or its log. */
+export type FailureHelpAction = "storageSettings" | "revealData" | "revealLog";
+export const FAILURE_HELP_ACTIONS: readonly FailureHelpAction[] = ["storageSettings", "revealData", "revealLog"];
+export interface FailureHelp {
+  action: FailureHelpAction;
+  label: string;
 }
 /** What the preload exposes to the panel. */
 export interface SettingsBridge {

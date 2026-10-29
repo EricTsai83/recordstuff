@@ -10,15 +10,17 @@
  * while a capture is running; language, appearance and the icon click remain editable.
  * index.ts re-checks recording locks before saving.
  */
+import path from "node:path";
 import { translate as t } from "../../shared/i18n";
 import { canonicalizeAccelerator, isSettingsShortcut, sameShortcut } from "../../shared/hotkey";
 import { isVolume } from "../../shared/audio-volume";
 import { DEFAULT_FILE_NAME_TEMPLATE, canonicalFileNameTemplate } from "../../shared/file-name";
 import { isLibraryLayout } from "../../shared/appearance";
 import type { SettingsView } from "../../shared/settings-panel";
+import { formatBytes } from "../../shared/quality";
 import { RECORDING_FILE_ACTIONS, type RecordingFileAction } from "../library/recordings-library";
 import type { RecordingState } from "../../shared/state";
-import type { AppAction, AppContext } from "../app/ui-model";
+import { abbreviateHome, type AppAction, type AppContext } from "../app/ui-model";
 import { APP_NAME } from "../lib/app-name";
 import { preferencesUnlocked } from "../recording/recording-lock";
 import { AUDIO_VOLUME_GROUPS, isAudioVolumeGroup, microphoneDeviceGroup, microphoneGroup, microphoneLevelGroup } from "./model/audio";
@@ -80,6 +82,14 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
       id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
       enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
     }))),
+    // The versions prepared for sharing (plan 100): their size, and Clear, which keeps what was handed out in the last
+    // day. Locked while recording, as every preference.
+    { ...group("versionCache", t("Prepared videos", ctx.language), unlocked, [
+      { id: "clear", label: t("Clear", ctx.language), enabled: unlocked && (ctx.versionCacheBytes ?? 0) > 0, checked: false, action: "clearVersionCache" },
+    ], (ctx.versionCacheBytes ?? 0) > 0
+      ? t("{size} of videos prepared for sharing. They are made again when needed.", ctx.language, { size: formatBytes(ctx.versionCacheBytes ?? 0) })
+      : t("No videos are prepared for sharing.", ctx.language)), kind: "actions" },
+    ...keptEditsGroup(ctx, unlocked),
     updateChecksGroup(ctx, unlocked),
     updateActions(ctx, unlocked),
     ...onboardingGuideGroup(ctx),
@@ -100,6 +110,29 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
       { id: "hide", label: t("Hide RecordStuff", ctx.language), enabled: true, checked: false, action: "hideSettings" },
     ], ctx.version ? t("Version {version}", ctx.language, { version: ctx.version }) : undefined), kind: "actions" },
   ];
+}
+
+/**
+ * Edits kept for recordings not in the Recordings tab (plan 100): on a disk that is away, or in a folder left behind.
+ * Shown only while there are any, with where they are and a way to remove them; nothing is kept unseen.
+ */
+function keptEditsGroup(ctx: AppContext, unlocked: boolean): Group[] {
+  const kept = ctx.keptEdits ?? [];
+  if (!kept.length) return [];
+  const language = ctx.language;
+  const places = new Map<string, number>();
+  for (const edit of kept) {
+    const folder = abbreviateHome(path.dirname(edit.source), ctx.homeDir);
+    places.set(folder, (places.get(folder) ?? 0) + 1);
+  }
+  const where = [...places].map(([folder, count]) => t("{folder} ({count})", ctx.language, { folder, count })).join(language === "zh-TW" ? "、" : ", ");
+  const bytes = kept.reduce((sum, edit) => sum + edit.bytes, 0);
+  return [{ ...group("keptEdits", t("Kept edits", language), unlocked, [
+    { id: "remove", label: t("Remove", language), enabled: unlocked, checked: false, action: "removeKeptEdits" },
+  ], t(kept.length === 1
+    ? "1 recording that is not in the Recordings tab keeps its edit ({size}): {where}. It applies again when the recording returns."
+    : "{count} recordings that are not in the Recordings tab keep their edits ({size}): {where}. They apply again when the recordings return.", language,
+  { count: kept.length, size: formatBytes(bytes), where })), kind: "actions" }];
 }
 
 /** About's Quit RecordStuff, the one choice a quit in progress leaves, as the tray leaves its Quit. */

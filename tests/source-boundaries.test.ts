@@ -12,6 +12,8 @@ const ROOT = path.resolve(".");
 const SRC = path.join(ROOT, "src");
 const SCRIPTS = path.join(ROOT, "scripts");
 const MAIN_FEATURES = ["main/recording", "main/display", "main/permission", "main/library", "main/shortcuts", "main/editing"];
+/** Plan 100's sharing: the versions a drag gives, made by the edit view's export worker from its edits. */
+const SHARING = "main/sharing";
 const RENDERER_SHARED = ["renderer/player", "renderer/components", "renderer/lib", "shared"];
 /** Stands for every area under `src/`: the developer tools may load any of it, and nothing in `src/` loads them. */
 const ANY_SRC = "src";
@@ -22,11 +24,12 @@ const ALLOWED: Record<string, readonly string[]> = {
   preload: ["shared"],
   "main/lib": ["shared"],
   ...Object.fromEntries(MAIN_FEATURES.map((feature) => [feature, ["main/lib", "shared"]])),
-  "main/app": [...MAIN_FEATURES, "main/lib", "shared"],
-  "main/settings": ["main/app", ...MAIN_FEATURES, "main/lib", "shared"],
-  "main/menus": ["main/settings", "main/app", ...MAIN_FEATURES, "main/lib", "shared"],
-  "main/actions": ["main/menus", "main/settings", "main/app", ...MAIN_FEATURES, "main/lib", "shared"],
-  "main/index.ts": ["main/actions", "main/menus", "main/settings", "main/app", ...MAIN_FEATURES, "main/lib", "shared"],
+  [SHARING]: ["main/editing", "main/library", "main/lib", "shared"],
+  "main/app": [SHARING, ...MAIN_FEATURES, "main/lib", "shared"],
+  "main/settings": ["main/app", SHARING, ...MAIN_FEATURES, "main/lib", "shared"],
+  "main/menus": ["main/settings", "main/app", SHARING, ...MAIN_FEATURES, "main/lib", "shared"],
+  "main/actions": ["main/menus", "main/settings", "main/app", SHARING, ...MAIN_FEATURES, "main/lib", "shared"],
+  "main/index.ts": ["main/actions", "main/menus", "main/settings", "main/app", SHARING, ...MAIN_FEATURES, "main/lib", "shared"],
   "renderer/lib": ["shared"],
   "renderer/components": ["renderer/lib"],
   "renderer/player": ["renderer/components", "renderer/lib", "shared"],

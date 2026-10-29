@@ -65,7 +65,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
 export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideMenuBar: "locked", hideDock: "locked", hideDesktop: "locked", hideTaskbar: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
-  notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
+  notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked", versionCache: "locked", keptEdits: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The first-launch guide's way back (2026-10-26): opening it changes nothing a recording holds; its inputs lock in it.
   setupGuide: "available",
@@ -89,9 +89,10 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
 /**
  * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), its input
  * level while it is on and allowed (plan 079, D1), the setup guide's row on macOS only (2026-10-26), and the system's
- * chrome: three switches on macOS, the taskbar's unavailable one on Windows (plan 099).
+ * chrome: three switches on macOS, the taskbar's unavailable one on Windows (plan 099), and the edits kept for
+ * recordings out of the Recordings tab, only while there are any (plan 100).
  */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide",
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide", "keptEdits",
   ...["hideMenuBar", "hideDock", "hideDesktop", "hideTaskbar"].flatMap(id => [id, `studio${id[0]!.toUpperCase()}${id.slice(1)}`])]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 

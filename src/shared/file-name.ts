@@ -44,7 +44,14 @@ export function fileNameProblem(name: string): FileNameProblem | undefined {
 }
 
 /** Why a folder could not be made, renamed or deleted (plan 071). */
-export type FolderProblem = FileNameProblem | "extension" | "exists" | "missing" | "notEmpty" | "failed";
+export type FolderProblem = FileNameProblem | "extension" | "exists" | "missing" | "notEmpty" | "failed" | EditMoveProblem;
+
+/**
+ * Why a recording, or a category's recordings, did not move because the edit could not be written for the new path
+ * first (plan 100): the disk is full, the app's data folder cannot be written, the disk is read-only, the edit itself cannot
+ * be read (saved by a newer version, or made before the file changed), or something else.
+ */
+export type EditMoveProblem = "editDiskFull" | "editNoPermission" | "editReadOnly" | "editUnreadable" | "editFailed";
 
 /**
  * Why `name` cannot name a folder of recordings, or nothing when it can: a file name's rules, and no extension at its
@@ -102,8 +109,13 @@ export function canonicalFileNameTemplate(value: unknown): string | undefined {
 export const FILE_NAME_TOKEN_LIST = FILE_NAME_TOKENS.map(token => `{${token}}`).join(" ");
 
 /** What to tell the user about a name or template that cannot be used, or about a rename that did not happen. */
-export function fileNameProblemText(problem: FileNameProblem | "exists" | "missing" | "failed", language: Language): string {
+export function fileNameProblemText(problem: FileNameProblem | "exists" | "missing" | "failed" | EditMoveProblem, language: Language): string {
   switch (problem) {
+    case "editDiskFull": return t("Not renamed: the disk that holds RecordStuff's edits is full. Free some space, then try again. The recording and its edit are unchanged.", language);
+    case "editNoPermission": return t("Not renamed: RecordStuff cannot write to its data folder, whose permissions may have been changed. The recording and its edit are unchanged.", language);
+    case "editReadOnly": return t("Not renamed: the disk that holds RecordStuff's data is read-only. The recording and its edit are unchanged.", language);
+    case "editUnreadable": return t("Not renamed: this recording's edit cannot be read (it may have been saved by a newer version of RecordStuff, or the file changed after it was edited), so it cannot follow a new name. The recording and its edit are unchanged. To rename it anyway, open the edit view from the recording's menu and discard the edit.", language);
+    case "editFailed": return t("Not renamed: the edit could not be saved for the new name. The recording and its edit are unchanged; the log has the details.", language);
     case "empty": return t("Enter a name.", language);
     case "tooLong": return t("This name is too long. Shorten it.", language);
     case "characters": return t("A name cannot contain / \\ : * ? \" < > |.", language);

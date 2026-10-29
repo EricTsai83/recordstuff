@@ -508,6 +508,17 @@ describe("the camera (plan 075)", () => {
     expect(logs).toContainEqual(expect.stringContaining("is editable; its inputs are recorded as they come"));
   });
 
+  it("saves an editable recording as <name>.recordstuff.mp4 and says it is one (plan 100, D3, D2)", async () => {
+    const ctx = setup({ deps: { editable: () => true } });
+    await startRecording(ctx);
+    expect(ctx.writers[0]!.finalPath).toMatch(/\.recordstuff\.mp4$/);
+    expect(ctx.writers[0]!.recordingPath).toMatch(/\d\.recording\.mp4$/);
+    ctx.recorder.stop();
+    ctx.host.emit({ type: "stopped", sessionId: "s1" });
+    await flush();
+    expect(ctx.events.find((event) => event.type === "saved")).toMatchObject({ editable: true });
+  });
+
   it("keeps a plain session's saved volumes, mutes and hiding, and does not ask for an editable file (plan 097, D6)", async () => {
     const ctx = setup({ deps: { editable: () => false, audioVolume: () => ({ system: 40, microphone: 50 }), microphone: () => ({ enabled: true }), camera: () => ({ layout }) } });
     await startRecording(ctx);

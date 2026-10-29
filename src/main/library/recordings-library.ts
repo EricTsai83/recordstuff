@@ -32,8 +32,9 @@ import { mapLimited } from "../lib/map-limited";
 import { retryWhileHeldOpen } from "../lib/held-open";
 import { fileResponse } from "../lib/file-response";
 export { parseRange } from "../lib/file-response";
-import { fileNameProblem, folderNameProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
+import { fileNameProblem, folderNameProblem, type EditMoveProblem, type FileNameProblem, type FolderProblem } from "../../shared/file-name";
 import { SerialQueue } from "../lib/serial-queue";
+import { hasEditableMarker, recordingTitle } from "../../shared/versions";
 
 export const MEDIA_SCHEME = "recordstuff-media";
 /**
@@ -44,8 +45,9 @@ export const MEDIA_SCHEME = "recordstuff-media";
  * every other player's, is served as before.
  */
 export const MEDIA_SCHEME_PRIVILEGES = { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } as const;
-export type RecordingFileAction = "reveal" | "open" | "trash" | "drag";
-export const RECORDING_FILE_ACTIONS: readonly RecordingFileAction[] = ["reveal", "open", "trash", "drag"];
+/** `drag` gives the Video, what the card plays; `dragOriginal` (⌥-drag) the recording as made (plan 100). */
+export type RecordingFileAction = "reveal" | "open" | "trash" | "drag" | "dragOriginal";
+export const RECORDING_FILE_ACTIONS: readonly RecordingFileAction[] = ["reveal", "open", "trash", "drag", "dragOriginal"];
 
 export interface RecordingFile {
   id: string;
@@ -85,8 +87,25 @@ export interface LibraryState {
 interface Thumbnail { version: string; jpeg: Promise<Buffer | undefined>; made?: boolean; picture?: Buffer }
 /** `ino` and `dev`: the file chosen, so a different file at its path by the time it is moved is never the one moved. */
 interface PendingTrash { path: string; name: string; ino: number; dev: number; timer: ReturnType<typeof setTimeout>; moving?: Promise<void> }
-/** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, or the file system refusing. */
-export type RenameProblem = FileNameProblem | "exists" | "missing" | "failed";
+export type { EditMoveProblem };
+/** What `beforeMove` rejects with: the problem, and the folder that could not be written. */
+export class MoveFailure extends Error {
+  constructor(readonly problem: EditMoveProblem, readonly folder: string, readonly code: string | undefined, readonly free?: number) {
+    super(`${problem}: ${folder}${code ? ` (${code})` : ""}`);
+  }
+
+  /** The failure an edit's write rejected with, by its system code: a full disk, no permission, a read-only disk, else. */
+  static of(cause: unknown, folder: string, free?: number): MoveFailure {
+    const code = errnoCode(cause);
+    const problem: EditMoveProblem = code === "ENOSPC" || code === "EDQUOT" ? "editDiskFull" : code === "EACCES" || code === "EPERM" ? "editNoPermission"
+      : code === "EROFS" ? "editReadOnly"
+        // The edit store's own refusals (edit-store.ts `prepareMove`): an edit unreadable or made for another file.
+        : code === "EBADMSG" || code === "ESTALE" ? "editUnreadable" : "editFailed";
+    return new MoveFailure(problem, folder, code, problem === "editDiskFull" ? free : undefined);
+  }
+}
+/** Why a rename did not happen; `fileNameProblem`'s reasons, a name already taken, the file system refusing, or the edit. */
+export type RenameProblem = FileNameProblem | "exists" | "missing" | "failed" | EditMoveProblem;
 /** Why a move did not happen: a rename's reasons, or the folder it was to go to is no longer offered. */
 export type MoveProblem = RenameProblem | "folderMissing";
 export interface LibraryDeps {
@@ -99,6 +118,16 @@ export interface LibraryDeps {
   /** Resolves to an error message, empty on success, as `shell.openPath` does. */
   open: (filePath: string) => Promise<string>;
   reveal: (filePath: string) => void;
+  /** A recording really went to the Trash (its Undo is over): what was made from it goes too (plan 100). */
+  trashed?: (filePath: string) => void;
+  /**
+   * Before a recording (or, with `folder`, every recording of a category) moves from `from` to `to` in the tab: what
+   * must follow it is written for the new path first (its edit, plan 100). A rejection keeps the file where it is, and
+   * its `MoveFailure` says why.
+   */
+  beforeMove?: (from: string, to: string, folder?: true) => Promise<void>;
+  /** After it moved (`moved`), or did not: what `beforeMove` wrote is finished or taken back. */
+  afterMove?: (from: string, to: string, moved: boolean, folder?: true) => Promise<void>;
   log: (message: string) => void;
   /** Milliseconds on a monotonic clock; paces publishing lengths. */
   now?: () => number;
@@ -136,10 +165,10 @@ const LISTING_CONCURRENCY = 16;
 /**
  * `2026-10-04 14-02-11.mp4`, or `-2` and on when a name was taken (recorder.ts formatTimestamp), and either followed by
  * words of the user's or the export's after a space or a bracket: `2026-10-04 14-02-11 Demo.mp4`,
- * `2026-10-04 14-02-11（已編輯）.mp4` (2026-10-26: a name lengthened in the tab kept its file's time instead, and a copy's
+ * `2026-10-04 14-02-11（已編輯）.mp4`, and an editable recording's marker, `2026-10-04 14-02-11.recordstuff.mp4` (plan 100) (2026-10-26: a name lengthened in the tab kept its file's time instead, and a copy's
  * or an old file's could put it on another day, as Codex's computer-use round found).
  */
-const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?(?:[ \u3000(（].*)?\.mp4$/;
+const STAMPED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})(?:-\d+)?(?:[ \u3000(（].*)?(?:\.recordstuff)?\.mp4$/i;
 
 /** The local time an app-named file was started at, read from the name's start, or undefined for any other name. */
 export function stampedTime(name: string): number | undefined {
@@ -479,7 +508,7 @@ export class RecordingsLibrary {
    * A failure lists the folder again before answering, so the reply already shows a file that left it: the
    * page then says so instead of offering a retry that cannot work.
    */
-  async act(id: string, action: Exclude<RecordingFileAction, "drag">): Promise<boolean> {
+  async act(id: string, action: Exclude<RecordingFileAction, "drag" | "dragOriginal">): Promise<boolean> {
     const file = this.find(id);
     if (!file) return false;
     this.trashFailed = undefined;
@@ -557,6 +586,7 @@ export class RecordingsLibrary {
       await this.deps.trash(entry.path);
       this.deps.log(`library: moved ${entry.path} to the Trash`);
       this.pendingTrash = this.pendingTrash.filter(item => item !== entry);
+      this.deps.trashed?.(entry.path);
       // The listing already left it out; only the Undo it offered changes.
       this.deps.changed();
     } catch (cause) {
@@ -571,14 +601,16 @@ export class RecordingsLibrary {
    * Renames a listed file within its folder, keeping its extension: the page's new name, checked as a new recording's
    * name is (file-name.ts). Never replaces another file (`relocate`). Resolves to the file's new id, or why it did not.
    */
-  async rename(id: string, requested: string): Promise<{ id: string } | { problem: RenameProblem }> {
+  async rename(id: string, requested: string): Promise<{ id: string } | { problem: RenameProblem; failure?: MoveFailure }> {
     const file = this.find(id);
     if (!file) return { problem: "missing" };
     this.trashFailed = undefined;
     const name = requested.trim();
     const problem = fileNameProblem(name);
     if (problem) return { problem };
-    const target = path.join(path.dirname(file.path), `${name}${path.extname(file.name)}`);
+    // The page shows an editable recording's title without its marker (plan 100, D3), and the rename keeps it.
+    const marker = hasEditableMarker(file.name) ? file.name.slice(recordingTitle(file.name).length, -path.extname(file.name).length) : "";
+    const target = path.join(path.dirname(file.path), `${name}${marker}${path.extname(file.name)}`);
     if (target === file.path) return { id };
     return this.relocate(file, target);
   }
@@ -587,13 +619,13 @@ export class RecordingsLibrary {
    * Moves a listed file, under its own name, into a listed folder, or with `null` back into the output folder itself
    * (plan 071). Never replaces another file: a name already taken there is refused, as a rename's is.
    */
-  move(id: string, folder: string | null): Promise<{ id: string } | { problem: MoveProblem }> {
+  move(id: string, folder: string | null): Promise<{ id: string } | { problem: MoveProblem; failure?: MoveFailure }> {
     // In the folder queue (review pass 2, F1): a recording moved into a folder while it is being deleted would go to the
     // Trash with it.
     return this.queued(() => this.moveListed(id, folder));
   }
 
-  private async moveListed(id: string, folder: string | null): Promise<{ id: string } | { problem: MoveProblem }> {
+  private async moveListed(id: string, folder: string | null): Promise<{ id: string } | { problem: MoveProblem; failure?: MoveFailure }> {
     const file = this.find(id);
     if (!file) return { problem: "missing" };
     this.trashFailed = undefined;
@@ -608,7 +640,7 @@ export class RecordingsLibrary {
    * free, then the old one goes; a volume without hard links takes the new path with an exclusive create, then moves the
    * file onto it. Its length and thumbnail carry over.
    */
-  private async relocate(file: RecordingFile, target: string): Promise<{ id: string } | { problem: RenameProblem }> {
+  private async relocate(file: RecordingFile, target: string): Promise<{ id: string } | { problem: RenameProblem; failure?: MoveFailure }> {
     let linked = false, reserved = false;
     // A subfolder replaced by a link since it was listed would take the file out of the output folder, or bring another
     // in (review pass 1, F2): both ends must still be the output folder or a real folder directly in it.
@@ -618,6 +650,13 @@ export class RecordingsLibrary {
       this.deps.log(`library: ${file.path} or ${target} is no longer in a folder of the output folder; not moved`);
       await this.refresh();
       return { problem: "missing" };
+    }
+    // Its edit is written for the new path first (plan 100): a recording never sits at a path its edit does not follow.
+    try {
+      await this.deps.beforeMove?.(file.path, target);
+    } catch (cause) {
+      this.deps.log(`library: ${file.path} was not renamed; its edit could not be written for ${target}: ${String(cause)}`);
+      return cause instanceof MoveFailure ? { problem: cause.problem, failure: cause } : { problem: "editFailed" };
     }
     try {
       try {
@@ -629,7 +668,7 @@ export class RecordingsLibrary {
         // Taken by another file, or the same file under another case on a case-insensitive volume, which may change case.
         const taken = await fs.lstat(target).then(stat => stat, () => undefined);
         const own = await fs.stat(file.path);
-        if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) return { problem: "exists" };
+        if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) { await this.deps.afterMove?.(file.path, target, false); return { problem: "exists" }; }
         if (!taken) {
           // No hard links on this volume: the name is taken first with an exclusive create, which fails if anything
           // holds it, and the file then moves onto that empty placeholder, so no other file is ever replaced.
@@ -637,7 +676,7 @@ export class RecordingsLibrary {
           try {
             await (await fs.open(target, "wx")).close();
           } catch (reserve) {
-            if (errnoCode(reserve) === "EEXIST") return { problem: "exists" };
+            if (errnoCode(reserve) === "EEXIST") { await this.deps.afterMove?.(file.path, target, false); return { problem: "exists" }; }
             throw reserve;
           }
           reserved = true;
@@ -651,10 +690,12 @@ export class RecordingsLibrary {
       // placeholder the file did not move onto goes too.
       if (linked || reserved) await fs.unlink(target).catch(() => undefined);
       this.deps.log(`library: renaming ${file.path} to ${target} failed: ${String(cause)}`);
+      await this.deps.afterMove?.(file.path, target, false);
       await this.refresh();
       return { problem: errnoCode(cause) === "ENOENT" ? "missing" : "failed" };
     }
     this.deps.log(`library: renamed ${file.path} to ${target}`);
+    await this.deps.afterMove?.(file.path, target, true);
     this.carry(file.path, target);
     await this.refresh();
     return { id: fileId(target) };
@@ -690,7 +731,7 @@ export class RecordingsLibrary {
     return this.queued(() => this.makeFolder(requested));
   }
 
-  renameFolder(folder: string, requested: string): Promise<{ folder: string } | { problem: FolderProblem }> {
+  renameFolder(folder: string, requested: string): Promise<{ folder: string } | { problem: FolderProblem; failure?: MoveFailure }> {
     return this.queued(() => this.renameListedFolder(folder, requested));
   }
 
@@ -719,7 +760,7 @@ export class RecordingsLibrary {
    * Renames a listed folder, never onto another file or folder (a case-only change is allowed). Recordings in it keep
    * their lengths and thumbnails, and one waiting for the Trash keeps its Undo, at the new path.
    */
-  private async renameListedFolder(folder: string, requested: string): Promise<{ folder: string } | { problem: FolderProblem }> {
+  private async renameListedFolder(folder: string, requested: string): Promise<{ folder: string } | { problem: FolderProblem; failure?: MoveFailure }> {
     if (!this.current.folders?.some(entry => entry.name === folder)) return { problem: "missing" };
     const name = requested.trim();
     const problem = folderNameProblem(name);
@@ -741,21 +782,30 @@ export class RecordingsLibrary {
     }
   }
 
-  private async renameFolderNow(name: string, from: string, to: string): Promise<{ folder: string } | { problem: FolderProblem }> {
+  private async renameFolderNow(name: string, from: string, to: string): Promise<{ folder: string } | { problem: FolderProblem; failure?: MoveFailure }> {
+    // The edits of its recordings are written for their new paths first (plan 100), as a recording's are.
+    try {
+      await this.deps.beforeMove?.(from, to, true);
+    } catch (cause) {
+      this.deps.log(`library: ${from} was not renamed; the edits in it could not be written for ${to}: ${String(cause)}`);
+      return cause instanceof MoveFailure ? { problem: cause.problem, failure: cause } : { problem: "editFailed" };
+    }
     try {
       const own = await fs.stat(from);
       const taken = await fs.lstat(to).then(stat => stat, () => undefined);
-      if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) return { problem: "exists" };
+      if (taken && (taken.ino !== own.ino || taken.dev !== own.dev)) { await this.deps.afterMove?.(from, to, false, true); return { problem: "exists" }; }
       // A folder made at the new name in the instant between that look and the rename, if empty, is the only thing
       // `rename` could replace; anything holding a file fails with ENOTEMPTY, and a file with ENOTDIR.
       await renameHeldFolder(from, to);
     } catch (cause) {
       const code = errnoCode(cause);
       this.deps.log(`library: renaming ${from} to ${to} failed: ${String(cause)}`);
+      await this.deps.afterMove?.(from, to, false, true);
       await this.refresh();
       return { problem: code === "ENOENT" ? "missing" : code === "ENOTEMPTY" || code === "EEXIST" || code === "ENOTDIR" ? "exists" : "failed" };
     }
     this.deps.log(`library: renamed ${from} to ${to}`);
+    await this.deps.afterMove?.(from, to, true, true);
     const inside = (filePath: string): boolean => path.dirname(filePath) === from;
     for (const entry of this.pendingTrash) if (inside(entry.path)) entry.path = path.join(to, path.basename(entry.path));
     for (const file of this.current.files) if (inside(file.path)) this.carry(file.path, path.join(to, file.name));

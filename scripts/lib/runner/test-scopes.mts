@@ -57,10 +57,11 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "editing",
-    covers: "cutting a recording (plan 085) and an editable recording's camera and volumes (plan 087): the edit view and its timeline, the edit records, the export worker and its supervision, publication and admission; the engine's reader, cut plan, remux and rendered export, and the editable recording's description",
-    unit: [`${PAGE}settings-editor`, "src/renderer/settings/tabs/library/editor-geometry.test.ts", "src/main/editing/", "src/shared/editing.test.ts", "src/shared/editable.test.ts", "src/renderer/settings/controller/editor.test.ts"],
+    covers: "cutting a recording (plan 085) and an editable recording's camera and volumes (plan 087): the edit view and its timeline, the edit records, the export worker and its supervision, publication and admission; the engine's reader, cut plan, remux and rendered export, and the editable recording's description; sharing a recording (plan 100): its versions, their names, the cache they are made into and their preparation, and the engine's track copy and background policy",
+    unit: [`${PAGE}settings-editor`, "src/renderer/settings/tabs/library/editor-geometry.test.ts", "src/main/editing/", "src/shared/editing.test.ts", "src/shared/editable.test.ts", "src/renderer/settings/controller/editor.test.ts",
+      "src/main/sharing/", "src/shared/versions.test.ts"],
     ui: [{ file: "editor.spec.ts" }],
-    native: ["edit::", "editable::"],
+    native: ["edit::", "editable::", "export_api::"],
   },
   {
     name: "failures",

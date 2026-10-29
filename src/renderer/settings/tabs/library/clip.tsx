@@ -57,7 +57,8 @@ export const Clip = memo(function Clip({
         onDragStart={(event) => {
           event.preventDefault();
           // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
-          if (!pressedOnBar()) void model.fileAction(item.id, "drag");
+          // It gives the Video, what the card plays, and with ⌥ (Alt) the recording as made (plan 100).
+          if (!pressedOnBar()) void model.fileAction(item.id, event.altKey ? "dragOriginal" : "drag");
         }}
         onBlur={(event) => clearArrival(event.currentTarget)}
       >
@@ -82,6 +83,7 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                   item.editable,
+                  item.preparing?.label,
                 ].filter((part): part is string => Boolean(part)),
                 language,
               ),
@@ -123,6 +125,17 @@ export const Clip = memo(function Clip({
               {item.duration}
             </span>
             {preview && <ClipPreview item={item} sound={sound} />}
+            {item.preparing && (
+              <span className="clip-preparing" data-state={item.preparing.state}>
+                <span>{item.preparing.label}</span>
+                <span className="clip-preparing-hint">{item.preparing.hint}</span>
+                {item.preparing.state === "preparing" && (
+                  <span className="clip-preparing-bar" aria-hidden="true">
+                    <span style={{ width: `${Math.round((item.preparing.progress ?? 0) * 100)}%` }} />
+                  </span>
+                )}
+              </span>
+            )}
           </span>
           <span className="clip-text">
             <ControlTooltip label={item.title} enabled={title.truncated} delay={1000}>
@@ -320,18 +333,20 @@ function EditableMark({ item }: { item: LibraryItemView }) {
       {item.editable && (
         <>
           {" · "}
-          <span
-            className="clip-editable"
-            // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void model.openEditor(item);
-            }}
-          >
-            {item.editable}
-          </span>
+          <ControlTooltip label={item.editableHint ?? item.editable} enabled={Boolean(item.editableHint)}>
+            <span
+              className="clip-editable"
+              // Pressed, it is the mark's own: the card neither plays nor starts a drag from it.
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void model.openEditor(item);
+              }}
+            >
+              {item.editable}
+            </span>
+          </ControlTooltip>
         </>
       )}
     </>

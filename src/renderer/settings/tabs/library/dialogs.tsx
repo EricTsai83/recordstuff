@@ -3,7 +3,7 @@
  */
 import { useRef } from "react";
 import { X, Maximize } from "lucide-react";
-import type { LibraryItemView } from "../../../../shared/settings-panel";
+import type { FailureHelp, LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
 import { Field, FieldLabel, FieldError } from "../../../components/ui/field";
@@ -28,7 +28,7 @@ interface NameDialogIds { dialog: string; input: string; error: string; cancel: 
 function NameDialog({ ids, open, draft, title, description, label, placeholder, suffix, confirm, onCancel, onDraft, onSubmit }: {
   ids: NameDialogIds;
   open: boolean;
-  draft: { name: string; error: string; pending: boolean } | undefined;
+  draft: { name: string; error: string; help?: FailureHelp | undefined; pending: boolean } | undefined;
   title: string;
   description: string;
   label: string;
@@ -103,6 +103,12 @@ function NameDialog({ ids, open, draft, title, description, label, placeholder, 
           <FieldError role={undefined} id={ids.error} className="clip-rename-error" hidden={!draft?.error}>
             {draft?.error}
           </FieldError>
+          {/* A failure's way out (plan 100): Storage, the data folder or the log, beside what went wrong. */}
+          {draft?.error && draft.help && (
+            <Button id={`${ids.error}-help`} variant="link" size="sm" className="self-start px-0" onClick={() => void model.runFailureHelp(draft.help!)}>
+              {draft.help.label}
+            </Button>
+          )}
         </Field>
         <DialogFooter className="clip-rename-buttons">
           <Button id={ids.cancel} variant="outline" onClick={onCancel}>

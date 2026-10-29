@@ -7,6 +7,7 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
+import { EDITABLE_MARKER } from "../../shared/versions";
 import { randomUUID } from "node:crypto";
 import type { ErrorCode } from "../../shared/state";
 import { errnoCode, messageOf } from "../lib/errors";
@@ -147,7 +148,8 @@ export type PublishTimings = Pick<FinishTimings, "publishMs" | "cleanupMs" | "me
  */
 export async function publishRecording(io: FileWriterFs, recordingPath: string, finalPath: string): Promise<{ target: string; timings: PublishTimings }> {
   const began = performance.now();
-  const ext = path.extname(finalPath);
+  // An editable recording's marker stays before the extension, as the name's (plan 100, D3): `name-2.recordstuff.mp4`.
+  const ext = finalPath.toLowerCase().endsWith(`${EDITABLE_MARKER}.mp4`) ? finalPath.slice(-`${EDITABLE_MARKER}.mp4`.length) : path.extname(finalPath);
   const stem = finalPath.slice(0, finalPath.length - ext.length);
   let linkError: string | undefined;
   for (let attempt = 1; ; attempt += 1) {

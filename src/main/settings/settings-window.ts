@@ -13,14 +13,17 @@ import { BrowserWindow, app, ipcMain, screen, type BrowserWindowConstructorOptio
 import path from "node:path";
 import { SETTINGS_CHANNELS, SHORTCUT_CAPTURE_TIMEOUT_MS, ZOOM_STEPS, isFolderChoice, isMoveChoice, isRenameChoice, type FolderChoice, type MoveChoice, type RenameChoice, type SettingsChoiceResult, type SettingsTab, type SettingsView } from "../../shared/settings-panel";
 import { fileNameProblemText, fileNameTemplateProblem, folderProblemText, type FolderProblem } from "../../shared/file-name";
-import type { MoveProblem, RenameProblem } from "../library/recordings-library";
+import type { MoveFailure, MoveProblem, RenameProblem } from "../library/recordings-library";
+import { formatBytes } from "../../shared/quality";
+import type { FailureHelp, FailureHelpAction } from "../../shared/settings-panel";
+import { FAILURE_HELP_ACTIONS } from "../../shared/settings-panel";
 import type { RecordingState } from "../../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
 import { TRAFFIC_LIGHT_POSITION } from "../../shared/window-controls";
 import { preferencesUnlocked } from "../recording/recording-lock";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../../shared/hotkey";
-import { translate } from "../../shared/i18n";
+import { translate, type Language } from "../../shared/i18n";
 import { ZOOM_KEYS } from "../../shared/shortcut-catalog";
 import { isFullScreenChoice, type FullScreenChoice, type PlaybackEdit } from "../../shared/video-player";
 import { isEditorChoice, type EditorChoice } from "../../shared/editing";
@@ -94,9 +97,11 @@ export interface SettingsWindowOptions {
   capture?: (armed: boolean) => void;
   geometry?: Pick<SettingsWindowState, "size" | "save"> & Partial<Pick<SettingsWindowState, "flush" | "zoom" | "saveZoom" | "position" | "savePosition">>;
   /** Renames a listed recording (recordings-library.ts `rename`): its new id, or why it was not renamed. */
-  rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem }>;
+  rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem; failure?: MoveFailure }>;
   /** Moves a listed recording into a listed folder, or with `null` into the output folder (recordings-library.ts `move`). */
-  move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem }>;
+  move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem; failure?: MoveFailure }>;
+  /** A way out offered beside a failure (plan 100): System Settings' Storage, RecordStuff's data folder, or its log. */
+  help?: (action: FailureHelpAction) => Promise<boolean>;
   /** The edit view's actions for a listed recording (plan 085): resolves whether the action took effect. */
   edit?: (id: string, choice: EditorChoice) => Promise<boolean>;
   /** The recording's open edit as the full-screen viewer plays it, when its edit view is open (2026-10-27). */
@@ -104,7 +109,7 @@ export interface SettingsWindowOptions {
   /** The Recordings tab's folder actions (recordings-library.ts): the folder made or renamed, or why not. */
   folders?: {
     create: (name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
-    rename: (folder: string, name: string) => Promise<{ folder: string } | { problem: FolderProblem }>;
+    rename: (folder: string, name: string) => Promise<{ folder: string } | { problem: FolderProblem; failure?: MoveFailure }>;
     remove: (folder: string) => Promise<true | { problem: FolderProblem }>;
     /** Remembers the category shown (`undefined` every recording, `null` Uncategorized) across windows and launches. */
     show: (folder: string | null | undefined) => Promise<true | { problem: FolderProblem }>;
@@ -116,8 +121,11 @@ export interface SettingsWindowOptions {
   activated?: () => void;
   /** The window closed or its page died: nothing needs to follow the disk for it any more. */
   closed?: () => void;
-  /** Starts dragging a listed recording out of the page; false when it is no longer listed. */
-  drag?: (contents: WebContents, id: string) => Promise<boolean>;
+  /**
+   * Starts dragging a listed recording out of the page: its Video, or with `original` (⌥-drag) the recording as made
+   * (plan 100); false when it is no longer listed, and why not when its Video is still being prepared or failed.
+   */
+  drag?: (contents: WebContents, id: string, original: boolean) => Promise<boolean | { problem: "preparing" | "failed" }>;
   /** Plays a listed recording full screen in a window of its own (video-fullscreen.ts). */
   fullScreen?: Pick<VideoFullScreen, "play" | "close"> & Partial<Pick<VideoFullScreen, "prepare">>;
   /**
@@ -265,6 +273,7 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingFile:") && isRenameChoice(choice)) return this.applyRename(group, choice, window);
       if (typeof group === "string" && group.startsWith("recordingFile:") && isMoveChoice(choice)) return this.applyMove(group, choice, window);
       if (group === "libraryFolder") return this.applyFolder(choice, window);
+      if (group === "failureHelp") return this.applyHelp(choice, window);
       // The edit view (plan 085): files, never preferences; an export answers once started and reports by the view.
       if (typeof group === "string" && group.startsWith("recordingEdit:")) return this.applyEdit(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
@@ -657,11 +666,19 @@ export class SettingsWindow {
     const action = settingsAction(this.options.state(), this.options.context(), group, choice);
     if (!action || typeof action !== "object" || !("recordingFile" in action)) this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
     const file = action && typeof action === "object" && "recordingFile" in action ? action.recordingFile : undefined;
-    const applied = !file ? false : file.action === "drag"
-      ? !recipient.isDestroyed() && !this.quitStarted() && (await this.options.drag?.(recipient.webContents, file.id) ?? false)
+    const dragged = !file ? false : file.action === "drag" || file.action === "dragOriginal"
+      ? !recipient.isDestroyed() && !this.quitStarted() && (await this.options.drag?.(recipient.webContents, file.id, file.action === "dragOriginal") ?? false)
       : await this.options.act(action!) === true;
+    const applied = dragged === true;
     const view = this.view();
-    return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
+    // A Video not ready yet (plan 100, D1): the drag waits, and the page says why and that ⌥-drag gives the original.
+    const failure = typeof dragged === "object"
+      ? translate(dragged.problem === "preparing"
+        ? process.platform === "darwin" ? "The video is still being prepared. Option-drag to give the original recording." : "The video is still being prepared. Alt-drag to give the original recording."
+        : process.platform === "darwin" ? "The video could not be prepared. Drag again to retry, or Option-drag to give the original recording."
+          : "The video could not be prepared. Drag again to retry, or Alt-drag to give the original recording.", view.language)
+      : translate("Could not complete this action. Try again.", view.language);
+    return this.deliver({ view, applied, ...(applied ? {} : { failure }) }, recipient);
   }
 
   /**
@@ -680,7 +697,7 @@ export class SettingsWindow {
     const view = this.view();
     return this.deliver("id" in outcome
       ? { view, applied: true, renamed: outcome.id }
-      : { view, applied: false, failure: fileNameProblemText(outcome.problem, view.language) }, recipient);
+      : { view, applied: false, ...moveFailureText(outcome, view.language) }, recipient);
   }
 
   /**
@@ -698,10 +715,10 @@ export class SettingsWindow {
     const outcome = await this.options.move(id, choice.folder);
     const view = this.view();
     if ("id" in outcome) return this.deliver({ view, applied: true, renamed: outcome.id }, recipient);
-    const failure = outcome.problem === "folderMissing" ? folderProblemText("missing", view.language)
-      : outcome.problem === "exists" ? translate("A recording with this name is already in that category.", view.language)
-        : fileNameProblemText(outcome.problem, view.language);
-    return this.deliver({ view, applied: false, failure }, recipient);
+    const said = outcome.problem === "folderMissing" ? { failure: folderProblemText("missing", view.language) }
+      : outcome.problem === "exists" ? { failure: translate("A recording with this name is already in that category.", view.language) }
+        : moveFailureText({ problem: outcome.problem, ...(outcome.failure ? { failure: outcome.failure } : {}) }, view.language);
+    return this.deliver({ view, applied: false, ...said }, recipient);
   }
 
   /**
@@ -734,10 +751,20 @@ export class SettingsWindow {
     if (outcome === true) return this.deliver({ view, applied: true }, recipient);
     return this.deliver("folder" in outcome
       ? { view, applied: true, folder: outcome.folder }
-      : { view, applied: false, failure: folderProblemText(outcome.problem, view.language) }, recipient);
+      : { view, applied: false, ...(isEditMoveProblem(outcome.problem) ? moveFailureText({ problem: outcome.problem, ...("failure" in outcome && outcome.failure ? { failure: outcome.failure } : {}) }, view.language)
+        : { failure: folderProblemText(outcome.problem, view.language) }) }, recipient);
   }
 
-  private runFolder(folders: NonNullable<SettingsWindowOptions["folders"]>, choice: FolderChoice): Promise<true | { folder: string } | { problem: FolderProblem }> {
+  /** A way out beside a failure (plan 100): opened as asked, from any page that offered it. */
+  private async applyHelp(choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const applied = (FAILURE_HELP_ACTIONS as readonly unknown[]).includes(choice) && !recipient.isDestroyed()
+      ? await this.options.help?.(choice as FailureHelpAction) ?? false : false;
+    if (!applied) this.log(`settings window: refused ${JSON.stringify({ group: "failureHelp", choice })}`);
+    const view = this.view();
+    return this.deliver({ view, applied, ...(applied ? {} : { failure: translate("Could not complete this action. Try again.", view.language) }) }, recipient);
+  }
+
+  private runFolder(folders: NonNullable<SettingsWindowOptions["folders"]>, choice: FolderChoice): Promise<true | { folder: string } | { problem: FolderProblem; failure?: MoveFailure }> {
     switch (choice.action) {
       case "createFolder": return folders.create(choice.name);
       case "renameFolder": return folders.rename(choice.folder, choice.name);
@@ -849,4 +876,39 @@ export class SettingsWindow {
 /** An action that turns the camera's or the microphone's switch on. */
 function isTurningOn(action: unknown, key: "setCamera" | "setMicrophone"): boolean {
   return typeof action === "object" && action !== null && (action as Record<string, unknown>)[key] === true;
+}
+
+const isEditMoveProblem = (problem: string): problem is MoveFailure["problem"] =>
+  problem === "editDiskFull" || problem === "editNoPermission" || problem === "editReadOnly" || problem === "editUnreadable" || problem === "editFailed";
+
+/**
+ * What a rename or move that did not happen says (plan 100): a name's own problem as before; an edit that could not be
+ * written for the new path says why in the user's words, with what was full, which folder or which code, and offers
+ * the way out (Storage, the data folder in Finder, the log). Every one says the recording and its edit are unchanged.
+ */
+export function moveFailureText(outcome: { problem: RenameProblem; failure?: MoveFailure }, language: Language): { failure: string; failureHelp?: FailureHelp } {
+  const mac = process.platform === "darwin";
+  const { problem, failure } = outcome;
+  const help = (action: FailureHelpAction): FailureHelp => ({ action, label: translate(action === "storageSettings" ? "Open Storage settings"
+    : action === "revealData" ? (mac ? "Show in Finder" : "Show in File Explorer") : "Show log", language) });
+  switch (problem) {
+    case "editDiskFull": return {
+      failure: failure?.free !== undefined
+        ? translate("Not renamed: the disk that holds RecordStuff's edits is full ({free} free). Free some space, then try again. The recording and its edit are unchanged.", language, { free: formatBytes(failure.free) })
+        : fileNameProblemText(problem, language),
+      ...(mac ? { failureHelp: help("storageSettings") } : {}),
+    };
+    case "editNoPermission": return {
+      failure: failure ? translate("Not renamed: RecordStuff cannot write to its data folder ({folder}), whose permissions may have been changed. The recording and its edit are unchanged.", language, { folder: failure.folder })
+        : fileNameProblemText(problem, language),
+      failureHelp: help("revealData"),
+    };
+    case "editReadOnly": return { failure: fileNameProblemText(problem, language), failureHelp: help("revealData") };
+    case "editFailed": return {
+      failure: failure?.code ? translate("Not renamed: the edit could not be saved for the new name (error {code}). The recording and its edit are unchanged; the log has the details.", language, { code: failure.code })
+        : fileNameProblemText(problem, language),
+      failureHelp: help("revealLog"),
+    };
+    default: return { failure: fileNameProblemText(problem, language) };
+  }
 }

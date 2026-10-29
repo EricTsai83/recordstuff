@@ -56,6 +56,13 @@ describe("publishRecording", () => {
     expect(await fs.readFile(path.join(dir, "t-2.mp4"), "utf8")).toBe("another old");
   });
 
+  it("numbers an editable recording's name before its marker (plan 100, D3)", async () => {
+    const recording = await recorded("e", 5);
+    await fs.writeFile(path.join(dir, "e.recordstuff.mp4"), "old");
+    const { target } = await publishRecording(nodeFs, recording, path.join(dir, "e.recordstuff.mp4"));
+    expect(target).toBe(path.join(dir, "e-2.recordstuff.mp4"));
+  });
+
   it("gives up after the last candidate name and keeps the recording, on a volume that answers EEXIST for every name", async () => {
     const recording = await recorded("busy", 7);
     const link = vi.fn(async () => { throw Object.assign(new Error("exists"), { code: "EEXIST" }); });

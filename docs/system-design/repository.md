@@ -46,6 +46,7 @@ This document describes where things live and why. [Architecture](architecture.m
 | `permission/` | Screen-recording permission detection and its notices |
 | `library/` | The recordings on disk: the Recordings tab's library, MP4 duration, the output folder and the full-screen video window |
 | `editing/` | Cutting a recording (plan 085): the edit view's owner (`editing.ts`), edit records (`edit-store.ts`), the export worker's supervisor (`export-host.ts`) and the worker itself (`export-process.ts`) |
+| `sharing/` | Sharing a recording (plan 100): the versions a drag gives (`sharing.ts`), prepared ahead in the export worker, and the cache they are made into (`version-cache.ts`) |
 | `shortcuts/` | Global shortcut registration: the recording key and the Settings key |
 | `app/` | App-wide vocabulary and lifecycle: the action and context both interfaces share (`ui-model.ts`), quitting and its feedback, Windows session end, reopening, uncaught faults, local data cleanup and update checks |
 | `settings/` | Preferences and their window: the persisted store, preference side effects, the panel model, the window and its saved size |
@@ -87,12 +88,13 @@ Inside the crate, dependencies point one way by convention, not by a test: `timi
 Imports between folders point one way, so a folder's place in this order is its contract:
 
 ```text
-main:      lib ← recording, display, permission, library, shortcuts, editing ← app ← settings ← menus ← actions ← index.ts
+main:      lib ← recording, display, permission, library, shortcuts, editing ← sharing ← app ← settings ← menus ← actions ← index.ts
 renderer:  lib ← components ← player ← countdown, settings, video
 scripts:   runner, release ← verification ← audio;  runner, verification ← acceptance ← fixtures ← entry points
 ```
 
 - **Feature folders** (`recording/`, `display/`, `permission/`, `library/`, `shortcuts/`, `editing/`) import only `lib/`, `src/shared/` and themselves, never each other. When two of them need the same thing, it moves down into `lib/` or `src/shared/`, or `index.ts` connects them.
+- **`sharing/`** (plan 100) sits on `editing/` and `library/`: it makes versions of a recording from its edit, in the edit view's export worker, so it reads both; nothing below it imports it.
 - **`app/`** may use the feature folders. `settings/` may also use `app/`, `menus/` may also use `settings/`, and `actions/` may use all of them. Nothing imports upward.
 - **Nothing imports `index.ts`.** It is the composition root; what an action does lives in `actions/`, so the root only builds and wires. The update and controlled acceptance runners patch a copy of it by text anchors, which is one more reason it stays at the top of `src/main/`.
 - **Renderer pages do not import one another.** What two pages share lives in `player/`, `components/` or `lib/`. Only tests import `testing/`. `camera-preview/`, plan 075 step 2's measurement page behind its development switch, imports only `src/shared/`.

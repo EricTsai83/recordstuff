@@ -58,6 +58,10 @@ export interface ActionDeps {
   changeOutputDir(): Promise<boolean>;
   openOutputDir(): Promise<boolean>;
   revealLog(): Promise<boolean>;
+  /** Clears the versions prepared for sharing, except those still held (plan 100). */
+  clearVersionCache(): Promise<boolean>;
+  /** Removes the edits kept for recordings not in the Recordings tab (plan 100). */
+  removeKeptEdits(): Promise<boolean>;
   /** The Recordings tab with the newest recording in view. */
   showLastRecording(): Promise<void>;
   /** The same hide path as the application menu: release capture, pause playback and hide the Dock icon. */
@@ -304,7 +308,7 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
     if (typeof action !== "string" && "recordingFile" in action) {
       const { id, action: verb } = action.recordingFile;
       // A drag belongs to the window it starts in (settings-window.ts).
-      return verb === "drag" ? false : library.act(id, verb);
+      return verb === "drag" || verb === "dragOriginal" ? false : library.act(id, verb);
     }
     if (action === "undoTrash") return library.undoTrash();
     if (typeof action !== "string" && "recordingResult" in action) {
@@ -509,6 +513,10 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       // Settings → General → Log file reads the outcome (2026-10-04); the log moved there from the tray.
       case "revealLog":
         return deps.revealLog();
+      case "clearVersionCache":
+        return deps.clearVersionCache();
+      case "removeKeptEdits":
+        return deps.removeKeptEdits();
       // Explicit outcomes: the Settings row reads them (plan 048 review); the tray ignores them.
       case "openOutputDir":
         // A failure the opener warned about itself answers true, so the row adds no second message; one only held

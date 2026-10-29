@@ -68,6 +68,10 @@ export interface EditingDeps {
   log(message: string): void;
   /** File operations, for fault injection in tests. */
   files?: Partial<PublicationFiles>;
+  /** A view is opening: versions prepared in the same worker step aside (plan 100). */
+  opening?(): void;
+  /** The view of the recording at `file` closed: its Video is prepared for sharing (plan 100, D2). */
+  closed?(file: string): void;
 }
 
 /** The file operations publication uses. */
@@ -124,11 +128,14 @@ export function partName(title: string): string {
   return `.${title}.recordstuff-export-${randomBytes(6).toString("hex")}.part`;
 }
 
-/** An earlier export's ending, in either language: 「（已編輯）」, 「（已編輯 2）」, " (edited)", " (edited 2)". */
-const EDITED_ENDING = new RegExp(`(?:${(["en", "zh-TW"] as const).flatMap((language) => [
+/**
+ * An earlier export's ending, in either language: 「（剪輯版）」, 「（剪輯版 2）」, " (edited)", " (edited 2)", and the
+ * 「（已編輯）」 Traditional Chinese exports were named before plan 100's D9.
+ */
+const EDITED_ENDING = new RegExp(`(?:${[...(["en", "zh-TW"] as const).flatMap((language) => [
   translate("{title} (edited)", language, { title: "" }),
   translate("{title} (edited {number})", language, { title: "", number: "\u0001" }),
-]).map((ending) => ending.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\u0001", "\\d+")).join("|")})$`);
+]), "（已編輯）", "（已編輯 \u0001）"].map((ending) => ending.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\u0001", "\\d+")).join("|")})$`);
 
 /**
  * `<title> (edited).mp4`, then `<title> (edited 2).mp4` and on, in the app's language: 「<title>（已編輯）.mp4」. An
@@ -527,6 +534,7 @@ export class Editing {
     if (!file) return false;
     if (this.exportRun && this.open?.id !== id) return false;
     if (this.open?.id === id) return true;
+    this.deps.opening?.();
     const generation = ++this.generation;
     this.open = { id, path: file.path, name: file.name, state: "loading", export: { phase: "idle" } };
     this.deps.changed();
@@ -604,11 +612,13 @@ export class Editing {
     if (this.open?.id !== id) return;
     // An export goes on to its end with the view closed; its outcome is in the log and the listing.
     if (this.exportRun) return;
-    this.dropPreview(this.open);
+    const closed = this.open;
+    this.dropPreview(closed);
     this.open = undefined;
     this.generation++;
     this.deps.runner.closeIdle();
     this.deps.changed();
+    if (closed.state === "ready") this.deps.closed?.(closed.path);
   }
 
   private save(id: string, requested: EditRange[], revision: number, scene?: EditScene): Promise<boolean> {
@@ -830,20 +840,6 @@ export class Editing {
   /** The recordings that hold an edit, by path, with the size their record was made for. */
   edited(): ReadonlyMap<string, number> {
     return this.deps.store.edited();
-  }
-
-  /**
-   * A recording was renamed or moved to a category: its edit follows it. (Neither can happen while its edit view is
-   * open, which is modal; a recording moved in Finder leaves the listing, and the page closes its view.)
-   */
-  moved(from: string, to: string): void {
-    // Settings draws again once it has, so the card at its new path is marked Edited (review of 2026-10-26).
-    void this.deps.store.moved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edit of ${from} did not follow it to ${to}: ${String(cause)}`));
-  }
-
-  /** A category folder was renamed: the edits of the recordings in it follow them to the new folder. */
-  folderMoved(from: string, to: string): void {
-    void this.deps.store.folderMoved(from, to).then(() => this.deps.changed(), (cause: unknown) => this.deps.log(`editing: the edits in ${from} did not follow it to ${to}: ${String(cause)}`));
   }
 
   private readonly journalling = new SerialQueue();

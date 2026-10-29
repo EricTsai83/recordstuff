@@ -76,7 +76,8 @@ vi.mock("electron", () => ({
     removeHandler: (name: string) => mock.handlers.delete(name),
   },
 }));
-import { SettingsWindow, nextZoom, settingsWindowOptions, zoomRequest, type SettingsWindowOptions } from "./settings-window";
+import { SettingsWindow, moveFailureText, nextZoom, settingsWindowOptions, zoomRequest, type SettingsWindowOptions } from "./settings-window";
+import { MoveFailure } from "../library/recordings-library";
 import { shortcutCatalog } from "../../shared/shortcut-catalog";
 import { TRAFFIC_LIGHT_POSITION, TRAFFIC_LIGHT_ZONE } from "../../shared/window-controls";
 import type { AppAction, AppContext } from "../app/ui-model";
@@ -1434,5 +1435,27 @@ describe("a recording's new name (2026-10-05)", () => {
     s.panel.show();
     await expect(s.choose(s.event(), "fileName", "Meeting {date}"))
       .resolves.toMatchObject({ applied: false, refused: true, failure: "Include {time} or {second} so each recording gets its own name." });
+  });
+});
+
+describe("what a rename says when the edit could not follow (plan 100)", () => {
+  const mac = process.platform === "darwin";
+  it("says what was full, which folder or which code, that nothing changed, and offers the way out", () => {
+    const full = moveFailureText({ problem: "editDiskFull", failure: new MoveFailure("editDiskFull", "/data/edits", "ENOSPC", 5 * 1024 * 1024) }, "en");
+    expect(full.failure).toBe("Not renamed: the disk that holds RecordStuff's edits is full (5 MB free). Free some space, then try again. The recording and its edit are unchanged.");
+    if (mac) expect(full.failureHelp).toEqual({ action: "storageSettings", label: "Open Storage settings" });
+    const denied = moveFailureText({ problem: "editNoPermission", failure: new MoveFailure("editNoPermission", "/data/edits", "EACCES") }, "zh-TW");
+    expect(denied.failure).toContain("（/data/edits）");
+    expect(denied.failureHelp?.action).toBe("revealData");
+    const odd = moveFailureText({ problem: "editFailed", failure: new MoveFailure("editFailed", "/data/edits", "EIO") }, "en");
+    expect(odd).toEqual({ failure: "Not renamed: the edit could not be saved for the new name (error EIO). The recording and its edit are unchanged; the log has the details.",
+      failureHelp: { action: "revealLog", label: "Show log" } });
+    expect(moveFailureText({ problem: "editReadOnly" }, "en").failureHelp?.action).toBe("revealData");
+    // An edit that cannot be read says so in plain words and how to rename anyway; no code, no way out to open.
+    const unreadable = moveFailureText({ problem: "editUnreadable", failure: new MoveFailure("editUnreadable", "/data/edits", "EBADMSG") }, "zh-TW");
+    expect(unreadable.failure).toBe("未重新命名：這段錄影的剪輯紀錄無法讀取（可能是較新版本的 RecordStuff 存的，或檔案在剪輯後被改過），所以無法跟著新名稱移動。錄影和剪輯都沒有變動。如果仍要改名，請從錄影的選單打開剪輯畫面，捨棄這份剪輯。");
+    expect(unreadable.failureHelp).toBeUndefined();
+    // A name's own problem is said as before, with no way out to offer.
+    expect(moveFailureText({ problem: "exists" }, "en")).toEqual({ failure: "A file with this name is already in the folder." });
   });
 });

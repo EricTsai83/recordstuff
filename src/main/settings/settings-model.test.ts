@@ -102,6 +102,7 @@ describe("settingsView", () => {
       "notifications",
       "language",
       "appearance",
+      "versionCache",
       "updateChecks",
       "updates",
       "setupGuide",
@@ -1189,7 +1190,7 @@ it("declares presentation without changing choice identities, and authorizes onl
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
     ["trayClick", "menu", "controls"], ["hotkey", "menu", "controls"], ["notifications", "switch", "controls"],
-    ["language", "segmented", "display"], ["appearance", "segmented", "display"],
+    ["language", "segmented", "display"], ["appearance", "segmented", "display"], ["versionCache", "menu", "storage"],
     ["updateChecks", "switch", "updates"], ["updates", "menu", "updates"], ["setupGuide", "menu", "setup"],
     ...["global", "window", "recordings", "player", "fullScreen", "editor"].map(category => [`shortcutList:${category}`, undefined, `shortcutList:${category}`]),
     ["log", "menu", "diagnostics"], ["localData", "menu", "cleanup"], ["about", "menu", "about"],
@@ -1433,7 +1434,7 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
 
   it("orders General as the icon's click, Shortcut, Notifications, Language, Appearance, Updates and About, headings moving with their groups", () => {
     const general = settingsView(idle, context).groups.filter((g) => g.tab === "general");
-    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "updateChecks", "updates", "setupGuide", "about"]);
+    expect(general.map((g) => g.id)).toEqual(["trayClick", "hotkey", "notifications", "language", "appearance", "versionCache", "updateChecks", "updates", "setupGuide", "about"]);
     expect(general.find((g) => g.id === "updateChecks")?.sectionHeading).toBe("Updates");
   });
 
@@ -1442,12 +1443,12 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
       ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["studioControls", "What is recorded"], ["systemAudio", "While recording"], ["videoQuality", "Video"],
-      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["updateChecks", "Updates"], ["setupGuide", "Getting started"],
+      ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["versionCache", "Storage"], ["updateChecks", "Updates"], ["setupGuide", "Getting started"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"], ["shortcutList:editor", "Edit view"],
       ["log", "Diagnostic tools"], ["localData", "Reset and cleanup"],
     ]);
-    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "錄製內容", "錄影時", "影像", "操作與通知", "語言與外觀", "更新", "開始使用",
+    expect(headings("zh-TW").map(([, heading]) => heading)).toEqual(["來源與輸出", "錄影開始前", "音訊", "錄製內容", "錄影時", "影像", "操作與通知", "語言與外觀", "儲存空間", "更新", "開始使用",
       "任何地方", "RecordStuff 視窗", "錄影檔", "播放器", "全螢幕影片", "編輯", "診斷工具", "重設與清理"]);
     expect(group(idle, context, "updates")?.label).toBe("Manual check");
   });
@@ -1635,6 +1636,31 @@ describe("the Recordings tab", () => {
     expect(settingsView(idle, { ...library({}), editedRecordings: edited }).library!.items.map(item => item.edited)).toEqual(["Edited", undefined]);
     expect(settingsView(idle, { ...library({}), editedRecordings: edited, language: "zh-TW" }).library!.items[0]!.edited).toBe("已剪輯");
     expect(settingsView(idle, { ...library({ files: marked }), language: "zh-TW" }).library!.items[0]!.editable).toBe("可編輯");
+  });
+  it("titles an editable recording without its marker, explains its mark, and shows its Video being prepared (plan 100)", () => {
+    const marked = [{ ...files[0]!, name: "Talk.recordstuff.mp4", path: "/tmp/recordings/Talk.recordstuff.mp4", editable: true as const }, files[1]!];
+    const preparing = new Map([["/tmp/recordings/Talk.recordstuff.mp4", { state: "preparing" as const, progress: 0.4 }], ["/tmp/recordings/Product demo.mp4", { state: "failed" as const }]]);
+    const items = settingsView(idle, { ...library({ files: marked }), preparingVideos: preparing, platform: "darwin" }).library!.items;
+    expect(items[0]).toMatchObject({ title: "Talk", name: "Talk.recordstuff.mp4", editableHint: expect.stringContaining("drag it"),
+      preparing: { state: "preparing", progress: 0.4, label: "Preparing video… 40%", hint: "Option-drag gives the original." } });
+    expect(items[1]!.preparing).toEqual({ state: "failed", label: "Video not prepared", hint: "Option-drag gives the original." });
+    const zh = settingsView(idle, { ...library({ files: marked }), preparingVideos: preparing, language: "zh-TW", platform: "win32" }).library!.items;
+    expect(zh[0]!.preparing).toMatchObject({ label: "正在準備影片… 40%", hint: "按住 Alt 拖曳可給原始錄影。" });
+    expect(settingsView(idle, library({ files: marked })).library!.items.every(item => item.preparing === undefined)).toBe(true);
+  });
+  it("lists edits kept for recordings out of the tab, where they are and a way to remove them, only while there are any (plan 100)", () => {
+    expect(group(idle, context, "keptEdits")).toBeUndefined();
+    const keptEdits = [
+      { source: "/Users/me/Old/A.mp4", reason: "elsewhere" as const, bytes: 1000 },
+      { source: "/Users/me/Old/B.mp4", reason: "elsewhere" as const, bytes: 1000 },
+      { source: "/Volumes/Drive/C.mp4", reason: "disk" as const, bytes: 1048 },
+    ];
+    const kept = group(idle, { ...context, homeDir: "/Users/me", keptEdits }, "keptEdits")!;
+    expect(kept).toMatchObject({ label: "Kept edits", tab: "general", section: "storage", enabled: true });
+    expect(kept.note).toBe("3 recordings that are not in the Recordings tab keep their edits (3 KB): ~/Old (2), /Volumes/Drive (1). They apply again when the recordings return.");
+    expect(settingsAction(idle, { ...context, keptEdits }, "keptEdits", "remove")).toBe("removeKeptEdits");
+    expect(group(idle, { ...context, homeDir: "/Users/me", keptEdits: keptEdits.slice(0, 1), language: "zh-TW" }, "keptEdits")!.note)
+      .toBe("有 1 段不在錄影分頁裡的錄影保留著剪輯（1 KB）：~/Old（1 段）。錄影回來時，剪輯會自動套用。");
   });
   it("names each recording's subfolder and lists the folders the library offers (plan 071)", () => {
     const view = settingsView(idle, library({

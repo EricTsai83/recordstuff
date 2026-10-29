@@ -128,6 +128,17 @@ export function parseRecord(text: string): EditRecord | { reason: string } {
   return version === 1 ? { version, ...fields } : { version, ...fields, scene: v["scene"] as EditScene };
 }
 
+/** Whether the system says nothing is at `file`: any other failure to look is not taken for absence. */
+async function confirmedAbsent(file: string): Promise<boolean> {
+  return fs.promises.lstat(file).then(() => false, (cause: NodeJS.ErrnoException) => cause.code === "ENOENT" || cause.code === "ENOTDIR");
+}
+
+/** Whether two paths name one file (a case-only rename on a case-insensitive volume). */
+async function sameFile(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([fs.promises.stat(a).catch(() => undefined), fs.promises.stat(b).catch(() => undefined)]);
+  return Boolean(x && y && x.ino === y.ino && x.dev === y.dev);
+}
+
 export class EditStore {
   /** Writes in order, one record at a time: a later save never lands before an earlier one. */
   private readonly queue = new SerialQueue();
@@ -137,8 +148,19 @@ export class EditStore {
    * `scan` and kept by every save, discard and move after it, so the tab never reads a record to draw a card.
    */
   private index = new Map<string, number>();
+  /** Each held record's recording identity, by path: how a recording renamed or moved in Finder finds its edit again. */
+  private identities = new Map<string, SourceIdentity>();
+  /** Finding an edit by bytes, one at a time: two readers never both move the same record (Codex review). */
+  private readonly adoption = new SerialQueue();
+  /** What a move's record replaced at its new path, to put back if the move is not made (Codex review). */
+  private readonly replaced = new Map<string, string | null>();
 
   constructor(private readonly dir: string) {}
+
+  /** Where the records are, for a failure that names it. */
+  get folder(): string {
+    return this.dir;
+  }
 
   /**
    * Reads which recordings hold an edit, once at launch; a record that cannot be read is left out, as it is kept. In
@@ -176,6 +198,17 @@ export class EditStore {
 
   private note(record: EditRecord): void {
     this.index.set(path.resolve(record.source.path), record.source.size);
+    this.identities.set(path.resolve(record.source.path), record.source);
+  }
+
+  private forget(source: string): void {
+    this.index.delete(path.resolve(source));
+    this.identities.delete(path.resolve(source));
+  }
+
+  /** Every held record's recording: its path and identity, for clean-up and for Settings' kept edits. */
+  records(): ReadonlyMap<string, SourceIdentity> {
+    return this.identities;
   }
 
   /** The record's file for a recording at `source`. */
@@ -190,7 +223,7 @@ export class EditStore {
     try {
       handle = await fs.promises.open(file, "r");
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return { kind: "none" };
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return this.adoption.run(() => this.adopt(source, identity));
       return { kind: "unreadable", reason: `the edit could not be opened: ${(cause as Error).message}` };
     }
     let text: string;
@@ -225,31 +258,136 @@ export class EditStore {
     const file = this.fileFor(source);
     return this.queue.run(async () => {
       await fs.promises.rm(file, { force: true });
-      this.index.delete(path.resolve(source));
+      this.forget(source);
     });
   }
 
   /**
-   * The recording moved (renamed, or moved to a category): its edit follows when it still describes the same file at
-   * the new path. Best effort: an edit that cannot move stays where it was, as a stale one would.
+   * No record at `source`: one made for the same bytes at a path where no file is any longer (a recording renamed or
+   * moved in Finder, plan 100) is the recording's, and moves to `source`. Its bytes, modification time and ends must all
+   * match; a copy, whose original is still at its path, does not take its edit.
    */
-  async moved(from: string, to: string): Promise<void> {
-    const identity = await sourceIdentity(to).catch(() => undefined);
-    if (!identity) return;
-    const loaded = await this.load(from, { ...identity, path: from });
-    if (loaded.kind !== "ok") return;
-    await this.save({ ...loaded.record, source: identity });
-    await this.discard(from);
+  private async adopt(source: string, identity: SourceIdentity): Promise<LoadedEdit> {
+    // Moved here by a reader just before this one: it is found at its own path now.
+    if (await fs.promises.access(this.fileFor(source)).then(() => true, () => false)) return this.load(source, identity);
+    for (const [from, known] of this.identities) {
+      if (from === path.resolve(source) || known.size !== identity.size || known.mtimeMs !== identity.mtimeMs || known.hash !== identity.hash) continue;
+      // Only the system's own "nothing there" says the original is gone; a look that failed otherwise (no permission)
+      // decides nothing, so a copy never takes an edit whose recording may still be there (Codex review).
+      if (!(await confirmedAbsent(from))) continue;
+      const loaded = await this.load(from, { ...identity, path: from });
+      if (loaded.kind !== "ok") continue;
+      const record: EditRecord = { ...loaded.record, source: identity };
+      try {
+        await this.save(record);
+        await this.discard(from);
+      } catch {
+        // Not moved now: it is still found by its bytes next time, and this time it is the edit all the same.
+      }
+      return { kind: "ok", record };
+    }
+    return { kind: "none" };
   }
 
   /**
-   * A category folder was renamed: the edit of every recording directly in it follows it to the new folder, as
-   * `moved` carries one recording's. Taken from the edits held, so a recording the listing has not reached still keeps
-   * its edit.
+   * Before the recording at `from` moves to `to` in the tab (plan 100): its edit is written for `to` first, so the file
+   * is never at a path its edit does not follow. Rejects with the write's error, the move then not made; nothing to
+   * write resolves at once.
    */
-  async folderMoved(from: string, to: string): Promise<void> {
-    const folder = path.resolve(from);
-    const inside = [...this.index.keys()].filter(source => path.dirname(source) === folder);
-    for (const source of inside) await this.moved(source, path.join(to, path.basename(source)));
+  async prepareMove(from: string, to: string): Promise<void> {
+    // The record's file, whether or not it could be read: one that cannot (a newer version's, a damaged one) or that
+    // was made for another file at this path would not follow the recording, so the move is refused (Codex review).
+    if (!(await fs.promises.access(this.fileFor(from)).then(() => true, () => false))) return;
+    const identity = await sourceIdentity(from);
+    const loaded = await this.load(from, identity);
+    if (loaded.kind === "none") return;
+    if (loaded.kind !== "ok") throw Object.assign(new Error(`the edit of ${from} is ${loaded.kind} and cannot follow it`), { code: loaded.kind === "stale" ? "ESTALE" : "EBADMSG" });
+    // A recording already at the new path keeps its edit untouched: the move is refused for the name, and nothing of
+    // its record is ever overwritten, even for a moment (Codex review).
+    // The same file under another case on a case-insensitive volume is a rename like any other.
+    if (!(await confirmedAbsent(to)) && !(await sameFile(from, to))) return;
+    // Whatever record the new path holds (an edit left by a recording gone from it) is kept aside, to be put back if
+    // the move is not made.
+    const previous = await fs.promises.readFile(this.fileFor(to), "utf8").catch((cause: NodeJS.ErrnoException) => {
+      if (cause.code === "ENOENT") return null;
+      throw cause;
+    });
+    this.replaced.set(path.resolve(to), previous);
+    try {
+      await this.save({ ...loaded.record, source: { ...identity, path: to } });
+    } catch (cause) {
+      this.replaced.delete(path.resolve(to));
+      throw cause;
+    }
+  }
+
+  /**
+   * After the move: the edit at the path left goes. When the file did not move, the record written for `to` goes and
+   * whatever it replaced there is put back, so another recording's edit is never lost to a refused move.
+   */
+  async finishMove(from: string, to: string, moved: boolean): Promise<void> {
+    const key = path.resolve(to);
+    if (!this.replaced.has(key)) return;
+    const previous = this.replaced.get(key);
+    this.replaced.delete(key);
+    if (moved) {
+      await this.discard(from);
+      return;
+    }
+    if (previous === null || previous === undefined) {
+      await this.discard(to);
+      return;
+    }
+    const file = this.fileFor(to);
+    await this.queue.run(async () => {
+      await writeFileAtomic(file, previous, { syncDirectory: true });
+      const parsed = parseRecord(previous);
+      this.forget(to);
+      if (!("reason" in parsed)) this.note(parsed);
+    });
+  }
+
+  /** The moves a category rename was prepared with, by its folder, for `finishFolderMove`. */
+  private readonly folderMoves = new Map<string, Array<[string, string]>>();
+
+  /**
+   * The recordings directly in the folder `from` that hold a record, readable or not, and where they go when it is
+   * renamed to `to`: by the folder's files, so a record that cannot be read is found too (Codex review).
+   */
+  private async inFolder(from: string, to: string): Promise<Array<[string, string]>> {
+    // A folder that cannot be listed may hold edits that would not follow it: the rename is refused (Codex review).
+    const names = await fs.promises.readdir(from).catch((cause: NodeJS.ErrnoException) => {
+      if (cause.code === "ENOENT") return [] as string[];
+      throw cause;
+    });
+    const held: Array<[string, string]> = [];
+    for (const name of names) {
+      const source = path.join(path.resolve(from), name);
+      if (await fs.promises.access(this.fileFor(source)).then(() => true, () => false)) held.push([source, path.join(to, name)]);
+    }
+    return held;
+  }
+
+  /** `prepareMove` for every recording of a category renamed from `from` to `to`; a failure takes back what it wrote. */
+  async prepareFolderMove(from: string, to: string): Promise<void> {
+    const moves = await this.inFolder(from, to);
+    const written: Array<[string, string]> = [];
+    try {
+      for (const move of moves) {
+        await this.prepareMove(...move);
+        written.push(move);
+      }
+    } catch (cause) {
+      for (const [source, target] of written) await this.finishMove(source, target, false).catch(() => undefined);
+      throw cause;
+    }
+    this.folderMoves.set(path.resolve(from), moves);
+  }
+
+  /** `finishMove` for every recording of a category renamed from `from` to `to`. */
+  async finishFolderMove(from: string, _to: string, moved: boolean): Promise<void> {
+    const moves = this.folderMoves.get(path.resolve(from)) ?? [];
+    this.folderMoves.delete(path.resolve(from));
+    for (const [source, target] of moves) await this.finishMove(source, target, moved);
   }
 }

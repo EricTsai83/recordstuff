@@ -27,6 +27,8 @@ function harness(overrides: Partial<ActionDeps> = {}) {
     changeOutputDir: vi.fn(async () => true),
     openOutputDir: vi.fn(async () => true),
     revealLog: vi.fn(async () => true),
+    clearVersionCache: vi.fn(async () => true),
+    removeKeptEdits: vi.fn(async () => true),
     showLastRecording: vi.fn(async () => {}),
     hideSettings: vi.fn(),
     displayPreferenceChanged: vi.fn(),

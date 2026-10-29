@@ -3,16 +3,17 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LENGTHS_PUBLISH_MS, RecordingsLibrary, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, relists, stampedTime } from "./recordings-library";
+import { LENGTHS_PUBLISH_MS, MoveFailure, RecordingsLibrary, type LibraryDeps, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, relists, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "../recording/recorder";
 
 let dir: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-library-")); });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-function setup() {
+function setup(extra: Partial<LibraryDeps> = {}) {
   const changed = vi.fn();
   const deps = {
+    ...extra,
     dir: () => dir, changed, log: vi.fn(),
     thumbnail: vi.fn(async (_file: string): Promise<Buffer | undefined> => Buffer.from("jpeg")),
     trash: vi.fn(async (file: string) => fs.rmSync(file)),
@@ -28,6 +29,9 @@ describe("names", () => {
     expect(["2026-10-04 14-02-11.recording.mp4", ".hidden.mp4", "notes.txt", "clip.webm"].some(isListedName)).toBe(false);
     expect(stampedTime("2026-10-04 14-02-11-2.mp4")).toBe(new Date(2026, 9, 4, 14, 2, 11).getTime());
     expect(stampedTime("Product demo.mp4")).toBeUndefined();
+    // An editable recording's marker (plan 100, D3), numbered or not.
+    expect(stampedTime("2026-10-04 14-02-11.recordstuff.mp4")).toBe(new Date(2026, 9, 4, 14, 2, 11).getTime());
+    expect(stampedTime("2026-10-04 14-02-11-2.recordstuff.mp4")).toBe(new Date(2026, 9, 4, 14, 2, 11).getTime());
     // A name lengthened after its stamp keeps the stamp's time (2026-10-26), an export's ending included; the stamp
     // must stand apart, so a longer number is not read as one.
     const at = new Date(2026, 9, 26, 16, 11, 53).getTime();
@@ -558,6 +562,56 @@ describe("RecordingsLibrary", () => {
     // The same name changes nothing.
     expect(await library.rename(fileId(target), "Product demo")).toEqual({ id: fileId(target) });
     expect(deps.log).toHaveBeenCalledWith(`library: renamed ${file} to ${target}`);
+  });
+  it("writes what follows a recording for its new path before it moves, and moves nothing if that fails (plan 100)", async () => {
+    const file = touch("Talk.mp4");
+    const said: string[] = [];
+    let refuse: Error | undefined;
+    const { library } = setup({
+      beforeMove: async (from, to) => { said.push(`before ${path.basename(from)} → ${path.basename(to)}`); if (refuse) throw refuse; },
+      afterMove: async (from, to, moved) => { said.push(`after ${path.basename(from)} → ${path.basename(to)} ${moved}`); },
+    });
+    await library.refresh();
+    const id = library.state.files[0]!.id;
+    const full = new MoveFailure("editDiskFull", "/data/edits", "ENOSPC", 1234);
+    refuse = full;
+    expect(await library.rename(id, "Demo")).toEqual({ problem: "editDiskFull", failure: full });
+    expect(fs.existsSync(file)).toBe(true);
+    expect(said).toEqual(["before Talk.mp4 → Demo.mp4"]);
+    refuse = undefined;
+    // A name already taken: what was written for it is taken back.
+    touch("Taken.mp4");
+    expect(await library.rename(id, "Taken")).toEqual({ problem: "exists" });
+    expect(said.slice(1)).toEqual(["before Talk.mp4 → Taken.mp4", "after Talk.mp4 → Taken.mp4 false"]);
+    expect(await library.rename(id, "Demo")).toEqual({ id: fileId(path.join(dir, "Demo.mp4")) });
+    expect(said.slice(3)).toEqual(["before Talk.mp4 → Demo.mp4", "after Talk.mp4 → Demo.mp4 true"]);
+    // Any other refusal is the edit's own failure, said as such.
+    refuse = new Error("odd");
+    expect(await library.rename(fileId(path.join(dir, "Demo.mp4")), "Again")).toEqual({ problem: "editFailed" });
+  });
+
+  it("names why an edit could not be written by the system's code", () => {
+    const of = (code: string) => MoveFailure.of(Object.assign(new Error(code), { code }), "/data/edits", 99);
+    expect(of("ENOSPC")).toMatchObject({ problem: "editDiskFull", free: 99, folder: "/data/edits" });
+    expect(of("EACCES").problem).toBe("editNoPermission");
+    expect(of("EPERM").problem).toBe("editNoPermission");
+    expect(of("EROFS").problem).toBe("editReadOnly");
+    // The edit store's own refusals: an edit it cannot read, or one made for another file at that path.
+    expect(of("EBADMSG").problem).toBe("editUnreadable");
+    expect(of("ESTALE").problem).toBe("editUnreadable");
+    expect(of("EIO")).toMatchObject({ problem: "editFailed", code: "EIO", free: undefined });
+  });
+
+  it("keeps an editable recording's marker through a rename (plan 100, D3)", async () => {
+    const file = touch("2026-10-04 14-02-11.recordstuff.mp4");
+    const { library } = setup();
+    await library.refresh();
+    const id = library.state.files.find(item => item.path === file)!.id;
+    const target = path.join(dir, "Talk.recordstuff.mp4");
+    expect(await library.rename(id, "Talk")).toEqual({ id: fileId(target) });
+    expect(fs.existsSync(target)).toBe(true);
+    // The same title changes nothing.
+    expect(await library.rename(fileId(target), "Talk")).toEqual({ id: fileId(target) });
   });
   it("keeps a renamed file's length and thumbnail through a listing that began before the rename", async () => {
     const file = touch("clip.mp4");

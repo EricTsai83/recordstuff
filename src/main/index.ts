@@ -74,7 +74,7 @@ import { AppTray } from "./menus/tray";
 import { AppMenu } from "./menus/app-menu";
 import { VideoFullScreen } from "./library/video-fullscreen";
 import { SettingsWindow } from "./settings/settings-window";
-import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, RecordingsLibrary } from "./library/recordings-library";
+import { MEDIA_SCHEME, MEDIA_SCHEME_PRIVILEGES, MoveFailure, RecordingsLibrary } from "./library/recordings-library";
 import { videoThumbnail } from "./library/video-thumbnail";
 import type { AppAction, AppContext } from "./app/ui-model";
 import { APP_NAME } from "./lib/app-name";
@@ -90,6 +90,11 @@ import { formatFileName } from "../shared/file-name";
 import { EditStore } from "./editing/edit-store";
 import { ExportHost } from "./editing/export-host";
 import { Editing } from "./editing/editing";
+import { mp4Facts } from "./library/mp4-duration";
+import { VersionCache } from "./sharing/version-cache";
+import { inOutputFolder, Sharing } from "./sharing/sharing";
+import { Housekeeping } from "./sharing/housekeeping";
+import { FolderWatch } from "./library/folder-watch";
 import { engineAddonPath } from "./lib/engine-module";
 
 /** The saved language, read where it is needed; the default until the settings are loaded. One source, nothing to copy. */
@@ -257,12 +262,35 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   const library = new RecordingsLibrary({
     dir: () => settings.outputDir,
-    // Only Settings shows the listing; the tray has nothing to redraw.
-    changed: () => settingsWindow.refresh(),
+    // Only Settings shows the listing; the tray has nothing to redraw. A recording gone from the folder takes what was
+    // made from it to share it (plan 100).
+    changed: () => {
+      settingsWindow.refresh();
+      const listed = library.state;
+      if (!listed.loading && !listed.failed) scheduleHousekeeping();
+    },
     thumbnail: file => videoThumbnail(nativeImage, file),
     trash: file => shell.trashItem(file),
     open: file => shell.openPath(file),
     reveal: file => shell.showItemInFolder(file),
+    // What was made from a recording to share it goes once the recording really went (plan 100), and its edit with it.
+    trashed: file => { void sharing.removed(file); void editStore.discard(file).catch((cause: unknown) => log(`editing: the edit of ${file} was not removed: ${String(cause)}`)); },
+    // A recording's edit is written for its new path before it moves in the tab, and the move is not made if it cannot
+    // be (plan 100); afterwards the old record goes, and the versions follow it.
+    beforeMove: async (from, to, folder) => {
+      try {
+        await (folder ? editStore.prepareFolderMove(from, to) : editStore.prepareMove(from, to));
+      } catch (cause) {
+        const free = await fs.statfs(editStore.folder).then(stat => stat.bavail * stat.bsize, () => undefined);
+        throw MoveFailure.of(cause, editStore.folder, free);
+      }
+    },
+    afterMove: async (from, to, moved, folder) => {
+      await (folder ? editStore.finishFolderMove(from, to, moved) : editStore.finishMove(from, to, moved))
+        .catch((cause: unknown) => log(`editing: the edit left at ${moved ? from : to} was not removed: ${String(cause)}`));
+      if (moved) await (folder ? sharing.folderMoved(from, to) : sharing.moved(from, to));
+      settingsWindow.refresh();
+    },
     log,
   });
   // The library's media protocol lives on the default session, and using that session makes Electron start a renderer
@@ -421,23 +449,32 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   // the same engine. Exports a crash left unfinished are removed first; recording always wins over an export.
   const editsDir = path.join(app.getPath("userData"), "edits");
   const exportJournal = path.join(editsDir, "exports-in-flight.json");
+  const editStore = new EditStore(editsDir);
+  // One export worker for the edit view and the versions prepared for sharing (plan 100), one request at a time.
+  const exportHost = new ExportHost({
+    entryPath: path.join(__dirname, "export-process.js"),
+    addonPath: engineAddonPath(__dirname),
+    log,
+  });
+  /** What capture is doing that an export, or a version prepared ahead, must not compete with. */
+  const captureBusy = (): "quitting" | "recording" | "preview" | "saving" | undefined => {
+    if (quitInProgress()) return "quitting";
+    if (!preferencesUnlocked(recorder.state)) return "recording";
+    if (recorder.preview) return "preview";
+    if (recorder.mediaPending) return "saving";
+    return undefined;
+  };
   const editing = new Editing({
-    store: new EditStore(editsDir),
-    runner: new ExportHost({
-      entryPath: path.join(__dirname, "export-process.js"),
-      addonPath: engineAddonPath(__dirname),
-      log,
-    }),
+    store: editStore,
+    runner: exportHost,
     find: (id) => library.find(id),
-    blocked: () => {
-      if (quitInProgress()) return "quitting";
-      if (!preferencesUnlocked(recorder.state)) return "recording";
-      if (recorder.preview) return "preview";
-      if (recorder.mediaPending) return "saving";
-      return undefined;
-    },
+    blocked: captureBusy,
     language: () => settings.language,
-    changed: () => settingsWindow.refresh(),
+    // A view or an export that ended lets a version waiting for the worker go on (plan 100).
+    changed: () => { settingsWindow.refresh(); sharing.resume(); },
+    opening: () => sharing.yield("the edit view opened"),
+    // D2: the Video is prepared when the edit view closes.
+    closed: (file) => sharing.prepare(file),
     published: () => { void library.refresh(); },
     reveal: (file) => shell.showItemInFolder(file),
     journal: exportJournal,
@@ -450,6 +487,44 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   void editing.scanEdits().then(() => settingsWindow.refresh(), () => undefined);
   void editing.removePreviews();
   editingPreview = (request) => editing.previewResponse(request);
+
+  // Sharing a recording (plan 100): the versions a drag gives, prepared ahead into the system's cache folder, in the same
+  // worker, one at a time and only while nothing else needs it (step 4 lets it run beside a recording under a governor).
+  const versionCache = new VersionCache({
+    root: process.platform === "win32" && process.env["LOCALAPPDATA"]
+      ? path.join(process.env["LOCALAPPDATA"], APP_NAME, "Cache", "Versions")
+      : path.join(app.getPath("home"), "Library", "Caches", APP_NAME, "Versions"),
+    log,
+  });
+  const sharing = new Sharing({
+    cache: versionCache,
+    store: editStore,
+    runner: exportHost,
+    editable: async (file) => (await mp4Facts(file).catch(() => ({ editable: false }))).editable,
+    paused: () => captureBusy() ?? (editing.view() || editing.exporting ? "editing" : undefined),
+    language: () => settings.language,
+    changed: () => settingsWindow.refresh(),
+    log,
+  });
+  // What is kept for a recording is kept only while it is (plan 100): checked at launch, as the window lists the folder
+  // and whenever the folder changes, which is followed for as long as RecordStuff runs, recording or not.
+  const housekeeping = new Housekeeping({
+    store: editStore,
+    sweepVersions: dir => sharing.sweep(dir),
+    outputDir: () => settings.outputDir,
+    changed: () => settingsWindow.refresh(),
+    log,
+  });
+  let housekeepingTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A check soon, once: a listing publishes several times while it reads the files' lengths. */
+  function scheduleHousekeeping(): void {
+    clearTimeout(housekeepingTimer);
+    housekeepingTimer = setTimeout(() => { housekeepingTimer = undefined; folderWatch.start(); void housekeeping.run(); }, 300);
+  }
+  // Watching starts again at every check (a folder away at launch or lost to an error comes back once it is there).
+  const folderWatch = new FolderWatch({ dir: () => settings.outputDir, changed: () => { folderWatch.start(); void housekeeping.run(); }, log });
+  folderWatch.start();
+  void Promise.all([versionCache.scan(), editStore.scan()]).then(() => housekeeping.run()).then(() => settingsWindow.refresh(), () => undefined);
 
   // One file per in-flight session; any left at launch belongs to a process that ended while recording.
   const sentinels = new SessionSentinels(path.join(app.getPath("userData"), "recording-sessions"), log);
@@ -503,7 +578,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       notify: code => permissionNotices.failed(code),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
-    onSessionStart: (sessionId) => { editing.yieldToCapture(); displayMedia.begin(sessionId); },
+    onSessionStart: (sessionId) => { editing.yieldToCapture(); sharing.yield("a recording or Live preview started"); displayMedia.begin(sessionId); },
     mapHostError: (code) => displayMedia.explain(code),
     log,
   });
@@ -661,6 +736,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     library: library.state,
     ...(() => { const editor = editing.view(); return editor ? { editor } : {}; })(),
     editedRecordings: editing.edited(),
+    preparingVideos: sharing.videoStates(),
+    keptEdits: housekeeping.kept,
+    versionCacheBytes: versionCache.size(),
     quality: quality(),
     countdown: countdownSeconds(),
     countdownSound: countdownSound(),
@@ -720,38 +798,29 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     act: handleAction,
     capture: armed => shortcuts.capture(armed),
     // While the window is open the Recordings tab follows the folder: a video deleted in Finder leaves at once.
-    activated: () => { library.watch(); void library.refresh(); devices.refresh(); },
+    // The output folder's watch (plan 100) starts again too, if a folder away until now is back.
+    activated: () => { library.watch(); void library.refresh(); devices.refresh(); folderWatch.start(); },
     quitRequested: quitInProgress,
     opened: () => appMenu.windowOpened(),
     closed: settingsGone,
-    rename: async (id, name) => {
-      const from = library.find(id)?.path;
-      const outcome = await library.rename(id, name);
-      // The edit view and the recording's edit follow it (plan 085).
-      if ("id" in outcome && from) { const to = library.find(outcome.id)?.path; if (to) editing.moved(from, to); }
-      return outcome;
-    },
-    move: async (id, folder) => {
-      const from = library.find(id)?.path;
-      const outcome = await library.move(id, folder);
-      if ("id" in outcome && from) { const to = library.find(outcome.id)?.path; if (to) editing.moved(from, to); }
-      return outcome;
-    },
+    // In sharing's `during`: a drag of the card at its new path waits until its edit has followed it (plan 100).
+    // The recording's edit and versions follow it in the library's own move (`beforeMove`, `afterMove`, plans 085 and
+    // 100); a drag of the card at its new path waits in sharing's `during` until they have.
+    rename: (id, name) => sharing.during(() => library.rename(id, name)),
+    move: (id, folder) => sharing.during(() => library.move(id, folder)),
     edit: (id, choice) => editing.choose(id, choice),
     editPlayback: (id) => editing.playback(id),
     folders: {
       create: name => library.createFolder(name),
       // A category renamed or deleted here keeps or drops its favorite and the remembered choice with it (2026-10-09).
-      rename: async (folder, name) => {
+      rename: (folder, name) => sharing.during(async () => {
         const outcome = await library.renameFolder(folder, name);
         if ("folder" in outcome && outcome.folder !== folder) {
-          // The edits of its recordings follow them, as one recording's does when it is renamed or moved.
-          const dir = library.state.dir;
-          editing.folderMoved(path.join(dir, folder), path.join(dir, outcome.folder));
+          // The edits and versions of its recordings followed them in the library's own move (`beforeMove`, `afterMove`).
           await settings.renameLibraryCategory(folder, outcome.folder).catch((cause: unknown) => log(`library: could not carry ${folder}'s favorite and choice to ${outcome.folder}: ${String(cause)}`));
         }
         return outcome;
-      },
+      }),
       remove: async folder => {
         const outcome = await library.removeFolder(folder);
         if (outcome === true) await settings.forgetLibraryCategory(folder).catch((cause: unknown) => log(`library: could not forget ${folder}'s favorite and choice: ${String(cause)}`));
@@ -778,15 +847,33 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         }
       },
     },
-    drag: async (contents, id) => {
+    // Plan 100: the drag gives the Video, what the card plays, and ⌥-drag the Original. A Video not ready yet is
+    // prepared and the drag does not start (D1). Electron offers a drop outside the app a copy only, so a drop into a
+    // Finder window on the same volume never moves the recording (drag_util_mac.mm).
+    drag: async (contents, id, original) => {
       const file = library.find(id);
       if (!file) return false;
+      let given: Awaited<ReturnType<typeof sharing.handOut>>;
+      try {
+        given = await sharing.handOut(file.path, original ? "original" : "video");
+      } catch (cause) {
+        log(`versions: no ${original ? "original" : "video"} of ${file.path} to drag: ${String(cause)}`);
+        return { problem: "failed" as const };
+      }
+      if (!("file" in given)) return { problem: "preparing" in given ? "preparing" as const : "failed" as const };
       // macOS refuses a drag without an image: the thumbnail if one is made, else the file's own icon. Never one made
       // now: the drag must start while the pointer is still down.
       const jpeg = library.madeThumbnail(file);
       const icon = jpeg ? nativeImage.createFromBuffer(jpeg).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
-      contents.startDrag({ file: file.path, icon });
+      contents.startDrag({ file: given.file, icon });
       return true;
+    },
+    // A failure's way out (plan 100): System Settings' Storage, RecordStuff's data folder, or its log.
+    help: async (action) => {
+      if (action === "revealLog") return revealLog();
+      if (action === "revealData") { shell.showItemInFolder(editStore.folder); return true; }
+      if (process.platform !== "darwin") return false;
+      return shell.openExternal("x-apple.systempreferences:com.apple.settings.Storage").then(() => true, () => false);
     },
     fullScreen: new VideoFullScreen({
       preloadPath: path.join(__dirname, "../preload/video.js"),
@@ -823,6 +910,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   });
   /** The tray, the settings panel and the menu bar's Record menu project the same state; they move together. */
   function renderUi(state: RecordingState): void {
+    // A recording, a Live preview or a save that ended lets a version waiting to be prepared go on (plan 100).
+    sharing.resume();
     tray.render(state);
     settingsWindow.refresh();
     appMenu.refresh();
@@ -911,19 +1000,51 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     return !error;
   }
 
+  /** The output folder being left, when its recordings' edits are to go with the change (plan 100). */
+  let leavingFolder: string | undefined;
   const preferenceActions = createPreferenceActions({
     settled,
     chooseFolder: async () => {
+      leavingFolder = undefined;
       focusApp();
       const result = await dialog.showOpenDialog({
         title: translate("Choose a recording folder", settings.language),
         defaultPath: settings.outputDir, properties: ["openDirectory", "createDirectory"],
       });
-      return result.canceled ? undefined : result.filePaths[0];
+      const folder = result.canceled ? undefined : result.filePaths[0];
+      if (!folder || isSameFolder(folder, settings.outputDir)) return folder;
+      // Plan 100: what leaving the folder does to its recordings' edits and prepared videos, said before it happens,
+      // when it holds any; its edits are kept unless the person asks for them to go.
+      const old = settings.outputDir;
+      const holds = [...editStore.records().keys(), ...versionCache.sources()].some(source => inOutputFolder(old, source));
+      if (!holds) return folder;
+      const language = settings.language;
+      const { response } = await dialog.showMessageBox({
+        type: "question",
+        message: translate("Change the recording folder?", language),
+        detail: [
+          translate("Recordings in the current folder will no longer appear in the Recordings tab. The files themselves are not changed.", language),
+          translate("Videos prepared for dragging out will be removed; they are made again when needed. Files you exported or dragged out are not affected.", language),
+          translate("Edits are kept, and apply again if you switch back to this folder. You can remove them in Settings → General → Kept edits.", language),
+        ].join("\n\n"),
+        buttons: [translate("Change Folder", language), translate("Change and Remove Old Edits", language), translate("Cancel", language)],
+        defaultId: 0, cancelId: 2,
+      });
+      if (response === 2) return undefined;
+      leavingFolder = response === 1 ? old : undefined;
+      return folder;
     },
     saveFolder: folder => settings.setOutputDir(folder),
     focus: focusApp,
-    folderChanged: () => { recorder.outputDirChanged(); void library.refreshIfWatched(); },
+    folderChanged: () => {
+      recorder.outputDirChanged();
+      void library.refreshIfWatched();
+      folderWatch.start();
+      // The old folder's edits go only if that was asked for as it was left (plan 100); the rest is checked as usual.
+      const leaving = leavingFolder;
+      leavingFolder = undefined;
+      void (leaving ? housekeeping.removeIn(leaving) : Promise.resolve()).then(() => housekeeping.run());
+    },
     folderFailed: folder => tray.notifySettingsWriteFailed(folder),
     // Told once the recording ends: a banner now could be muted while the display is shared.
     folderRefused: folder => captureNotices.hold("output folder not changed", () => tray.notifyFolderRefused(folder)),
@@ -968,7 +1089,17 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
     quitRequested: quitInProgress, settled, platform: process.platform, log, refresh: refreshUi,
     settings, recorder, library, recordingResults, tray, settingsWindow, shortcuts, updates, captureNotices, clearData,
-    savePreference, changeOutputDir, openOutputDir, revealLog, searchMicrophones: () => devices.search(),
+    savePreference, changeOutputDir, openOutputDir, revealLog,
+    removeKeptEdits: async () => {
+      await housekeeping.removeKept();
+      return true;
+    },
+    clearVersionCache: async () => {
+      await versionCache.clear();
+      settingsWindow.refresh();
+      return true;
+    },
+    searchMicrophones: () => devices.search(),
     showLastRecording: () => showRecording(), hideSettings,
     displayPreferenceChanged: () => { displayMedia.failure = undefined; },
     applyAppearance: () => { nativeTheme.themeSource = settings.appearance; },
@@ -1063,6 +1194,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         captureNotices.hold("save slow", () => tray.notifySavingSlow(event.dir));
         return;
       case "saved":
+        // D2 (plan 100): an editable recording's Video is prepared once it is saved, so a drag has it.
+        if (event.editable) sharing.prepare(event.path);
         // Finished while the next recording runs (a save in the background, 2026-10-09): nothing interrupts a
         // recording, so the banner is held until it ends, as the capture notices are.
         if (!preferencesUnlocked(recorder.state)) {
@@ -1199,7 +1332,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       cleanupPromptOpen = clearData.confirming;
       if (cleanupPromptOpen) return false;
       quit.begin();
-      // An export is cancelled and its unfinished file removed, within the worker's cancel bound (plan 085).
+      // A version being prepared, then an export, are cancelled and their unfinished files removed, within the worker's
+      // cancel bound (plans 100 and 085).
+      await sharing.shutdown();
       await editing.shutdown();
       if (!await recorder.shutdown()) return false;
       // Media is settled here, so a timeout names the metadata write that is still pending.
@@ -1248,6 +1383,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         userData: app.getPath("userData"), logs: app.getPath("logs"), sessionData: app.getPath("sessionData"),
         outputDir: settings.outputDir, parentPid: process.pid,
         media: recordingResults.all.flatMap(result => [result.partialPath, result.recordingPath].filter((file): file is string => Boolean(file))),
+        // The versions prepared for sharing (plan 100), which can all be made again.
+        caches: [versionCache.root],
       });
       recordingResults.close();
     },

@@ -4,10 +4,22 @@
 import { translate as t } from "../../../shared/i18n";
 import { formatBytes } from "../../../shared/quality";
 import { formatDuration } from "../../../shared/video-player";
-import type { LibraryView } from "../../../shared/settings-panel";
+import type { LibraryItemView, LibraryView } from "../../../shared/settings-panel";
+import type { VideoState } from "../../sharing/sharing";
+import { recordingTitle } from "../../../shared/versions";
 import { MEDIA_SCHEME } from "../../library/recordings-library";
 import { abbreviateHome, type AppContext } from "../../app/ui-model";
 import { type DateFormats, dayHeading, shortTime } from "./history";
+
+/** A card's Video while it is prepared or failed (plan 100), in the card's words. */
+function videoStateView(state: VideoState | undefined, language: AppContext["language"], mac: boolean): Pick<LibraryItemView, "preparing"> {
+  if (!state) return {};
+  const hint = t(mac ? "Option-drag gives the original." : "Alt-drag gives the original.", language);
+  if (state.state === "failed") return { preparing: { state: "failed", label: t("Video not prepared", language), hint } };
+  const percent = Math.floor(state.progress * 100);
+  return { preparing: { state: "preparing", progress: state.progress, hint,
+    label: percent > 0 ? t("Preparing video… {percent}%", language, { percent }) : t("Preparing video…", language) } };
+}
 
 /**
  * The Recordings tab (2026-10-04): the output folder's videos, newest first, grouped by day like the
@@ -45,13 +57,16 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
       const at = new Date(file.recordedAt);
       return {
         id: file.id, name: file.name, day: dayHeading(at, now, language, format),
-        title: file.name.replace(/\.[^.]+$/, ""), time: shortTime(at, language, format),
+        // An editable recording's marker is left out (plan 100, D3): its Editable mark says it.
+        title: recordingTitle(file.name), time: shortTime(at, language, format),
         ...(file.duration === undefined ? {} : { duration: formatDuration(file.duration) }),
         size: formatBytes(file.size),
         thumbnail: `${MEDIA_SCHEME}://thumb/${file.id}?v=${file.version}`,
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
-        ...(file.editable ? { editable: t("Editable", language) } : {}),
+        ...(file.editable ? { editable: t("Editable", language),
+          editableHint: t("Keeps the picture, camera and sounds apart so you can change them later. To send it, drag it: you give the video as it plays here.", language) } : {}),
+        ...videoStateView(ctx.preparingVideos?.get(file.path), language, mac),
         // Holds an edit made for the file as it is (2026-10-26, the maintainer's request).
         ...(ctx.editedRecordings?.get(file.path) === file.size ? { edited: t("Edited", language) } : {}),
       };

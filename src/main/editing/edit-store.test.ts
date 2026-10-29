@@ -102,8 +102,9 @@ describe("edit records", () => {
     await store.save(saved);
     expect([...store.edited()]).toEqual([[recording, saved.source.size]]);
     const moved = path.join(dir, "Talk.mp4");
+    await store.prepareMove(recording, moved);
     fs.renameSync(recording, moved);
-    await store.moved(recording, moved);
+    await store.finishMove(recording, moved, true);
     expect([...store.edited().keys()]).toEqual([moved]);
     // Read again by a new store; files that are not records, or are unreadable, are left out.
     fs.writeFileSync(path.join(dir, "edits", "exports-in-flight.json"), "[]");
@@ -128,8 +129,9 @@ describe("edit records", () => {
     const saved = await record();
     await store.save(saved);
     const moved = path.join(dir, "Talk.mp4");
+    await store.prepareMove(recording, moved);
     fs.renameSync(recording, moved);
-    await store.moved(recording, moved);
+    await store.finishMove(recording, moved, true);
     const loaded = await store.load(moved, await sourceIdentity(moved));
     expect(loaded.kind === "ok" && loaded.record.removed).toEqual(saved.removed);
     expect(fs.existsSync(store.fileFor(recording))).toBe(false);
@@ -148,8 +150,9 @@ describe("edit records", () => {
     fs.writeFileSync(outside, Buffer.alloc(1024, 3));
     await store.save({ ...saved, source: await sourceIdentity(outside) });
     const renamed = path.join(dir, "Talks");
+    await store.prepareFolderMove(folder, renamed);
     fs.renameSync(folder, renamed);
-    await store.folderMoved(folder, renamed);
+    await store.finishFolderMove(folder, renamed, true);
     const moved = path.join(renamed, "Talk.mp4");
     expect([...store.edited().keys()].sort()).toEqual([outside, moved].sort());
     const loaded = await store.load(moved, await sourceIdentity(moved));
@@ -191,5 +194,147 @@ describe("a record's parsing", () => {
     expect(editRecord({ ...fields, scene: loud }).version).toBe(3);
     expect(parseRecord(JSON.stringify({ version: 3, source, timescale: 90_000, removed: [], revision: 4, scene: loud }))).toMatchObject({ version: 3, scene: loud });
     expect(parseRecord(JSON.stringify({ version: 2, source, timescale: 90_000, removed: [], revision: 4, scene: loud }))).toHaveProperty("reason");
+  });
+
+  it("are found by the recording's bytes once it was renamed or moved in Finder, and follow it (plan 100)", async () => {
+    const saved = await record();
+    await store.save(saved);
+    const moved = path.join(dir, "Talk.mp4");
+    fs.renameSync(recording, moved);
+    const loaded = await store.load(moved, await sourceIdentity(moved));
+    expect(loaded.kind === "ok" && loaded.record.removed).toEqual(saved.removed);
+    expect(loaded.kind === "ok" && loaded.record.source.path).toBe(moved);
+    // It moved with the recording: found at the new path from now on, nothing left at the old one.
+    expect([...store.edited().keys()]).toEqual([moved]);
+    expect(fs.existsSync(store.fileFor(recording))).toBe(false);
+    expect(fs.existsSync(store.fileFor(moved))).toBe(true);
+  });
+
+  it("are not taken by a copy of the recording while the recording is still at its path", async () => {
+    await store.save(await record());
+    const copy = path.join(dir, "Copy.mp4");
+    fs.copyFileSync(recording, copy);
+    fs.utimesSync(copy, fs.statSync(recording).atime, fs.statSync(recording).mtime);
+    expect(await store.load(copy, await sourceIdentity(copy))).toEqual({ kind: "none" });
+    expect([...store.edited().keys()]).toEqual([recording]);
+  });
+
+  it("are written for a recording's new path before it moves, and finished or taken back after (plan 100)", async () => {
+    const saved = await record();
+    await store.save(saved);
+    const target = path.join(dir, "Talk.mp4");
+    await store.prepareMove(recording, target);
+    expect([...store.edited().keys()].sort()).toEqual([recording, target].sort());
+    // The move did not happen: the record written for it goes, the recording's stays.
+    await store.finishMove(recording, target, false);
+    expect([...store.edited().keys()]).toEqual([recording]);
+    // It did: the old one goes, and the new one is the recording's edit at its new path.
+    await store.prepareMove(recording, target);
+    fs.renameSync(recording, target);
+    await store.finishMove(recording, target, true);
+    expect([...store.edited().keys()]).toEqual([target]);
+    const loaded = await store.load(target, await sourceIdentity(target));
+    expect(loaded.kind === "ok" && loaded.record.removed).toEqual(saved.removed);
+    // A recording with no edit has nothing to write.
+    const other = path.join(dir, "Other.mp4");
+    fs.writeFileSync(other, "x");
+    await store.prepareMove(other, path.join(dir, "Else.mp4"));
+    expect(store.edited().size).toBe(1);
+  });
+
+  it("refuse a move whose edit cannot be written, with the write's own error (plan 100)", async () => {
+    await store.save(await record());
+    fs.chmodSync(path.join(dir, "edits"), 0o500);
+    try {
+      await expect(store.prepareMove(recording, path.join(dir, "Talk.mp4"))).rejects.toMatchObject({ code: expect.stringMatching(/EACCES|EPERM/) });
+    } finally {
+      fs.chmodSync(path.join(dir, "edits"), 0o700);
+    }
+    expect([...store.edited().keys()]).toEqual([recording]);
+  });
+
+  it("are written for every recording of a category before it is renamed, and all taken back if one fails", async () => {
+    const folder = path.join(dir, "Demos");
+    fs.mkdirSync(folder);
+    const inside = path.join(folder, "Talk.mp4");
+    fs.renameSync(recording, inside);
+    recording = inside;
+    await store.save(await record());
+    const renamed = path.join(dir, "Talks");
+    await store.prepareFolderMove(folder, renamed);
+    expect([...store.edited().keys()].sort()).toEqual([inside, path.join(renamed, "Talk.mp4")].sort());
+    await store.finishFolderMove(folder, renamed, false);
+    expect([...store.edited().keys()]).toEqual([inside]);
+    await store.prepareFolderMove(folder, renamed);
+    fs.renameSync(folder, renamed);
+    await store.finishFolderMove(folder, renamed, true);
+    expect([...store.edited().keys()]).toEqual([path.join(renamed, "Talk.mp4")]);
+  });
+
+  it("never loses another recording's edit to a move refused because its name is taken (Codex review)", async () => {
+    const other = path.join(dir, "Talk.mp4");
+    fs.writeFileSync(other, Buffer.alloc(2048, 9));
+    const theirs: EditRecord = { version: 1, source: await sourceIdentity(other), timescale: 90_000, removed: [[0, 9_000]], revision: 4 };
+    await store.save(theirs);
+    await store.save(await record());
+    await store.prepareMove(recording, other);
+    await store.finishMove(recording, other, false);
+    expect(await store.load(other, await sourceIdentity(other))).toEqual({ kind: "ok", record: theirs });
+    expect([...store.edited().keys()].sort()).toEqual([recording, other].sort());
+  });
+
+  it("refuse to move a recording whose edit cannot be read or was made for another file (Codex review)", async () => {
+    fs.mkdirSync(path.join(dir, "edits"), { recursive: true });
+    fs.writeFileSync(store.fileFor(recording), JSON.stringify({ version: 99 }));
+    await expect(store.prepareMove(recording, path.join(dir, "Talk.mp4"))).rejects.toMatchObject({ code: "EBADMSG" });
+    await store.save({ ...(await record()), source: { ...(await sourceIdentity(recording)), hash: "0".repeat(64) } });
+    await expect(store.prepareMove(recording, path.join(dir, "Talk.mp4"))).rejects.toMatchObject({ code: "ESTALE" });
+  });
+
+  it("move an edit found by bytes once, however many readers ask at the same time (Codex review)", async () => {
+    const saved = await record();
+    await store.save(saved);
+    const moved = path.join(dir, "Talk.mp4");
+    fs.renameSync(recording, moved);
+    const identity = await sourceIdentity(moved);
+    const answers = await Promise.all([store.load(moved, identity), store.load(moved, identity), store.load(moved, identity)]);
+    for (const answer of answers) expect(answer.kind === "ok" && answer.record.removed).toEqual(saved.removed);
+    expect([...store.edited().keys()]).toEqual([moved]);
+  });
+
+  it("follow a rename that only changes case, on a volume that ignores case", async () => {
+    const saved = await record();
+    await store.save(saved);
+    const upper = path.join(dir, "2026-10-24 10-00-00 TALK.mp4");
+    const lower = path.join(dir, "2026-10-24 10-00-00 talk.mp4");
+    fs.renameSync(recording, lower);
+    recording = lower;
+    await store.save({ ...saved, source: await sourceIdentity(lower) });
+    await store.discard(path.join(dir, "2026-10-24 10-00-00.mp4"));
+    const insensitive = fs.existsSync(upper);
+    await store.prepareMove(lower, upper);
+    fs.renameSync(lower, upper);
+    await store.finishMove(lower, upper, true);
+    const loaded = await store.load(upper, await sourceIdentity(upper));
+    expect(loaded.kind === "ok" && loaded.record.removed, insensitive ? "case-insensitive volume" : "case-sensitive volume").toEqual(saved.removed);
+  });
+
+  it("never let a copy take an edit while its original cannot be looked at (Codex review)", async () => {
+    const folder = path.join(dir, "Talks");
+    fs.mkdirSync(folder);
+    const original = path.join(folder, "Talk.mp4");
+    fs.renameSync(recording, original);
+    recording = original;
+    await store.save(await record());
+    const copy = path.join(dir, "Copy.mp4");
+    fs.copyFileSync(original, copy);
+    fs.utimesSync(copy, fs.statSync(original).atime, fs.statSync(original).mtime);
+    fs.chmodSync(folder, 0o000);
+    try {
+      expect(await store.load(copy, await sourceIdentity(copy))).toEqual({ kind: "none" });
+    } finally {
+      fs.chmodSync(folder, 0o755);
+    }
+    expect([...store.edited().keys()]).toEqual([original]);
   });
 });

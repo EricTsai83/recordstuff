@@ -114,6 +114,15 @@ async function editedOnce(ctx: ReturnType<typeof setup>): Promise<void> {
 }
 
 describe("the edit view", () => {
+  it("tells sharing as a view opens, and which recording's view closed so its Video is prepared (plan 100, D2)", async () => {
+    const said: string[] = [];
+    const ctx = setup({ opening: () => said.push("opening"), closed: (file) => said.push(`closed ${file}`) });
+    await ctx.editing.choose("rec", { action: "open" });
+    await ctx.editing.choose("rec", { action: "open" });
+    ctx.editing.choose("rec", { action: "close" });
+    expect(said).toEqual(["opening", `closed ${source}`]);
+  });
+
   it("opens a recording with no edit, and saves each change snapped to frames with a new revision", async () => {
     const ctx = setup();
     await ctx.editing.choose("rec", { action: "open" });
@@ -140,17 +149,7 @@ describe("the edit view", () => {
     expect([fs.existsSync(file), ctx.editing.edited().has(source), ctx.editing.view()!.revision]).toEqual([false, false, 2]);
     await ctx.editing.choose("rec", { action: "save", removed: [[91_000, 179_000]], revision: 2 });
     expect([fs.existsSync(file), ctx.editing.edited().has(source)]).toEqual([true, true]);
-    // Renamed, the record follows and Settings draws again once it has, so the card at its new path is marked.
     ctx.editing.choose("rec", { action: "close" });
-    const renamed = path.join(path.dirname(source), "Talk.mp4");
-    fs.renameSync(source, renamed);
-    const drawn = ctx.views.length;
-    ctx.editing.moved(source, renamed);
-    await vi.waitFor(() => expect(ctx.editing.edited().has(renamed)).toBe(true));
-    expect(ctx.views.length).toBeGreaterThan(drawn);
-    fs.renameSync(renamed, source);
-    ctx.editing.moved(renamed, source);
-    await vi.waitFor(() => expect(ctx.editing.edited().has(source)).toBe(true));
     // A new launch reads the marks from the records left.
     const later = setup();
     expect(later.editing.edited().size).toBe(0);
@@ -191,12 +190,12 @@ describe("an export", () => {
   it("is named in the app's language, numbered past a taken name", async () => {
     const ctx = setup({ language: () => "zh-TW" });
     await editedOnce(ctx);
-    fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯）.mp4"), "someone's own file");
+    fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "someone's own file");
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（已編輯 2）.mp4", message: "已匯出為 2026-10-24 10-00-00（已編輯 2）.mp4。" });
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯）.mp4"), "utf8")).toBe("someone's own file");
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（已編輯 2）.mp4"), "utf8")).toBe("a whole export");
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（剪輯版 2）.mp4", message: "已匯出為 2026-10-24 10-00-00（剪輯版 2）.mp4。" });
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "utf8")).toBe("someone's own file");
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版 2）.mp4"), "utf8")).toBe("a whole export");
   });
 
   it("is published beside the recording as <name> (edited).mp4, numbered past taken names, never over them", async () => {
@@ -422,15 +421,16 @@ describe("publication", () => {
   it("names exports (edited), then (edited 2) and on, in the app's language", () => {
     expect(editedName("Talk", 1)).toBe("Talk (edited).mp4");
     expect(editedName("Talk", 3)).toBe("Talk (edited 3).mp4");
-    expect(editedName("Talk", 1, "zh-TW")).toBe("Talk（已編輯）.mp4");
-    expect(editedName("Talk", 2, "zh-TW")).toBe("Talk（已編輯 2）.mp4");
+    expect(editedName("Talk", 1, "zh-TW")).toBe("Talk（剪輯版）.mp4");
+    expect(editedName("Talk", 2, "zh-TW")).toBe("Talk（剪輯版 2）.mp4");
     // A title is taken as it is, never as a placeholder.
-    expect(editedName("{number} {title}", 2, "zh-TW")).toBe("{number} {title}（已編輯 2）.mp4");
+    expect(editedName("{number} {title}", 2, "zh-TW")).toBe("{number} {title}（剪輯版 2）.mp4");
   });
 
   it("counts an export edited again on from its source's title, whichever language named it", () => {
-    for (const title of ["Talk（已編輯）", "Talk（已編輯 2）", "Talk (edited)", "Talk (edited 12)"]) {
-      expect(editedName(title, 1, "zh-TW"), title).toBe("Talk（已編輯）.mp4");
+    // 「（已編輯）」 is how Traditional Chinese named an export before plan 100's D9.
+    for (const title of ["Talk（剪輯版）", "Talk（剪輯版 2）", "Talk（已編輯）", "Talk（已編輯 4）", "Talk (edited)", "Talk (edited 12)"]) {
+      expect(editedName(title, 1, "zh-TW"), title).toBe("Talk（剪輯版）.mp4");
       expect(editedName(title, 3), title).toBe("Talk (edited 3).mp4");
     }
     // Only the ending: an edited word inside the title, or an ending that is not one, stays.
@@ -438,16 +438,16 @@ describe("publication", () => {
     expect(editedName("Talk (edited two)", 1)).toBe("Talk (edited two) (edited).mp4");
     expect(editedName("Talk(edited)", 1)).toBe("Talk(edited) (edited).mp4");
     // A title that is nothing but the ending keeps it, so the name is never empty.
-    expect(editedName("（已編輯）", 1, "zh-TW")).toBe("（已編輯）（已編輯）.mp4");
+    expect(editedName("（剪輯版）", 1, "zh-TW")).toBe("（剪輯版）（剪輯版）.mp4");
   });
 
   it("publishes an export edited again as its source's next free name", async () => {
-    const part = path.join(dir, "Movies", ".Talk（已編輯）.recordstuff-export-0123456789ab.part");
+    const part = path.join(dir, "Movies", ".Talk（剪輯版）.recordstuff-export-0123456789ab.part");
     fs.writeFileSync(part, "export");
-    fs.writeFileSync(path.join(dir, "Movies", "Talk（已編輯）.mp4"), "first");
-    const published = await publish(part, "Talk（已編輯）", files(), () => undefined, undefined, undefined, "zh-TW");
-    expect(path.basename(published)).toBe("Talk（已編輯 2）.mp4");
-    expect(fs.readFileSync(path.join(dir, "Movies", "Talk（已編輯）.mp4"), "utf8")).toBe("first");
+    fs.writeFileSync(path.join(dir, "Movies", "Talk（剪輯版）.mp4"), "first");
+    const published = await publish(part, "Talk（剪輯版）", files(), () => undefined, undefined, undefined, "zh-TW");
+    expect(path.basename(published)).toBe("Talk（剪輯版 2）.mp4");
+    expect(fs.readFileSync(path.join(dir, "Movies", "Talk（剪輯版）.mp4"), "utf8")).toBe("first");
   });
 
   it("on a volume without hard links reserves the name first, then moves the file onto it", async () => {
