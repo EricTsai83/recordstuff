@@ -1,5 +1,5 @@
 /**
- * Persistent preferences: output folder, recording display, hiding the menu bar and Dock from it, quality, countdown
+ * Persistent preferences: output folder, recording display, hiding the menu bar, Dock and desktop from it, quality, countdown
  * and its tick, shortcut, the menu bar icon's left click, notifications, update
  * checks, language and appearance, the recordings' file name pattern and the Recordings tab's layout.
  * See docs/system-design/desktop.md for the schema and reset rules.
@@ -10,7 +10,8 @@
  * `.2`… when that name is taken) before the first write, so a later save never
  * replaces the user's choices with defaults.
  *
- * Only the current format is read. An older numeric version starts with all
+ * Only the current format is read, and version 4, whose one Hide menu bar and
+ * Dock switch becomes the three of plan 099. An older numeric version starts with all
  * defaults and is rewritten once at startup, keeping the original under
  * `.reset-backup`. Failed writes retain the original and retry on launch or
  * the next save. Newer formats are never overwritten.
@@ -29,12 +30,15 @@ import { DEFAULT_LANGUAGE, isLanguage, type Language } from "../../shared/i18n";
 import { DEFAULT_AUDIO_VOLUME, isAudioVolume, isLegacyGain, isVolume, volumeFromDb, type AudioVolume } from "../../shared/audio-volume";
 import { DEFAULT_HOTKEY, canonicalHotkeySettings, type HotkeySettings } from "../../shared/hotkey";
 import { stableVersion } from "../../shared/version";
+import type { SystemUiChoice } from "../../shared/system-ui";
 import { keepFile } from "../lib/file-backup";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { SerialQueue } from "../lib/serial-queue";
 import { errnoCode } from "../lib/errors";
 
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
+/** Plan 099: read as version 5, its `hideSystemUi` becoming the three switches. */
+const MIGRATED_VERSION = 4;
 /** Names tried for keeping an unusable file aside: `.unreadable`, then `.unreadable.1` and on. */
 export const KEPT_UNUSABLE_NAMES = 100;
 
@@ -62,8 +66,14 @@ export interface Settings {
   /** Whether the app sends any notification at all; the OS permission is separate. */
   notifications: boolean;
   display: DisplayPreference;
-  /** Whether macOS recordings leave out the menu bar, the Dock, desktop icons and widgets (plan 076, D6); off by default. */
-  hideSystemUi: boolean;
+  /**
+   * Whether macOS recordings leave out the menu bar and its status items, the Dock, and desktop icons and widgets: one
+   * switch each (plan 099, D1; one switch for all three in plan 076's D6). A hidden menu bar or Dock that keeps a strip
+   * on screen has that strip cut off. Off by default.
+   */
+  hideMenuBar: boolean;
+  hideDock: boolean;
+  hideDesktop: boolean;
   /**
    * Whether macOS recordings are editable (plan 087): the screen, each sound and the camera on tracks of their own, so
    * the camera's place and the volumes are chosen after recording and an export renders them; off by default.
@@ -157,7 +167,9 @@ export function defaultSettings(outputDir: string): Settings {
     notifications: true,
     display: DEFAULT_DISPLAY_PREFERENCE,
     // Off: an update must not change what existing recordings show, and what is on screen is what users expect.
-    hideSystemUi: false,
+    hideMenuBar: false,
+    hideDock: false,
+    hideDesktop: false,
     // Off: an ordinary recording plays everywhere as it was recorded; an editable one needs an export first.
     editableRecording: false,
     // Off: a recording starts as it always has, with no window opening over the app being recorded.
@@ -208,7 +220,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const record = parsed as Record<string, unknown>;
   const version = record["version"];
-  if (version !== SETTINGS_VERSION) return undefined;
+  if (version !== SETTINGS_VERSION && version !== MIGRATED_VERSION) return undefined;
   const outputDir = record["outputDir"];
   if (typeof outputDir !== "string" || outputDir.length === 0 || !path.isAbsolute(outputDir)) {
     return undefined;
@@ -253,7 +265,15 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const notifiedVersion = field<string | undefined>("notifiedVersion", isNotifiedVersion, undefined, "updates.notifiedVersion is invalid: announcing the next newer version", u);
   const notifications = field("notifications", isBoolean, defaults.notifications, `notifications is not a boolean: using ${defaults.notifications ? "on" : "off"}`);
   const display = field("display", isDisplayPreference, DEFAULT_DISPLAY_PREFERENCE, "display is invalid: using primary display");
-  const hideSystemUi = field("hideSystemUi", isBoolean, defaults.hideSystemUi, `hideSystemUi is not a boolean: using ${defaults.hideSystemUi ? "on" : "off"}`);
+  // Version 4 had one switch for all three (plan 099): on or off, each of them follows it.
+  if (version === MIGRATED_VERSION) {
+    const hidden = record["hideSystemUi"];
+    if (hidden !== undefined && !isBoolean(hidden)) warnings.push("hideSystemUi is not a boolean: using off");
+    for (const key of ["hideMenuBar", "hideDock", "hideDesktop"]) record[key] = isBoolean(hidden) ? hidden : undefined;
+  }
+  const hideMenuBar = field("hideMenuBar", isBoolean, defaults.hideMenuBar, `hideMenuBar is not a boolean: using ${defaults.hideMenuBar ? "on" : "off"}`);
+  const hideDock = field("hideDock", isBoolean, defaults.hideDock, `hideDock is not a boolean: using ${defaults.hideDock ? "on" : "off"}`);
+  const hideDesktop = field("hideDesktop", isBoolean, defaults.hideDesktop, `hideDesktop is not a boolean: using ${defaults.hideDesktop ? "on" : "off"}`);
   const editableRecording = field("editableRecording", isBoolean, defaults.editableRecording, `editableRecording is not a boolean: using ${defaults.editableRecording ? "on" : "off"}`);
   const studioOnStart = field("studioOnStart", isBoolean, defaults.studioOnStart, `studioOnStart is not a boolean: using ${defaults.studioOnStart ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
@@ -285,7 +305,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const libraryShown = field<string | null | undefined>("libraryShown", isShown, undefined, "libraryShown is invalid: showing every recording");
   // Absent in every file written before the guide: done, so only a new install, which has no file, sees it.
   const onboardingDone = field("onboardingDone", isBoolean, true, "onboardingDone is not a boolean: the guide stays closed");
-  return { settings: { appearance, display, hideSystemUi, editableRecording, studioOnStart, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
+  return { settings: { appearance, display, hideMenuBar, hideDock, hideDesktop, editableRecording, studioOnStart, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
     microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
@@ -330,10 +350,21 @@ export class SettingsStore {
     return this.save((current) => ({ ...current, display: snapshot }));
   }
 
-  get hideSystemUi(): boolean { return this.settings.hideSystemUi; }
+  /** The three switches of plan 099, as the recording asks for them. */
+  get systemUi(): SystemUiChoice {
+    return { menuBar: this.settings.hideMenuBar, dock: this.settings.hideDock, desktop: this.settings.hideDesktop };
+  }
 
-  setHideSystemUi(enabled: boolean): Promise<void> {
-    return this.setSwitch("hideSystemUi", enabled, "hide system UI");
+  setHideMenuBar(enabled: boolean): Promise<void> {
+    return this.setSwitch("hideMenuBar", enabled, "hide menu bar");
+  }
+
+  setHideDock(enabled: boolean): Promise<void> {
+    return this.setSwitch("hideDock", enabled, "hide Dock");
+  }
+
+  setHideDesktop(enabled: boolean): Promise<void> {
+    return this.setSwitch("hideDesktop", enabled, "hide desktop icons and widgets");
   }
 
   get editableRecording(): boolean { return this.settings.editableRecording; }

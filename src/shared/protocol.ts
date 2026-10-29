@@ -6,6 +6,7 @@
 import { isCaptureReport, isQualitySettings, type CaptureReport, type QualitySettings } from "./quality";
 import type { ErrorCode } from "./state";
 import { isGainDb } from "./audio-volume";
+import { isPixelRect, isSystemUiChoice, type PixelRect, type SystemUiChoice } from "./system-ui";
 
 /** MP4 (H.264 + AAC) is the only output (docs/system-design/decisions.md, "H.264/AAC MP4"). */
 export const OUTPUT_MIME_TYPE = "video/mp4;codecs=avc1,mp4a.40.2";
@@ -75,8 +76,13 @@ export interface NativeStart {
   recordingPath: string;
   /** RecordStuff's processes, main first: their windows and sound are left out of the recording. */
   ownPids: number[];
-  /** Leave the menu bar, Dock, desktop icons and widgets out (plan 076, D6). */
-  hideSystemUi: boolean;
+  /** Which of the menu bar, the Dock, and desktop icons and widgets to leave out (plan 099; plan 076's D6 before). */
+  systemUi: SystemUiChoice;
+  /**
+   * The part of the display to record, in its pixels (plan 099): without the strips a hidden menu bar or Dock keeps
+   * on screen. Absent is all of it.
+   */
+  crop?: PixelRect;
   /** Mix the microphone in (plan 074); absent is off. */
   microphone?: MicrophoneChoice;
   /** Compose the camera into the frames (plan 075); absent is off. */
@@ -243,7 +249,7 @@ function isNativeStart(value: unknown): value is NativeStart {
     (value["displayPoint"] === undefined || isPoint(value["displayPoint"])) &&
     isNonEmptyString(value["recordingPath"]) &&
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
-    typeof value["hideSystemUi"] === "boolean" &&
+    isSystemUiChoice(value["systemUi"]) && (value["crop"] === undefined || isPixelRect(value["crop"])) &&
     (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"])) &&
     (value["camera"] === undefined || isCameraChoice(value["camera"])) &&
     (value["editable"] === undefined || typeof value["editable"] === "boolean");

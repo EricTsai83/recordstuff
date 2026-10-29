@@ -85,7 +85,7 @@ export function seedFiles(seed: Seed, runDir: string, now: number): Record<strin
 }
 
 /** `SETTINGS_VERSION` in src/main/settings/settings.ts; a test keeps them equal. */
-export const SETTINGS_FILE_VERSION = 4;
+export const SETTINGS_FILE_VERSION = 5;
 
 /**
  * The self-test's isolated preferences: no notification banners, no global recording

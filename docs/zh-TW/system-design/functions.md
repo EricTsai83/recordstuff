@@ -41,7 +41,7 @@
 | --- | --- |
 | `createActionHandler(deps)` | 綁定協作者一次，回傳 handler |
 | handler：結束閘門 | 結束進行中時，除了 quit 以外的每個 action 都回 false，且不觸碰任何東西 |
-| handler：偏好設定 | 每個 `set…` action 都經 `savePreference` 並帶著自己的鎖：螢幕、隱藏選單列與 Dock（僅 macOS）、更新檢查、通知、檔名、倒數、倒數音效與品質需要 recorder 已 settle；tray 點擊、錄影檔版面、外觀與語言不需要；快捷鍵經 `AppShortcuts.set` |
+| handler：偏好設定 | 每個 `set…` action 都經 `savePreference` 並帶著自己的鎖：螢幕、隱藏選單列、Dock 或桌面（各一個 action，plan 099；僅 macOS）、更新檢查、通知、檔名、倒數、倒數音效與品質需要 recorder 已 settle；tray 點擊、錄影檔版面、外觀與語言不需要；快捷鍵經 `AppShortcuts.set` |
 | handler：指令 | 開啟設定分頁、連結、輸出資料夾、log 或系統設定；開始、停止或取消；結束或重新啟動；清除 App 資料。每個都回傳設定列要讀的結果；錄影中搶先按下的更新連結回 true 且不開啟任何東西 |
 
 ## 螢幕選擇
@@ -101,7 +101,7 @@
 
 | 方法 | 契約與副作用 |
 | --- | --- |
-| `constructor(options)` | 入口與 addon 路徑、`resolveDisplay`、`ownPids`、`hideSystemUi`、可選的 `displayPoint` 與 `excludeOwnWindows`（Windows）、log、可注入的 `fork`；預設 ping 5 秒、ready 8 秒 |
+| `constructor(options)` | 入口與 addon 路徑、`resolveDisplay`、`ownPids`、`systemUi`（依顯示器：所選部分與裁切範圍，plan 099）、可選的 `displayPoint` 與 `excludeOwnWindows`（Windows）、log、可注入的 `fork`；預設 ping 5 秒、ready 8 秒 |
 | `onMessage(listener)` / `onFailure(listener)` | 登錄有效訊息／host 故障（`capture_host_crashed`、`capture_host_unresponsive`）callback |
 | `start(id, quality, recordingPath)` | 先 teardown 既有程序；要求暫存路徑並登記其檔案結果；fork 與選擇螢幕同時進行；ready 後啟動心跳；記錄兩者耗時；螢幕缺少或不是數字時改發 `error`（`capture_start_failed`），否則排除自身視窗（Windows）並送帶 `native` 的 `start`；啟動或 ready 失敗時清掉新程序並 reject |
 | `record(id)` | 對被監看的 session 送 record；沒有程序接收時拋錯 |

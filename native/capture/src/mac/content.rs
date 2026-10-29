@@ -1,6 +1,6 @@
 //! What ScreenCaptureKit may capture, and the filters for one recording: the chosen display without RecordStuff's own
-//! windows and sound (075's D14, always), and optionally without the menu bar, the Dock, desktop icons and widgets
-//! (076's D6); or one window, part of the display, or only chosen apps' windows (step 4, engine only). Sound follows a
+//! windows and sound (075's D14, always), and optionally without the menu bar, the Dock, or desktop icons and widgets
+//! (076's D6, one switch each since 099); or one window, part of the display, or only chosen apps' windows (step 4, engine only). Sound follows a
 //! stream's filter, so when the picture's filter is not the sound's (a window, chosen apps, or chosen apps' sound) the
 //! sound comes from a second, audio-only stream with its own filter.
 
@@ -16,7 +16,7 @@ use objc2_foundation::{NSArray, NSError, NSObjectProtocol};
 use objc2_screen_capture_kit::{SCContentFilter, SCDisplay, SCRunningApplication, SCShareableContent, SCWindow};
 
 use super::{CaptureError, Unsent};
-use crate::core::{Source, SystemAudio};
+use crate::core::{Source, SystemAudio, SystemUi};
 
 /// SCStreamErrorUserDeclined: the user has not granted screen recording.
 const USER_DECLINED: isize = -3801;
@@ -120,9 +120,12 @@ fn own_app_evidence(content: &SCShareableContent, pids: &[i32]) -> String {
     )
 }
 
-/// System chrome to leave out (D6): the menu bar and its status items, the Dock, desktop icons and widgets. An app's
-/// open menu is that app's window above these levels, so it is still recorded.
-fn system_ui_windows(content: &SCShareableContent, own: &[Retained<SCRunningApplication>]) -> Vec<Retained<SCWindow>> {
+/// System chrome to leave out (D6), as `hide` chooses (plan 099): the menu bar and its status items, the Dock, desktop
+/// icons and widgets. An app's open menu is that app's window above these levels, so it is still recorded.
+fn system_ui_windows(content: &SCShareableContent, own: &[Retained<SCRunningApplication>], hide: SystemUi) -> Vec<Retained<SCWindow>> {
+    if !hide.any() {
+        return Vec::new();
+    }
     let own_pids: Vec<i32> = own.iter().map(|app| unsafe { app.processID() }).collect();
     let windows = unsafe { content.windows() };
     windows
@@ -135,12 +138,16 @@ fn system_ui_windows(content: &SCShareableContent, own: &[Retained<SCRunningAppl
             }
             let bundle = owner.as_ref().map(|app| bundle_id(app)).unwrap_or_default();
             let layer = unsafe { window.windowLayer() };
-            layer == MENU_BAR_LEVEL
-                || layer == STATUS_LEVEL
-                || (layer == DOCK_LEVEL && bundle == "com.apple.dock")
-                || (layer < 0 && DESKTOP_OWNERS.contains(&bundle.as_str()))
+            is_system_ui(layer, &bundle, hide)
         })
         .collect()
+}
+
+/// Whether a window at `layer` owned by `bundle` is chrome `hide` leaves out.
+fn is_system_ui(layer: isize, bundle: &str, hide: SystemUi) -> bool {
+    (hide.menu_bar && (layer == MENU_BAR_LEVEL || layer == STATUS_LEVEL))
+        || (hide.dock && layer == DOCK_LEVEL && bundle == "com.apple.dock")
+        || (hide.desktop && layer < 0 && DESKTOP_OWNERS.contains(&bundle))
 }
 
 pub struct Filter {
@@ -151,16 +158,16 @@ pub struct Filter {
 }
 
 /// The display without RecordStuff's apps, whose windows and sound ScreenCaptureKit then leaves out, including
-/// windows opened later. With `hide_system_ui`, the system chrome's windows are listed as exceptions: an exception
-/// whose app is not excluded is left out, which is how one filter excludes both whole apps and single windows.
-pub fn filter(content: &SCShareableContent, display: &SCDisplay, own_pids: &[i32], hide_system_ui: bool) -> Filter {
+/// windows opened later. The system chrome `hide` chooses is listed as exceptions: an exception whose app is not
+/// excluded is left out, which is how one filter excludes both whole apps and single windows.
+pub fn filter(content: &SCShareableContent, display: &SCDisplay, own_pids: &[i32], hide: SystemUi) -> Filter {
     let own = own_apps(content, own_pids);
-    let hidden = if hide_system_ui { system_ui_windows(content, &own) } else { Vec::new() };
+    let hidden = system_ui_windows(content, &own, hide);
     let apps = NSArray::from_retained_slice(&own);
     let windows = NSArray::from_retained_slice(&hidden);
     let filter = unsafe { SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(SCContentFilter::alloc(), display, &apps, &windows) };
     let mut warnings = Vec::new();
-    if hide_system_ui {
+    if hide.menu_bar {
         // macOS 14.2 and later; status items and the menu bar's own window are excepted above in any case.
         if filter.respondsToSelector(sel!(setIncludeMenuBar:)) {
             let _: () = unsafe { msg_send![&filter, setIncludeMenuBar: false] };
@@ -223,15 +230,9 @@ fn chosen_apps(content: &SCShareableContent, pids: &[i32], own_pids: &[i32]) -> 
 
 /// The picture's filter for `source`: what `filter` gives for the display, or one window, or chosen apps' windows.
 /// An area is the display's filter cut by `area_rect`.
-pub fn video_filter(
-    content: &SCShareableContent,
-    display: &SCDisplay,
-    source: &Source,
-    own_pids: &[i32],
-    hide_system_ui: bool,
-) -> Result<Filter, CaptureError> {
+pub fn video_filter(content: &SCShareableContent, display: &SCDisplay, source: &Source, own_pids: &[i32], hide: SystemUi) -> Result<Filter, CaptureError> {
     match source {
-        Source::Display | Source::Area { .. } => Ok(filter(content, display, own_pids, hide_system_ui)),
+        Source::Display | Source::Area { .. } => Ok(filter(content, display, own_pids, hide)),
         Source::Window(id) => {
             let window = find_window(content, *id)?;
             let filter = unsafe { SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window) };
@@ -239,7 +240,7 @@ pub fn video_filter(
         }
         Source::Apps(pids) => {
             let apps = chosen_apps(content, pids, own_pids)?;
-            let hidden = if hide_system_ui { system_ui_windows(content, &own_apps(content, own_pids)) } else { Vec::new() };
+            let hidden = system_ui_windows(content, &own_apps(content, own_pids), hide);
             let filter = unsafe {
                 SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
                     SCContentFilter::alloc(),
@@ -264,7 +265,7 @@ pub fn audio_filter(
 ) -> Result<Option<Retained<SCContentFilter>>, CaptureError> {
     match (audio, source) {
         (SystemAudio::Off, _) | (SystemAudio::All, Source::Display | Source::Area { .. }) => Ok(None),
-        (SystemAudio::All, _) => Ok(Some(filter(content, display, own_pids, false).filter)),
+        (SystemAudio::All, _) => Ok(Some(filter(content, display, own_pids, SystemUi::default()).filter)),
         (SystemAudio::Apps(pids), _) => {
             let apps = chosen_apps(content, pids, own_pids)?;
             Ok(Some(unsafe {
@@ -296,7 +297,7 @@ pub fn area_rect(display: &SCDisplay, scale: f64, (x, y, width, height): (u32, u
 pub fn source_size(content: &SCShareableContent, display: &SCDisplay, source: &Source) -> Result<(u32, u32), CaptureError> {
     match source {
         Source::Display | Source::Apps(_) => {
-            let filter = filter(content, display, &[], false);
+            let filter = filter(content, display, &[], SystemUi::default());
             let scale = point_pixel_scale(&filter.filter).max(1.0);
             Ok(((unsafe { display.width() } as f64 * scale).round() as u32, (unsafe { display.height() } as f64 * scale).round() as u32))
         }
@@ -308,5 +309,36 @@ pub fn source_size(content: &SCShareableContent, display: &SCDisplay, source: &S
             let frame = unsafe { window.frame() };
             Ok(((frame.size.width * scale).round() as u32, (frame.size.height * scale).round() as u32))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MENU_BAR: SystemUi = SystemUi { menu_bar: true, dock: false, desktop: false };
+    const DOCK: SystemUi = SystemUi { menu_bar: false, dock: true, desktop: false };
+    const DESKTOP: SystemUi = SystemUi { menu_bar: false, dock: false, desktop: true };
+
+    #[test]
+    fn each_switch_leaves_out_only_its_own_chrome() {
+        let menu_bar = |hide| is_system_ui(MENU_BAR_LEVEL, "com.apple.controlcenter", hide);
+        let status_item = |hide| is_system_ui(STATUS_LEVEL, "com.example.status", hide);
+        let dock = |hide| is_system_ui(DOCK_LEVEL, "com.apple.dock", hide);
+        let icons = |hide| is_system_ui(-2147483603, "com.apple.finder", hide);
+        let widgets = |hide| is_system_ui(-2147483623, "com.apple.notificationcenterui", hide);
+        assert_eq!([menu_bar(MENU_BAR), status_item(MENU_BAR), dock(MENU_BAR), icons(MENU_BAR), widgets(MENU_BAR)], [true, true, false, false, false]);
+        assert_eq!([menu_bar(DOCK), status_item(DOCK), dock(DOCK), icons(DOCK), widgets(DOCK)], [false, false, true, false, false]);
+        assert_eq!([menu_bar(DESKTOP), status_item(DESKTOP), dock(DESKTOP), icons(DESKTOP), widgets(DESKTOP)], [false, false, false, true, true]);
+        assert!(!dock(SystemUi::default()) && !menu_bar(SystemUi::default()) && !icons(SystemUi::default()));
+    }
+
+    #[test]
+    fn keeps_windows_that_only_share_a_level() {
+        let all = SystemUi { menu_bar: true, dock: true, desktop: true };
+        // Another app's window at the Dock's level, and Finder's own windows at the normal level.
+        assert!(!is_system_ui(DOCK_LEVEL, "com.example.app", all));
+        assert!(!is_system_ui(0, "com.apple.finder", all));
+        assert!(!is_system_ui(-1, "com.example.app", all));
     }
 }

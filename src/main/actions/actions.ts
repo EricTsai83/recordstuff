@@ -34,7 +34,7 @@ export interface ActionDeps {
   log(line: string): void;
   /** Redraw the tray, the settings panel and the application menu after a context change. */
   refresh(): void;
-  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "hideSystemUi" | "setHideSystemUi" | "editableRecording" | "setEditableRecording" | "studioOnStart" | "setStudioOnStart" | "setUpdates" | "notifications" | "setNotifications"
+  settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "systemUi" | "setHideMenuBar" | "setHideDock" | "setHideDesktop" | "editableRecording" | "setEditableRecording" | "studioOnStart" | "setStudioOnStart" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setStudioPreview" | "setAppearance"
     | "studioPreview" | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
     | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
@@ -117,13 +117,16 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         },
         notifyFailure: () => tray.notifyDisplayWriteFailed(),
       });
-    } else if ("setHideSystemUi" in action) {
-      // Only ScreenCaptureKit can leave the system's chrome out; Windows shows the switch unavailable (D6).
+    } else if ("setHideMenuBar" in action || "setHideDock" in action || "setHideDesktop" in action) {
+      // Only ScreenCaptureKit can leave the system's chrome out; Windows shows the taskbar's switch unavailable (D6).
       if (deps.platform !== "darwin") return;
-      await deps.savePreference("hide system UI", {
+      const [what, part, write] = "setHideMenuBar" in action ? ["menu bar", "menuBar", () => settings.setHideMenuBar(action.setHideMenuBar)] as const
+        : "setHideDock" in action ? ["Dock", "dock", () => settings.setHideDock(action.setHideDock)] as const
+        : ["desktop icons and widgets", "desktop", () => settings.setHideDesktop(action.setHideDesktop)] as const;
+      await deps.savePreference(`hide ${what}`, {
         locked: true,
-        write: () => settings.setHideSystemUi(action.setHideSystemUi),
-        applied: () => log(`settings: hide menu bar and Dock ${settings.hideSystemUi ? "on" : "off"}`),
+        write,
+        applied: () => log(`settings: hide ${what} ${settings.systemUi[part] ? "on" : "off"}`),
       });
     } else if ("setEditableRecording" in action) {
       // The engine records editable files on macOS only (plan 087); Windows shows the switch unavailable.

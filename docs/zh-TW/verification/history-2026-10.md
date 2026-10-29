@@ -4,6 +4,17 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 099 結案 — 2026-10-29
+
+Plan 099（選單列、Dock 與桌面圖示和小工具分開設定，並裁掉它們佔住的那一條）於 2026-10-29 結案。Claude 在 `df1455ab` 上實作（依要求未 commit），經兩輪唯讀的 Codex GPT-6.1 Sol review，並在維護者回覆「好了」後進行一輪桌面測試（參考機 M1 Pro、macOS 26.6.2，BenQ GW2785TC 為主螢幕，旁邊是直立的 BL2480T，開啟「顯示器有獨立的空間」，筆電闔上；[報告](../../verification/measurements/2026-10-29T1153-system-ui-crop/report.md)）。
+
+- **完成的內容。** 錄影設定與 Studio 的螢幕 picker 以「隱藏選單列」、「隱藏 Dock」與「隱藏桌面圖示與小工具」取代「隱藏選單列與 Dock」（D1：三個），各自預設關閉、錄影中鎖定；Windows 保留一個無法使用的「隱藏工作列」。設定 version 5 保存 `hideMenuBar`、`hideDock` 與 `hideDesktop`，把 version 4 的 `hideSystemUi` 讀成三者，不重設。開始錄影時 main 讀取顯示器的 `bounds` 與 `workArea`：上方的內縮是選單列那一條，其他邊是 Dock 那一條；只裁掉被隱藏部分的那一條（D2：常駐的 Dock 和選單列一樣），以顯示器像素往內取到偶數（[system-ui.ts](../../../src/shared/system-ui.ts)）。`start` 帶上這個矩形，擷取程序經引擎的 `area` 來源錄製；引擎的篩選接收三個選擇（`SystemUi`）。錄影保留裁切後的比例（D3，維護者詢問業界做法後：macOS 內建錄影、QuickTime、CleanShot X 與 Loom 都錄下來源的比例，Screen Studio 只在匯出時補邊）。Studio 的預覽、影片區段的大小估計與鏡頭的像素尺寸都依裁切後的畫面，session 的畫面沿用開始時裁切的範圍；任一隱藏開關開啟時，工作區域改變會重新準備即時預覽。
+- **步驟 0 的量測。** 這台 Mac 能做出的配置中，Electron 的工作區域都正確：每個顯示器的選單列 30 pt（開啟獨立空間時直立螢幕也有自己的選單列）、常駐在右側的 Dock 57 pt、自動隱藏的 Dock 為 0。由 `osascript` 讀到的 `NSScreen.visibleFrame` 漏掉直立螢幕的選單列，不能當第二個來源；沒有做備援。
+- **桌面測試**（2026-10-29 當地 11:54–12:06，以 `pnpm start:app` 新建並簽署的 bundle，在最大化的 Safari 視窗上以 `pnpm native:input shortcut record` 開始與停止錄影）。維護者自己的 version 4 設定檔（「隱藏選單列與 Dock」開啟）遷移為三者皆開，其他欄位保留，測試後逐位元組還原。Dock 自動隱藏時：三者皆開 1920 × 1050、只開選單列 1920 × 1050、只開桌面 1920 × 1080、只開 Dock 1920 × 1080、全關 1920 × 1080。Dock 常駐時（維護者同意暫時關閉並恢復自動隱藏）：只開 Dock 1862 × 1080、三者皆開 1862 × 1050。直立螢幕：三者皆開 1080 × 1890、全關 1080 × 1920。每支裁切過的錄影，影格最上方一列是瀏覽器的工具列、右緣是瀏覽器，沒有選單列或 Dock；未裁切的錄影則顯示沒有隱藏的部分。Studio 的 picker 顯示三個開關與說明，即時預覽顯示裁切後的畫面，預覽開著時恢復 Dock 自動隱藏，預覽隨即以 1920 × 1050 重新準備。
+- **檢查。** 以 `pnpm test:scope` 執行 recording-settings、studio、settings-bridge、recording、tray、engine-platform、tooling-acceptance 與 platform 及新增和修改的檔案（79 個單元測試檔、引擎的 mac 與 win 測試、lint、format、build、41 個背景 UI 案例；其中 Studio 的 S149 在負載下因選單關閉逾時一次，單獨執行 3 次與重跑皆通過）；測試後把新測試檔加入 recording-settings 與 recording 範圍，執行 `pnpm check`（215 個檔案、2362 個 TypeScript 測試；199 + 48 個 Rust 測試，11 個略過；build 與引擎載入）。
+- **Review。** 兩輪唯讀的 Codex GPT-6.1 Sol（medium）。第一輪找到一個問題，已接受並修正：引擎的影格已裁切，Studio 的預覽框卻仍用整個顯示器的比例，會拉伸畫面並讓泡泡的位置對不上。第二輪沒有 findings。
+- **未驗證。** 瀏海 MacBook 的內建螢幕（筆電闔上）；Dock 在下方或左側、在另一台顯示器、全螢幕 Space 與幕前調度；從選單列打開的選單在那一條以下的部分有錄到；鏡頭泡泡與預覽的位置（相機不在；可編輯錄影的相機不在螢幕軌）；預覽框是否變形（與整個顯示器的比例只差 0.25%，以單元測試涵蓋）；macOS 14.2 以前；Windows（未變更）。
+
 ## Plan 098 結案 — 2026-10-28
 
 Plan 098（播放可剪輯錄影時聽得到每個聲音）於 2026-10-28 結案。Claude 在 `8b9bfa21` 上實作（依要求未 commit），經兩次唯讀的 Codex GPT-6.1 Sol review，並在維護者回覆「好了」後跑了一輪桌面驗收（參考機 M1 Pro、macOS 26.6.2，主螢幕 BenQ GW2785TC、旁邊是直式的 BL2480T，維護者的 iPhone 相機，麥克風開啟）。設計：[可剪輯錄影](../system-design/editing.md#可剪輯錄影)、[設計決策](../system-design/decisions.md)、[`bench:editable`](../system-design/tooling.md#匯出基準測試)。

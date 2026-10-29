@@ -64,7 +64,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideSystemUi: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideMenuBar: "locked", hideDock: "locked", hideDesktop: "locked", hideTaskbar: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The first-launch guide's way back (2026-10-26): opening it changes nothing a recording holds; its inputs lock in it.
@@ -77,7 +77,8 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   microphoneDevice: { session: true, lockedChoices: ["search"] }, studioMicrophoneDevice: { session: true, lockedChoices: ["search"] },
   // The Studio's choices over the preview (plan 097, D1): the recording type, the screen and the microphone's switch,
   // the same settings as Recording settings', locked with them.
-  studioType: "locked", studioScreen: "locked", studioHideSystemUi: "locked", studioMicrophone: "locked",
+  studioType: "locked", studioScreen: "locked", studioMicrophone: "locked",
+  studioHideMenuBar: "locked", studioHideDock: "locked", studioHideDesktop: "locked", studioHideTaskbar: "locked",
   // The input's level between recordings (plan 079, D1): at rest while busy.
   microphoneLevel: "locked",
   // Its faders are settings a recording takes from its next sound on (D21), so they stay usable.
@@ -87,9 +88,11 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
 };
 /**
  * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), its input
- * level while it is on and allowed (plan 079, D1), and the setup guide's row on macOS only (2026-10-26).
+ * level while it is on and allowed (plan 079, D1), the setup guide's row on macOS only (2026-10-26), and the system's
+ * chrome: three switches on macOS, the taskbar's unavailable one on Windows (plan 099).
  */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide"]);
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide",
+  ...["hideMenuBar", "hideDock", "hideDesktop", "hideTaskbar"].flatMap(id => [id, `studio${id[0]!.toUpperCase()}${id.slice(1)}`])]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 
 /**
@@ -122,9 +125,8 @@ export function assertLockContract(s: LockSnapshot): void {
     const available = policy !== "locked";
     // Turning the countdown off disables its sound control even when idle.
     const countdownOff = s.settings.groups.find(g => g.id === "countdown")?.choices.some(c => c.checked && c.id === "0");
-    // Hide taskbar on Windows is unavailable at all times, and says why in its note (plan 076, D6).
-    // Shown unavailable with why on Windows, where the engine cannot (hideSystemUi, D6; editableRecording, plan 087).
-    const unavailable = (group.id === "hideSystemUi" || group.id === "studioHideSystemUi" || group.id === "editableRecording") && group.note !== undefined;
+    // Shown unavailable with why on Windows, where the engine cannot (Hide taskbar, plan 076's D6; editableRecording, plan 087).
+    const unavailable = (group.id === "hideTaskbar" || group.id === "studioHideTaskbar" || group.id === "editableRecording") && group.note !== undefined;
     // The input device follows the microphone's switch even when idle (plan 074).
     const microphoneOff = s.settings.groups.find(g => g.id === "microphone")?.choices.some(c => c.checked && c.id === "off");
     const enabled = (available || !busy) && !(group.id === "countdownSound" && countdownOff) && !((group.id === "microphoneDevice" || group.id === "studioMicrophoneDevice") && microphoneOff) && !unavailable;

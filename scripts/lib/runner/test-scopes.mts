@@ -33,7 +33,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
     name: "recording-settings",
     covers: "the Recording tab: screen, quality, countdown and its sound, file name, the status card",
     unit: [`${PAGE}settings-arrangement.test.ts`, `${PAGE}settings-file-name.test.ts`, `${PAGE}settings-status.test.ts`, `${PAGE}settings-lock-focus.test.ts`,
-      "src/renderer/settings/tabs/", "src/main/settings/settings-model.test.ts", "src/shared/quality.test.ts", "src/shared/file-name.test.ts", "src/shared/display.test.ts"],
+      "src/renderer/settings/tabs/", "src/main/settings/settings-model.test.ts", "src/shared/quality.test.ts", "src/shared/file-name.test.ts", "src/shared/display.test.ts",
+      "src/shared/system-ui.test.ts"],
     ui: [{ file: "settings-segments.spec.ts" }, { file: "settings-panel.spec.ts", tags: ["@recording-settings"] },
       { file: "settings-layout.spec.ts", tags: ["@recording-settings"] }, { file: "settings-matrix.spec.ts", tags: ["@recording-settings"] }],
   },
@@ -139,8 +140,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "recording",
-    covers: "recording logic below the UI: recorder, the native engine's host and protocol, file publication. Unit tests only: capture needs the recording row of docs/testing.md",
-    unit: ["src/main/recording/", "src/shared/protocol.test.ts"],
+    covers: "recording logic below the UI: recorder, the native engine's host and protocol, the system chrome a display recording leaves out and cuts off, file publication. Unit tests only: capture needs the recording row of docs/testing.md",
+    unit: ["src/main/recording/", "src/shared/protocol.test.ts", "src/shared/system-ui.test.ts"],
     ui: [],
   },
   {

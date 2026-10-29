@@ -7,6 +7,7 @@ import { displayResolution, primaryDisplayChoosable, uniqueDisplay } from "../..
 import { translate as t, type Language, type PlainMessageKey } from "../../../shared/i18n";
 import { FRAME_RATES, RESOLUTION_CAPS, VIDEO_QUALITIES, effectiveQuality, estimatedBytesPerMinute, formatBytes, isFrameRateAvailable, type ResolutionCap, type VideoQuality } from "../../../shared/quality";
 import { COUNTDOWN_CHOICES } from "../../../shared/countdown";
+import { SHOW_SYSTEM_UI } from "../../../shared/system-ui";
 import { DEFAULT_FILE_NAME_TEMPLATE, FILE_NAME_TOKEN_LIST, formatFileName } from "../../../shared/file-name";
 import type { SettingsChoice } from "../../../shared/settings-panel";
 import { abbreviateHome, type AppContext } from "../../app/ui-model";
@@ -134,19 +135,26 @@ function countdownCancelText(ctx: AppContext, shortcutWorks: boolean): string {
 }
 
 /**
- * D6 (plan 076): ScreenCaptureKit leaves the menu bar, the Dock, desktop icons and widgets out of the recording while
- * the user still sees them, so a menu one opens still records: it is that app's window. Windows.Graphics.Capture cannot
- * leave the taskbar out, so there the switch is shown unavailable with why, rather than missing.
+ * D6 (plan 076): ScreenCaptureKit leaves the system's chrome out of the recording while the user still sees it, so a
+ * menu one opens still records: it is that app's window. Plan 099 makes it three switches (D1), and a hidden menu bar
+ * or Dock that keeps a strip on screen has that strip cut off, so windows stopping at its edge leave no empty band.
+ * Windows.Graphics.Capture cannot leave the taskbar out, so there one switch is shown unavailable with why.
  */
-export function hideSystemUiGroup(ctx: AppContext, enabled: boolean): Group {
+export function systemUiGroups(ctx: AppContext, enabled: boolean): Group[] {
   const language = ctx.language;
   if (ctx.platform !== "darwin") {
-    return { ...group("hideSystemUi", t("Hide taskbar", language), false, switchChoices(language, false, (value) => ({ setHideSystemUi: value }))),
-      note: t("Windows cannot leave the taskbar out of a recording.", language) };
+    return [{ ...group("hideTaskbar", t("Hide taskbar", language), false, switchChoices(language, false, () => ({ setHideMenuBar: false }))),
+      note: t("Windows cannot leave the taskbar out of a recording.", language) }];
   }
-  return { ...group("hideSystemUi", t("Hide menu bar and Dock", language), enabled,
-    switchChoices(language, ctx.hideSystemUi ?? false, (value) => ({ setHideSystemUi: value }))),
-  info: t("Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.", language) };
+  const hide = ctx.systemUi ?? SHOW_SYSTEM_UI;
+  return [
+    { ...group("hideMenuBar", t("Hide menu bar", language), enabled, switchChoices(language, hide.menuBar, (value) => ({ setHideMenuBar: value }))),
+      info: t("Recordings leave out the menu bar and its icons, and the strip it keeps at the top of the screen. A menu you open is still recorded below it, as part of its app.", language) },
+    { ...group("hideDock", t("Hide Dock", language), enabled, switchChoices(language, hide.dock, (value) => ({ setHideDock: value }))),
+      info: t("Recordings leave out the Dock. If it stays on screen, its strip is left out too; moving it during a recording keeps the recording's size.", language) },
+    { ...group("hideDesktop", t("Hide desktop icons and widgets", language), enabled, switchChoices(language, hide.desktop, (value) => ({ setHideDesktop: value }))),
+      info: t("Recordings show the wallpaper without the icons and widgets on the desktop; you still see them.", language) },
+  ];
 }
 
 /**

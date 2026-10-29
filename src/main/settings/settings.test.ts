@@ -167,7 +167,7 @@ describe("SettingsStore", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideMenuBar: false, hideDock: false, hideDesktop: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().outputDir).toBe("/Volumes/External/Recordings");
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -276,7 +276,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideMenuBar: false, hideDock: false, hideDesktop: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     const second = store();
     expect(second.quality).toEqual(custom);
@@ -296,7 +296,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideMenuBar: false, hideDock: false, hideDesktop: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
   });
 
@@ -350,7 +350,7 @@ describe("quality settings", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideMenuBar: false, hideDock: false, hideDesktop: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     await expect(fs.stat(`${filePath}.tmp`)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -450,7 +450,7 @@ describe("hotkey settings (plan 016)", () => {
       updates: { enabled: true, lastAttempt: 0 },
       notifications: true,
       display: { kind: "primary" },
-      hideSystemUi: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
+      hideMenuBar: false, hideDock: false, hideDesktop: false, editableRecording: false, studioOnStart: false, countdown: 3, countdownSound: true, microphone: true, audioVolume: { system: 100, microphone: 100 }, camera: true, cameraLayout: DEFAULT_CAMERA_LAYOUT, studioPreview: { rate: "power", view: "composed" }, trayClick: "menu", fileNameTemplate: "{date} {time}", libraryLayout: "grid", libraryPreviewSound: false, libraryFavorites: [], onboardingDone: false,
     });
     expect(store().hotkey).toEqual(custom);
     // Disabling remembers the chosen accelerator so re-enabling restores it.
@@ -759,27 +759,57 @@ describe("open the Recording Studio as a recording starts (2026-10-28)", () => {
   });
 });
 
-describe("hide menu bar and Dock (plan 076, D6)", () => {
+describe("hide menu bar, Dock and desktop (plan 076, D6; plan 099)", () => {
   const current = { version: SETTINGS_VERSION, outputDir: "/a", quality: DEFAULT_QUALITY, hotkey: DEFAULT_HOTKEY };
+  const shown = { hideMenuBar: false, hideDock: false, hideDesktop: false };
 
-  it("reads a file written before the field existed as off, silently, so an update records what it did before", () => {
-    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: { hideSystemUi: false }, warnings: [] });
-    expect(new SettingsStore({ filePath: path.join(dir, "missing.json"), defaultOutputDir: DEFAULT }).hideSystemUi).toBe(false);
+  it("reads a file written before the fields existed as all shown, silently, so an update records what it did before", () => {
+    expect(parseSettings(JSON.stringify(current))).toMatchObject({ settings: shown, warnings: [] });
+    expect(new SettingsStore({ filePath: path.join(dir, "missing.json"), defaultOutputDir: DEFAULT }).systemUi).toEqual({ menuBar: false, dock: false, desktop: false });
   });
 
-  it.each(["on", 1, null])("reads a non-boolean %j as off with a warning", (hideSystemUi) => {
-    expect(parseSettings(JSON.stringify({ ...current, hideSystemUi }))).toMatchObject({
-      settings: { hideSystemUi: false, outputDir: "/a" }, warnings: ["hideSystemUi is not a boolean: using off"],
-    });
+  it("reads version 4's one switch as all three, keeping the other fields", () => {
+    const v4 = { ...current, version: 4, language: "zh-TW", countdown: 5 };
+    expect(parseSettings(JSON.stringify({ ...v4, hideSystemUi: true }))).toMatchObject({
+      settings: { version: SETTINGS_VERSION, hideMenuBar: true, hideDock: true, hideDesktop: true, language: "zh-TW", countdown: 5 }, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...v4, hideSystemUi: false }))).toMatchObject({ settings: shown, warnings: [] });
+    expect(parseSettings(JSON.stringify(v4))).toMatchObject({ settings: shown, warnings: [] });
+    expect(parseSettings(JSON.stringify({ ...v4, hideSystemUi: "on" }))).toMatchObject({ settings: shown, warnings: ["hideSystemUi is not a boolean: using off"] });
+    // The old field is not written back.
+    expect(parseSettings(JSON.stringify({ ...v4, hideSystemUi: true }))!.settings).not.toHaveProperty("hideSystemUi");
   });
 
-  it("saves the switch with the other fields, and refuses a non-boolean", async () => {
+  it("migrates a version 4 file on disk without the reset, writing version 5 at the next save", async () => {
+    await fs.writeFile(filePath, JSON.stringify({ ...defaultSettings("/old"), version: 4, hideMenuBar: undefined, hideDock: undefined, hideDesktop: undefined, hideSystemUi: true }));
+    const settings = store();
+    expect(settings.systemUi).toEqual({ menuBar: true, dock: true, desktop: true });
+    expect(settings.outputDir).toBe("/old");
+    await settings.setHideDock(false);
+    const written = JSON.parse(await fs.readFile(filePath, "utf8"));
+    expect(written).toMatchObject({ version: 5, outputDir: "/old", hideMenuBar: true, hideDock: false, hideDesktop: true });
+    expect(written).not.toHaveProperty("hideSystemUi");
+    expect(await fs.readdir(dir)).toEqual(["settings.json"]);
+  });
+
+  it.each([["hideMenuBar"], ["hideDock"], ["hideDesktop"]])("reads a non-boolean %s as off with a warning", (key) => {
+    for (const value of ["on", 1, null]) {
+      expect(parseSettings(JSON.stringify({ ...current, ...shown, [key]: value }))).toMatchObject({
+        settings: { ...shown, outputDir: "/a" }, warnings: [`${key} is not a boolean: using off`] });
+    }
+  });
+
+  it("saves each switch on its own with the other fields, and refuses a non-boolean", async () => {
     const first = store();
-    await first.setHideSystemUi(true);
-    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, hideSystemUi: true });
-    expect(store().hideSystemUi).toBe(true);
-    await expect(first.setHideSystemUi("off" as never)).rejects.toThrow("unsupported hide system UI");
-    expect(store().hideSystemUi).toBe(true);
+    await first.setHideMenuBar(true);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({ version: SETTINGS_VERSION, outputDir: DEFAULT, ...shown, hideMenuBar: true });
+    await first.setHideDesktop(true);
+    expect(store().systemUi).toEqual({ menuBar: true, dock: false, desktop: true });
+    await first.setHideDock(true);
+    await first.setHideMenuBar(false);
+    expect(store().systemUi).toEqual({ menuBar: false, dock: true, desktop: true });
+    await expect(first.setHideDock("off" as never)).rejects.toThrow("unsupported hide Dock");
+    await expect(first.setHideMenuBar(1 as never)).rejects.toThrow("unsupported hide menu bar");
+    expect(store().systemUi).toEqual({ menuBar: false, dock: true, desktop: true });
   });
 });
 

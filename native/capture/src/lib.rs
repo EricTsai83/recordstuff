@@ -157,6 +157,14 @@ pub struct CameraOptions {
     pub preview: Option<bool>,
 }
 
+/// The menu bar, the Dock, and desktop icons and widgets: which of them the picture leaves out (plan 099).
+#[napi(object)]
+pub struct SystemUiOptions {
+    pub menu_bar: bool,
+    pub dock: bool,
+    pub desktop: bool,
+}
+
 #[napi(object)]
 pub struct PrepareOptions {
     /// The display's CGDirectDisplayID on macOS; unused on Windows.
@@ -170,7 +178,8 @@ pub struct PrepareOptions {
     pub audio_bitrate: u32,
     /// RecordStuff's processes, main first; their windows and sound are left out.
     pub own_pids: Vec<i32>,
-    pub hide_system_ui: bool,
+    /// What of the system's chrome to leave out (plan 099); macOS only.
+    pub system_ui: SystemUiOptions,
     /// The temporary recording file main created; the engine writes it from the start.
     pub path: String,
     pub source: Option<CaptureSource>,
@@ -882,7 +891,7 @@ impl Task for PrepareTask {
                 video_bitrate: options.video_bitrate,
                 audio_bitrate: options.audio_bitrate,
                 own_pids: options.own_pids,
-                hide_system_ui: options.hide_system_ui,
+                system_ui: core::SystemUi { menu_bar: options.system_ui.menu_bar, dock: options.system_ui.dock, desktop: options.system_ui.desktop },
                 path: options.path.into(),
                 source: source(options.source)?,
                 audio: audio(options.audio)?,

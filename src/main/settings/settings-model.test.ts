@@ -71,7 +71,9 @@ describe("settingsView", () => {
     const view = settingsView(idle, context);
     expect(view.groups.map((entry) => entry.id)).toEqual([
       "screen",
-      "hideSystemUi",
+      "hideMenuBar",
+      "hideDock",
+      "hideDesktop",
       "outputFolder",
       "fileName",
       "editableRecording",
@@ -84,7 +86,9 @@ describe("settingsView", () => {
       "studioControls",
       "studioType",
       "studioScreen",
-      "studioHideSystemUi",
+      "studioHideMenuBar",
+      "studioHideDock",
+      "studioHideDesktop",
       "studioMicrophoneDevice",
       "studioMicrophone",
       "systemAudio",
@@ -120,7 +124,7 @@ describe("settingsView", () => {
     }
     expect(checked(idle, context, "countdown")).toBe("3");
     expect(checked(idle, context, "countdownSound")).toBe("on");
-    expect(checked(idle, context, "hideSystemUi")).toBe("off");
+    expect(checked(idle, context, "hideMenuBar")).toBe("off");
     expect(checked(idle, context, "videoQuality")).toBe("standard");
     expect(checked(idle, context, "resolutionCap")).toBe("source");
     expect(checked(idle, context, "frameRate")).toBe("30");
@@ -132,25 +136,41 @@ describe("settingsView", () => {
     expect(checked(idle, { ...context, trayClick: "menu" }, "trayClick")).toBe("menu");
   });
 
-  it("offers hiding the menu bar and Dock on macOS, locked while recording, and shows why Windows cannot (plan 076, D6)", () => {
-    const row = group(idle, context, "hideSystemUi")!;
-    expect(row).toMatchObject({ label: "Hide menu bar and Dock", control: "switch", tab: "recording", section: "source", enabled: true });
-    expect(row.info).toBe("Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.");
-    expect(checked(idle, { ...context, hideSystemUi: true }, "hideSystemUi")).toBe("on");
-    expect(settingsAction(idle, context, "hideSystemUi", "on")).toEqual({ setHideSystemUi: true });
-    expect(settingsAction(idle, { ...context, hideSystemUi: true }, "hideSystemUi", "off")).toEqual({ setHideSystemUi: false });
-    for (const state of busy) {
-      expect(group(state, context, "hideSystemUi")?.enabled, state.type).toBe(false);
-      expect(settingsAction(state, context, "hideSystemUi", "on"), state.type).toBeUndefined();
+  it("offers hiding the menu bar, the Dock and the desktop on macOS, each on its own, locked while recording, and shows why Windows cannot (plan 076, D6; plan 099)", () => {
+    const rows = [
+      ["hideMenuBar", "Hide menu bar", "隱藏選單列", "setHideMenuBar", "menuBar"],
+      ["hideDock", "Hide Dock", "隱藏 Dock", "setHideDock", "dock"],
+      ["hideDesktop", "Hide desktop icons and widgets", "隱藏桌面圖示與小工具", "setHideDesktop", "desktop"],
+    ] as const;
+    const shown = { menuBar: false, dock: false, desktop: false };
+    for (const [id, label, zh, action, part] of rows) {
+      expect(group(idle, context, id), id).toMatchObject({ label, control: "switch", tab: "recording", section: "source", enabled: true });
+      expect(group(idle, context, id)?.info, id).toBeTruthy();
+      expect(checked(idle, context, id), id).toBe("off");
+      const on = { ...context, systemUi: { ...shown, [part]: true } };
+      expect(checked(idle, on, id), id).toBe("on");
+      // Only its own part: the other two stay off.
+      for (const [other] of rows) if (other !== id) expect(checked(idle, on, other), `${id} ${other}`).toBe("off");
+      expect(settingsAction(idle, context, id, "on")).toEqual({ [action]: true });
+      expect(settingsAction(idle, on, id, "off")).toEqual({ [action]: false });
+      for (const state of busy) {
+        expect(group(state, context, id)?.enabled, `${id} ${state.type}`).toBe(false);
+        expect(settingsAction(state, context, id, "on"), `${id} ${state.type}`).toBeUndefined();
+      }
+      expect(group(idle, { ...context, language: "zh-TW" }, id)?.label).toBe(zh);
     }
-    expect(group(idle, { ...context, language: "zh-TW" }, "hideSystemUi")?.label).toBe("隱藏選單列與 Dock");
+    // The help says the strip a hidden menu bar or a Dock on screen keeps is left out too.
+    expect(group(idle, context, "hideMenuBar")?.info).toContain("strip");
+    expect(group(idle, context, "hideDock")?.info).toContain("strip");
+    expect(group(idle, context, "hideTaskbar")).toBeUndefined();
 
-    const windows = { ...context, platform: "win32" as const, hideSystemUi: true };
-    expect(group(idle, windows, "hideSystemUi")).toMatchObject({ label: "Hide taskbar", enabled: false,
+    const windows = { ...context, platform: "win32" as const, systemUi: { menuBar: true, dock: true, desktop: true } };
+    for (const id of ["hideMenuBar", "hideDock", "hideDesktop"]) expect(group(idle, windows, id), id).toBeUndefined();
+    expect(group(idle, windows, "hideTaskbar")).toMatchObject({ label: "Hide taskbar", enabled: false,
       note: "Windows cannot leave the taskbar out of a recording." });
-    expect(checked(idle, windows, "hideSystemUi")).toBe("off");
-    expect(settingsAction(idle, windows, "hideSystemUi", "on")).toBeUndefined();
-    expect(group(idle, { ...windows, language: "zh-TW" }, "hideSystemUi")?.note).toBe("Windows 無法把工作列排除在錄影之外。");
+    expect(checked(idle, windows, "hideTaskbar")).toBe("off");
+    expect(settingsAction(idle, windows, "hideTaskbar", "on")).toBeUndefined();
+    expect(group(idle, { ...windows, language: "zh-TW" }, "hideTaskbar")?.note).toBe("Windows 無法把工作列排除在錄影之外。");
   });
 
   it("never leaks an action to the renderer", () => {
@@ -209,7 +229,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "source", "source", "countdown", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "source", "source", "source", "countdown", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
   });
 });
 
@@ -291,10 +311,10 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on(), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
-    expect(studio(on())).toEqual(["studioControls", "studioType", "studioScreen", "studioHideSystemUi", "studioCameraDevice", "studioCamera",
+    expect(studio(on())).toEqual(["studioControls", "studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop", "studioCameraDevice", "studioCamera",
       "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror", "studioMicrophoneDevice", "studioMicrophone", "studioLive", "cameraShown", "systemAudio", "systemGain"]);
     expect(ids(context)).toEqual([]);
-    expect(studio(context), "no camera: the Studio keeps its choices and audio").toEqual(["studioControls", "studioType", "studioScreen", "studioHideSystemUi",
+    expect(studio(context), "no camera: the Studio keeps its choices and audio").toEqual(["studioControls", "studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop",
       "studioMicrophoneDevice", "studioMicrophone", "systemAudio", "systemGain"]);
     // The size in pixels of the recording's shorter side, 1080 with no display known: a fifth of it.
     expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "number", number: { min: 54, max: 648, step: 1, value: 216, unit: "px", short: "W" } });
@@ -510,7 +530,7 @@ describe("the Recording Studio's choices (plan 097)", () => {
     const mac = { ...context, platform: "darwin" as const, displays,
       camera: { enabled: true, available: true, access: "granted" as const, devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }] },
       microphone: { enabled: true, access: "granted" as const, devices: [{ id: "built-in", name: "MacBook Pro Microphone", default: true }] } };
-    expect(group(idle, mac, "studioScreen")).toMatchObject({ enabled: true, picker: { input: "screen", name: "Built-in Retina Display", locked: false, parts: ["studioHideSystemUi"] } });
+    expect(group(idle, mac, "studioScreen")).toMatchObject({ enabled: true, picker: { input: "screen", name: "Built-in Retina Display", locked: false, parts: ["studioHideMenuBar", "studioHideDock", "studioHideDesktop"] } });
     expect(group(idle, mac, "studioScreen")?.picker).not.toHaveProperty("problem");
     expect(settingsAction(idle, mac, "studioScreen", "1")).toEqual({ setDisplay: { kind: "display", id: "1", label: "Built-in Retina Display" } });
     expect(group(idle, mac, "studioCameraDevice")).toMatchObject({ enabled: true, picker: { input: "camera", name: "FaceTime HD Camera", off: false } });
@@ -571,10 +591,25 @@ describe("the camera's preview (plan 075, step 7)", () => {
   const preview = (state: RecordingState, ctx: AppContext) => group(state, ctx, "cameraPreview");
   const recording = { type: "recording" as const, startedAt: "2026-10-17T00:00:00Z" };
 
+  it("shapes the stage as the recorded picture, without the strips a hidden menu bar or Dock keeps (plan 099)", () => {
+    const notched = [{ ...displays[0]!, x: 0, y: 0, workArea: { x: 0, y: 37, width: 1512, height: 880 } }, displays[1]!];
+    const hide = { menuBar: true, dock: true, desktop: false };
+    const stage = (more: Partial<AppContext>) => preview(idle, on({}, { platform: "darwin", displays: notched, ...more }))?.cameraPreview?.display;
+    expect(stage({})).toEqual({ width: 3024, height: 1964 });
+    expect(stage({ systemUi: { ...hide, dock: false } })).toEqual({ width: 3024, height: 1890 });
+    expect(stage({ systemUi: hide })).toEqual({ width: 3024, height: 1760 });
+    // A session's picture keeps the part main cut as it started, though the Dock moved since.
+    expect(stage({ systemUi: hide, captureArea: { display: "1", width: 3024, height: 1890 } })).toEqual({ width: 3024, height: 1890 });
+    expect(stage({ systemUi: hide, captureArea: { display: "9", width: 1080, height: 1920 } }), "another display's session").toEqual({ width: 3024, height: 1760 });
+    // The size the Video section and the camera's pixels state is the same picture's.
+    expect(group(idle, on({}, { platform: "darwin", displays: notched, systemUi: hide }), "frameRate")?.footnote).toContain("3024 × 1760");
+    expect(group(idle, on({}, { platform: "darwin", displays: notched, systemUi: hide }), "cameraWidth")?.note).toBe("Pixels in a 3024 × 1760 recording.");
+  });
+
   it("shows the display the recording captures and the bubble where the recording puts it", () => {
     expect(settingsView(idle, on()).groups.filter((g) => g.section === "studioPreview").map((g) => g.id), "the preview's rows").toEqual(["cameraPreview", "studioPreviewRate", "studioPreviewView", "studioLive"]);
     expect(preview(idle, on())).toMatchObject({ control: "cameraPreview", enabled: true, cameraPreview: {
-      mode: "live", display: { width: 1512, height: 982 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
+      mode: "live", display: { width: 3024, height: 1964 }, bubble: { width: 0.2, height: 0.3, rounding: 0.5, mirror: true },
       x: 0.1, y: 0.2 } });
     // Another display: its own position.
     const studio = on({}, { display: { kind: "display", id: "9", label: "Studio" } });
@@ -936,7 +971,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideSystemUi", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "studioOnStart", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideMenuBar", "hideDock", "hideDesktop", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "studioOnStart", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -1147,9 +1182,9 @@ describe("screen choice", () => {
 it("declares presentation without changing choice identities, and authorizes only fixed links", () => {
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
-    ["screen", "menu", "source"], ["hideSystemUi", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"], ["studioOnStart", "switch", "countdown"],
+    ["screen", "menu", "source"], ["hideMenuBar", "switch", "source"], ["hideDock", "switch", "source"], ["hideDesktop", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"], ["studioOnStart", "switch", "countdown"],
     ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioChoices"], ["studioType", "menu", "studioChoices"],
-    ["studioScreen", "menu", "studioChoices"], ["studioHideSystemUi", "switch", "studioChoices"], ["studioMicrophoneDevice", "menu", "studioChoices"],
+    ["studioScreen", "menu", "studioChoices"], ["studioHideMenuBar", "switch", "studioChoices"], ["studioHideDock", "switch", "studioChoices"], ["studioHideDesktop", "switch", "studioChoices"], ["studioMicrophoneDevice", "menu", "studioChoices"],
     ["studioMicrophone", "switch", "studioChoices"], ["systemAudio", "meter", "studioLive"], ["systemGain", "slider", "studioLive"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
@@ -1554,6 +1589,16 @@ describe("the Video section's size estimate", () => {
       .toBe("每分鐘約 350 MB（3024 × 1964、60 fps）。");
     // Windows records 30 fps whatever is stored, and the estimate says what it will record.
     expect(group(idle, { ...retina, platform: "win32", quality: { ...DEFAULT_QUALITY, frameRate: 60 } }, "frameRate")?.footnote).toContain("30 fps");
+  });
+  it("leaves out the strips a hidden menu bar or Dock keeps, as the recording will (plan 099)", () => {
+    const notched = { ...context, platform: "darwin" as const, displays: [{ ...retina.displays[0]!, x: 0, y: 0, workArea: { x: 0, y: 37, width: 1512, height: 880 } }] };
+    const hide = (menuBar: boolean, dock: boolean) => ({ ...notched, systemUi: { menuBar, dock, desktop: false } });
+    expect(group(idle, notched, "frameRate")?.footnote).toContain("3024 × 1964");
+    expect(group(idle, hide(false, false), "frameRate")?.footnote).toContain("3024 × 1964");
+    expect(group(idle, hide(true, false), "frameRate")?.footnote).toContain("3024 × 1890");
+    expect(group(idle, hide(true, true), "frameRate")?.footnote).toContain("3024 × 1760");
+    // Windows records the whole display: its taskbar cannot be left out.
+    expect(group(idle, { ...hide(true, true), platform: "win32" }, "frameRate")?.footnote).toContain("3024 × 1964");
   });
   it("says nothing without a screen to measure", () => {
     expect(group(idle, context, "frameRate")).not.toHaveProperty("footnote");

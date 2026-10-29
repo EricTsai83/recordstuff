@@ -14,6 +14,7 @@ import type { AudioVolume } from "../../shared/audio-volume";
 import type { RecordingResult, RecordingResultAction } from "../../shared/recording-result";
 import type { Appearance, LibraryLayout, TrayClick } from "../../shared/appearance";
 import type { DisplayInfo, DisplayPreference, DisplayFailure } from "../../shared/display";
+import type { SystemUiChoice } from "../../shared/system-ui";
 import type { Language, PlainMessageKey } from "../../shared/i18n";
 import type { QualitySettings } from "../../shared/quality";
 import type { ErrorCode } from "../../shared/state";
@@ -97,7 +98,10 @@ export type AppAction =
   | { setQuality: Partial<QualitySettings> }
   | { setCountdown: CountdownSeconds }
   | { setCountdownSound: boolean }
-  | { setHideSystemUi: boolean }
+  /** Plan 099: leave the menu bar, the Dock, or desktop icons and widgets out of recordings; macOS only. */
+  | { setHideMenuBar: boolean }
+  | { setHideDock: boolean }
+  | { setHideDesktop: boolean }
   /** Plan 087: editable recordings, macOS only. */
   | { setEditableRecording: boolean }
   /** Open the Recording Studio as a recording starts (2026-10-28). */
@@ -177,8 +181,13 @@ export interface AppContext {
   displays: DisplayInfo[];
   display: DisplayPreference;
   displayFailure?: DisplayFailure;
-  /** The stored D6 switch (plan 076): macOS recordings leave out the menu bar and Dock; absent is off. */
-  hideSystemUi?: boolean;
+  /** The stored switches of plan 099: what of the system's chrome macOS recordings leave out; absent is all shown. */
+  systemUi?: SystemUiChoice;
+  /**
+   * The part of its display the session whose picture the Studio may show records, in pixels, as main cut it when that
+   * session started (plan 099); absent without one. The preview keeps its proportions though a strip changes meanwhile.
+   */
+  captureArea?: { display: string; width: number; height: number };
   /** The stored switch for editable recordings (plan 087); absent is off. */
   editableRecording?: boolean;
   /** The stored switch that opens the Recording Studio as a recording starts (2026-10-28); absent is off. */

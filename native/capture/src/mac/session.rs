@@ -453,7 +453,7 @@ impl Session {
         let content = content::recent_or_fetch()?;
         mark("content");
         let display = content::find_display(&content, request.display_id)?;
-        let filter = content::video_filter(&content, &display, &request.source, &request.own_pids, request.hide_system_ui)?;
+        let filter = content::video_filter(&content, &display, &request.source, &request.own_pids, request.system_ui)?;
         let audio_filter = content::audio_filter(&content, &display, &request.source, &request.audio.system, &request.own_pids)?;
         let source_rect = match request.source {
             Source::Area { x, y, width, height } => {

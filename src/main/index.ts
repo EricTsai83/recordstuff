@@ -16,6 +16,7 @@ import { RecordingResults } from "./recording/recording-result";
 import { SettingsWindowState } from "./settings/settings-window-state";
 import { DisplayMedia } from "./display/display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
+import { SHOW_SYSTEM_UI, systemUiCrop } from "../shared/system-ui";
 import {
   app,
   BaseWindow,
@@ -298,6 +299,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     const primary = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((d) => ({ id: String(d.id), label: d.label,
       logicalWidth: d.size.width, logicalHeight: d.size.height, scaleFactor: d.scaleFactor, x: d.bounds.x, y: d.bounds.y,
+      workArea: { x: d.workArea.x, y: d.workArea.y, width: d.workArea.width, height: d.workArea.height },
       internal: d.internal, primary: d.id === primary })).filter(isDisplayInfo);
   };
   const displayMedia = new DisplayMedia<DesktopCapturerSource>({
@@ -348,6 +350,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   if (process.platform === "darwin" && cameraPrototypeOn(process.env)) {
     log(`camera prototype: on (${process.env["RECORDSTUFF_CAMERA_PROTOTYPE"] ?? ""}), preview page ${cameraPreview ? "on" : "off"}, camera access ${cameraAccess() ?? "unknown"}`);
   }
+  /** What the last session started records of its display (plan 099), which the Studio's preview keeps while it shows that session. */
+  let captureArea: AppContext["captureArea"];
+  const even = (value: number): number => Math.max(2, Math.round(value / 2) * 2);
   const host = new NativeCaptureHost({
     entryPath: path.join(__dirname, "native-host-process.js"),
     addonPath: engineAddonPath(__dirname),
@@ -362,8 +367,19 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         captureAnchor = new BaseWindow({ show: false, width: 1, height: 1, frame: false, focusable: false, hasShadow: false, skipTaskbar: true });
       }
     } } : {}),
-    // D6: only ScreenCaptureKit can leave the system's chrome out.
-    hideSystemUi: () => process.platform === "darwin" && settings.hideSystemUi,
+    // Only ScreenCaptureKit can leave the system's chrome out (D6 of plan 076). A hidden menu bar or Dock that keeps a
+    // strip on this display has it cut off (plan 099): the work area says which strips are kept, as the recording starts.
+    systemUi: (displayId: string) => {
+      if (process.platform !== "darwin") return { hide: SHOW_SYSTEM_UI };
+      const hide = settings.systemUi;
+      const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === displayId);
+      const crop = display ? systemUiCrop(display.bounds, display.workArea, display.scaleFactor, hide) : undefined;
+      captureArea = crop ? { display: displayId, width: crop.width, height: crop.height }
+        : display ? { display: displayId, width: even(display.bounds.width * display.scaleFactor), height: even(display.bounds.height * display.scaleFactor) }
+        : undefined;
+      if (crop) log(`capture: display ${displayId} cut to ${crop.width}x${crop.height} at ${crop.x},${crop.y} without the system's strips`);
+      return { hide, ...(crop ? { crop } : {}) };
+    },
     // The prompt, when macOS never asked, comes as the recording starts (plan 074); a refusal is the engine's to report.
     prepareMicrophone: async () => { if (!(await askMicrophoneAccess())) log("microphone: access is not allowed"); },
     // Plan 075 step 2's prototype, only behind its development switch: the camera's access asked at launch, and each
@@ -573,10 +589,19 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   let pictureHiddenFor: string | undefined;
   const pictureHidden = (): boolean => pictureHiddenFor !== undefined && pictureHiddenFor === recorder.previewSessionId && !recorder.preview;
   /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
-  const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.hideSystemUi, settings.outputDir,
+  const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.systemUi, cropInputs(), settings.outputDir,
     settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null,
     // A capture process records an editable file or not from its start: Start must not take a preview of the other kind.
     editable.next()]);
+  /**
+   * The strips the displays keep for the menu bar and Dock, while one of them is hidden (plan 099): a Dock moved, resized
+   * or set to hide automatically changes the part of the display recorded, so the Live preview is prepared again.
+   */
+  const cropInputs = (): unknown => {
+    const hide = settings.systemUi;
+    if (process.platform !== "darwin" || !(hide.menuBar || hide.dock)) return null;
+    return screen.getAllDisplays().map((display) => [display.id, display.bounds, display.workArea, display.scaleFactor]);
+  };
   let previewPrepared: string | undefined;
   /** Follows the Live preview: one prepared with settings since changed is prepared again, while the Studio is open. */
   const followPreview = (): void => {
@@ -601,7 +626,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     recordingResults: recordingResults.all,
     historyLoading: recordingResults.loading,
     historyFailed: recordingResults.historyFailed,
-    displays: displays(), display: settings.display, hideSystemUi: settings.hideSystemUi, editableRecording: settings.editableRecording, studioOnStart: settings.studioOnStart, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    displays: displays(), display: settings.display, systemUi: settings.systemUi,
+    ...(captureArea && recorder.previewSessionId !== undefined ? { captureArea } : {}), editableRecording: settings.editableRecording, studioOnStart: settings.studioOnStart, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(devices.microphones ? { devices: devices.microphones } : {}), ...(access ? { access } : {}),

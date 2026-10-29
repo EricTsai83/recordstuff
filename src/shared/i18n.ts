@@ -428,8 +428,14 @@ export const ZH_TW = {
   "Click the system tray icon or press the shortcut to cancel.": "按一下系統匣圖示或按快捷鍵即可取消。",
   "Click the system tray icon to cancel.": "按一下系統匣圖示即可取消。",
   "Countdown sound": "倒數音效",
-  "Hide menu bar and Dock": "隱藏選單列與 Dock",
-  "Recordings leave out the menu bar, the Dock, desktop icons and widgets; you still see them. A menu you open is still recorded, as part of its app.": "錄影中不會出現選單列、Dock、桌面圖示與小工具，你的螢幕上仍看得到。你打開的選單仍會被錄進去，因為它屬於該 App。",
+  "Hide menu bar": "隱藏選單列",
+  "Recordings leave out the menu bar and its icons, and the strip it keeps at the top of the screen. A menu you open is still recorded below it, as part of its app.":
+    "錄影中不會出現選單列與其中的圖示，它在螢幕上方佔住的那一條也不會錄進去。你打開的選單在那一條以下的部分仍會錄到，因為它屬於該 App。",
+  "Hide Dock": "隱藏 Dock",
+  "Recordings leave out the Dock. If it stays on screen, its strip is left out too; moving it during a recording keeps the recording's size.":
+    "錄影中不會出現 Dock。Dock 常駐在螢幕上時，它佔住的那一條也不會錄進去；錄影途中移動 Dock，錄影尺寸維持不變。",
+  "Hide desktop icons and widgets": "隱藏桌面圖示與小工具",
+  "Recordings show the wallpaper without the icons and widgets on the desktop; you still see them.": "錄影中的桌面只有桌布，不會出現桌面圖示與小工具，你的螢幕上仍看得到。",
   "Hide taskbar": "隱藏工作列",
   "Windows cannot leave the taskbar out of a recording.": "Windows 無法把工作列排除在錄影之外。",
   "Open Recording Studio when recording starts": "開始錄影時開啟錄影工作室",

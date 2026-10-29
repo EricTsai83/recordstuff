@@ -327,7 +327,7 @@ pub struct PrepareRequest {
     pub video_bitrate: u32,
     pub audio_bitrate: u32,
     pub own_pids: Vec<i32>,
-    pub hide_system_ui: bool,
+    pub system_ui: SystemUi,
     pub path: PathBuf,
     pub source: Source,
     pub audio: AudioRequest,
@@ -336,6 +336,22 @@ pub struct PrepareRequest {
     /// Plan 087's editable recording (step 1's prototype, a development switch): the screen without the camera, each
     /// sound input on a track of its own and the camera on its own track, in one file.
     pub editable: bool,
+}
+
+/// Which of the system's chrome a display's picture leaves out (plan 099, D1; one switch in plan 076's D6): the menu
+/// bar and its status items, the Dock, desktop icons and widgets. Main cuts the strips the hidden ones keep on screen
+/// off with an area of the display.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SystemUi {
+    pub menu_bar: bool,
+    pub dock: bool,
+    pub desktop: bool,
+}
+
+impl SystemUi {
+    pub fn any(self) -> bool {
+        self.menu_bar || self.dock || self.desktop
+    }
 }
 
 /// Which camera and where its bubble is (plan 075): main's setting and its layout on the recorded display.

@@ -13,12 +13,20 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "ping" })).toBe(true);
   });
   it("accepts the native engine's start options and refuses malformed ones (plan 076)", () => {
-    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1, 2], hideSystemUi: false };
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1, 2], systemUi: { menuBar: false, dock: false, desktop: false } };
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native })).toBe(true);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayId: 1.5 } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, recordingPath: "" } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, ownPids: ["1"] } })).toBe(false);
-    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, hideSystemUi: 1 } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, systemUi: true } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, systemUi: { menuBar: true, dock: 1, desktop: false } } })).toBe(false);
+    const { systemUi: _, ...withoutSystemUi } = native;
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: withoutSystemUi })).toBe(false);
+    // Plan 099: the part of the display to record, in its pixels.
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: 74, width: 3024, height: 1890 } } })).toBe(true);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: -1, width: 3024, height: 1890 } } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: 74, width: 0, height: 1890 } } })).toBe(false);
+    expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: 74.5, width: 3024, height: 1890 } } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, editable: true } })).toBe(true);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, editable: "yes" } })).toBe(false);
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: { x: -960, y: 540 } } })).toBe(true);
@@ -26,7 +34,7 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, displayPoint: [0, 0] } })).toBe(false);
   });
   it("carries the camera choice and refuses one out of range (plan 075)", () => {
-    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], systemUi: { menuBar: false, dock: false, desktop: false } };
     const camera = { width: 0.2, height: 0.2, rounding: 1, x: 0.97, y: 0.95, mirror: false };
     const start = (value: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, camera: value } });
     expect(isMainMessage(start(camera))).toBe(true);
@@ -95,7 +103,7 @@ describe("isMainMessage", () => {
     expect(isMainMessage({ type: "cameraLayout", sessionId: "a", camera, hidden: "yes" })).toBe(false);
   });
   it("carries the microphone choice and the request for the inputs (plan 074)", () => {
-    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], hideSystemUi: false };
+    const native = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [1], systemUi: { menuBar: false, dock: false, desktop: false } };
     const start = (microphone: unknown) => ({ type: "start", sessionId: "a", quality: DEFAULT_QUALITY, native: { ...native, microphone } });
     expect(isMainMessage(start({ enabled: false }))).toBe(true);
     expect(isMainMessage(start({ enabled: true }))).toBe(true);

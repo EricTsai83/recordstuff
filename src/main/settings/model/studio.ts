@@ -11,7 +11,7 @@ import { microphoneDeviceGroup, microphoneGroup, studioAudioGroups } from "./aud
 import { cameraGroups, cameraPreviewGroup, cameraShapeGroups } from "./camera";
 import { type Group, group, switchChoices } from "./group";
 import { inputNames, inputProblems, type InputProblem, type InputProblems } from "./inputs";
-import { hideSystemUiGroup, screenGroup } from "./recording";
+import { systemUiGroups, screenGroup } from "./recording";
 import { DEFAULT_STUDIO_PREVIEW, STUDIO_PREVIEW_RATES, STUDIO_VIEWS, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 
 const VIEW_LABELS: Record<StudioView, [PlainMessageKey, PlainMessageKey]> = {
@@ -89,16 +89,20 @@ function studioTypeGroup(ctx: AppContext, unlocked: boolean): Group {
 const pickerProblem = (problem: InputProblem | undefined): { problem?: string; waiting?: boolean } =>
   problem ? { problem: problem.text, ...(problem.waiting ? { waiting: true } : {}) } : {};
 
-/** The screen's picker: the displays, as Recording settings lists them, and Hide menu bar and Dock (or the taskbar's). */
+/** The screen's picker: the displays, as Recording settings lists them, and its switches to hide the menu bar, the Dock and the desktop (plan 099), or the taskbar's. */
 function studioScreenGroups(ctx: AppContext, unlocked: boolean, problems: InputProblems): Group[] {
   const screen = screenGroup(ctx, unlocked);
-  const hide = hideSystemUiGroup(ctx, unlocked);
+  // `hideMenuBar` is `studioHideMenuBar` here, and so on: the same rows under the picker.
+  const hides = systemUiGroups(ctx, unlocked).map((hide) => {
+    const id = `studio${hide.id[0]!.toUpperCase()}${hide.id.slice(1)}`;
+    return { ...hide, ...group(id, hide.label, hide.enabled, hide.choices), control: "switch" as const,
+      ...(hide.note ? { note: hide.note } : {}), ...(hide.info ? { info: hide.info } : {}) };
+  });
   return [
     { ...group("studioScreen", screen.label, unlocked, screen.choices),
-      picker: { input: "screen", name: inputNames(ctx).screen, ...pickerProblem(problems.screen), locked: !unlocked, parts: ["studioHideSystemUi"] },
+      picker: { input: "screen", name: inputNames(ctx).screen, ...pickerProblem(problems.screen), locked: !unlocked, parts: hides.map((hide) => hide.id) },
       ...(screen.recovery ? { recovery: screen.recovery } : {}) },
-    { ...hide, ...group("studioHideSystemUi", hide.label, hide.enabled, hide.choices), control: "switch",
-      ...(hide.note ? { note: hide.note } : {}), ...(hide.info ? { info: hide.info } : {}) },
+    ...hides,
   ];
 }
 

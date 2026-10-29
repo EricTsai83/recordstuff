@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UtilityProcess } from "electron";
 import { DEFAULT_QUALITY } from "../../shared/quality";
 import { DEFAULT_CAMERA_POSITION } from "../../shared/camera-layout";
+import { SHOW_SYSTEM_UI } from "../../shared/system-ui";
 import type { HostMessage, MainMessage } from "../../shared/protocol";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("tests pass their own fork"); } } }));
@@ -31,7 +32,7 @@ function setup(display: string | undefined = "69733632", windows: Partial<Constr
     addonPath: "/out/native/recordstuff-capture.node",
     resolveDisplay: windows.resolveDisplay ?? (async () => display),
     ownPids: () => [100, 101],
-    hideSystemUi: () => true,
+    systemUi: (displayId) => ({ hide: { menuBar: true, dock: true, desktop: true }, ...(displayId === "69733632" ? { crop: { x: 0, y: 60, width: 3024, height: 1904 } } : {}) }),
     log: (message) => logs.push(message),
     fork: (_entry, args) => {
       const child = new Child();
@@ -214,7 +215,8 @@ describe("NativeCaptureHost", () => {
     const child = await started(ctx);
     expect(child.args).toEqual(["/out/native/recordstuff-capture.node"]);
     expect(child.sent).toEqual([{ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY,
-      native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101], hideSystemUi: true } }]);
+      native: { displayId: 69733632, recordingPath: "/out/a.recording.mp4", ownPids: [100, 101],
+        systemUi: { menuBar: true, dock: true, desktop: true }, crop: { x: 0, y: 60, width: 3024, height: 1904 } } }]);
   });
 
   it("asks for an editable recording only for a session the recorder made editable (plan 087, plan 097)", async () => {
@@ -287,7 +289,7 @@ describe("NativeCaptureHost", () => {
 
   it("rejects a listing whose process cannot start, rather than throwing into its caller", async () => {
     const host = new NativeCaptureHost({ entryPath: "/out/main/native-host-process.js", addonPath: "/out/native/recordstuff-capture.node",
-      resolveDisplay: async () => undefined, ownPids: () => [], hideSystemUi: () => false, log: () => {},
+      resolveDisplay: async () => undefined, ownPids: () => [], systemUi: () => ({ hide: SHOW_SYSTEM_UI }), log: () => {},
       fork: () => { throw new Error("entry missing"); } });
     let listed: Promise<unknown> | undefined;
     expect(() => { listed = host.listCameras(); }).not.toThrow();
@@ -449,7 +451,7 @@ describe("NativeCaptureHost", () => {
     const children: Child[] = [];
     const logs: string[] = [];
     const host = new NativeCaptureHost({
-      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], hideSystemUi: () => false, log: (line) => logs.push(line),
+      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], systemUi: () => ({ hide: SHOW_SYSTEM_UI }), log: (line) => logs.push(line),
       resolveDisplay: async () => { chosen = true; return "7"; },
       fork: () => { const child = new Child(); children.push(child); return child as unknown as UtilityProcess; },
     });
@@ -467,7 +469,7 @@ describe("NativeCaptureHost", () => {
   it("rejects the start when choosing the display fails, after the process is ready", async () => {
     const children: Child[] = [];
     const host = new NativeCaptureHost({
-      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], hideSystemUi: () => false,
+      entryPath: "/e.js", addonPath: "/a.node", ownPids: () => [1], systemUi: () => ({ hide: SHOW_SYSTEM_UI }),
       resolveDisplay: async () => { throw new Error("no answer"); },
       fork: () => { const child = new Child(); children.push(child); return child as unknown as UtilityProcess; },
     });

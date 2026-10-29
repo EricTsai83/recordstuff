@@ -24,6 +24,7 @@ import { recordedPosition } from "../../shared/camera-layout";
 import { PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { HostStartError, MEDIA_COMPONENTS_MISSING_EXIT, isHostMessage, type EngineFileReport, type HostMessage, type MainMessage, type MicrophoneDevice, type CameraChoice, type CameraDevice, type ScreenAccess } from "../../shared/protocol";
 import type { QualitySettings } from "../../shared/quality";
+import type { PixelRect, SystemUiChoice } from "../../shared/system-ui";
 import { volumeDb, type AudioVolume } from "../../shared/audio-volume";
 import type { RecorderHost, SessionCamera, SessionCapture } from "./recorder";
 import { FileWriteError } from "./file-writer";
@@ -51,7 +52,11 @@ export interface NativeCaptureHostOptions {
   beforeCapture?: () => void;
   /** RecordStuff's processes, main first, whose windows and sound the recording leaves out. */
   ownPids: () => number[];
-  hideSystemUi: () => boolean;
+  /**
+   * What of the system's chrome the recording of `displayId` leaves out, and the part of that display it records
+   * without the strips the hidden menu bar or Dock keep (plan 099), read as it starts.
+   */
+  systemUi: (displayId: string) => { hide: SystemUiChoice; crop?: PixelRect };
   /**
    * Before a recording with the microphone (plan 074): asks macOS for access if it never has, so the prompt comes
    * while the session starts, the recorder's capture-request deadline covering it, and not as a silent refusal.
@@ -205,9 +210,10 @@ export class NativeCaptureHost implements RecorderHost {
       this.excluding = true;
       this.exclusions += 1;
     }
+    const systemUi = this.options.systemUi(display);
     this.post({ type: "start", sessionId, quality, native: {
       displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
-      ownPids: this.options.ownPids(), hideSystemUi: this.options.hideSystemUi(),
+      ownPids: this.options.ownPids(), systemUi: systemUi.hide, ...(systemUi.crop ? { crop: systemUi.crop } : {}),
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
       ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
       // The recorder's choice for the session (plan 087), read once when it began, so its controls match its file.

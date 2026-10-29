@@ -11,7 +11,7 @@ test("old settings reset once at startup and preferences chosen in the UI surviv
   const settingsFile = path.join(first.data, "userData/settings.json");
   const backup = settingsFile + ".reset-backup";
   expect(JSON.parse(await fs.readFile(settingsFile, "utf8"))).toMatchObject({
-    version: 4, outputDir: path.join(first.data, "videos/RecordStuff"), language: "en", appearance: "system",
+    version: 5, outputDir: path.join(first.data, "videos/RecordStuff"), language: "en", appearance: "system",
     countdown: 3, notifications: true, trayClick: "menu", hotkey: { enabled: true, accelerator: "CommandOrControl+Shift+1" },
   });
   const original = await fs.readFile(backup, "utf8");
@@ -23,7 +23,7 @@ test("old settings reset once at startup and preferences chosen in the UI surviv
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-Hant");
   await first.close();
   const restarted = await launchApp({ data: first.data, offline: true });
-  expect(JSON.parse(await fs.readFile(settingsFile, "utf8"))).toMatchObject({ version: 4, language: "zh-TW" });
+  expect(JSON.parse(await fs.readFile(settingsFile, "utf8"))).toMatchObject({ version: 5, language: "zh-TW" });
   expect(await fs.readFile(backup, "utf8")).toBe(original);
   expect((await fs.readdir(path.dirname(settingsFile))).filter(name => name.startsWith("settings.json.reset-backup"))).toEqual(["settings.json.reset-backup"]);
   await restarted.close();

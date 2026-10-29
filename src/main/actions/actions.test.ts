@@ -199,7 +199,7 @@ describe("createActionHandler", () => {
     const actions: AppAction[] = [
       { setDisplay: { kind: "primary" } }, { setUpdateChecks: false }, { setNotifications: false },
       { setTrayClick: "menu" }, { setFileNameTemplate: "{date}" }, { setLibraryLayout: "list" }, { setLibraryPreviewSound: true },
-      { setAppearance: "dark" }, { setLanguage: "zh-TW" }, { setCountdown: 3 }, { setCountdownSound: true }, { setHideSystemUi: true },
+      { setAppearance: "dark" }, { setLanguage: "zh-TW" }, { setCountdown: 3 }, { setCountdownSound: true }, { setHideMenuBar: true }, { setHideDock: true }, { setHideDesktop: true },
       { setStudioOnStart: true },
       { setQuality: { level: "standard", resolutionCap: "1080p", frameRate: 30 } },
       { setMicrophone: false }, { setMicrophoneDevice: null },
@@ -207,7 +207,7 @@ describe("createActionHandler", () => {
     for (const action of actions) await act(action);
     expect(Object.fromEntries(saves.map(({ what, save }) => [what, save.locked === true]))).toEqual({
       display: true, "update checks": true, notifications: true, "tray click": false, "file name": true,
-      "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, "hide system UI": true, "Recording Studio on start": true, quality: true,
+      "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, "hide menu bar": true, "hide Dock": true, "hide desktop icons and widgets": true, "Recording Studio on start": true, quality: true,
       microphone: true, "microphone device": true,
     });
   });
@@ -425,9 +425,9 @@ describe("createActionHandler", () => {
     });
   });
 
-  it("saves hiding the menu bar and Dock only on macOS (plan 076, D6)", async () => {
+  it("saves hiding the menu bar, the Dock and the desktop only on macOS (plan 076, D6; plan 099)", async () => {
     const windows = harness({ platform: "win32" });
-    await windows.act({ setHideSystemUi: true });
+    for (const action of [{ setHideMenuBar: true }, { setHideDock: true }, { setHideDesktop: true }]) await windows.act(action);
     expect(windows.deps.savePreference).not.toHaveBeenCalled();
   });
 

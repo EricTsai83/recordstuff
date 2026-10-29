@@ -7,6 +7,7 @@ import type { DisplayInfo } from "../../../shared/display";
 import { displayResolution } from "../../display/display-source";
 import { translate as t } from "../../../shared/i18n";
 import { effectiveQuality, fitWithinCap } from "../../../shared/quality";
+import { systemUiCrop } from "../../../shared/system-ui";
 import type { AppAction, AppContext } from "../../app/ui-model";
 import { type Group, group, relaunchChoice, switchChoices } from "./group";
 
@@ -79,13 +80,29 @@ export function cameraField(ctx: AppContext, id: CameraField): { min: number; ma
   return { min: Math.ceil(CAMERA_MIN_SIZE * shorter), max: Math.floor(CAMERA_MAX_SIZE * shorter), value: Math.round(share * shorter), unit: "px" };
 }
 
-/** The recording's size on the display it would capture now, at the chosen quality; none when it cannot be found. */
+/**
+ * The recording's size on the display it would capture now, at the chosen quality; none when it cannot be found. On
+ * macOS, without the strips a hidden menu bar or Dock keeps (plan 099), as main cuts them when the recording starts.
+ */
 export function recordedSize(ctx: AppContext): { width: number; height: number } | undefined {
   const display = previewDisplay(ctx);
   if (!display) return undefined;
+  return fitWithinCap(recordedArea(ctx, display), effectiveQuality(ctx.quality, ctx.platform).resolutionCap);
+}
+
+/**
+ * The part of `display` a recording takes, in its pixels, before the cap: the live session's, which main cut as it
+ * started, while one shows this display; otherwise the display without the strips a hidden menu bar or Dock keeps now
+ * (macOS, plan 099), or all of it.
+ */
+function recordedArea(ctx: AppContext, display: DisplayInfo): { width: number; height: number } {
+  if (ctx.captureArea?.display === display.id) return { width: ctx.captureArea.width, height: ctx.captureArea.height };
   const even = (value: number): number => Math.max(2, Math.round(value / 2) * 2);
-  const quality = effectiveQuality(ctx.quality, ctx.platform);
-  return fitWithinCap({ width: even(display.logicalWidth * display.scaleFactor), height: even(display.logicalHeight * display.scaleFactor) }, quality.resolutionCap);
+  const bounds = { x: display.x ?? 0, y: display.y ?? 0, width: display.logicalWidth, height: display.logicalHeight };
+  const crop = ctx.platform === "darwin" && ctx.systemUi && display.workArea && display.x !== undefined && display.y !== undefined
+    ? systemUiCrop(bounds, display.workArea, display.scaleFactor, ctx.systemUi) : undefined;
+  return crop ? { width: crop.width, height: crop.height }
+    : { width: even(display.logicalWidth * display.scaleFactor), height: even(display.logicalHeight * display.scaleFactor) };
 }
 
 export function recordedShorterSide(ctx: AppContext): number {
@@ -208,7 +225,8 @@ export function cameraPreviewGroup(ctx: AppContext): Group | undefined {
     info: t("Drag the bubble, or move it with the arrow keys (Shift for larger steps).", language),
     cameraPreview: {
       mode,
-      display: { width: display.logicalWidth, height: display.logicalHeight },
+      // The recorded picture's proportions (plan 099: without the strips main cuts), which the engine's frames fill.
+      display: recordedArea(ctx, display),
       bubble: { width: layout.width, height: layout.height, rounding: layout.rounding, mirror: layout.mirror },
       // The bubble rule (plan 097): a session's camera unless hidden from the recording; before a session the camera on.
       composed: session ? camera.session !== undefined && !camera.session.hidden : camera.enabled,

@@ -175,7 +175,7 @@ fn record(name: &str, source: Source, audio: AudioRequest, (width, height): (u32
         video_bitrate: 6_000_000,
         audio_bitrate: 256_000,
         own_pids: vec![std::process::id() as i32],
-        hide_system_ui: false,
+        system_ui: Default::default(),
         path: path.clone(),
         source,
         audio,

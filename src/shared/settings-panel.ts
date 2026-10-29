@@ -161,7 +161,7 @@ export interface SettingsGroup {
  */
 export interface CameraPreviewView {
   mode: "live" | "recording" | "off";
-  /** The display's logical size. */
+  /** The recorded picture's size in the display's pixels (without the strips plan 099 cuts): its proportions are the stage's. */
   display: { width: number; height: number };
   /** The bubble's shape (fractions of the display's shorter side), as the recording composes it. */
   bubble: { width: number; height: number; rounding: number; mirror: boolean };

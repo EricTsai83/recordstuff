@@ -307,7 +307,7 @@ const timeoutAfter = <T = never>(ms: number, what: string): Promise<T> =>
 /** Default stored preferences for the app host: English, no network, no shortcut taken, notifications allowed. */
 export function seedSettings(data: string, seed: SeedSettings = {}): Record<string, unknown> {
   return {
-    version: 4,
+    version: 5,
     outputDir: path.join(data, "videos/RecordStuff"),
     quality: { videoQuality: "standard", resolutionCap: "source", frameRate: 30 },
     language: "en",

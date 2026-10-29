@@ -41,7 +41,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 | --- | --- |
 | createActionHandler | Bind the collaborators once and return the handler |
 | handler: quit gate | While a quit runs, answer false to every action but quit, touching nothing |
-| handler: preferences | Each `set…` action through `savePreference` with its lock: display, hiding the menu bar and Dock (macOS only), update checks, notifications, file name, countdown, countdown sound and quality need a settled recorder; tray click, library layout, appearance and language do not; the shortcut goes through `AppShortcuts.set` |
+| handler: preferences | Each `set…` action through `savePreference` with its lock: display, hiding the menu bar, the Dock or the desktop (one action each, plan 099; macOS only), update checks, notifications, file name, countdown, countdown sound and quality need a settled recorder; tray click, library layout, appearance and language do not; the shortcut goes through `AppShortcuts.set` |
 | handler: commands | Open a Settings tab, a link, the output folder, the log or System Settings; start, stop or cancel; quit or relaunch; clear app data. Each answers the outcome the Settings row reads; a raced update click while recording answers true and opens nothing |
 
 ## Display selection
@@ -101,7 +101,7 @@ Process callbacks log uncaught exceptions and rejections; the first uncaught exc
 
 | Method | Contract |
 | --- | --- |
-| constructor | Entry and addon paths, `resolveDisplay`, `ownPids`, `hideSystemUi`, optional `displayPoint` and `excludeOwnWindows` (Windows), a log, an injectable `fork`; default 5-second ping and 8-second readiness deadline |
+| constructor | Entry and addon paths, `resolveDisplay`, `ownPids`, `systemUi` (per display: the chosen parts and the crop, plan 099), optional `displayPoint` and `excludeOwnWindows` (Windows), a log, an injectable `fork`; default 5-second ping and 8-second readiness deadline |
 | onMessage / onFailure | Register valid-message and host-failure (`capture_host_crashed`, `capture_host_unresponsive`) callbacks |
 | start | Tear down any previous process; require the temporary path and register its file outcome; fork and choose the display concurrently; on ready start the heartbeat; log both timings; a display that is missing or not numeric becomes an `error` (`capture_start_failed`); otherwise exclude own windows (Windows) and post `start` with `native`; a launch or ready failure tears the new process down and rejects |
 | record | Post record for the watched session; throws when no process is attached to it |

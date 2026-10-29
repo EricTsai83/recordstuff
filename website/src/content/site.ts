@@ -156,7 +156,9 @@ export const windowsRetainedData = [
 /** RecordStuff's Recording and General tabs, in the app's order (src/main/settings/settings-model.ts). */
 export const settings = [
   { tab: "Recording", setting: "Screen", options: "Primary or a connected display", fallback: "Primary" },
-  { tab: "Recording", setting: "Hide menu bar and Dock", options: "On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings", fallback: "Off" },
+  { tab: "Recording", setting: "Hide menu bar", options: "On / Off; leaves the menu bar and its icons out of recordings, and the strip it keeps at the top", fallback: "Off" },
+  { tab: "Recording", setting: "Hide Dock", options: "On / Off; leaves the Dock out of recordings, and its strip when it stays on screen", fallback: "Off" },
+  { tab: "Recording", setting: "Hide desktop icons and widgets", options: "On / Off; leaves desktop icons and widgets out of recordings", fallback: "Off" },
   { tab: "Recording", setting: "Output folder", options: "Any folder", fallback: "Movies → RecordStuff" },
   { tab: "Recording", setting: "File name format", options: "A pattern of {date}, {time} and other placeholders", fallback: "{date} {time}" },
   { tab: "Recording", setting: "Editable recordings", options: "On / Off; keeps the camera and each sound apart, so Edit… can still change them. Files are about twice as large", fallback: "Off" },

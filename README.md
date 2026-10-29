@@ -43,7 +43,9 @@ Open settings with **⌥⌘,**:
 | Setting | Options | Default |
 | --- | --- | --- |
 | Screen | Primary display / a connected display | Primary display |
-| Hide menu bar and Dock | On / Off; leaves the menu bar, Dock, desktop icons and widgets out of recordings (macOS only) | Off |
+| Hide menu bar | On / Off; leaves the menu bar and its icons out of recordings, and the strip it keeps at the top of the screen (macOS only) | Off |
+| Hide Dock | On / Off; leaves the Dock out of recordings, and its strip when it stays on screen (macOS only) | Off |
+| Hide desktop icons and widgets | On / Off; leaves desktop icons and widgets out of recordings (macOS only) | Off |
 | Output folder | Any folder | Movies → RecordStuff |
 | Countdown | Off / 3 / 5 / 10 s, optional tick | 3 s, tick on |
 | Microphone | On / Off, also in the menu bar menu; recorded with system audio in one track (headphones avoid speaker echo) | Off |

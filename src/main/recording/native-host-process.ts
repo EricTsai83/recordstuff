@@ -15,6 +15,7 @@ import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogra
 import { PreviewDelivery } from "./preview-delivery";
 import { AUDIO_BITS_PER_SECOND, fitWithinCap, videoBitsPerSecond, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import { engineRejection } from "../lib/engine-module";
+import type { SystemUiChoice } from "../../shared/system-ui";
 
 interface ProbeResult { width: number; height: number }
 interface PreparedInfo {
@@ -66,7 +67,7 @@ interface NativeCapture {
   probe(displayId: number, displayPoint?: { x: number; y: number }, source?: CaptureSource): Promise<ProbeResult>;
   prepare(options: {
     displayId: number; displayPoint?: { x: number; y: number }; width: number; height: number; frameRate: number;
-    videoBitrate: number; audioBitrate: number; ownPids: number[]; hideSystemUi: boolean; path: string;
+    videoBitrate: number; audioBitrate: number; ownPids: number[]; systemUi: SystemUiChoice; path: string;
     source?: CaptureSource; audio?: AudioOptions; camera?: CameraOptions; editable?: boolean;
   }): Promise<PreparedInfo>;
   record(): void;
@@ -540,9 +541,11 @@ export class NativeHost {
       await this.accessCheck;
       const began = this.now();
       // napi-rs reads an absent optional object as None and refuses null, so the point is left out on macOS.
-      const chosen = this.development.source;
+      // A development source wins; otherwise the display without the strips a hidden menu bar or Dock keeps (plan 099),
+      // which is the engine's area of it: the display's filter, cut by `sourceRect`, its size the cropped one.
+      const chosen = this.development.source ?? (native.crop ? { kind: "area" as const, area: native.crop } : undefined);
       const audio = this.audio(native);
-      if (chosen || this.development.audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
+      if (this.development.source || this.development.audio) this.log(`development capture: source ${JSON.stringify(chosen ?? "display")}, audio ${JSON.stringify(audio ?? "all")}`);
       if (native.editable) this.log("editable recording (plan 087): the screen, each sound and the camera on tracks of their own");
       const source = chosen
         ? await this.capture.probe(native.displayId, native.displayPoint, chosen)
@@ -553,7 +556,7 @@ export class NativeHost {
       const prepared = await this.capture.prepare({
         displayId: native.displayId, ...(native.displayPoint ? { displayPoint: native.displayPoint } : {}), width: size.width, height: size.height, frameRate: quality.frameRate,
         videoBitrate: videoBps, audioBitrate: AUDIO_BITS_PER_SECOND,
-        ownPids: native.ownPids, hideSystemUi: native.hideSystemUi, path: native.recordingPath,
+        ownPids: native.ownPids, systemUi: native.systemUi, path: native.recordingPath,
         ...(chosen ? { source: chosen } : {}), ...(audio ? { audio } : {}),
         ...(native.camera ? { camera: { ...native.camera, preview: this.cameraPreview } } : {}),
         ...(native.editable ? { editable: true } : {}),

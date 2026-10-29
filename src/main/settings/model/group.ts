@@ -28,8 +28,9 @@ export function group(
 }
 
 /** Rows drawn as an on/off switch, and as a row of segments; any other choice row is a menu. */
-const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "studioOnStart", "hideSystemUi", "editableRecording", "microphone", "camera", "studioCamera",
-  "studioMicrophone", "studioHideSystemUi", "cameraShown", "cameraMirror"]);
+const SWITCHES = new Set(["notifications", "updateChecks", "countdownSound", "studioOnStart", "hideMenuBar", "hideDock", "hideDesktop", "hideTaskbar",
+  "editableRecording", "microphone", "camera", "studioCamera", "studioMicrophone", "studioHideMenuBar", "studioHideDock", "studioHideDesktop",
+  "studioHideTaskbar", "cameraShown", "cameraMirror"]);
 const SEGMENTED = new Set(["countdown", "videoQuality", "language", "appearance"]);
 /** Segments drawn as icons, each named by its label: Appearance's three, one click each (2026-10-05, formerly a menu). */
 const ICON_SEGMENTS = new Set(["appearance"]);
@@ -43,11 +44,12 @@ const TROUBLESHOOTING_SECTIONS = new Set(["diagnostics", "cleanup"]);
 const STUDIO_SECTIONS = new Set(["studioChoices", "studioPreview", "studioLive"]);
 /** Related rows share an inset list; a section's first row carries its heading. */
 const SECTIONS: Record<string, string> = {
-  screen: "source", hideSystemUi: "source", outputFolder: "source", fileName: "source", editableRecording: "source",
+  screen: "source", hideMenuBar: "source", hideDock: "source", hideDesktop: "source", hideTaskbar: "source", outputFolder: "source", fileName: "source", editableRecording: "source",
   countdown: "countdown", countdownSound: "countdown", studioOnStart: "countdown",
   microphone: "audio", microphoneDevice: "audio", microphoneLevel: "audio",
   camera: "camera", cameraDevice: "camera", cameraTest: "camera", cameraStudio: "camera",
-  studioControls: "studioChoices", studioType: "studioChoices", studioScreen: "studioChoices", studioHideSystemUi: "studioChoices",
+  studioControls: "studioChoices", studioType: "studioChoices", studioScreen: "studioChoices",
+  studioHideMenuBar: "studioChoices", studioHideDock: "studioChoices", studioHideDesktop: "studioChoices", studioHideTaskbar: "studioChoices",
   studioCameraDevice: "studioChoices", studioCamera: "studioChoices", cameraWidth: "studioChoices", cameraHeight: "studioChoices",
   cameraRounding: "studioChoices", cameraMirror: "studioChoices", studioMicrophoneDevice: "studioChoices", studioMicrophone: "studioChoices",
   cameraPreview: "studioPreview", studioPreviewRate: "studioPreview", studioPreviewView: "studioPreview", studioLive: "studioPreview",

@@ -30,7 +30,7 @@ function fakeEngine() {
   return { engine, factory: (onEvent: (event: Event) => void) => { emit = onEvent; return engine; }, emit: (event: Event) => emit(event) };
 }
 
-const native: NativeStart = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [10, 11], hideSystemUi: false };
+const native: NativeStart = { displayId: 1, recordingPath: "/out/a.recording.mp4", ownPids: [10, 11], systemUi: { menuBar: false, dock: false, desktop: false } };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 async function prepared() {
@@ -559,6 +559,29 @@ describe("NativeHost", () => {
     expect(logs[0]).toContain("development capture: source");
   });
 
+  it("records a display cut by main as the engine's area of it, which the size and the cap follow (plan 099)", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const crop = { x: 0, y: 74, width: 3456, height: 2160 };
+    const systemUi = { menuBar: true, dock: false, desktop: true };
+    new NativeHost(port, fake.factory, () => undefined);
+    port.deliver({ type: "start", sessionId: "s1", quality: { ...DEFAULT_QUALITY, resolutionCap: "1080p" }, native: { ...native, systemUi, crop } });
+    await flush();
+    const source = { kind: "area", area: crop };
+    expect(fake.engine.probe).toHaveBeenCalledWith(1, undefined, source);
+    expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ source, systemUi }));
+  });
+
+  it("prefers a development source over main's cut", async () => {
+    const port = new Port();
+    const fake = fakeEngine();
+    const source = { kind: "window" as const, windowId: 7 };
+    new NativeHost(port, fake.factory, () => undefined, undefined, { source });
+    port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: 74, width: 3456, height: 2160 } } });
+    await flush();
+    expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ source }));
+  });
+
   it("logs audio that arrived too late to mix", async () => {
     const { port, engine, logs } = await prepared();
     engine.stop.mockResolvedValueOnce({ drainMs: 1, drainPaddedFrames: 0, frameLeadAvgMs: 0, frameLeadMaxMs: 0, lateAudioFrames: [0, 480] } as never);
@@ -597,7 +620,7 @@ describe("NativeHost", () => {
     // A 3456x2234 display capped at 1080p keeps its aspect ratio.
     expect(engine.prepare).toHaveBeenCalledWith(expect.objectContaining({
       displayId: 1, width: 1670, height: 1080, frameRate: 30, audioBitrate: 256_000,
-      ownPids: [10, 11], hideSystemUi: false, path: "/out/a.recording.mp4",
+      ownPids: [10, 11], systemUi: { menuBar: false, dock: false, desktop: false }, path: "/out/a.recording.mp4",
     }));
     expect(port.sent[1]).toMatchObject({ type: "prepared", sessionId: "s1", mimeType: expect.stringContaining("video/mp4"),
       capture: { width: 1670, height: 1080, frameRate: 30, sampleRate: 48_000, channelCount: 2, audioBitsPerSecond: 256_000 } });
