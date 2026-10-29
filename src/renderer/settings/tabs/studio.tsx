@@ -138,7 +138,7 @@ function SwitchRow({ group, steady }: { group: SettingsGroup; steady?: boolean }
   const said = group.note ?? group.info;
   return (
     <div className="studio-switch-row" data-disabled={!group.enabled || undefined}>
-      <span id={`${id}-label`} className="studio-switch-name">{group.label}</span>
+      <span id={`${id}-label`} className="font-semibold">{group.label}</span>
       <Switch id={id} aria-labelledby={`${id}-label`} checked={on} disabled={!group.enabled}
         aria-describedby={said ? `${id}-note` : undefined}
         onCheckedChange={(checked) => void model.choose(group.id, checked ? "on" : "off", id)} />
@@ -190,7 +190,7 @@ function Picker({ group, iconOnly }: { group: SettingsGroup; iconOnly: boolean }
       </ControlTooltip>
       <PopoverContent align="start" className="studio-picker-menu w-80 gap-2">
         {on && <SwitchRow group={on} />}
-        <div role="radiogroup" aria-label={group.label} className="studio-picker-choices" data-disabled={!group.enabled || undefined}>
+        <div role="radiogroup" aria-label={group.label} className="grid gap-[1px]" data-disabled={!group.enabled || undefined}>
           {group.choices.map((choice) => {
             const checked = model.committed(group) === choice.id;
             return (
@@ -332,8 +332,8 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
         </PopoverTrigger>
       </ControlTooltip>
       <PopoverContent align="end" className="studio-picker-menu w-72 gap-2">
-        <div role="radiogroup" aria-label={rate.label} className="studio-picker-choices">
-          <span className="studio-switch-name">{rate.label}</span>
+        <div role="radiogroup" aria-label={rate.label} className="grid gap-[1px]">
+          <span className="font-semibold">{rate.label}</span>
           {rate.choices.map((choice) => {
             const checked = chosen === choice.id;
             return (

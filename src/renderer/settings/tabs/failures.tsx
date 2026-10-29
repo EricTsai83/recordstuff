@@ -88,8 +88,8 @@ function FailureRow({ result }: { result: RecordingResultView }) {
           <Icon />
           <span className="result-unread" hidden={result.acknowledged} />
         </span>
-        <span className="result-text">
-          <span className="result-line">
+        <span className="flex-1 min-w-0 flex flex-col gap-[2px] pt-[1px]">
+          <span className="flex items-start gap-[7px]">
             <span
               className="sr-only result-unread-label"
               hidden={result.acknowledged}
@@ -113,10 +113,10 @@ function FailureRow({ result }: { result: RecordingResultView }) {
                 {model.text(outcomeLabels[result.outcomeState])}
               </Badge>
             </span>
-            <span className="result-time">{result.time}</span>
+            <span className="result-time flex-none text-muted-foreground text-[12px] tabular-nums">{result.time}</span>
             <ChevronDown className="result-chevron" aria-hidden="true" />
           </span>
-          <span className="result-outcome">{result.outcome}</span>
+          <span className="result-outcome block text-muted-foreground text-[12px]">{result.outcome}</span>
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="result-details" keepMounted>
@@ -127,7 +127,7 @@ function FailureRow({ result }: { result: RecordingResultView }) {
         <p className="result-persistence" hidden={!result.persistenceWarning}>
           {result.persistenceWarning}
         </p>
-        <div className="result-actions">
+        <div className="result-actions flex flex-wrap gap-[6px] my-[10px] mx-0">
           {result.actions.map((action) => (
             <Button
               key={action.id}

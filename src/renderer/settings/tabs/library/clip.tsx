@@ -153,7 +153,8 @@ export const Clip = memo(function Clip({
               variant="secondary"
               size="icon-sm"
               id={`clip-${item.id}-sound`}
-              className="clip-sound"
+              // The preview's speaker, at the picture's top right while the preview plays.
+              className="clip-sound absolute top-[7px] right-[7px]"
               aria-label={translate(sound ? "Mute" : "Unmute", language)}
               onPointerLeave={(event) => {
                 const back = event.relatedTarget instanceof Node && event.currentTarget.closest(".clip")?.querySelector(".clip-thumb")?.contains(event.relatedTarget);

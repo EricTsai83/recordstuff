@@ -79,7 +79,7 @@ export function CategoryPicker() {
           >
             <Check className="library-category-check" aria-hidden="true" />
             <span className="library-category-label">{option.label}</span>
-            <span className="library-category-count">{count(option.scope?.folder)}</span>
+            <span className="library-category-count tabular-nums text-muted-foreground">{count(option.scope?.folder)}</span>
           </div>
         ))}
       </div>
@@ -157,10 +157,10 @@ export function CategoryPicker() {
           {group("favorites", model.text("Favorites"))}
           {group("others", model.text("All categories"))}
           {!options.length && (
-            <p className="library-category-none">{translate("No categories match “{query}”.", language, { query: filter.trim() })}</p>
+            <p className="library-category-none p-2 text-[12px] text-muted-foreground wrap-anywhere">{translate("No categories match “{query}”.", language, { query: filter.trim() })}</p>
           )}
         </div>
-        <div className="library-category-separator" role="separator" />
+        <div className="h-[1px] my-1 mx-[2px] bg-border" role="separator" />
         <Button
           id="library-category-new"
           variant="ghost"
@@ -197,9 +197,9 @@ export function CategoryHeader() {
   return (
     <div className="library-category-head" id="library-category-head">
       <h2 className="library-category-title">{name}</h2>
-      <span className="library-category-total">{translate(count === 1 ? "1 recording" : "{count} recordings", language, { count })}</span>
+      <span className="library-category-total flex-none text-[13px] text-muted-foreground">{translate(count === 1 ? "1 recording" : "{count} recordings", language, { count })}</span>
       {typeof folder === "string" && (
-        <span className="library-category-actions">
+        <span className="flex gap-[2px] ml-auto text-muted-foreground">
           <ControlTooltip label={favoriteLabel}>
             <Button
               id="library-category-favorite"

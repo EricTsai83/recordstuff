@@ -33,9 +33,9 @@ function Step({ id, icon, title, badge, about, children }: {
   return (
     <li className="onboarding-step">
       <span className="onboarding-step-icon" aria-hidden="true">{icon}</span>
-      <span className="onboarding-step-head">
-        <span id={`${id}-title`} className="onboarding-step-title">{title}</span>
-        <span className="onboarding-badge">{badge}</span>
+      <span className="flex items-center gap-[6px] min-w-0">
+        <span id={`${id}-title`} className="text-[13px] font-semibold">{title}</span>
+        <span className="py-0 px-[6px] rounded-[999px] text-[12px] text-muted-foreground bg-muted">{badge}</span>
         {/* Opened at once, as every ? in the app (2026-10-26, the maintainer's request): it is hovered to be read. */}
         <ControlTooltip label={detail} delay={0}>
           <Button variant="ghost" size="icon-sm" className="onboarding-about" id={`${id}-about`}
@@ -45,7 +45,7 @@ function Step({ id, icon, title, badge, about, children }: {
         </ControlTooltip>
         <span id={`${id}-detail`} className="sr-only">{detail}</span>
       </span>
-      <span className="onboarding-step-end">{children}</span>
+      <span className="flex items-center justify-end gap-2">{children}</span>
     </li>
   );
 }
@@ -97,7 +97,7 @@ export function OnboardingDialog() {
             <DialogTitle id="onboarding-title">{model.text("Welcome to RecordStuff")}</DialogTitle>
             <DialogDescription>{model.text("Allow these to start recording.")}</DialogDescription>
           </DialogHeader>
-          <ol className="onboarding-steps">
+          <ol className="grid m-0 p-0 list-none">
             <Step id="onboarding-screen" icon={<MonitorUp />} title={model.text("Screen recording")} badge={model.text("Required")}
               about="Lets RecordStuff record your screen and its sound. Turn RecordStuff on in System Settings; macOS may then ask you to quit and reopen it.">
               {guide.screen === "granted" ? <Allowed />
@@ -115,7 +115,7 @@ export function OnboardingDialog() {
             {guide.camera && <InputStep name="camera" input={guide.camera} busy={busy} waiting={!ready} />}
           </ol>
           {/* A press that did not apply, said in the dialog, which hides the page under it (review pass 2). */}
-          {failure && <p id="onboarding-failure" className="onboarding-failure" role="alert">{failure}</p>}
+          {failure && <p id="onboarding-failure" className="m-0 text-[12px] text-destructive-ink" role="alert">{failure}</p>}
           <DialogFooter className="onboarding-footer">
             <span className="onboarding-start">
               {!ready ? "" : unasked ? model.text("Not allowed ones turn off when you finish.")

@@ -92,7 +92,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           <Action group={group} choice={group.choices[0]!} wrap />
         ) : group.id === "about" ? (
           <div className="about-identity">
-            <h2 id={`${id}-label`} className="about-title">
+            <h2 id={`${id}-label`} className="inline-flex items-center gap-[6px] text-muted-foreground m-0 text-[12px] font-medium">
               <span className="about-mark" aria-hidden="true" />
               RecordStuff
             </h2>

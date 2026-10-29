@@ -84,7 +84,7 @@ export function EditedLayer({ video, edit }: { video: HTMLVideoElement | null; e
     bubble = { left: left + rect.x * scale, top: top + rect.y * scale, width: rect.width * scale, height: rect.height * scale, radius: bubbleRadius(layout, rect) * scale };
   }
   return (
-    <div ref={layer} className="edited-layer" aria-hidden="true">
+    <div ref={layer} className="edited-layer absolute inset-0 z-[0] pointer-events-none" aria-hidden="true">
       {editable?.preview.firstSound && <audio ref={firstSound} src={editable.preview.firstSound} crossOrigin="anonymous" preload="auto" hidden />}
       {editable?.preview.secondSound && <audio ref={sound} src={editable.preview.secondSound} crossOrigin="anonymous" preload="auto" hidden />}
       {editable?.preview.camera && (

@@ -50,7 +50,7 @@ export function TextSetting({
       />
       <FieldDescription
         variant="note"
-        className={`note text-note${refused ? " text-note-error" : ""}`}
+        className={`note text-note${refused ? " text-destructive-ink" : ""}`}
         id={`setting-${group.id}-note`}
         hidden={!note}
       >

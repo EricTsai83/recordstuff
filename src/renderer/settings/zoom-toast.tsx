@@ -126,13 +126,13 @@ function ZoomNotice({
       }}
     >
       <div className="zoom-toast-row">
-        <p className="zoom-toast-value" role="status" aria-live="polite">
+        <p className="m-0 min-w-[56px] pl-1 text-[13px] tabular-nums" role="status" aria-live="polite">
           <span className="sr-only">{model.text("Zoom")} </span>
           <strong>{Math.round(zoom.factor * 100)}%</strong>
         </p>
         {/* At 80% or 150% the step that went there stops, but keeps the focus it has, so Escape still reaches the card. */}
         <div
-          className="zoom-toast-controls"
+          className="flex items-center gap-[6px]"
           role="group"
           aria-label={model.text("Zoom")}
         >

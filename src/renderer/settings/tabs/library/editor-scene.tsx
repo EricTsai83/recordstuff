@@ -175,7 +175,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   );
   if (!editable?.camera || !scene || !camera || frame.width === 0 || frame.height === 0) {
     grab.current = undefined;
-    return <div ref={setOverlay} className="editor-overlay">{sound}</div>;
+    return <div ref={setOverlay} className="editor-overlay absolute inset-0 z-[0] pointer-events-none">{sound}</div>;
   }
   // The picture as the player draws it: contained in the stage, centred.
   const scale = Math.min(stage.width / frame.width, stage.height / frame.height) || 0;
@@ -273,7 +273,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
   const pointer = { onPointerMove, onPointerUp, onPointerCancel: onPointerLost, onLostPointerCapture: onPointerLost };
   return (
     <>
-      <div ref={setOverlay} className="editor-overlay">
+      <div ref={setOverlay} className="editor-overlay absolute inset-0 z-[0] pointer-events-none">
         {sound}
         {camera.shown && (
           <>
@@ -331,7 +331,7 @@ export function EditorCamera({ editor }: { editor: EditorView }) {
           size slider is the handles' keyboard counterpart. A layer of its own beside the bubble's, over the player's
           shaded bars, which dimmed the handles under them (a hands-on round); the bubble's stays under them. */}
       {selected && now.shown && !busy && (
-        <div className="editor-overlay editor-camera-handles">
+        <div className="editor-overlay absolute inset-0 z-[0] pointer-events-none editor-camera-handles">
           {CORNERS.map((corner) => (
             <span
               key={`${corner.bottom ? "bottom" : "top"}-${corner.right ? "right" : "left"}`}
@@ -356,7 +356,9 @@ function VolumeRow({ id, label, value, disabled, focusRing, set }: { id: string;
   return (
     <div className="editor-scene-row">
       <span aria-hidden="true">{label}</span>
-      <span className="editor-scene-track">
+      {/* A fixed width, as `.slider-setting`'s: in a shrink-to-fit row a percentage leaves the track no length, and the
+          slider would never measure itself to show its thumb. */}
+      <span className="flex flex-none w-[140px]">
         <Slider
           id={id}
           value={[volumeToFader(value)]}
@@ -427,7 +429,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
           {/* What is set once and seldom again (the maintainer's review of 2026-10-26: the overall volumes, adjusted while
               listening, have a panel of their own that stays open as the preview plays). */}
           <div className="editor-options" role="group" aria-label={name}>
-            <div className="editor-options-group">
+            <div className="grid gap-1">
               <div className="editor-scene-row">
                 <label htmlFor="editor-skim">{model.text("Skimming")}</label>
                 <OptionInfo id="editor-skim-note" text={model.text("Move over the timeline to preview; moving away returns to the playhead, and a click sets it.")} />
@@ -493,7 +495,7 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
   ];
   if (lanes.length === 0) return null;
   return (
-    <div className="editor-options-group editor-lanes" role="group" aria-label={model.text("Show on the timeline")}>
+    <div className="grid gap-1 editor-lanes" role="group" aria-label={model.text("Show on the timeline")}>
       <div className="editor-scene-row editor-options-title-row">
         <p className="editor-options-title">{model.text("Show on the timeline")}</p>
         <OptionInfo id="editor-lanes-note" text={model.text("Only what the timeline shows: a hidden track is still exported.")} />
@@ -677,7 +679,7 @@ function SelectionVolumeRow({ editor, input }: { editor: EditorView; input: Volu
           <Icon />
         </Button>
       </ControlTooltip>
-      <span className="editor-scene-track">
+      <span className="flex flex-none w-[140px]">
         <Slider
           id={`editor-volume-selection-${input}`}
           value={[volumeToFader(value)]}

@@ -449,7 +449,7 @@ export function Player({
           </div>
         ))}
         <div className="pc-top" hidden={!title}>
-          <div className="pc-heading">
+          <div className="flex gap-3 items-start">
             <div className="pc-heading-text">
               <p className="pc-title">{title}</p>
               <p className="pc-meta player-meta" hidden={!meta}>
@@ -565,7 +565,7 @@ export function Player({
               />
             </div>
             <span className="pc-time">{reading}</span>
-            <span className="pc-spacer" />
+            <span className="flex-1" />
             {trailing}
           </div>
         </div>

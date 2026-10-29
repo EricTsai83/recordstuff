@@ -41,7 +41,8 @@ export function ToastHost() {
                 label: (
                   <>
                     <span className="toast-action-label">{undo}</span>
-                    <kbd className="toast-key">{key}</kbd>
+                    {/* The undo toast is Sonner's own; only the shortcut beside its Undo is ours, quieter than the label. */}
+                    <kbd className="toast-key ml-[6px] [font:inherit] opacity-[0.6]">{key}</kbd>
                   </>
                 ),
                 onClick: (event) => {

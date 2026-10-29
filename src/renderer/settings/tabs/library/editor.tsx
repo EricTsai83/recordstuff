@@ -598,14 +598,14 @@ function EditorPanel() {
   if (!editor || editor.state === "loading") {
     return (
       <div className="editor-panel" aria-busy="true">
-        <p className="editor-message text-muted-foreground">{model.text("Loading the recording…")}</p>
+        <p className="editor-message my-1 mx-0 wrap-anywhere text-muted-foreground">{model.text("Loading the recording…")}</p>
       </div>
     );
   }
   if (editor.state !== "ready") {
     return (
       <div className="editor-panel">
-        <p className="editor-message" role="alert">{editor.message}</p>
+        <p className="editor-message my-1 mx-0 wrap-anywhere" role="alert">{editor.message}</p>
         <div className="editor-actions">
           {(editor.state === "stale" || editor.state === "unreadable") && (
             <Button id="editor-discard" variant="outline" onClick={() => void model.discardEdit()}>
@@ -613,7 +613,7 @@ function EditorPanel() {
               {model.text("Discard edit")}
             </Button>
           )}
-          <span className="editor-spacer" />
+          <span className="flex-[1_1_0]" />
           <Button id="editor-done" variant="outline" onClick={() => void model.closeEditor()}>{model.text("Close")}</Button>
         </div>
       </div>
@@ -753,13 +753,15 @@ function EditorPanel() {
             <span className="editor-tool-label" aria-hidden="true">{model.text("Split")}</span>
           </Button>
         </ControlTooltip>
-        <span className="editor-spacer" />
+        <span className="flex-[1_1_0]" />
         <OverallVolume editor={editor} />
         <EditorOptions editor={editor} />
         {/* The keys, opened by a click as well as named to assistive technology (a
             hands-on round found a tooltip alone showed nothing on a click). Beside Export, drawn as a key cap rather
             than as one of the edits' tools (2026-10-25, the maintainer's request). */}
-        <span className="editor-end">
+        {/* The keys and Export at the row's end, the keys against Export (2026-10-25, the maintainer's request); the outcome
+            before them takes what Export's states leave, so the edits and the times never move. */}
+        <span className="flex items-center gap-2 ms-1">
         <Popover>
           <ControlTooltip label={model.text("Keyboard shortcuts")}>
             <PopoverTrigger render={<button type="button" className="editor-keys-trigger" />} id="editor-keys" aria-label={`${model.text("Keyboard shortcuts")}: ${keys}${camera ? ` · ${model.text("C hide or show the camera in the selection")}` : ""}${inputs.length > 0 ? ` · ${model.text("V set the volume of the selection")}` : ""}`}>
@@ -917,7 +919,8 @@ function EditorPanel() {
         {editor.notes.map((note) => (
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
-        {model.skimAt !== undefined && <span className="editor-skimmer" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
+        {/* Where the pointer skims (2026-10-25): thinner than the playhead and of the accent, so the two are told apart. */}
+        {model.skimAt !== undefined && <span className="editor-skimmer absolute top-0 bottom-0 z-[3] w-[1px] bg-primary pointer-events-none" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         </div>
         {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
             time as the pictures above; a stretch is selected by a click, or by Enter on it. */}
@@ -1026,12 +1029,12 @@ function EditorPanel() {
         <i className="editor-ruler-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} />
       </div>
       {(editor.notes.length > 0 || editor.saveFailure || (editor.blocked && editor.export.phase !== "exporting")) && (
-        <ul className="editor-notes">
-          {editor.saveFailure && <li className="editor-failure" role="alert">{editor.saveFailure}</li>}
+        <ul className="editor-notes flex flex-col gap-1 m-0 p-0 list-none text-muted-foreground wrap-anywhere">
+          {editor.saveFailure && <li className="text-destructive-ink wrap-anywhere" role="alert">{editor.saveFailure}</li>}
           {editor.blocked && editor.export.phase !== "exporting" && <li>{editor.blocked}</li>}
           {editor.notes.map((note) => (
             <li key={note.at}>
-              <span className="editor-note-time">{at(note.at)}</span> {note.text}
+              <span className="tabular-nums text-foreground">{at(note.at)}</span> {note.text}
             </li>
           ))}
         </ul>

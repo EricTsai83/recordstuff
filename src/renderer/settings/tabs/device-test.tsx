@@ -128,8 +128,8 @@ export function DeviceTestStage({ group, kind }: { group: SettingsGroup; kind: "
         <Button id={id} variant="outline" size="clip" className="device-stage-tile flex-row! items-center! gap-3! border-dashed px-3! py-2.5!" disabled={!group.enabled}
           aria-pressed={false} aria-describedby={`${id}-caption`} onClick={() => toggle(true)}>
           <span className="device-stage-tile-icon" aria-hidden="true"><Icon /></span>
-          <span className="device-stage-tile-text">
-            <span className="device-stage-tile-title">{model.text(kind === "camera" ? "Test camera" : "Test microphone")}</span>
+          <span className="grid gap-[2px] min-w-0">
+            <span className="text-[13px] font-medium">{model.text(kind === "camera" ? "Test camera" : "Test microphone")}</span>
             <span id={`${id}-caption`} className="device-stage-caption">{caption}</span>
           </span>
         </Button>
@@ -151,7 +151,7 @@ export function DeviceTestStage({ group, kind }: { group: SettingsGroup; kind: "
   return (
     <div className="device-stage" role="group" aria-label={group.label}>
       <div className="device-stage-strip" data-running={running || undefined}>
-        <Icon className="device-stage-glyph" aria-hidden="true" />
+        <Icon className="flex-none w-[20px] h-[20px] text-muted-foreground" aria-hidden="true" />
         <InputMeter segmented readout off={!running} />
         <TestButton group={group} kind={kind} running={running} toggle={toggle} describedBy={`${id}-caption`} />
       </div>

@@ -50,7 +50,7 @@ function StatusBell({ open, setOpen }: { open: boolean; setOpen: (open: boolean)
       <Button id="status-bell" variant="ghost" size="icon" data-tone={status.tone}
         className="status-bell darwin:window-no-drag relative size-9 short:size-8 rounded-lg text-muted-foreground hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent"
         aria-label={status.title} aria-expanded={open} aria-controls="status" onClick={() => setOpen(!open)}>
-        <span className="notice-icon">
+        <span className="relative inline-flex flex-none">
           <Bell aria-hidden="true" />
           <span className="notice-dot" aria-hidden="true" />
         </span>
@@ -90,8 +90,8 @@ function Status({ rail = false, open = false }: { rail?: boolean; open?: boolean
           <Lock strokeWidth={2} />
         </span>
       )}
-      <div className="status-text">
-        <div className="status-heading">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
           <p id="status-title" className="status-title">
             {status?.title}
           </p>
@@ -305,7 +305,7 @@ export function SettingsApp() {
                       >
                         {/* A collapsed sidebar marks unread items with a dot on the icon's corner; the count stays in the
                             tab's name. */}
-                        <span className="notice-icon">
+                        <span className="relative inline-flex flex-none">
                           <Icon className="tab-icon size-4" strokeWidth={2} />
                           {count && <span className="notice-dot tab-dot" aria-hidden="true" />}
                         </span>

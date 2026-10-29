@@ -450,30 +450,14 @@
 /* Feature layout (plan 069). Pages compose the primitives in components/ui; a primitive's own look, and any change to
    it, belongs to the primitive (a variant or prop) or to utilities at its call site, which win over this layer. These
    rules lay out the pages' own elements with tokens, and may place a primitive (margin, grid cell) where no utility of
-   its sets the same property. */
+   its sets the same property. An element styled by one simple rule of its own (flex, gap, spacing, size, a token
+   colour) takes utilities at its call site instead (2026-10-29); a rule stays here when it needs a selector, a state,
+   a pseudo-element, a query or a value utilities would only spell out. */
 @layer components {
-  /* The undo toast is Sonner's own; only the shortcut beside its Undo is ours, quieter than the label. */
-  .toast-key {
-    margin-left: 6px;
-    font: inherit;
-    opacity: 0.6;
-  }
   .zoom-toast-row {
     display: flex;
     align-items: center;
     gap: clamp(12px, 5vw, 24px);
-  }
-  .zoom-toast-value {
-    margin: 0;
-    min-width: 56px;
-    padding-left: 4px;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-  }
-  .zoom-toast-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
   /* The selected sidebar tab's red cap sits inside the tile like a sleeve over the end of a rod. The tile clips it, so
      its outer edge is the tile's own curve; its inner edge is the border's inner curve, a concave arc whose ends meet
@@ -722,15 +706,6 @@
   .about-mark {
     --m: 16px;
   }
-  .about-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--muted-foreground);
-    margin: 0;
-    font-size: 12px;
-    font-weight: 500;
-  }
   .about-version,
   .about-credit {
     margin: 0;
@@ -755,12 +730,6 @@
     font-weight: 620;
     color: var(--foreground);
     margin: 14px 0 10px 2px;
-  }
-  .section-icon {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--primary);
   }
   /* A day of recordings or failures: its name and, for recordings, the count beside it. Days are divided by one
      separator between them, nothing beside or under the heading. */
@@ -1093,12 +1062,6 @@
   }
   /* The first-launch guide (2026-10-26): one line to a step, its icon, name, badge and ⓘ, then where it stands with its
      press at the end; what each is for is behind its ⓘ (the maintainer's choice of a sparse layout). */
-  .onboarding-steps {
-    display: grid;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
   .onboarding-step {
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr) auto;
@@ -1124,23 +1087,6 @@
     width: 16px;
     height: 16px;
   }
-  .onboarding-step-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-  .onboarding-step-title {
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .onboarding-badge {
-    padding: 0 6px;
-    border-radius: 999px;
-    font-size: 12px;
-    color: var(--muted-foreground);
-    background: var(--muted);
-  }
   .onboarding-about {
     margin-inline-start: -2px;
     color: var(--muted-foreground);
@@ -1148,12 +1094,6 @@
   .onboarding-about svg {
     width: 14px;
     height: 14px;
-  }
-  .onboarding-step-end {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
   }
   .onboarding-note,
   .onboarding-start {
@@ -1166,11 +1106,6 @@
   }
   .onboarding-start {
     margin-inline-end: auto;
-  }
-  .onboarding-failure {
-    margin: 0;
-    font-size: 12px;
-    color: var(--destructive-ink);
   }
   .onboarding-allowed {
     display: inline-flex;
@@ -1470,10 +1405,6 @@
     overflow-x: hidden;
     overflow-y: auto;
   }
-  .studio-picker-choices {
-    display: grid;
-    gap: 1px;
-  }
   .studio-picker-choice {
     display: flex;
     align-items: flex-start;
@@ -1523,9 +1454,6 @@
     gap: 2px 10px;
     min-height: 28px;
     font-size: 12px;
-  }
-  .studio-switch-name {
-    font-weight: 600;
   }
   .studio-switch-note {
     grid-column: 1 / -1;
@@ -1604,12 +1532,6 @@
     padding: 12px;
     color: var(--media-foreground);
   }
-  .device-stage-glyph {
-    flex: none;
-    width: 20px;
-    height: 20px;
-    color: var(--muted-foreground);
-  }
   /* Stop over the running picture, in its corner. */
   .device-stage-stop {
     position: absolute;
@@ -1654,15 +1576,6 @@
   .device-stage-tile-icon > svg {
     width: 16px;
     height: 16px;
-  }
-  .device-stage-tile-text {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-  }
-  .device-stage-tile-title {
-    font-size: 13px;
-    font-weight: 500;
   }
   .studio-record {
     display: inline-flex;
@@ -1818,9 +1731,6 @@
   .text-note {
     flex-basis: 100%;
     margin-left: 0;
-  }
-  .text-note-error {
-    color: var(--destructive-ink);
   }
   /* A text field's row (plan 067): the field and its example share one right-hand column, and the label lines up with
      the field rather than with the middle of field and example together. */
@@ -2163,11 +2073,6 @@
   .status-title {
     font-weight: 600;
   }
-  .status-heading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
   /* The permission card: a lock in a ring beside the title, the actions across the card under them. */
   .status[data-permission] {
     flex: none;
@@ -2210,10 +2115,6 @@
     font-size: 12px;
     line-height: 1.5;
   }
-  .status-text {
-    min-width: 0;
-    flex: 1;
-  }
   .status-detail,
   #hint {
     font-size: 12px;
@@ -2242,11 +2143,6 @@
   }
   /* Something to look at on a collapsed sidebar: Troubleshooting's unread items and the status bell, a dot on the
      icon's top-right corner, wherever the icon sits in its tile. It takes no room: the icons keep one spacing. */
-  .notice-icon {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-  }
   .notice-dot {
     position: absolute;
     top: -3px;
@@ -2401,19 +2297,6 @@
     width: 16px;
     height: 16px;
   }
-  .result-text {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-top: 1px;
-  }
-  .result-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-  }
   .result-heading {
     flex: 1;
     min-width: 0;
@@ -2428,12 +2311,6 @@
   }
   .unread .result-reason {
     font-weight: 600;
-  }
-  .result-time {
-    flex: none;
-    color: var(--muted-foreground);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
   }
   .result-chevron {
     flex: none;
@@ -2456,11 +2333,6 @@
     background: var(--muted-foreground);
     box-shadow: 0 0 0 2px var(--background);
   }
-  .result-outcome {
-    display: block;
-    color: var(--muted-foreground);
-    font-size: 12px;
-  }
   .result-details {
     padding: 2px 16px 12px 56px;
   }
@@ -2477,12 +2349,6 @@
     font-size: 12px;
     color: var(--muted-foreground);
     overflow-wrap: anywhere;
-  }
-  .result-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 10px 0;
   }
   .result-technical {
     margin-top: 8px;
@@ -2644,21 +2510,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .library-category-count {
-    font-variant-numeric: tabular-nums;
-    color: var(--muted-foreground);
-  }
-  .library-category-none {
-    padding: 8px;
-    font-size: 12px;
-    color: var(--muted-foreground);
-    overflow-wrap: anywhere;
-  }
-  .library-category-separator {
-    height: 1px;
-    margin: 4px 2px;
-    background: var(--border);
-  }
   .library-category-new {
     justify-content: flex-start;
     width: 100%;
@@ -2679,17 +2530,6 @@
     white-space: nowrap;
     font-size: 18px;
     font-weight: 600;
-  }
-  .library-category-total {
-    flex: none;
-    font-size: 13px;
-    color: var(--muted-foreground);
-  }
-  .library-category-actions {
-    display: flex;
-    gap: 2px;
-    margin-left: auto;
-    color: var(--muted-foreground);
   }
   /* A day out of view skips layout and paint: resizing or zooming the window (a title-bar double-click animates through
      dozens of widths) then lays out only the visible days instead of every card in the library. The clip margin keeps
@@ -2820,12 +2660,6 @@
     right: 0;
     color: var(--foreground);
     opacity: 0;
-  }
-  /* The preview's speaker, at the picture's top right while the preview plays. */
-  .clip-sound {
-    position: absolute;
-    top: 7px;
-    right: 7px;
   }
   .clip:hover .clip-more,
   .clip:focus-within .clip-more,
@@ -3069,10 +2903,6 @@
     gap: 10px;
     padding: 12px 14px 14px;
     font-size: var(--text-xs);
-  }
-  .editor-message {
-    margin: 4px 0;
-    overflow-wrap: anywhere;
   }
   /* The parts sit side by side across the bar, as long as they last: a kept one tinted, a removed one hatched. */
   .editor-timeline {
@@ -3484,16 +3314,6 @@
     filter: drop-shadow(0 0 1px var(--media));
     pointer-events: none;
   }
-  /* Where the pointer skims (2026-10-25): thinner than the playhead and of the accent, so the two are told apart. */
-  .editor-skimmer {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 3;
-    width: 1px;
-    background: var(--primary);
-    pointer-events: none;
-  }
   /* The playhead's place on the ruler too, so it is found under the pictures as well as over them. */
   .editor-ruler-playhead {
     position: absolute;
@@ -3608,14 +3428,6 @@
   .editor-export {
     flex-wrap: nowrap;
   }
-  /* The keys and Export at the row's end, the keys against Export (2026-10-25, the maintainer's request); the outcome
-     before them takes what Export's states leave, so the edits and the times never move. */
-  .editor-end {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-inline-start: 4px;
-  }
   /* A key cap, not one of the edits' tools: a muted key with a deeper lower edge. */
   .editor-keys-trigger {
     display: inline-flex;
@@ -3649,9 +3461,6 @@
     border-color: var(--ring);
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 50%, transparent);
   }
-  .editor-spacer {
-    flex: 1 1 0;
-  }
   .editor-length,
   .editor-position,
   /* As wide as 100% from the start, right-aligned (2026-10-26, the maintainer's request): 5% becoming 10% moved Cancel. */
@@ -3675,24 +3484,6 @@
     background: var(--primary);
     transition: width 0.2s linear;
   }
-  .editor-notes {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    color: var(--muted-foreground);
-    overflow-wrap: anywhere;
-  }
-  .editor-note-time {
-    font-variant-numeric: tabular-nums;
-    color: var(--foreground);
-  }
-  .editor-failure {
-    color: var(--destructive-ink);
-    overflow-wrap: anywhere;
-  }
   /* An editable recording's camera over the picture (plan 087, library/editor-scene.tsx): above the video, under the
      player's controls; only the bubble takes the pointer. In the edit view the controls' shaded bars let the pointer
      through to the bubble under them, so a camera near the top or the bottom can be grabbed; their buttons and sliders
@@ -3703,12 +3494,6 @@
   }
   .editor-stage .pc:not(.pc-idle) :is(.pc-top, .pc-bottom) :is(button, input, .pc-seek-area, .pc-volume) {
     pointer-events: auto;
-  }
-  .editor-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
   }
   .editor-camera {
     position: absolute;
@@ -3876,10 +3661,6 @@
     flex: none;
     margin: 0;
   }
-  .editor-options-group {
-    display: grid;
-    gap: 4px;
-  }
   /* A note behind a help icon beside the control's name, the control kept at the row's end; the ordinary pointer, as
      the app's other help icons have, since the note opens at once (2026-10-27, the maintainer's review). */
   .editor-scene-row:has(> .editor-options-info) > :first-child {
@@ -3913,13 +3694,6 @@
   .editor-scene-reset {
     justify-self: start;
     margin-inline-start: -8px;
-  }
-  /* A fixed width, as `.slider-setting`'s: in a shrink-to-fit row a percentage leaves the track no length, and the
-     slider would never measure itself to show its thumb. */
-  .editor-scene-track {
-    display: flex;
-    flex: none;
-    width: 140px;
   }
   .editor-scene-value {
     min-width: 5ch;
@@ -3965,11 +3739,6 @@
     padding: 32px 12px 4px;
     background: var(--media-shade-bottom);
   }
-  .pc-heading {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-  }
   .pc-heading-text {
     flex: 1;
     min-width: 0;
@@ -4004,9 +3773,6 @@
     height: 42px;
     align-items: center;
     gap: 2px;
-  }
-  .pc-spacer {
-    flex: 1;
   }
   .pc-volume {
     display: flex;
@@ -4152,12 +3918,6 @@
     position: relative;
     width: 100vw;
     height: 100vh;
-  }
-  .edited-layer {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
   }
   .edited-camera {
     position: absolute;
