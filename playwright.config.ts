@@ -25,5 +25,7 @@ export default defineConfig({
     { name: "drills", testMatch: ["**/drills.spec.ts", "**/drill-target.spec.ts"] },
     // The thumbnail measurement (`pnpm measure:thumbnails`): timings for a comparison, never part of a regression run.
     { name: "measure", testMatch: "**/*.measure.ts" },
+    // Share…'s candidate designs for the maintainer to pick (plan 100 step 3): pictures, never part of a regression run.
+    { name: "design", testMatch: "**/*.design.ts" },
   ],
 });
