@@ -136,6 +136,25 @@ describe("echo analyzer: testing the test", () => {
     expect(report.convergence[1]!.seconds!).toBeLessThan(3.2);
   });
 
+  it("judges a fixed phase per frequency as a change, and reports it normalized beside the gates", () => {
+    // A perfect canceller whose output went through a first-order all-pass (magnitude 1, phase varying with frequency).
+    const allPass = (pcm: Float32Array, a: number, gain = 1): Float32Array => {
+      const out = new Float32Array(pcm.length);
+      let x1 = 0, y1 = 0;
+      for (let i = 0; i < pcm.length; i++) { const y = -a * pcm[i]! + x1 + a * y1; x1 = pcm[i]!; y1 = y; out[i] = gain * y; }
+      return out;
+    };
+    // The gates judge the output as it is (D1 froze "output − input"): the phase change fails the unchanged-voice check.
+    const shifted = analyze(speech, allPass(speech.ideal, 0.6));
+    expect(failed(shifted, "G2")).toContain("Change without echo, full band (dB)");
+    // Normalized, the same output reads unchanged; 3 dB quieter still reads as a loss there.
+    expect(shifted.phaseNormalized!.full.changeDb!).toBeLessThan(-40);
+    expect(shifted.phaseNormalized!.full.medianLossDb!).toBeLessThan(0.5);
+    const quieter = analyze(speech, allPass(speech.ideal, 0.6, fromDb(-3)));
+    expect(quieter.phaseNormalized!.full.changeDb!).toBeGreaterThan(-40);
+    expect(quieter.phaseNormalized!.full.medianLossDb!).toBeGreaterThan(2.5);
+  });
+
   it("judges convergence on complete 100 ms windows, not a stretch's last frame alone", () => {
     // 30 dB removed throughout, except the far-end stretch's last whole frame at 10 dB: every 100 ms window still
     // reads above 15 dB, so both convergence times are found at once.

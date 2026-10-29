@@ -1,0 +1,28 @@
+[package]
+name = "recordstuff-echo-bench"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Plan 096 step 3: the offline bench of echo-removal candidates. Developer tooling; never shipped."
+
+# A package of its own, not a member of the engine's: the shipped engine does not build WebRTC (or need meson) until a
+# candidate passes the plan's gates.
+[workspace]
+
+[features]
+default = ["aec3", "c3"]
+# C3, the offline canceller of our own (pure Rust, with rustfft). Off, `c3` is refused: its size is read as the
+# difference between builds with and without it, neither with AEC3.
+c3 = ["dep:rustfft"]
+# C1 and C2: WebRTC's AEC3, built from source (meson, ninja). Without it the bench runs C3 and `none` only, which is
+# also how C3's size is read against a build with neither.
+aec3 = ["dep:webrtc-audio-processing", "dep:webrtc-audio-processing-config"]
+
+[dependencies]
+rustfft = { version = "6.4", optional = true }
+webrtc-audio-processing = { version = "~2.1", features = ["bundled", "experimental-aec3-config"], optional = true }
+webrtc-audio-processing-config = { version = "~2.1", optional = true }
+
+[profile.release]
+debug = false

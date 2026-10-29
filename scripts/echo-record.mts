@@ -45,7 +45,7 @@ import { hasTool, probe, requireMediaTimeout } from "./lib/verification/media-to
 import { RATE, writeWav } from "./lib/audio/echo-dsp.mts";
 import { FAR_SENTENCES, FAR_VOICES, SCRIPT_SECONDS, music, place, sayVoice, type VolumeEvent } from "./lib/audio/echo-material.mts";
 import { READING_LINES, VOICE_SECONDS, captureStage, composeTake, cut, findOffset, levelDb, mean, medianAndWorst, readVoice, servePage, soundTrackIndexes, type PageState } from "./lib/audio/echo-stage-b.mts";
-import { analyzeEcho, PROPOSED_GATES } from "./lib/audio/echo-analyze.mts";
+import { analyzeEcho, GATES } from "./lib/audio/echo-analyze.mts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUNDLE = developmentAppPath(REPO_ROOT);
@@ -412,7 +412,7 @@ async function main(): Promise<number> {
       ...medianAndWorst(taken.map(row => row.echoToVoiceDb ?? -Infinity)) };
   });
   const primary = byTake.filter(row => row.primary && row.median !== null);
-  const g0 = primary.length ? primary.some(row => row.median! >= PROPOSED_GATES.g0EchoToVoiceDb) : null;
+  const g0 = primary.length ? primary.some(row => row.median! >= GATES.g0EchoToVoiceDb) : null;
   // Only references that are the material (correlation 0.5 or more): a silent system track says nothing about the stage.
   const reference = (name: string): number[] => rows.filter(row => row.take === name && row.referenceScore >= 0.5).map(row => row.referenceDb);
   const stage = (low: string, high: string): string | null => {
@@ -425,7 +425,7 @@ async function main(): Promise<number> {
   const { outcome, code } = roundExit({ cleanupIncomplete, interrupted: interruptedBy, locked: desktop.lockedAt !== undefined,
     failed: (Boolean(runError) && !prerequisite) || g0 === false, blocked: prerequisite || g0 === null });
   const result = cleanupIncomplete ? "INCOMPLETE CLEANUP" : outcome.toUpperCase();
-  const summary = { result, g0: { threshold: PROPOSED_GATES.g0EchoToVoiceDb, pass: g0, byTake }, capture, muted, voice: voiceLevel ?? null, devices,
+  const summary = { result, g0: { threshold: GATES.g0EchoToVoiceDb, pass: g0, byTake }, capture, muted, voice: voiceLevel ?? null, devices,
     outputVolume: { before: originalVolume, muted: originalMuted }, runs, rows, files, cleanup, events, error: runError ? String(runError) : null,
     environment: { platform: process.platform, release: os.release(), node: process.version } };
   fs.writeFileSync(path.join(dir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
@@ -434,7 +434,7 @@ async function main(): Promise<number> {
     "# Real-speaker echo round (`pnpm echo:record`, plan 096 step 2)", "",
     `Result: **${result}**.${runError ? ` Stopped by: ${runError instanceof Error ? runError.message : String(runError)}.` : ""}`, "",
     `Devices: output ${devices.output.name}, input ${devices.input.name}. Runs: ${runs}. Voice: ${voiceLevel ? `${voiceLevel.overQuietDb.toFixed(1)} dB over the quiet before it` : "none"}.`, "",
-    `G0 (the echo within ${-PROPOSED_GATES.g0EchoToVoiceDb} dB of the voice, the median run of a primary condition): **${g0 === null ? "not measured" : g0 ? "pass" : "fail"}**.`, "",
+    `G0 (the echo within ${-GATES.g0EchoToVoiceDb} dB of the voice, the median run of a primary condition): **${g0 === null ? "not measured" : g0 ? "pass" : "fail"}**.`, "",
     "| Take | Primary | Runs | Echo below the floor | Echo/voice median (dB) | Worst run (dB) |", "| --- | --- | --- | --- | --- | --- |",
     ...byTake.map(row => `| ${row.take} | ${row.primary ? "yes" : "no"} | ${row.runs} | ${row.belowFloor} | ${f(row.median)} | ${f(row.worst)} |`), "",
     `System sound captured: speech ${capture.speech ?? "n/a"}; music ${capture.music ?? "n/a"}.`, "",

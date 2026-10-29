@@ -19,8 +19,8 @@ export const BANDS = [
 ] as const;
 export type BandName = typeof BANDS[number]["name"];
 
-/** The plan's proposed gates, applied as written until D1 freezes them; the report says they are proposed. */
-export const PROPOSED_GATES = {
+/** The plan's gates, frozen by the maintainer at D1 on 2026-10-29 (G3 judged per band as well as overall). */
+export const GATES = {
   g0EchoToVoiceDb: -30,
   g1aErleDb: 25,
   g1bErleDb: 15,
@@ -54,10 +54,15 @@ export interface AnalysisInput {
 export interface Check { gate: string; metric: string; value: number | null; expected: string; pass: boolean | null }
 export interface EchoReport {
   version: 1;
-  gates: "proposed";
+  gates: "frozen 2026-10-29";
   verdict: "pass" | "fail" | "invalid";
   /** Samples by which the output was shifted to line up with the input (positive: the output was late). */
   lagSamples: number;
+  /**
+   * Not judged: the voice figures with a fixed phase per frequency, read over the near-end-only stretch, taken out of
+   * the output first; absent without that stretch.
+   */
+  phaseNormalized?: Record<BandName, { changeDb: number | null; medianLossDb: number | null; p95LossDb: number | null; dropoutFraction: number | null }>;
   /** The echo in the input against the voice, each where it is alone, over 125 Hz–16 kHz: G0. */
   raw: { echoToVoiceDb: number | null };
   erle: Record<BandName, { frames: number; median: number | null; p5: number | null }>;
@@ -108,7 +113,7 @@ const empty = <T,>(make: () => T): Record<BandName, T> => Object.fromEntries(BAN
 
 export function analyzeEcho({ input, output, ideal, script, events }: AnalysisInput): EchoReport {
   const report: EchoReport = {
-    version: 1, gates: "proposed", verdict: "fail", lagSamples: 0, raw: { echoToVoiceDb: null },
+    version: 1, gates: "frozen 2026-10-29", verdict: "fail", lagSamples: 0, raw: { echoToVoiceDb: null },
     erle: empty(() => ({ frames: 0, median: null, p5: null })), convergence: [],
     nearEnd: empty(() => ({ frames: 0, changeDb: null, levelDb: null })),
     doubleTalk: empty(() => ({ frames: 0, medianLossDb: null, p95LossDb: null, dropoutFraction: null })), checks: [],
@@ -130,11 +135,19 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
   // Per frame and band: energies of input, output, ideal, the input's echo (input − ideal) and the change (output −
   // input), and the complex sums the voice's two-regressor fit needs.
   type Stats = { eIn: number; eOut: number; eIdeal: number; eEcho: number; eChange: number; xe: [number, number]; xy: [number, number]; ey: [number, number] };
-  const stats: Stats[][] = [];
-  const kinds: (SegmentKind | undefined)[] = [];
-  for (let f = 0; f < frames; f++) {
-    const [ir, ii] = spectrum(input, f * FRAME), [or, oi] = spectrum(aligned, f * FRAME), [xr, xi] = spectrum(ideal, f * FRAME);
-    stats.push(BINS.map(([lo, hi]) => {
+  const kinds = Array.from({ length: frames }, (_, f) => kindOf(f));
+  /** The stats with the output's bins multiplied by `rotation` (interleaved complex, one per bin). */
+  const statsFor = (rotation: Float64Array | undefined): Stats[][] => Array.from({ length: frames }, (_, f) => {
+    const [ir, ii] = spectrum(input, f * FRAME), [xr, xi] = spectrum(ideal, f * FRAME);
+    const [or, oi] = spectrum(aligned, f * FRAME);
+    if (rotation) {
+      for (let k = 0; k < SIZE; k++) {
+        const r = or[k]! * rotation[k * 2]! - oi[k]! * rotation[k * 2 + 1]!;
+        oi[k] = or[k]! * rotation[k * 2 + 1]! + oi[k]! * rotation[k * 2]!;
+        or[k] = r;
+      }
+    }
+    return BINS.map(([lo, hi]) => {
       const s: Stats = { eIn: 0, eOut: 0, eIdeal: 0, eEcho: 0, eChange: 0, xe: [0, 0], xy: [0, 0], ey: [0, 0] };
       for (let k = lo; k <= hi; k++) {
         const er = ir[k]! - xr[k]!, ei = ii[k]! - xi[k]!;
@@ -149,8 +162,39 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
         s.ey[0] += er * or[k]! + ei * oi[k]!; s.ey[1] += er * oi[k]! - ei * or[k]!;
       }
       return s;
-    }));
-    kinds.push(kindOf(f));
+    });
+  });
+  // The gates judge the output as it is, lag-aligned only (D1 froze them so). Reported beside them, never judged: the
+  // voice figures again with a fixed phase per frequency taken out, read over the near-end-only stretch, since a
+  // canceller's band-split filters shift phase by a constant amount (AEC3 at 48 kHz, 2026-10-29). Only bins whose
+  // phase is well defined there are rotated: energy within 60 dB of the loudest bin and coherence of at least 0.5.
+  const stats = statsFor(undefined);
+  let rotation: Float64Array | undefined;
+  {
+    const cross = new Float64Array(SIZE * 2), pin = new Float64Array(SIZE), pout = new Float64Array(SIZE);
+    let used = 0;
+    for (let f = 0; f < frames; f++) {
+      if (kinds[f] !== "near") continue;
+      const [ir, ii] = spectrum(input, f * FRAME), [or, oi] = spectrum(aligned, f * FRAME);
+      for (let k = 0; k < SIZE; k++) {
+        cross[k * 2] = cross[k * 2]! + ir[k]! * or[k]! + ii[k]! * oi[k]!;
+        cross[k * 2 + 1] = cross[k * 2 + 1]! + ir[k]! * oi[k]! - ii[k]! * or[k]!;
+        pin[k] = pin[k]! + ir[k]! ** 2 + ii[k]! ** 2;
+        pout[k] = pout[k]! + or[k]! ** 2 + oi[k]! ** 2;
+      }
+      used++;
+    }
+    if (used) {
+      rotation = new Float64Array(SIZE * 2);
+      const loudest = Math.max(...pin);
+      for (let k = 0; k < SIZE; k++) {
+        const magnitude = Math.hypot(cross[k * 2]!, cross[k * 2 + 1]!);
+        const coherence = magnitude ** 2 / Math.max(1e-30, pin[k]! * pout[k]!);
+        // conj(cross)/|cross|: multiplying the output by it undoes the bin's fixed phase; other bins are left as they are.
+        if (pin[k]! > loudest * 1e-6 && coherence >= 0.5) { rotation[k * 2] = cross[k * 2]! / magnitude; rotation[k * 2 + 1] = -cross[k * 2 + 1]! / magnitude; }
+        else rotation[k * 2] = 1;
+      }
+    }
   }
   const ofKind = (kind: SegmentKind): number[] => kinds.flatMap((k, f) => k === kind ? [f] : []);
   const silence = ofKind("silence"), far = ofKind("far"), near = ofKind("near"), double = ofKind("double");
@@ -159,6 +203,34 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
   const floor = (band: number, key: "eIn" | "eIdeal"): number =>
     (silence.length ? percentile(silence.map(f => stats[f]![band]![key]), 50) : percentile(all.map(f => stats[f]![band]![key]), 10)) ?? 0;
   const time = (frame: number): number => frame * FRAME / RATE;
+  const phaseStats = rotation ? statsFor(rotation) : undefined;
+  if (phaseStats) report.phaseNormalized = empty(() => ({ changeDb: null, medianLossDb: null, p95LossDb: null, dropoutFraction: null }));
+  /** Near end only: the change and the level; double-talk: the voice's loss per frame, from `from`'s figures. */
+  const voiceFigures = (from: Stats[][], b: number, idealFloor: number) => {
+    const nearFrames = near.map(f => from[f]![b]!);
+    const sum = (key: keyof Stats): number => nearFrames.reduce((total, s) => total + (s[key] as number), 0);
+    const nearEnd = nearFrames.length && sum("eIn") > 0
+      ? { frames: nearFrames.length, changeDb: Math.max(-120, db(sum("eChange") / sum("eIn"))), levelDb: db(sum("eOut") / sum("eIn")) }
+      : { frames: nearFrames.length, changeDb: null, levelDb: null };
+    // The voice in double-talk: frames where the ideal is 15 dB over its floor and within 30 dB of its loud frames.
+    const loud = percentile(double.map(f => from[f]![b]!.eIdeal), 95) ?? 0;
+    const voiced = double.filter(f => from[f]![b]!.eIdeal > Math.max(idealFloor * 31.6, loud * 1e-3));
+    const losses = voiced.map(f => {
+      // Output ≈ g·ideal + h·echo, solved per frame: residual echo correlated with the input's echo is not read as voice.
+      const s = from[f]![b]!, det = s.eIdeal * s.eEcho - (s.xe[0] ** 2 + s.xe[1] ** 2);
+      let g: number;
+      if (s.eEcho < s.eIdeal * 1e-9 || det < s.eIdeal * s.eEcho * 1e-6) g = s.xy[0] / s.eIdeal;
+      else {
+        // g = (xy·eEcho − xe·ey) / det, real part.
+        g = (s.xy[0] * s.eEcho - (s.xe[0] * s.ey[0] - s.xe[1] * s.ey[1])) / det;
+      }
+      return Math.min(MAX_LOSS_DB, -20 * Math.log10(Math.max(g, 10 ** (-MAX_LOSS_DB / 20))));
+    });
+    const doubleTalk = losses.length >= MIN_FRAMES
+      ? { frames: losses.length, medianLossDb: percentile(losses, 50), p95LossDb: percentile(losses, 95), dropoutFraction: losses.filter(l => l > GATES.g3DropoutDb).length / losses.length }
+      : { frames: losses.length, medianLossDb: null, p95LossDb: null, dropoutFraction: null };
+    return { nearEnd, doubleTalk };
+  };
 
   BANDS.forEach((band, b) => {
     const inFloor = floor(b, "eIn"), idealFloor = floor(b, "eIdeal");
@@ -174,29 +246,14 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
     const erle = settled.map(f => erleOf(stats[f]![b]!.eIn, stats[f]![b]!.eOut));
     report.erle[band.name] = { frames: erle.length, median: percentile(erle, 50), p5: percentile(erle, 5) };
 
-    const nearFrames = near.map(f => stats[f]![b]!);
-    const sum = (key: keyof Stats): number => nearFrames.reduce((total, s) => total + (s[key] as number), 0);
-    report.nearEnd[band.name] = nearFrames.length && sum("eIn") > 0
-      ? { frames: nearFrames.length, changeDb: Math.max(-120, db(sum("eChange") / sum("eIn"))), levelDb: db(sum("eOut") / sum("eIn")) }
-      : { frames: nearFrames.length, changeDb: null, levelDb: null };
-
-    // The voice in double-talk: frames where the ideal is 15 dB over its floor and within 30 dB of its loud frames.
-    const loud = percentile(double.map(f => stats[f]![b]!.eIdeal), 95) ?? 0;
-    const voiced = double.filter(f => stats[f]![b]!.eIdeal > Math.max(idealFloor * 31.6, loud * 1e-3));
-    const losses = voiced.map(f => {
-      // Output ≈ g·ideal + h·echo, solved per frame: residual echo correlated with the input's echo is not read as voice.
-      const s = stats[f]![b]!, det = s.eIdeal * s.eEcho - (s.xe[0] ** 2 + s.xe[1] ** 2);
-      let g: number;
-      if (s.eEcho < s.eIdeal * 1e-9 || det < s.eIdeal * s.eEcho * 1e-6) g = s.xy[0] / s.eIdeal;
-      else {
-        // g = (xy·eEcho − xe·ey) / det, real part.
-        g = (s.xy[0] * s.eEcho - (s.xe[0] * s.ey[0] - s.xe[1] * s.ey[1])) / det;
-      }
-      return Math.min(MAX_LOSS_DB, -20 * Math.log10(Math.max(g, 10 ** (-MAX_LOSS_DB / 20))));
-    });
-    report.doubleTalk[band.name] = losses.length >= MIN_FRAMES
-      ? { frames: losses.length, medianLossDb: percentile(losses, 50), p95LossDb: percentile(losses, 95), dropoutFraction: losses.filter(l => l > PROPOSED_GATES.g3DropoutDb).length / losses.length }
-      : { frames: losses.length, medianLossDb: null, p95LossDb: null, dropoutFraction: null };
+    const voice = voiceFigures(stats, b, idealFloor);
+    report.nearEnd[band.name] = voice.nearEnd;
+    report.doubleTalk[band.name] = voice.doubleTalk;
+    if (phaseStats) {
+      const normalized = voiceFigures(phaseStats, b, idealFloor);
+      report.phaseNormalized![band.name] = { changeDb: normalized.nearEnd.changeDb, medianLossDb: normalized.doubleTalk.medianLossDb,
+        p95LossDb: normalized.doubleTalk.p95LossDb, dropoutFraction: normalized.doubleTalk.dropoutFraction };
+    }
 
     if (band.name === "full") {
       const mean = (list: number[], key: "eIn"): number => list.reduce((t, f) => t + stats[f]![b]![key], 0) / Math.max(1, list.length);
@@ -219,7 +276,7 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
           const group = stretch.slice(w, w + 5).filter(f => audible.has(f));
           if (!group.length) continue;
           const value = erleOf(group.reduce((t, f) => t + stats[f]![b]!.eIn, 0) / group.length, group.reduce((t, f) => t + stats[f]![b]!.eOut, 0) / group.length);
-          if (value < PROPOSED_GATES.g1cErleDb) break;
+          if (value < GATES.g1cErleDb) break;
           seconds = Math.max(0, time(stretch[w]!) - start.at);
         }
         report.convergence.push({ ...start, seconds });
@@ -227,7 +284,7 @@ export function analyzeEcho({ input, output, ideal, script, events }: AnalysisIn
     }
   });
 
-  const g = PROPOSED_GATES, checks = report.checks;
+  const g = GATES, checks = report.checks;
   const add = (gate: string, metric: string, value: number | null, expected: string, test: (v: number) => boolean, applies = true): void => {
     checks.push({ gate, metric, value, expected, pass: !applies ? null : value === null ? false : test(value) });
   };
