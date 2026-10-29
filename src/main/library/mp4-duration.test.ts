@@ -32,7 +32,7 @@ describe("an editable recording's mark (plan 087)", () => {
   it("is RecordStuff's description in the movie's udta, and nothing else", async () => {
     const description = box("udta", box("rsed", Buffer.from('{"version":1,"sounds":["system"],"camera":null}')));
     expect(await mp4Facts(write("editable.mp4", box("ftyp", zeros(8)), moov(90000, 0, description), fragment(0, [3000, 3000]))))
-      .toEqual({ seconds: expect.closeTo(6000 / 90000, 6), editable: true });
+      .toEqual({ seconds: expect.closeTo(6000 / 90000, 6), editable: true, description: '{"version":1,"sounds":["system"],"camera":null}' });
     expect(await mp4Facts(write("other-udta.mp4", moov(90000, 0, box("udta", box("meta", zeros(4)))), fragment(0, [3000])))).toMatchObject({ editable: false });
     expect(await mp4Facts(write("plain.mp4", moov(90000), fragment(0, [3000])))).toMatchObject({ editable: false });
     expect(await mp4Facts(write("nothing.mp4", Buffer.from("no movie")))).toEqual({ editable: false });
