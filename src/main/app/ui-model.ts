@@ -235,6 +235,8 @@ export interface AppContext {
   editedRecordings?: ReadonlyMap<string, number>;
   /** Recordings whose Video is being prepared for sharing, or could not be, by path (plan 100). */
   preparingVideos?: ReadonlyMap<string, VideoState>;
+  /** Each version being prepared or failed, by recording path, for Share… (plan 100 step 3). */
+  shareStates?: ReadonlyMap<string, Partial<Record<import("../../shared/versions").VersionKind, VideoState>>>;
   /** Edits kept for recordings not in the Recordings tab (plan 100): Settings lists them and offers to remove them. */
   keptEdits?: readonly KeptEdit[];
   /** The bytes the versions prepared for sharing take in the cache (plan 100). */

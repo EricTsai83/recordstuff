@@ -22,6 +22,8 @@ import {
   BaseWindow,
   BrowserWindow,
   desktopCapturer,
+  clipboard,
+  ClipboardItem,
   dialog,
   globalShortcut,
   MessageChannelMain,
@@ -38,6 +40,7 @@ import {
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { NativeCaptureHost } from "./recording/native-capture-host";
 import { cameraPreviewOn, cameraPrototypeOn } from "./recording/native-host-process";
 import { CameraPreview } from "./recording/camera-preview";
@@ -93,6 +96,7 @@ import { Editing } from "./editing/editing";
 import { mp4Facts } from "./library/mp4-duration";
 import { VersionCache } from "./sharing/version-cache";
 import { inOutputFolder, Sharing } from "./sharing/sharing";
+import { copiedFiles, filesPropertyList, saveInto } from "./sharing/give";
 import { Housekeeping } from "./sharing/housekeeping";
 import { FolderWatch } from "./library/folder-watch";
 import { engineAddonPath } from "./lib/engine-module";
@@ -737,6 +741,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     ...(() => { const editor = editing.view(); return editor ? { editor } : {}; })(),
     editedRecordings: editing.edited(),
     preparingVideos: sharing.videoStates(),
+    shareStates: sharing.shareStates(),
     keptEdits: housekeeping.kept,
     versionCacheBytes: versionCache.size(),
     quality: quality(),
@@ -867,6 +872,56 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const icon = jpeg ? nativeImage.createFromBuffer(jpeg).resize({ width: 160 }) : await app.getFileIcon(file.path, { size: "normal" });
       contents.startDrag({ file: given.file, icon });
       return true;
+    },
+    // Share… (plan 100 step 3): its versions prepared as it opens, dragged together, copied as files or saved.
+    share: async (contents, id, choice) => {
+      const file = library.find(id);
+      if (!file) return { problem: "failed" as const };
+      const kinds = choice.kinds ?? ["video"];
+      try {
+        switch (choice.action) {
+          case "open":
+            await sharing.openShare(file.path);
+            return true;
+          case "drag": {
+            // A drag needs its files now: every one ready, or none is dragged and the panel shows what is not.
+            const given = await Promise.all(kinds.map(kind => sharing.handOut(file.path, kind)));
+            const files = given.flatMap(entry => ("file" in entry ? [entry.file] : []));
+            if (files.length !== kinds.length) return { problem: given.some(entry => "failed" in entry) ? "failed" as const : "preparing" as const };
+            const jpeg = library.madeThumbnail(file);
+            const icon = jpeg ? nativeImage.createFromBuffer(jpeg).resize({ width: 160 }) : await app.getFileIcon(files[0]!, { size: "normal" });
+            contents.startDrag({ file: files[0]!, files, icon });
+            return true;
+          }
+          case "copy": {
+            // Waits for what is still being prepared, then gives files (Sources as their files, D7), as Finder's ⌘C.
+            if (process.platform !== "darwin") return { problem: "failed" as const };
+            const handed = await Promise.all(kinds.map(kind => sharing.whenReady(file.path, kind)));
+            const files = (await Promise.all(handed.map(copiedFiles))).flat();
+            // The pasteboard's own file types, as Finder's ⌘C writes them: the list of paths, and the first as a file URL.
+            const raw = (format: string): string => `electron application/osclipboard;format="${format}"`;
+            await clipboard.write([new ClipboardItem({
+              [raw("NSFilenamesPboardType")]: new Blob([filesPropertyList(files)]),
+              [raw("public.file-url")]: new Blob([pathToFileURL(files[0]!).href]),
+            })]);
+            log(`versions: copied ${files.length} file(s) of ${file.path}`);
+            return true;
+          }
+          case "save": {
+            focusApp();
+            const chosen = await dialog.showOpenDialog({ title: translate("Choose where to save", settings.language), properties: ["openDirectory", "createDirectory"] });
+            const folder = chosen.canceled ? undefined : chosen.filePaths[0];
+            if (!folder) return { problem: "cancelled" as const };
+            const handed = await Promise.all(kinds.map(kind => sharing.whenReady(file.path, kind)));
+            const written = await saveInto(folder, handed);
+            log(`versions: saved ${written.join(", ")}`);
+            return true;
+          }
+        }
+      } catch (cause) {
+        log(`versions: ${choice.action} of ${kinds.join("+")} of ${file.path} failed: ${String(cause)}`);
+        return { problem: "failed" as const };
+      }
     },
     // A failure's way out (plan 100): System Settings' Storage, RecordStuff's data folder, or its log.
     help: async (action) => {

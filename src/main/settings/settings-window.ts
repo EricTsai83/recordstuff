@@ -16,7 +16,7 @@ import { fileNameProblemText, fileNameTemplateProblem, folderProblemText, type F
 import type { MoveFailure, MoveProblem, RenameProblem } from "../library/recordings-library";
 import { formatBytes } from "../../shared/quality";
 import type { FailureHelp, FailureHelpAction } from "../../shared/settings-panel";
-import { FAILURE_HELP_ACTIONS } from "../../shared/settings-panel";
+import { FAILURE_HELP_ACTIONS, isShareChoice, type ShareChoice } from "../../shared/settings-panel";
 import type { RecordingState } from "../../shared/state";
 
 import { proposesHotkey, settingsAction, settingsChecked, settingsView } from "./settings-model";
@@ -100,6 +100,11 @@ export interface SettingsWindowOptions {
   rename?: (id: string, name: string) => Promise<{ id: string } | { problem: RenameProblem; failure?: MoveFailure }>;
   /** Moves a listed recording into a listed folder, or with `null` into the output folder (recordings-library.ts `move`). */
   move?: (id: string, folder: string | null) => Promise<{ id: string } | { problem: MoveProblem; failure?: MoveFailure }>;
+  /**
+   * Share… for a listed recording (plan 100 step 3): opened, dragged, copied or saved; true when it took effect, or why
+   * not (a version still being prepared for a drag, one that could not be made, a save not chosen).
+   */
+  share?: (contents: WebContents, id: string, choice: ShareChoice) => Promise<true | { problem: "preparing" | "failed" | "cancelled" }>;
   /** A way out offered beside a failure (plan 100): System Settings' Storage, RecordStuff's data folder, or its log. */
   help?: (action: FailureHelpAction) => Promise<boolean>;
   /** The edit view's actions for a listed recording (plan 085): resolves whether the action took effect. */
@@ -274,6 +279,7 @@ export class SettingsWindow {
       if (typeof group === "string" && group.startsWith("recordingFile:") && isMoveChoice(choice)) return this.applyMove(group, choice, window);
       if (group === "libraryFolder") return this.applyFolder(choice, window);
       if (group === "failureHelp") return this.applyHelp(choice, window);
+      if (typeof group === "string" && group.startsWith("recordingShare:")) return this.applyShare(group, choice, window);
       // The edit view (plan 085): files, never preferences; an export answers once started and reports by the view.
       if (typeof group === "string" && group.startsWith("recordingEdit:")) return this.applyEdit(group, choice, window);
       // A recording's actions touch files, not preferences, and a drag must start while the pointer is still down.
@@ -753,6 +759,26 @@ export class SettingsWindow {
       ? { view, applied: true, folder: outcome.folder }
       : { view, applied: false, ...(isEditMoveProblem(outcome.problem) ? moveFailureText({ problem: outcome.problem, ...("failure" in outcome && outcome.failure ? { failure: outcome.failure } : {}) }, view.language)
         : { failure: folderProblemText(outcome.problem, view.language) }) }, recipient);
+  }
+
+  /**
+   * Share… (plan 100 step 3): the id must be listed now and the choice well formed; a drag must start while the pointer is
+   * still down, so it is answered at once, and a copy or a save waits for what it gives to be ready.
+   */
+  private async applyShare(group: string, choice: unknown, recipient: BrowserWindow): Promise<SettingsChoiceResult> {
+    const id = group.slice("recordingShare:".length);
+    const listed = this.options.context().library?.files.some(file => file.id === id) === true;
+    if (!listed || !isShareChoice(choice) || !this.options.share || recipient.isDestroyed() || this.quitStarted()) {
+      this.log(`settings window: refused ${JSON.stringify({ group, choice })}`);
+      const view = this.view();
+      return this.deliver({ view, applied: false, failure: translate("Could not complete this action. Try again.", view.language) }, recipient);
+    }
+    const outcome = await this.options.share(recipient.webContents, id, choice);
+    const view = this.view();
+    if (outcome === true) return this.deliver({ view, applied: true }, recipient);
+    const failure = outcome.problem === "cancelled" ? undefined
+      : translate(outcome.problem === "preparing" ? "Still being prepared. It can be dragged once it is ready; Copy and Save to… wait for it." : "This file could not be made. Try again.", view.language);
+    return this.deliver({ view, applied: false, ...(failure ? { failure } : {}) }, recipient);
   }
 
   /** A way out beside a failure (plan 100): opened as asked, from any page that offered it. */

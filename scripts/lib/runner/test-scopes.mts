@@ -49,8 +49,8 @@ export const TEST_SCOPES: readonly TestScope[] = [
   },
   {
     name: "library",
-    covers: "the Recordings tab: listing, categories, search, cards, previews, menus, rename, move, trash and undo",
-    unit: [`${PAGE}settings-library`, `${PAGE}settings-toast.test.ts`, "src/main/library/"],
+    covers: "the Recordings tab: listing, categories, search, cards, previews, menus, rename, move, trash and undo, and Share… (plan 100)",
+    unit: [`${PAGE}settings-library`, `${PAGE}settings-toast.test.ts`, "src/main/library/", "src/shared/settings-panel.test.ts"],
     ui: [{ file: "settings-library-performance.spec.ts" }, { file: "toast.spec.ts" }, { file: "settings-panel.spec.ts", tags: ["@library"] },
       { file: "components.spec.ts", tags: ["@library"] }, { file: "settings-layout.spec.ts", tags: ["@library"] },
       { file: "player.spec.ts", tags: ["@library"] }, { file: "settings-matrix.spec.ts", tags: ["@library"] }],

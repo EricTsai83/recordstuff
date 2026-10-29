@@ -250,6 +250,41 @@ export interface LibraryItemView {
   preparing?: { state: "preparing" | "failed"; label: string; hint: string; progress?: number };
   /** Localized tooltip of the Editable mark: what an editable recording is and how to send it (plan 100). */
   editableHint?: string;
+  /** Share… (plan 100 step 3): the versions this recording offers, localized, in the order they are shown. */
+  share?: ShareView;
+}
+/** One version Share… offers (plan 100): what it is called, the file it leaves as, and whether it is ready. */
+export interface ShareVersionView {
+  kind: "video" | "sound" | "original" | "screenOnly" | "sources";
+  label: string;
+  /** The file (or, for sources, the folder) it leaves as. */
+  fileName: string;
+  /** A few words under its name saying what it is: as it plays here, the mixed sound, everything recorded. */
+  detail?: string;
+  /** A line under the Original saying what it holds, so nothing private leaves unseen. */
+  note?: string;
+  /** Kept under More: Video without the camera and Sources. */
+  more?: true;
+  /** The default, marked recommended: the Video. */
+  recommended?: true;
+  state: "ready" | "preparing" | "failed";
+  progress?: number;
+}
+/** Share… for one recording (plan 100 step 3), localized. */
+export interface ShareView {
+  heading: string;
+  versions: ShareVersionView[];
+  labels: {
+    share: string; recommended: string; copy: string; saveTo: string; more: string; moreCount: string; close: string; drag: string;
+    preparing: string; failed: string;
+    /** `{percent}` filled in by the page. */
+    preparingNote: string;
+    failedNote: string;
+    /** `{count}` filled in by the page. */
+    selected: string;
+    copied: string;
+    saved: string;
+  };
 }
 /** A subfolder the Recordings tab offers (plan 071); its recordings are the items naming it. */
 export interface LibraryFolderView {
@@ -362,6 +397,18 @@ export interface RenameChoice { action: "rename"; name: string }
 export function isRenameChoice(value: unknown): value is RenameChoice {
   return typeof value === "object" && value !== null && (value as RenameChoice).action === "rename" && typeof (value as RenameChoice).name === "string";
 }
+/**
+ * Share… for a recording (group `recordingShare:<id>`, plan 100 step 3): `open` starts preparing what it offers; `drag`
+ * gives the files of `kinds` to a drag; `copy` puts them on the clipboard; `save` asks for a folder and writes them there.
+ */
+export interface ShareChoice { action: "open" | "drag" | "copy" | "save"; kinds?: ShareVersionView["kind"][] }
+const SHARE_KINDS: readonly string[] = ["video", "sound", "original", "screenOnly", "sources"];
+export function isShareChoice(value: unknown): value is ShareChoice {
+  if (typeof value !== "object" || value === null) return false;
+  const { action, kinds } = value as ShareChoice;
+  return (action === "open" || action === "drag" || action === "copy" || action === "save")
+    && (kinds === undefined || (Array.isArray(kinds) && kinds.length > 0 && kinds.length <= 5 && kinds.every((kind) => SHARE_KINDS.includes(kind))));
+}
 /** Moves a recording (group `recordingFile:<id>`) into a listed folder, or with `null` into the output folder itself. */
 export interface MoveChoice { action: "move"; folder: string | null }
 export function isMoveChoice(value: unknown): value is MoveChoice {
@@ -424,7 +471,7 @@ export interface SettingsBridge {
   read(): Promise<SettingsView>;
   capture(armed: boolean): Promise<SettingsView>;
   /** A choice is an offered option's id, a full-screen request for a recording (video-player.ts), its new name or folder, or a folder action. */
-  choose(group: string, choice: string | FullScreenChoice | RenameChoice | MoveChoice | FolderChoice | EditorChoice): Promise<SettingsChoiceResult>;
+  choose(group: string, choice: string | FullScreenChoice | RenameChoice | MoveChoice | FolderChoice | EditorChoice | ShareChoice): Promise<SettingsChoiceResult>;
   onChanged(callback: (view: SettingsView) => void): () => void;
   /** RecordStuff was hidden (⌘H); main says so before the window goes out of sight. The preload always offers it. */
   onHidden?(callback: () => void): () => void;

@@ -125,6 +125,68 @@ export class Sharing {
     return this.failed.has(id) ? { state: "failed" } : undefined;
   }
 
+  /**
+   * Each version of the recording at `source` being prepared, or that could not be (plan 100 step 3, Share…): absent for
+   * one ready or not asked for. Sound only waits on the Video it is made from, so it shows the Video's progress.
+   */
+  versionStates(source: string): Partial<Record<VersionKind, VideoState>> {
+    const states: Partial<Record<VersionKind, VideoState>> = {};
+    for (const job of this.queue) if (job.source === source) states[job.kind] = { state: "preparing", progress: 0 };
+    if (this.running?.job.source === source) states[this.running.job.kind] = { state: "preparing", progress: this.running.job.progress };
+    for (const id of this.failed) {
+      const at = id.indexOf("\n");
+      if (id.slice(at + 1) === source && !states[id.slice(0, at) as VersionKind]) states[id.slice(0, at) as VersionKind] = { state: "failed" };
+    }
+    return states;
+  }
+
+  /**
+   * Share… opened for the recording at `source` (plan 100 step 3): every version it offers that is a file of its own
+   * and not made yet is prepared, a clear sign it will be wanted.
+   */
+  async openShare(source: string): Promise<void> {
+    await this.movesSettled();
+    const described = await this.describeQuickly(source);
+    if (described.unknownEdit) return;
+    for (const kind of offeredVersions(described.subject)) {
+      if (!needsMaking(described.subject, kind) || kind === "original") continue;
+      if (!this.deps.cache.get(this.keyOf(described, kind))) this.prepare(source, kind);
+    }
+  }
+
+  /**
+   * The file `kind` of the recording at `source` leaves as, once it is ready: prepared first if it is not, waiting as
+   * long as that takes (a recording in progress pauses it). Rejects when it could not be made.
+   */
+  async whenReady(source: string, kind: VersionKind): Promise<string> {
+    for (;;) {
+      const given = await this.handOut(source, kind);
+      if ("file" in given) return given.file;
+      if ("failed" in given) throw new Error(`the ${kind} of ${source} could not be made`);
+      await new Promise<void>((resolve, reject) => {
+        const id = jobId(source, kind);
+        this.waiters.set(id, [...(this.waiters.get(id) ?? []), { resolve, reject }]);
+      });
+      if (this.failed.has(jobId(source, kind))) throw new Error(`the ${kind} of ${source} could not be made`);
+    }
+  }
+
+  /** Those waiting for a version (`whenReady`), by job, told when it ends however it ends. */
+  private readonly waiters = new Map<string, Array<{ resolve: () => void; reject: (cause: Error) => void }>>();
+
+  private wake(id: string): void {
+    const waiting = this.waiters.get(id);
+    this.waiters.delete(id);
+    for (const { resolve } of waiting ?? []) resolve();
+  }
+
+  /** Every recording with a version being prepared or that could not be, by path, with each version's state. */
+  shareStates(): ReadonlyMap<string, Partial<Record<VersionKind, VideoState>>> {
+    const sources = new Set([...this.queue.map((job) => job.source), ...(this.running ? [this.running.job.source] : []),
+      ...[...this.failed].map((id) => id.slice(id.indexOf("\n") + 1))]);
+    return new Map([...sources].map((source) => [source, this.versionStates(source)]));
+  }
+
   /** Every recording whose Video is being prepared or could not be, by path. */
   videoStates(): ReadonlyMap<string, VideoState> {
     const states = new Map<string, VideoState>();
@@ -234,12 +296,25 @@ export class Sharing {
   /** A recording renamed or moved in the Recordings tab: its versions follow it. */
   async moved(from: string, to: string): Promise<void> {
     for (const job of this.queue) if (job.source === from) job.source = to;
+    // A Copy or Save waiting for one of its versions ends now: it asked for the file at a path the recording has left,
+    // and nothing is ever given from that path again (Codex review: a running job wakes only its old id, and another
+    // recording may come to the old path). Asked again, it is the recording at its new path.
+    for (const [id, waiting] of [...this.waiters]) {
+      if (!id.endsWith(`\n${from}`)) continue;
+      this.waiters.delete(id);
+      for (const { reject } of waiting) reject(new Error(`the recording moved from ${from} to ${to}`));
+    }
     for (const id of [...this.failed]) if (id.endsWith(`\n${from}`)) { this.failed.delete(id); this.failed.add(id.replace(`\n${from}`, `\n${to}`)); }
     await this.deps.cache.moved(from, to);
   }
 
   private drop(source: string): void {
-    for (let index = this.queue.length - 1; index >= 0; index--) if (this.queue[index]!.source === source) this.queue.splice(index, 1);
+    for (let index = this.queue.length - 1; index >= 0; index--) {
+      const job = this.queue[index]!;
+      if (job.source !== source) continue;
+      this.queue.splice(index, 1);
+      this.wake(jobId(job.source, job.kind));
+    }
     for (const id of [...this.failed]) if (id.endsWith(`\n${source}`)) this.failed.delete(id);
     if (this.running?.job.source === source) this.yield("its recording left the folder");
   }
@@ -339,6 +414,8 @@ export class Sharing {
     this.running = running;
     running.done = this.run(running).finally(() => {
       if (this.running === running) this.running = undefined;
+      // Requeued after a pause, it is still awaited; otherwise those waiting look again.
+      if (!this.queue.some((queued) => jobId(queued.source, queued.kind) === jobId(job.source, job.kind))) this.wake(jobId(job.source, job.kind));
       this.deps.changed();
       if (this.queue.length) this.pump();
       // Nothing left: the worker goes, unless the edit view or anything else keeps it (closeIdle ends only an idle one).
@@ -353,7 +430,9 @@ export class Sharing {
       const described = await this.describe(job.source);
       if (running.cancelled) throw new ExportFailure("cancelled", "paused before it began");
       if (described.unknownEdit) throw new ExportFailure("unsupported", "its edit cannot be read or was made for another file");
-      // Nothing to make: the version is the recording itself, or one it does not offer.
+      // Nothing to make: the version is the recording itself. One it does not offer (a camera-free Video of a recording
+      // without a camera) is refused for good, so whoever waits for it hears so (Codex review).
+      if (!offeredVersions(described.subject).includes(job.kind)) throw new ExportFailure("unsupported", `the recording does not offer ${job.kind}`);
       if (!needsMaking(described.subject, job.kind)) return;
       if (this.deps.cache.get(this.keyOf(described, job.kind))) return;
       await this.make(job, described, () => running.cancelled);
@@ -383,7 +462,7 @@ export class Sharing {
     const pending = await cache.begin(this.keyOf(described, kind));
     let lastShown = 0;
     const progress = (fraction: number): void => {
-      if (kind !== "video" || fraction - lastShown < 0.01) return;
+      if (fraction - lastShown < 0.01) return;
       lastShown = fraction;
       job.progress = fraction;
       this.deps.changed();

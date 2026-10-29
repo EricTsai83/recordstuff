@@ -238,6 +238,90 @@ describe("what a drag gives (plan 100)", () => {
   });
 });
 
+describe("Share… (plan 100 step 3)", () => {
+  it("prepares what an opened Share… offers and is not made yet, never the recording itself", async () => {
+    const file = recording("Talk.recordstuff.mp4", MIXED);
+    paused = "recording";
+    await sharing.openShare(file);
+    expect(sharing.versionStates(file)).toEqual({
+      video: { state: "preparing", progress: 0 }, sound: { state: "preparing", progress: 0 },
+      screenOnly: { state: "preparing", progress: 0 }, sources: { state: "preparing", progress: 0 },
+    });
+    paused = undefined;
+    sharing.resume();
+    await settle();
+    expect(sharing.versionStates(file)).toEqual({});
+    const plain = recording("Plain.mp4");
+    await sharing.openShare(plain);
+    expect(Object.keys(sharing.versionStates(plain)), "an unedited plain recording's Video is its file; only its sound is made").toEqual(["sound"]);
+    await settle();
+  });
+
+  it("waits for a version to be made before giving it, and says when it could not be", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    paused = "recording";
+    const ready = sharing.whenReady(file, "video");
+    await tick();
+    expect(sharing.versionStates(file).video).toEqual({ state: "preparing", progress: 0 });
+    paused = undefined;
+    sharing.resume();
+    expect(await ready).toMatch(/Meeting \(edited\)\.mp4$/);
+    const other = recording("Other.mp4");
+    edits.set(other, { removed: [[0, 9000]] });
+    runner.fail = true;
+    await expect(sharing.whenReady(other, "video")).rejects.toThrow("could not be made");
+    expect(sharing.versionStates(other).video).toEqual({ state: "failed" });
+  });
+});
+
+describe("Share…'s edges (Codex review)", () => {
+  it("refuses for good a version the recording does not offer, so a copy waiting for it ends", async () => {
+    const file = recording("NoCamera.recordstuff.mp4", NO_CAMERA);
+    // The page took the camera to be there (its description not read yet) and asked for a camera-free Video.
+    sharing.prepare(file, "screenOnly");
+    await settle();
+    expect(sharing.versionStates(file)).toEqual({ screenOnly: { state: "failed" } });
+    await expect(sharing.whenReady(file, "screenOnly")).rejects.toThrow();
+  });
+
+  it("reports every version still being prepared, not only the Video's", async () => {
+    const file = recording("Talk.recordstuff.mp4", MIXED);
+    paused = "recording";
+    sharing.prepare(file, "sources");
+    expect(sharing.shareStates().get(file)).toEqual({ sources: { state: "preparing", progress: 0 } });
+    expect(sharing.videoStates().has(file)).toBe(false);
+    paused = undefined;
+    sharing.resume();
+    await settle();
+  });
+
+  it("ends a copy waiting for a version once its recording moves, never giving whatever comes to the old path", async () => {
+    for (const held of [false, true]) {
+      const file = recording(held ? "Running.mp4" : "Queued.mp4");
+      edits.set(file, { removed: [[0, 9000]] });
+      if (held) runner.hold = { release: () => undefined };
+      else paused = "recording";
+      const waiting = sharing.whenReady(file, "video");
+      if (held) await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
+      else await tick();
+      const moved = path.join(dir, held ? "Running moved.mp4" : "Queued moved.mp4");
+      await sharing.during(async () => {
+        fs.renameSync(file, moved);
+        edits.set(moved, edits.get(file)!);
+        await sharing.moved(file, moved);
+      });
+      // Another recording at the old path is never what the waiting copy gets.
+      fs.writeFileSync(file, "another recording");
+      await expect(waiting, held ? "running" : "queued").rejects.toThrow("moved");
+      paused = undefined;
+      runner.release();
+      sharing.resume();
+      await settle();
+    }
+  });
+});
+
 describe("preparing alongside what the person does (D2)", () => {
   it("waits while something pauses it, and starts once resumed", async () => {
     const file = recording("Meeting.mp4");

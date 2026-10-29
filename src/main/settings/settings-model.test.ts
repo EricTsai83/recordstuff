@@ -1622,7 +1622,12 @@ describe("the Recordings tab", () => {
     expect(view.folder).toBe("~/recordings");
     expect(view.items).toEqual([
       { id: "id-2026-10-04 14-02-11.mp4", name: "2026-10-04 14-02-11.mp4", day: "Today", title: "2026-10-04 14-02-11", time: new Date(2026, 9, 4, 14, 2).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }),
-        duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1" },
+        duration: "1:23", size: "180 MB", thumbnail: "recordstuff-media://thumb/id-2026-10-04 14-02-11.mp4?v=v1", video: "recordstuff-media://video/id-2026-10-04 14-02-11.mp4?v=v1",
+        // Share… (plan 100 step 3): an unedited plain recording offers its Video, the file itself, and Sound only.
+        share: expect.objectContaining({ heading: "Share “2026-10-04 14-02-11”", versions: [
+          expect.objectContaining({ kind: "video", fileName: "2026-10-04 14-02-11.mp4", recommended: true, state: "ready" }),
+          expect.objectContaining({ kind: "sound", fileName: "2026-10-04 14-02-11 (sound).m4a" }),
+        ] }) },
       expect.objectContaining({ day: "Yesterday", title: "Product demo", time: new Date(2026, 9, 3, 9, 30).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" }), duration: "1:02:05", size: "2.2 GB" }),
     ]);
     expect(settingsView(idle, { ...library({}), language: "zh-TW" }).library!.summary).toBe("2 個錄影・2.4 GB");
@@ -1661,6 +1666,12 @@ describe("the Recordings tab", () => {
     expect(settingsAction(idle, { ...context, keptEdits }, "keptEdits", "remove")).toBe("removeKeptEdits");
     expect(group(idle, { ...context, homeDir: "/Users/me", keptEdits: keptEdits.slice(0, 1), language: "zh-TW" }, "keptEdits")!.note)
       .toBe("有 1 段不在錄影分頁裡的錄影保留著剪輯（1 KB）：~/Old（1 段）。錄影回來時，剪輯會自動套用。");
+  });
+  it("offers Video without the camera only to an editable recording that has a camera (plan 100, Codex review)", () => {
+    const kinds = (camera: boolean | undefined) => settingsView(idle, library({ files: [{ ...files[0]!, editable: true as const, ...(camera === undefined ? {} : { editableCamera: camera }) }] }))
+      .library!.items[0]!.share!.versions.map(version => version.kind);
+    expect(kinds(false)).toEqual(["video", "sound", "original", "sources"]);
+    expect(kinds(true)).toEqual(["video", "sound", "original", "screenOnly", "sources"]);
   });
   it("names each recording's subfolder and lists the folders the library offers (plan 071)", () => {
     const view = settingsView(idle, library({

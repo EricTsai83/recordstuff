@@ -1,12 +1,13 @@
 /**
  * The Recordings tab's view: the listed recordings, their categories and the tab's own choices.
  */
-import { translate as t } from "../../../shared/i18n";
+import { translate as t, type PlainMessageKey } from "../../../shared/i18n";
 import { formatBytes } from "../../../shared/quality";
 import { formatDuration } from "../../../shared/video-player";
 import type { LibraryItemView, LibraryView } from "../../../shared/settings-panel";
 import type { VideoState } from "../../sharing/sharing";
-import { recordingTitle } from "../../../shared/versions";
+import { MORE_VERSIONS, offeredVersions, recordingTitle, versionName, type VersionKind, type VersionSubject } from "../../../shared/versions";
+import type { ShareView } from "../../../shared/settings-panel";
 import { MEDIA_SCHEME } from "../../library/recordings-library";
 import { abbreviateHome, type AppContext } from "../../app/ui-model";
 import { type DateFormats, dayHeading, shortTime } from "./history";
@@ -19,6 +20,56 @@ function videoStateView(state: VideoState | undefined, language: AppContext["lan
   const percent = Math.floor(state.progress * 100);
   return { preparing: { state: "preparing", progress: state.progress, hint,
     label: percent > 0 ? t("Preparing video… {percent}%", language, { percent }) : t("Preparing video…", language) } };
+}
+
+const VERSION_LABELS: Record<VersionKind, PlainMessageKey> = {
+  video: "Video file", sound: "Sound only", original: "Original", screenOnly: "Video without the camera", sources: "Sources",
+};
+/** What each version is, in a few words under its name. */
+const VERSION_DETAILS: Record<VersionKind, PlainMessageKey> = {
+  video: "As it plays here", sound: "The mixed sound", original: "Everything recorded", screenOnly: "Just the screen", sources: "Each track on its own",
+};
+
+/**
+ * Share… for a recording (plan 100 step 3): the versions it offers, in order, each with the name it leaves as. The
+ * Original says what it holds; the Video is the one marked recommended; the Video's state is the card's.
+ */
+function shareView(subject: VersionSubject, title: string, states: Partial<Record<VersionKind, VideoState>>, language: AppContext["language"]): ShareView {
+  return {
+    heading: t("Share “{title}”", language, { title }),
+    versions: offeredVersions(subject).map(kind => {
+      const note = kind === "original"
+        ? subject.editable ? t("Includes the camera and each sound separately", language) : t("Everything recorded, including removed parts", language)
+        : undefined;
+      const state = states[kind];
+      return {
+        kind, label: t(VERSION_LABELS[kind], language), detail: t(VERSION_DETAILS[kind], language), fileName: versionName(kind, subject, language),
+        ...(note ? { note } : {}),
+        ...(MORE_VERSIONS.includes(kind) ? { more: true as const } : {}),
+        ...(kind === "video" ? { recommended: true as const } : {}),
+        state: state?.state ?? "ready",
+        ...(state?.state === "preparing" ? { progress: state.progress } : {}),
+      };
+    }),
+    labels: {
+      share: t("Share", language), recommended: t("Recommended", language), copy: t("Copy", language), saveTo: t("Save to…", language),
+      more: t("More", language), moreCount: t("{count} items", language, { count: "{count}" }), close: t("Close", language),
+      drag: t("You can also drag a file into another app.", language),
+      preparingNote: t("Preparing {percent}%. Copy and Save to… wait until it is ready.", language, { percent: "{percent}" }),
+      failedNote: t("This file could not be made. Pick it again to retry.", language),
+      selected: t("{count} files selected", language, { count: "{count}" }),
+      copied: t("Copied", language), saved: t("Saved", language),
+      preparing: t("Preparing…", language), failed: t("Could not be made", language),
+    },
+  };
+}
+
+/** Each version's state for Share…: as sharing reports them, the Video's as the card shows it. */
+function shareStatesOf(ctx: AppContext, source: string): Partial<Record<VersionKind, VideoState>> {
+  const states: Partial<Record<VersionKind, VideoState>> = { ...ctx.shareStates?.get(source) };
+  const video = ctx.preparingVideos?.get(source);
+  if (video) states.video = video;
+  return states;
 }
 
 /**
@@ -67,6 +118,10 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         ...(file.editable ? { editable: t("Editable", language),
           editableHint: t("Keeps the picture, camera and sounds apart so you can change them later. To send it, drag it: you give the video as it plays here.", language) } : {}),
         ...videoStateView(ctx.preparingVideos?.get(file.path), language, mac),
+        share: shareView({ fileName: file.name, edited: ctx.editedRecordings?.get(file.path) === file.size,
+          // Without a camera, no Video without one; its description not read yet, the camera is taken to be there.
+          ...(file.editable ? { editable: { camera: file.editableCamera ?? true, sounds: ["system", "microphone"], mix: true as const } } : {}) },
+        recordingTitle(file.name), shareStatesOf(ctx, file.path), language),
         // Holds an edit made for the file as it is (2026-10-26, the maintainer's request).
         ...(ctx.editedRecordings?.get(file.path) === file.size ? { edited: t("Edited", language) } : {}),
       };
