@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原始檔、使用者的決定與可重建的衍生檔：放在哪裡、怎麼認、什麼時候清</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body { margin: 0; background: var(--ivory); color: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; font-weight: 430; line-height: 1.55; letter-spacing: 0; }
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.18; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-md); }
+h2 { font-size: 1.22rem; line-height: 1.25; margin: var(--space-3xl) 0 var(--space-md); }
+h3 { font-size: 1rem; line-height: 1.35; margin: var(--space-2xl) 0 var(--space-sm); }
+p, ul, ol, .deck, .callout, table, pre { max-width: var(--content-width); }
+table, pre { width: 100%; }
+.deck { color: var(--gray-700); font-size: 1.05rem; margin: 0 0 var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+li { margin: 4px 0; }
+code { background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm); padding: 0 4px; font-size: 0.9em; overflow-wrap: anywhere; }
+table { border-collapse: collapse; margin: var(--space-lg) 0 var(--space-xl); font-size: 0.94rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 600; }
+.callout { background: var(--gray-100); border: 1px solid var(--oat); border-left: 3px solid var(--clay); border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl); }
+.callout.warning { border-left-color: var(--warning); }
+.callout p { margin: 0; }
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; overflow-wrap: normal; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code { position: absolute; top: 9px; right: 9px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm); background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer; }
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+.flow-figure { margin: var(--space-xl) auto; max-width: 360px; }
+.flow-figure svg { display: block; width: 100%; height: auto; }
+.flow-figure figcaption { color: var(--gray-700); font-size: 0.9rem; margin-top: var(--space-sm); }
+.sources { border-top: 1px solid var(--oat); margin-top: var(--space-3xl); padding-top: var(--space-lg); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  table { display: block; overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+<h1>原始檔、使用者的決定與可重建的衍生檔：放在哪裡、怎麼認、什麼時候清</h1>
+<p class="deck">當 App 的資料庫就是使用者自己也會用 Finder 整理的普通資料夾，App 又要替每個檔案另外保存「使用者的決定」和「算出來的衍生檔」時，三件事最容易出錯：資料放錯地方、改名後認不出檔案、檔案刪了相關資料卻還留著。這篇整理一組可遷移的做法，說明它們在什麼前提下是好的預設，以及什麼時候不該照做。</p>
+
+<h2>情境：資料夾是使用者的，資料是 App 的</h2>
+<p>先看一個具體的例子。一個螢幕錄影 App 把每段錄影存成普通的 MP4，放在使用者的「影片」資料夾裡；子資料夾就是 App 裡的分類。使用者可以在 App 裡播放、剪輯、拖曳分享，也可以直接在 Finder 裡改名、搬動、刪除這些檔案。</p>
+<p>App 對每段錄影另外保存兩種東西：</p>
+<ul>
+  <li><strong>使用者的決定</strong>：剪掉哪幾段、相機泡泡放在哪裡、音量多少。這份「剪輯紀錄」很小（約 1 KB），但刪了就找不回來，因為那是使用者花時間做的判斷。</li>
+  <li><strong>可重建的衍生檔</strong>：為了讓使用者拖曳卡片時立刻拿到「剪輯後的影片」，App 在背景先把它算好存起來。它可能有好幾 GB，但隨時可以從原始錄影加上剪輯紀錄重新算一次。</li>
+</ul>
+<p>以下用一段叫「會議.mp4」的錄影當作貫穿全文的例子：使用者剪掉了開頭 5 分鐘，因為裡面談到不該外流的事。這個前提讓後面每個錯誤都有具體的代價：<strong>只要 App 一時認不出這段錄影剪過，拖曳出去的就會是含有那 5 分鐘的原始檔。</strong></p>
+<p>這組做法成立需要幾個前提：</p>
+<ul>
+  <li>檔案放在使用者看得到、會自己整理的位置，App 不是唯一能改動它們的人。</li>
+  <li>App 保存的資料分成「不可重建」和「可重建」兩種，大小與重要性差很多。</li>
+  <li>原始檔必須維持普通格式（任何播放器都能開），不能包進 App 專屬的格式裡。</li>
+  <li>衍生檔可能含有使用者以為已經刪掉的內容，所以「留著沒清」本身就是風險，不只是浪費空間。</li>
+</ul>
+
+<h2>天真的做法會怎麼壞</h2>
+<h3>用路徑當身分</h3>
+<p>最直覺的做法是用檔案路徑去找它的剪輯紀錄：紀錄的檔名就是路徑的雜湊。在 App 裡改名時，App 會順手把紀錄搬過去，看起來沒問題。但使用者在 Finder 把「會議.mp4」改成「週會.mp4」，App 用新路徑找不到紀錄，就把它當成「沒剪過」；使用者一拖，交出的是完整原始檔。這不是「剪輯不見了」的小麻煩，而是外洩。</p>
+
+<h3>先改檔名，再搬紀錄</h3>
+<p>在 App 裡改名時，如果順序是「先把檔案改名，再把紀錄搬到新路徑」，中間只要有一步失敗（磁碟剛好滿了、資料夾權限被改），檔案已經在新路徑，紀錄卻還留在舊路徑。結果和上面一樣，而且使用者只看到一句「無法完成」，不知道是哪裡出問題、該怎麼辦。</p>
+
+<h3>只在 App 裡刪除時才清</h3>
+<p>使用者在 App 裡刪錄影時，App 很容易一併刪掉衍生檔和紀錄。但在 Finder 刪除時，作業系統不會通知 App，衍生檔和紀錄就一直留著。更隱蔽的是，後來新增的資料位置，常常被「清除所有 App 資料」這類功能漏掉：使用者明確要求清除，卻還留著可能含有完整畫面的影片。</p>
+
+<h3>全部放在一起，或全部分開但不管</h3>
+<p>把衍生檔放在原檔旁邊，會讓使用者的資料夾多出一堆不是他放的檔案，還會被 iCloud 同步、被 Time Machine 備份；分開放但不管它們的生命週期，則會無聲無息地累積。兩種極端都不對，問題在於沒有依照資料的「角色」來決定位置和清除規則。</p>
+
+<h2>模式一：依角色決定存放位置</h2>
+<p>先問每份資料三個問題：它是誰的？刪了能不能重建？需不需要備份？答案不同，放的地方就該不同。macOS 對此有明確的慣例：使用者的檔案放在使用者選的位置；App 自己產生、使用者不直接管理的資料放在 <code>Application Support</code>；可以重建的資料放在 <code>Caches</code>，不會被 Time Machine 備份，必要時可以整個清掉。</p>
+<table>
+  <thead><tr><th>資料</th><th>角色</th><th>放在</th><th>為什麼</th></tr></thead>
+  <tbody>
+    <tr><td>錄影</td><td>唯一一份，使用者的</td><td>使用者的影片資料夾</td><td>使用者用 Finder 管理、拖給別人</td></tr>
+    <tr><td>剪輯紀錄</td><td>使用者的決定，不可重建</td><td><code>~/Library/Application Support/&lt;App&gt;</code></td><td>App 寫、使用者不直接管理；要備份</td></tr>
+    <tr><td>預先做好的分享影片</td><td>可重建、很大</td><td><code>~/Library/Caches/&lt;App&gt;</code></td><td>不備份、不同步；清掉只是要再等一次</td></tr>
+  </tbody>
+</table>
+<p>分開存放的好處是每一類都能套用自己的規則：清掉分享影片絕不會誤刪剪輯；好幾 GB 的影片不會跑進備份或雲端同步；使用者的資料夾裡只有他自己的檔案。Lightroom Classic 也是同樣的三分法：照片在使用者指定的位置，編輯紀錄在目錄檔，預覽圖在另一個預覽快取裡。</p>
+<p>「快取」這個詞在程式和文件裡是業界慣例（Premiere 的 Media Cache、Lightroom 的預覽快取），但它描述的是角色，不是「不重要」。對使用者，應該用內容來命名，例如「已準備的影片」；Final Cut Pro 的選單也叫「刪除產生的檔案」，而不是「清除快取」。</p>
+
+<h2>模式二：路徑用來找，內容指紋用來認</h2>
+<p>路徑是查找最快的鑰匙，但它不是檔案的身分。可行的做法是兩層：</p>
+<ol>
+  <li><strong>先用路徑找。</strong>大部分時候檔案沒動，一次就找到。</li>
+  <li><strong>找到後用內容指紋確認。</strong>指紋由檔案大小、修改時間，以及檔案開頭與結尾各 1 MB 的 SHA-256 雜湊組成。同名但內容不同的檔案（例如被別的工具覆蓋）不會被誤套剪輯。</li>
+  <li><strong>用路徑找不到時，改用指紋找。</strong>在已知的紀錄裡找指紋完全相同的那一筆，找到就把紀錄搬到新路徑。</li>
+</ol>
+<p>第三步要分辨「搬動」和「複製」：如果指紋相同的那筆紀錄，原本的路徑上檔案還在，代表新檔是複製出來的，不該把剪輯搬走；只有原路徑已經沒有檔案，才是改名或搬動。</p>
+<p>判斷「原路徑上已經沒有檔案」時，只能相信系統明確的「找不到」（<code>ENOENT</code>）。如果只是暫時沒有權限查看那個資料夾，就把它當成「不知道」：此時讓複製出來的檔案搶走剪輯，原檔恢復可讀時就會變成沒剪過。</p>
+<p>同一筆紀錄可能同時被兩個流程用指紋找到（例如背景清理和使用者的拖曳），所以「找到並搬移」要一次只讓一個流程進行，而且每次開始前先重查新路徑上是否已經有人搬好了。</p>
+<p>指紋只讀檔案兩端，成本固定，不會隨檔案變大而變慢；Finder 的改名、搬動與複製都會保留修改時間，所以指紋不變。它的限制是：少數工具複製檔案時會重設修改時間（例如不加參數的 <code>cp</code>），這時指紋對不上，錄影會被當成沒剪過。這個失敗是安全的，原因在下一節。</p>
+
+<h3>失敗時要「看到的」和「交出去的」一致</h3>
+<p>真正危險的情況，是「App 顯示剪過的版本，交出去的卻是原始檔」。如果剪輯紀錄真的找不回來，App 的卡片會播放原始錄影、也不顯示「已剪輯」，這時交出原始檔和畫面一致，使用者不會被誤導。所以設計的重點不是「永遠找得到」，而是「找不到時，畫面和交出去的東西一起退回原始狀態」。反過來，如果紀錄存在但讀不懂（版本太新、檔案損毀），就代表「確實剪過，但不知道剪了什麼」，這時應該拒絕交出任何衍生版本，只允許使用者明確要求原始檔。</p>
+
+<h2>模式三：先寫紀錄，成功才搬檔案</h2>
+<p>在 App 裡改名、移動或改分類名稱時，順序是：</p>
+<ol>
+  <li>先用新路徑寫一份剪輯紀錄。</li>
+  <li>寫入成功，才改檔名。</li>
+  <li>改名成功，刪掉舊路徑的紀錄；改名失敗（名稱被佔用、檔案不見），收回剛寫的新紀錄。</li>
+</ol>
+<p>這樣無論在哪一步失敗，錄影都不會處在「剪輯跟不上」的路徑上：第 1 步失敗，什麼都沒動；第 2 步失敗，新紀錄被收回；第 3 步失敗，最多是新舊路徑各有一份相同的紀錄，下一次檢查會清掉沒有檔案的那一份。這和資料庫的「先寫日誌再改資料」是同一個想法：讓可能失敗的步驟發生在不可逆的步驟之前。</p>
+<p>兩個容易漏掉的細節。第一，「收回」不能只是刪除：使用者把 A 改名成已經存在的 B 時，新路徑上原本就有 B 自己的紀錄，如果第 1 步照樣寫入，就會覆蓋它，接著改名因為名稱被佔用而失敗；收回時直接刪掉，B 的剪輯就沒了，而且 App 若在還原前當掉，也來不及補救。所以目的地已經有檔案時，第 1 步根本不寫入，讓改名照常以「名稱已被佔用」失敗；只有目的地沒有檔案、卻還留著一筆舊紀錄時，才先記下它，失敗時還原。第二，舊路徑的紀錄如果讀不懂（例如由較新版本寫入）或不屬於這個檔案，它就無法跟著搬，這時應該拒絕改名，而不是搬完檔案後把它刪掉。</p>
+<p>第 1 步失敗時，不能只說「無法完成」。系統回報的錯誤碼足以分辨原因，每一種都該告訴使用者發生了什麼、該怎麼做，並給一個直接能按的按鈕：</p>
+<table>
+  <thead><tr><th>錯誤碼</th><th>告訴使用者</th><th>提供的按鈕</th></tr></thead>
+  <tbody>
+    <tr><td><code>ENOSPC</code></td><td>存放剪輯紀錄的磁碟已滿，剩下多少空間</td><td>打開系統的儲存空間設定</td></tr>
+    <tr><td><code>EACCES</code>／<code>EPERM</code></td><td>App 不能寫入它的資料夾（附上路徑），權限可能被改過</td><td>在 Finder 中顯示該資料夾</td></tr>
+    <tr><td><code>EROFS</code></td><td>存放資料的磁碟目前是唯讀的</td><td>在 Finder 中顯示</td></tr>
+    <tr><td>其他</td><td>附上錯誤碼，詳細原因在 log</td><td>顯示 log</td></tr>
+  </tbody>
+</table>
+<p>每一則都要明講「錄影和剪輯都沒有變動」：使用者最想知道的是有沒有東西壞掉。</p>
+
+<h2>模式四：可重建的從嚴清，不可重建的確定了才清</h2>
+<p>兩類資料的清除規則應該相反：</p>
+<ul>
+  <li><strong>可重建的衍生檔</strong>：錄影一不在 App 的列表裡，不論原因（被刪除、搬出資料夾、外接硬碟沒接上、換了儲存資料夾），就刪除。需要時再重做，代價只是等一次。唯一的例外是剛交出去的檔案：使用者把它拖進瀏覽器上傳，網頁可能還在讀，所以交出後 24 小時內先保留；但錄影確定被刪除時，連這些也立刻刪掉。</li>
+  <li><strong>不可重建的使用者決定</strong>：只有確定錄影被刪除時才刪除。判斷不了的情況一律保留，但必須讓使用者看得到、刪得掉。「確定」要靠系統明確回報「這個路徑沒有東西」：權限不足、磁碟錯誤，或某個資料夾讀不了導致沒能搜尋完整，都只代表「現在看不清楚」，不能當成刪除的證據。</li>
+</ul>
+<p>「確定被刪除」的判斷流程如下。關鍵是外接硬碟：硬碟拔掉時，整條路徑都會消失，看起來和刪除一模一樣，但錄影其實好好地在硬碟裡。</p>
+<figure class="flow-figure">
+  <svg id="mermaid-mvtukiw9-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" viewBox="4 4 491 824" aria-roledescription="flowchart-v2" role="img" aria-labelledby="mermaid-mvtukiw9-title mermaid-mvtukiw9-desc"><title id="mermaid-mvtukiw9-title">錄影不在原本的路徑時，剪輯紀錄的去留</title><desc id="mermaid-mvtukiw9-desc">先確認磁碟在不在，再用內容指紋判斷是搬動還是刪除；只有確定刪除才移除，其餘保留並列在設定裡。</desc><style>#mermaid-mvtukiw9-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvtukiw9-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvtukiw9-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvtukiw9-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvtukiw9-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvtukiw9-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvtukiw9-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvtukiw9-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvtukiw9-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvtukiw9-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvtukiw9-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvtukiw9-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvtukiw9-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvtukiw9-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvtukiw9-my-svg p{margin:0;}#mermaid-mvtukiw9-my-svg .label{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#141413;}#mermaid-mvtukiw9-my-svg .cluster-label text{fill:#05060a;}#mermaid-mvtukiw9-my-svg .cluster-label span{color:#05060a;}#mermaid-mvtukiw9-my-svg .cluster-label span p{background-color:transparent;}#mermaid-mvtukiw9-my-svg .label text,#mermaid-mvtukiw9-my-svg span{fill:#141413;color:#141413;}#mermaid-mvtukiw9-my-svg .node rect,#mermaid-mvtukiw9-my-svg .node circle,#mermaid-mvtukiw9-my-svg .node ellipse,#mermaid-mvtukiw9-my-svg .node polygon,#mermaid-mvtukiw9-my-svg .node path{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvtukiw9-my-svg .rough-node .label text,#mermaid-mvtukiw9-my-svg .node .label text,#mermaid-mvtukiw9-my-svg .image-shape .label,#mermaid-mvtukiw9-my-svg .icon-shape .label{text-anchor:middle;}#mermaid-mvtukiw9-my-svg .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-mvtukiw9-my-svg .rough-node .label,#mermaid-mvtukiw9-my-svg .node .label,#mermaid-mvtukiw9-my-svg .image-shape .label,#mermaid-mvtukiw9-my-svg .icon-shape .label{text-align:center;}#mermaid-mvtukiw9-my-svg .node.clickable{cursor:pointer;}#mermaid-mvtukiw9-my-svg .root .anchor path{fill:#D97757!important;stroke-width:0;stroke:#D97757;}#mermaid-mvtukiw9-my-svg .arrowheadPath{fill:rgba(255, 255, 255, 0);}#mermaid-mvtukiw9-my-svg .edgePaths .path{stroke:#D97757;stroke-width:1px;}#mermaid-mvtukiw9-my-svg .flowchart-link{stroke:#D97757;fill:none;}#mermaid-mvtukiw9-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvtukiw9-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvtukiw9-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvtukiw9-my-svg .labelBkg{background-color:rgba(240, 238, 230, 0.5);}#mermaid-mvtukiw9-my-svg .cluster rect{fill:#FAF9F5;stroke:hsl(48, 0%, 87.0588235294%);stroke-width:1px;}#mermaid-mvtukiw9-my-svg .cluster text{fill:#05060a;}#mermaid-mvtukiw9-my-svg .cluster span{color:#05060a;}#mermaid-mvtukiw9-my-svg .node .collapsed-indicator{fill:hsl(48, 0%, 87.0588235294%);stroke:none;opacity:0.6;}#mermaid-mvtukiw9-my-svg .node .collapsed-separator{stroke:hsl(48, 0%, 87.0588235294%);stroke-width:0.75px;}#mermaid-mvtukiw9-my-svg div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:12px;background:#FAF9F5;border:1px solid hsl(48, 0%, 87.0588235294%);border-radius:2px;pointer-events:none;z-index:100;}#mermaid-mvtukiw9-my-svg .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvtukiw9-my-svg rect.text{fill:none;stroke-width:0;}#mermaid-mvtukiw9-my-svg .icon-shape,#mermaid-mvtukiw9-my-svg .image-shape{background-color:#F0EEE6;text-align:center;}#mermaid-mvtukiw9-my-svg .icon-shape p,#mermaid-mvtukiw9-my-svg .image-shape p{background-color:#F0EEE6;padding:2px;}#mermaid-mvtukiw9-my-svg .icon-shape .label rect,#mermaid-mvtukiw9-my-svg .image-shape .label rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvtukiw9-my-svg .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-mvtukiw9-my-svg .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-mvtukiw9-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvtukiw9-my-svg [data-look="neo"].node rect,#mermaid-mvtukiw9-my-svg [data-look="neo"].cluster rect,#mermaid-mvtukiw9-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvtukiw9-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvtukiw9-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvtukiw9-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvtukiw9-my-svg-gradient);stroke-width:1px;}#mermaid-mvtukiw9-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvtukiw9-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvtukiw9-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvtukiw9-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvtukiw9-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvtukiw9-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvtukiw9-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvtukiw9-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvtukiw9-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvtukiw9-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"/></marker><marker id="mermaid-mvtukiw9-my-svg_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"/></marker><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M201.5,84L201.5,120" id="mermaid-mvtukiw9-my-svg-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvtukiw9-L_A_B_0" data-points="W3sieCI6MjAxLjUsInkiOjg0fSx7IngiOjIwMS41LCJ5IjoxMjR9XQ==" data-look="neo" marker-end="url(#mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M171.83333333333331,292.333309173584L171.83333333333331,322L171.83333333333331,334.9289321881345Q171.83333333333331,342 164.76226552146784,342L95.07106781186548,342Q88,342 88,349.0710678118655L88,420" id="mermaid-mvtukiw9-my-svg-L_B_K1_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 202.17173767089844 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvtukiw9-L_B_K1_0" data-points="W3sieCI6MTcxLjgzMzMzMzMzMzMzMzMxLCJ5IjoyOTIuMzMzMzA5MTczNTg0fSx7IngiOjE3MS44MzMzMzMzMzMzMzMzMSwieSI6MzIyfSx7IngiOjE3MS44MzMzMzMzMzMzMzMzMSwieSI6MzQyfSx7IngiOjg4LCJ5IjozNDJ9LHsieCI6ODgsInkiOjQyNH1d" data-look="neo" marker-end="url(#mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M231.16666666666669,292.333309173584L231.16666666666669,322L231.16666666666669,334.9289321881345Q231.16666666666669,342 238.23773447853216,342L307.9289321881345,342Q315,342 315,349.0710678118655L315,420" id="mermaid-mvtukiw9-my-svg-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 202.17172241210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvtukiw9-L_B_C_0" data-points="W3sieCI6MjMxLjE2NjY2NjY2NjY2NjY5LCJ5IjoyOTIuMzMzMzA5MTczNTg0fSx7IngiOjIzMS4xNjY2NjY2NjY2NjY2OSwieSI6MzIyfSx7IngiOjIzMS4xNjY2NjY2NjY2NjY2OSwieSI6MzQyfSx7IngiOjMxNSwieSI6MzQyfSx7IngiOjMxNSwieSI6NDI0fV0=" data-look="neo" marker-end="url(#mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M281.33333333333337,612.3332872390747L281.33333333333337,646L281.33333333333337,658.9289321881345Q281.33333333333337,666 274.2622655214679,666L226.0710678118655,666Q219.00000000000003,666 219.00000000000003,673.0710678118655L219,744" id="mermaid-mvtukiw9-my-svg-L_C_M_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 184.6717529296875 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvtukiw9-L_C_M_0" data-points="W3sieCI6MjgxLjMzMzMzMzMzMzMzMzM3LCJ5Ijo2MTIuMzMzMjg3MjM5MDc0N30seyJ4IjoyODEuMzMzMzMzMzMzMzMzMzcsInkiOjY0Nn0seyJ4IjoyODEuMzMzMzMzMzMzMzMzMzcsInkiOjY2Nn0seyJ4IjoyMTkuMDAwMDAwMDAwMDAwMDMsInkiOjY2Nn0seyJ4IjoyMTksInkiOjc0OH1d" data-look="neo" marker-end="url(#mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin)"/><path d="M348.6666666666667,612.3332872390747L348.6666666666667,646L348.6666666666667,658.9289321881345Q348.6666666666667,666 355.73773447853216,666L403.9289321881345,666Q411,666 411,673.0710678118655L411,744" id="mermaid-mvtukiw9-my-svg-L_C_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 184.67172241210938 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="mermaid-mvtukiw9-L_C_D_0" data-points="W3sieCI6MzQ4LjY2NjY2NjY2NjY2NjcsInkiOjYxMi4zMzMyODcyMzkwNzQ3fSx7IngiOjM0OC42NjY2NjY2NjY2NjY3LCJ5Ijo2NDZ9LHsieCI6MzQ4LjY2NjY2NjY2NjY2NjcsInkiOjY2Nn0seyJ4Ijo0MTEsInkiOjY2Nn0seyJ4Ijo0MTEsInkiOjc0OH1d" data-look="neo" marker-end="url(#mermaid-mvtukiw9-my-svg_flowchart-v2-pointEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(87.8828125, 373)"><g class="label" data-id="mermaid-mvtukiw9-L_B_K1_0" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">不在</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(314.9453125, 373)"><g class="label" data-id="mermaid-mvtukiw9-L_B_C_0" transform="translate(0, -10)"><g><rect class="background" x="-9.9453125" y="-1" width="19.890625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">在</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(218.94531250000003, 697)"><g class="label" data-id="mermaid-mvtukiw9-L_C_M_0" transform="translate(0, -10)"><g><rect class="background" x="-9.9453125" y="-1" width="19.890625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">有</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(410.8828125, 697)"><g class="label" data-id="mermaid-mvtukiw9-L_C_D_0" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">沒有</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-A-0" data-look="neo" transform="translate(201.5, 48)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>錄影不在原本的路徑</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-B-1" data-look="neo" transform="translate(201.5, 223)"><polygon points="99,0 198,-99 99,-198 0,-99" class="label-container" transform="translate(-98.5, 99)"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>錄影所在的<br />磁碟還在嗎？</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-K1-3" data-look="neo" transform="translate(88, 460)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>保留剪輯<br />列在設定裡</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-C-5" data-look="neo" transform="translate(315, 535)"><polygon points="111,0 222,-111 111,-222 0,-111" class="label-container" transform="translate(-110.5, 111)"/><g class="label" transform="translate(-60, -36)"><rect/><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>錄影資料夾裡有<br />同指紋的檔案嗎？</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-M-7" data-look="neo" transform="translate(219, 784)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>是改名或搬動<br />剪輯跟著搬過去</p></span></div></foreignObject></g></g><g class="node default" id="mermaid-mvtukiw9-my-svg-flowchart-D-9" data-look="neo" transform="translate(411, 784)"><rect class="basic label-container" x="-76" y="-36" width="152" height="72"/><g class="label" transform="translate(-60, -24)"><rect/><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>確定被刪除<br />移除剪輯紀錄</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvtukiw9-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvtukiw9-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvtukiw9-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>只有「確定刪除」會自動移除；判斷不了的一律保留，但看得見、刪得掉。</figcaption>
+</figure>
+<p>「保留但看得見」比「計時自動刪除」好。曾經考慮過「30 天沒出現就刪除」，但它有兩個問題：使用者看不到哪些紀錄正在倒數，也無法選擇保留；而且要另外記錄每一筆的最後出現日期。改成在設定裡列出「有幾段錄影保留著剪輯、在哪個資料夾、佔多少空間」，加上一個「移除」按鈕，規則反而更簡單，也沒有任何資料在背後無聲累積。</p>
+<p>會讓使用者的錄影「離開列表」的動作，應該在發生前說清楚。例如換儲存資料夾時，先說明：舊資料夾的錄影不再出現在列表、預先做好的分享影片會刪除（匯出或拖出去的檔案不受影響）、剪輯紀錄會保留並在換回來時自動套用，並提供「更換並移除舊錄影的剪輯」的選項。</p>
+<p>最後，「清除所有 App 資料」必須涵蓋每一個資料位置，包括後來才新增的快取資料夾。這類清除功能通常會刻意保留所有影片檔以免誤刪錄影，所以快取資料夾要用另一條規則處理：整個資料夾都可以清，但前提是它絕不包含、也不位於使用者的錄影資料夾之內，有任何疑慮就拒絕清除。</p>
+
+<h2>模式五：持續監看資料夾，加上備援檢查</h2>
+<p>要在 Finder 刪除時立刻清掉衍生檔，App 必須知道「有東西變了」。作業系統提供變動通知：macOS 的 FSEvents、Windows 的 ReadDirectoryChangesW，Node.js 的 <code>fs.watch(dir, { recursive: true })</code> 會使用它們。這不是冷門做法：Plex 的「自動掃描媒體庫」、Jellyfin 的「即時監控」都是同一個機制，而它們面對的正是同樣的情境：媒體庫就是使用者自己管理的普通資料夾。</p>
+<p>做法上有三個要點：</p>
+<ul>
+  <li><strong>一直開著，錄影中也不停。</strong>通知是系統推送的，不需要輪詢；收到通知後只需比對幾個路徑。比起「錄影時暫停、結束時補查」，持續監看少了一段暫停與恢復的流程，也就少了一個出錯的地方。</li>
+  <li><strong>等資料夾安靜一下再檢查，但設上限。</strong>存檔、複製、移到垃圾桶都會產生一連串事件，等約半秒沒有新事件再做一次檢查；但錄影中或大量複製時事件會一直來，所以最多等 5 秒就一定檢查一次，避免檢查被無限延後。</li>
+  <li><strong>監看中斷時補查並重新接上。</strong>資料夾所在的磁碟拔掉時，監看器會出錯停止；這時立刻補做一次檢查，並在下一次檢查或打開視窗時重新開始監看。</li>
+  <li><strong>保留備援檢查。</strong>Plex 與 Jellyfin 的文件和論壇都指出，網路磁碟（SMB、NFS）通常不會發出變動通知。所以啟動時、打開視窗時仍要各檢查一次。</li>
+</ul>
+
+<h2>其他做法，以及什麼時候不該照做</h2>
+<h3>把衍生檔和原檔包在一起</h3>
+<p>Cap、Final Cut Pro、Photos 走的是另一條路：每個專案或資料庫是一個資料夾（或 macOS 套件），衍生檔就放在裡面，使用者刪掉整個包，衍生檔物理上一起消失，App 什麼都不用做。以 Cap 為例，錄影預設存在 App 的私有資料夾 <code>~/Library/Application Support/so.cap.desktop/recordings</code>，匯出的成品放在同一個專案資料夾的 <code>output/</code> 裡，刪除錄影就是刪除整個資料夾。</p>
+<p>這個做法在「App 擁有儲存位置、使用者在 App 裡管理檔案」時最好：簡單、可靠，不需要監看或比對。但它要求錄影不再是一個任何播放器都能直接打開的檔案。如果產品的核心價值之一是「錄影就是普通 MP4」，就不能這樣做；而把衍生檔做成原檔旁的隱藏檔也沒用，因為在 Finder 只刪原檔時，隱藏檔還在。</p>
+
+<h3>不需要這組做法的情況</h3>
+<ul>
+  <li><strong>App 獨佔儲存位置</strong>（私有資料夾、資料庫套件）：用「包在一起」更簡單。</li>
+  <li><strong>衍生檔很小、不敏感</strong>（例如縮圖）：放在記憶體或讓上限清理即可，不需要監看與即時清除。</li>
+  <li><strong>沒有「使用者的決定」</strong>：只有可重建的資料時，全部當快取處理就好，模式二、三都不需要。</li>
+  <li><strong>檔案只在網路磁碟上</strong>：變動通知不可靠，監看幫助有限，應該以定期或開啟時的檢查為主。</li>
+  <li><strong>使用者會用會重設修改時間的工具搬檔案</strong>：指紋要改用不含修改時間的組成（例如較大範圍的內容雜湊），代價是比對變慢。</li>
+</ul>
+
+<h2>在這個專案裡</h2>
+<p>RecordStuff 是一個 macOS 選單列錄影 App，錄影存在使用者的影片資料夾，子資料夾是錄影分頁的分類。上面的做法對應到這些地方：</p>
+<ul>
+  <li>剪輯紀錄由 <code>src/main/editing/edit-store.ts</code> 管理：用路徑找、用指紋確認與找回（<code>adopt</code>），以及「先寫新紀錄、再搬檔、最後收尾」（<code>prepareMove</code>／<code>finishMove</code>）。</li>
+  <li>錄影分頁的改名與移動在 <code>src/main/library/recordings-library.ts</code>，在搬檔前後呼叫上面兩步，失敗時依錯誤碼回報原因；設定頁顯示說明與處理按鈕。</li>
+  <li>預先做好的分享影片在 <code>src/main/sharing/version-cache.ts</code>，以「錄影內容指紋＋剪輯內容＋版本種類」為鑰匙，所以內容或剪輯一變就不會誤用舊檔。</li>
+  <li>監看資料夾在 <code>src/main/library/folder-watch.ts</code>；兩類資料的清除規則與「保留的剪輯」清單在 <code>src/main/sharing/housekeeping.ts</code>。</li>
+  <li>「清除本機 App 資料」在 <code>src/main/app/data-cleanup.ts</code>，快取資料夾以獨立規則整個清除，並拒絕任何與錄影資料夾重疊的路徑。</li>
+</ul>
+
+<h2>判斷時可以問的問題</h2>
+<ul>
+  <li>這份資料是誰的？刪了能不能重建？需不需要備份？三個答案決定它的位置。</li>
+  <li>使用者能不能在 App 以外改名、搬動、刪除這些檔案？能的話，路徑就不能當身分。</li>
+  <li>App 認不出檔案時，畫面顯示的和交出去的會不會不一致？</li>
+  <li>任何會搬動檔案的流程，可能失敗的步驟是否都排在不可逆的步驟之前？失敗時使用者知不知道原因和下一步？</li>
+  <li>每一類資料各有什麼清除條件？有沒有任何資料會在使用者看不到的情況下無限累積？</li>
+  <li>「清除所有資料」是否涵蓋了每一個資料位置，包括後來新增的？</li>
+</ul>
+
+<section class="sources">
+<h2>參考資料</h2>
+<ul>
+  <li>Cap 的錄影位置與刪除：<a href="https://github.com/CapSoftware/Cap/blob/6780747e30aa863d6c1a88b0ecd868118bf1c979/apps/desktop-gpui/src/recording.rs">recording.rs</a>、<a href="https://github.com/CapSoftware/Cap/blob/6780747e30aa863d6c1a88b0ecd868118bf1c979/apps/desktop-gpui/src/store.rs">store.rs</a>、<a href="https://github.com/CapSoftware/Cap/blob/6780747e30aa863d6c1a88b0ecd868118bf1c979/apps/desktop-gpui/src/library.rs">library.rs</a></li>
+  <li>Final Cut Pro 的「刪除產生的檔案」：<a href="https://support.apple.com/gu-in/guide/final-cut-pro/ver68a8c250/10.6.2/mac">Final Cut Pro User Guide</a>、<a href="https://larryjordan.com/articles/fcp-x-delete-generated-media/">Larry Jordan: Delete Generated Media</a></li>
+  <li>Lightroom Classic 的預覽快取：<a href="https://community.adobe.com/questions-675/good-way-to-clean-up-old-previews-971381">Adobe Community: Good way to clean up old previews?</a></li>
+  <li>Plex 的自動掃描：<a href="https://support.plex.tv/articles/200289526-library/">Plex Support: Library</a></li>
+  <li>Jellyfin 的即時監控與網路磁碟：<a href="https://forum.jellyfin.org/t-media-library-real-time-monitoring-not-working">Jellyfin Forum</a></li>
+  <li>Caches 資料夾的性質：<a href="https://developer.apple.com/forums/thread/107071">Apple Developer Forums</a></li>
+</ul>
+</section>
+
+</article>
+</main>
+<script>
+(() => {
+  const copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path></svg>';
+  const checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true; } catch {
+      const area = document.createElement("textarea");
+      area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      const ok = document.execCommand("copy"); area.remove(); return ok;
+    }
+  };
+  for (const pre of document.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    if (!code) continue;
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", async () => {
+      if (!(await copy(code.innerText))) return;
+      button.classList.add("copied"); button.innerHTML = checkIcon;
+      setTimeout(() => { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+    });
+    pre.appendChild(button);
+    const bar = document.createElement("div"), thumb = document.createElement("div");
+    bar.className = "code-scrollbar"; thumb.className = "code-scrollbar-thumb"; bar.appendChild(thumb); pre.appendChild(bar);
+    const update = () => {
+      const overflow = code.scrollWidth - code.clientWidth;
+      bar.classList.toggle("hidden", overflow <= 1);
+      if (overflow <= 1) return;
+      const ratio = code.clientWidth / code.scrollWidth;
+      thumb.style.width = `${ratio * 100}%`;
+      thumb.style.transform = `translateX(${(code.scrollLeft / overflow) * (bar.clientWidth - thumb.clientWidth)}px)`;
+    };
+    code.addEventListener("scroll", update, { passive: true });
+    new ResizeObserver(update).observe(code);
+    let drag;
+    thumb.addEventListener("pointerdown", (event) => { drag = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); });
+    thumb.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const overflow = code.scrollWidth - code.clientWidth, room = bar.clientWidth - thumb.clientWidth;
+      code.scrollLeft = drag.left + (event.clientX - drag.x) * (room > 0 ? overflow / room : 0);
+    });
+    thumb.addEventListener("pointerup", () => { drag = undefined; });
+    bar.addEventListener("click", (event) => {
+      if (event.target !== bar) return;
+      const box = bar.getBoundingClientRect();
+      code.scrollLeft = ((event.clientX - box.left) / box.width) * (code.scrollWidth - code.clientWidth);
+    });
+    update();
+  }
+})();
+</script>
+</body>
+</html>
