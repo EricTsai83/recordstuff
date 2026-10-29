@@ -8,7 +8,7 @@
  * this process: main hears only plans, progress and results. A crash in native code ends this process only; main
  * sees it exit and removes the export's unfinished file. The recording is opened read-only by the engine.
  */
-import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack } from "../../shared/editing";
+import { EXPORT_BENCH_ENV, isExportMainMessage, isExportFailureCode, type CopyTrack, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack } from "../../shared/editing";
 import { SerialQueue } from "../lib/serial-queue";
 import { engineRejection } from "../lib/engine-module";
 
@@ -19,6 +19,10 @@ interface NativeExport {
   streamCopy?(source: string, output: string): Promise<number>;
   /** Plan 087: an editable recording's track copied into a file of its own, for the edit view's preview. */
   extract(source: string, track: ExtractTrack, output: string): Promise<number>;
+  /** Plan 100: tracks copied as they are into one file, with progress; `cancel` stops it. */
+  copyTracks?(source: string, tracks: CopyTrack[], output: string): Promise<number>;
+  /** Plan 100: Darwin's background policy for this process, on or off; false where there is none. */
+  setBackground?(background: boolean): boolean;
 }
 
 interface EngineModule {
@@ -74,6 +78,17 @@ export class ExportWorker {
         });
         return;
       }
+      case "tracks": {
+        const { id, request } = message;
+        void this.queue.run(() => this.background(request.background, async () => {
+          const copy = this.engine.copyTracks;
+          if (!copy) throw new Error("unsupported|this engine cannot copy tracks");
+          this.exporting = id;
+          try { this.send({ type: "extracted", id, bytes: await copy.call(this.engine, request.source, request.tracks, request.output) }); }
+          finally { if (this.exporting === id) this.exporting = undefined; }
+        }).catch((cause: unknown) => this.send({ type: "failed", id, ...failureOf(cause) })));
+        return;
+      }
       case "copy": {
         if (!this.bench || !this.engine.streamCopy) return;
         const { id, request } = message;
@@ -87,14 +102,25 @@ export class ExportWorker {
     }
   }
 
+  /**
+   * Runs `work` under the background policy when it is a version prepared ahead (plan 100), and at the normal priority
+   * again afterwards, so what the person asks for next is never throttled.
+   */
+  private async background<T>(background: true | undefined, work: () => Promise<T>): Promise<T> {
+    if (!background) return work();
+    this.engine.setBackground?.(true);
+    try { return await work(); } finally { this.engine.setBackground?.(false); }
+  }
+
   private async serve(message: ExportMainMessage & { type: "inspect" | "export" }): Promise<void> {
-    const request = { ...message.request, ...(this.join ? { join: this.join } : {}) };
+    const { background, ...asked } = message.request;
+    const request = { ...asked, ...(this.join ? { join: this.join } : {}) };
     try {
       if (message.type === "inspect") {
         this.send({ type: "inspected", id: message.id, plan: await this.engine.inspect(request) });
       } else {
         this.exporting = message.id;
-        const result = await this.engine.run(request);
+        const result = await this.background(background, () => this.engine.run(request));
         this.send({ type: "exported", id: message.id, result });
       }
     } catch (cause) {

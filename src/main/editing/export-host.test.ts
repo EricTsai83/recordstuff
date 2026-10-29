@@ -143,6 +143,26 @@ describe("the export worker's supervisor", () => {
     await expect(exported).rejects.toMatchObject({ code: "cancelled" });
   });
 
+  it("copies tracks with progress, and cancels a copy as it cancels an export (plan 100)", async () => {
+    const ctx = setup();
+    const fractions: number[] = [];
+    const copied = ctx.host.copyTracks({ source: "/a.mp4", tracks: ["screen", "sound0"], output: "/c/content.mp4", background: true }, (f) => fractions.push(f));
+    const child = await ready(ctx);
+    const id = (child.sent.find((m) => m.type === "tracks") as { id: number }).id;
+    child.deliver({ type: "progress", id, fraction: 0.25 });
+    expect(ctx.host.exporting).toBe(true);
+    child.deliver({ type: "extracted", id, bytes: 12 });
+    await expect(copied).resolves.toBe(12);
+    expect(fractions).toEqual([0.25]);
+    const again = ctx.host.copyTracks({ source: "/a.mp4", tracks: ["sound0"], output: "/c/s.m4a" }, () => undefined);
+    again.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.host.cancel();
+    expect(child.sent.some((m) => m.type === "cancel")).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(again).rejects.toMatchObject({ code: "cancelled" });
+  });
+
   it("does not end a worker whose cancelled export ended in time", async () => {
     const ctx = setup();
     const exported = ctx.host.export({ source: "/a.mp4", output: "/.a.part", removed: [] }, () => undefined);

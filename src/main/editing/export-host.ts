@@ -6,7 +6,7 @@
  * are bounded however the engine is doing; main then removes the export's unfinished file.
  */
 import { utilityProcess, type UtilityProcess } from "electron";
-import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack } from "../../shared/editing";
+import { isExportHostMessage, type ExportFailureCode, type ExportHostMessage, type ExportMainMessage, type ExportPlan, type ExportRequest, type ExportResult, type ExtractTrack, type CopyTracksRequest } from "../../shared/editing";
 import { pipeLines } from "../lib/pipe-lines";
 
 /** A failed inspection or export: the engine's code, or the worker's own. */
@@ -33,7 +33,8 @@ export interface ExportHostOptions {
 export const CANCEL_BOUND_MS = 1000;
 
 interface Pending {
-  kind: "inspect" | "export" | "extract";
+  /** `tracks` (plan 100) runs, reports progress and is cancelled as an export is. */
+  kind: "inspect" | "export" | "extract" | "tracks";
   /** Posted to the worker; until then it waits for the worker to be ready, and a cancel ends it there. */
   sent: boolean;
   resolve: (value: unknown) => void;
@@ -57,7 +58,7 @@ export class ExportHost {
 
   /** Whether an export is in flight. */
   get exporting(): boolean {
-    return [...this.pending.values()].some((p) => p.kind === "export");
+    return [...this.pending.values()].some((p) => p.kind === "export" || p.kind === "tracks");
   }
 
   /** The engine's plan for an edit, without writing anything. */
@@ -68,6 +69,14 @@ export class ExportHost {
   /** Copies an editable recording's `track` into `output`, which must not exist, for the edit view's preview (plan 087). */
   extract(request: { source: string; track: ExtractTrack; output: string }): Promise<number> {
     return this.request("extract", request) as Promise<number>;
+  }
+
+  /**
+   * Copies tracks of a recording as they are into `request.output`, which must not exist (plan 100); `progress` hears
+   * the fraction done, and `cancel` stops it as it stops an export.
+   */
+  copyTracks(request: CopyTracksRequest, progress: (fraction: number) => void): Promise<number> {
+    return this.request("tracks", request, progress) as Promise<number>;
   }
 
   /** Exports into `request.output`, which must not exist; `progress` hears the fraction done. */
@@ -82,7 +91,7 @@ export class ExportHost {
   cancel(): void {
     let running = false;
     for (const [id, pending] of [...this.pending]) {
-      if (pending.kind !== "export") continue;
+      if (pending.kind !== "export" && pending.kind !== "tracks") continue;
       // Still waiting for the worker: it never starts.
       if (!pending.sent) this.settle(id, new ExportFailure("cancelled", "the export was cancelled before it started"));
       else running = true;
@@ -110,7 +119,7 @@ export class ExportHost {
   }
 
   /** A request is pending from now on, while the worker starts too, so cancel and quit reach it there. */
-  private request(kind: Pending["kind"], request: ExportRequest | { source: string; track: ExtractTrack; output: string }, progress?: (fraction: number) => void): Promise<unknown> {
+  private request(kind: Pending["kind"], request: ExportRequest | { source: string; track: ExtractTrack; output: string } | CopyTracksRequest, progress?: (fraction: number) => void): Promise<unknown> {
     const id = this.nextId++;
     const settled = new Promise((resolve, reject) => {
       this.pending.set(id, { kind, sent: false, resolve, reject, ...(progress ? { progress } : {}) });

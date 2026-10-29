@@ -303,6 +303,33 @@ impl Task for CopyTask {
     }
 }
 
+/// Copies tracks of a recording, as they are, into one file of their own (plan 100), reporting progress; cancellable.
+pub struct CopyTracksTask {
+    source: PathBuf,
+    output: PathBuf,
+    which: Vec<render::Extract>,
+    cancel: Arc<AtomicBool>,
+    progress: Arc<ProgressCallback>,
+}
+
+impl Task for CopyTracksTask {
+    type Output = f64;
+    type JsValue = f64;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let progress = self.progress.clone();
+        let mut report = move |fraction: f64| {
+            progress.call(fraction, ThreadsafeFunctionCallMode::NonBlocking);
+        };
+        let bytes = render::copy_tracks(&self.source, &self.output, &self.which, &mut report, &self.cancel).map_err(reject)?;
+        Ok(bytes as f64)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
 /// Copies an editable recording's camera or second sound into a file of its own for the edit view's preview (plan 087).
 pub struct ExtractTask {
     source: PathBuf,
@@ -414,9 +441,70 @@ impl NativeExport {
         Ok(AsyncTask::new(ExtractTask { source: PathBuf::from(source), output: PathBuf::from(output), which }))
     }
 
+    /// Copies `source`'s `tracks` (`screen`, `camera`, `sound0` the sound players play, `sound1` and `sound2` its
+    /// disabled ones), as they are, into `output`, which must not exist (plan 100): a version that needs no rendering, or
+    /// one of a recording's sources. Progress is reported as an export's, and `cancel` stops it. The bytes written.
+    #[napi(ts_return_type = "Promise<number>")]
+    pub fn copy_tracks(&self, source: String, tracks: Vec<String>, output: String) -> Result<AsyncTask<CopyTracksTask>> {
+        let which = tracks
+            .iter()
+            .map(|track| match track.as_str() {
+                "screen" => Ok(render::Extract::Screen),
+                "camera" => Ok(render::Extract::Camera),
+                "sound0" => Ok(render::Extract::Sound(0)),
+                "sound1" => Ok(render::Extract::Sound(1)),
+                "sound2" => Ok(render::Extract::Sound(2)),
+                other => Err(failure("invalid_range", format!("no track {other:?} to copy"))),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.cancel.store(false, Ordering::Release);
+        Ok(AsyncTask::new(CopyTracksTask {
+            source: PathBuf::from(source),
+            output: PathBuf::from(output),
+            which,
+            cancel: self.cancel.clone(),
+            progress: self.progress.clone(),
+        }))
+    }
+
+    /// Puts this process under Darwin's background policy, or takes it out (plan 100): a version prepared ahead gets only
+    /// the CPU left over, on efficiency cores, with its disk reads and writes throttled, while what the person asked for
+    /// now runs at the normal priority. Whether the system took it; elsewhere nothing changes and the answer is false.
+    #[napi]
+    pub fn set_background(&self, background: bool) -> bool {
+        set_background(background)
+    }
+
     /// Stops the running export at its next fragment; it then rejects with `cancelled`.
     #[napi]
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_background(background: bool) -> bool {
+    // <sys/resource.h>: `PRIO_DARWIN_PROCESS` with `who` 0 is this process; `PRIO_DARWIN_BG` sets the background policy,
+    // 0 clears it.
+    const PRIO_DARWIN_PROCESS: std::os::raw::c_int = 4;
+    const PRIO_DARWIN_BG: std::os::raw::c_int = 0x1000;
+    unsafe extern "C" {
+        fn setpriority(which: std::os::raw::c_int, who: u32, prio: std::os::raw::c_int) -> std::os::raw::c_int;
+    }
+    // SAFETY: a system call on this process with constant arguments; it reads and writes no memory of ours.
+    unsafe { setpriority(PRIO_DARWIN_PROCESS, 0, if background { PRIO_DARWIN_BG } else { 0 }) == 0 }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_background(_background: bool) -> bool {
+    false
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn the_process_enters_and_leaves_the_background_policy() {
+        assert!(super::set_background(true));
+        assert!(super::set_background(false));
     }
 }

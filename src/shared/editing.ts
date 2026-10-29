@@ -48,6 +48,8 @@ export interface ExportRequest {
   removed: Array<{ from: number; to: number }>;
   /** An editable recording's rendered export (plan 087): the camera's place and the volumes. */
   render?: ExportRender;
+  /** A version prepared ahead (plan 100): the worker runs it under the system's background policy. */
+  background?: true;
 }
 
 /**
@@ -60,6 +62,21 @@ export const PREVIEW_TRACKS: readonly PreviewTrack[] = ["camera", "firstSound", 
 /** A track the export worker copies for the preview: the camera, or a disabled sound track by its place (plan 098). */
 export type ExtractTrack = "camera" | "sound1" | "sound2";
 const EXTRACT_TRACKS: readonly ExtractTrack[] = ["camera", "sound1", "sound2"];
+
+/**
+ * A track copied as it is into a file of its own (plan 100): the screen, the camera, the sound players play (`sound0`)
+ * or a disabled sound track by its place.
+ */
+export type CopyTrack = "screen" | "camera" | "sound0" | "sound1" | "sound2";
+const COPY_TRACKS: readonly CopyTrack[] = ["screen", "camera", "sound0", "sound1", "sound2"];
+
+/** Tracks copied into one file (plan 100); `output` must not exist. */
+export interface CopyTracksRequest {
+  source: string;
+  tracks: CopyTrack[];
+  output: string;
+  background?: true;
+}
 
 /** Why an export or an inspection failed, as the engine and the worker name it. */
 export type ExportFailureCode =
@@ -85,7 +102,9 @@ export type ExportMainMessage =
   /** `pnpm bench:export`'s speed reference, served only under `EXPORT_BENCH_ENV`; main never sends it. */
   | { type: "copy"; id: number; request: { source: string; output: string } }
   /** Copies an editable recording's track into a file of its own for the edit view's preview (plan 087). */
-  | { type: "extract"; id: number; request: { source: string; track: ExtractTrack; output: string } };
+  | { type: "extract"; id: number; request: { source: string; track: ExtractTrack; output: string } }
+  /** Copies tracks into one file, a version or a recording's sources (plan 100); answered `extracted`, with progress. */
+  | { type: "tracks"; id: number; request: CopyTracksRequest };
 
 /** The worker serves `copy` only with this set to `1` (`pnpm bench:export`). */
 export const EXPORT_BENCH_ENV = "RECORDSTUFF_EXPORT_BENCH";
@@ -143,7 +162,8 @@ export function isExportMainMessage(value: unknown): value is ExportMainMessage 
   const isRequest = isRecord(request) && typeof request["source"] === "string"
     && (request["output"] === undefined || typeof request["output"] === "string")
     && Array.isArray(request["removed"]) && request["removed"].length <= MAX_EDIT_RANGES && request["removed"].every(isSpan)
-    && (request["render"] === undefined || isExportRender(request["render"]));
+    && (request["render"] === undefined || isExportRender(request["render"]))
+    && (request["background"] === undefined || request["background"] === true);
   switch (value["type"]) {
     case "inspect": case "export": return isCount(value["id"]) && isRequest;
     case "cancel": return true;
@@ -151,6 +171,10 @@ export function isExportMainMessage(value: unknown): value is ExportMainMessage 
     case "copy": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string";
     case "extract": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string"
       && (EXTRACT_TRACKS as readonly unknown[]).includes(request["track"]);
+    case "tracks": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string"
+      && Array.isArray(request["tracks"]) && request["tracks"].length > 0 && request["tracks"].length <= 5
+      && request["tracks"].every((track) => (COPY_TRACKS as readonly unknown[]).includes(track))
+      && (request["background"] === undefined || request["background"] === true);
     default: return false;
   }
 }

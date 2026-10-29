@@ -28,6 +28,39 @@ function setup(engine: Partial<{ inspect(r: ExportRequest): Promise<ExportPlan>;
   return { worker, sent, post, requests, settled, cancels: () => cancelled, extracts };
 }
 
+describe("the export worker's versions (plan 100)", () => {
+  it("copies tracks with progress, and runs only what is prepared ahead under the background policy", async () => {
+    const sent: ExportHostMessage[] = [];
+    let listener: ((message: { data: unknown }) => void) | undefined;
+    const said: string[] = [];
+    let report: ((fraction: number) => void) | undefined;
+    const worker = new ExportWorker(
+      { on: (_event, handler) => { listener = handler; }, postMessage: (message) => sent.push(message as ExportHostMessage) },
+      {
+        inspect: async () => plan,
+        run: async (request) => { said.push(`run ${request.source}`); return { plan, bytes: 1, reencodedFrames: 0, reencodedPackets: 0 }; },
+        cancel: () => undefined,
+        extract: async () => 1,
+        copyTracks: async (source, tracks, output) => { said.push(`copy ${source} ${tracks.join("+")} > ${output}`); report?.(0.5); return 9; },
+        setBackground: (on) => { said.push(`background ${on}`); return true; },
+      },
+    );
+    report = (fraction) => worker.progress(fraction);
+    const post = (data: unknown): void => listener!({ data });
+    post({ type: "tracks", id: 4, request: { source: "/a.mp4", tracks: ["screen", "sound0"], output: "/c/content.mp4", background: true } });
+    post({ type: "export", id: 5, request: { source: "/b.mp4", output: "/.b.part", removed: [] } });
+    post({ type: "export", id: 6, request: { source: "/c.mp4", output: "/c/v.mp4", removed: [], background: true } });
+    // Never a track the engine does not name, nor too many.
+    post({ type: "tracks", id: 7, request: { source: "/a.mp4", tracks: ["everything"], output: "/x" } });
+    post({ type: "tracks", id: 8, request: { source: "/a.mp4", tracks: [], output: "/x" } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(said).toEqual(["background true", "copy /a.mp4 screen+sound0 > /c/content.mp4", "background false", "run /b.mp4", "background true", "run /c.mp4", "background false"]);
+    expect(sent).toContainEqual({ type: "progress", id: 4, fraction: 0.5 });
+    expect(sent).toContainEqual({ type: "extracted", id: 4, bytes: 9 });
+    expect(sent.some((message) => "id" in message && (message.id === 7 || message.id === 8))).toBe(false);
+  });
+});
+
 describe("the export worker", () => {
   it("says it is ready, answers pings, and serves an inspection and an export by id", async () => {
     const ctx = setup();

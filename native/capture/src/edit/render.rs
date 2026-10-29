@@ -136,83 +136,155 @@ pub fn export(
     Ok(RenderReport { plan, bytes, frames, source: facts, description: index.description })
 }
 
-/// An editable recording's track the edit view plays beside the recording for its preview (plan 087): the recording
-/// itself shows the screen with the first sound; these are the camera and a disabled sound track, by its place among
-/// the file's sound tracks (`SourceIndex::sound`): the second input's (plan 087), or with a mix each input's (plan 098).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A track copied as it is: the screen, the camera, or a sound track by its place among the file's (0 the one players
+/// play, then its disabled ones in order).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Extract {
+    Screen,
     Camera,
     Sound(usize),
 }
 
-/// Copies one of `source_path`'s tracks, as it is, into a file of its own at `output_path`, which must not exist: its
-/// samples, times and (for sound) edit unchanged, so it plays on the recording's own clock. A few seconds of samples
-/// at a time; nothing is decoded. Returns the bytes written.
+/// Copies one of `source_path`'s tracks, as it is, into a file of its own at `output_path`, which must not exist, for
+/// the edit view's preview (plan 087): the camera or a disabled sound track, never the one players play. Its samples,
+/// times and (for sound) edit unchanged, so it plays on the recording's own clock. Returns the bytes written.
 pub fn extract(source_path: &Path, output_path: &Path, which: Extract, cancel: &AtomicBool) -> Result<u64, ExportError> {
+    if matches!(which, Extract::Screen | Extract::Sound(0)) {
+        return Err(ExportError::new("unsupported", format!("{which:?} is not a preview track")));
+    }
+    copy_tracks(source_path, output_path, &[which], &mut |_| {}, cancel)
+}
+
+/// How long each fragment of a track copy holds, at most a key frame later for pictures.
+const COPY_FRAGMENT_SECONDS: f64 = 4.0;
+
+/// One track a copy takes: what the output describes it as, and where its samples are.
+struct Copied<'a> {
+    config: TrackConfig,
+    samples: &'a source::Samples,
+    sync: Option<&'a [bool]>,
+    presented: Option<u64>,
+    timescale: u32,
+    /// The next sample to copy, and its decode time in `timescale`.
+    next: usize,
+    ticks: u64,
+}
+
+/// Copies `which` of `source_path`'s tracks, as they are, into one file at `output_path`, which must not exist (plan
+/// 100): a version that needs no rendering (the screen with the sound players play) and each of a recording's sources.
+/// Samples, times and each sound's edit are unchanged, so the tracks keep the recording's clock and their places; a
+/// track the recording does not have is refused. Nothing is decoded; fragments of a few seconds, each track up to the
+/// same time, each video fragment from a key frame on. `progress` hears the fraction copied; cancel is checked at every
+/// sample. Returns the bytes written.
+pub fn copy_tracks(source_path: &Path, output_path: &Path, which: &[Extract], progress: &mut dyn FnMut(f64), cancel: &AtomicBool) -> Result<u64, ExportError> {
     use crate::mux::mp4::{HybridMp4, Sample};
+    if which.is_empty() {
+        return Err(ExportError::new("invalid_range", "no track to copy"));
+    }
     let source = File::open(source_path).map_err(|e| ExportError::read(&e))?;
     let index = source::read(&source)?;
-    let (config, samples, presented) = match which {
-        Extract::Camera => {
-            let camera = index.camera.as_ref().ok_or_else(|| ExportError::new("unsupported", "the recording has no camera track"))?;
-            let codec = Codec::H264 { avcc: camera.avcc.clone(), width: camera.width, height: camera.height };
-            (TrackConfig { codec, timescale: camera.timescale, skip: 0 }, (&camera.samples, Some(&camera.sync)), None)
+    let mut tracks: Vec<Copied<'_>> = Vec::with_capacity(which.len());
+    for &each in which {
+        let copied = match each {
+            Extract::Screen | Extract::Camera => {
+                let track = if each == Extract::Screen {
+                    &index.video
+                } else {
+                    index.camera.as_ref().ok_or_else(|| ExportError::new("unsupported", "the recording has no camera track"))?
+                };
+                let codec = Codec::H264 { avcc: track.avcc.clone(), width: track.width, height: track.height };
+                Copied {
+                    config: TrackConfig { codec, timescale: track.timescale, skip: 0 },
+                    samples: &track.samples,
+                    sync: Some(&track.sync),
+                    presented: None,
+                    timescale: track.timescale,
+                    next: 0,
+                    ticks: 0,
+                }
+            }
+            Extract::Sound(n) => {
+                let sound = index.sound(n).ok_or_else(|| ExportError::new("unsupported", format!("the recording has no sound in its sound track {n}")))?;
+                let codec = Codec::Aac {
+                    config: sound.config.clone(),
+                    sample_rate: sound.sample_rate,
+                    channels: sound.channels,
+                    average_bitrate: sound.average_bitrate,
+                    max_bitrate: sound.max_bitrate,
+                };
+                Copied {
+                    config: TrackConfig { codec, timescale: sound.timescale, skip: sound.skip },
+                    samples: &sound.samples,
+                    sync: None,
+                    presented: sound.presented,
+                    timescale: sound.timescale,
+                    next: 0,
+                    ticks: 0,
+                }
+            }
+        };
+        if copied.samples.is_empty() {
+            return Err(ExportError::new("unsupported", format!("the recording's {each:?} track is empty")));
         }
-        Extract::Sound(n) => {
-            let sound = index
-                .sound(n)
-                .filter(|_| n > 0)
-                .ok_or_else(|| ExportError::new("unsupported", format!("the recording has no sound in its disabled sound track {n}")))?;
-            let codec = Codec::Aac {
-                config: sound.config.clone(),
-                sample_rate: sound.sample_rate,
-                channels: sound.channels,
-                average_bitrate: sound.average_bitrate,
-                max_bitrate: sound.max_bitrate,
-            };
-            (TrackConfig { codec, timescale: sound.timescale, skip: sound.skip }, (&sound.samples, None), sound.presented)
-        }
-    };
+        tracks.push(copied);
+    }
     let out = OpenOptions::new().write(true).create_new(true).open(output_path).map_err(|e| {
         if e.kind() == io::ErrorKind::AlreadyExists {
             ExportError::new("output_exists", format!("{} exists", output_path.display()))
         } else {
-            ExportError::write(&e, "creating the preview track")
+            ExportError::write(&e, "creating the copy")
         }
     })?;
-    let timescale = config.timescale;
-    let mut mp4 = HybridMp4::create(out, vec![config]).map_err(|e| ExportError::write(&e, "writing the preview track"))?;
-    let (samples, sync) = samples;
-    let mut chunk: Vec<(Vec<u8>, u32, bool)> = Vec::new();
-    let mut ticks = 0u64;
-    let flush = |chunk: &mut Vec<(Vec<u8>, u32, bool)>, mp4: &mut HybridMp4<File>| -> Result<(), ExportError> {
-        let written: Vec<Sample> = chunk.iter().map(|(data, duration, sync)| Sample { data, duration: *duration, sync: *sync }).collect();
-        mp4.write_fragment(0, &written).map_err(|e| ExportError::write(&e, "writing the preview track"))?;
-        chunk.clear();
-        Ok(())
-    };
-    remux::for_each_sample(&source, samples, 0, samples.len(), &mut |n, data| {
-        if cancel.load(Ordering::Acquire) {
-            return Err(ExportError::new("cancelled", "the preview track was cancelled"));
+    let total: f64 = tracks.iter().map(|t| t.samples.durations.iter().map(|&d| u64::from(d)).sum::<u64>() as f64 / f64::from(t.timescale)).fold(0.0, f64::max);
+    let mut mp4 = HybridMp4::create(out, tracks.iter().map(|t| t.config.clone()).collect()).map_err(|e| ExportError::write(&e, "writing the copy"))?;
+    let mut until = 0.0;
+    let mut last_report = Instant::now();
+    while tracks.iter().any(|t| t.next < t.samples.len()) {
+        until += COPY_FRAGMENT_SECONDS;
+        for (place, track) in tracks.iter_mut().enumerate() {
+            // The samples up to `until`, and for pictures on to the next key frame, so the next fragment starts on one.
+            let from = track.next;
+            let mut to = from;
+            let mut ticks = track.ticks;
+            while to < track.samples.len() {
+                let key = track.sync.is_none_or(|sync| sync[to]);
+                if to > from && key && ticks as f64 / f64::from(track.timescale) >= until {
+                    break;
+                }
+                ticks += u64::from(track.samples.durations[to]);
+                to += 1;
+            }
+            if to == from {
+                continue;
+            }
+            let mut chunk: Vec<(Vec<u8>, u32, bool)> = Vec::with_capacity(to - from);
+            remux::for_each_sample(&source, track.samples, from, to, &mut |n, data| {
+                if cancel.load(Ordering::Acquire) {
+                    return Err(ExportError::new("cancelled", "the copy was cancelled"));
+                }
+                chunk.push((data.to_vec(), track.samples.durations[n], track.sync.is_none_or(|sync| sync[n])));
+                Ok(())
+            })?;
+            let written: Vec<Sample> = chunk.iter().map(|(data, duration, sync)| Sample { data, duration: *duration, sync: *sync }).collect();
+            mp4.write_fragment(place, &written).map_err(|e| ExportError::write(&e, "writing the copy"))?;
+            track.next = to;
+            track.ticks = ticks;
         }
-        chunk.push((data.to_vec(), samples.durations[n], sync.is_none_or(|sync| sync[n])));
-        ticks += u64::from(samples.durations[n]);
-        // A fragment every few seconds, each video fragment from a key frame on (the next one starts one).
-        let next_is_key = sync.is_none_or(|sync| sync.get(n + 1).copied().unwrap_or(true));
-        if ticks >= 4 * u64::from(timescale) && next_is_key {
-            ticks = 0;
-            flush(&mut chunk, &mut mp4)?;
+        if total > 0.0 && last_report.elapsed() >= PROGRESS_INTERVAL {
+            last_report = Instant::now();
+            progress((until / total).min(1.0));
         }
-        Ok(())
-    })?;
-    flush(&mut chunk, &mut mp4)?;
-    if let Some(presented) = presented {
-        mp4.set_presented(0, presented);
     }
-    let (finished, _) = mp4.finish().map_err(|e| ExportError::write(&e, "finishing the preview track"))?;
+    for (place, track) in tracks.iter().enumerate() {
+        if let Some(presented) = track.presented {
+            mp4.set_presented(place, presented);
+        }
+    }
+    let (finished, _) = mp4.finish().map_err(|e| ExportError::write(&e, "finishing the copy"))?;
     if let Some(reason) = finished.fragmented {
-        return Err(ExportError::new("output_write_failed", format!("the preview track could not be finished: {reason}")));
+        return Err(ExportError::new("output_write_failed", format!("the copy could not be finished: {reason}")));
     }
+    progress(1.0);
     Ok(finished.bytes)
 }
 
@@ -988,6 +1060,7 @@ mod tests {
                     assert_eq!(track.samples.iter().map(|s| s.decode_time).collect::<Vec<_>>(), camera.times);
                     assert!(track.samples[30].sync && !track.samples[31].sync);
                 }
+                Extract::Screen => unreachable!(),
                 Extract::Sound(_) => {
                     assert!(track.samples.iter().all(|s| s.data == [3; 9]));
                     // Its priming skipped as the recording's is, so it plays from the same moment.
@@ -1020,6 +1093,47 @@ mod tests {
         assert!(!output.exists());
         std::fs::remove_file(&plain).unwrap();
         std::fs::remove_file(&source).unwrap();
+    }
+
+    /// Plan 100: a version that needs no rendering, and a recording's sources, are its tracks copied as they are.
+    #[test]
+    fn tracks_are_copied_together_into_one_file_as_they_are() {
+        let mixed = temp("copy-mixed-source");
+        std::fs::write(&mixed, editable_recording_with(2, true, true)).unwrap();
+        let index = source::read(&std::fs::read(&mixed).unwrap()).unwrap();
+        let output = temp("copy-screen-and-mix");
+        let mut reported = Vec::new();
+        copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Sound(0)], &mut |f| reported.push(f), &AtomicBool::new(false)).unwrap();
+        let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
+        assert_eq!(copied.tracks.len(), 2);
+        assert!(!copied.tracks[0].fragmented, "a plain file");
+        assert!(copied.tracks.iter().all(|t| t.enabled), "one picture and one sound, both played");
+        assert_eq!(copied.tracks[0].samples.iter().map(|s| s.decode_time).collect::<Vec<_>>(), index.video.times);
+        assert_eq!(copied.tracks[0].samples.iter().map(|s| s.sync).collect::<Vec<_>>(), index.video.sync);
+        // The mix, the sound players play, with its priming skipped as the recording's is.
+        assert_eq!(copied.tracks[1].samples.len(), index.sound(0).unwrap().samples.len());
+        assert_eq!(copied.tracks[1].edit.map(|(_, media)| media), Some(2112));
+        assert_eq!(reported.last(), Some(&1.0));
+        assert_eq!(copy_tracks(&mixed, &output, &[Extract::Screen], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "output_exists");
+        std::fs::remove_file(&output).unwrap();
+        // Cancelled: an error, and the caller removes what was begun.
+        let cancelled = copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &AtomicBool::new(true));
+        assert_eq!(cancelled.unwrap_err().code, "cancelled");
+        std::fs::remove_file(&output).unwrap();
+        // A track the recording does not have, or none at all, is refused before anything is created.
+        let plain = temp("copy-plain");
+        std::fs::write(&plain, crate::edit::remux::tests::recording(1)).unwrap();
+        assert_eq!(copy_tracks(&plain, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
+        assert_eq!(copy_tracks(&plain, &output, &[], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "invalid_range");
+        assert!(!output.exists());
+        // A plain recording's sound alone (Sound only of one never edited).
+        copy_tracks(&plain, &output, &[Extract::Sound(0)], &mut |_| {}, &AtomicBool::new(false)).unwrap();
+        let sound = parse(&std::fs::read(&output).unwrap()).unwrap();
+        assert_eq!(sound.tracks.len(), 1);
+        assert_eq!(sound.tracks[0].descriptions, ["mp4a"]);
+        for file in [&output, &plain, &mixed] {
+            std::fs::remove_file(file).unwrap();
+        }
     }
 
     /// Plan 087's recovery: a recording that ended without its stop (a crash, a full disk) is left fragmented, every
