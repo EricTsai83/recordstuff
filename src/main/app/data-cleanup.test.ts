@@ -165,3 +165,28 @@ it("startup releases only a marker whose helper has stopped, and keeps one it ca
   }
   expect(await readSettings()).toBe("settings");
 });
+
+it("clears the versions prepared for sharing whole, MP4s included, and never a cache that holds recordings (plan 100)", async () => {
+  const owner = parent(); plan.parentPid = owner.pid!;
+  const versions = path.join(directory, "Caches", "RecordStuff", "Versions");
+  await fs.mkdir(path.join(versions, "0123", "out"), { recursive: true });
+  await fs.writeFile(path.join(versions, "0123", "content.mp4"), "prepared video");
+  await fs.writeFile(path.join(plan.outputDir, "video.mp4"), "recording");
+  // A plain recording's Original is a second name of the recording: removing it leaves the recording.
+  await fs.link(path.join(plan.outputDir, "video.mp4"), path.join(versions, "0123", "out", "video (original).mp4"));
+  const run = worker({ ...plan, caches: [versions] });
+  await vi.waitFor(() => expect(run.messages).toContain("ready"));
+  run.child.send("commit"); await vi.waitFor(() => expect(run.messages).toContain("committed"));
+  owner.kill();
+  expect(await run.exited).toBe(0);
+  await expect(fs.access(versions)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await fs.readFile(path.join(plan.outputDir, "video.mp4"), "utf8")).toBe("recording");
+});
+
+it("refuses a cache folder that holds the output folder, clearing nothing", async () => {
+  const owner = parent(); plan.parentPid = owner.pid!;
+  const run = worker({ ...plan, caches: [directory] });
+  owner.kill();
+  expect(await run.exited).toBe(1);
+  expect(await readSettings()).toBe("settings");
+});

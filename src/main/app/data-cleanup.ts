@@ -12,6 +12,12 @@ export interface CleanupPlan {
   outputDir: string;
   /** Also protect media named by the failure history, including partial recordings. */
   media: string[];
+  /**
+   * Folders only RecordStuff writes whose files can all be made again (plan 100: the versions prepared for sharing, in
+   * the system's caches folder). Cleared whole, their MP4s included, since none is a recording; never one that holds or
+   * lies in the output folder or protected media. Absent in a plan made before them.
+   */
+  caches?: string[];
   parentPid: number;
 }
 
@@ -49,7 +55,8 @@ async function cleanupWorker(): Promise<void> {
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; }
   };
   try {
-    if (![plan.userData, plan.logs, plan.sessionData, plan.outputDir, ...plan.media].every(value => typeof value === "string" && path.isAbsolute(value)) || !Number.isSafeInteger(plan.parentPid) || plan.parentPid <= 0)
+    const caches = plan.caches ?? [];
+    if (![plan.userData, plan.logs, plan.sessionData, plan.outputDir, ...plan.media, ...caches].every(value => typeof value === "string" && path.isAbsolute(value)) || !Number.isSafeInteger(plan.parentPid) || plan.parentPid <= 0)
       throw new Error("Invalid app data cleanup plan");
     const canonical = async (value: string): Promise<string> => fs.realpath(value).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return path.resolve(value);
@@ -73,6 +80,18 @@ async function cleanupWorker(): Promise<void> {
     if (deletionRoots.some(root => inside(actualOutput, root))) throw new Error("The output folder overlaps app data; move recordings outside app data first");
     const originalPaths = [output, ...plan.media.map(value => path.resolve(value))];
     const protectedPaths = [...originalPaths, ...await Promise.all(originalPaths.map(canonical))];
+    // A cache folder is cleared whole, so it must be RecordStuff's alone: a plain folder, never a broad one, and never
+    // holding or inside the output folder or protected media. Any doubt keeps it, and the rest is still cleared.
+    const cacheRoots: string[] = [];
+    for (const cache of caches) {
+      const actual = await canonical(cache);
+      const stat = await fs.lstat(cache).catch(() => undefined);
+      if (!stat) continue;
+      if (!stat.isDirectory() || stat.isSymbolicLink() || inside(actual, await canonical(os.homedir())) || inside(actual, await canonical(os.tmpdir()))
+        || actual === path.parse(actual).root || protectedPaths.some(keep => inside(actual, keep) || inside(keep, actual)))
+        throw new Error("Refusing to clear a cache folder that is not RecordStuff's alone");
+      cacheRoots.push(actual);
+    }
     await fs.mkdir(plan.userData, { recursive: true });
     await writeStatus({ version: 1, pid: process.pid, status: "waiting" }, true);
     owned = true;
@@ -113,6 +132,19 @@ async function cleanupWorker(): Promise<void> {
     // An outer root owns its nested roots; process it once, without losing the
     // marker that makes a simultaneous new launch wait until cleanup is done.
     for (const root of deletionRoots.filter(root => !deletionRoots.some(other => other !== root && inside(other, root)))) await remove(root);
+    // The caches: every file, MP4s included (none is a recording: a link to one is only its second name), never
+    // following a link out of them.
+    const clear = async (target: string): Promise<void> => {
+      const stat = await fs.lstat(target).catch(() => undefined);
+      if (!stat) return;
+      if (stat.isDirectory() && !stat.isSymbolicLink()) {
+        for (const entry of await fs.readdir(target)) await clear(path.join(target, entry));
+        await fs.rmdir(target).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT") throw error;
+        });
+      } else await fs.unlink(target);
+    };
+    for (const root of cacheRoots) await clear(root);
     await fs.unlink(marker);
     await fs.rmdir(plan.userData).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT") throw error;
