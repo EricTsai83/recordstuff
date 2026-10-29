@@ -138,10 +138,17 @@ async function measuredFolder(dir: string): Promise<RecordingsLibrary> {
   return library;
 }
 
+/**
+ * Stamped as main stamps every view (settings-window.ts): a push and a save's answer travel on different IPC pipes, so
+ * an older view can arrive after a newer one, and the page keeps the newer by its revision (S015 failed on CI without).
+ */
+let fixtureRevision = 0;
+
 /** The former fixture's own view: shaped like what settings-model produces, including a refused shortcut. */
 function fixtureView(language: Language, notifications: boolean): SettingsView {
   const zh = language === "zh-TW";
   return {
+    revision: ++fixtureRevision,
     language,
     title: "RecordStuff",
     hint: "",
