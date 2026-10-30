@@ -14,14 +14,14 @@ import { LAST_MACOS_ONLY_VERSION } from "../../../scripts/lib/release/release-ma
 export const SITE_NAME = "RecordStuff";
 
 export const meta = {
-  title: "RecordStuff — record, cut, done",
+  title: "RecordStuff — Record it. Trim it. Share it.",
   description:
     "A free, open-source macOS menu bar app that records your screen and its sound, with your microphone and camera if you want them, to a plain MP4. Cut out what you don't need without touching the original. No account; files stay on your Mac.",
   ogImageAlt: "A low-poly Mac desktop with a campsite at night; in the menu bar the RecordStuff icon is a filled dot with REC beside it, meaning a recording is in progress.",
 } as const;
 
 export const hero = {
-  title: "Record. Cut. Done.",
+  title: "Record it. Trim it. Share it.",
   primaryCta: "Download for macOS",
   /** Replaces the macOS button for Windows visitors, only while the release carries the installer. */
   windowsCta: "Download for Windows",

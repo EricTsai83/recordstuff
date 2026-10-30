@@ -11,7 +11,7 @@ const windows = release.windows;
 
 <section class="hero">
   <div class="container hero-inner">
-    <h1 class="hero-title display">{hero.title}</h1>
+    <h1 class="hero-title display">{hero.title.split(". ").map((phrase, index, phrases) => <><span>{phrase}{index < phrases.length - 1 ? "." : ""}</span>{index < phrases.length - 1 ? " " : ""}</>)}</h1>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href={release.dmgUrl} data-download-os="mac"><AppleMark size={18} /><span>{hero.primaryCta}</span></a>
       {windows && <a class="btn btn-primary btn-lg" href={windows.url} data-download-os="windows" hidden><WindowsMark size={16} /><span>{hero.windowsCta}</span></a>}
@@ -117,6 +117,9 @@ const windows = release.windows;
     font-size: clamp(2.4rem, 5.6vw, 4.6rem);
     max-width: 24ch;
     text-wrap: balance;
+  }
+  .hero-title span {
+    white-space: nowrap;
   }
   .hero-actions {
     display: flex;
