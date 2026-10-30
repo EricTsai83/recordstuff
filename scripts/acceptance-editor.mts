@@ -1,8 +1,8 @@
 /**
- * `pnpm acceptance:editor [-- --secondary] [--no-microphone] [--out <dir>]` (plan 087's follow-up, 2026-10-25): an
+ * `pnpm acceptance:editor [-- --secondary] [--no-microphone] [--no-system-audio] [--out <dir>]` (plan 087's follow-up, 2026-10-25): an
  * editable recording edited and exported on the packaged app with real input, macOS only; never shipped. Build and quit
  * the bundle first (`pnpm start:app`, then Quit). The runner saves Editable recordings off, the camera and the
- * microphone on (`--no-microphone`: off) and no countdown over the user's settings, launches the bundle, opens the
+ * microphone on (`--no-microphone`: off), system audio on (`--no-system-audio`: off, plan 101) and no countdown over the user's settings, launches the bundle, opens the
  * moving test material full screen on the recorded display (the primary, or with `--secondary` the second, so the
  * primary stays free) and records 12 s, started by the tray's Start editable recording (2026-10-25: one recording
  * editable with the setting off) and stopped by the registered shortcut. The camera is the user's own choice and must see something:
@@ -94,13 +94,14 @@ const MUTE_TO = 11;
 /** How long a saved change may take to reach the edit record. */
 const SAVE_MS = 5000;
 
-const usage = "usage: pnpm acceptance:editor [-- --secondary] [--no-microphone] [--out <dir>]";
-let secondary = false, microphone = true, outDir: string | undefined;
+const usage = "usage: pnpm acceptance:editor [-- --secondary] [--no-microphone] [--no-system-audio] [--out <dir>]";
+let secondary = false, microphone = true, systemAudio = true, outDir: string | undefined;
 const argv = runnerArgs();
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i]!;
   if (arg === "--secondary") secondary = true;
   else if (arg === "--no-microphone") microphone = false;
+  else if (arg === "--no-system-audio") systemAudio = false;
   else if (arg === "--out" && argv[i + 1] && !argv[i + 1]!.startsWith("--")) outDir = argv[++i];
   else { console.error(usage); process.exit(2); }
 }
@@ -237,9 +238,9 @@ async function main(): Promise<number> {
   try {
     // The case's settings over the user's: restored byte for byte at the end.
     // Editable recordings off: the tray's Start editable recording makes the one recorded here editable (2026-10-25).
-    writeAppSettings({ ...original, editableRecording: false, camera: true, microphone, countdown: 0,
+    writeAppSettings({ ...original, editableRecording: false, camera: true, systemAudio, microphone, countdown: 0,
       display: secondary ? { kind: "display", id: target.id, label: target.label } : { kind: "primary" } });
-    note(`settings: Editable recordings off (the tray's Start editable recording records), camera, microphone ${microphone ? "on" : "off"}, no countdown, recording ${secondary ? `${target.label} (${target.id})` : "the primary display"}`);
+    note(`settings: Editable recordings off (the tray's Start editable recording records), camera, system audio ${systemAudio ? "on" : "off"}, microphone ${microphone ? "on" : "off"}, no countdown, recording ${secondary ? `${target.label} (${target.id})` : "the primary display"}`);
     launcher = spawn("open", materialOpenArgs(MATERIAL, profile, target.frame), { stdio: "ignore" });
     await sleep(5000);
     if (!materialPids().length) blocked("the test material did not open in Google Chrome");
@@ -294,13 +295,15 @@ async function main(): Promise<number> {
     const videos = sourceInfo.streams.filter((s) => s.codec_type === "video");
     const screen = videos[0], cameraTrack = videos[1];
     const sourceDuration = Number(sourceInfo.format.duration);
-    // With the microphone too (plan 098): both inputs mixed on the first sound track, then each on its own.
+    // With both inputs (plan 098): mixed on the first sound track, then each on its own; one input, or none (a silent
+    // track, plan 101), on one track.
+    const inputCount = (systemAudio ? 1 : 0) + (microphone ? 1 : 0), mixed = inputCount === 2;
     const soundTracks = sourceInfo.streams.filter((s) => s.codec_type === "audio").length;
     check({ check: "Recording: an editable file from the tray's Start editable recording, the setting off",
-      expected: `the screen and the camera apart, ${microphone ? "3 sound tracks (the inputs mixed, then each), a version-2 description" : "1 sound track"} with a camera`,
+      expected: `the screen and the camera apart, ${mixed ? "3 sound tracks (the inputs mixed, then each), a version-2 description" : "1 sound track"} with a camera`,
       actual: `${videos.length} picture and ${soundTracks} sound track(s), sounds ${description.sounds.join("/")}${description.mix ? " after their mix" : ""}, camera ${description.camera ? "described" : "none"}`,
-      pass: videos.length === 2 && description.camera !== null && description.sounds.length === (microphone ? 2 : 1)
-        && soundTracks === (microphone ? 3 : 1) && Boolean(description.mix) === microphone });
+      pass: videos.length === 2 && description.camera !== null && description.sounds.length === Math.max(inputCount, 1)
+        && soundTracks === (mixed ? 3 : 1) && Boolean(description.mix) === mixed });
     if (!screen?.width || !screen.height || !cameraTrack?.width || !cameraTrack.height || !description.camera) fail("the recording is not one this round can edit");
     const shape = { rounding: description.camera!.rounding, mirror: description.camera!.mirror };
     note(`recorded ${source} (${screen!.width}×${screen!.height}, ${sourceDuration.toFixed(1)} s; camera ${cameraStop![1]}, ${cameraStop![2]} frame(s))`);
@@ -321,7 +324,9 @@ async function main(): Promise<number> {
       await sleep(1000);
     }
     await ax().enableWebAccessibility(appPid);
-    const title = path.basename(source).replace(/\.[^.]+$/, "");
+    // The card's title, as the Recordings tab gives it (versions.ts recordingTitle, whose module Node cannot load here):
+    // an editable original's `.recordstuff` tag left out (plan 100, D3).
+    const title = path.basename(source).replace(/\.[^.]+$/, "").replace(/(.)\.recordstuff$/i, "$1");
     // The card's menu, tried again if its Edit… does not show (a card just listed can take the first press while it arrives).
     const isEdit = (e: WindowElement): boolean => e.role === "AXMenuItem" && e.title === translate("Edit…", language);
     let editItem: WindowElement | undefined;
@@ -629,7 +634,8 @@ async function main(): Promise<number> {
     // Export.
     const exportFrom = log.end();
     // Save a copy… (plan 100) asks in which form; the Video, its default, is saved.
-    await click(await find("Save a copy button", (e) => e.role === "AXButton" && e.title === translate("Save a copy…", language)));
+    // A popover's trigger: a pop-up button to Accessibility rather than a plain one.
+    await click(await find("Save a copy button", (e) => ["AXButton", "AXPopUpButton", "AXMenuButton"].includes(e.role) && e.title === translate("Save a copy…", language)));
     await click(await find("Save button", (e) => e.role === "AXButton" && e.title === translate("Save", language)));
     const rendering = await waitForLog(log, exportFrom, /editing: rendering .* \(camera (shown|left out), volumes ([-\d./]+) dB\)/, "the render", controller.signal, 15_000);
     const done = await waitForLog(log, exportFrom, /editing: (exported .* as (.+) \(\d+ bytes\)|the export of .* (was cancelled|failed: .*))$/, "the export's end", controller.signal, 180_000);
