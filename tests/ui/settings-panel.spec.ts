@@ -1327,7 +1327,12 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await expect(unavailable, "S150 listed on Windows").toBeVisible();
   await expect(unavailable, "S150 unavailable").toHaveAttribute("aria-disabled", "true");
   await expect(unavailable, "S150 with why").toContainText("Editable recordings are available on macOS only.");
-  await page.keyboard.press("Escape");
+  // Closed before the next tab is clicked: an Escape that arrives before the list has focus is lost, and the list's
+  // backdrop would take the click.
+  await expect(async () => {
+    if (await unavailable.isVisible()) await page.keyboard.press("Escape");
+    await expect(unavailable).toBeHidden({ timeout: 1000 });
+  }).toPass();
 
   // S151 the Recording tab's Test camera (D4): opened only by its press; pressed again, or the tab left, it stops.
   await page.evaluate(() => {

@@ -19,7 +19,16 @@ test("the settings panel scrolls to its end by wheel and keyboard without scroll
     await page.mouse.wheel(0, 300);
     await expect.poll(() => panel.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     await panel.focus();
+    const before = await panel.evaluate(el => el.scrollTop);
     await page.keyboard.press("PageDown");
+    // The key's scroll is animated, and a wheel during it is lost: wait for it to settle, the panel being longer than
+    // one page down now.
+    await expect.poll(() => panel.evaluate(el => el.scrollTop)).toBeGreaterThan(before);
+    await expect.poll(async () => {
+      const at = await panel.evaluate(el => el.scrollTop);
+      await page.waitForTimeout(100);
+      return (await panel.evaluate(el => el.scrollTop)) === at;
+    }).toBe(true);
     await page.mouse.wheel(0, 10000);
     await expect.poll(() => panel.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollTop), "the outer page does not scroll").toBe(0);
