@@ -3,7 +3,7 @@
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
 import { useEffect, useState, useSyncExternalStore, memo } from "react";
-import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen, Share } from "lucide-react";
+import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen, Share, Files } from "lucide-react";
 import { ShareOverlay } from "./share";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import { phrases, translate, type Language } from "../../../../shared/i18n";
@@ -91,6 +91,7 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                   item.editable,
+                  item.savedFrom,
                   item.preparing?.label,
                 ].filter((part): part is string => Boolean(part)),
                 language,
@@ -161,9 +162,11 @@ export const Clip = memo(function Clip({
               <EditableMark item={item} />
             </span>
             <span className="clip-detail">
-              {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
+              {[item.time, item.duration, item.size, item.savedFrom].filter(Boolean).join(" · ")}
               <EditableMark item={item} />
             </span>
+            {/* A copy Save a copy… made says where it came from (plan 100, D4): a line of its own in the grid. */}
+            {item.savedFrom && <span className="clip-saved-from">{item.savedFrom}</span>}
           </span>
         </Button>
         {/* While a preview plays, a speaker at the picture's top right turns its sound on or off; the choice is kept
@@ -281,6 +284,25 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
           {t(p === "darwin" ? "Show in Finder" : "Open folder")}
         </span>
       </Item>
+      {/* The copies saved from it (plan 100, D4), newest first: each shown in Finder. */}
+      {item.copies && item.copies.length > 0 && (
+        <Sub>
+          <SubTrigger id={`${prefix}-copies`}>
+            <Files />
+            <span className="menu-label">{t("Saved copies")}</span>
+          </SubTrigger>
+          <SubContent className="clip-menu w-auto min-w-[160px] whitespace-nowrap">
+            {item.copies.map((copy, index) => (
+              <Item key={copy.name} id={`${prefix}-copy-${index}`} onClick={() => void model.fileAction(item.id, `revealCopy:${index}`)}>
+                <span className="menu-label clip-copy">
+                  <span>{copy.label}</span>
+                  <span className="clip-copy-name">{copy.name}</span>
+                </span>
+              </Item>
+            ))}
+          </SubContent>
+        </Sub>
+      )}
       <Item
         id={`${prefix}-open`}
         onClick={() => void model.fileAction(item.id, "open")}

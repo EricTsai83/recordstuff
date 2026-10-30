@@ -78,7 +78,7 @@ it("hides a lane from Options, remembers it for the next view, says what it stil
   await vi.waitFor(() => expect(lanes()).toEqual(["camera"]));
   // Remembered for the next run of the app.
   expect(JSON.parse(localStorage.getItem("recordstuff.editorHiddenLanes")!)).toEqual(["system", "microphone"]);
-  expect(document.getElementById("editor-lane-microphone-note")!.textContent).toBe("Hidden; its one stretch of its own still applies to the export.");
+  expect(document.getElementById("editor-lane-microphone-note")!.textContent).toBe("Hidden; its one stretch of its own still applies to the video.");
   // Hiding saves nothing: the edit is as it was.
   expect(saved).toBe(1);
 

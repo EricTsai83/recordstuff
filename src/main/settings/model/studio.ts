@@ -80,7 +80,7 @@ function studioTypeGroup(ctx: AppContext, unlocked: boolean): Group {
     { id: "plain", label: t("Plain recording", language), description: t("Ready to share as soon as it stops.", language),
       enabled: true, checked: !editable, action: { setEditableRecording: false } },
     { id: "editable", label: t("Editable recording", language),
-      description: darwin ? t("Move the camera and set the volumes afterwards in Edit…. Export it before sharing; files are about twice as large.", language)
+      description: darwin ? t("Move the camera and set the volumes afterwards in Edit…. Share… gives the finished video; files are about twice as large.", language)
         : t("Editable recordings are available on macOS only.", language),
       enabled: darwin, checked: editable, action: { setEditableRecording: true } },
   ]), recordingType: type };

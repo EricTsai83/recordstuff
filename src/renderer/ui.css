@@ -2928,6 +2928,27 @@
   .clip-detail {
     display: none;
   }
+  /* Where a saved copy came from (plan 100, D4), a line of its own under the card's details; in the list, in the row's. */
+  .clip-saved-from {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  #library[data-layout="list"] .clip-saved-from {
+    display: none;
+  }
+  /* A saved copy in its recording's menu: its form and when, then its file's name, dimmed. */
+  .clip-copy {
+    display: flex;
+    flex-direction: column;
+  }
+  .clip-copy-name {
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
   /* An editable recording's mark, a click on which opens the edit view (2026-10-26): a link under the pointer, the
      text's own colour (darker in the light theme, white in the dark) and underlined. */
   .clip-editable {
@@ -3906,6 +3927,48 @@
   .editor-options > * + * {
     padding-top: 14px;
     border-top: 1px solid var(--border);
+  }
+  /* Save a copy… (plan 100): the forms as a column of choices, each with the file it makes, then where it saves. */
+  .editor-copy-forms {
+    display: grid;
+    gap: 4px;
+  }
+  .editor-copy-form {
+    display: grid;
+    gap: 2px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    text-align: start;
+    font-size: var(--text-sm);
+    cursor: default;
+  }
+  .editor-copy-form:hover {
+    background: var(--accent);
+  }
+  .editor-copy-form[aria-checked="true"] {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+  }
+  .editor-copy-form:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+  .editor-copy-detail,
+  .editor-copy-name {
+    color: var(--muted-foreground);
+  }
+  .editor-copy-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+  }
+  .editor-copy-folder {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
   }
   /* The overall volumes' panel (2026-10-26): the two inputs under their heading, Reset small at the heading's end. */
   .editor-mix {

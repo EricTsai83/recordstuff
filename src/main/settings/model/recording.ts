@@ -169,7 +169,7 @@ export function editableRecordingGroup(ctx: AppContext, enabled: boolean): Group
   }
   return { ...group("editableRecording", t("Editable recordings", language), enabled,
     switchChoices(language, ctx.editableRecording ?? false, (value) => ({ setEditableRecording: value }))),
-  info: t("Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps show the screen with system audio until you export it from Edit….", language) };
+  info: t("Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps opening the file itself show only the screen with system audio; Share… gives the finished video.", language) };
 }
 
 /**

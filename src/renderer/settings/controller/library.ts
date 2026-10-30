@@ -378,7 +378,8 @@ export async function submitRename(): Promise<void> {
 }
 export async function fileAction(
   id: string,
-  action: "reveal" | "open" | "trash" | "drag" | "dragOriginal",
+  /** `revealCopy:<index>`: one of its saved copies shown in Finder (plan 100, D4). */
+  action: "reveal" | "open" | "trash" | "drag" | "dragOriginal" | `revealCopy:${number}`,
 ): Promise<void> {
   menuId = undefined;
   draw();

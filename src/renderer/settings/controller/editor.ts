@@ -20,6 +20,7 @@ import { EditMix, FOLLOWED_EVENTS, followMedia, mixScene, watchSkipped } from ".
 import { playbackOf } from "../../player/player-state";
 import type { FullScreenChoice, PlaybackState } from "../../../shared/video-player";
 import { translate } from "../../../shared/i18n";
+import type { CopyForm } from "../../../shared/provenance";
 import { announce, draw, focus, render, subscribe, view } from "./core";
 import { forgetMenu } from "./library";
 import { openPlayer, playingItem } from "./player";
@@ -229,7 +230,7 @@ export async function playExport(name: string, from: string): Promise<void> {
   if (editingItem || playingItem) return;
   if (item) openPlayer(item);
   else {
-    announce(translate("Exported as {name}.", view?.language, { name }));
+    announce(translate("Saved as {name}.", view?.language, { name }));
     focus(`clip-${source.id}-open`);
   }
 }
@@ -1079,13 +1080,14 @@ async function save(removed: EditRange[], scene?: EditScene): Promise<boolean> {
  */
 export let exportWatched: string | undefined;
 
-export async function exportEdit(): Promise<boolean> {
+/** Save a copy… (plan 100, formerly Export), in `form`: the Video unless another is chosen. */
+export async function exportEdit(form: CopyForm = "video"): Promise<boolean> {
   const id = editingItem?.id;
   // The export takes the edit as saved: a change still saving or queued (a volume just let go) is waited for first, so
   // Export need not be drawn unavailable while one saves (2026-10-26).
   await saved();
   if (editingItem?.id !== id || !editorView()?.exportable) return false;
-  const applied = await send({ action: "export" });
+  const applied = await send({ action: "export", form });
   const phase = editorView()?.export.phase;
   // Refused, the export is not this one's, unless the refusal is a failure to start.
   exportWatched = id && (phase === "exporting" || phase === "failed" || (phase === "done" && applied)) ? id : undefined;
@@ -1096,6 +1098,16 @@ export async function exportEdit(): Promise<boolean> {
 /** The outcome the view was watching for has been said. */
 export function exportSaid(): void {
   exportWatched = undefined;
+}
+
+/** Save a copy…'s Change…: main asks for the folder copies of this recording are saved into. */
+export function chooseCopyFolder(): Promise<boolean> {
+  return send({ action: "copyFolder" });
+}
+
+/** Show in Finder on a saved copy's toast, for one the Recordings tab does not list (plan 100). */
+export function revealExport(): Promise<boolean> {
+  return send({ action: "reveal" });
 }
 
 export function cancelExport(): Promise<boolean> {

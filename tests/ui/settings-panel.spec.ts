@@ -1297,7 +1297,7 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await expect(live.getByRole("button", { name: "Don't record Microphone" }), "S149 a plain recording's live controls").toHaveCount(1);
   await expect(live.getByRole("slider", { name: "Microphone volume" })).toHaveCount(1);
   await type.click();
-  await expect(page.getByRole("option", { name: /^Editable recording/ }), "S149 each type says what it gives").toContainText("Export it before sharing");
+  await expect(page.getByRole("option", { name: /^Editable recording/ }), "S149 each type says what it gives").toContainText("Share… gives the finished video");
   await clearCalls();
   await page.getByRole("option", { name: /^Editable recording/ }).click();
   await expect.poll(calls, { message: "S149 the type is the Editable recordings setting" }).toEqual([["studioType", "editable"]]);
@@ -1440,8 +1440,8 @@ for (const [lang, size] of [["en", "minimum"], ["zh-TW", "default"]] as const) {
     expect.soft({ open: hovered.open, expanded: hovered.expanded, inside: hovered.inside, describes: hovered.describes, text: hovered.text,
       inGap: inGap.open, kept: kept.open, left: left.open, leftExpanded: left.expanded },
     `S042 ${lang}/${size}: hovering the ⓘ shows its explanation inside the window, it stays through a pause in the gap and while the pointer is on it, and leaving both hides it`)
-      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps show the screen with system audio until you export it from Edit…."
-          : "把螢幕、相機與各個聲音分開保存，錄完後可在「編輯…」中擺放相機、調整音量。檔案約大一倍；從「編輯…」匯出前，其他 App 只會顯示螢幕與系統聲音。",
+      .toEqual({ open: true, expanded: "true", inside: true, describes: true, text: lang === "en" ? "Keeps the screen, the camera and each sound apart, so Edit… can place the camera and set the volumes after recording. Files are about twice as large, and other apps opening the file itself show only the screen with system audio; Share… gives the finished video."
+          : "把螢幕、相機與各個聲音分開保存，錄完後可在「編輯…」中擺放相機、調整音量。檔案約大一倍；其他 App 直接開啟檔案時只會顯示螢幕與系統聲音，用「分享…」才會給出完成的影片。",
         inGap: true, kept: true, left: false, leftExpanded: "false" });
     await page.locator("#setting-videoQuality button[aria-pressed=true]").focus();
     await page.keyboard.press("Tab");

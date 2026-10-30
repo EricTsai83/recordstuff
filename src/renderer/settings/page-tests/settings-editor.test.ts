@@ -9,7 +9,12 @@ const item: LibraryItemView = { id: "a", day: "Today", title: "Talk", name: "Tal
 
 const ready = (overrides: Partial<EditorView> = {}): EditorView => ({
   id: "a", state: "ready", timescale: 90_000, duration: 900_000, seconds: 10, frameRate: 30, removed: [], skipped: [], revision: 0, notes: [],
-  outputSeconds: 10, exportable: false, export: { phase: "idle" }, ...overrides,
+  outputSeconds: 10, exportable: false, export: { phase: "idle" },
+  copy: { folder: "Movies", beside: true, forms: [
+    { form: "video", label: "Video file", detail: "As it plays here", fileName: "Talk (edited).mp4" },
+    { form: "sound", label: "Sound only", detail: "The mixed sound", fileName: "Talk (sound).m4a" },
+  ] },
+  ...overrides,
 });
 
 /** The edit view (plan 085): opened from a card's menu, a part split off, removed and brought back, exported, closed. */
@@ -64,7 +69,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "save", removed: [[270_000, 900_000]], revision: 0 }));
   await vi.waitFor(() => expect(parts()[1]).toEqual(["0:03.0 to 0:10.0, removed", true, true]));
   await vi.waitFor(() => expect(document.getElementById("editor-feedback")!.textContent).toBe("Removed 0:03.0 to 0:10.0"));
-  expect(document.querySelector(".editor-length")!.textContent).toBe("Export length 0:03.00");
+  expect(document.querySelector(".editor-length")!.textContent).toBe("Video length 0:03.00");
   expect(document.getElementById("editor-remove")!.getAttribute("aria-label")).toBe("Keep part");
 
   // ⌘Z takes it back.
@@ -103,21 +108,24 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   click(document.querySelectorAll<HTMLButtonElement>(".editor-part")[1]!);
   click(document.getElementById("editor-remove")!);
   await vi.waitFor(() => expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("false"));
+  // Save a copy… asks in which form, the Video chosen as it opens.
   click(document.getElementById("editor-export")!);
-  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "export" }));
+  await vi.waitFor(() => expect(document.getElementById("editor-copy-video")?.getAttribute("aria-checked")).toBe("true"));
+  click(document.getElementById("editor-copy-save")!);
+  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "export", form: "video" }));
   await vi.waitFor(() => expect(document.querySelector('[role="progressbar"]')!.getAttribute("aria-valuenow")).toBe("40"));
   // Escape never closes the view (2026-10-26), exporting or not.
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(document.getElementById("editor")).not.toBeNull();
   expect(choices.some((choice) => choice.action === "close")).toBe(false);
   // The outcome is a toast over the view with Play; the toolbar keeps Export as it was.
-  editor = { ...editor!, export: { phase: "done", name: "Talk (edited).mp4", message: "Exported as Talk (edited).mp4." } };
+  editor = { ...editor!, export: { phase: "done", name: "Talk (edited).mp4", message: "Saved as Talk (edited).mp4.", playable: true } };
   push(view());
-  await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-title")?.textContent).toBe("Exported “Talk (edited)”"));
+  await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-title")?.textContent).toBe("Saved “Talk (edited)”"));
   expect(document.querySelector("#editor .editor-export-toast .toast-description")!.textContent).toBe("Saved in the recording's folder.");
   expect(document.querySelector("#editor .editor-export-toast .toast-action")!.textContent).toBe("Play");
-  expect(document.getElementById("editor-feedback")!.textContent).toBe("Exported as Talk (edited).mp4.");
-  expect(document.getElementById("editor-export")!.textContent).toBe("Export");
+  expect(document.getElementById("editor-feedback")!.textContent).toBe("Saved as Talk (edited).mp4.");
+  expect(document.getElementById("editor-export")!.textContent).toBe("Save a copy…");
   expect(document.getElementById("editor-reveal")).toBeNull();
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(choices.some((choice) => choice.action === "close")).toBe(false);
@@ -142,7 +150,7 @@ it("says why an edit cannot be used and offers to discard it", async () => {
   const choose = vi.fn(async (_group: string, choice: unknown): Promise<any> => {
     const edit = choice as EditorChoice;
     if (edit.action === "open") editor = ready({ state: "stale", message: "This recording has changed since it was edited, so its edit no longer fits it. Discard the edit to start again." });
-    if (edit.action === "discard") editor = ready({ blocked: "Export is unavailable while recording." });
+    if (edit.action === "discard") editor = ready({ blocked: "Saving a copy is unavailable while recording." });
     return { view: view(), applied: true };
   });
   window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: () => () => {} };
@@ -155,7 +163,7 @@ it("says why an edit cannot be used and offers to discard it", async () => {
   click(document.getElementById("editor-discard")!);
   await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingEdit:a", { action: "discard" }));
   await vi.waitFor(() => expect(document.querySelector(".editor-timeline")).not.toBeNull());
-  expect(document.querySelector(".editor-notes")!.textContent).toBe("Export is unavailable while recording.");
+  expect(document.querySelector(".editor-notes")!.textContent).toBe("Saving a copy is unavailable while recording.");
 });
 
 it("says an export that fails before it starts, and nothing again when the view reopens (2026-10-26)", async () => {
@@ -166,7 +174,7 @@ it("says an export that fails before it starts, and nothing again when the view 
   const view = (): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision: ++revision,
     tabs: [{ id: "library", label: "Recordings" }], groups: [],
     library: { folder: "~/Movies", summary: "1 recording", items: [item] }, ...(editor ? { editor } : {}) });
-  const failed = { phase: "failed" as const, message: "The export could not start. Check free disk space, then try again." };
+  const failed = { phase: "failed" as const, message: "The copy could not be started. Check free disk space, then try again." };
   const choose = vi.fn(async (_group: string, choice: unknown): Promise<any> => {
     const edit = choice as EditorChoice;
     // Main keeps the last outcome; reopening shows the view as it left it.
@@ -183,7 +191,9 @@ it("says an export that fails before it starts, and nothing again when the view 
   click(document.getElementById("clip-menu-edit")!);
   await vi.waitFor(() => expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("false"));
   click(document.getElementById("editor-export")!);
-  await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-title")?.textContent).toBe("The export failed"));
+  await vi.waitFor(() => expect(document.getElementById("editor-copy-save")).not.toBeNull());
+  click(document.getElementById("editor-copy-save")!);
+  await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-title")?.textContent).toBe("The copy could not be saved"));
   expect(document.querySelector("#editor .editor-export-toast .toast-description")!.textContent).toBe(failed.message);
   expect(document.getElementById("editor-feedback")!.textContent).toBe(failed.message);
 
@@ -196,4 +206,49 @@ it("says an export that fails before it starts, and nothing again when the view 
   await vi.waitFor(() => expect(document.getElementById("editor-export")).not.toBeNull());
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(document.querySelector("#editor .editor-export-toast")).toBeNull();
+});
+
+/** Save a copy… (plan 100): the form chosen by click or arrow, the folder changed by main, a copy elsewhere shown in Finder. */
+it("saves a copy in the form and folder chosen, and shows one saved elsewhere in Finder", async () => {
+  vi.resetModules();
+  document.body.innerHTML = '<div id="root"></div>';
+  Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+  let editor: EditorView | undefined;
+  let revision = 1;
+  const view = (): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision: ++revision,
+    tabs: [{ id: "library", label: "Recordings" }], groups: [],
+    library: { folder: "~/Movies", summary: "1 recording", items: [item] }, ...(editor ? { editor } : {}) });
+  const choices: EditorChoice[] = [];
+  const choose = vi.fn(async (_group: string, choice: unknown): Promise<any> => {
+    const edit = choice as EditorChoice;
+    choices.push(edit);
+    if (edit.action === "open") editor = ready({ removed: [[0, 90_000]], exportable: true });
+    if (edit.action === "copyFolder") editor = { ...editor!, copy: { ...editor!.copy!, folder: "Desktop", beside: false } };
+    if (edit.action === "export") editor = { ...editor!, export: { phase: "done", name: "Talk (sound).m4a", message: "Saved as Talk (sound).m4a." } };
+    return { view: view(), applied: true };
+  });
+  window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: () => () => {} };
+  await import("../settings");
+  await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(1));
+  await menu(document.getElementById("clip-a-more")!);
+  click(document.getElementById("clip-menu-edit")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-export")!.getAttribute("aria-disabled")).toBe("false"));
+  click(document.getElementById("editor-export")!);
+  await vi.waitFor(() => expect(document.querySelectorAll("#editor-copy-forms [role=radio]")).toHaveLength(2));
+  // Each form names the file it makes; the arrow keys move the choice.
+  expect(document.getElementById("editor-copy-sound-name")!.textContent).toBe("Talk (sound).m4a");
+  document.getElementById("editor-copy-video")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  await vi.waitFor(() => expect(document.getElementById("editor-copy-sound")!.getAttribute("aria-checked")).toBe("true"));
+  expect(document.getElementById("editor-copy-video")!.getAttribute("aria-checked")).toBe("false");
+  // Change… asks main, whose picker answers in the view.
+  expect(document.getElementById("editor-copy-folder")!.textContent).toBe("Movies");
+  click(document.getElementById("editor-copy-change")!);
+  await vi.waitFor(() => expect(document.getElementById("editor-copy-folder")!.textContent).toBe("Desktop"));
+  click(document.getElementById("editor-copy-save")!);
+  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "export", form: "sound" }));
+  // Not a video beside the recording: its toast shows it in Finder instead of playing it.
+  await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-action")?.textContent).toBe("Show in Finder"));
+  expect(document.querySelector("#editor .editor-export-toast .toast-description")!.textContent).toBe("Saved in Desktop.");
+  click(document.querySelector<HTMLElement>("#editor .editor-export-toast .toast-action")!);
+  await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "reveal" }));
 });

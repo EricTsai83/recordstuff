@@ -2,7 +2,8 @@
  * The edit view (plan 085): a recording's player above a timeline of its parts. A part is selected by clicking it, split
  * at the playhead (S) and removed or kept again (Delete); Undo (⌘Z / Ctrl+Z) takes the last change back and Redo
  * (⇧⌘Z / Ctrl+Shift+Z or Ctrl+Y) makes it again. The preview plays only what is kept, over a strip of the recording's
- * pictures. Export writes a new file beside the recording, which stays as it is.
+ * pictures. Save a copy… (plan 100, formerly Export) writes a new file in the form chosen, beside the recording unless
+ * another folder is chosen; the recording stays as it is.
  *
  * An editable recording with a camera (2026-10-26, the maintainer's request) has a lane under the pictures that shows
  * where the camera is in the picture and where it is hidden; the camera button (C) hides it over the selected range or
@@ -14,6 +15,7 @@ import { Keyboard, Maximize, Merge, Mic, MicOff, PanelBottomClose, PanelBottomOp
 import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import type { EditorView, EditRange } from "../../../../shared/editing";
+import type { CopyForm } from "../../../../shared/provenance";
 import type { VolumeInput } from "../../../../shared/editable";
 import { phrases, translate, type PlainMessageKey } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -96,17 +98,21 @@ function useExportToast(): void {
     const id = `${EXPORT_TOASTER}-${editor.id}`;
     if (outcome.phase === "done") {
       const name = outcome.name;
-      toast(translate("Exported “{title}”", model.view?.language, { title: name.replace(/\.mp4$/i, "") }), {
+      // Beside the recording, a video the Recordings tab lists plays; anything else is shown in Finder (plan 100).
+      const reveal = model.text(model.platform() === "darwin" ? "Show in Finder" : "Show in File Explorer");
+      toast(translate("Saved “{title}”", model.view?.language, { title: name.replace(/\.(mp4|m4a)$/i, "") }), {
         toasterId: EXPORT_TOASTER,
         id,
-        description: model.text("Saved in the recording's folder."),
+        description: outcome.playable ? model.text("Saved in the recording's folder.") : translate("Saved in {folder}.", model.view?.language, { folder: editor.copy?.folder ?? "" }),
         duration: 8000,
         className: "undo-toast editor-export-toast",
         classNames: { title: "toast-title", description: "toast-description", actionButton: "toast-action" },
-        action: { label: model.text("Play"), onClick: () => void model.playExport(name, editor.id) },
+        action: outcome.playable
+          ? { label: model.text("Play"), onClick: () => void model.playExport(name, editor.id) }
+          : { label: reveal, onClick: () => void model.revealExport() },
       });
     } else {
-      toast(model.text("The export failed"), {
+      toast(model.text("The copy could not be saved"), {
         toasterId: EXPORT_TOASTER,
         id,
         description: outcome.message,
@@ -353,7 +359,7 @@ export function EditorDialog() {
                     {model.text("Reload preview")}
                   </Button>
                 )}
-                <ControlTooltip label={exporting ? model.text("Cancel the export to close") : model.text("Close")}>
+                <ControlTooltip label={exporting ? model.text("Cancel saving the copy to close") : model.text("Close")}>
                   <Button
                     variant="media"
                     size="icon-media"
@@ -792,7 +798,7 @@ function EditorPanel() {
         span={range ?? (selected ? [selected.from, selected.to] : undefined)}
         actions={model.canJoinPrevious(editor) ? "join" : ""}
         position={translate("Playhead {time}", language, { time: precise(time) })}
-        length={translate("Export length {length}", language, { length: precise(editor.outputSeconds) })}
+        length={translate("Video length {length}", language, { length: precise(editor.outputSeconds) })}
         shortPosition={precise(time)}
         shortLength={precise(editor.outputSeconds)}
       >
@@ -1056,7 +1062,7 @@ function ExportControls() {
         <span
           className="editor-progress"
           role="progressbar"
-          aria-label={model.text("Export progress")}
+          aria-label={model.text("Saving progress")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
@@ -1065,30 +1071,79 @@ function ExportControls() {
         </span>
         <span className="editor-percent">{percent}%</span>
         <Button id="editor-cancel-export" variant="outline" size="sm" aria-disabled={state.cancelling} onClick={() => void model.cancelExport()}>
-          {model.text(state.cancelling ? "Cancelling…" : "Cancel export")}
+          {model.text(state.cancelling ? "Cancelling…" : "Cancel saving")}
         </Button>
       </span>
     );
   }
-  // Export only (2026-10-26): its outcome is a toast, so the button reads the same before an export and after one.
+  // Save a copy… only (2026-10-26, Export until plan 100): its outcome is a toast, so the button reads the same before a
+  // copy is saved and after one. It asks in which form and where (plan 100), in a popup over it.
+  return <SaveCopy editor={editor} />;
+}
+
+function SaveCopy({ editor }: { editor: EditorView }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<CopyForm>("video");
+  const copy = editor.copy;
+  const name = model.text("Save a copy…");
+  const chosen = copy?.forms.find((entry) => entry.form === form) ?? copy?.forms[0];
+  const save = (): void => {
+    if (!editor.exportable || !chosen) return;
+    setOpen(false);
+    void model.exportEdit(chosen.form);
+  };
   return (
     <span className="editor-export">
-      <ControlTooltip label={editor.blocked ?? model.text(editor.editable ? "Write the recording with the camera and sound set here to a new file beside it" : "Write the kept parts to a new file beside the recording")}>
-        <Button
-          id="editor-export"
-          size="sm"
-          // Named for its icon alone in the narrowest view (Windows CI, 2026-10-27).
-          aria-label={model.text("Export")}
-          // A change still saving is waited for by the export itself (controller's exportEdit), so nothing dims meanwhile.
-          aria-disabled={!editor.exportable}
-          onClick={() => {
-            if (editor.exportable) void model.exportEdit();
-          }}
-        >
-          <Upload />
-          <span className="editor-export-label">{model.text("Export")}</span>
-        </Button>
-      </ControlTooltip>
+      <Popover open={open && Boolean(copy)} onOpenChange={(next) => { if (next) setForm("video"); setOpen(next && editor.exportable); }}>
+        <ControlTooltip label={editor.blocked ?? model.text("Save the recording as set here to a new file, in the form you choose")}>
+          <PopoverTrigger
+            render={<Button size="sm" />}
+            id="editor-export"
+            // Named for its icon alone in the narrowest view (Windows CI, 2026-10-27).
+            aria-label={name}
+            // A change still saving is waited for by the save itself (controller's exportEdit), so nothing dims meanwhile.
+            aria-disabled={!editor.exportable}
+          >
+            <Upload />
+            <span className="editor-export-label">{name}</span>
+          </PopoverTrigger>
+        </ControlTooltip>
+        <PopoverContent side="top" align="end" id="editor-copy-popup" className="editor-options-popup w-72 gap-3 p-3" aria-label={model.text("Save a copy")}
+          initialFocus={() => document.querySelector<HTMLElement>("#editor-copy-forms [aria-checked=true]")}>
+          <div role="radiogroup" id="editor-copy-forms" className="editor-copy-forms" aria-label={model.text("Save a copy")}
+            onKeyDown={(event) => {
+              // Arrows move the choice, as in a group of radio buttons.
+              const forms = copy?.forms ?? [];
+              const at = forms.findIndex((entry) => entry.form === chosen?.form);
+              const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+              if (!step || at < 0) return;
+              event.preventDefault();
+              const next = forms[(at + step + forms.length) % forms.length]!;
+              setForm(next.form);
+              document.getElementById(`editor-copy-${next.form}`)?.focus();
+            }}>
+            {copy?.forms.map((entry) => (
+              <button key={entry.form} type="button" role="radio" id={`editor-copy-${entry.form}`} className="editor-copy-form"
+                aria-checked={entry.form === chosen?.form} tabIndex={entry.form === chosen?.form ? 0 : -1}
+                aria-describedby={`editor-copy-${entry.form}-name`} onClick={() => setForm(entry.form)}>
+                <span className="editor-copy-label">{entry.label}<span className="editor-copy-detail"> · {entry.detail}</span></span>
+                <span id={`editor-copy-${entry.form}-name`} className="editor-copy-name">{entry.fileName}</span>
+              </button>
+            ))}
+          </div>
+          <div className="editor-scene-row">
+            <span>{model.text("Save in")}</span>
+            <span className="editor-copy-folder" id="editor-copy-folder">{copy?.folder}</span>
+            <Button id="editor-copy-change" variant="outline" size="sm" aria-describedby="editor-copy-folder" onClick={() => void model.chooseCopyFolder()}>
+              {model.text("Change…")}
+            </Button>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button id="editor-copy-cancel" variant="outline" size="sm" onClick={() => setOpen(false)}>{model.text("Cancel")}</Button>
+            <Button id="editor-copy-save" size="sm" aria-disabled={!editor.exportable} onClick={save}>{model.text("Save")}</Button>
+          </div>
+        </PopoverContent>
+      </Popover>
     </span>
   );
 }

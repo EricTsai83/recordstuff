@@ -391,7 +391,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
   const camera = editable?.camera && scene ? scene.camera : undefined;
   const stretches = camera ? cameraStretches(camera, editor.duration).length : 0;
   const cameraNote = !camera ? "" : !camera.shown
-    ? model.text("The export holds no camera. Switched off, the camera follows the timeline again.")
+    ? model.text("The video holds no camera. Switched off, the camera follows the timeline again.")
     : stretches === 1
     ? model.text("Hidden over one stretch of the timeline. Select a stretch and press C to hide or show the camera there.")
     : stretches > 1
@@ -498,7 +498,7 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
     <div className="grid gap-1 editor-lanes" role="group" aria-label={model.text("Show on the timeline")}>
       <div className="editor-scene-row editor-options-title-row">
         <p className="editor-options-title">{model.text("Show on the timeline")}</p>
-        <OptionInfo id="editor-lanes-note" text={model.text("Only what the timeline shows: a hidden track is still exported.")} />
+        <OptionInfo id="editor-lanes-note" text={model.text("Only what the timeline shows: a hidden track is still in the video.")} />
       </div>
       {lanes.map(({ lane, name, track, held }) => {
         const shown = model.laneShown(lane);
@@ -514,8 +514,8 @@ function LaneControls({ editor, scene }: { editor: EditorView; scene: EditScene 
             </div>
             {!shown && held > 0 && (
               <p id={`editor-lane-${lane}-note`} className="editor-options-note">
-                {held === 1 ? model.text("Hidden; its one stretch of its own still applies to the export.")
-                  : translate("Hidden; its {count} stretches of their own still apply to the export.", model.view?.language, { count: String(held) })}
+                {held === 1 ? model.text("Hidden; its one stretch of its own still applies to the video.")
+                  : translate("Hidden; its {count} stretches of their own still apply to the video.", model.view?.language, { count: String(held) })}
               </p>
             )}
           </div>

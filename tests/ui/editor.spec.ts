@@ -76,7 +76,7 @@ async function removeFrom(seconds: number, parts: number): Promise<void> {
 test("a part is split off and removed, kept by main across a reopen, and exported beside the recording", async () => {
   await openEditor();
   await removeFrom(3, 2);
-  await expect(page.locator(".editor-length")).toHaveText("Export length 0:03.00");
+  await expect(page.locator(".editor-length")).toHaveText("Video length 0:03.00");
   await expect(page.locator("#editor-feedback")).toHaveText("Removed 0:03.0 to 0:08.0");
 
   // The panel's controls stay inside the window, readable and large enough to hit.
@@ -104,15 +104,16 @@ test("a part is split off and removed, kept by main across a reopen, and exporte
   await openEditor(2);
   await expect(page.locator(".editor-part").nth(1)).toHaveAttribute("data-removed", "true");
 
-  // Export: progress, then the new file beside the recording, said by a toast over the view whose Play opens it in the
-  // player; the toolbar keeps its Export.
+  // Save a copy… (plan 100, formerly Export), the Video as it opens: progress, then the new file beside the recording,
+  // said by a toast over the view whose Play opens it in the player; the toolbar keeps its Save a copy….
   await page.locator("#editor-export").click();
+  await page.locator("#editor-copy-save").click();
   await expect(page.locator('[role="progressbar"]')).toBeVisible();
   const name = `${path.basename(clip, ".mp4")} (edited).mp4`;
   const toast = page.locator("#editor .editor-export-toast");
-  await expect(toast.locator(".toast-title")).toHaveText(`Exported “${path.basename(name, ".mp4")}”`, { timeout: 5000 });
-  await expect(page.locator("#editor-feedback")).toHaveText(`Exported as ${name}.`);
-  await expect(page.locator("#editor-export")).toHaveAccessibleName("Export");
+  await expect(toast.locator(".toast-title")).toHaveText(`Saved “${path.basename(name, ".mp4")}”`, { timeout: 5000 });
+  await expect(page.locator("#editor-feedback")).toHaveText(`Saved as ${name}.`);
+  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save a copy…");
   expect(fs.existsSync(path.join(folder, name))).toBe(true);
   expect(fs.readdirSync(folder).filter((entry) => entry.includes("recordstuff-export"))).toEqual([]);
   await toast.getByRole("button", { name: "Play" }).click();
@@ -435,6 +436,7 @@ test("the preview skips removed parts, Undo takes a removal back, and a cancelle
   await page.locator("#editor-remove").click();
   await expect(page.locator("#editor-export")).toHaveAttribute("aria-disabled", "false");
   await page.locator("#editor-export").click();
+  await page.locator("#editor-copy-save").click();
   await page.locator("#editor-cancel-export").click();
   await expect(page.locator("#editor-export")).toBeVisible();
   await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
@@ -557,11 +559,12 @@ test("an editable recording's camera is dragged into place, its microphone turne
   const rows = async () => [(await page.locator("#editor-options").boundingBox())!.x, (await page.locator("#editor-redo").boundingBox())!.x, (await page.locator("#editor-keys").boundingBox())!.x];
   const rowsBefore = await rows();
   await page.locator("#editor-export").click();
+  await page.locator("#editor-copy-save").click();
   await expect(page.locator("#editor .editor-export-toast")).toBeVisible({ timeout: 5000 });
   // Within a pixel: the centred dialog may settle a fraction of one, which no one sees.
   const rowsAfter = await rows();
   rowsAfter.forEach((value, index) => expect(Math.abs(value - rowsBefore[index]!)).toBeLessThanOrEqual(1));
-  await expect(page.locator("#editor-export")).toHaveAccessibleName("Export");
+  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save a copy…");
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera: Record<string, number | boolean>; volumesDb: number[] };
   expect(render.camera).toEqual({ width: 0.2, height: 0.3, rounding: 0.15, x: 0, y: 1, mirror: false });
   expect(render.volumesDb[0]).toBe(0);
@@ -751,6 +754,7 @@ test("an editable recording's camera is hidden over a dragged range, shown again
 
   // Export: rendered with the camera composed, left out over that stretch only, on the recording's own clock.
   await page.locator("#editor-export").click();
+  await page.locator("#editor-copy-save").click();
   await expect(page.locator("#editor .editor-export-toast")).toBeVisible({ timeout: 5000 });
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera?: unknown; cameraHidden?: Array<{ from: number; to: number }> };
   expect(render.camera).toBeDefined();
@@ -824,6 +828,8 @@ test("an editable recording's microphone is muted over a dragged range from the 
   await page.keyboard.press("Escape");
 
   await page.locator("#editor-export").click();
+
+  await page.locator("#editor-copy-save").click();
   await expect(page.locator("#editor .editor-export-toast")).toBeVisible({ timeout: 5000 });
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { volumeStretchesDb?: Array<Array<{ from: number; to: number; db: number }>> };
   expect(render.volumeStretchesDb).toEqual([[{ from, to, db: expect.closeTo(20 * Math.log10(0.85), 9) }], [{ from, to, db: -60 }]]);
