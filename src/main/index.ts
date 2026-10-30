@@ -971,7 +971,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
           }
           case "save": {
             focusApp();
-            const chosen = await dialog.showOpenDialog({ title: translate("Choose where to save", settings.language), properties: ["openDirectory", "createDirectory"] });
+            // The chooser's button says what it does, not macOS's Open (plan 100 step 6).
+            const chosen = await dialog.showOpenDialog({ title: translate("Choose where to save", settings.language), buttonLabel: translate("Save Here", settings.language), properties: ["openDirectory", "createDirectory"] });
             const folder = chosen.canceled ? undefined : chosen.filePaths[0];
             if (!folder) return { problem: "cancelled" as const };
             const handed = await Promise.all(kinds.map(kind => sharing.whenReady(file.path, kind)));

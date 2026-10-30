@@ -448,7 +448,7 @@ export class Editing {
     const folder = open.copyFolder ?? path.dirname(open.path);
     const beside = open.copyFolder === undefined || path.resolve(open.copyFolder) === path.resolve(path.dirname(open.path));
     const labels: Record<CopyForm, [PlainMessageKey, PlainMessageKey]> = {
-      video: ["Video file", "As it plays here"], screenOnly: ["Video without the camera", "Just the screen"], sound: ["Sound only", "The mixed sound"],
+      video: ["Video file", "As it plays here"], screenOnly: ["No camera", "Screen and sound"], sound: ["Sound only", "The mixed sound"],
     };
     return {
       forms: this.copyForms(open).map((form) => ({ form, label: translate(labels[form][0], language), detail: translate(labels[form][1], language),

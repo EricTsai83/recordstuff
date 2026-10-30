@@ -2841,6 +2841,8 @@
   }
   .share-name {
     font-weight: 600;
+    /* Two even lines rather than one character left alone on the second (plan 100 step 6). */
+    text-wrap: balance;
   }
   .share-detail {
     color: var(--muted-foreground);
@@ -2888,10 +2890,13 @@
     gap: 1px;
   }
   .share-picked-name {
+    /* Up to two lines, so the name's end, which tells the versions apart, shows (plan 100 step 6). */
+    display: -webkit-box;
     overflow: hidden;
     font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
   .share-picked-note,
   .share-hint {

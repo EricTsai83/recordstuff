@@ -9,7 +9,7 @@ const share = (preparing: boolean): ShareView => ({
     { kind: "video", label: "Video file", detail: "As it plays here", fileName: "Talk.mp4", recommended: true,
       ...(preparing ? { state: "preparing" as const, progress: 0.4 } : { state: "ready" as const }) },
     { kind: "sound", label: "Sound only", detail: "The mixed sound", fileName: "Talk (sound).m4a", state: "ready" },
-    { kind: "original", label: "Original", detail: "Everything recorded", fileName: "Talk.recordstuff.mp4", note: "Includes the camera and each sound separately", state: "ready" },
+    { kind: "original", label: "Original", detail: "Everything in one file", fileName: "Talk.recordstuff.mp4", note: "Includes the camera and each sound separately", state: "ready" },
     { kind: "sources", label: "Sources", detail: "Each track on its own", fileName: "Talk sources", more: true, state: "ready" },
   ],
   labels: { share: "Share", recommended: "Recommended", copy: "Copy", saveTo: "Save to…", more: "More", moreCount: "{count} items", close: "Close",

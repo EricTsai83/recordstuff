@@ -23,11 +23,11 @@ function videoStateView(state: VideoState | undefined, language: AppContext["lan
 }
 
 const VERSION_LABELS: Record<VersionKind, PlainMessageKey> = {
-  video: "Video file", sound: "Sound only", original: "Original", screenOnly: "Video without the camera", sources: "Sources",
+  video: "Video file", sound: "Sound only", original: "Original", screenOnly: "No camera", sources: "Sources",
 };
 /** What each version is, in a few words under its name. */
 const VERSION_DETAILS: Record<VersionKind, PlainMessageKey> = {
-  video: "As it plays here", sound: "The mixed sound", original: "Everything recorded", screenOnly: "Just the screen", sources: "Each track on its own",
+  video: "As it plays here", sound: "The mixed sound", original: "Everything in one file", screenOnly: "Screen and sound", sources: "Each track on its own",
 };
 
 /**
