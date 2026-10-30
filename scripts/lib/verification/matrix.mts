@@ -15,6 +15,8 @@ export interface MatrixEntry {
   name: string;
   seconds: number;
   quality: Partial<QualitySettings>;
+  /** The default camera composed (plan 100 step 4's gate); off unless set. */
+  camera?: true;
 }
 
 /**
@@ -53,6 +55,20 @@ export const MATRICES: Record<string, MatrixEntry[]> = {
   long10: [
     { name: "1080p Standard 30 fps 10 minutes", seconds: 600, quality: { resolutionCap: "1080p", videoQuality: "standard", frameRate: 30 } },
   ],
+  /**
+   * Plan 100 step 4's gate: a minute at 30 and at 60 fps, run once alone and once with `--prepare <editable recording>`
+   * (and `--pace governed`), its late and dropped pictures and sync compared. Not part of `all`.
+   */
+  pace: [
+    { name: "Source Standard 30 fps 1 minute", seconds: 60, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30 } },
+    { name: "Source Standard 60 fps 1 minute", seconds: 60, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60 } },
+    { name: "Source Standard 30 fps 1 minute with the camera", seconds: 60, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 30 }, camera: true },
+    { name: "Source Standard 60 fps 1 minute with the camera", seconds: 60, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60 }, camera: true },
+  ],
+  /** The gate's 60 fps case alone, to tell a held version's cost from heat left by the 30 fps cases. */
+  pace60: [
+    { name: "Source Standard 60 fps 1 minute", seconds: 60, quality: { resolutionCap: "source", videoQuality: "standard", frameRate: 60 } },
+  ],
 };
 
 /**
@@ -78,6 +94,12 @@ export interface MatrixOptions {
   openMaterial: boolean;
   dryRun: boolean;
   screen?: Dimensions;
+  /**
+   * Plan 100 step 4's gate: an editable recording whose Video the app prepares afresh at each case's launch, so it runs
+   * alongside the recording, and the pace forced (`governed` or `pause`) whatever the Mac's class.
+   */
+  prepare?: string;
+  pace?: "governed" | "pause";
 }
 
 export type MatrixArgs = { ok: true; options: MatrixOptions } | { ok: false; error: string };
@@ -104,6 +126,16 @@ export function parseMatrixArgs(argv: readonly string[], known: readonly string[
       const n = Number(text);
       if (!/^\d+$/.test(text) || n < 1 || n > MAX_REPEAT) return { ok: false, error: `--repeat needs a whole number from 1 to ${MAX_REPEAT}, got ${text || "nothing"}` };
       options.repeat = n;
+      i += 1;
+    } else if (arg === "--prepare") {
+      const file = argv[i + 1] ?? "";
+      if (!file.startsWith("/") || !file.endsWith(".mp4")) return { ok: false, error: "--prepare needs the absolute path of an editable recording (.mp4)" };
+      options.prepare = file;
+      i += 1;
+    } else if (arg === "--pace") {
+      const pace = argv[i + 1];
+      if (pace !== "governed" && pace !== "pause") return { ok: false, error: "--pace needs governed or pause" };
+      options.pace = pace;
       i += 1;
     } else if (arg.startsWith("--")) return { ok: false, error: `unknown option ${arg}` };
     else {
@@ -139,7 +171,7 @@ export function planCases(names: readonly string[], repeat: number, matrices: Re
   const order: Omit<PlannedCase, "title">[] = [];
   for (let round = 1; round <= repeat; round += 1) {
     for (const name of names) {
-      for (const entry of matrices[name] ?? []) order.push({ entry, key: `${caseLabel(entry)} ${JSON.stringify(entry.quality)}`, round });
+      for (const entry of matrices[name] ?? []) order.push({ entry, key: `${caseLabel(entry)} ${JSON.stringify(entry.quality)}${entry.camera ? " camera" : ""}`, round });
     }
   }
   const totals = new Map<string, number>();

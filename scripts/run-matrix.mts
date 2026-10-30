@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * `pnpm matrix -- <name>[,<name>…] [--repeat N] [--no-open-material] [--screen WxH] [--dry-run]`
+ * `pnpm matrix -- <name>[,<name>…] [--repeat N] [--no-open-material] [--screen WxH] [--dry-run] [--prepare <file>] [--pace governed|pause]`
+ *
+ * `--prepare` and `--pace` (plan 100 step 4's gate): each case's launch prepares the Video of the editable recording
+ * `<file>` afresh, so it runs alongside the recording, at the pace forced; compare with the same cases run without.
  *
  * Defaults do the right thing: the test material page is opened full screen
  * on the main display by Chrome (kiosk, private profile) and the main
@@ -41,6 +44,7 @@ import { CPU_BUDGET, CpuSampler, MIN_COVERAGE, SamplerBlockedError, SamplerInter
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound, type DesktopRound } from "./lib/runner/desktop-session.mts";
 import { LAUNCHER_EXIT_MS, QUIT_GRACE_MS, stopDevApp, type AppStop } from "./lib/runner/dev-app.mts";
 import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
+import { PREPARE_AT_LAUNCH_ENV, VERSION_PACE_ENV } from "../src/main/sharing/pace-env.ts";
 import {
   MATRICES,
   casePhases,
@@ -81,9 +85,10 @@ const roundStarted = Date.now();
 const argv = runnerArgs();
 const parsed = parseMatrixArgs(argv, Object.keys(MATRICES));
 if (!parsed.ok) usage(parsed.error);
-const { names, repeat, openMaterial, dryRun } = parsed.options;
+const { names, repeat, openMaterial, dryRun, prepare, pace } = parsed.options;
 const cases = planCases(names, repeat);
-const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""}`;
+const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""}${prepare ? ` --prepare ${prepare}` : ""}${pace ? ` --pace ${pace}` : ""}`;
+if (prepare && !fs.existsSync(prepare)) usage(`--prepare: no file at ${prepare}`);
 const screen = parsed.options.screen ?? mainDisplaySize();
 if (!screen) console.error("Primary display size unavailable; aspect checks may be unavailable (use --screen WxH)");
 if (process.platform !== "darwin") {
@@ -262,7 +267,9 @@ process.once("exit", cleanupSampler);
 async function recordOnce(entry: MatrixEntry, key: string): Promise<RunOutcome> {
   const logStart = appLog.end();
   owned.caseLog = logStart;
-  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality }) };
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), RECORDSTUFF_AUTORECORD: JSON.stringify({ seconds: entry.seconds, quality: entry.quality, ...(entry.camera ? { camera: true } : {}) }),
+    // Plan 100 step 4's gate: a Video prepared alongside the recording, at the pace forced.
+    ...(prepare ? { [PREPARE_AT_LAUNCH_ENV]: prepare } : {}), ...(pace ? { [VERSION_PACE_ENV]: pace } : {}) };
   const launchedAt = Date.now();
   owned.caseLaunchedAt = launchedAt;
   const child = spawn("open", ["-W", "-a", ELECTRON_APP, "--args", REPO_ROOT], { env, stdio: "inherit" });

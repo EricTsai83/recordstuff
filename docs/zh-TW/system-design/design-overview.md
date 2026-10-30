@@ -85,8 +85,8 @@ flowchart TB
 
 RecordStuff 大部分時間都在待命，所以待命有預算（plan 049）：大約單一核心的 0%、每秒幾次喚醒，由 `pnpm measure:cpu` 量測（[CPU 預算](tooling.md#cpu-預算)）。設定視窗關閉時，只允許下列項目執行：
 
-- **程序。**主程序，以及 Electron 的 GPU 與網路服務程序，此外沒有別的。第一個視窗開啟之前沒有 renderer：Electron 44 在第一次使用預設 session 時會先啟動一個（[electron/electron#53144](https://github.com/electron/electron/pull/53144)），而啟動時沒有任何東西使用預設 session，因為影片庫的媒體 protocol 是在建立第一個視窗時才註冊。擷取用的 `utilityProcess` 在一次嘗試開始時建立，檔案完成後就結束（或在停止後 150 秒結束）；它不預先啟動，因為快約 50 ms 不值得多一個約 73 MB 的待機程序（維護者，2026-10-15）。擷取不會啟動 Chromium 的音訊服務。倒數覆蓋層只在準備到倒數結束之間存在，設定視窗關閉時也會銷毀。所以設定視窗關閉時，錄影後不會留下任何 renderer 或擷取程序。
-- **一個計時器。**[PermissionWatcher](../../../src/main/permission/permission.ts) 每 5 秒輪詢一次 `getMediaAccessStatus('screen')`，每秒 0.2 次喚醒；沒有任何視窗開著時，要靠它發現權限被撤銷，所以在量測顯示它有影響之前都保留。capture host 每 5 秒的 ping 只在嘗試期間存在，單元測試確認它與所有期限計時器都不會在儲存、失敗或取消的工作階段之後殘留。其他計時器都是有上限的單次計時（工作階段期限、收尾中擷取程序的上限、覆蓋層淡出、儲存通知延遲、設定視窗開著時擷取快捷鍵的租約、歷史紀錄重試退避、結束時的回饋）。
+- **程序。**主程序，以及 Electron 的 GPU 與網路服務程序，此外沒有別的。第一個視窗開啟之前沒有 renderer：Electron 44 在第一次使用預設 session 時會先啟動一個（[electron/electron#53144](https://github.com/electron/electron/pull/53144)），而啟動時沒有任何東西使用預設 session，因為影片庫的媒體 protocol 是在建立第一個視窗時才註冊。擷取用的 `utilityProcess` 在一次嘗試開始時建立，檔案完成後就結束（或在停止後 150 秒結束）；它不預先啟動，因為快約 50 ms 不值得多一個約 73 MB 的待機程序（維護者，2026-10-15）。擷取不會啟動 Chromium 的音訊服務。倒數覆蓋層只在準備到倒數結束之間存在，設定視窗關閉時也會銷毀。所以設定視窗關閉時，錄影後不會留下任何 renderer 或擷取程序。匯出用的 `utilityProcess` 只在製作版本時存在（剪輯畫面的，或為了分享而預先準備的，plan 100），沒有版本要做時就結束；閒置在它結束之後才量，準備本身的成本由 `pnpm measure:cpu --editable` 量測（[CPU 預算](tooling.md#cpu-預算)）。
+- **一個計時器。**[PermissionWatcher](../../../src/main/permission/permission.ts) 每 5 秒輪詢一次 `getMediaAccessStatus('screen')`，每秒 0.2 次喚醒；沒有任何視窗開著時，要靠它發現權限被撤銷，所以在量測顯示它有影響之前都保留。capture host 每 5 秒的 ping 只在嘗試期間存在，單元測試確認它與所有期限計時器都不會在儲存、失敗或取消的工作階段之後殘留。其他計時器都是有上限的單次計時（工作階段期限、收尾中擷取程序的上限、覆蓋層淡出、儲存通知延遲、設定視窗開著時擷取快捷鍵的租約、歷史紀錄重試退避、結束時的回饋）。每 30 秒讀取一次低耗電模式的計時器，只在準備版本時存在（plan 100）。
 - **只有監聽。**螢幕變化、電源睡眠與喚醒、全域快捷鍵與 Tray 點按，都只在發生時喚醒 App。更新檢查只在啟動時執行，而且一天最多一次。
 
 新增計時器、輪詢、監看、會持續存在的視窗或 renderer，或 Tray 工作的改動，要維持這份清單成立並實際量測，見[測試規則](../testing.md#依行為選擇測試)。

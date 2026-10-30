@@ -12,6 +12,9 @@
  *   countdown is seeded Off, the recorded display to the primary one (where the material opens)
  *   and the quality to Standard, Source, 30 fps; `--fps 60` relaunches at 60 fps for a second
  *   set; `--repeat N` (odd) records each set N times and judges the median run.
+ * - V. With `--editable` (plan 100 step 4): the recordings are editable ones, and the last one's Video, prepared once
+ *   it is saved, is waited for: how long it took and the app's CPU meanwhile, reported. B starts only after it.
+ *   Without it the recordings are plain, so no Video is prepared and B is idle.
  * - B. Idle after the recording: from 30 seconds after the last save, `--minutes`, with the encoder
  *   back to nothing.
  * - C. Settings open behind another app: 3 minutes, the pointer parked on the menu bar (`--hover-card`: on the
@@ -93,13 +96,13 @@ import { fileURLToPath } from "node:url";
 import { confirmedIdle, recordingOutcome, settleRecording, waitForLog } from "./lib/acceptance/acceptance-runtime.mts";
 import { acceleratorToKeystroke, createMaterialProfile, currentRunId, keystrokeScript, lastStartIndex, materialOpenArgs, registeredAccelerator, removeMaterialProfile } from "./lib/acceptance/acceptance.mts";
 import {
-  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, afterStudio, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
+  CpuSampler, ENCODER_SERVICE, IDLE_ROLES, MIN_COVERAGE, afterStudio, SamplerBlockedError, SamplerInterruptedError, checkBaselines, compileSampler, cpuBaseline, intervals, judgeCoverage, judgeIdle, judgePlayback, judgeRecording, judgeRoles,
   judgeSettingsOpen, judgeSteadyState, machineModel, readRoleTree, readRoles, roleText, summarize, type RoleCounts, type Summary, type Verdict,
 } from "./lib/verification/cpu-sampler.mts";
 import { DESKTOP_BLOCKED_EXIT, DesktopBlockedError, beginDesktopRound } from "./lib/runner/desktop-session.mts";
 import { launchdCaptureVariables } from "./lib/runner/capture-engine.mts";
 import { cameraPreviewOn } from "../src/shared/camera-preview.ts";
-import { LogReader, type LogCursor } from "./lib/runner/log-reader.mts";
+import { LogReader, lineTime, type LogCursor } from "./lib/runner/log-reader.mts";
 import { AccessibilityBlockedError, FLAG, KEY, centre, osascriptAx } from "./lib/runner/native-ax.mts";
 import { parseSessionRecord } from "./lib/runner/session-records.mts";
 import { percentile } from "./lib/verification/stats.mts";
@@ -128,7 +131,7 @@ const SETTINGS_MINUTES = 3;
 /** Judged after a 5-second settle, inside the 60-second recording it plays. */
 const PLAYBACK_SECONDS = 50;
 
-const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate power|standard|smooth] [--studio-view composed|screen|camera] [--studio-stall <at>,<for>] [--studio-memory] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--out <dir>]`;
+const usage = `usage: pnpm measure:cpu [-- --minutes N] [--fps 60] [--repeat N (odd, 1-9)] [--skip-recording] [--skip-settings] [--skip-playback] [--hover-card] [--camera <value> (with --skip-settings --skip-playback)] [--studio [--studio-active] [--studio-rate power|standard|smooth] [--studio-view composed|screen|camera] [--studio-stall <at>,<for>] [--studio-memory] (with --skip-settings --skip-playback)] [--material moving|still] [--audio off] [--capture-interval frame] [--diagnostics] [--profile] [--editable] [--out <dir>]`;
 let minutes = 5, repeat = 1, with60 = false, skipRecording = false, skipSettings = false, skipPlayback = false, hoverCard = false;
 let outDir: string | undefined;
 let camera: string | undefined;
@@ -148,6 +151,8 @@ let studioMemory = false;
 /** What each rate shows while the Studio is only looked at, and while the pointer is on it. */
 const STUDIO_RATE_FPS = { power: [5, 10], standard: [10, 10], smooth: [15, 15] } as const;
 let diagnostics = false;
+/** Plan 100 step 4: record editable recordings, and measure V, the last one's Video prepared after it is saved. */
+let editable = false;
 let materialKind: keyof typeof MATERIALS = "moving";
 /** Plan 091: record without sound, and ask capture for the frame interval. */
 let audioOff = false;
@@ -178,6 +183,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (arg === "--studio-stall" && studioStallOf(argv[i + 1])) studioStall = argv[++i];
   else if (arg === "--studio-memory") studioMemory = true;
   else if (arg === "--diagnostics") diagnostics = true;
+  else if (arg === "--editable") editable = true;
   else if (arg === "--material" && (argv[i + 1] === "moving" || argv[i + 1] === "still")) materialKind = argv[++i] as keyof typeof MATERIALS;
   else if (arg === "--profile") profileProcesses = true;
   else if (arg === "--audio" && argv[i + 1] === "off") { audioOff = true; i += 1; }
@@ -270,7 +276,7 @@ async function sendKeys(accelerator: string): Promise<void> {
  * values once no process can write them again; anything else the app saved meanwhile is kept. The
  * display is the primary one because the material opens there.
  */
-const SEEDED_KEYS = ["countdown", "display", "quality", "camera", "cameraDevice", "studioPreview"] as const;
+const SEEDED_KEYS = ["countdown", "display", "quality", "camera", "cameraDevice", "studioPreview", "editableRecording"] as const;
 let originalSettings: Buffer | undefined;
 let seeded = false;
 const readSettings = (): Record<string, unknown> => readAppSettings(SETTINGS_PATH) ?? {};
@@ -288,7 +294,9 @@ function seed(frameRate: 30 | 60): void {
   const cameraSettings = camera === undefined ? { camera: false } : { camera: true, ...(device ? { cameraDevice: { id: device, label: device } } : {}) };
   // `--studio`: the preview at the round's rate (plan 092) and view (plan 094); the last shown is kept as the app keeps it.
   const studioSettings = studio ? { studioPreview: { rate: shownRate, view: shownView } } : {};
-  writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality, ...cameraSettings, ...studioSettings });
+  // Plain recordings unless `--editable` (plan 100 step 4): an editable one's Video is prepared after it is saved, which
+  // B would otherwise measure as idle.
+  writeSettings({ ...current, countdown: 0, display: { kind: "primary" }, quality, ...cameraSettings, ...studioSettings, editableRecording: editable });
   seeded = true;
 }
 function restoreSettings(): string | undefined {
@@ -389,6 +397,17 @@ async function main(): Promise<number> {
   const materialPids = (): number[] => pgrepPids(escapeRegExp(profile));
   /** The recording in flight: its log cursor from before the start key and whether the stop key went out. */
   let active: { from: LogCursor; stopSent: boolean } | undefined;
+  /**
+   * With `--editable` (plan 100 step 4): each recording's Video prepared after its save, between the log's own times of
+   * the save and of the Video made (or not), what V measures; the recording's roles are read only after it.
+   */
+  const preparations: Array<{ file: string; savedAt: number; doneAt: number; line: string }> = [];
+  const waitForPrepared = async (file: string, from: LogCursor, savedAt: number): Promise<void> => {
+    const escaped = escapeRegExp(file);
+    const done = await waitForLog(log, from, new RegExp(`\\] versions: (prepared the video of ${escaped} in \\d+ ms|the video of ${escaped} could not be prepared)`),
+      `the Video of ${path.basename(file)} prepared`, controller.signal, 30 * 60_000);
+    preparations.push({ file, savedAt, doneAt: lineTime(done.line)?.getTime() ?? Date.now(), line: done.line });
+  };
   let recordingKey = "";
   let appPid = 0;
   const model = machineModel();
@@ -485,6 +504,8 @@ async function main(): Promise<number> {
     active = undefined;
     const record = parseSessionRecord(settled.line);
     const file = record?.kind === "saved" ? record.path : undefined;
+    // The Video is prepared after an editable recording's save: the roles below are idle's only once it has been.
+    if (editable && file) await waitForPrepared(file, beforeStop, lineTime(settled.line)?.getTime() ?? Date.now());
     if (record?.kind === "failed") fail(`the ${fps} fps recording failed: ${settled.line}`);
     const summary = window(started + 5000, started + (RECORDING_SECONDS - 5) * 1000);
     const pipeline = diagnostics ? await pipelineSince(from, controller.signal) : undefined;
@@ -772,6 +793,25 @@ async function main(): Promise<number> {
       medianRecording(30);
       if (studio) medianStudio(30);
       await closeMaterialOrFail();
+    }
+    // V (plan 100 step 4): an editable recording's Video, prepared once it is saved; idle is measured only after it.
+    if (!skipRecording && editable) {
+      const done = preparations.at(-1);
+      if (!done) throw new Failure("V: no editable recording was saved");
+      const ms = Number(/in (\d+) ms/.exec(done.line)?.[1] ?? Number.NaN);
+      // The export worker comes and goes within it: its intervals are kept (Codex F6).
+      const preparing = window(done.savedAt, done.doneAt, true);
+      const spanSeconds = (done.doneAt - done.savedAt) / 1000;
+      // Too short for the sampler's one-second intervals: no figure rather than a 0% that measured nothing (Codex F6).
+      const measured = preparing.seconds >= 1 && preparing.seconds >= spanSeconds * MIN_COVERAGE;
+      const prepared = /prepared the video/.test(done.line);
+      scenarios.push({ name: "V. The last recording's Video prepared after its save", key: "preparingVideo", summary: preparing, verdicts: [
+        { check: "Prepared", limit: "the Video made", actual: prepared ? "made" : done.line.slice(0, 160), verdict: prepared ? "pass" : "fail" },
+        { check: "How long", limit: "measured", actual: Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)} s for ${RECORDING_SECONDS} s recorded` : "unknown", verdict: "report" },
+        { check: "The app's CPU while preparing", limit: "measured",
+          actual: measured ? `${preparing.cpuPercent.average.toFixed(1)}% on average, ${preparing.cpuPercent.p95.toFixed(1)}% at the 95th (${preparing.seconds.toFixed(0)} s sampled)`
+            : `not measured: ${preparing.seconds.toFixed(0)} s sampled of ${spanSeconds.toFixed(1)} s`, verdict: "report" }] });
+      note(`V: ${prepared ? "prepared" : "not prepared"} in ${Number.isFinite(ms) ? (ms / 1000).toFixed(1) : "?"} s, ${measured ? `average ${preparing.cpuPercent.average.toFixed(1)}%` : "too short to sample"}`);
     }
     if (!skipRecording && camera !== undefined) note("B: left out with --camera (the preview page stays open)");
     if (!skipRecording && camera === undefined) {

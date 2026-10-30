@@ -36,6 +36,15 @@ describe("arguments", () => {
     expect(parseMatrixArgs(["fps,fps,long"], KNOWN)).toMatchObject({ ok: true, options: { names: ["fps", "fps", "long"] } });
   });
 
+  it("reads plan 100 step 4's gate: an editable recording prepared alongside, at a forced pace", () => {
+    expect(parseMatrixArgs(["pace", "--prepare", "/Users/me/Movies/RecordStuff/Pace.recordstuff.mp4", "--pace", "governed"], KNOWN)).toMatchObject({
+      ok: true, options: { names: ["pace"], prepare: "/Users/me/Movies/RecordStuff/Pace.recordstuff.mp4", pace: "governed" } });
+    expect(parseMatrixArgs(["pace", "--prepare", "relative.mp4"], KNOWN)).toMatchObject({ ok: false, error: expect.stringContaining("--prepare") });
+    expect(parseMatrixArgs(["pace", "--prepare"], KNOWN)).toMatchObject({ ok: false });
+    expect(parseMatrixArgs(["pace", "--pace", "fast"], KNOWN)).toMatchObject({ ok: false, error: expect.stringContaining("--pace") });
+    expect(MATRICES["all"]!.some((entry) => MATRICES["pace"]!.includes(entry)), "not part of all").toBe(false);
+  });
+
   it("bounds --repeat to whole numbers from 1 to the maximum", () => {
     expect(parseMatrixArgs(["fps", "--repeat", "1"], KNOWN)).toMatchObject({ ok: true, options: { repeat: 1 } });
     expect(parseMatrixArgs(["fps", "--repeat", String(MAX_REPEAT)], KNOWN)).toMatchObject({ ok: true, options: { repeat: MAX_REPEAT } });

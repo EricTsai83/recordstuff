@@ -20,7 +20,7 @@ export function instrumentUpdateAcceptance(source: string, runDir: string): stri
   source = replaceOnce(source, '  updates.flush();\n  log(`ready;',
     '  attachAcceptance(acceptance, { recorder, updates, settings, tray, handleAction });\n  updates.flush();\n  log(`ready;');
   // The fixture intercepts this exact lazy call; stop if production bypasses it.
-  source = replaceOnce(source, 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),', 'show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),');
+  source = replaceOnce(source, 'show: (savedPath, stoppedEarly, videoFailed) => tray.notifySaved(savedPath, stoppedEarly, videoFailed),', 'show: (savedPath, stoppedEarly, videoFailed) => tray.notifySaved(savedPath, stoppedEarly, videoFailed),');
   return source;
 }
 /** A buildable copy of the app for instrumentation; the checkout itself is never modified. */
