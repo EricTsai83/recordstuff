@@ -204,13 +204,13 @@ describe("createActionHandler", () => {
       { setAppearance: "dark" }, { setLanguage: "zh-TW" }, { setCountdown: 3 }, { setCountdownSound: true }, { setHideMenuBar: true }, { setHideDock: true }, { setHideDesktop: true },
       { setStudioOnStart: true },
       { setQuality: { level: "standard", resolutionCap: "1080p", frameRate: 30 } },
-      { setMicrophone: false }, { setMicrophoneDevice: null },
+      { setSystemAudio: false }, { setMicrophone: false }, { setMicrophoneDevice: null },
     ] as AppAction[];
     for (const action of actions) await act(action);
     expect(Object.fromEntries(saves.map(({ what, save }) => [what, save.locked === true]))).toEqual({
       display: true, "update checks": true, notifications: true, "tray click": false, "file name": true,
       "library layout": false, "library preview sound": false, appearance: false, language: false, countdown: true, "countdown sound": true, "hide menu bar": true, "hide Dock": true, "hide desktop icons and widgets": true, "Recording Studio on start": true, quality: true,
-      microphone: true, "microphone device": true,
+      "system audio": true, microphone: true, "microphone device": true,
     });
   });
 
@@ -340,6 +340,15 @@ describe("createActionHandler", () => {
       expect(await linux.act("openCameraSettings")).toBe(false);
       expect(linux.deps.openCameraSettings).not.toHaveBeenCalled();
     });
+  });
+
+  it("saves the System audio switch and redraws, asking for nothing (plan 101)", async () => {
+    const settings = { language: "en", systemAudio: true, setSystemAudio: vi.fn(async (on: boolean) => { settings.systemAudio = on; }) };
+    const ctx = harness({ settings, savePreference: vi.fn(async (_what: string, save: PreferenceSave) => { await save.write(); save.applied?.(); }) } as unknown as Partial<ActionDeps>);
+    await ctx.act({ setSystemAudio: false });
+    expect(settings.setSystemAudio.mock.calls).toEqual([[false]]);
+    expect(ctx.deps.refresh).toHaveBeenCalled();
+    expect(ctx.deps.log).toHaveBeenCalledWith("settings: system audio off");
   });
 
   describe("the microphone (plan 074)", () => {

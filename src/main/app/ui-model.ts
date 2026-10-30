@@ -113,6 +113,8 @@ export type AppAction =
   | { setEditableRecording: boolean }
   /** Open the Recording Studio as a recording starts (2026-10-28). */
   | { setStudioOnStart: boolean }
+  /** The System audio switch (plan 101): whether recordings capture the system's sound. */
+  | { setSystemAudio: boolean }
   | { setMicrophone: boolean }
   /** The Camera switch (plan 075, D10). */
   | { setCamera: boolean }
@@ -199,15 +201,18 @@ export interface AppContext {
   editableRecording?: boolean;
   /** The stored switch that opens the Recording Studio as a recording starts (2026-10-28); absent is off. */
   studioOnStart?: boolean;
+  /** The stored System audio switch (plan 101); absent is on. */
+  systemAudio?: boolean;
   /** The microphone (plan 074); absent is off with nothing known about the inputs. */
   microphone?: MicrophoneContext;
   /** The camera (plan 075); absent is off and not shown. */
   camera?: CameraContext;
   /**
    * The recording in progress's audio while it can be changed (plan 075, D19): what is muted, whether it has a microphone,
-   * and whether the session is editable, which records every input as it comes (plan 097, D6).
+   * whether it records no system audio (`system: false`, plan 101), and whether the session is editable, which records
+   * every input as it comes (plan 097, D6).
    */
-  audioSession?: { systemMuted: boolean; microphone?: { muted: boolean }; editable?: true };
+  audioSession?: { systemMuted: boolean; system?: false; microphone?: { muted: boolean }; editable?: true };
   /**
    * Whether the session in progress, a Live preview's or a recording's, records an editable file (plan 087), which the
    * Studio's live controls follow (plan 097, D6); absent without a session.

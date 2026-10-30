@@ -80,6 +80,7 @@ describe("settingsView", () => {
       "countdown",
       "countdownSound",
       "studioOnStart",
+      "recordSystemAudio",
       "microphone",
       "microphoneDevice",
       // The Recording Studio (plan 097, D1): what is recorded, then under the preview what is watched while recording.
@@ -89,6 +90,7 @@ describe("settingsView", () => {
       "studioHideMenuBar",
       "studioHideDock",
       "studioHideDesktop",
+      "studioSystemAudio",
       "studioMicrophoneDevice",
       "studioMicrophone",
       "systemAudio",
@@ -230,7 +232,7 @@ describe("tabs follow sections", () => {
     for (const group of groups) tabs.set(group.section!, (tabs.get(group.section!) ?? new Set()).add(group.tab));
     expect([...tabs.values()].every(sectionTabs => sectionTabs.size === 1)).toBe(true);
     expect(groups.filter(group => group.tab === "recording").map(group => group.section))
-      .toEqual(["source", "source", "source", "source", "source", "source", "source", "countdown", "countdown", "countdown", "audio", "audio", "video", "video", "video"]);
+      .toEqual(["source", "source", "source", "source", "source", "source", "source", "countdown", "countdown", "countdown", "audio", "audio", "audio", "video", "video", "video"]);
   });
 });
 
@@ -313,10 +315,10 @@ describe("the camera's rows (plan 075, step 7)", () => {
     expect(settingsAction(idle, on({ enabled: false }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(settingsAction({ type: "recording", startedAt: "2026-10-17T00:00:00Z" }, on({ session: { hidden: false } }), "cameraStudio", "openStudio")).toBe("openStudio");
     expect(studio(on())).toEqual(["studioControls", "studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop", "studioCameraDevice", "studioCamera",
-      "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror", "studioMicrophoneDevice", "studioMicrophone", "studioLive", "cameraShown", "systemAudio", "systemGain"]);
+      "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror", "studioSystemAudio", "studioMicrophoneDevice", "studioMicrophone", "studioLive", "cameraShown", "systemAudio", "systemGain"]);
     expect(ids(context)).toEqual([]);
     expect(studio(context), "no camera: the Studio keeps its choices and audio").toEqual(["studioControls", "studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop",
-      "studioMicrophoneDevice", "studioMicrophone", "systemAudio", "systemGain"]);
+      "studioSystemAudio", "studioMicrophoneDevice", "studioMicrophone", "systemAudio", "systemGain"]);
     // The size in pixels of the recording's shorter side, 1080 with no display known: a fifth of it.
     expect(group(idle, on(), "cameraWidth")).toMatchObject({ control: "number", number: { min: 54, max: 648, step: 1, value: 216, unit: "px", short: "W" } });
     expect(group(idle, on({ layout: { ...layout, height: 0.28 } }), "cameraHeight")?.number).toMatchObject({ value: 302, short: "H" });
@@ -697,6 +699,46 @@ describe("the camera's preview (plan 075, step 7)", () => {
   });
 });
 
+describe("system audio (plan 101)", () => {
+  const recording = { type: "recording" as const, startedAt: "2026-10-30T00:00:00Z" };
+  const off: AppContext = { ...context, systemAudio: false };
+
+  it("is a switch, on by default, first in the Recording tab's Audio section, locked while a session runs", () => {
+    expect(group(idle, context, "recordSystemAudio")).toMatchObject({ label: "System audio", control: "switch", tab: "recording", section: "audio", sectionHeading: "Audio",
+      note: "The sound your computer plays: calls, videos, music and notifications." });
+    expect(checked(idle, context, "recordSystemAudio")).toBe("on");
+    expect(checked(idle, off, "recordSystemAudio")).toBe("off");
+    expect(settingsAction(idle, context, "recordSystemAudio", "off")).toEqual({ setSystemAudio: false });
+    expect(settingsAction(idle, off, "recordSystemAudio", "on")).toEqual({ setSystemAudio: true });
+    expect(group(idle, { ...context, language: "zh-TW" }, "recordSystemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "音訊" });
+    for (const state of [recording, { type: "countdown" as const, remaining: 3 }]) {
+      expect(group(state, context, "recordSystemAudio")?.enabled, state.type).toBe(false);
+      expect(settingsAction(state, context, "recordSystemAudio", "off"), state.type).toBeUndefined();
+    }
+  });
+
+  it("is the Studio's picker before the microphone's, On or Off its menu, locked while recording", () => {
+    const ids = settingsView(idle, context).groups.filter((g) => g.tab === "studio").map((g) => g.id);
+    expect(ids.indexOf("studioSystemAudio")).toBe(ids.indexOf("studioMicrophoneDevice") - 1);
+    expect(group(idle, context, "studioSystemAudio")).toMatchObject({ enabled: true, section: "studioChoices", picker: { input: "system", name: "On", off: false, locked: false } });
+    expect(group(idle, off, "studioSystemAudio")?.picker).toMatchObject({ off: true });
+    expect(settingsAction(idle, context, "studioSystemAudio", "off")).toEqual({ setSystemAudio: false });
+    expect(group(recording, context, "studioSystemAudio")).toMatchObject({ enabled: false, picker: { locked: true } });
+    expect(settingsAction(recording, context, "studioSystemAudio", "off")).toBeUndefined();
+  });
+
+  it("leaves its meter, Don't record and fader out while off, before a session and during one that records none", () => {
+    expect(group(idle, off, "systemAudio")).toBeUndefined();
+    expect(group(idle, off, "systemGain")).toBeUndefined();
+    // The session's own choice wins: one that records the system's sound keeps its row though the switch is off for the next.
+    expect(group(recording, { ...off, audioSession: { systemMuted: false } }, "systemAudio")).toMatchObject({ enabled: true });
+    const without = { ...context, audioSession: { systemMuted: false, system: false as const, microphone: { muted: false } } };
+    expect(group(recording, without, "systemAudio")).toBeUndefined();
+    expect(group(recording, without, "systemGain")).toBeUndefined();
+    expect(group(recording, without, "microphoneAudio")).toMatchObject({ enabled: true });
+  });
+});
+
 describe("microphone (plan 074)", () => {
   const devices = [
     { id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", default: true },
@@ -714,7 +756,7 @@ describe("microphone (plan 074)", () => {
     expect(checked(idle, on(), "microphone")).toBe("on");
     expect(settingsAction(idle, context, "microphone", "on")).toEqual({ setMicrophone: true });
     expect(settingsAction(idle, on(), "microphone", "off")).toEqual({ setMicrophone: false });
-    expect(group(idle, { ...on(), language: "zh-TW" }, "microphone")).toMatchObject({ label: "麥克風", sectionHeading: "音訊" });
+    expect(group(idle, { ...on(), language: "zh-TW" }, "microphone")).toMatchObject({ label: "麥克風" });
   });
 
   it("is locked with the input device while a session runs", () => {
@@ -972,7 +1014,7 @@ describe("update actions in General", () => {
     expect(settingsAction(idle, ctx, "updates", "open")).toBeUndefined();
   });
   it("places quality controls in Recording", () => {
-    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideMenuBar", "hideDock", "hideDesktop", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "studioOnStart", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
+    expect(settingsView(idle, context).groups.filter(g => g.tab === "recording").map(g => g.id)).toEqual(["screen", "hideMenuBar", "hideDock", "hideDesktop", "outputFolder", "fileName", "editableRecording", "countdown", "countdownSound", "studioOnStart", "recordSystemAudio", "microphone", "microphoneDevice", "videoQuality", "resolutionCap", "frameRate"]);
   });
 });
 
@@ -1184,8 +1226,8 @@ it("declares presentation without changing choice identities, and authorizes onl
   const groups = settingsView(idle, context).groups;
   expect(groups.map(g => [g.id, g.control, g.section])).toEqual([
     ["screen", "menu", "source"], ["hideMenuBar", "switch", "source"], ["hideDock", "switch", "source"], ["hideDesktop", "switch", "source"], ["outputFolder", "menu", "source"], ["fileName", "text", "source"], ["editableRecording", "switch", "source"], ["countdown", "segmented", "countdown"], ["countdownSound", "switch", "countdown"], ["studioOnStart", "switch", "countdown"],
-    ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioChoices"], ["studioType", "menu", "studioChoices"],
-    ["studioScreen", "menu", "studioChoices"], ["studioHideMenuBar", "switch", "studioChoices"], ["studioHideDock", "switch", "studioChoices"], ["studioHideDesktop", "switch", "studioChoices"], ["studioMicrophoneDevice", "menu", "studioChoices"],
+    ["recordSystemAudio", "switch", "audio"], ["microphone", "switch", "audio"], ["microphoneDevice", "menu", "audio"], ["studioControls", "menu", "studioChoices"], ["studioType", "menu", "studioChoices"],
+    ["studioScreen", "menu", "studioChoices"], ["studioHideMenuBar", "switch", "studioChoices"], ["studioHideDock", "switch", "studioChoices"], ["studioHideDesktop", "switch", "studioChoices"], ["studioSystemAudio", "menu", "studioChoices"], ["studioMicrophoneDevice", "menu", "studioChoices"],
     ["studioMicrophone", "switch", "studioChoices"], ["systemAudio", "meter", "studioLive"], ["systemGain", "slider", "studioLive"],
     ["videoQuality", "segmented", "video"],
     ["resolutionCap", "menu", "video"], ["frameRate", "menu", "video"],
@@ -1442,7 +1484,7 @@ describe("Output folder in Settings → Recording (plan 048)", () => {
     const headings = (language: "en" | "zh-TW") => settingsView(idle, { ...context, language }).groups
       .filter((g) => g.sectionHeading).map((g) => [g.id, g.sectionHeading]);
     expect(headings("en")).toEqual([
-      ["screen", "Source and output"], ["countdown", "Before recording"], ["microphone", "Audio"], ["studioControls", "What is recorded"], ["systemAudio", "While recording"], ["videoQuality", "Video"],
+      ["screen", "Source and output"], ["countdown", "Before recording"], ["recordSystemAudio", "Audio"], ["studioControls", "What is recorded"], ["systemAudio", "While recording"], ["videoQuality", "Video"],
       ["trayClick", "Controls and notifications"], ["language", "Language and appearance"], ["versionCache", "Storage"], ["updateChecks", "Updates"], ["setupGuide", "Getting started"],
       ["shortcutList:global", "Anywhere"], ["shortcutList:window", "RecordStuff window"], ["shortcutList:recordings", "Recordings"],
       ["shortcutList:player", "Player"], ["shortcutList:fullScreen", "Full-screen video"], ["shortcutList:editor", "Edit view"],

@@ -378,7 +378,7 @@ function installPanelHandlers(): void {
       return { view: settingsView(sessionState, state.cameraContext), applied: action !== undefined };
     }
     // The Studio's choices over the preview (plan 097): the same settings as Recording settings', saved as main saves them.
-    if (["studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop", "studioMicrophone", "studioMicrophoneDevice"].includes(group) && state.cameraContext) {
+    if (["studioType", "studioScreen", "studioHideMenuBar", "studioHideDock", "studioHideDesktop", "studioSystemAudio", "studioMicrophone", "studioMicrophoneDevice"].includes(group) && state.cameraContext) {
       const context = state.cameraContext;
       const sessionState: RecordingState = state.cameraState ?? { type: "idle" };
       const action = settingsAction(sessionState, context, group, choice);
@@ -390,6 +390,7 @@ function installPanelHandlers(): void {
       if (typeof action === "object" && "setHideDock" in action) state.cameraContext = { ...context, systemUi: { ...systemUi, dock: action.setHideDock } };
       if (typeof action === "object" && "setHideDesktop" in action) state.cameraContext = { ...context, systemUi: { ...systemUi, desktop: action.setHideDesktop } };
       if (typeof action === "object" && "setMicrophone" in action) state.cameraContext = { ...context, microphone: { ...microphone, enabled: action.setMicrophone } };
+      if (typeof action === "object" && "setSystemAudio" in action) state.cameraContext = { ...context, systemAudio: action.setSystemAudio };
       if (typeof action === "object" && "setMicrophoneDevice" in action) {
         const { device: _device, ...rest } = microphone;
         state.cameraContext = { ...context, microphone: action.setMicrophoneDevice ? { ...rest, device: action.setMicrophoneDevice } : rest };

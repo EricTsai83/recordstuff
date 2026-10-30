@@ -37,7 +37,7 @@ export interface ActionDeps {
   settings: Pick<SettingsStore, "language" | "display" | "setDisplay" | "systemUi" | "setHideMenuBar" | "setHideDock" | "setHideDesktop" | "editableRecording" | "setEditableRecording" | "studioOnStart" | "setStudioOnStart" | "setUpdates" | "notifications" | "setNotifications"
     | "trayClick" | "setTrayClick" | "fileNameTemplate" | "setFileNameTemplate" | "setLibraryLayout" | "setLibraryPreviewSound" | "setStudioPreview" | "setAppearance"
     | "studioPreview" | "setLanguage" | "countdown" | "setCountdown" | "countdownSound" | "setCountdownSound" | "quality" | "setQuality"
-    | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
+    | "systemAudio" | "setSystemAudio" | "microphone" | "setMicrophone" | "microphoneDevice" | "setMicrophoneDevice" | "camera" | "setCamera"
     | "cameraDevice" | "setCameraDevice" | "cameraLayout" | "setCameraLayout" | "setCameraPosition"
     | "audioVolume" | "setAudioVolume">;
   recorder: Pick<Recorder, "state" | "startIfIdle" | "stop" | "cancelCountdown" | "mediaPending" | "updateCamera" | "updateAudio" | "updateGains" | "updateMicrophone"
@@ -146,6 +146,14 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         write: () => settings.setStudioOnStart(action.setStudioOnStart),
         applied: () => log(`settings: open the Recording Studio as a recording starts ${settings.studioOnStart ? "on" : "off"}`),
       });
+    } else if ("setSystemAudio" in action) {
+      // Locked while recording, as the microphone (plan 101): the Studio's Don't record is the recording in progress's.
+      await deps.savePreference("system audio", {
+        locked: true,
+        write: () => settings.setSystemAudio(action.setSystemAudio),
+        applied: () => log(`settings: system audio ${settings.systemAudio ? "on" : "off"}`),
+      });
+      deps.refresh();
     } else if ("setMicrophone" in action) {
       const turningOn = action.setMicrophone && !settings.microphone;
       await deps.savePreference("microphone", {

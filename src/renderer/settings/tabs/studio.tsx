@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video } from "lucide-react";
+import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
@@ -151,6 +151,7 @@ function SwitchRow({ group, steady }: { group: SettingsGroup; steady?: boolean }
 const PICKER_ICONS = {
   screen: [Monitor, MonitorOff],
   camera: [Camera, CameraOff],
+  system: [Volume2, VolumeX],
   microphone: [Mic, MicOff],
 } as const;
 
@@ -439,7 +440,7 @@ function Toolbar({ controls }: { controls: SettingsGroup | undefined }) {
   const view = groupOf("studioPreviewView");
   const live = groupOf("studioLive");
   const rate = groupOf("studioPreviewRate");
-  const pickers = ["studioScreen", "studioCameraDevice", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
+  const pickers = ["studioScreen", "studioCameraDevice", "studioSystemAudio", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
   return (
     <div ref={toolbar} className="studio-toolbar" data-density={density}>
       <div className="studio-toolbar-row">

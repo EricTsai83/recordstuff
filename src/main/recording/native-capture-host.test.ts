@@ -243,6 +243,16 @@ describe("NativeCaptureHost", () => {
     expect((await started(other)).sent[0]).not.toHaveProperty("native.microphone");
   });
 
+  it("posts no system audio with start when the session records none, and nothing when it does (plan 101)", async () => {
+    const ctx = setup();
+    const start = ctx.host.start("s1", DEFAULT_QUALITY, "/out/a.recording.mp4", { systemAudio: false });
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.children.at(-1)!.deliver({ type: "ready" });
+    await start;
+    expect(ctx.children.at(-1)!.sent[0]).toMatchObject({ native: { systemAudio: false } });
+    expect((await started(setup())).sent[0]).not.toHaveProperty("native.systemAudio");
+  });
+
   it("asks for the microphone before start only when it is on, and posts start after the answer (plan 074)", async () => {
     let answer: () => void = () => undefined;
     const prepareMicrophone = vi.fn(() => new Promise<void>((resolve) => { answer = resolve; }));

@@ -42,6 +42,8 @@ export interface RecorderWriter {
 
 /** What one session captures besides the quality (plan 074); a snapshot taken when the session begins. */
 export interface SessionCapture {
+  /** False when the session records no system audio (plan 101); absent records it. */
+  systemAudio?: false;
   /** Present only when the microphone is on. */
   microphone?: MicrophoneChoice;
   /** Present only when the camera is on (plan 075). */
@@ -126,6 +128,8 @@ export interface RecorderDeps {
   countdownSound?: () => boolean;
   /** The problems a recording starts with (plan 097), read once per session with the countdown; absent or empty is none. */
   countdownNotice?: () => string | undefined;
+  /** Whether the session records the system's sound (plan 101), read once per session like quality; absent means on. */
+  systemAudio?: () => boolean;
   /** Read once per session like quality (plan 074); absent means off. */
   microphone?: () => SessionMicrophone;
   /** The same for the camera (plan 075); absent, or undefined from it, means off. */
@@ -283,6 +287,8 @@ interface Session {
   countdownSound: boolean;
   /** Said under the countdown's digit (plan 097). */
   countdownNotice?: string;
+  /** Whether the session records the system's sound (plan 101), a snapshot taken when the session was created. */
+  systemAudio: boolean;
   /** Microphone snapshot taken when the session was created (plan 074). */
   microphone: SessionMicrophone;
   /** The engine told that the microphone stopped while recording. */
@@ -599,10 +605,10 @@ export class Recorder {
    * The recording in progress's audio while it can be changed (plan 075, D19): from its countdown, or without one its
    * start, until it stops, as `camera`; whether it records the microphone, and what is muted.
    */
-  get audio(): { sessionId: string; systemMuted: boolean; microphone?: { muted: boolean }; editable?: true } | undefined {
+  get audio(): { sessionId: string; systemMuted: boolean; system?: false; microphone?: { muted: boolean }; editable?: true } | undefined {
     const session = this.liveSession();
     if (!session) return undefined;
-    return { sessionId: session.id, systemMuted: session.systemMuted === true,
+    return { sessionId: session.id, systemMuted: session.systemMuted === true, ...(session.systemAudio ? {} : { system: false as const }),
       ...(session.microphone.enabled ? { microphone: { muted: session.microphoneMuted === true } } : {}),
       ...(session.editable ? { editable: true as const } : {}) };
   }
@@ -994,6 +1000,7 @@ export class Recorder {
       countdownSeconds,
       countdownSound: countdownSeconds > 0 && (this.deps.countdownSound?.() ?? false),
       ...(() => { const notice = countdownSeconds > 0 ? this.deps.countdownNotice?.() : undefined; return notice ? { countdownNotice: notice } : {}; })(),
+      systemAudio: this.deps.systemAudio?.() ?? true,
       microphone: this.deps.microphone?.() ?? { enabled: false },
       ...(() => { const camera = this.deps.camera?.(); return camera ? { camera } : {}; })(),
       ...(this.deps.editable?.() ? { editable: true } : {}),
@@ -1080,7 +1087,7 @@ export class Recorder {
     }
     try {
       const { label: _label, ...microphone } = session.microphone;
-      const capture: SessionCapture = { ...(microphone.enabled ? { microphone } : {}), ...(session.camera ? { camera: session.camera } : {}),
+      const capture: SessionCapture = { ...(session.systemAudio ? {} : { systemAudio: false as const }), ...(microphone.enabled ? { microphone } : {}), ...(session.camera ? { camera: session.camera } : {}),
         ...(session.editable ? { editable: true as const } : {}) };
       await this.deps.host.start(session.id, session.quality, session.writer?.recordingPath, Object.keys(capture).length ? capture : undefined);
     } catch (cause) {

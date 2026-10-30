@@ -1,13 +1,13 @@
 /**
  * The Recording Studio's rows (plan 075, D19, D20; laid out again by plan 097, D1): over the preview what is recorded
- * (the record control, the recording type and the screen, camera and microphone pickers), the preview with its view,
+ * (the record control, the recording type and the screen, camera, system audio and microphone pickers), the preview with its view,
  * Live preview and rate, and under it what is watched and changed while recording, which follows the recording's type.
  */
 import { failureReason } from "../../recording/recording-result";
 import { translate as t, type PlainMessageKey } from "../../../shared/i18n";
 import type { RecordingState } from "../../../shared/state";
 import type { AppAction, AppContext } from "../../app/ui-model";
-import { microphoneDeviceGroup, microphoneGroup, studioAudioGroups } from "./audio";
+import { microphoneDeviceGroup, microphoneGroup, studioAudioGroups, systemAudioGroup } from "./audio";
 import { cameraGroups, cameraPreviewGroup, cameraShapeGroups } from "./camera";
 import { type Group, group, switchChoices } from "./group";
 import { inputNames, inputProblems, type InputProblem, type InputProblems } from "./inputs";
@@ -54,6 +54,7 @@ export function studioGroups(state: RecordingState, ctx: AppContext, unlocked: b
     studioTypeGroup(ctx, unlocked),
     ...studioScreenGroups(ctx, unlocked, problems),
     ...studioCameraGroups(ctx, unlocked, problems),
+    ...studioSystemAudioGroups(ctx, unlocked),
     ...studioMicrophoneGroups(ctx, unlocked, problems),
     ...(preview ? [preview, ...studioPreviewGroups(ctx)] : []),
     ...(live ? [live] : []),
@@ -124,6 +125,17 @@ function studioCameraGroups(ctx: AppContext, unlocked: boolean, problems: InputP
     on,
     ...cameraShapeGroups(ctx, unlocked),
   ];
+}
+
+/**
+ * The system's sound's picker (plan 101), before the microphone's: On and Off are its menu, as there is no device to
+ * choose, and it is locked while recording, as the switch in Recording settings it shares.
+ */
+function studioSystemAudioGroups(ctx: AppContext, unlocked: boolean): Group[] {
+  const language = ctx.language;
+  const on = systemAudioGroup(ctx, unlocked);
+  return [{ ...group("studioSystemAudio", on.label, unlocked, on.choices),
+    picker: { input: "system", name: t("On", language), off: !(ctx.systemAudio ?? true), locked: !unlocked } }];
 }
 
 /**

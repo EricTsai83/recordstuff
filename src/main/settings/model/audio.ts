@@ -9,6 +9,18 @@ import type { AppAction, AppContext } from "../../app/ui-model";
 import { type Group, group, relaunchChoice, switchChoices } from "./group";
 
 /**
+ * The System audio switch (plan 101): whether recordings capture the sound the computer plays, on by default and
+ * locked while recording, as the microphone. Off, nothing of it is captured; the Studio's Don't record stays the
+ * recording in progress's choice. No permission is involved: system audio needs none beyond screen recording.
+ */
+export function systemAudioGroup(ctx: AppContext, enabled: boolean): Group {
+  const language = ctx.language;
+  return group("recordSystemAudio", t("System audio", language), enabled,
+    switchChoices(language, ctx.systemAudio ?? true, (value) => ({ setSystemAudio: value })),
+    t("The sound your computer plays: calls, videos, music and notifications.", language));
+}
+
+/**
  * The microphone (plan 074): off by default and locked while recording. Turning it on asks macOS for access then and
  * there (actions.ts), so the prompt follows the user's own click; a denial keeps the setting and is shown here with
  * the pane that changes it, since a recording would be refused before its countdown. No ⓘ (2026-10-28, the
@@ -45,7 +57,7 @@ export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
 
 /**
  * The recording's inputs under the Studio's preview (D19; plan 097, D6): each one's level, for the session in progress
- * only; the microphone's while the session takes it, or before one while its switch is on. A plain recording's also say
+ * only; the system's and the microphone's while the session takes them, or before one while their switches are on. A plain recording's also say
  * whether the input is recorded (Don't record, the mute until plan 097) and its fader; an editable recording's are the
  * level alone, since it records every input as it comes.
  */
@@ -69,7 +81,11 @@ export function studioAudioGroups(ctx: AppContext, type: "plain" | "editable"): 
       enabled: true, checked: true, action: { setAudioVolume: { source, volume: value } } }]),
       control: "slider", slider: { min: 0, max: AUDIO_VOLUME_MAX, step: AUDIO_VOLUME_STEP, value, unit: "percent", scale: "volume" } }];
   };
-  const rows = [row("systemAudio", "System audio", "system", session?.systemMuted ?? false), ...fader("systemGain", "System audio")];
+  // An input switched off is not shown (plan 101 for the system's sound, as the microphone's), before or during a session.
+  const rows: Group[] = [];
+  if (session ? session.system !== false : ctx.systemAudio ?? true) {
+    rows.push(row("systemAudio", "System audio", "system", session?.systemMuted ?? false), ...fader("systemGain", "System audio"));
+  }
   if (session ? session.microphone : ctx.microphone?.enabled) {
     rows.push(row("microphoneAudio", "Microphone", "microphone", session?.microphone?.muted ?? false), ...fader("microphoneGain", "Microphone"));
   }

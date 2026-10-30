@@ -89,6 +89,11 @@ export interface Settings {
   /** A tick with each countdown digit (plan 046); kept while the countdown is Off. */
   countdownSound: boolean;
   /**
+   * Record the system's sound (plan 101): on by default, and a file written before it, without the field, reads as on,
+   * so nothing changes until someone turns it off. Off, the engine captures none (`SystemAudio::Off`), not a muted one.
+   */
+  systemAudio: boolean;
+  /**
    * Mix the microphone into the recording's track (plan 074). On by default since 2026-10-26 (the maintainer's decision),
    * turned off when macOS refuses it (input-access.ts); a settings file saves every field, so this reaches new installs only.
    */
@@ -176,6 +181,7 @@ export function defaultSettings(outputDir: string): Settings {
     studioOnStart: false,
     countdown: DEFAULT_COUNTDOWN,
     countdownSound: DEFAULT_COUNTDOWN_SOUND,
+    systemAudio: true,
     microphone: true,
     audioVolume: { ...DEFAULT_AUDIO_VOLUME },
     camera: true,
@@ -278,6 +284,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const studioOnStart = field("studioOnStart", isBoolean, defaults.studioOnStart, `studioOnStart is not a boolean: using ${defaults.studioOnStart ? "on" : "off"}`);
   const countdown = field("countdown", isCountdownSeconds, DEFAULT_COUNTDOWN, `countdown is unsupported: using ${DEFAULT_COUNTDOWN} seconds`);
   const countdownSound = field("countdownSound", isBoolean, DEFAULT_COUNTDOWN_SOUND, `countdownSound is not a boolean: using ${DEFAULT_COUNTDOWN_SOUND ? "on" : "off"}`);
+  const systemAudio = field("systemAudio", isBoolean, defaults.systemAudio, `systemAudio is not a boolean: using ${defaults.systemAudio ? "on" : "off"}`);
   const microphone = field("microphone", isBoolean, defaults.microphone, `microphone is not a boolean: using ${defaults.microphone ? "on" : "off"}`);
   const microphoneDevice = field<MicrophoneDevicePreference | undefined>("microphoneDevice", isMicrophoneDevicePreference, undefined,
     "microphoneDevice is invalid: using the system default input");
@@ -307,7 +314,7 @@ export function parseSettings(text: string, platform: NodeJS.Platform = process.
   const onboardingDone = field("onboardingDone", isBoolean, true, "onboardingDone is not a boolean: the guide stays closed");
   return { settings: { appearance, display, hideMenuBar, hideDock, hideDesktop, editableRecording, studioOnStart, version: SETTINGS_VERSION, outputDir, quality, language, hotkey,
     updates: notifiedVersion === undefined ? updates : { ...updates, notifiedVersion }, notifications, countdown, countdownSound,
-    microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
+    systemAudio, microphone, ...(microphoneDevice === undefined ? {} : { microphoneDevice: { id: microphoneDevice.id, label: microphoneDevice.label } }),
     audioVolume: { system: audioVolume.system, microphone: audioVolume.microphone },
     camera, cameraLayout: copyCameraLayout(cameraLayout), ...(cameraDevice === undefined ? {} : { cameraDevice: { id: cameraDevice.id, label: cameraDevice.label } }),
     studioPreview: { rate: studioPreview.rate, view: studioPreview.view }, trayClick,
@@ -398,6 +405,12 @@ export class SettingsStore {
 
   setCountdownSound(enabled: boolean): Promise<void> {
     return this.setSwitch("countdownSound", enabled, "countdown sound");
+  }
+
+  get systemAudio(): boolean { return this.settings.systemAudio; }
+
+  setSystemAudio(enabled: boolean): Promise<void> {
+    return this.setSwitch("systemAudio", enabled, "system audio");
   }
 
   get microphone(): boolean { return this.settings.microphone; }

@@ -109,7 +109,7 @@ export interface SettingsGroup {
    * menu holds the group's own choices, the devices, with the switch and the other groups named in `parts`.
    */
   picker?: {
-    input: "screen" | "camera" | "microphone";
+    input: "screen" | "camera" | "system" | "microphone";
     name: string;
     off?: boolean;
     problem?: string;

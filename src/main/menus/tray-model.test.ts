@@ -105,9 +105,9 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(m.icon).toBe("idle");
     expect(m.title).toBe("");
     // A plain "Ready" is left to the tooltip: Start recording already says it (2026-10-05).
-    expect(labels(m.menu)).toEqual(["開始錄影", "—", "錄影時包含", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
+    expect(labels(m.menu)).toEqual(["開始錄影", "—", "錄影時包含", "系統聲音", "麥克風", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
     expect(m.tooltip).toBe("RecordStuff: 待命中");
-    expect(enabledActions(m.menu)).toEqual(["start", { setMicrophone: true }, "openSettings", "openStudio", "showLastRecording", "quit"]);
+    expect(enabledActions(m.menu)).toEqual(["start", { setSystemAudio: false }, { setMicrophone: true }, "openSettings", "openStudio", "showLastRecording", "quit"]);
   });
 
   it("idle with editable recordings off offers one editable recording under Start, on macOS only", () => {
@@ -149,6 +149,19 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(labels(m.menu)).toEqual(["停止", "—", "開啟 RecordStuff", "開啟錄影工作室…", "顯示最後一個錄影", "—", "結束 RecordStuff"]);
     expect(m.tooltip).toBe("RecordStuff: 錄影中");
     expect(enabledActions(m.menu)).toEqual(["stop", "openSettings", "openStudio", "showLastRecording", "quit"]);
+  });
+
+  it("idle: System audio first under Include in recordings, a checkbox toggling the stored switch, without a device or a problem line (plan 101)", () => {
+    const isSwitch = (entry: TrayMenuItem): boolean => entry.kind === "item" && typeof entry.action === "object" && "setSystemAudio" in entry.action;
+    const item = (ctx: AppContext) => trayModel({ type: "idle" }, ctx).menu.find(isSwitch);
+    expect(item(mac)).toMatchObject({ label: "系統聲音", enabled: true, checked: true, action: { setSystemAudio: false } });
+    expect(item({ ...mac, language: "en", systemAudio: false })).toMatchObject({ label: "System audio", checked: false, action: { setSystemAudio: true } });
+    const all = labels(trayModel({ type: "idle" }, { ...mac, language: "en", microphone: { enabled: true }, camera: { enabled: true, available: true } }).menu);
+    const heading = all.indexOf("Include in recordings");
+    expect(all.slice(heading, heading + 4)).toEqual(["Include in recordings", "System audio", "Microphone — System default", "Camera — System default"]);
+    // Locked while recording as the microphone: the switch is idle's only, and not in the Record menu.
+    for (const state of STATES.filter((candidate) => candidate.type !== "idle")) expect(trayModel(state, mac).menu.some(isSwitch), state.type).toBe(false);
+    expect(recordMenu({ type: "idle" }, mac).some(isSwitch)).toBe(false);
   });
 
   it("idle: Camera beside Microphone, under Include in recordings, where the camera is available (plan 075, D10)", () => {
@@ -329,18 +342,19 @@ describe("trayModel per state (docs/system-design/desktop.md)", () => {
     expect(labels(editable.menu)).not.toContain("System audio not recorded");
   });
 
-  it("is a flat command list in every state: no preference renders in the tray but idle's microphone and camera (plan 074)", () => {
+  it("is a flat command list in every state: no preference renders in the tray but idle's inputs (plan 074, plan 101)", () => {
     for (const state of STATES) {
       const menu = trayModel(state, { ...mac, hotkey: { ...DEFAULT_HOTKEY, registered: true }, updates: { state: { kind: "available", version: "9.0.0" }, enabled: true } }).menu;
       expect(menu.every((entry) => entry.kind === "separator" || entry.kind === "item"), state.type).toBe(true);
       const actions = menu.flatMap((entry) => (entry.kind === "item" && entry.action ? [entry.action] : []));
       const preferences = actions.filter((action) => typeof action !== "string");
-      expect(preferences, state.type).toEqual(state.type === "idle" ? [{ setMicrophone: true }] : []);
+      expect(preferences, state.type).toEqual(state.type === "idle" ? [{ setSystemAudio: false }, { setMicrophone: true }] : []);
     }
   });
 
   it("offers the microphone as a checkbox in idle only, toggling the stored switch (plan 074)", () => {
-    const find = (state: RecordingState, ctx: AppContext) => trayModel(state, ctx).menu.find((entry) => entry.kind === "item" && entry.checked !== undefined);
+    const find = (state: RecordingState, ctx: AppContext) => trayModel(state, ctx).menu.find((entry) => entry.kind === "item" && entry.checked !== undefined
+      && typeof entry.action === "object" && "setMicrophone" in entry.action);
     expect(find({ type: "idle" }, mac)).toMatchObject({ label: "麥克風", enabled: true, checked: false, action: { setMicrophone: true } });
     // On, named with its device (plan 097).
     expect(find({ type: "idle" }, { ...mac, language: "en", microphone: { enabled: true } }))
@@ -603,7 +617,7 @@ describe("one group order in every state (plan 048)", () => {
     const idle = (history: keyof typeof histories, language: "en" | "zh-TW") =>
       labels(trayModel({ type: "idle" }, { ...mac, language, recordingResults: histories[history] }).menu);
     expect(idle("unread", "en")).toEqual([
-      "Start recording", "—", "Include in recordings", "Microphone", "—",
+      "Start recording", "—", "Include in recordings", "System audio", "Microphone", "—",
       "Open RecordStuff", "Open Recording Studio…", "Show last recording", "—",
       "Unreviewed recording failures: 1", "View recording failures…", "—",
       "Quit RecordStuff",

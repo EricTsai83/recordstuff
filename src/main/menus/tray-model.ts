@@ -230,6 +230,9 @@ function trayParts(state: RecordingState, ctx: AppContext): { model: TrayModel; 
       const problemLine = (problem: { text: string; waiting?: true } | undefined): TrayMenuItem[] =>
         problem && !problem.waiting ? [item(problem.text, "openStudio", text("Opens the Recording Studio."))] : [];
       actions.push(SEPARATOR, { kind: "item", label: text("Include in recordings"), enabled: false, header: true });
+      // The system's sound first (plan 101): no device and no permission of its own, so no name and no problem line.
+      const systemAudio = ctx.systemAudio ?? true;
+      actions.push({ kind: "item", label: text("System audio"), enabled: true, action: { setSystemAudio: !systemAudio }, checked: systemAudio });
       actions.push({ kind: "item", label: named("Microphone", microphone, names.microphone), enabled: true, action: { setMicrophone: !microphone }, checked: microphone });
       actions.push(...problemLine(problems.microphone));
       // The camera's switch beside it (plan 075, D10), where the camera is available.

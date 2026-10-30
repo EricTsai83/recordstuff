@@ -516,14 +516,19 @@ export class NativeHost {
     }
   }
 
-  /** The track's sound: the development switches' choice, with the user's microphone added; absent is 076's default. */
+  /**
+   * The track's sound: the development switches' choice, else the user's System audio switch (plan 101), with the user's
+   * microphone added; absent is 076's default, all of the system's sound.
+   */
   private audio(native: NativeStart): AudioOptions | undefined {
     const chosen = native.microphone?.enabled
       ? { microphone: true, ...(native.microphone.deviceId ? { microphoneId: native.microphone.deviceId } : {}) }
       : undefined;
     const development = this.development.audio;
     if (development) return chosen ? { ...development, ...chosen } : development;
-    return chosen ? { system: "all", ...chosen } : undefined;
+    const system = native.systemAudio === false ? "off" : "all";
+    if (chosen) return { system, ...chosen };
+    return system === "off" ? { system, microphone: false } : undefined;
   }
 
   private async start(sessionId: string, quality: QualitySettings, native: NativeStart): Promise<void> {

@@ -23,7 +23,7 @@ import type { RecordingState } from "../../shared/state";
 import { abbreviateHome, type AppAction, type AppContext } from "../app/ui-model";
 import { APP_NAME } from "../lib/app-name";
 import { preferencesUnlocked } from "../recording/recording-lock";
-import { AUDIO_VOLUME_GROUPS, isAudioVolumeGroup, microphoneDeviceGroup, microphoneGroup, microphoneLevelGroup } from "./model/audio";
+import { AUDIO_VOLUME_GROUPS, isAudioVolumeGroup, microphoneDeviceGroup, microphoneGroup, microphoneLevelGroup, systemAudioGroup } from "./model/audio";
 import { CAMERA_FIELDS, cameraField, cameraGroup, cameraGroups, cameraShapeEnabled, isCameraField, previewDisplay, previewPosition, recordedShorterSide } from "./model/camera";
 import { hotkeyGroup, languageGroup, notificationsGroup, proposesHotkey, shortcutListGroups, trayClickGroup, updateActions, updateChecksGroup } from "./model/general";
 import { type Group, group, withSectionHeadings } from "./model/group";
@@ -66,6 +66,7 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
     countdownGroup(ctx, unlocked),
     countdownSoundGroup(ctx, unlocked),
     studioOnStartGroup(ctx, unlocked),
+    systemAudioGroup(ctx, unlocked),
     microphoneGroup(ctx, unlocked),
     microphoneDeviceGroup(ctx, unlocked),
     ...(() => { const level = microphoneLevelGroup(ctx, unlocked); return level ? [level] : []; })(),

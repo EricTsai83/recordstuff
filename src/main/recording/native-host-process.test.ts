@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, MicrophoneDevice, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { HEALTH_INTERVAL_MS, NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
+import { HEALTH_INTERVAL_MS, NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type DevelopmentCapture, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
@@ -429,6 +429,22 @@ describe("NativeHost", () => {
     await flush();
     expect(fake.engine.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ editable: true }));
     expect(logs.some((line) => line.startsWith("editable recording (plan 087)"))).toBe(true);
+  });
+
+  it("asks the engine for no system audio when the System audio switch is off, with the microphone or alone, the development switch winning (plan 101)", async () => {
+    const prepared = async (development: DevelopmentCapture | undefined, extra: Partial<NativeStart>) => {
+      const port = new Port();
+      const fake = fakeEngine();
+      new NativeHost(port, fake.factory, () => undefined, undefined, development);
+      port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, ...extra } });
+      await flush();
+      return fake.engine.prepare.mock.calls[0]![0] as { audio?: unknown };
+    };
+    expect((await prepared(undefined, { systemAudio: false })).audio).toEqual({ system: "off", microphone: false });
+    expect((await prepared(undefined, { systemAudio: false, microphone: { enabled: true, deviceId: "usb-mic" } })).audio)
+      .toEqual({ system: "off", microphone: true, microphoneId: "usb-mic" });
+    expect((await prepared(undefined, { microphone: { enabled: true } })).audio, "absent records it").toEqual({ system: "all", microphone: true });
+    expect((await prepared({ audio: { system: "apps", pids: [5], microphone: false } }, { systemAudio: false })).audio).toEqual({ system: "apps", pids: [5], microphone: false });
   });
 
   describe("the microphone (plan 074)", () => {

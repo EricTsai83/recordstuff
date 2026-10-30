@@ -64,7 +64,7 @@ export function safeCaptureShortcut(pid: number, runningPids: number[], hotkey: 
  */
 export type BusyPolicy = "locked" | "available" | "session" | { lockedChoices: readonly string[]; session?: true };
 export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
-  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideMenuBar: "locked", hideDock: "locked", hideDesktop: "locked", hideTaskbar: "locked", editableRecording: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
+  screen: "locked", outputFolder: { lockedChoices: ["change"] }, fileName: "locked", countdown: "locked", countdownSound: "locked", studioOnStart: "locked", hideMenuBar: "locked", hideDock: "locked", hideDesktop: "locked", hideTaskbar: "locked", editableRecording: "locked", recordSystemAudio: "locked", microphone: "locked", videoQuality: "locked", resolutionCap: "locked", frameRate: "locked", hotkey: "locked",
   notifications: "locked", updateChecks: "locked", updates: "locked", localData: "locked", versionCache: "locked", keptEdits: "locked",
   language: "available", appearance: "available", trayClick: "available", log: "available", about: "available",
   // The first-launch guide's way back (2026-10-26): opening it changes nothing a recording holds; its inputs lock in it.
@@ -75,9 +75,9 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   // Switches the microphone of a recording that records one (plan 079, D3); Search for devices waits for the end. The
   // Studio's microphone picker is the same choice (plan 097).
   microphoneDevice: { session: true, lockedChoices: ["search"] }, studioMicrophoneDevice: { session: true, lockedChoices: ["search"] },
-  // The Studio's choices over the preview (plan 097, D1): the recording type, the screen and the microphone's switch,
-  // the same settings as Recording settings', locked with them.
-  studioType: "locked", studioScreen: "locked", studioMicrophone: "locked",
+  // The Studio's choices over the preview (plan 097, D1): the recording type, the screen, the system audio's picker (plan
+  // 101) and the microphone's switch, the same settings as Recording settings', locked with them.
+  studioType: "locked", studioScreen: "locked", studioSystemAudio: "locked", studioMicrophone: "locked",
   studioHideMenuBar: "locked", studioHideDock: "locked", studioHideDesktop: "locked", studioHideTaskbar: "locked",
   // The input's level between recordings (plan 079, D1): at rest while busy.
   microphoneLevel: "locked",
@@ -87,12 +87,13 @@ export const BUSY_SETTINGS_POLICY: Readonly<Record<string, BusyPolicy>> = {
   "shortcutList:player": "available", "shortcutList:fullScreen": "available", "shortcutList:editor": "available",
 };
 /**
- * Groups offered only in some contexts: the microphone's meter while the microphone is on (plan 075, D19), its input
+ * Groups offered only in some contexts: the system audio's and the microphone's meters and faders while they are on
+ * (plan 075, D19; plan 101), the microphone's input
  * level while it is on and allowed (plan 079, D1), the setup guide's row on macOS only (2026-10-26), and the system's
  * chrome: three switches on macOS, the taskbar's unavailable one on Windows (plan 099), and the edits kept for
  * recordings out of the Recordings tab, only while there are any (plan 100).
  */
-const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide", "keptEdits",
+const OPTIONAL_GROUPS: ReadonlySet<string> = new Set(["systemAudio", "systemGain", "microphoneAudio", "microphoneGain", "microphoneLevel", "setupGuide", "keptEdits",
   ...["hideMenuBar", "hideDock", "hideDesktop", "hideTaskbar"].flatMap(id => [id, `studio${id[0]!.toUpperCase()}${id.slice(1)}`])]);
 export type LockSnapshot = { recording: RecordingState; model: TrayModel; settings: SettingsView };
 

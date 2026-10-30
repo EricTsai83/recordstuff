@@ -329,6 +329,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const countdownSeconds = (): CountdownSeconds => autoRecord?.ok ? autoRecord.config.countdown : settings.countdown;
   /** Autorecord never ticks, so the matrix and audio-quality recordings cannot hear it (plan 046). */
   const countdownSound = (): boolean => autoRecord?.ok ? autoRecord.config.countdownSound : settings.countdownSound;
+  /** Autorecord always records the system's sound, whatever is stored, so the matrix's recordings stay comparable (plan 101). */
+  const systemAudioOn = (): boolean => autoRecord?.ok ? true : settings.systemAudio;
   /** Autorecord mixes the microphone in only when its configuration says so (plan 074). */
   const microphoneOn = (): boolean => autoRecord?.ok ? autoRecord.config.microphone : settings.microphone;
   /** An autorecord folder, like its quality, lives in memory only. */
@@ -592,6 +594,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     quality,
     countdownSeconds,
     countdownSound,
+    systemAudio: systemAudioOn,
     microphone: () => {
       // Autorecord's microphone is the system default; the user's is the one Settings chose.
       const device = autoRecord?.ok ? undefined : settings.microphoneDevice;
@@ -730,7 +733,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   const pictureHidden = (): boolean => pictureHiddenFor !== undefined && pictureHiddenFor === recorder.previewSessionId && !recorder.preview;
   /** What the Live preview was prepared with: a change to any of it prepares the preview again (D20). */
   const previewInputs = (): string => JSON.stringify([settings.display, settings.quality, settings.systemUi, cropInputs(), settings.outputDir,
-    settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null,
+    settings.systemAudio, settings.microphone, settings.microphoneDevice ?? null, settings.camera, settings.cameraDevice ?? null,
     // A capture process records an editable file or not from its start: Start must not take a preview of the other kind.
     editable.next()]);
   /**
@@ -768,6 +771,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     historyFailed: recordingResults.historyFailed,
     displays: displays(), display: settings.display, systemUi: settings.systemUi,
     ...(captureArea && recorder.previewSessionId !== undefined ? { captureArea } : {}), editableRecording: settings.editableRecording, studioOnStart: settings.studioOnStart, ...(displayMedia.failure ? { displayFailure: displayMedia.failure } : {}),
+    systemAudio: settings.systemAudio,
     microphone: (() => {
       const device = settings.microphoneDevice, access = microphoneAccess();
       return { enabled: settings.microphone, ...(device ? { device } : {}), ...(devices.microphones ? { devices: devices.microphones } : {}), ...(access ? { access } : {}),
@@ -787,7 +791,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     },
     ...(() => {
       const audio = recorder.audio;
-      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.microphone ? { microphone: audio.microphone } : {}),
+      return audio ? { audioSession: { systemMuted: audio.systemMuted, ...(audio.system === false ? { system: false as const } : {}), ...(audio.microphone ? { microphone: audio.microphone } : {}),
         ...(audio.editable ? { editable: true as const } : {}) } } : {};
     })(),
     ...(recorder.editable === undefined ? {} : { editableSession: recorder.editable }),

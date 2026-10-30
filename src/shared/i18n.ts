@@ -585,6 +585,7 @@ export const ZH_TW = {
   "Collapse sidebar": "收合側邊欄",
   "Expand sidebar": "展開側邊欄",
   "System audio": "系統聲音",
+  "The sound your computer plays: calls, videos, music and notifications.": "電腦播放的聲音：通話、影片、音樂和通知。",
   // Each input's fader (plan 075, D21).
   "{label} volume": "{label}音量",
   "Elapsed {time}": "已錄 {time}",

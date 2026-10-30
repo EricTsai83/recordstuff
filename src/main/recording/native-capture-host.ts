@@ -214,6 +214,7 @@ export class NativeCaptureHost implements RecorderHost {
     this.post({ type: "start", sessionId, quality, native: {
       displayId: Number(display), ...(displayPoint ? { displayPoint } : {}), recordingPath,
       ownPids: this.options.ownPids(), systemUi: systemUi.hide, ...(systemUi.crop ? { crop: systemUi.crop } : {}),
+      ...(capture?.systemAudio === false ? { systemAudio: false } : {}),
       ...(capture?.microphone ? { microphone: capture.microphone } : {}),
       ...(capture?.camera ? { camera: cameraChoice(capture.camera, display) } : {}),
       // The recorder's choice for the session (plan 087), read once when it began, so its controls match its file.

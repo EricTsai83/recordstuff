@@ -619,6 +619,18 @@ describe("the microphone (plan 074)", () => {
     }
   });
 
+  it("records no system audio when the switch was off as the session began, and says so in its audio (plan 101)", async () => {
+    let on = false;
+    const ctx = setup({ deps: { systemAudio: () => on, microphone: () => ({ enabled: true }) } });
+    ctx.recorder.toggle();
+    on = true;
+    await flush();
+    ctx.host.emit(prepared("s1"));
+    await flush();
+    expect(ctx.host.capturedWith).toEqual([{ systemAudio: false, microphone: { enabled: true } }]);
+    expect(ctx.recorder.audio).toMatchObject({ sessionId: "s1", system: false, microphone: { muted: false } });
+  });
+
   it("snapshots the choice when the session begins, passes it without its label and names the device in the log", async () => {
     const logs: string[] = [];
     let choice = { enabled: true, deviceId: "usb", label: "USB Microphone" };

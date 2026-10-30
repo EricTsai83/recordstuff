@@ -83,6 +83,8 @@ export interface NativeStart {
    * on screen. Absent is all of it.
    */
   crop?: PixelRect;
+  /** False records no system audio (plan 101): the engine captures none, rather than a muted one; absent records it. */
+  systemAudio?: false;
   /** Mix the microphone in (plan 074); absent is off. */
   microphone?: MicrophoneChoice;
   /** Compose the camera into the frames (plan 075); absent is off. */
@@ -263,6 +265,7 @@ function isNativeStart(value: unknown): value is NativeStart {
     isNonEmptyString(value["recordingPath"]) &&
     Array.isArray(value["ownPids"]) && value["ownPids"].every((pid) => typeof pid === "number" && Number.isInteger(pid)) &&
     isSystemUiChoice(value["systemUi"]) && (value["crop"] === undefined || isPixelRect(value["crop"])) &&
+    (value["systemAudio"] === undefined || value["systemAudio"] === false) &&
     (value["microphone"] === undefined || isMicrophoneChoice(value["microphone"])) &&
     (value["camera"] === undefined || isCameraChoice(value["camera"])) &&
     (value["editable"] === undefined || typeof value["editable"] === "boolean");

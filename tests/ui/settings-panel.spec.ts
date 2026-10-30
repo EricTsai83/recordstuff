@@ -1386,6 +1386,36 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
+test("S152 the System audio picker in the Studio: On or Off in its menu, its meter and fader gone while off, locked while recording (plan 101)", { tag: "@studio" }, async () => {
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), platform: "darwin", microphone: { enabled: true } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  const picker = page.locator("#setting-studioSystemAudio");
+  const live = page.locator(".studio-live-row");
+  await expect(picker, "S152 named by the input and On").toHaveAccessibleName("System audio: On");
+  await expect(live.getByRole("slider", { name: "System audio volume" }), "S152 its fader while on").toHaveCount(1);
+  await picker.click();
+  await clearCalls();
+  await page.getByRole("radio", { name: "Off" }).click();
+  await expect.poll(calls, { message: "S152 Off is the same setting as Recording settings'" }).toEqual([["studioSystemAudio", "off"]]);
+  await page.keyboard.press("Escape");
+  await expect(picker, "S152 the picker says Off").toHaveAccessibleName("System audio: Off");
+  await expect(live.getByRole("slider", { name: "System audio volume" }), "S152 no fader for a sound not recorded").toHaveCount(0);
+  await expect(live.getByRole("slider", { name: "Microphone volume" }), "S152 the microphone's stays").toHaveCount(1);
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: "2026-10-30T00:00:00Z" };
+    h.state.cameraContext = { ...h.state.cameraContext!, audioSession: { systemMuted: false, system: false, microphone: { muted: false } } };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
+  });
+  await expect(picker, "S152 locked while recording").toBeDisabled();
+  await expect(live.getByRole("meter", { name: "System audio" }), "S152 a recording without it has no meter for it").toHaveCount(0);
+  await expect(live.getByRole("meter", { name: "Microphone" })).toHaveCount(1);
+});
+
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]); h.pushModel({ type: "idle" }); });
   await expect.poll(() => read(page, `document.getElementById("status-action").hidden`), { message: "S039 status card: a ready card offers no Start button" }).toBe(true);
