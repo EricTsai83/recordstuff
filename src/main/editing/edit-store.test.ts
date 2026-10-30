@@ -242,7 +242,8 @@ describe("a record's parsing", () => {
     expect(store.edited().size).toBe(1);
   });
 
-  it("refuse a move whose edit cannot be written, with the write's own error (plan 100)", async () => {
+  // A read-only folder does not stop writes on Windows, so this runs on macOS only.
+  it.skipIf(process.platform === "win32")("refuse a move whose edit cannot be written, with the write's own error (plan 100)", async () => {
     await store.save(await record());
     fs.chmodSync(path.join(dir, "edits"), 0o500);
     try {

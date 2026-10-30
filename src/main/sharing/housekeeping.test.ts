@@ -26,7 +26,7 @@ async function edited(file: string, bytes = "a recording"): Promise<string> {
 
 function setup(outputDir = (): string => output) {
   const changed = vi.fn();
-  const housekeeping = new Housekeeping({ store, sweepVersions: async (folder) => { swept.push(folder); }, outputDir, changed, log: () => undefined, platform: "darwin" });
+  const housekeeping = new Housekeeping({ store, sweepVersions: async (folder) => { swept.push(folder); }, outputDir, changed, log: () => undefined, platform: process.platform });
   return { housekeeping, changed };
 }
 
@@ -76,7 +76,8 @@ describe("what is kept for a recording (plan 100)", () => {
   });
 
   it("keeps the edit of a recording whose disk is away, listed as such", async () => {
-    const away = "/Volumes/RecordStuff-test-drive-that-is-not-here/Movies/Meeting.mp4";
+    // A disk that is not there, as each platform names one: a drive letter no runner has on Windows.
+    const away = process.platform === "win32" ? "Q:\\RecordStuff-test\\Movies\\Meeting.mp4" : "/Volumes/RecordStuff-test-drive-that-is-not-here/Movies/Meeting.mp4";
     const identity = { ...(await sourceIdentity(await edited(path.join(output, "Seed.mp4")))), path: away };
     await store.discard(path.join(output, "Seed.mp4"));
     await store.save(editRecord({ source: identity, timescale: 90000, removed: [[0, 9000]], revision: 1 }));
@@ -92,7 +93,8 @@ describe("what is kept for a recording (plan 100)", () => {
     expect(removableRoot("D:\\Videos\\a.mp4", "win32")).toBe("D:\\");
   });
 
-  it("decides nothing about an edit while its recording or the output folder cannot be read (Codex review)", async () => {
+  // A folder or file made unreadable by its mode: Windows ignores the mode, so these run on macOS only.
+  it.skipIf(process.platform === "win32")("decides nothing about an edit while its recording or the output folder cannot be read (Codex review)", async () => {
     const category = path.join(output, "Talks");
     const file = await edited(path.join(output, "Meeting.mp4"));
     // Renamed in Finder into a category that cannot be read now.
@@ -110,7 +112,7 @@ describe("what is kept for a recording (plan 100)", () => {
     expect([...store.edited().keys()]).toEqual([path.join(category, "Weekly.mp4")]);
   });
 
-  it("keeps an edit while a file that may be its renamed recording cannot be read (Codex review)", async () => {
+  it.skipIf(process.platform === "win32")("keeps an edit while a file that may be its renamed recording cannot be read (Codex review)", async () => {
     const file = await edited(path.join(output, "Meeting.mp4"));
     const renamed = path.join(output, "Weekly.mp4");
     fs.renameSync(file, renamed);

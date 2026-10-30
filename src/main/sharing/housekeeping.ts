@@ -48,8 +48,8 @@ export interface HousekeepingDeps {
  */
 export function removableRoot(file: string, platform: NodeJS.Platform = process.platform): string | undefined {
   if (platform === "win32") return path.win32.parse(file).root || undefined;
-  const parts = path.resolve(file).split(path.sep);
-  return parts[1] === "Volumes" && parts[2] ? path.join(path.sep, "Volumes", parts[2]) : undefined;
+  const parts = path.posix.resolve(file).split("/");
+  return parts[1] === "Volumes" && parts[2] ? path.posix.join("/", "Volumes", parts[2]) : undefined;
 }
 
 /**
