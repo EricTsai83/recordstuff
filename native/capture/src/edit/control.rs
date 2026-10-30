@@ -75,7 +75,7 @@ impl Control {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Barrier};
     use std::time::Instant;
 
     #[test]
@@ -89,13 +89,19 @@ mod tests {
     fn a_paused_checkpoint_waits_until_resumed() {
         let control = Arc::new(Control::new(false));
         control.pause(true);
+        let started = Arc::new(Barrier::new(2));
         let waiting = {
             let control = control.clone();
+            let started = started.clone();
             std::thread::spawn(move || {
                 let began = Instant::now();
+                started.wait();
                 control.checkpoint("export").map(|()| began.elapsed())
             })
         };
+        // The worker must start its clock before the caller measures the pause. On a busy runner it may not be
+        // scheduled until after the caller's sleep; that says nothing about how checkpoint waits.
+        started.wait();
         std::thread::sleep(Duration::from_millis(150));
         assert!(!waiting.is_finished(), "held while paused");
         control.pause(false);
