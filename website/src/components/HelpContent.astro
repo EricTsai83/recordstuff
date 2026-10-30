@@ -30,6 +30,15 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 
 <PlatformSwitch macIds={["open-anyway", "install", "use", "camera", "edit", "update", "remove"]} windowsIds={["windows", "windows-update", "windows-remove"]} />
 <div class="prose help">
+  <nav class="help-topics" aria-label="Help topics">
+    <p class="topics-label">On this page</p>
+    <ul data-only="mac">
+      {[["open-anyway", "App blocked?"], ["install", "Install"], ["use", "Record"], ["camera", "Camera"], ["edit", "Edit"], ["update", "Update"], ["remove", "Remove"]].map(([id, label]) => <li><a href={`#${id}`}>{label}</a></li>)}
+    </ul>
+    <ul data-only="windows">
+      {[["windows", "Install"], ["windows-update", "Update"], ["windows-remove", "Uninstall"]].map(([id, label]) => <li><a href={`#${id}`}>{label}</a></li>)}
+    </ul>
+  </nav>
   <div data-only="mac">
     <H id="open-anyway">App blocked by macOS?</H>
     <p>RecordStuff isn't notarized by Apple, so macOS may block it on first launch and after updates. Don't click Done; instead:</p>
@@ -127,6 +136,11 @@ const runs = (text: string): string[] => text.split(/(\p{Script=Han}+)/u);
 </div>
 
 <style>
+  .help-topics { margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .help-topics .topics-label { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--fg-muted); }
+  :where(.help-topics) ul { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; padding: 0; margin: 0; list-style: none; }
+  .help-topics li { margin: 0; }
+  .help-topics a { display: inline-flex; padding: 0.4rem 0; }
   .table-scroll {
     overflow-x: auto;
     margin: 1rem 0 1.5rem;

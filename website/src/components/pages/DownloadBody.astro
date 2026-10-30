@@ -28,6 +28,7 @@ const windows = release.windows;
         </a>
         <p class="download-details dim">v{release.version} · {release.architectureLabel} · .dmg · {release.sizeLabel}</p>
       </div>
+      <p class="download-help"><a class="link" href="/help#install">Installation help</a><a class="link" href="/help#update">Update instructions</a></p>
       <p class="platform-fine dim">
         Not notarized by Apple, so the first launch may need <a class="link" href="/help#open-anyway">Open Anyway</a>. Intel Macs are not supported.
       </p>
@@ -44,6 +45,7 @@ const windows = release.windows;
             <a class="btn btn-primary" href={windows.url} download={windows.name}><WindowsMark size={16} /> Download for Windows</a>
             <p class="download-details dim">v{release.version} · {windows.architectureLabel} · .exe installer · {windows.sizeLabel}</p>
           </div>
+          <p class="download-help"><a class="link" href="/help#windows">Installation help</a><a class="link" href="/help#windows-update">Update instructions</a></p>
           <p class="platform-fine dim">
             {windowsBoundary} {windowsSmartScreen} See <a class="link" href="/help#windows">Windows help</a>.
           </p>
@@ -56,7 +58,9 @@ const windows = release.windows;
     </section>
 
     <section class="platform-section" aria-labelledby="verify-title">
-      <div class="platform-header"><h2 id="verify-title" class="platform-name">Verify your download</h2></div>
+      <details class="verification">
+      <summary id="verify-title">Verify your download <span class="dim">Checksums and source</span></summary>
+      <div class="verification-content">
       <div class="verify-platform" data-only="mac">
         {windows && <h3 class="verify-name">macOS DMG</h3>}
         <ChecksumBlock />
@@ -67,6 +71,8 @@ const windows = release.windows;
           <ChecksumBlock platform="windows" />
         </div>
       )}
+      </div>
+      </details>
     </section>
 
     <section class="platform-section" aria-labelledby="older-title">
@@ -79,6 +85,12 @@ const windows = release.windows;
 </TextPage>
 
 <style>
+  .download-help { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; font-size: 0.9rem; }
+  .download-help a { padding-block: 0.25rem; }
+  .verification { border-block: 1px solid var(--border); }
+  .verification summary { cursor: pointer; padding: 1rem 0; font-size: 1.1rem; font-weight: 500; }
+  .verification summary span { display: block; font-size: 0.85rem; font-weight: 400; margin-top: 0.35rem; }
+  .verification-content { padding: 1rem 0 1.5rem; }
   .head-meta {
     font-size: 0.85rem;
   }

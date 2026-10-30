@@ -104,6 +104,13 @@ const favicon =
             {nav.map((item) => <a class="nav-link" href={item.href} aria-current={currentPath === item.href ? "page" : undefined}>{item.label}</a>)}
             <a class="nav-link" href={links.repository} target="_blank" rel="noopener noreferrer" aria-label={`${SITE_NAME} on GitHub`}>GitHub</a>
           </div>
+          <details class="mobile-nav">
+            <summary><span class="menu-label">Menu</span><span class="close-label">Close</span></summary>
+            <div class="mobile-nav-links">
+              {nav.map((item) => <a class="nav-link" href={item.href} aria-current={currentPath === item.href ? "page" : undefined}>{item.label}</a>)}
+              <a class="nav-link" href={links.repository} target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+            </div>
+          </details>
         </div>
       </nav>
       <main id="main" class="main">
@@ -128,6 +135,16 @@ const favicon =
       const onScroll = () => nav?.classList.toggle("is-scrolled", window.scrollY > 12);
       window.addEventListener("scroll", onScroll, { passive: true });
       onScroll();
+      const mobileMenu = document.querySelector<HTMLDetailsElement>(".mobile-nav");
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && mobileMenu?.open) {
+          mobileMenu.open = false;
+          mobileMenu.querySelector("summary")?.focus();
+        }
+      });
+      document.addEventListener("click", (event) => {
+        if (mobileMenu?.open && event.target instanceof Node && !mobileMenu.contains(event.target)) mobileMenu.open = false;
+      });
 
       // Each [data-reveal] block fades up as a whole once its top is just inside
       // the viewport, so the page arrives one block at a time. Blocks open with
@@ -191,6 +208,7 @@ const favicon =
     gap: 1rem;
   }
   .nav-brand {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
@@ -202,6 +220,34 @@ const favicon =
     align-items: center;
     gap: 1.4rem;
   }
+  .mobile-nav { display: none; position: relative; }
+  .mobile-nav summary {
+    display: block;
+    list-style: none;
+    cursor: pointer;
+    padding: 0.55rem 0.75rem;
+    min-width: 5ch;
+    text-align: center;
+    text-decoration: none;
+  }
+  .mobile-nav summary::-webkit-details-marker { display: none; }
+  .mobile-nav .close-label,
+  .mobile-nav[open] .menu-label { display: none; }
+  .mobile-nav[open] .close-label { display: inline; }
+  .mobile-nav-links {
+    /* Overlay the page without taking space in the navigation or main flow. */
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    min-width: 11rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--bg);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+  }
+  .mobile-nav-links .nav-link { display: flex; padding: 0.65rem 0.75rem; }
   .nav-link {
     font-size: 0.9rem;
     color: var(--fg-muted);
@@ -283,12 +329,10 @@ const favicon =
   }
   @media (max-width: 640px) {
     .nav-right {
-      gap: 1rem;
-    }
-    .nav-brand-name {
       display: none;
     }
-    /* No wordmark here, so there is no cap band to align to. */
+    .mobile-nav { display: block; }
+    /* Keep the mark centred alongside the compact mobile navigation. */
     .nav-brand :global(svg) {
       align-self: center;
       transform: none;
