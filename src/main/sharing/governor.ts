@@ -22,7 +22,7 @@ export type PacePolicy = "governed" | "pause";
  * Mac classes, by chip name as `os.cpus()` gives it, that passed the gate (plan 100 step 4): a recording at 30 and 60
  * fps, with and without the camera, while a 10-minute Video was prepared, lost no more pictures than the same recording
  * alone, its sync unchanged. Every other Mac holds versions for a recording's whole length. None for now: the M1 Pro,
- * the only class measured (2026-10-30), is kept held by the maintainer's decision (plans/100-share-recordings.md, step 4).
+ * the only class measured (2026-10-30), is kept held by the maintainer's decision (docs/system-design/editing.md, Versions and sharing).
  */
 export const GOVERNED_CLASSES: readonly string[] = [];
 
