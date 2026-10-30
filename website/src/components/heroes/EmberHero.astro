@@ -1,7 +1,6 @@
 ---
 import { Image } from "astro:assets";
-import split from "../../assets/editor-split.png";
-import save from "../../assets/editor-save.png";
+import editorVideo from "../../assets/editor-demo.mp4";
 import editor from "../../assets/editor-demo.png";
 import AppleMark from "../AppleMark.astro";
 import WindowsMark from "../WindowsMark.astro";
@@ -38,7 +37,6 @@ const windows = release.windows;
         <div class="workflow-badge" role="group" aria-label="Demo playback">
           <button class="badge-arrow" type="button" data-previous aria-label="Previous stage: Edit"><span aria-hidden="true">←</span></button>
           <button class="badge-stage" type="button" data-toggle aria-label="Pause Record demo">
-            <span class="badge-count" data-stage-count>01 / 02</span>
             <span class="badge-name" id="workflow-stage-label" data-stage-name>Record</span>
           </button>
           <button class="badge-arrow" type="button" data-next aria-label="Next stage: Edit"><span aria-hidden="true">→</span></button>
@@ -47,16 +45,17 @@ const windows = release.windows;
         <span class="visually-hidden" data-stage-status>Record → Edit</span>
       </div>
       <div class="workflow-stage">
-        <div id="record-demo" role="region" data-chapter-panel aria-label="Recording demonstration" class="workflow-panel" tabindex="0">
+        <div id="record-demo" role="region" data-chapter-panel aria-label="Recording demonstration" class="workflow-panel" tabindex="0" data-active>
     <div class="hero-scene">
       <div class="scene-frame" data-scene-frame><DesktopScene /></div>
 
     </div>
         </div>
-        <div id="edit-demo" role="region" data-chapter-panel aria-label="Editing demonstration" class="workflow-panel" tabindex="0" hidden>
-          <a href={editor.src} target="_blank" rel="noopener noreferrer" aria-label="View the full-size editor screenshot (opens in a new tab)">
-            {[split, editor, save].map((image, index) => <div data-edit-frame hidden={index !== 0}><Image src={image} alt={["Split a recording in RecordStuff’s editor.", "Remove an opening segment while keeping the rest.", "Save a copy from the editor’s export menu."][index]} widths={[640, 1120]} sizes="(max-width: 860px) 100vw, 820px" format="webp" /></div>)}
-          </a>
+        <div id="edit-demo" role="region" data-chapter-panel aria-label="Editing demonstration" class="workflow-panel" tabindex="0" inert aria-hidden="true">
+          <div class="editor-motion">
+            <Image src={editor} alt="RecordStuff’s timeline, ready to select a section." widths={[640, 1120]} sizes="(max-width: 860px) 100vw, 820px" format="webp" loading="eager" />
+            <video data-edit-video src={editorVideo} poster={editor.src} preload="auto" muted playsinline disablepictureinpicture aria-label="Demonstration: select and remove a section, then save an edited copy."></video>
+          </div>
         </div>
       </div>
 
@@ -113,25 +112,21 @@ const windows = release.windows;
   }
   .workflow { position: relative; width: 100%; max-width: 820px; margin-top: 1rem; }
   .workflow-controls { display: flex; justify-content: center; margin-bottom: 12px; }
-  .workflow-badge { position: relative; display: grid; grid-template-columns: 30px 1fr 30px; width: 192px; max-width: calc(100vw - 56px); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 999px; background: linear-gradient(180deg, #202022, #171719); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.035); }
+  .workflow-badge { position: relative; display: grid; grid-template-columns: 30px 1fr 30px; width: 132px; max-width: calc(100vw - 56px); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 999px; background: linear-gradient(180deg, #202022, #171719); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.035); }
   .workflow-badge button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0; border: 0; font: inherit; color: var(--fg-muted); background: none; cursor: pointer; transition: color 150ms ease, background 150ms ease; }
   .workflow-badge button:hover { color: var(--fg); background: rgba(255, 255, 255, 0.035); }
   .workflow-badge button:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: -4px; border-radius: 999px; }
   .workflow-badge .badge-arrow { font-size: 0.8rem; }
-  .badge-stage { gap: 0.4rem; }
-  .badge-count { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-dim); }
-  .badge-name { min-width: 38px; text-align: left; font-size: 12px; font-weight: 500; color: var(--fg); }
+  .badge-name { min-width: 38px; text-align: center; font-size: 12px; font-weight: 500; color: var(--fg); }
   .badge-progress { position: absolute; bottom: 0; left: 14px; right: 14px; height: 1px; overflow: hidden; background: rgba(255, 255, 255, 0.06); pointer-events: none; }
   .badge-progress span { display: block; height: 100%; background: rgba(255, 255, 255, 0.7); transform: scaleX(0); transform-origin: left; }
   @media (prefers-reduced-motion: reduce) { .workflow-badge button { transition: none; } }
   .workflow-stage { display: grid; aspect-ratio: 1096 / 696; grid-template-rows: minmax(0, 1fr); align-items: center; }
-  .workflow-panel { grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; align-self: start; }
-  .workflow-panel[hidden] { display: none; }
+  .workflow-panel { visibility: hidden; opacity: 0; pointer-events: none; grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; align-self: start; }
+  .workflow-panel[data-active] { visibility: visible; opacity: 1; pointer-events: auto; }
   #edit-demo { height: 100%; }
-  #edit-demo a { display: block; height: 100%; border: 1px solid var(--border-strong); border-radius: 0.75rem; overflow: hidden; }
-  #edit-demo [data-edit-frame] { height: 100%; }
-  #edit-demo [hidden] { display: none; }
-  #edit-demo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .editor-motion { position: relative; height: 100%; border: 1px solid var(--border-strong); border-radius: 0.75rem; overflow: hidden; background: var(--bg); }
+  .editor-motion img, .editor-motion video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
   @media (prefers-reduced-motion: reduce) {
     #record-demo :global(.ds-rs) { transform: translateX(-48px); }
     #record-demo :global(.ds-toast), #record-demo :global(.ds-rs-ring) { opacity: 0; }
@@ -142,46 +137,6 @@ const windows = release.windows;
     width: 100%;
     max-width: 820px;
     margin-top: 0;
-  }
-  /*
-   * The headline, the buttons and the version line are simply there on the
-   * first frame: no entrance, nothing to wait through before the page can be
-   * read. Only the demo moves, lifting into place under text that is already
-   * settled, and it starts right away so the motion belongs to the page
-   * arriving rather than arriving after it. The hero is above the fold on
-   * every screen, so it runs itself instead of waiting for the scroll reveal
-   * the rest of the page uses. Armed only once Layout.astro has set
-   * data-motion: without scripting the demo is in place from the first frame.
-   *
-   * Two animations, because the lift has to outlast the fade: with one, the
-   * frame went fully opaque a third of the way up and the travel that was
-   * meant to read as floating happened after the eye had stopped watching.
-   */
-  :global(:root[data-motion="on"]) .hero-scene {
-    animation:
-      hero-lift 0.6s cubic-bezier(0.215, 0.61, 0.355, 1) 0.06s both,
-      hero-fade 0.45s cubic-bezier(0.4, 0, 0.2, 1) 0.06s both;
-  }
-  @keyframes hero-fade {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-  @keyframes hero-lift {
-    from {
-      transform: translateY(36px);
-    }
-    to {
-      transform: none;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :global(:root[data-motion="on"]) .hero-scene {
-      animation: none;
-    }
   }
 
 </style>
