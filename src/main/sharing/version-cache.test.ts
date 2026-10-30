@@ -165,8 +165,11 @@ describe("the version cache (plan 100)", () => {
     await versions.moved("/r/a.mp4", "/r/x/a.mp4");
     expect(versions.get(a)?.source).toBe("/r/x/a.mp4");
     expect(JSON.parse(fs.readFileSync(path.join(root, a, "entry.json"), "utf8"))).toMatchObject({ source: "/r/x/a.mp4" });
+    fs.mkdirSync(path.join(root, ".copied", "abc"), { recursive: true });
+    fs.writeFileSync(path.join(root, ".copied", "abc", "b.mp4"), "a clone");
     await versions.clear();
     expect(versions.get(a)).toBeUndefined();
     expect(versions.get(b)).toBeDefined();
+    expect(fs.existsSync(path.join(root, ".copied")), "the last copy's clones go too").toBe(false);
   });
 });

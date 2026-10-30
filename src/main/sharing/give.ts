@@ -1,11 +1,15 @@
 /**
  * Giving the versions Share… hands out (plan 100 step 3): what a copy puts on the clipboard, and what Save to… writes.
  *
- * - **Copy (D7)** gives files, never a folder: most chat and mail apps refuse one, so Sources are their files.
+ * - **Copy (D7)** gives files, never a folder: most chat and mail apps refuse one, so Sources are their files. They are
+ *   clones in a folder of their own (`clipboardFiles`), never the cache's links: Finder's ⌘V on the same volume moves a
+ *   file the pasteboard names rather than copying it (plan 100 step 5), which would leave the person's file sharing the
+ *   cache entry's data.
  * - **Save to…** writes each version into the folder chosen under the name it leaves with, a number added when the
  *   name is taken there (`Meeting 2.mp4`), never over another file; Sources stay a folder of their own. A copy is the
  *   system's own (a clone on APFS, so it costs no space until either side changes), independent of the cache.
  */
+import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +20,28 @@ export async function copiedFiles(handed: string): Promise<string[]> {
   if (!stat.isDirectory()) return [handed];
   const names = (await fs.readdir(handed)).filter((name) => !name.startsWith(".")).sort();
   return names.map((name) => path.join(handed, name));
+}
+
+/** The folder under the cache's `root` that holds what the pasteboard names: the last copy only. */
+export const COPIED_FOLDER = ".copied";
+
+/**
+ * What a copy puts on the pasteboard for `files`: a clone of each (no space on APFS until either side changes), under
+ * its own name, in a fresh folder of `COPIED_FOLDER`, the previous copy's folder removed, since the pasteboard holds one
+ * copy. A paste may then move it anywhere, and the cache keeps its own files. A file named twice is given once.
+ */
+export async function clipboardFiles(root: string, files: readonly string[]): Promise<string[]> {
+  const copied = path.join(root, COPIED_FOLDER);
+  await fs.rm(copied, { recursive: true, force: true });
+  const folder = path.join(copied, randomBytes(6).toString("hex"));
+  await fs.mkdir(folder, { recursive: true });
+  const given: string[] = [];
+  for (const file of new Set(files)) {
+    const target = path.join(folder, path.basename(file));
+    await fs.copyFile(file, target, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE);
+    given.push(target);
+  }
+  return given;
 }
 
 /** `name` in `folder` if free, else `name 2`, `name 3`… before its extension (a folder has none). */

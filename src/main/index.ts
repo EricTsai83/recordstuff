@@ -96,7 +96,7 @@ import { Editing } from "./editing/editing";
 import { mp4Facts } from "./library/mp4-duration";
 import { VersionCache } from "./sharing/version-cache";
 import { inOutputFolder, Sharing, VersionFailed } from "./sharing/sharing";
-import { copiedFiles, filesPropertyList, saveInto } from "./sharing/give";
+import { clipboardFiles, copiedFiles, filesPropertyList, saveInto } from "./sharing/give";
 import { Housekeeping } from "./sharing/housekeeping";
 import { Governor, pacePolicy, type Conditions } from "./sharing/governor";
 import { PREPARE_AT_LAUNCH_ENV, VERSION_PACE_ENV } from "./sharing/pace-env";
@@ -958,7 +958,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
             // Waits for what is still being prepared, then gives files (Sources as their files, D7), as Finder's ⌘C.
             if (process.platform !== "darwin") return { problem: "failed" as const };
             const handed = await Promise.all(kinds.map(kind => sharing.whenReady(file.path, kind)));
-            const files = (await Promise.all(handed.map(copiedFiles))).flat();
+            // Clones of their own, never the cache's links, which Finder's ⌘V would move away (plan 100 step 5).
+            const files = await clipboardFiles(versionCache.root, (await Promise.all(handed.map(copiedFiles))).flat());
             // The pasteboard's own file types, as Finder's ⌘C writes them: the list of paths, and the first as a file URL.
             const raw = (format: string): string => `electron application/osclipboard;format="${format}"`;
             await clipboard.write([new ClipboardItem({

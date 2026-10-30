@@ -20,6 +20,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { COPIED_FOLDER } from "./give";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { isVersionKind, type VersionKind } from "../../shared/versions";
 
@@ -248,9 +249,11 @@ export class VersionCache {
     return total;
   }
 
-  /** Settings' Clear: every entry not held goes. */
+  /** Settings' Clear: every entry not held goes, and the last copy's clones. */
   async clear(): Promise<void> {
     for (const entry of [...this.entries.values()]) if (!this.isHeld(entry)) await this.remove(entry.key, "the cache was cleared");
+    // The last copy's clones (give.ts), which would otherwise keep the data of entries just removed.
+    await fs.promises.rm(path.join(this.deps.root, COPIED_FOLDER), { recursive: true, force: true });
   }
 
   /** The cache's limit now (D5): 10 GB or 10% of the free space, whichever is smaller. */

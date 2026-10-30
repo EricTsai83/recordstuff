@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { copiedFiles, filesPropertyList, saveInto } from "./give";
+import { COPIED_FOLDER, clipboardFiles, copiedFiles, filesPropertyList, saveInto } from "./give";
 
 let dir: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "give-")); });
@@ -17,6 +17,26 @@ describe("giving versions (plan 100 step 3)", () => {
     for (const name of ["Meeting - Screen.mp4", "Meeting - Microphone.m4a", ".DS_Store"]) fs.writeFileSync(path.join(sources, name), name);
     expect(await copiedFiles(video)).toEqual([video]);
     expect(await copiedFiles(sources)).toEqual([path.join(sources, "Meeting - Microphone.m4a"), path.join(sources, "Meeting - Screen.mp4")]);
+  });
+
+  it("puts clones of their own on the pasteboard, never the cache's links, and keeps only the last copy (plan 100 step 5)", async () => {
+    const cache = path.join(dir, "cache");
+    const out = path.join(cache, "0123456789abcdef0123456789abcdef", "out");
+    fs.mkdirSync(out, { recursive: true });
+    const link = path.join(out, "Meeting.mp4");
+    fs.writeFileSync(link, "video");
+    const first = await clipboardFiles(cache, [link, link]);
+    expect(first, "named twice, given once").toHaveLength(1);
+    expect(path.basename(first[0]!)).toBe("Meeting.mp4");
+    expect(path.dirname(path.dirname(first[0]!))).toBe(path.join(cache, COPIED_FOLDER));
+    expect(fs.statSync(first[0]!).ino).not.toBe(fs.statSync(link).ino);
+    // A paste that moves what the pasteboard names (Finder's ⌘V on the same volume) leaves the cache's file.
+    fs.renameSync(first[0]!, path.join(dir, "Pasted.mp4"));
+    expect(fs.readFileSync(link, "utf8")).toBe("video");
+    expect(fs.statSync(link).nlink).toBe(1);
+    const second = await clipboardFiles(cache, [link]);
+    expect(fs.existsSync(path.dirname(first[0]!)), "the copy before is gone").toBe(false);
+    expect(fs.readFileSync(second[0]!, "utf8")).toBe("video");
   });
 
   it("saves under each version's own name, numbered where the name is taken, never over another file", async () => {
