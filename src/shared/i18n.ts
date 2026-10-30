@@ -758,6 +758,11 @@ export const ZH_TW = {
   "The video could not be prepared. Drag again to retry, or Alt-drag to give the original recording.": "無法準備影片。再拖曳一次可重試，或按住 Alt 拖曳改給原始錄影。",
   "Preparing video… {percent}%": "正在準備影片… {percent}%",
   "Preparing video…": "正在準備影片…",
+  // The saved notification of an editable recording whose Video could not be prepared (plan 100, D6).
+  "Saved {file}, but its video could not be prepared. Drag it again to retry, or Option-drag to give the original recording.":
+    "已儲存 {file}，但影片無法準備。再拖曳一次可重試，或按住 Option 拖曳改給原始錄影。",
+  "Saved {file}, but its video could not be prepared. Drag it again to retry, or Alt-drag to give the original recording.":
+    "已儲存 {file}，但影片無法準備。再拖曳一次可重試，或按住 Alt 拖曳改給原始錄影。",
   "Video not prepared": "無法準備影片",
   "Option-drag gives the original.": "按住 Option 拖曳可給原始錄影。",
   "Alt-drag gives the original.": "按住 Alt 拖曳可給原始錄影。",

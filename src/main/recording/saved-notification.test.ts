@@ -23,6 +23,13 @@ describe("saved notification lifecycle", () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
+  it("passes on that an editable recording's Video could not be prepared (plan 100, D6)", () => {
+    const { notification, show } = setup();
+    notification.schedule("/Talk.recordstuff.mp4", undefined, true);
+    vi.advanceTimersByTime(SAVED_NOTIFICATION_DELAY_MS);
+    expect(show).toHaveBeenCalledExactlyOnceWith("/Talk.recordstuff.mp4", undefined, true);
+  });
+
   it("cancels an old save before a new capture and does not resurrect it when idle", () => {
     const { notification, show, log } = setup();
     notification.schedule("/old.mp4");

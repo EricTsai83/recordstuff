@@ -14,7 +14,7 @@ export class SavedNotification {
 
   constructor(private readonly options: {
     platform: string;
-    show: (path: string, stoppedEarly?: EarlyStop) => void;
+    show: (path: string, stoppedEarly?: EarlyStop, videoFailed?: true) => void;
     log: (message: string) => void;
   }) {}
 
@@ -24,8 +24,11 @@ export class SavedNotification {
     if (!this.idle) this.cancel("recording state changed");
   }
 
-  /** `stoppedEarly` adds the reason the recording ended before the user asked. */
-  schedule(path: string, stoppedEarly?: EarlyStop): void {
+  /**
+   * `stoppedEarly` adds the reason the recording ended before the user asked; `videoFailed`, that an editable recording's
+   * Video, which its notification waits for (plan 100, D6), could not be prepared.
+   */
+  schedule(path: string, stoppedEarly?: EarlyStop, videoFailed?: true): void {
     this.cancel("replaced");
     const blocked = this.blocked();
     if (blocked) {
@@ -34,7 +37,7 @@ export class SavedNotification {
       return;
     }
     if (this.options.platform !== "darwin") {
-      this.deliver(path, stoppedEarly);
+      this.deliver(path, stoppedEarly, videoFailed);
       return;
     }
     this.options.log(`notification: saved scheduled delayMs=${SAVED_NOTIFICATION_DELAY_MS} ${path}${stoppedEarly ? ` stoppedEarly=${stoppedEarly}` : ""}`);
@@ -42,7 +45,7 @@ export class SavedNotification {
       this.pending = undefined;
       const late = this.blocked();
       if (late) this.options.log(`notification: saved dropped (${late}) ${path}`);
-      else this.deliver(path, stoppedEarly);
+      else this.deliver(path, stoppedEarly, videoFailed);
     }, SAVED_NOTIFICATION_DELAY_MS);
     timer.unref();
     this.pending = { timer, path };
@@ -70,9 +73,10 @@ export class SavedNotification {
     this.pending = undefined;
   }
 
-  private deliver(path: string, stoppedEarly?: EarlyStop): void {
+  private deliver(path: string, stoppedEarly?: EarlyStop, videoFailed?: true): void {
     try {
-      if (stoppedEarly) this.options.show(path, stoppedEarly);
+      if (videoFailed) this.options.show(path, stoppedEarly, videoFailed);
+      else if (stoppedEarly) this.options.show(path, stoppedEarly);
       else this.options.show(path);
     } catch (error) {
       this.options.log(`notification: saved request failed (${String(error)}) ${path}`);

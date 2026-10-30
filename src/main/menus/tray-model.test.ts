@@ -426,6 +426,16 @@ describe("notification text", () => {
     expect(savedNotification("/Users/eric/Movies/RecordStuff/demo.mp4", "darwin", "zh-TW", "sleep").body).toBe("已儲存 demo.mp4。Mac 進入睡眠，已停止錄影。");
   });
 
+  it("an editable recording whose Video could not be prepared says so, and what to do, in its saved notification (plan 100, D6)", () => {
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/Talk.recordstuff.mp4", "darwin", "en", undefined, true).body).toBe(
+      "Saved Talk.recordstuff.mp4, but its video could not be prepared. Drag it again to retry, or Option-drag to give the original recording.",
+    );
+    expect(savedNotification("/Users/eric/Movies/RecordStuff/Talk.recordstuff.mp4", "darwin", "zh-TW", "lowDisk", true).body).toBe(
+      "已儲存 Talk.recordstuff.mp4，但影片無法準備。再拖曳一次可重試，或按住 Option 拖曳改給原始錄影。",
+    );
+    expect(savedNotification("C:\\Videos\\Talk.mp4", "win32", "en", undefined, true).body).toContain("Alt-drag");
+  });
+
   it("off macOS the sleep notice names the computer, not the Mac (plan 064)", () => {
     expect(savedNotification("/home/eric/Videos/RecordStuff/demo.mp4", "win32", "en", "sleep").body).toBe(
       "Saved demo.mp4. Stopped because the computer went to sleep.",

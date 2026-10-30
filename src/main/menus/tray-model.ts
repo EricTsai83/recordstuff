@@ -316,8 +316,14 @@ export function savedNotification(
   platform: NodeJS.Platform,
   language?: Language,
   stoppedEarly?: EarlyStop,
+  /** An editable recording whose Video could not be prepared (plan 100, D6): said, with what to do. */
+  videoFailed?: boolean,
 ): NotificationText {
   const file = path.basename(savedPath);
+  if (videoFailed) {
+    return notice(t(platform === "darwin" ? "Saved {file}, but its video could not be prepared. Drag it again to retry, or Option-drag to give the original recording."
+      : "Saved {file}, but its video could not be prepared. Drag it again to retry, or Alt-drag to give the original recording.", language, { file }));
+  }
   if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Stopped early: the disk is almost full.", language, { file }));
   if (stoppedEarly === "sleep") {
     return notice(t(platform === "darwin" ? "Saved {file}. Stopped because the Mac went to sleep."

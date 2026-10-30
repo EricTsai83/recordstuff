@@ -53,6 +53,8 @@ class FakeRunner implements SharingRunner {
   release(): void { this.hold = undefined; this.holding?.(undefined); }
   cancel(): void { this.calls.push({ type: "cancel", request: undefined }); this.rejectHeld?.(new ExportFailure("cancelled", "cancelled")); this.hold = undefined; }
   closeIdle(): void { this.closed++; }
+  readonly paced: Array<{ held: boolean; careful: boolean }> = [];
+  pace(held: boolean, careful: boolean): void { this.paced.push({ held, careful }); }
 }
 
 const edits = new Map<string, { removed: Array<[number, number]>; scene?: EditScene } | "unreadable" | "stale">();
@@ -338,7 +340,7 @@ describe("preparing alongside what the person does (D2)", () => {
     expect(await sharing.handOut(file, "video")).toMatchObject({ file: expect.any(String) });
   });
 
-  it("cancels a Video being made when a recording starts, and makes it again from the start afterwards", async () => {
+  it("cancels a Video being made when the edit view opens, and makes it again from the start afterwards", async () => {
     const file = recording("Meeting.mp4");
     edits.set(file, { removed: [[0, 9000]] });
     runner.hold = { release: () => undefined };
@@ -348,8 +350,8 @@ describe("preparing alongside what the person does (D2)", () => {
     runner.hold?.progress?.(0.4);
     // Progress is shown on the card as a fraction.
     expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0.4 });
-    paused = "recording";
-    sharing.yield("a recording started");
+    paused = "editing";
+    sharing.yield("the edit view opened");
     await settle();
     await vi.waitFor(() => expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0 }));
     expect(runner.calls.map((call) => call.type)).toContain("cancel");
@@ -360,6 +362,43 @@ describe("preparing alongside what the person does (D2)", () => {
     await settle();
     expect(runner.calls.filter((call) => call.type === "export")).toHaveLength(2);
     expect(await sharing.handOut(file, "video")).toMatchObject({ file: expect.any(String) });
+  });
+
+  it("holds a Video being made where it is while the governor says so, starts none meanwhile, and goes on (plan 100 step 4)", async () => {
+    const file = recording("Meeting.mp4");
+    const next = recording("Talk.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    edits.set(next, { removed: [[0, 9000]] });
+    runner.hold = { release: () => undefined };
+    sharing.prepare(file);
+    await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
+    runner.hold?.progress?.(0.4);
+    sharing.pace({ held: "a recording's health", careful: true });
+    expect(runner.paced.at(-1)).toEqual({ held: true, careful: true });
+    sharing.prepare(next);
+    // The Video being made keeps what it made; nothing is cancelled.
+    runner.release();
+    await tick();
+    expect(runner.calls.map((call) => call.type)).not.toContain("cancel");
+    expect(runner.calls.filter((call) => call.type === "export"), "none starts while held").toHaveLength(1);
+    expect(sharing.videoState(next)).toEqual({ state: "preparing", progress: 0 });
+    sharing.pace({ careful: true });
+    expect(runner.paced.at(-1)).toEqual({ held: false, careful: true });
+    await settle();
+    expect(runner.calls.filter((call) => call.type === "export")).toHaveLength(2);
+    expect(await sharing.handOut(next, "video")).toMatchObject({ file: expect.any(String) });
+  });
+
+  it("says so when a held version waiting to be made goes with its recording, leaving no work (Codex F2)", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    sharing.pace({ held: "Low Power Mode", careful: false });
+    sharing.prepare(file);
+    expect(sharing.working).toBe(true);
+    const before = changes;
+    await sharing.removed(file);
+    expect(sharing.working).toBe(false);
+    expect(changes).toBeGreaterThan(before);
   });
 
   it("says when a Video could not be made, and tries again when asked", async () => {

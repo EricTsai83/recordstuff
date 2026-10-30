@@ -95,9 +95,14 @@ import { ExportHost } from "./editing/export-host";
 import { Editing } from "./editing/editing";
 import { mp4Facts } from "./library/mp4-duration";
 import { VersionCache } from "./sharing/version-cache";
-import { inOutputFolder, Sharing } from "./sharing/sharing";
+import { inOutputFolder, Sharing, VersionFailed } from "./sharing/sharing";
 import { copiedFiles, filesPropertyList, saveInto } from "./sharing/give";
 import { Housekeeping } from "./sharing/housekeeping";
+import { Governor, pacePolicy, type Conditions } from "./sharing/governor";
+import { PREPARE_AT_LAUNCH_ENV, VERSION_PACE_ENV } from "./sharing/pace-env";
+import { DEFAULT_CAMERA_LAYOUT } from "../shared/camera-layout";
+import type { EarlyStop } from "../shared/session-record";
+import { LOW_POWER_POLL_MS, readLowPower } from "./sharing/low-power";
 import { FolderWatch } from "./library/folder-watch";
 import { engineAddonPath } from "./lib/engine-module";
 
@@ -513,11 +518,51 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     store: editStore,
     runner: exportHost,
     editable: async (file) => (await mp4Facts(file).catch(() => ({ editable: false }))).editable,
-    paused: () => captureBusy() ?? (editing.view() || editing.exporting ? "editing" : undefined),
+    // A recording, a Live preview and a save hold a version where it is (the governor below); these cancel it.
+    paused: () => (quitInProgress() ? "quitting" : editing.view() || editing.exporting ? "editing" : undefined),
     language: () => settings.language,
-    changed: () => settingsWindow.refresh(),
+    changed: () => { settingsWindow.refresh(); followLowPower(); },
     log,
   });
+  /**
+   * Low Power Mode, which Electron does not tell (plan 100 step 4): read as versions start being prepared and every
+   * `LOW_POWER_POLL_MS` while they are, never while idle, which allows no timer of its own.
+   */
+  let lowPowerTimer: ReturnType<typeof setInterval> | undefined;
+  function followLowPower(ending = false): void {
+    const read = (): void => { void readLowPower().then((lowPower) => governor.update({ lowPower })); };
+    if (!ending && sharing.working) {
+      if (lowPowerTimer) return;
+      read();
+      // Each tick looks again, so the polling ends with the work however it ended (Codex F2).
+      lowPowerTimer = setInterval(() => { if (sharing.working) read(); else followLowPower(); }, LOW_POWER_POLL_MS);
+      lowPowerTimer.unref();
+    } else if (lowPowerTimer) {
+      clearInterval(lowPowerTimer);
+      lowPowerTimer = undefined;
+    }
+  }
+  // Versions prepared alongside a recording never cost it a picture (plan 100 step 4): held where they are by a recording
+  // (by its health, on a Mac whose class passed the gate), a Live preview, a save, heat or Low Power Mode.
+  const chip = os.cpus()[0]?.model;
+  // Development only (plan 100 step 4's gate, `pnpm matrix -- pace`): the pace forced, and a version prepared at launch.
+  const forcedPace = app.isPackaged ? undefined : process.env[VERSION_PACE_ENV];
+  const policy = forcedPace === "governed" || forcedPace === "pause" ? forcedPace : pacePolicy(process.platform, chip);
+  const governor = new Governor({ policy, changed: (pace) => sharing.pace(pace), log });
+  log(`versions: during a recording, ${policy === "governed" ? "paced by its health" : "held until it ends"} on this Mac (${chip ?? "unknown chip"}${forcedPace ? `; ${VERSION_PACE_ENV}=${forcedPace}` : ""})`);
+  const prepareAtLaunch = app.isPackaged ? undefined : process.env[PREPARE_AT_LAUNCH_ENV];
+  if (prepareAtLaunch) {
+    // Made afresh each launch, so every case of the gate prepares it while it records.
+    void versionCache.removeSource(prepareAtLaunch, "prepared again at launch").then(() => {
+      log(`versions: preparing ${prepareAtLaunch} at launch (${PREPARE_AT_LAUNCH_ENV})`);
+      sharing.prepare(prepareAtLaunch);
+    });
+  }
+  /** What the governor hears of the recorder: a recording, a Live preview, a save. */
+  function followCapture(): void {
+    const preview = recorder.preview !== undefined;
+    governor.update({ recording: !preferencesUnlocked(recorder.state) && !preview, preview, saving: recorder.saving.length > 0 });
+  }
   // What is kept for a recording is kept only while it is (plan 100): checked at launch, as the window lists the folder
   // and whenever the folder changes, which is followed for as long as RecordStuff runs, recording or not.
   const housekeeping = new Housekeeping({
@@ -561,7 +606,14 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     camera: () => {
       // On macOS only an allowed camera (review pass 2): the engine opens no other, and one never asked, left on by a
       // guide finished mid-recording or a reset grant, would refuse the whole recording as camera_unavailable.
-      if (autoRecord?.ok || !settings.camera || !cameraAvailable() || (process.platform === "darwin" ? cameraAccess() !== "granted" : accessRefused(cameraAccess()))) return undefined;
+      // Autorecord records the camera only when its configuration asks (plan 100 step 4's gate): the default one, at the default layout.
+      if (autoRecord?.ok) {
+        if (!autoRecord.config.camera) return undefined;
+        if (cameraAvailable() && cameraAccess() === "granted") return { layout: DEFAULT_CAMERA_LAYOUT };
+        log(`autorecord: the camera was asked for but is ${cameraAvailable() ? `not allowed (${cameraAccess()})` : "unavailable"}`);
+        return undefined;
+      }
+      if (!settings.camera || !cameraAvailable() || (process.platform === "darwin" ? cameraAccess() !== "granted" : accessRefused(cameraAccess()))) return undefined;
       const device = settings.cameraDevice;
       return { ...(device ? { deviceId: device.id } : {}), layout: settings.cameraLayout };
     },
@@ -590,7 +642,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       notify: code => permissionNotices.failed(code),
     }),
     preflight: () => (osSupported() ? undefined : "unsupported_os_version"),
-    onSessionStart: (sessionId) => { editing.yieldToCapture(); sharing.yield("a recording or Live preview started"); displayMedia.begin(sessionId); },
+    // A version being prepared is held by the governor instead (plan 100 step 4), where it goes on from.
+    onSessionStart: (sessionId) => { editing.yieldToCapture(); followCapture(); displayMedia.begin(sessionId); },
     mapHostError: (code) => displayMedia.explain(code),
     log,
   });
@@ -971,9 +1024,21 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     onAction: (action) => runAction(action, "tray"),
     log,
   });
+  /**
+   * A recording saved and ready to share (plan 100, D6). Finished while the next recording runs (a save in the
+   * background, 2026-10-09): nothing interrupts a recording, so the banner is held until it ends, as the capture notices are.
+   */
+  function announceSaved(saved: string, stoppedEarly?: EarlyStop, videoFailed?: true): void {
+    if (!preferencesUnlocked(recorder.state)) {
+      captureNotices.hold(`saved ${saved}`, () => tray.notifySaved(saved, stoppedEarly, videoFailed));
+      return;
+    }
+    savedNotification.schedule(saved, stoppedEarly, videoFailed);
+  }
   /** The tray, the settings panel and the menu bar's Record menu project the same state; they move together. */
   function renderUi(state: RecordingState): void {
-    // A recording, a Live preview or a save that ended lets a version waiting to be prepared go on (plan 100).
+    // A recording, a Live preview or a save that began or ended paces the versions being prepared (plan 100).
+    followCapture();
     sharing.resume();
     tray.render(state);
     settingsWindow.refresh();
@@ -984,6 +1049,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   /** Context changed while the state did not (output folder, language, quality). */
   function refreshUi(): void {
     followPreview();
+    followCapture();
     tray.refresh();
     settingsWindow.refresh();
     appMenu.refresh();
@@ -1118,7 +1184,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
 
   const savedNotification = new SavedNotification({
     platform: process.platform,
-    show: (savedPath, stoppedEarly) => tray.notifySaved(savedPath, stoppedEarly),
+    show: (savedPath, stoppedEarly, videoFailed) => tray.notifySaved(savedPath, stoppedEarly, videoFailed),
     log,
   });
   const captureNotices = new CaptureNotices({ platform: process.platform, log });
@@ -1257,18 +1323,22 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         captureNotices.hold("save slow", () => tray.notifySavingSlow(event.dir));
         return;
       case "saved":
-        // D2 (plan 100): an editable recording's Video is prepared once it is saved, so a drag has it.
-        if (event.editable) sharing.prepare(event.path);
-        // Finished while the next recording runs (a save in the background, 2026-10-09): nothing interrupts a
-        // recording, so the banner is held until it ends, as the capture notices are.
-        if (!preferencesUnlocked(recorder.state)) {
+        void library.refreshIfWatched();
+        // D2 and D6 (plan 100): an editable recording's Video is prepared once it is saved, so a drag has it, and the
+        // notification says it is saved once it is ready to share, or that its Video could not be prepared.
+        if (event.editable) {
           const { path: saved, stoppedEarly } = event;
-          captureNotices.hold(`saved ${saved}`, () => tray.notifySaved(saved, stoppedEarly));
-          void library.refreshIfWatched();
+          sharing.prepare(saved);
+          void sharing.whenReady(saved, "video").then(
+            () => announceSaved(saved, stoppedEarly),
+            (cause: unknown) => {
+              // Moved, deleted or the app quitting: nothing to announce of this path.
+              if (!(cause instanceof VersionFailed)) { log(`notification: saved ${saved} not announced (${String(cause)})`); return; }
+              announceSaved(saved, stoppedEarly, true);
+            });
           return;
         }
-        savedNotification.schedule(event.path, event.stoppedEarly);
-        void library.refreshIfWatched();
+        announceSaved(event.path, event.stoppedEarly);
         return;
       case "microphoneLost":
         // Told once the recording ends: a banner now could be muted while the display is shared (plan 074).
@@ -1299,6 +1369,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       case "captureStarted":
         displayMedia.failure = undefined;
         refreshUi();
+        return;
+      case "health":
+        governor.sample(event.health);
         return;
       case "failureStatus":
         // The Recorder's awaited publication callback owns verification/persistence.
@@ -1342,6 +1415,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   powerMonitor.on("suspend", onSuspend);
   powerMonitor.on("resume", onResume);
   powerMonitor.on("unlock-screen", onUnlock);
+  // Serious or critical heat holds the versions being prepared (plan 100 step 4); macOS says it, other systems do not.
+  const onThermal = ({ state }: { state: Conditions["thermal"] }): void => governor.update({ thermal: state });
+  if (process.platform === "darwin") {
+    governor.update({ thermal: powerMonitor.getCurrentThermalState() });
+    powerMonitor.on("thermal-state-change", onThermal);
+  }
 
   // The microphone and the camera are on by default (2026-10-26), and macOS is asked for them only at the user's own
   // press (the first-launch guide, or a switch turned on): at launch one it refused earlier is turned off, asking
@@ -1487,6 +1566,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     screen.removeListener("display-added", displayChanged);
     screen.removeListener("display-removed", displayChanged);
     screen.removeListener("display-metrics-changed", displayChanged);
+    powerMonitor.removeListener("thermal-state-change", onThermal);
+    followLowPower(true);
     powerMonitor.removeListener("suspend", onSuspend);
     powerMonitor.removeListener("resume", onResume);
     powerMonitor.removeListener("unlock-screen", onUnlock);

@@ -9,9 +9,10 @@
  *
  * **Preparing (D2).** The Video is prepared when the edit view closes and when an editable recording is saved, and on a
  * drag that finds it not ready (D1: the drag waits, the card shows the progress). One version at a time, in the export
- * worker, under the system's background policy. It yields to what the person is doing: a recording, a Live preview, a
- * save, the edit view or quit pauses it (`paused`); a running one is cancelled and taken up again from the start once
- * nothing pauses it. Plan 100's step 4 replaces the pause during a recording by a governor fed by the recording's health.
+ * worker, under the system's background policy. The edit view and quit cancel a running one (`paused`), taken up again
+ * from the start once they are over; a recording, a Live preview, a save and the system's heat or Low Power Mode hold it
+ * at its next picture instead, where it goes on from (plan 100 step 4, governor.ts, which during a recording follows the
+ * recording's health where the Mac's class passed the gate).
  *
  * **Making a version.** A Video that needs no rendering is not rendered: an editable recording with no cut, the camera
  * absent and every sound as recorded is its screen and the sound players play copied without re-encoding. An edited
@@ -35,6 +36,8 @@ export interface SharingRunner {
   copyTracks(request: CopyTracksRequest, progress: (fraction: number) => void): Promise<number>;
   cancel(): void;
   closeIdle(): void;
+  /** How a version being made runs now (plan 100 step 4): held at its next picture, one picture in the encoder at a time. */
+  pace(held: boolean, careful: boolean): void;
 }
 
 export interface SharingDeps {
@@ -43,7 +46,10 @@ export interface SharingDeps {
   runner: SharingRunner;
   /** Whether a file is an editable recording, by the description inside it (never by its name). */
   editable(source: string): Promise<boolean>;
-  /** Why preparing waits now (a recording, a Live preview, a save, the edit view, quit), or undefined. */
+  /**
+   * Why preparing yields now (the edit view, quit), or undefined: a version being made is cancelled, to be made again.
+   * A recording, a Live preview, a save and the system's conditions hold it instead (`pace`).
+   */
   paused(): string | undefined;
   language(): Language;
   /** The cards' state changed: Settings draws again. */
@@ -52,6 +58,9 @@ export interface SharingDeps {
   /** A hard link; tests make it fail as a volume without hard links does. */
   link?(from: string, to: string): Promise<void>;
 }
+
+/** `whenReady`'s answer when the version could not be made, as against the recording moving or going away. */
+export class VersionFailed extends Error {}
 
 /** What a card's Video is doing, for the Recordings tab: preparing (a fraction done) or failed. Absent: ready or not asked. */
 export type VideoState = { state: "preparing"; progress: number } | { state: "failed" };
@@ -106,6 +115,8 @@ function copiable(described: Described, camera: boolean): boolean {
 export class Sharing {
   private readonly queue: Job[] = [];
   private running: { job: Job; cancelled: boolean; done: Promise<void> } | undefined;
+  /** Why the governor holds versions now (`pace`); none starts meanwhile. */
+  private held: string | undefined;
   /** Versions that could not be made, by job, until asked again. */
   private readonly failed = new Set<string>();
   /** Renames and moves in the Recordings tab still under way: drags and listings wait for them (Codex pass 2). */
@@ -162,12 +173,12 @@ export class Sharing {
     for (;;) {
       const given = await this.handOut(source, kind);
       if ("file" in given) return given.file;
-      if ("failed" in given) throw new Error(`the ${kind} of ${source} could not be made`);
+      if ("failed" in given) throw new VersionFailed(`the ${kind} of ${source} could not be made`);
       await new Promise<void>((resolve, reject) => {
         const id = jobId(source, kind);
         this.waiters.set(id, [...(this.waiters.get(id) ?? []), { resolve, reject }]);
       });
-      if (this.failed.has(jobId(source, kind))) throw new Error(`the ${kind} of ${source} could not be made`);
+      if (this.failed.has(jobId(source, kind))) throw new VersionFailed(`the ${kind} of ${source} could not be made`);
     }
   }
 
@@ -210,6 +221,11 @@ export class Sharing {
     this.pump();
   }
 
+  /** Whether a version is being made or waits to be: what makes Low Power Mode worth reading (plan 100 step 4). */
+  get working(): boolean {
+    return this.running !== undefined || this.queue.length > 0;
+  }
+
   /** Settles once nothing is being made and nothing can start now (tests; quit). */
   async idle(): Promise<void> {
     while (this.running) await this.running.done;
@@ -218,6 +234,16 @@ export class Sharing {
   /** Something that paused preparing has ended: the next version starts, if nothing else pauses it. */
   resume(): void {
     this.pump();
+  }
+
+  /**
+   * The governor's pace (governor.ts, plan 100 step 4): while `held`, the version being made waits at its next picture,
+   * keeping what it made, and none starts; `careful` while a recording runs. Let go, it goes on where it stopped.
+   */
+  pace(pace: { held?: string; careful: boolean }): void {
+    this.held = pace.held;
+    this.deps.runner.pace(pace.held !== undefined, pace.careful);
+    if (!pace.held) this.pump();
   }
 
   /**
@@ -309,12 +335,16 @@ export class Sharing {
   }
 
   private drop(source: string): void {
+    let dropped = false;
     for (let index = this.queue.length - 1; index >= 0; index--) {
       const job = this.queue[index]!;
       if (job.source !== source) continue;
       this.queue.splice(index, 1);
       this.wake(jobId(job.source, job.kind));
+      dropped = true;
     }
+    // Its card no longer says it is being prepared, and what follows the work hears it ended (Codex F2).
+    if (dropped) this.deps.changed();
     for (const id of [...this.failed]) if (id.endsWith(`\n${source}`)) this.failed.delete(id);
     if (this.running?.job.source === source) this.yield("its recording left the folder");
   }
@@ -406,7 +436,7 @@ export class Sharing {
 
   private pump(): void {
     if (this.running) return;
-    const why = this.deps.paused();
+    const why = this.deps.paused() ?? this.held;
     if (why) return;
     const job = this.queue.shift();
     if (!job) return;

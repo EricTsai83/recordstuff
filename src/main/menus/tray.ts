@@ -217,8 +217,8 @@ export class AppTray {
     return this.options.language?.() ?? this.options.context().language;
   }
 
-  notifySaved(savedPath: string, stoppedEarly?: EarlyStop): void {
-    this.show(savedNotification(savedPath, this.options.context().platform, this.language, stoppedEarly), () => {
+  notifySaved(savedPath: string, stoppedEarly?: EarlyStop, videoFailed?: boolean): void {
+    this.show(savedNotification(savedPath, this.options.context().platform, this.language, stoppedEarly, videoFailed), () => {
       // The app's own window, so the activation macOS gives the clicked app is what brings it forward.
       this.log(`notification: show saved ${savedPath}`);
       this.options.showSaved(savedPath);
