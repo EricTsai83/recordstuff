@@ -1,27 +1,27 @@
 ---
+import { Image } from "astro:assets";
+import split from "../../assets/editor-split.png";
+import save from "../../assets/editor-save.png";
+import editor from "../../assets/editor-demo.png";
 import AppleMark from "../AppleMark.astro";
-import GitHubMark from "../GitHubMark.astro";
 import WindowsMark from "../WindowsMark.astro";
 import DesktopScene from "../DesktopScene.astro";
 import { hero } from "../../content/site";
-import { links, release } from "../../lib/release";
+import { release } from "../../lib/release";
 
 const windows = release.windows;
 ---
 
 <section class="hero">
   <div class="container hero-inner">
+    <div class="hero-heading">
     <h1 class="hero-title display">{hero.title.split(". ").map((phrase, index, phrases) => <><span>{phrase}{index < phrases.length - 1 ? "." : ""}</span>{index < phrases.length - 1 ? " " : ""}</>)}</h1>
+    </div>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href={release.dmgUrl} data-download-os="mac"><AppleMark size={18} /><span>{hero.primaryCta}</span></a>
       {windows && <a class="btn btn-primary btn-lg" href={windows.url} data-download-os="windows" hidden><WindowsMark size={16} /><span>{hero.windowsCta}</span></a>}
-      <a class="hero-source-link" href={links.repository} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /><span>{hero.secondaryCta}</span></a>
-      <p class="hero-version dim" data-download-os="mac">v{release.version} · {release.sizeLabel} · Apple silicon · <a class="link" href="/download#macos-title">checksum</a></p>
-      {windows && <p class="hero-version dim" data-download-os="windows" hidden>v{release.version} · {windows.sizeLabel} · {windows.architectureLabel} · {hero.windowsNote} · <a class="link" href="/download#windows-title">details</a></p>}
-      <!-- The other platform's section on /download, for a wrong guess or a download meant for another computer.
-           Windows is reached through its section, where its unverified state is stated beside the installer. -->
-      {windows && <a class="hero-other link" href="/download#windows-title" data-download-os="mac">{hero.otherWindows}</a>}
-      {windows && <a class="hero-other link" href="/download#macos-title" data-download-os="windows" hidden>{hero.otherMac}</a>}
+      <p class="hero-meta dim" data-download-os="mac">v{release.version} · Apple silicon{windows && <> · <a href="/download#windows-title">Windows</a></>}</p>
+      {windows && <p class="hero-meta dim" data-download-os="windows" hidden>v{release.version} · {windows.architectureLabel} · <a href="/download#windows-title">{hero.windowsNote}</a> · <a href="/download#macos-title">macOS</a></p>}
     </div>
     <!-- Inline so it runs while the page is parsed, before the hero paints: a Windows visitor never sees the macOS
          button first. Without scripting, on any other system or for a release without the installer, macOS stays.
@@ -33,66 +33,42 @@ const windows = release.windows;
         document.querySelectorAll("[data-download-os]").forEach((el) => { el.hidden = el.dataset.downloadOs !== "windows"; });
       })();
     </script>
+    <div class="workflow" data-workflow>
+      <div class="workflow-controls">
+        <div class="workflow-badge" role="group" aria-label="Demo playback">
+          <button class="badge-arrow" type="button" data-previous aria-label="Previous stage: Edit"><span aria-hidden="true">←</span></button>
+          <button class="badge-stage" type="button" data-toggle aria-label="Pause Record demo">
+            <span class="badge-count" data-stage-count>01 / 02</span>
+            <span class="badge-name" id="workflow-stage-label" data-stage-name>Record</span>
+          </button>
+          <button class="badge-arrow" type="button" data-next aria-label="Next stage: Edit"><span aria-hidden="true">→</span></button>
+          <span class="badge-progress" aria-hidden="true"><span data-workflow-progress></span></span>
+        </div>
+        <span class="visually-hidden" data-stage-status>Record → Edit</span>
+      </div>
+      <div class="workflow-stage">
+        <div id="record-demo" role="region" data-chapter-panel aria-label="Recording demonstration" class="workflow-panel" tabindex="0">
     <div class="hero-scene">
       <div class="scene-frame" data-scene-frame><DesktopScene /></div>
-      <!-- Shown by the script below: without scripting it could not act, and reduced motion already stills the scene.
-           Tucked into the scene's corner and shown on hover: WCAG 2.2.2 asks for a way to stop the loop, not for it to compete with the demo.
-           Its ring fills once per loop, so it also tells how far the story has come. -->
-      <button class="scene-toggle" type="button" data-scene-toggle data-pause={hero.pauseScene} data-play={hero.playScene} aria-label={hero.pauseScene} title={hero.pauseScene} hidden>
-        <span class="scene-toggle-ring" aria-hidden="true"><span class="scene-toggle-progress" data-scene-progress></span></span>
-        <svg class="scene-toggle-pause" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="1.5" width="2" height="7" rx="0.5" /><rect x="6" y="1.5" width="2" height="7" rx="0.5" /></svg>
-        <svg class="scene-toggle-play" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.8v6.4a.5.5 0 0 0 .77.42l4.9-3.2a.5.5 0 0 0 0-.84l-4.9-3.2A.5.5 0 0 0 3 1.8z" /></svg>
-      </button>
+
+    </div>
+        </div>
+        <div id="edit-demo" role="region" data-chapter-panel aria-label="Editing demonstration" class="workflow-panel" tabindex="0" hidden>
+          <a href={editor.src} target="_blank" rel="noopener noreferrer" aria-label="View the full-size editor screenshot (opens in a new tab)">
+            {[split, editor, save].map((image, index) => <div data-edit-frame hidden={index !== 0}><Image src={image} alt={["Split a recording in RecordStuff’s editor.", "Remove an opening segment while keeping the rest.", "Save a copy from the editor’s export menu."][index]} widths={[640, 1120]} sizes="(max-width: 860px) 100vw, 820px" format="webp" /></div>)}
+          </a>
+        </div>
+      </div>
+
+
     </div>
   </div>
 </section>
 
 <script>
-  // Save work when the scene is scrolled away: everything inside pauses.
-  const frame = document.querySelector<HTMLElement>("[data-scene-frame]");
-  if (frame && "IntersectionObserver" in window) {
-    new IntersectionObserver(
-      (entries) => entries.forEach((entry) => frame.toggleAttribute("data-offscreen", !entry.isIntersecting)),
-      { threshold: 0.05 },
-    ).observe(frame);
-  }
-  // The loop never ends on its own; a visitor can stop it, which pauses everything inside the scene.
-  // Reduced motion already stills it, so the control follows that preference, also when it changes while the page is open.
-  const toggle = document.querySelector<HTMLButtonElement>("[data-scene-toggle]");
-  if (frame && toggle) {
-    const setPaused = (paused: boolean): void => {
-      frame.toggleAttribute("data-paused", paused);
-      // The glyph follows data-paused in CSS; the name is what assistive technology and the tooltip read.
-      const label = (paused ? toggle.dataset.play : toggle.dataset.pause) ?? "";
-      toggle.setAttribute("aria-label", label);
-      toggle.title = label;
-    };
-    toggle.addEventListener("click", () => setPaused(!frame.hasAttribute("data-paused")));
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    const follow = (): void => {
-      toggle.hidden = reduced.matches;
-      // Coming back from reduced motion starts the loop again, so the control must read Pause.
-      if (reduced.matches) setPaused(false);
-    };
-    // The ring takes its length and position from the scene's own clock, so the loop's timing lives in
-    // DesktopScene alone; once aligned, both pause and resume on the same attribute changes and stay together.
-    const progress = toggle.querySelector<HTMLElement>("[data-scene-progress]");
-    const clock = frame.querySelector<SVGElement>(".ds-camera");
-    const syncProgress = (): void => {
-      if (!progress || !clock) return;
-      progress.style.animationDuration = getComputedStyle(clock).animationDuration;
-      const [lead] = clock.getAnimations();
-      const [ring] = progress.getAnimations();
-      if (lead && ring) ring.currentTime = lead.currentTime;
-    };
-    follow();
-    syncProgress();
-    reduced.addEventListener("change", () => {
-      follow();
-      // Leaving reduced motion restarts the scene and reveals the ring, so both begin a new loop.
-      if (!reduced.matches) syncProgress();
-    });
-  }
+  import { startWorkflow } from "../../scripts/workflow";
+  const workflow = document.querySelector<HTMLElement>("[data-workflow]");
+  if (workflow) startWorkflow(workflow);
 </script>
 
 <style>
@@ -103,7 +79,7 @@ const windows = release.windows;
    */
   .hero {
     position: relative;
-    padding: calc(var(--section-y) * 1.5) 0 var(--section-y);
+    padding: var(--section-y) 0 calc(var(--section-y) * 0.65);
   }
   .hero-inner {
     position: relative;
@@ -113,6 +89,7 @@ const windows = release.windows;
     text-align: center;
     gap: 2rem;
   }
+  .hero-heading { display: grid; justify-items: center; gap: 1rem; }
   .hero-title {
     font-size: clamp(2.4rem, 5.6vw, 4.6rem);
     max-width: 24ch;
@@ -127,141 +104,44 @@ const windows = release.windows;
     align-items: center;
     gap: 0.9rem;
   }
-  .hero-source-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--fg-muted);
-    font-size: 0.9rem;
-  }
-  .hero-source-link:hover {
-    color: var(--fg);
-  }
-  .hero-version,
-  .hero-other {
-    font-size: 0.85rem;
-  }
-  /* Read as one block with the version line above it. */
-  .hero-other {
-    margin-top: -0.55rem;
-  }
+  .hero-meta { font-size: 0.8rem; max-width: 42ch; text-wrap: balance; }
+  .hero-meta a { color: var(--fg-muted); text-underline-offset: 3px; }
+  .hero-meta a:hover { color: var(--fg); text-decoration: underline; }
   /* .btn sets display, which would otherwise outrank the hidden attribute. */
   .hero-actions [hidden] {
     display: none;
+  }
+  .workflow { position: relative; width: 100%; max-width: 820px; margin-top: 1rem; }
+  .workflow-controls { display: flex; justify-content: center; margin-bottom: 12px; }
+  .workflow-badge { position: relative; display: grid; grid-template-columns: 30px 1fr 30px; width: 192px; max-width: calc(100vw - 56px); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 999px; background: linear-gradient(180deg, #202022, #171719); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.035); }
+  .workflow-badge button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0; border: 0; font: inherit; color: var(--fg-muted); background: none; cursor: pointer; transition: color 150ms ease, background 150ms ease; }
+  .workflow-badge button:hover { color: var(--fg); background: rgba(255, 255, 255, 0.035); }
+  .workflow-badge button:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: -4px; border-radius: 999px; }
+  .workflow-badge .badge-arrow { font-size: 0.8rem; }
+  .badge-stage { gap: 0.4rem; }
+  .badge-count { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-dim); }
+  .badge-name { min-width: 38px; text-align: left; font-size: 12px; font-weight: 500; color: var(--fg); }
+  .badge-progress { position: absolute; bottom: 0; left: 14px; right: 14px; height: 1px; overflow: hidden; background: rgba(255, 255, 255, 0.06); pointer-events: none; }
+  .badge-progress span { display: block; height: 100%; background: rgba(255, 255, 255, 0.7); transform: scaleX(0); transform-origin: left; }
+  @media (prefers-reduced-motion: reduce) { .workflow-badge button { transition: none; } }
+  .workflow-stage { display: grid; aspect-ratio: 1096 / 696; grid-template-rows: minmax(0, 1fr); align-items: center; }
+  .workflow-panel { grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; align-self: start; }
+  .workflow-panel[hidden] { display: none; }
+  #edit-demo { height: 100%; }
+  #edit-demo a { display: block; height: 100%; border: 1px solid var(--border-strong); border-radius: 0.75rem; overflow: hidden; }
+  #edit-demo [data-edit-frame] { height: 100%; }
+  #edit-demo [hidden] { display: none; }
+  #edit-demo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  @media (prefers-reduced-motion: reduce) {
+    #record-demo :global(.ds-rs) { transform: translateX(-48px); }
+    #record-demo :global(.ds-toast), #record-demo :global(.ds-rs-ring) { opacity: 0; }
+    #record-demo :global(.ds-rs-dot), #record-demo :global(.ds-rs-title) { opacity: 1; }
   }
   .hero-scene {
     position: relative;
     width: 100%;
     max-width: 820px;
-    margin-top: 0.5rem;
-  }
-  /*
-   * Over the scene's bottom-right corner, where the demo has only dark trees,
-   * and invisible until the pointer is over the scene. Keyboard focus shows it
-   * too, so Tab never lands on something unseen, and so does a paused scene,
-   * so the way back to playing stays in view. Touch screens cannot hover, so
-   * there it simply stays. The dark disc keeps the glyph readable on any
-   * frame of the scene; the 28 px box clears the 24 px minimum target (2.5.8).
-   */
-  .scene-toggle {
-    position: absolute;
-    right: 0.75rem;
-    bottom: 0.75rem;
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    background: rgba(9, 9, 11, 0.6);
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
-    color: var(--fg-muted);
-    cursor: pointer;
-    opacity: 0;
-    transition:
-      opacity 0.2s ease-out,
-      color 0.15s ease;
-  }
-  .hero-scene:hover .scene-toggle,
-  .scene-toggle:focus-visible,
-  [data-paused] + .scene-toggle {
-    opacity: 1;
-  }
-  @media (hover: none) {
-    .scene-toggle {
-      opacity: 1;
-    }
-  }
-  .scene-toggle[hidden] {
-    display: none;
-  }
-  .scene-toggle:hover,
-  .scene-toggle:focus-visible {
-    color: var(--fg);
-  }
-  .scene-toggle-pause,
-  .scene-toggle-play {
-    width: 10px;
-    height: 10px;
-    fill: currentColor;
-  }
-  /*
-   * The ring doubles as the button's edge: a faint track, and over it an arc
-   * that grows from twelve o'clock through one loop of the scene. Linear, so
-   * the arc reads as elapsed time. The script sets the duration from the
-   * scene; it stops with the scene, off-screen or paused.
-   *
-   * The arc is a full ring revealed by a conic mask whose edge fades over 16°.
-   * One loop moves the tip only a few pixels a second, and a hard tip lit one
-   * pixel after another, so it seemed to tick; the fade spreads each step over
-   * the pixels behind the tip, which brighten together. The mask sweeps past
-   * 360° by the fade's width, so the ring closes as the loop ends. The 0.25 px
-   * inset keeps the ring just inside the disc's edge.
-   */
-  @property --scene-sweep {
-    syntax: "<angle>";
-    inherits: false;
-    initial-value: 0deg;
-  }
-  .scene-toggle-ring {
-    position: absolute;
-    inset: 0.25px;
-    border: 1.5px solid var(--border-strong);
-    border-radius: 50%;
-  }
-  .scene-toggle-progress {
-    position: absolute;
-    inset: -1.5px;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
-    -webkit-mask: conic-gradient(#000 calc(var(--scene-sweep) - 16deg), transparent var(--scene-sweep));
-    mask: conic-gradient(#000 calc(var(--scene-sweep) - 16deg), transparent var(--scene-sweep));
-    animation: scene-progress linear infinite;
-  }
-  [data-offscreen] + .scene-toggle .scene-toggle-progress,
-  [data-paused] + .scene-toggle .scene-toggle-progress {
-    animation-play-state: paused;
-  }
-  @keyframes scene-progress {
-    to {
-      --scene-sweep: 376deg;
-    }
-  }
-  .scene-toggle-play,
-  [data-paused] + .scene-toggle .scene-toggle-pause {
-    display: none;
-  }
-  [data-paused] + .scene-toggle .scene-toggle-play {
-    display: block;
-  }
-  .scene-frame {
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-strong);
-    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 138, 61, 0.08);
-    overflow: hidden;
-    line-height: 0;
+    margin-top: 0;
   }
   /*
    * The headline, the buttons and the version line are simply there on the
