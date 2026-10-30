@@ -9,6 +9,7 @@
  */
 
 import { EDITABLE_DESCRIPTION_LIMIT, isEditScene, isExportRender, mergeRanges, type EditableSound, type EditScene, type ExportRender } from "./editable";
+import { isCopyForm, type CopyForm } from "./provenance";
 
 /** A removed range, `[from, to)` in the video's timescale. */
 export type EditRange = [number, number];
@@ -214,10 +215,22 @@ export interface EditorView {
   exportable: boolean;
   blocked?: string;
   export: EditorExport;
+  /** Save a copy… (plan 100): what it offers, once the edit is ready. */
+  copy?: EditorCopy;
   /** A save that did not take effect, localized. */
   saveFailure?: string;
   /** An editable recording's own part of the view (plan 087); absent for any other recording. */
   editable?: EditorEditable;
+}
+
+/** Save a copy… (plan 100, replacing Export): the forms offered, each named as it is saved, and where it saves. */
+export interface EditorCopy {
+  /** In order: the Video, the Video without the camera (an editable recording with a camera), the sound alone. */
+  forms: Array<{ form: CopyForm; label: string; detail: string; fileName: string }>;
+  /** The folder it saves into, by name. */
+  folder: string;
+  /** Whether that is the recording's own folder (the default), where the copy appears as a card beside it. */
+  beside: boolean;
 }
 
 /** What the edit view needs of an editable recording: what it holds, the scene as saved and the preview's tracks. */
@@ -242,7 +255,8 @@ export interface EditorEditable {
 export type EditorExport =
   | { phase: "idle" }
   | { phase: "exporting"; progress: number; cancelling: boolean }
-  | { phase: "done"; name: string; message: string }
+  /** `playable` when it is a video saved beside the recording, which the Recordings tab lists. */
+  | { phase: "done"; name: string; message: string; playable?: true }
   | { phase: "failed"; message: string };
 
 export type EditorChoice =
@@ -250,7 +264,10 @@ export type EditorChoice =
   | { action: "close" }
   /** The cuts, and for an editable recording its scene (plan 087), replacing the saved ones. */
   | { action: "save"; removed: EditRange[]; revision: number; scene?: EditScene }
-  | { action: "export" }
+  /** Save a copy… (plan 100): in `form`, the Video when absent. */
+  | { action: "export"; form?: CopyForm }
+  /** Save a copy…'s Change…: main asks for the folder it saves into. */
+  | { action: "copyFolder" }
   | { action: "cancelExport" }
   | { action: "discard" }
   | { action: "reveal" };
@@ -258,7 +275,8 @@ export type EditorChoice =
 export function isEditorChoice(value: unknown): value is EditorChoice {
   if (!isRecord(value)) return false;
   switch (value["action"]) {
-    case "open": case "close": case "export": case "cancelExport": case "discard": case "reveal": return true;
+    case "open": case "close": case "copyFolder": case "cancelExport": case "discard": case "reveal": return true;
+    case "export": return value["form"] === undefined || isCopyForm(value["form"]);
     case "save": {
       const removed = value["removed"];
       return isCount(value["revision"]) && Array.isArray(removed) && removed.length <= MAX_EDIT_RANGES

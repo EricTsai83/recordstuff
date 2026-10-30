@@ -128,8 +128,8 @@ describe("an export's frame", () => {
 
 describe("the edit view's texts", () => {
   it("reads its clocks, to the hundredth or as the player's whole seconds", () => {
-    expect(clockSeconds("Export length 0:11.89")).toBeCloseTo(11.89, 5);
-    expect(clockSeconds("匯出從 1:02.50 開始")).toBeCloseTo(62.5, 5);
+    expect(clockSeconds("Video length 0:11.89")).toBeCloseTo(11.89, 5);
+    expect(clockSeconds("影片從 1:02.50 開始")).toBeCloseTo(62.5, 5);
     expect(clockSeconds("0:06 / 0:11")).toBe(6);
     expect(clockSeconds("no time")).toBeUndefined();
   });

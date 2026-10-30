@@ -378,7 +378,7 @@ async function main(): Promise<number> {
         const prefix = text.split(M)[0]!;
         return (await texts()).find((t) => t.startsWith(prefix));
       };
-      const lengthText = translate("Export length {length}", language, { length: M });
+      const lengthText = translate("Video length {length}", language, { length: M });
       const playheadText = translate("Playhead {time}", language, { time: M });
       const removed = (): number => (fs.existsSync(recordFile) ? (JSON.parse(fs.readFileSync(recordFile, "utf8")) as { removed?: unknown[] }).removed?.length : 0) ?? 0;
       // The timeline's span, from every part's bounds together (the camera's and the volumes' checks before it split
@@ -402,8 +402,8 @@ async function main(): Promise<number> {
       // Deselect lets it go first.
       const deselect = await find("Deselect button", (e) => e.role === "AXButton" && e.title === translate("Deselect", language), 1000).catch(() => undefined);
       if (deselect) { await click(deselect); await sleep(400); }
-      const full = await textStarting(lengthText) ?? fail("no export length shown");
-      const fullSeconds = clockSeconds(full) ?? fail(`unreadable export length: ${full}`);
+      const full = await textStarting(lengthText) ?? fail("no video length shown");
+      const fullSeconds = clockSeconds(full) ?? fail(`unreadable video length: ${full}`);
       const hold = async (from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> => {
         await ax().pointer("down", from.x, from.y);
         for (let i = 1; i <= 8; i++) { await ax().pointer("drag", Math.round(from.x + (to.x - from.x) * i / 8), Math.round(from.y + (to.y - from.y) * i / 8)); await sleep(30); }
@@ -628,7 +628,9 @@ async function main(): Promise<number> {
 
     // Export.
     const exportFrom = log.end();
-    await click(await find("Export button", (e) => e.role === "AXButton" && e.title === translate("Export", language)));
+    // Save a copy… (plan 100) asks in which form; the Video, its default, is saved.
+    await click(await find("Save a copy button", (e) => e.role === "AXButton" && e.title === translate("Save a copy…", language)));
+    await click(await find("Save button", (e) => e.role === "AXButton" && e.title === translate("Save", language)));
     const rendering = await waitForLog(log, exportFrom, /editing: rendering .* \(camera (shown|left out), volumes ([-\d./]+) dB\)/, "the render", controller.signal, 15_000);
     const done = await waitForLog(log, exportFrom, /editing: (exported .* as (.+) \(\d+ bytes\)|the export of .* (was cancelled|failed: .*))$/, "the export's end", controller.signal, 180_000);
     const published = /editing: exported .* as (.+) \(\d+ bytes\)$/.exec(done.line)?.[1];

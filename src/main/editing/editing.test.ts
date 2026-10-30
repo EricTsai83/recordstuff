@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorView, ExportPlan, ExportRequest } from "../../shared/editing";
-import { EditStore } from "./edit-store";
+import { EditStore, sourceIdentity } from "./edit-store";
+import { mp4Facts } from "../library/mp4-duration";
+import { parseProvenance } from "../../shared/provenance";
 import { ExportFailure } from "./export-host";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("not in tests"); } } }));
@@ -56,6 +58,11 @@ function runner(outcome: () => Promise<void> | void = () => undefined, editable?
       });
       fs.writeFileSync(output, "a whole export");
       return { plan: planFor(removed), bytes: 14, reencodedFrames: 0, reencodedPackets: 0 };
+    }),
+    // Plan 100's Sound only: the Video's sound copied out of it.
+    copyTracks: vi.fn(async ({ source: from, tracks, output }: { source: string; tracks: string[]; output: string }) => {
+      fs.writeFileSync(output, `${tracks.join("+")} of ${fs.readFileSync(from, "utf8")}`, { flag: "wx" });
+      return 1;
     }),
     cancel: () => { calls.cancel++; cancelled?.(); },
     closeIdle: () => { calls.closeIdle++; },
@@ -186,6 +193,83 @@ describe("the edit view", () => {
   });
 });
 
+/** A plain movie as the engine finishes one, its index last, so a copy's provenance can be written into it. */
+function movie(): Buffer {
+  const u32 = (n: number): Buffer => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+  const box = (type: string, ...parts: Buffer[]): Buffer => { const body = Buffer.concat(parts); return Buffer.concat([u32(body.length + 8), Buffer.from(type, "latin1"), body]); };
+  return Buffer.concat([box("ftyp", Buffer.alloc(8)), box("mdat", Buffer.alloc(64, 1)), box("moov", box("mvhd", Buffer.alloc(4), Buffer.alloc(8), u32(1000), u32(10_000), Buffer.alloc(80)))]);
+}
+
+describe("Save a copy… (plan 100)", () => {
+  it("offers a plain recording's Video and its sound, named for the recording's folder", async () => {
+    const ctx = setup();
+    await editedOnce(ctx);
+    expect(ctx.editing.view()?.copy).toEqual({
+      forms: [
+        { form: "video", label: "Video file", detail: "As it plays here", fileName: "2026-10-24 10-00-00 (edited).mp4" },
+        { form: "sound", label: "Sound only", detail: "The mixed sound", fileName: "2026-10-24 10-00-00 (sound).m4a" },
+      ],
+      folder: "Movies", beside: true,
+    });
+    // Not a form it offers: refused.
+    expect(await ctx.editing.choose("rec", { action: "export", form: "screenOnly" })).toBe(false);
+  });
+
+  it("saves Sound only as the Video's sound, numbered past a taken name, leaving no Video behind", async () => {
+    const ctx = setup();
+    await editedOnce(ctx);
+    fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (sound).m4a"), "someone's own file");
+    expect(await ctx.editing.choose("rec", { action: "export", form: "sound" })).toBe(true);
+    await settled(ctx.editing);
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (sound) 2.m4a", message: "Saved as 2026-10-24 10-00-00 (sound) 2.m4a." });
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (sound) 2.m4a"), "utf8")).toBe("sound0 of a whole export");
+    expect(beside()).toEqual(["2026-10-24 10-00-00 (sound) 2.m4a", "2026-10-24 10-00-00 (sound).m4a"]);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "userData", "edits", "exports-in-flight.json"), "utf8"))).toEqual([]);
+  });
+
+  it("saves into the folder chosen under the recording's own name, which there is not the recording's", async () => {
+    fs.mkdirSync(path.join(dir, "Elsewhere"));
+    const ctx = setup({ chooseFolder: async () => path.join(dir, "Elsewhere") });
+    await editedOnce(ctx);
+    expect(await ctx.editing.choose("rec", { action: "copyFolder" })).toBe(true);
+    expect(ctx.editing.view()?.copy).toMatchObject({ folder: "Elsewhere", beside: false, forms: [{ form: "video", fileName: "2026-10-24 10-00-00.mp4" }, { form: "sound" }] });
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    // Not beside the recording: the Recordings tab does not list it, so it is shown in Finder rather than played.
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00.mp4", message: "Saved as 2026-10-24 10-00-00.mp4." });
+    expect(fs.readdirSync(path.join(dir, "Elsewhere"))).toEqual(["2026-10-24 10-00-00.mp4"]);
+    expect(beside()).toEqual([]);
+  });
+
+  it("writes where the copy came from into it: the recording's name and identity, the edit's revision and the form", async () => {
+    const worker = runner();
+    worker.export.mockImplementation(async ({ output, removed }: ExportRequest & { output: string }) => {
+      fs.writeFileSync(output, movie(), { flag: "wx" });
+      return { plan: planFor(removed), bytes: 1, reencodedFrames: 0, reencodedPackets: 0 };
+    });
+    const ctx = setup({ now: () => 1_700_000_000_000 }, worker);
+    await editedOnce(ctx);
+    expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
+    await settled(ctx.editing);
+    const facts = await mp4Facts(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited).mp4"));
+    const identity = await sourceIdentity(source);
+    expect(parseProvenance(facts.provenance)).toEqual({ version: 1, from: "2026-10-24 10-00-00.mp4", size: identity.size, hash: identity.hash, revision: 1, form: "video", saved: 1_700_000_000_000 });
+  });
+
+  it("offers an editable recording's Video without the camera, rendered with the camera left out", async () => {
+    const worker = runner(undefined, DESCRIPTION);
+    const ctx = setup({}, worker);
+    await ctx.editing.choose("rec", { action: "open" });
+    expect(ctx.editing.view()?.copy?.forms.map(({ form, fileName }) => [form, fileName])).toEqual([
+      ["video", "2026-10-24 10-00-00 (edited).mp4"], ["screenOnly", "2026-10-24 10-00-00 (screen only).mp4"], ["sound", "2026-10-24 10-00-00 (sound).m4a"],
+    ]);
+    expect(await ctx.editing.choose("rec", { action: "export", form: "screenOnly" })).toBe(true);
+    await settled(ctx.editing);
+    expect(worker.export.mock.calls[0]![0].render).not.toHaveProperty("camera");
+    expect(ctx.editing.view()?.export).toMatchObject({ phase: "done", name: "2026-10-24 10-00-00 (screen only).mp4" });
+  });
+});
+
 describe("an export", () => {
   it("is named in the app's language, numbered past a taken name", async () => {
     const ctx = setup({ language: () => "zh-TW" });
@@ -193,7 +277,7 @@ describe("an export", () => {
     fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "someone's own file");
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（剪輯版 2）.mp4", message: "已匯出為 2026-10-24 10-00-00（剪輯版 2）.mp4。" });
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（剪輯版 2）.mp4", message: "已儲存為 2026-10-24 10-00-00（剪輯版 2）.mp4。", playable: true });
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "utf8")).toBe("someone's own file");
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版 2）.mp4"), "utf8")).toBe("a whole export");
   });
@@ -205,7 +289,7 @@ describe("an export", () => {
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     expect(ctx.editing.view()?.export.phase).toBe("exporting");
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (edited 2).mp4", message: "Exported as 2026-10-24 10-00-00 (edited 2).mp4." });
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (edited 2).mp4", message: "Saved as 2026-10-24 10-00-00 (edited 2).mp4.", playable: true });
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited).mp4"), "utf8")).toBe("someone's own file");
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited 2).mp4"), "utf8")).toBe("a whole export");
     expect(beside()).toEqual(["2026-10-24 10-00-00 (edited 2).mp4", "2026-10-24 10-00-00 (edited).mp4"]);
@@ -240,7 +324,7 @@ describe("an export", () => {
     expect(beside()).toEqual([]);
   });
 
-  it("is cancelled by the edit view's Cancel export", async () => {
+  it("is cancelled by the edit view's Cancel saving", async () => {
     let release!: () => void;
     const ctx = setup({}, runner(() => new Promise<void>((resolve) => { release = resolve; })));
     await editedOnce(ctx);
@@ -311,9 +395,9 @@ describe("an export", () => {
     const ctx = setup();
     await editedOnce(ctx);
     for (const [reason, text] of [
-      ["recording", "Export is unavailable while recording."],
-      ["preview", "Export is unavailable while the Recording Studio's Live preview runs."],
-      ["saving", "Export is unavailable while a recording is being saved."],
+      ["recording", "Saving a copy is unavailable while recording."],
+      ["preview", "Saving a copy is unavailable while the Recording Studio's Live preview runs."],
+      ["saving", "Saving a copy is unavailable while a recording is being saved."],
       ["quitting", "RecordStuff is quitting."],
     ] as const) {
       ctx.block(reason);

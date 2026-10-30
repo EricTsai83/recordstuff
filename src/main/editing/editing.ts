@@ -26,13 +26,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../lib/atomic-file";
 import { translate, type Language, type PlainMessageKey } from "../../shared/i18n";
-import { MAX_EDIT_RANGES, normalizeRanges, type EditorChoice, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type ExtractTrack, PREVIEW_TRACKS, type PreviewTrack } from "../../shared/editing";
+import { MAX_EDIT_RANGES, normalizeRanges, type CopyTracksRequest, type EditorChoice, type EditorCopy, type EditorExport, type EditorView, type EditRange, type ExportPlan, type ExportRequest, type ExtractTrack, PREVIEW_TRACKS, type PreviewTrack } from "../../shared/editing";
+import { provenanceText, type CopyForm } from "../../shared/provenance";
+import { recordingTitle, versionName, type VersionSubject } from "../../shared/versions";
 import type { PlaybackEdit } from "../../shared/video-player";
 import { defaultScene, exportRender, fitScene, parseEditableDescription, sameScene, type EditableDescription, type EditScene } from "../../shared/editable";
 import { fileResponse } from "../lib/file-response";
 import { editRecord, sameSource, sourceIdentity, type EditRecord, type EditStore, type SourceIdentity } from "./edit-store";
 import { ExportFailure } from "./export-host";
 import { SerialQueue } from "../lib/serial-queue";
+import { writeProvenance } from "./provenance";
 
 /** Why an export cannot start now. */
 export type ExportBlock = "recording" | "preview" | "saving" | "quitting";
@@ -43,6 +46,8 @@ export interface ExportRunner {
   export(request: ExportRequest & { output: string }, progress: (fraction: number) => void): Promise<{ plan: ExportPlan; bytes: number }>;
   /** Plan 087: an editable recording's camera or second sound copied into `output` for the preview. */
   extract(request: { source: string; track: ExtractTrack; output: string }): Promise<number>;
+  /** Plan 100: tracks copied into a file of their own, for Save a copy…'s Sound only. */
+  copyTracks(request: CopyTracksRequest, progress: (fraction: number) => void): Promise<number>;
   cancel(): void;
   closeIdle(): void;
   close(): void;
@@ -72,6 +77,10 @@ export interface EditingDeps {
   opening?(): void;
   /** The view of the recording at `file` closed: its Video is prepared for sharing (plan 100, D2). */
   closed?(file: string): void;
+  /** Save a copy…'s Change… (plan 100): the folder the person picks, starting at `from`, or undefined if they cancel. */
+  chooseFolder?(from: string): Promise<string | undefined>;
+  /** The time, for a copy's provenance; tests fix it. */
+  now?(): number;
 }
 
 /** The file operations publication uses. */
@@ -147,6 +156,20 @@ export function editedName(title: string, attempt: number, language?: Language):
   return `${attempt <= 1 ? translate("{title} (edited)", language, { title }) : translate("{title} (edited {number})", language, { title, number: attempt })}.mp4`;
 }
 
+/**
+ * The name Save a copy… gives the copy of the recording `subject` in `form` (plan 100), the `attempt`th when earlier
+ * ones were taken: named as a version leaves (shared/versions.ts), the Video of a plain recording beside its own file
+ * `<title> (edited).mp4` as before (D8), else `<title>.mp4`; any other name taken gets a number, `Meeting 2.mp4`.
+ */
+export function copyName(form: CopyForm, subject: VersionSubject, beside: boolean, attempt: number, language?: Language): string {
+  const plainVideo = form === "video" && !subject.editable;
+  if (plainVideo && beside) return editedName(recordingTitle(subject.fileName), attempt, language);
+  const name = plainVideo ? `${recordingTitle(subject.fileName)}.mp4` : versionName(form, { ...subject, edited: true }, language);
+  if (attempt <= 1) return name;
+  const extension = path.extname(name);
+  return `${name.slice(0, name.length - extension.length)} ${attempt}${extension}`;
+}
+
 const PUBLISH_ATTEMPTS = 100;
 /** How long quit waits for a cancelled export to end: the worker's 1 s cancel bound and its clean-up. */
 export const SHUTDOWN_BOUND_MS = 2000;
@@ -158,7 +181,8 @@ export const SHUTDOWN_BOUND_MS = 2000;
  */
 export async function publish(
   part: string,
-  title: string,
+  /** The `attempt`th name tried, from 1: `title` alone takes `editedName`'s. */
+  named: string | ((attempt: number) => string),
   files: PublicationFiles,
   log: (message: string) => void,
   /** Called with a placeholder's path before it is made, then with the inode made, so a crash's leftover can be found. */
@@ -168,9 +192,10 @@ export async function publish(
   language?: Language,
 ): Promise<string> {
   const dir = path.dirname(part);
+  const nameFor = typeof named === "string" ? (attempt: number): string => editedName(named, attempt, language) : named;
   const stop = (): never => { throw Object.assign(new Error("the export was cancelled before it was published"), { code: "ECANCELED" }); };
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
-    const target = path.join(dir, editedName(title, attempt, language));
+    const target = path.join(dir, nameFor(attempt));
     if (await files.exists(target)) continue;
     if (cancelled()) stop();
     try {
@@ -204,7 +229,7 @@ export async function publish(
       }
     }
   }
-  throw Object.assign(new Error(`no free name for ${title} (edited) after ${PUBLISH_ATTEMPTS} tries`), { code: "EEXIST" });
+  throw Object.assign(new Error(`no free name for ${nameFor(1)} after ${PUBLISH_ATTEMPTS} tries`), { code: "EEXIST" });
 }
 
 /**
@@ -301,6 +326,8 @@ interface Open {
   plan?: ExportPlan;
   saveFailure?: string;
   export: EditorExport;
+  /** Save a copy…'s folder when the person changed it (plan 100); the recording's own otherwise. */
+  copyFolder?: string;
   /** An editable recording's description, and its preview tracks once copied (plan 087). */
   editable?: { description: EditableDescription; preview: Partial<Record<PreviewTrack, string>> };
   /** The preview tracks being copied, which the full-screen viewer waits for: it hears of no later ones. */
@@ -379,6 +406,7 @@ export class Editing {
       exportable: open.state === "ready" && !block && !this.exportRun && this.exportableEdit(open),
       ...(block ? { blocked: block } : {}),
       export: open.export,
+      ...(open.state === "ready" && open.record ? { copy: this.copyView(open) } : {}),
       ...(open.saveFailure ? { saveFailure: open.saveFailure } : {}),
       ...(open.editable && open.state === "ready" ? { editable: this.editableView(open, open.editable) } : {}),
     };
@@ -400,6 +428,46 @@ export class Editing {
       timescale, duration, frameRate, skipped,
       ...(editable ? { editable: { sounds: editable.sounds, ...(editable.mix ? { mix: true as const } : {}), ...(editable.camera ? { camera: editable.camera } : {}), scene: editable.scene, preview: editable.preview } } : {}),
     };
+  }
+
+  /** The recording as Save a copy… names its copies. */
+  private subjectOf(open: Open): VersionSubject {
+    const description = open.editable?.description;
+    return { fileName: open.name, edited: true, ...(description ? { editable: { camera: description.camera !== null, sounds: description.sounds, ...(description.mix ? { mix: true as const } : {}) } } : {}) };
+  }
+
+  /** The forms the open recording can be saved in: the Video, without the camera when it has one, and its sound when it has any. */
+  private copyForms(open: Open): CopyForm[] {
+    const description = open.editable?.description;
+    const sound = description ? description.sounds.some((input) => input !== "silent") : open.plan?.hasAudio !== false;
+    return ["video", ...(description?.camera ? ["screenOnly" as const] : []), ...(sound ? ["sound" as const] : [])];
+  }
+
+  private copyView(open: Open): EditorCopy {
+    const language = this.deps.language();
+    const folder = open.copyFolder ?? path.dirname(open.path);
+    const beside = open.copyFolder === undefined || path.resolve(open.copyFolder) === path.resolve(path.dirname(open.path));
+    const labels: Record<CopyForm, [PlainMessageKey, PlainMessageKey]> = {
+      video: ["Video file", "As it plays here"], screenOnly: ["Video without the camera", "Just the screen"], sound: ["Sound only", "The mixed sound"],
+    };
+    return {
+      forms: this.copyForms(open).map((form) => ({ form, label: translate(labels[form][0], language), detail: translate(labels[form][1], language),
+        fileName: copyName(form, this.subjectOf(open), beside, 1, language) })),
+      folder: path.basename(folder) || folder,
+      beside,
+    };
+  }
+
+  /** Save a copy…'s Change…: the folder the person picks becomes where copies of this recording are saved while its view is open. */
+  private async chooseCopyFolder(id: string): Promise<boolean> {
+    const open = this.open;
+    if (!open || open.id !== id || !this.deps.chooseFolder) return false;
+    const chosen = await this.deps.chooseFolder(open.copyFolder ?? path.dirname(open.path));
+    if (!chosen || this.open !== open) return false;
+    if (path.resolve(chosen) === path.resolve(path.dirname(open.path))) delete open.copyFolder;
+    else open.copyFolder = chosen;
+    this.deps.changed();
+    return true;
   }
 
   private editableView(open: Open, editable: NonNullable<Open["editable"]>): NonNullable<EditorView["editable"]> {
@@ -508,9 +576,9 @@ export class Editing {
   private blockReason(): string | undefined {
     const language = this.deps.language();
     switch (this.deps.blocked()) {
-      case "recording": return translate("Export is unavailable while recording.", language);
-      case "preview": return translate("Export is unavailable while the Recording Studio's Live preview runs.", language);
-      case "saving": return translate("Export is unavailable while a recording is being saved.", language);
+      case "recording": return translate("Saving a copy is unavailable while recording.", language);
+      case "preview": return translate("Saving a copy is unavailable while the Recording Studio's Live preview runs.", language);
+      case "saving": return translate("Saving a copy is unavailable while a recording is being saved.", language);
       case "quitting": return translate("RecordStuff is quitting.", language);
       default: return undefined;
     }
@@ -522,7 +590,8 @@ export class Editing {
       case "open": return this.openEditor(id);
       case "close": this.close(id); return true;
       case "save": return this.save(id, choice.removed, choice.revision, choice.scene);
-      case "export": return this.startExport(id);
+      case "export": return this.startExport(id, choice.form ?? "video");
+      case "copyFolder": return this.chooseCopyFolder(id);
       case "cancelExport": return this.cancelExport(id);
       case "discard": return this.discard(id);
       case "reveal": return this.revealExport(id);
@@ -693,12 +762,18 @@ export class Editing {
     return this.openEditor(id);
   }
 
-  private async startExport(id: string): Promise<boolean> {
+  private async startExport(id: string, form: CopyForm): Promise<boolean> {
     const open = this.open;
     if (!open || open.id !== id || open.state !== "ready" || !open.record || this.exportRun) return false;
-    if (this.deps.blocked() || !this.exportableEdit(open)) return false;
+    if (this.deps.blocked() || !this.exportableEdit(open) || !this.copyForms(open).includes(form)) return false;
     const title = open.name.replace(/\.[^.]+$/, "");
-    const part = path.join(path.dirname(open.path), partName(title));
+    // Save a copy… (plan 100): into the folder chosen, the recording's own by default.
+    const folder = open.copyFolder ?? path.dirname(open.path);
+    const beside = open.copyFolder === undefined;
+    const part = path.join(folder, partName(title));
+    // Sound only is the Video's sound: the Video is made first, beside it, and its sound copied out of it.
+    const videoPart = form === "sound" ? path.join(folder, partName(title)) : undefined;
+    const subject = this.subjectOf(open);
     // Claimed before the first wait, so a second Export, a starting recording or quit all see it.
     const run: ExportRun = { part, cancelled: false, started: false, promise: Promise.resolve() };
     this.exportRun = run;
@@ -713,17 +788,22 @@ export class Editing {
     if (!(await this.stillSame(open))) return refuse();
     if (run.cancelled || this.deps.blocked()) return refuse();
     const removed = open.record.removed.map(([from, to]) => ({ from, to }));
+    const revision = open.record.revision;
+    const identity = open.identity;
     const description = open.editable?.description;
-    const render = description ? exportRender(description, this.sceneOf(open, description)) : undefined;
+    const scene = description ? this.sceneOf(open, description) : undefined;
+    const shown = scene?.camera && form === "screenOnly" ? { ...scene, camera: { ...scene.camera, shown: false } } : scene;
+    const render = description && shown ? exportRender(description, shown) : undefined;
+    const parts = [part, ...(videoPart ? [videoPart] : [])];
     try {
-      await this.journal((entries) => [...entries, part]);
+      await this.journal((entries) => [...entries, ...parts]);
     } catch (cause) {
       this.deps.log(`editing: the export journal could not be written: ${String(cause)}`);
-      open.export = { phase: "failed", message: translate("The export could not start. Check free disk space, then try again.", this.deps.language()) };
+      open.export = { phase: "failed", message: translate("The copy could not be started. Check free disk space, then try again.", this.deps.language()) };
       return refuse();
     }
     if (run.cancelled) {
-      await this.journal((entries) => entries.filter((entry) => entry !== part)).catch(() => undefined);
+      await this.journal((entries) => entries.filter((entry) => !parts.includes(entryPath(entry)))).catch(() => undefined);
       return refuse();
     }
     run.started = true;
@@ -731,7 +811,7 @@ export class Editing {
     const hiddenNote = (render?.cameraHidden ? `, the camera hidden over ${render.cameraHidden.length} stretch(es)` : "")
       + (render?.volumeStretchesDb ? `, volume stretches ${render.volumeStretchesDb.map((list) => list.length).join("/")}` : "")
       + (render?.soundTracks ? `, sound tracks ${render.soundTracks.join("/")}` : "");
-    this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${part}${hiddenNote}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
+    this.deps.log(`editing: ${render ? "rendering" : "exporting"} ${open.path} without ${removed.length} range(s) into ${videoPart ?? part} as a copy (${form})${hiddenNote}${render ? ` (camera ${render.camera ? "shown" : "left out"}, volumes ${render.volumesDb.map((db) => db.toFixed(1)).join("/")} dB)` : ""}`);
     this.deps.changed();
     let lastShown = 0;
     const reserved: string[] = [];
@@ -739,15 +819,28 @@ export class Editing {
       let outcome: EditorExport;
       let settledPaths: string[] = [];
       try {
-        const result = await this.deps.runner.export({ source: open.path, output: part, removed, ...(render ? { render } : {}) }, (fraction) => {
+        const shownProgress = (fraction: number): void => {
           if (open.export.phase !== "exporting" || fraction - lastShown < 0.01) return;
           lastShown = fraction;
           open.export = { ...open.export, progress: fraction };
           this.deps.changed();
-        });
+        };
+        const result = await this.deps.runner.export({ source: open.path, output: videoPart ?? part, removed, ...(render ? { render } : {}) },
+          (fraction) => shownProgress(videoPart ? fraction * 0.95 : fraction));
+        if (videoPart) {
+          if (run.cancelled) throw new ExportFailure("cancelled", "the export was cancelled before it was published");
+          await this.deps.runner.copyTracks({ source: videoPart, tracks: ["sound0"], output: part }, (fraction) => shownProgress(0.95 + fraction * 0.05));
+          await this.files.unlink(videoPart).catch((cause: unknown) => this.deps.log(`editing: could not remove ${videoPart} now: ${String(cause)}`));
+        }
         // Cancelled after the worker finished (a recording starting, quit): nothing is published.
         if (run.cancelled) throw new ExportFailure("cancelled", "the export was cancelled before it was published");
-        const published = await publish(part, title, this.files, this.deps.log, async (target, mark) => {
+        // Where it came from, inside the copy (D4): kept without it when its index cannot take it, as a copy saved before.
+        if (identity) {
+          const unwritten = await writeProvenance(part, provenanceText({ version: 1, from: open.name, size: identity.size, hash: identity.hash, revision, form, saved: (this.deps.now ?? Date.now)() }));
+          if (unwritten) this.deps.log(`editing: ${part} is saved without where it came from: ${unwritten}`);
+        }
+        const language = this.deps.language();
+        const published = await publish(part, (attempt) => copyName(form, subject, beside, attempt, language), this.files, this.deps.log, async (target, mark) => {
           if (!reserved.includes(target)) reserved.push(target);
           const entry: JournalEntry = mark ? { placeholder: target, ino: mark.ino, dev: mark.dev } : { placeholder: target };
           await this.journal((entries) => [...entries.filter((e) => entryPath(e) !== target), entry]);
@@ -756,23 +849,26 @@ export class Editing {
         this.lastExport = published;
         this.deps.published(published);
         const name = path.basename(published);
-        outcome = { phase: "done", name, message: translate("Exported as {name}.", this.deps.language(), { name }) };
+        outcome = { phase: "done", name, message: translate("Saved as {name}.", this.deps.language(), { name }), ...(beside && form !== "sound" ? { playable: true as const } : {}) };
         // The temporary name went with the link, unless its removal failed: then it stays journalled for the next launch.
-        settledPaths = [...reserved, ...((await this.files.exists(part)) ? [] : [part])];
+        settledPaths = [...reserved];
+        for (const file of parts) if (!(await this.files.exists(file))) settledPaths.push(file);
       } catch (cause) {
-        let gone = true;
-        await this.files.unlink(part).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-          gone = false;
-          this.deps.log(`editing: could not remove ${part} now; it stays in the journal for the next launch: ${String(error)}`);
-        });
+        for (const file of parts) {
+          let gone = true;
+          await this.files.unlink(file).catch((error: unknown) => {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+            gone = false;
+            this.deps.log(`editing: could not remove ${file} now; it stays in the journal for the next launch: ${String(error)}`);
+          });
+          if (gone) settledPaths.push(file);
+        }
         // A placeholder was removed by publish, or holds someone else's file now: the journal forgets it either way
         // only when it is not an empty file this export left.
         for (const target of reserved) {
           const mark = await this.files.mark(target).catch(() => ({ size: 0 }) as FileMark);
           if (mark?.size !== 0) settledPaths.push(target);
         }
-        if (gone) settledPaths.push(part);
         const failure = cause instanceof ExportFailure ? cause : undefined;
         this.deps.log(`editing: the export of ${open.path} ${failure?.code === "cancelled" ? "was cancelled" : `failed: ${String(cause)}`}`);
         const stopped = failure?.code === "cancelled" || run.cancelled || (cause as NodeJS.ErrnoException).code === "ECANCELED";
@@ -868,14 +964,14 @@ export class Editing {
       case "unsupported": return t("only recordings made by this version of RecordStuff can be cut.");
       case "malformed": return t("its index is damaged.");
       case "read_failed": return t("it could not be read.");
-      case "disk_full": return t("The export stopped: the disk is full. Free some space, then export again.");
-      case "output_write_failed": return t("The export could not be written to the recording's folder. Check the folder and the drive, then export again.");
-      case "output_exists": return t("The export's file name was taken. Export again.");
+      case "disk_full": return t("Saving stopped: the disk is full. Free some space, then save the copy again.");
+      case "output_write_failed": return t("The copy could not be written to its folder. Check the folder and the drive, then save it again.");
+      case "output_exists": return t("The copy's file name was taken. Save it again.");
       case "export_worker_crashed": case "export_worker_unresponsive":
-        return during === "inspect" ? t("the export process stopped. Close the editor and try again.") : t("The export process stopped. The recording is unchanged; export again.");
-      case "export_engine_missing": return t("the export engine could not be loaded.");
-      case "encode_failed": return t(rendered ? "The export failed while encoding. The recording is unchanged; export again." : "The export failed while encoding a join. The recording is unchanged; export again.");
-      default: return during === "inspect" ? t("it could not be read.") : t("The export failed. The recording is unchanged; export again.");
+        return during === "inspect" ? t("the video process stopped. Close the editor and try again.") : t("The video process stopped. The recording is unchanged; save the copy again.");
+      case "export_engine_missing": return t("the video engine could not be loaded.");
+      case "encode_failed": return t(rendered ? "Saving failed while encoding. The recording is unchanged; save the copy again." : "Saving failed while encoding a join. The recording is unchanged; save the copy again.");
+      default: return during === "inspect" ? t("it could not be read.") : t("Saving failed. The recording is unchanged; save the copy again.");
     }
   }
 }

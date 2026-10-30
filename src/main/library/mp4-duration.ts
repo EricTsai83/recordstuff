@@ -8,6 +8,7 @@
  * one small read per fragment, never its media.
  */
 import fs from "node:fs/promises";
+import { PROVENANCE_BOX, PROVENANCE_LIMIT } from "../../shared/provenance";
 
 interface Box { type: string; start: number; size: number; header: number }
 
@@ -43,7 +44,7 @@ interface Track { timescale: number; defaultDuration: number }
  * Each track's timescale and fragment default duration, the movie's own length when it states one, and whether it is
  * an editable recording (plan 087): its `udta` holds RecordStuff's `rsed` description.
  */
-function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number; editable: boolean; description?: string } {
+function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number; editable: boolean; description?: string; provenance?: string } {
   const top = children(data);
   const udta = find(top, "udta");
   const rsed = udta !== undefined ? find(inside(data, udta), "rsed") : undefined;
@@ -51,6 +52,10 @@ function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number; ed
   // The description itself (at most 4 KiB, as the engine writes it), for what the recording holds (plan 100).
   const length = rsed ? rsed.size - rsed.header : 0;
   const description = rsed && length > 0 && length <= 4096 ? data.toString("utf8", rsed.start + rsed.header, rsed.start + rsed.size) : undefined;
+  // A saved copy's provenance (plan 100, D4): where it came from, at most 4 KiB as Save a copy… writes it.
+  const rsfm = udta !== undefined ? find(inside(data, udta), PROVENANCE_BOX) : undefined;
+  const provenanceLength = rsfm ? rsfm.size - rsfm.header : 0;
+  const provenance = rsfm && provenanceLength > 0 && provenanceLength <= PROVENANCE_LIMIT ? data.toString("utf8", rsfm.start + rsfm.header, rsfm.start + rsfm.size) : undefined;
   const tracks = new Map<number, Track>();
   let seconds: number | undefined;
   const mvhd = find(top, "mvhd");
@@ -80,7 +85,8 @@ function movie(data: Buffer): { tracks: Map<number, Track>; seconds?: number; ed
     const track = tracks.get(data.readUInt32BE(at));
     if (track) track.defaultDuration = data.readUInt32BE(at + 8);
   }
-  return { tracks, editable, ...(seconds === undefined ? {} : { seconds }), ...(description === undefined ? {} : { description }) };
+  return { tracks, editable, ...(seconds === undefined ? {} : { seconds }), ...(description === undefined ? {} : { description }),
+    ...(provenance === undefined ? {} : { provenance }) };
 }
 
 /** Where a fragment ends, in seconds: the longest of its tracks. */
@@ -119,8 +125,11 @@ export async function mp4Duration(filePath: string): Promise<number | undefined>
   return (await mp4Facts(filePath)).seconds;
 }
 
-/** What the Recordings tab reads of a file's boxes: its playing time, if they say, and whether it is editable. */
-export async function mp4Facts(filePath: string): Promise<{ seconds?: number; editable: boolean; description?: string }> {
+/**
+ * What the Recordings tab reads of a file's boxes: its playing time, if they say, whether it is editable, and a saved
+ * copy's provenance (plan 100), unparsed.
+ */
+export async function mp4Facts(filePath: string): Promise<{ seconds?: number; editable: boolean; description?: string; provenance?: string }> {
   let handle: fs.FileHandle | undefined;
   try {
     handle = await fs.open(filePath, "r");
@@ -149,10 +158,10 @@ export async function mp4Facts(filePath: string): Promise<{ seconds?: number; ed
       at += boxSize;
     }
     if (!moov) return { editable: false };
-    const { tracks, seconds, editable, description } = movie(moov);
+    const { tracks, seconds, editable, description, provenance } = movie(moov);
     const fragment = lastMoof ? fragmentEnd(await read(lastMoof.at, lastMoof.size), tracks) : undefined;
     const result = fragment ?? seconds;
-    const facts = { editable, ...(description === undefined ? {} : { description }) };
+    const facts = { editable, ...(description === undefined ? {} : { description }), ...(provenance === undefined ? {} : { provenance }) };
     return result !== undefined && Number.isFinite(result) && result > 0 ? { seconds: result, ...facts } : facts;
   } catch {
     return { editable: false };
