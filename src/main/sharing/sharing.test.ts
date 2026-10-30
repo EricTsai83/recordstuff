@@ -269,8 +269,10 @@ describe("Share… (plan 100 step 3)", () => {
     edits.set(file, { removed: [[0, 9000]] });
     paused = "recording";
     const ready = sharing.whenReady(file, "video");
-    await tick();
-    expect(sharing.versionStates(file).video).toEqual({ state: "preparing", progress: 0 });
+    // File identity and edit lookup must finish before the job is queued; event-loop turns do not wait for I/O.
+    await vi.waitFor(() => {
+      expect(sharing.versionStates(file).video).toEqual({ state: "preparing", progress: 0 });
+    });
     paused = undefined;
     sharing.resume();
     expect(await ready).toMatch(/Meeting \(edited\)\.mp4$/);
