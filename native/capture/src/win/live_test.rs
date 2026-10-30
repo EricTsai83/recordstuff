@@ -210,8 +210,12 @@ fn record(name: &str, source: Source, audio: AudioRequest, (width, height): (u32
     let _ = std::fs::remove_file(&path);
     assert_eq!(file.top, ["ftyp", "mdat", "moov"]);
     let (video, audio) = (&file.tracks[0], &file.tracks[1]);
-    let video_ms = video.duration as f64 * 1000.0 / f64::from(video.timescale);
-    let audio_ms = audio.edit.map_or(0.0, |(presented, _)| presented as f64 * 1000.0 / 48_000.0);
+    // Compare playback ranges: an encoded frame can extend a few milliseconds past the stop, which the edit
+    // list trims, just as it trims AAC's final packet padding.
+    // The muxer uses the first edited track's timescale for the movie (normally audio, or video when clipped).
+    let movie_timescale = if video.edit.is_some() { video.timescale } else { audio.timescale };
+    let video_ms = video.track_duration as f64 * 1000.0 / f64::from(movie_timescale);
+    let audio_ms = audio.edit.map_or(0.0, |(presented, _)| presented as f64 * 1000.0 / f64::from(movie_timescale));
     summary(&format!(
         "Windows live {name} recorded {} frames seen, {} video samples ({} key) over {video_ms:.0} ms, {} audio packets presenting {audio_ms:.0} ms; drain {:.0} ms, {} frames of silence filled in, late audio frames {:?}",
         frames_seen,

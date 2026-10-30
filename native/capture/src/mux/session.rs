@@ -138,6 +138,11 @@ impl<O: Output> SessionMuxer<O> {
                     muxed.pending.samples.push(Owned { data: held.data, duration, sync: held.sync });
                 }
                 self.flush(track)?;
+                // A frame stamped past the stop may already have extended the preceding sample, even in a
+                // flushed fragment. Keep its encoded duration, but end playback at the requested cutoff.
+                if written > 0 && self.mp4.decode_end(track) > video_end {
+                    self.mp4.set_presented(track, video_end);
+                }
             } else {
                 self.flush(track)?;
                 if let Some(frames) = audio_frames.get(sound).copied().flatten() {
@@ -236,6 +241,7 @@ mod tests {
         let parsed = parse(&out).unwrap();
         assert_eq!(parsed.tracks[0].samples.len(), 2);
         assert_eq!(parsed.tracks[0].duration, 3000);
+        assert_eq!(parsed.tracks[0].edit, Some((2900, 0)));
 
         let mut muxer = SessionMuxer::new(Vec::new(), video_config(), None).unwrap();
         muxer.push_video(vec![1], 500, true).unwrap();
@@ -243,6 +249,24 @@ mod tests {
         let parsed = parse(&out).unwrap();
         assert_eq!(parsed.tracks[0].samples.len(), 1);
         assert_eq!(parsed.tracks[0].duration, 3000);
+    }
+
+    #[test]
+    fn a_flushed_video_fragment_is_presented_only_until_the_stop() {
+        let mut muxer = SessionMuxer::new(Vec::new(), video_config(), Some(audio_config())).unwrap();
+        for (pts, sync) in [(0, true), (45_000, false), (90_450, true)] {
+            muxer.push_video(vec![1, 2, 3], pts, sync).unwrap();
+        }
+        assert_eq!(muxer.written(VIDEO_TRACK), (90_450, 2));
+        for _ in 0..47 {
+            muxer.push_audio(vec![1; 4], 1024).unwrap();
+        }
+        let (_, out) = muxer.finish(90_000, Some(48_000)).unwrap();
+        let parsed = parse(&out).unwrap();
+        assert_eq!(parsed.tracks[0].duration, 90_450);
+        assert_eq!(parsed.tracks[0].samples.len(), 2);
+        assert_eq!(parsed.tracks[0].edit, Some((90_000, 0)));
+        assert_eq!(parsed.tracks[0].track_duration, parsed.tracks[1].track_duration);
     }
 
     #[test]
