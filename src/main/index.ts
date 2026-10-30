@@ -90,7 +90,7 @@ import type { CountdownSeconds } from "../shared/countdown";
 
 import { DEFAULT_LANGUAGE, translate, type Language } from "../shared/i18n";
 import { formatFileName } from "../shared/file-name";
-import { EditStore } from "./editing/edit-store";
+import { EditStore, sourceIdentity } from "./editing/edit-store";
 import { ExportHost } from "./editing/export-host";
 import { Editing } from "./editing/editing";
 import { mp4Facts } from "./library/mp4-duration";
@@ -277,6 +277,8 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     trash: file => shell.trashItem(file),
     open: file => shell.openPath(file),
     reveal: file => shell.showItemInFolder(file),
+    // A saved copy's recording is found by the identity its edit is known by (plan 100, D4).
+    identity: async file => (await sourceIdentity(file)).hash,
     // What was made from a recording to share it goes once the recording really went (plan 100), and its edit with it.
     trashed: file => { void sharing.removed(file); void editStore.discard(file).catch((cause: unknown) => log(`editing: the edit of ${file} was not removed: ${String(cause)}`)); },
     // A recording's edit is written for its new path before it moves in the tab, and the move is not made if it cannot
@@ -481,6 +483,12 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     closed: (file) => sharing.prepare(file),
     published: () => { void library.refresh(); },
     reveal: (file) => shell.showItemInFolder(file),
+    // Save a copy…'s Change… (plan 100): the system's folder picker, starting where copies go now.
+    chooseFolder: async (from) => {
+      focusApp();
+      const chosen = await dialog.showOpenDialog({ title: translate("Choose where to save", settings.language), defaultPath: from, properties: ["openDirectory", "createDirectory"] });
+      return chosen.canceled ? undefined : chosen.filePaths[0];
+    },
     journal: exportJournal,
     previewDir: path.join(editsDir, "preview"),
     log,
@@ -1079,7 +1087,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
         message: translate("Change the recording folder?", language),
         detail: [
           translate("Recordings in the current folder will no longer appear in the Recordings tab. The files themselves are not changed.", language),
-          translate("Videos prepared for dragging out will be removed; they are made again when needed. Files you exported or dragged out are not affected.", language),
+          translate("Videos prepared for dragging out will be removed; they are made again when needed. Copies you saved and files you dragged out are not affected.", language),
           translate("Edits are kept, and apply again if you switch back to this folder. You can remove them in Settings → General → Kept edits.", language),
         ].join("\n\n"),
         buttons: [translate("Change Folder", language), translate("Change and Remove Old Edits", language), translate("Cancel", language)],

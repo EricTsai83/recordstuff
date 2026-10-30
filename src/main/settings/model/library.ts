@@ -116,7 +116,7 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
         ...(file.editable ? { editable: t("Editable", language),
-          editableHint: t("Keeps the picture, camera and sounds apart so you can change them later. To send it, drag it: you give the video as it plays here.", language) } : {}),
+          editableHint: t("Keeps the picture, camera and sounds apart so you can change them later. To send it, drag it or use Share.", language) } : {}),
         ...videoStateView(ctx.preparingVideos?.get(file.path), language, mac),
         share: shareView({ fileName: file.name, edited: ctx.editedRecordings?.get(file.path) === file.size,
           // Without a camera, no Video without one; its description not read yet, the camera is taken to be there.
@@ -124,6 +124,13 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         recordingTitle(file.name), shareStatesOf(ctx, file.path), language),
         // Holds an edit made for the file as it is (2026-10-26, the maintainer's request).
         ...(ctx.editedRecordings?.get(file.path) === file.size ? { edited: t("Edited", language) } : {}),
+        // Saved copies and where a copy came from (plan 100, D4), from the provenance inside each copy.
+        ...(file.savedFrom === undefined ? {} : { savedFrom: t("Saved from “{title}”", language, { title: recordingTitle(file.savedFrom) }) }),
+        ...(file.copies?.length ? { copies: file.copies.map(copy => {
+          const saved = new Date(copy.saved);
+          const time = `${dayHeading(saved, now, language, format)} ${shortTime(saved, language, format)}`;
+          return { label: t("{form}, saved {time}", language, { form: t(VERSION_LABELS[copy.form], language), time }), name: copy.name };
+        }) } : {}),
       };
     }),
     ...(library.folders?.length ? { folders: library.folders.map(({ name, empty }) => ({ name, empty })) } : {}),

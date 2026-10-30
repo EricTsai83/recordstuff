@@ -194,6 +194,9 @@ export function settingsAction(
   }
   if (typeof groupId === "string" && groupId.startsWith("recordingFile:")) {
     const file = ctx.library?.files.find(candidate => groupId === `recordingFile:${candidate.id}`);
+    // One of its saved copies shown in Finder (plan 100, D4), by its place in the list the menu showed.
+    const copy = typeof choiceId === "string" ? /^revealCopy:(\d{1,3})$/.exec(choiceId) : null;
+    if (file && copy) return Number(copy[1]) < (file.copies?.length ?? 0) ? { recordingFile: { id: file.id, action: "reveal", copy: Number(copy[1]) } } : undefined;
     return file && RECORDING_FILE_ACTIONS.includes(choiceId as RecordingFileAction)
       ? { recordingFile: { id: file.id, action: choiceId as RecordingFileAction } } : undefined;
   }

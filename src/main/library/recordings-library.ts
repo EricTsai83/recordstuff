@@ -36,6 +36,7 @@ import { fileNameProblem, folderNameProblem, type EditMoveProblem, type FileName
 import { SerialQueue } from "../lib/serial-queue";
 import { hasEditableMarker, recordingTitle } from "../../shared/versions";
 import { parseEditableDescription } from "../../shared/editable";
+import { parseProvenance, type CopyForm, type Provenance } from "../../shared/provenance";
 
 export const MEDIA_SCHEME = "recordstuff-media";
 /**
@@ -67,6 +68,18 @@ export interface RecordingFile {
   version: string;
   /** The subfolder it is in, by name; absent for one directly in the output folder. */
   folder?: string;
+  /** A copy Save a copy… made (plan 100, D4): the name of the recording it was saved from, listed or as it was then. */
+  savedFrom?: string;
+  /** The copies saved from it that are in the tab's folders, newest first, found by the provenance in each (D4). */
+  copies?: SavedCopy[];
+}
+/** A copy saved from a recording (plan 100, D4): a video listed beside it, or its sound alone, which is no card. */
+export interface SavedCopy {
+  path: string;
+  name: string;
+  form: CopyForm;
+  /** When it was saved, in milliseconds since the epoch. */
+  saved: number;
 }
 /** A subfolder of the output folder the tab offers (`isFolderName`): one holding videos, or nothing at all. */
 export interface LibraryFolder {
@@ -132,6 +145,11 @@ export interface LibraryDeps {
   /** After it moved (`moved`), or did not: what `beforeMove` wrote is finished or taken back. */
   afterMove?: (from: string, to: string, moved: boolean, folder?: true) => Promise<void>;
   log: (message: string) => void;
+  /**
+   * A recording's identity hash, as its edit and a saved copy's provenance know it (edit-store.ts `sourceIdentity`), to
+   * find each saved copy's recording (plan 100, D4); without it a copy only says the name it was saved from.
+   */
+  identity?: (filePath: string) => Promise<string>;
   /** Milliseconds on a monotonic clock; paces publishing lengths. */
   now?: () => number;
   /** Thumbnails made at once; `THUMBNAILS_AT_ONCE` unless a measurement compares another (`Infinity` for no limit). */
@@ -139,6 +157,8 @@ export interface LibraryDeps {
 }
 
 const VIDEO = /\.(mp4|m4v|mov)$/i;
+/** A sound file, which may be a copy saved as Sound only (plan 100). */
+const SOUND = /\.m4a$/i;
 /**
  * Thumbnails held in memory, a few screens of cards: each is a JPEG of some tens of kilobytes, and a
  * menu bar app stays running for days. The least recently shown goes first and is made again if shown.
@@ -204,8 +224,13 @@ export function isFolderName(name: string): boolean {
  */
 export function listsAgain(name: string): boolean {
   const parts = name.split(/[\\/]/);
-  if (parts.length === 1) return isListedName(parts[0]!) || isFolderName(parts[0]!);
-  return parts.length === 2 && isFolderName(parts[0]!) && isListedName(parts[1]!);
+  if (parts.length === 1) return watchedName(parts[0]!) || isFolderName(parts[0]!);
+  return parts.length === 2 && isFolderName(parts[0]!) && watchedName(parts[1]!);
+}
+
+/** A listed video, or a sound file that may be a saved copy listed under its recording (plan 100, Codex F2). */
+function watchedName(name: string): boolean {
+  return isListedName(name) || (!name.startsWith(".") && SOUND.test(name));
 }
 
 /**
@@ -218,7 +243,7 @@ export function listsAgain(name: string): boolean {
 export async function relists(dir: string, name: string, folders: readonly LibraryFolder[]): Promise<boolean> {
   if (!name) return true;
   if (!listsAgain(name)) return false;
-  if (/[\\/]/.test(name) || isListedName(name)) return true;
+  if (/[\\/]/.test(name) || watchedName(name)) return true;
   if (folders.some(entry => entry.name === name)) return true;
   return fs.stat(path.join(dir, name)).then(stat => stat.isDirectory(), () => false);
 }
@@ -240,7 +265,16 @@ export function fileId(filePath: string): string {
 
 export class RecordingsLibrary {
   private current: LibraryState;
-  private durations = new Map<string, { version: string; seconds: number | undefined; editable: boolean; camera?: boolean }>();
+  private durations = new Map<string, { version: string; seconds: number | undefined; editable: boolean; camera?: boolean; provenance?: Provenance }>();
+  /**
+   * Sound files in the tab's folders (plan 100): no card of their own, but one saved by Save a copy… is listed under its
+   * recording.
+   */
+  private sounds: Array<{ path: string; name: string; version: string }> = [];
+  /** A listed recording's identity hash, by path, for the file's version it was read from: what a copy's provenance names. */
+  private identities = new Map<string, { version: string; hash: string | undefined }>();
+  /** Saved copies found by their provenance: each copy's recording's name, and each recording's copies (D4). */
+  private links: { from: Map<string, string>; copies: Map<string, SavedCopy[]> } = { from: new Map(), copies: new Map() };
   /** `made` once the picture exists: only then does it belong to the bytes rather than to a path still to be read. */
   private thumbnails = new Map<string, Thumbnail>();
   /** Thumbnails being made, at most `THUMBNAILS_AT_ONCE`, and the ones waiting their turn, newest last. */
@@ -322,6 +356,7 @@ export class RecordingsLibrary {
     if (dir !== this.current.dir) this.current = { dir, loading: true, failed: false, files: [], folders: [] };
     let files: RecordingFile[];
     const folders: LibraryFolder[] = [];
+    const soundPaths: string[] = [];
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       // A file waiting to go to the Trash is already gone as far as the tab is concerned.
@@ -330,6 +365,10 @@ export class RecordingsLibrary {
         found.filter(entry => entry.isFile() && isListedName(entry.name) && !waiting.has(path.join(inside, entry.name)))
           .map(entry => ({ name: entry.name, filePath: path.join(inside, entry.name), ...(folder === undefined ? {} : { folder }) }));
       const candidates = videos(dir, entries);
+      // Sounds, for the copies saved as Sound only (plan 100): only beside listed videos, as Save a copy… saves them.
+      const sounds = (inside: string, found: Dirent[]): string[] =>
+        found.filter(entry => entry.isFile() && SOUND.test(entry.name) && !entry.name.startsWith(".")).map(entry => path.join(inside, entry.name));
+      soundPaths.push(...sounds(dir, entries));
       // One level only, and never through a link: a subfolder's own folders are not looked into.
       await mapLimited(entries.filter(entry => entry.isDirectory() && isFolderName(entry.name)), LISTING_CONCURRENCY, async entry => {
         const folderPath = path.join(dir, entry.name);
@@ -347,6 +386,7 @@ export class RecordingsLibrary {
         if (visible.length && !listed.length && !holdsWaiting) return;
         folders.push({ name: entry.name, empty: !visible.length });
         candidates.push(...listed);
+        soundPaths.push(...sounds(folderPath, inner));
       });
       folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       const stats = await mapLimited(candidates, LISTING_CONCURRENCY, async candidate => {
@@ -364,6 +404,7 @@ export class RecordingsLibrary {
           ...(known?.version === version && known.seconds !== undefined ? { duration: known.seconds } : {}),
           ...(known?.version === version && known.editable ? { editable: true as const, ...(known.camera === undefined ? {} : { editableCamera: known.camera }) } : {}),
           ...(folder === undefined ? {} : { folder }),
+          ...this.linksOf(filePath),
         };
       }).sort((a, b) => b.recordedAt - a.recordedAt || a.name.localeCompare(b.name) || (a.folder ?? "").localeCompare(b.folder ?? ""));
     } catch (cause) {
@@ -375,7 +416,14 @@ export class RecordingsLibrary {
       this.deps.changed();
       return;
     }
+    const sounds = await mapLimited(soundPaths, LISTING_CONCURRENCY, async filePath => {
+      try {
+        const stat = await fs.stat(filePath);
+        return stat.isFile() ? { path: filePath, name: path.basename(filePath), version: fileVersion(stat) } : undefined;
+      } catch { return undefined; }
+    });
     if (generation !== this.generation) return;
+    this.sounds = sounds.filter(sound => sound !== undefined);
     this.current = { dir, loading: false, failed: false, files, folders };
     this.forget(files, generation);
     this.deps.changed();
@@ -469,7 +517,7 @@ export class RecordingsLibrary {
     // A file waiting for the Trash keeps them, so Undo brings its card back as it was, and a listing begun before a
     // rename keeps what the rename carried to the new name; a later listing sees that name itself.
     for (const [carried, since] of this.carried) if (since < generation) this.carried.delete(carried);
-    const listed = new Set([...files.map(file => file.path), ...this.pendingTrash.map(entry => entry.path), ...this.carried.keys()]);
+    const listed = new Set([...files.map(file => file.path), ...this.sounds.map(sound => sound.path), ...this.pendingTrash.map(entry => entry.path), ...this.carried.keys()]);
     for (const cache of [this.durations, this.thumbnails]) {
       for (const filePath of cache.keys()) if (!listed.has(filePath)) cache.delete(filePath);
     }
@@ -480,27 +528,78 @@ export class RecordingsLibrary {
    * reading and once at the end, so a folder of long recordings fills in as it goes, not only once all are read.
    */
   private async readLengths(generation: number, run: number, files: RecordingFile[]): Promise<void> {
-    const missing = files.filter(file => this.durations.get(file.path)?.version !== file.version);
-    if (!missing.length) return;
+    const missing = [...files, ...this.sounds].filter(file => this.durations.get(file.path)?.version !== file.version);
+    if (!missing.length) {
+      if (await this.link(generation)) this.publishLengths();
+      return;
+    }
     const now = this.deps.now ?? (() => performance.now());
     let published = now();
     for (const [index, file] of missing.entries()) {
       if (run !== this.lengthsRun) return;
-      const { seconds, editable, description } = await mp4Facts(file.path);
+      const { seconds, editable, description, provenance: text } = await mp4Facts(file.path);
       const parsed = editable ? parseEditableDescription(description) : undefined;
       const camera = parsed ? parsed.camera !== null : undefined;
+      const provenance = parseProvenance(text);
       if (generation !== this.generation) return;
-      this.durations.set(file.path, { version: file.version, seconds, editable, ...(camera === undefined ? {} : { camera }) });
+      this.durations.set(file.path, { version: file.version, seconds, editable, ...(camera === undefined ? {} : { camera }), ...(provenance ? { provenance } : {}) });
       if (index < missing.length - 1 && now() - published >= LENGTHS_PUBLISH_MS) {
         this.publishLengths();
         published = now();
       }
     }
+    await this.link(generation);
+    if (generation !== this.generation) return;
     this.publishLengths();
+  }
+
+  /** What the saved copies found say of the file at `filePath` (plan 100, D4). */
+  private linksOf(filePath: string): Pick<RecordingFile, "savedFrom" | "copies"> {
+    const from = this.links.from.get(filePath);
+    const copies = this.links.copies.get(filePath);
+    return { ...(from === undefined ? {} : { savedFrom: from }), ...(copies?.length ? { copies } : {}) };
+  }
+
+  /**
+   * Finds each saved copy's recording by the identity its provenance names (plan 100, D4): among the listed recordings
+   * of the same size only, so a recording's first and last mebibyte are read only when a copy may be of it, and once per
+   * version. A copy whose recording is not listed still says the name it was saved from. Whether anything changed.
+   */
+  private async link(generation: number): Promise<boolean> {
+    const files = this.current.files;
+    const from = new Map<string, string>();
+    const copies = new Map<string, SavedCopy[]>();
+    for (const copy of [...files, ...this.sounds]) {
+      const known = this.durations.get(copy.path);
+      const provenance = known?.version === copy.version ? known.provenance : undefined;
+      if (!provenance) continue;
+      let source: RecordingFile | undefined;
+      for (const candidate of files) {
+        const read = this.deps.identity;
+        if (!read || candidate.size !== provenance.size || candidate.path === copy.path) continue;
+        let identity = this.identities.get(candidate.path);
+        if (identity?.version !== candidate.version) {
+          identity = { version: candidate.version, hash: await read(candidate.path).catch(() => undefined) };
+          if (generation !== this.generation) return false;
+          this.identities.set(candidate.path, identity);
+        }
+        if (identity.hash === provenance.hash) { source = candidate; break; }
+      }
+      from.set(copy.path, source?.name ?? provenance.from);
+      if (source) copies.set(source.path, [...(copies.get(source.path) ?? []), { path: copy.path, name: copy.name, form: provenance.form, saved: provenance.saved }]);
+    }
+    for (const list of copies.values()) list.sort((a, b) => b.saved - a.saved || a.name.localeCompare(b.name));
+    const listed = new Set(files.map(file => file.path));
+    for (const filePath of this.identities.keys()) if (!listed.has(filePath)) this.identities.delete(filePath);
+    const changed = JSON.stringify([[...this.links.from], [...this.links.copies]]) !== JSON.stringify([[...from], [...copies]]);
+    this.links = { from, copies };
+    return changed;
   }
 
   private publishLengths(): void {
     this.current = { ...this.current, files: this.current.files.map(file => {
+      const { savedFrom: _from, copies: _copies, ...rest } = file;
+      file = { ...rest, ...this.linksOf(file.path) };
       const known = this.durations.get(file.path);
       if (known?.version !== file.version) return file;
       return { ...file, ...(known.seconds !== undefined ? { duration: known.seconds } : {}),
@@ -514,12 +613,14 @@ export class RecordingsLibrary {
    * A failure lists the folder again before answering, so the reply already shows a file that left it: the
    * page then says so instead of offering a retry that cannot work.
    */
-  async act(id: string, action: Exclude<RecordingFileAction, "drag" | "dragOriginal">): Promise<boolean> {
+  async act(id: string, action: Exclude<RecordingFileAction, "drag" | "dragOriginal">, copy?: number): Promise<boolean> {
     const file = this.find(id);
     if (!file) return false;
     this.trashFailed = undefined;
     try {
-      if (action === "reveal") { await fs.access(file.path); this.deps.reveal(file.path); return true; }
+      // One of its saved copies (plan 100, D4), as the menu listed them.
+      const shown = copy === undefined ? file.path : file.copies?.[copy]?.path;
+      if (action === "reveal") { if (!shown) return false; await fs.access(shown); this.deps.reveal(shown); return true; }
       if (action === "open") {
         const error = await this.deps.open(file.path);
         if (!error) return true;

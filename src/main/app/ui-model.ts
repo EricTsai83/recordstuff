@@ -44,7 +44,8 @@ export type AppAction =
   | "showLastRecording"
   | { recordingResult: { id: string; action: RecordingResultAction } }
   /** A video the Recordings tab lists, by the id the page was given. */
-  | { recordingFile: { id: string; action: RecordingFileAction } }
+  /** `copy`: with `reveal`, one of its saved copies (plan 100, D4), by its place in `copies`. */
+  | { recordingFile: { id: string; action: RecordingFileAction; copy?: number } }
   /** Brings back the recording Move to Trash took last, while it still waits to be moved. */
   | "undoTrash"
   | "openPermissionSettings"

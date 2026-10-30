@@ -306,9 +306,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
   async function handleAction(action: AppAction): Promise<boolean | void> {
     if (deps.quitRequested() && action !== "quit" && action !== "quitWithoutWaiting") return false;
     if (typeof action !== "string" && "recordingFile" in action) {
-      const { id, action: verb } = action.recordingFile;
+      const { id, action: verb, copy } = action.recordingFile;
       // A drag belongs to the window it starts in (settings-window.ts).
-      return verb === "drag" || verb === "dragOriginal" ? false : library.act(id, verb);
+      return verb === "drag" || verb === "dragOriginal" ? false : library.act(id, verb, copy);
     }
     if (action === "undoTrash") return library.undoTrash();
     if (typeof action !== "string" && "recordingResult" in action) {

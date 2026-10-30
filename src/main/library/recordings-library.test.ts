@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LENGTHS_PUBLISH_MS, MoveFailure, RecordingsLibrary, type LibraryDeps, THUMBNAILS_AT_ONCE, THUMBNAILS_KEPT, UNDO_TRASH_MS, WATCH_SETTLE_MS, fileId, isFolderName, isListedName, listsAgain, parseRange, relists, stampedTime } from "./recordings-library";
 import { formatTimestamp } from "../recording/recorder";
+import { sourceIdentity } from "../editing/edit-store";
 
 let dir: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "recordstuff-library-")); });
@@ -729,6 +730,9 @@ describe("folders (plan 071)", () => {
   it("tells which watched changes can change the listing", () => {
     expect(["a.mp4", "Demos", "Demos/a.mp4", "Demos\\a.mp4"].every(listsAgain)).toBe(true);
     expect(["a.recording.mp4", "notes.txt", ".hidden", "Demos/notes.txt", "Demos/Deeper/a.mp4", "Lib.imovielibrary/a.mp4", ".x/a.mp4"].some(listsAgain)).toBe(false);
+    // A sound file may be a saved copy listed under its recording (plan 100, Codex F2); a hidden or deeper one is not.
+    expect(["a (sound).m4a", "Demos/a (sound).m4a"].every(listsAgain)).toBe(true);
+    expect(["._a.m4a", "Demos/Deeper/a.m4a"].some(listsAgain)).toBe(false);
     expect(["Demos", "Project v1.2", "Mr. Smith"].every(isFolderName)).toBe(true);
     expect([".hidden", "Foo.app", "iMovie Library.imovielibrary"].some(isFolderName)).toBe(false);
   });
@@ -950,5 +954,56 @@ describe("folders (plan 071)", () => {
     const second = library.flushTrash();
     await Promise.all([first, renaming, second]);
     expect([await renaming, library.state.trashFailed, fs.readdirSync(path.join(dir, "Talks"))]).toEqual([{ folder: "Talks" }, undefined, []]);
+  });
+});
+
+describe("saved copies (plan 100, D4)", () => {
+  const u32 = (n: number): Buffer => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+  const box = (type: string, ...parts: Buffer[]): Buffer => { const body = Buffer.concat(parts); return Buffer.concat([u32(body.length + 8), Buffer.from(type, "latin1"), body]); };
+  /** A copy as Save a copy… leaves one: a plain movie whose udta says where it came from. */
+  const copy = (name: string, provenance: object): string => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, Buffer.concat([box("mdat", Buffer.alloc(16)), box("moov", box("udta", box("rsfm", Buffer.from(JSON.stringify(provenance)))))]));
+    return file;
+  };
+
+  it("lists a recording's copies by the identity in each, newest first, its sound alone too, and says where each came from", async () => {
+    // Two recordings of the same size: only the one whose bytes match is the copies' recording.
+    const source = touch("Meeting.recordstuff.mp4", "a".repeat(3000));
+    touch("Other.mp4", "b".repeat(3000));
+    const { hash, size } = await sourceIdentity(source);
+    const base = { version: 1, from: "Meeting.recordstuff.mp4", size, hash, revision: 2 };
+    copy("Meeting.mp4", { ...base, form: "video", saved: 1000 });
+    copy("Meeting (sound).m4a", { ...base, form: "sound", saved: 2000 });
+    // Its recording deleted: it still says the name it was saved from.
+    copy("Lost.mp4", { ...base, from: "Lost.mp4", hash: "c".repeat(64), form: "video", saved: 500 });
+    copy("Not one.mp4", { version: 9 });
+    const { library, deps } = setup({ identity: async (file) => (await sourceIdentity(file)).hash });
+    await library.refresh();
+    await library.lengths;
+    const byName = new Map(library.state.files.map(file => [file.name, file]));
+    expect(byName.get("Meeting.recordstuff.mp4")?.copies).toEqual([
+      { path: path.join(dir, "Meeting (sound).m4a"), name: "Meeting (sound).m4a", form: "sound", saved: 2000 },
+      { path: path.join(dir, "Meeting.mp4"), name: "Meeting.mp4", form: "video", saved: 1000 },
+    ]);
+    expect(byName.get("Meeting.mp4")?.savedFrom).toBe("Meeting.recordstuff.mp4");
+    expect(byName.get("Lost.mp4")?.savedFrom).toBe("Lost.mp4");
+    expect(byName.get("Other.mp4")).not.toHaveProperty("copies");
+    expect(byName.get("Not one.mp4")).not.toHaveProperty("savedFrom");
+    // A sound file has no card of its own.
+    expect(byName.has("Meeting (sound).m4a")).toBe(false);
+
+    // The recording renamed in Finder: its copies follow it by its bytes.
+    fs.renameSync(source, path.join(dir, "Renamed.recordstuff.mp4"));
+    await library.refresh();
+    await library.lengths;
+    const renamed = library.state.files.find(file => file.name === "Renamed.recordstuff.mp4");
+    expect(renamed?.copies?.map(item => item.name)).toEqual(["Meeting (sound).m4a", "Meeting.mp4"]);
+    expect(library.state.files.find(file => file.name === "Meeting.mp4")?.savedFrom).toBe("Renamed.recordstuff.mp4");
+
+    // Its menu's Saved copies shows one in Finder, by its place in the list; a place past it shows nothing.
+    expect(await library.act(renamed!.id, "reveal", 0)).toBe(true);
+    expect(deps.reveal).toHaveBeenLastCalledWith(path.join(dir, "Meeting (sound).m4a"));
+    expect(await library.act(renamed!.id, "reveal", 5)).toBe(false);
   });
 });
