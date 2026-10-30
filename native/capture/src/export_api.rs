@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use napi::bindgen_prelude::{AsyncTask, Function};
@@ -17,6 +16,7 @@ use napi_derive::napi;
 
 use crate::camera_layout::Layout;
 use crate::core::gain_factor;
+use crate::edit::control::Control;
 use crate::edit::plan::Plan;
 use crate::edit::remux::{self, Codecs, ExportError, JoinPolicy};
 use crate::edit::render::{self, RenderOptions, Renderer};
@@ -180,10 +180,10 @@ struct Parsed {
 }
 
 /// The platform's renderer for an editable recording's export (plan 087): macOS only.
-fn renderer() -> std::result::Result<Box<dyn Renderer>, ExportError> {
+fn renderer(control: Arc<Control>) -> std::result::Result<Box<dyn Renderer>, ExportError> {
     #[cfg(target_os = "macos")]
     {
-        Ok(Box::new(crate::mac::render::MacRenderer))
+        Ok(Box::new(crate::mac::render::MacRenderer::new(control)))
     }
     #[cfg(not(target_os = "macos"))]
     Err(ExportError { code: "unsupported", detail: "an editable recording is exported on macOS only".into() })
@@ -308,7 +308,7 @@ pub struct CopyTracksTask {
     source: PathBuf,
     output: PathBuf,
     which: Vec<render::Extract>,
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Control>,
     progress: Arc<ProgressCallback>,
 }
 
@@ -342,7 +342,7 @@ impl Task for ExtractTask {
     type JsValue = f64;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let bytes = render::extract(&self.source, &self.output, self.which, &AtomicBool::new(false)).map_err(reject)?;
+        let bytes = render::extract(&self.source, &self.output, self.which, &Control::new(false)).map_err(reject)?;
         Ok(bytes as f64)
     }
 
@@ -353,7 +353,7 @@ impl Task for ExtractTask {
 
 pub struct RunTask {
     request: Option<Parsed>,
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Control>,
     progress: Arc<ProgressCallback>,
 }
 
@@ -369,7 +369,7 @@ impl Task for RunTask {
             progress.call(fraction, ThreadsafeFunctionCallMode::NonBlocking);
         };
         if let Some(options) = request.render.as_ref() {
-            let mut renderer = renderer().map_err(reject)?;
+            let mut renderer = renderer(self.cancel.clone()).map_err(reject)?;
             let done = render::export(&request.source, &output, &request.removed, options, renderer.as_mut(), &mut report, &self.cancel).map_err(reject)?;
             return Ok(ExportResult {
                 plan: plan_view(done.source, &done.plan, false, done.description),
@@ -395,7 +395,7 @@ impl Task for RunTask {
 
 #[napi]
 pub struct NativeExport {
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Control>,
     progress: Arc<ProgressCallback>,
     known: Known,
 }
@@ -407,7 +407,7 @@ impl NativeExport {
     pub fn new(on_progress: Function<f64, ()>) -> Result<Self> {
         // Weak: a pending export keeps its process alive through its promise; the callback alone should not.
         let progress = on_progress.build_threadsafe_function().callee_handled::<false>().weak::<true>().build()?;
-        Ok(Self { cancel: Arc::new(AtomicBool::new(false)), progress: Arc::new(progress), known: Arc::default() })
+        Ok(Self { cancel: Arc::new(Control::new(false)), progress: Arc::new(progress), known: Arc::default() })
     }
 
     #[napi(ts_return_type = "Promise<ExportPlan>")]
@@ -417,7 +417,7 @@ impl NativeExport {
 
     #[napi(ts_return_type = "Promise<ExportResult>")]
     pub fn run(&self, request: ExportRequest) -> Result<AsyncTask<RunTask>> {
-        self.cancel.store(false, Ordering::Release);
+        self.cancel.reset();
         Ok(AsyncTask::new(RunTask { request: Some(parse(request)?), cancel: self.cancel.clone(), progress: self.progress.clone() }))
     }
 
@@ -457,7 +457,7 @@ impl NativeExport {
                 other => Err(failure("invalid_range", format!("no track {other:?} to copy"))),
             })
             .collect::<Result<Vec<_>>>()?;
-        self.cancel.store(false, Ordering::Release);
+        self.cancel.reset();
         Ok(AsyncTask::new(CopyTracksTask {
             source: PathBuf::from(source),
             output: PathBuf::from(output),
@@ -478,7 +478,21 @@ impl NativeExport {
     /// Stops the running export at its next fragment; it then rejects with `cancelled`.
     #[napi]
     pub fn cancel(&self) {
-        self.cancel.store(true, Ordering::Release);
+        self.cancel.cancel();
+    }
+
+    /// Holds the running export, and any started after, at its next picture until resumed (plan 100 step 4): a
+    /// version prepared ahead yields to a recording without losing what it made. A cancel still ends it.
+    #[napi]
+    pub fn pause(&self, paused: bool) {
+        self.cancel.pause(paused);
+    }
+
+    /// While a recording runs, a render keeps one picture in the encoder at a time instead of several (plan 100 step 4),
+    /// so the recording's own pictures never queue behind more than one of it.
+    #[napi]
+    pub fn careful(&self, careful: bool) {
+        self.cancel.set_careful(careful);
     }
 }
 

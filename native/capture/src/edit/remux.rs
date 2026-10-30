@@ -7,10 +7,10 @@
 //! The source is opened read-only and nothing here writes, renames or removes it. The output must not exist yet; it
 //! is created here, synced by the muxer's finish and published by main, which removes it on any failure.
 
+use super::control::Control;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use super::plan::{self, AudioPlan, JoinRule, PACKET, Plan};
@@ -309,15 +309,13 @@ struct Progress<'a> {
     done: u64,
     last: Instant,
     report: &'a mut dyn FnMut(f64),
-    cancel: &'a AtomicBool,
+    cancel: &'a Control,
 }
 
 impl Progress<'_> {
     fn advance(&mut self, bytes: u64) -> Result<(), ExportError> {
         self.done += bytes;
-        if self.cancel.load(Ordering::Acquire) {
-            return Err(ExportError::new("cancelled", "the export was cancelled"));
-        }
+        self.cancel.checkpoint("export")?;
         if self.last.elapsed() >= PROGRESS_INTERVAL {
             self.last = Instant::now();
             (self.report)((self.done as f64 / self.total.max(1) as f64).min(1.0));
@@ -517,7 +515,7 @@ pub fn remux<O: Output>(
     codecs: &mut dyn Codecs,
     out: O,
     report: &mut dyn FnMut(f64),
-    cancel: &AtomicBool,
+    cancel: &Control,
 ) -> Result<Remuxed<O>, ExportError> {
     let Prepared { plan, alternate, mut first } = prepared;
     let plan = &plan;
@@ -584,9 +582,7 @@ pub fn remux<O: Output>(
     if let Some(layout) = plan.audio.as_ref() {
         mp4.set_presented(1, layout.presented);
     }
-    if cancel.load(Ordering::Acquire) {
-        return Err(ExportError::new("cancelled", "the export was cancelled"));
-    }
+    cancel.checkpoint("export")?;
     let (finished, out) = mp4.finish().map_err(|e| ExportError::write(&e, "finishing the export"))?;
     if let Some(reason) = finished.fragmented {
         return Err(ExportError::new("output_write_failed", format!("the export's index was not written: {reason}")));
@@ -604,7 +600,7 @@ pub fn export(
     policy: JoinPolicy,
     codecs: &mut dyn Codecs,
     report: &mut dyn FnMut(f64),
-    cancel: &AtomicBool,
+    cancel: &Control,
 ) -> Result<ExportReport, ExportError> {
     let source = File::open(source_path).map_err(|e| ExportError::read(&e))?;
     let index = source::read(&source)?;
@@ -734,7 +730,7 @@ pub(crate) mod tests {
         let prepared = prepare(&index, file, removed, policy, codecs, Probe::FirstRun).unwrap();
         let second = prepared.alternate.is_some();
         let plan = prepared.plan.clone();
-        let cancel = AtomicBool::new(false);
+        let cancel = Control::new(false);
         let done = remux(file, &index, prepared, codecs, Vec::new(), &mut |_| {}, &cancel).unwrap();
         assert_eq!(done.bytes as usize, done.out.len());
         (plan, done.out, second)
@@ -902,7 +898,7 @@ pub(crate) mod tests {
         let file = recording(3);
         let index = source::read(&file).unwrap();
         let prepared = prepare(&index, &file, &[(90_000, 120_000)], JoinPolicy::Auto, &mut fakes(), Probe::FirstRun).unwrap();
-        let cancel = AtomicBool::new(true);
+        let cancel = Control::new(true);
         let error = remux(&file, &index, prepared, &mut fakes(), Vec::new(), &mut |_| {}, &cancel).err().unwrap();
         assert_eq!(error.code, "cancelled");
     }
@@ -924,7 +920,7 @@ pub(crate) mod tests {
         let file = recording(3);
         let index = source::read(&file).unwrap();
         let prepared = prepare(&index, &file, &[(90_000, 120_000)], JoinPolicy::Auto, &mut fakes(), Probe::FirstRun).unwrap();
-        let cancel = AtomicBool::new(false);
+        let cancel = Control::new(false);
         let error = remux(&file, &index, prepared, &mut fakes(), Full, &mut |_| {}, &cancel).err().unwrap();
         assert_eq!(error.code, "disk_full");
     }
@@ -938,7 +934,7 @@ pub(crate) mod tests {
         let before = std::fs::read(&source).unwrap();
         let output = dir.join("out.mp4");
         std::fs::write(&output, b"someone else's").unwrap();
-        let cancel = AtomicBool::new(false);
+        let cancel = Control::new(false);
         let error = export(&source, &output, &[(0, 30_000)], JoinPolicy::Auto, &mut fakes(), &mut |_| {}, &cancel).err().unwrap();
         assert_eq!(error.code, "output_exists");
         assert_eq!(std::fs::read(&output).unwrap(), b"someone else's");

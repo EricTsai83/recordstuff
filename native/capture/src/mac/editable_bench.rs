@@ -440,7 +440,16 @@ fn a_rendered_export_composes_the_camera_where_the_edit_puts_it_and_mixes_at_its
         RenderOptions { camera: Some(corner), camera_hidden: Vec::new(), gain_stretches: Vec::new(), gains: vec![0.0, 1.0], sound_tracks: Some(vec![1, 2]) };
     // Half a second removed from the middle (90 kHz ticks).
     let removed = [(90_000u64, 135_000u64)];
-    let report = render::export(&source, &output, &removed, &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+    let report = render::export(
+        &source,
+        &output,
+        &removed,
+        &options,
+        &mut crate::mac::render::MacRenderer::default(),
+        &mut |_| {},
+        &crate::edit::control::Control::new(false),
+    )
+    .unwrap();
     assert_eq!(std::fs::read(&source).unwrap(), before, "the source is never written");
     let file = crate::mac::edit_test::tracks(&output);
     assert_eq!(file.tracks.len(), 2, "one picture, one sound");
@@ -568,7 +577,16 @@ fn a_recording_with_a_mix_exports_the_sound_the_same_inputs_without_it_do() {
         let (source, output) = (dir.join(format!("source-{mix}.mp4")), dir.join(format!("export-{mix}.mp4")));
         let _ = std::fs::remove_file(&output);
         write(&source, mix);
-        render::export(&source, &output, &[], &options(sound_tracks), &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+        render::export(
+            &source,
+            &output,
+            &[],
+            &options(sound_tracks),
+            &mut crate::mac::render::MacRenderer::default(),
+            &mut |_| {},
+            &crate::edit::control::Control::new(false),
+        )
+        .unwrap();
         let file = crate::mac::edit_test::tracks(&output);
         let config = crate::edit::source::read(&std::fs::File::open(&output).unwrap()).unwrap().audio.unwrap().config;
         exported.push(decoded(&file, 1, &config));
@@ -680,13 +698,22 @@ fn render_bench() {
     };
     let output = dir.join("export.mp4");
     let began = Instant::now();
-    let done = render::export(&source, &output, &[], &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+    let done = render::export(
+        &source,
+        &output,
+        &[],
+        &options,
+        &mut crate::mac::render::MacRenderer::default(),
+        &mut |_| {},
+        &crate::edit::control::Control::new(false),
+    )
+    .unwrap();
     let elapsed = began.elapsed().as_secs_f64();
     let bytes = std::fs::metadata(&output).unwrap().len();
     std::fs::remove_file(&output).unwrap();
     let mut cancel_ms = Vec::new();
     for n in 0..cancels {
-        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel = Arc::new(crate::edit::control::Control::new(false));
         let at = Duration::from_millis(200 + (n as u64 * 7919) % 3000);
         let flag = cancel.clone();
         let asked = Arc::new(Mutex::new(None));
@@ -694,9 +721,9 @@ fn render_bench() {
         let timer = std::thread::spawn(move || {
             std::thread::sleep(at);
             *when.lock().unwrap() = Some(Instant::now());
-            flag.store(true, Ordering::Release);
+            flag.cancel();
         });
-        let result = render::export(&source, &output, &[], &options, &mut crate::mac::render::MacRenderer, &mut |_| {}, &cancel);
+        let result = render::export(&source, &output, &[], &options, &mut crate::mac::render::MacRenderer::default(), &mut |_| {}, &cancel);
         let ended = Instant::now();
         timer.join().unwrap();
         assert_eq!(result.err().map(|e| e.code), Some("cancelled"), "the render ended before its cancel at {at:?}");
@@ -713,4 +740,16 @@ fn render_bench() {
     std::fs::remove_dir_all(&dir).unwrap();
     assert!(seconds as f64 / elapsed >= 1.0, "rendered at {:.2}× real time", seconds as f64 / elapsed);
     assert!(p95 <= 2000.0, "cancel p95 {p95} ms");
+}
+
+/// Plan 100 step 4's gate: a synthetic 1080p30 editable recording with its camera and two sounds, `PACE_SOURCE_SECONDS`
+/// (600) long, written to `PACE_SOURCE` for the app to prepare its Video while a recording runs (`pnpm matrix --
+/// pace --prepare <file>`). Made at once, not in real time.
+#[test]
+#[ignore = "run on its own: PACE_SOURCE=<file> cargo test --release --lib pace_source -- --ignored"]
+fn pace_source() {
+    let path = std::path::PathBuf::from(std::env::var("PACE_SOURCE").expect("PACE_SOURCE names the file to write"));
+    let seconds: u64 = std::env::var("PACE_SOURCE_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(600);
+    editable_source(&path, seconds);
+    println!("PACE_SOURCE {} ({seconds} s, {} bytes)", path.display(), std::fs::metadata(&path).unwrap().len());
 }

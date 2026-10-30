@@ -14,10 +14,10 @@
 //! bound), a second of sound per track decoded at a time and one fragment per track in the muxer. The output's index
 //! grows with it, as a recording's does. Cancel is checked at every picture.
 
+use super::control::Control;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use super::plan::{self, JoinRule, PACKET, Plan};
@@ -116,7 +116,7 @@ pub fn export(
     options: &RenderOptions,
     renderer: &mut dyn Renderer,
     report: &mut dyn FnMut(f64),
-    cancel: &AtomicBool,
+    cancel: &Control,
 ) -> Result<RenderReport, ExportError> {
     let source = File::open(source_path).map_err(|e| ExportError::read(&e))?;
     let index = source::read(&source)?;
@@ -148,7 +148,7 @@ pub enum Extract {
 /// Copies one of `source_path`'s tracks, as it is, into a file of its own at `output_path`, which must not exist, for
 /// the edit view's preview (plan 087): the camera or a disabled sound track, never the one players play. Its samples,
 /// times and (for sound) edit unchanged, so it plays on the recording's own clock. Returns the bytes written.
-pub fn extract(source_path: &Path, output_path: &Path, which: Extract, cancel: &AtomicBool) -> Result<u64, ExportError> {
+pub fn extract(source_path: &Path, output_path: &Path, which: Extract, cancel: &Control) -> Result<u64, ExportError> {
     if matches!(which, Extract::Screen | Extract::Sound(0)) {
         return Err(ExportError::new("unsupported", format!("{which:?} is not a preview track")));
     }
@@ -176,7 +176,7 @@ struct Copied<'a> {
 /// track the recording does not have is refused. Nothing is decoded; fragments of a few seconds, each track up to the
 /// same time, each video fragment from a key frame on. `progress` hears the fraction copied; cancel is checked at every
 /// sample. Returns the bytes written.
-pub fn copy_tracks(source_path: &Path, output_path: &Path, which: &[Extract], progress: &mut dyn FnMut(f64), cancel: &AtomicBool) -> Result<u64, ExportError> {
+pub fn copy_tracks(source_path: &Path, output_path: &Path, which: &[Extract], progress: &mut dyn FnMut(f64), cancel: &Control) -> Result<u64, ExportError> {
     use crate::mux::mp4::{HybridMp4, Sample};
     if which.is_empty() {
         return Err(ExportError::new("invalid_range", "no track to copy"));
@@ -259,9 +259,7 @@ pub fn copy_tracks(source_path: &Path, output_path: &Path, which: &[Extract], pr
             }
             let mut chunk: Vec<(Vec<u8>, u32, bool)> = Vec::with_capacity(to - from);
             remux::for_each_sample(&source, track.samples, from, to, &mut |n, data| {
-                if cancel.load(Ordering::Acquire) {
-                    return Err(ExportError::new("cancelled", "the copy was cancelled"));
-                }
+                cancel.checkpoint("copy")?;
                 chunk.push((data.to_vec(), track.samples.durations[n], track.sync.is_none_or(|sync| sync[n])));
                 Ok(())
             })?;
@@ -378,15 +376,13 @@ struct Progress<'a> {
     done: u64,
     last: Instant,
     report: &'a mut dyn FnMut(f64),
-    cancel: &'a AtomicBool,
+    cancel: &'a Control,
 }
 
 impl Progress<'_> {
     fn advance(&mut self) -> Result<(), ExportError> {
         self.done += 1;
-        if self.cancel.load(Ordering::Acquire) {
-            return Err(ExportError::new("cancelled", "the export was cancelled"));
-        }
+        self.cancel.checkpoint("export")?;
         if self.last.elapsed() >= PROGRESS_INTERVAL {
             self.last = Instant::now();
             (self.report)((self.done as f64 / self.total.max(1) as f64).min(1.0));
@@ -547,7 +543,7 @@ fn render(
     renderer: &mut dyn Renderer,
     file: File,
     report: &mut dyn FnMut(f64),
-    cancel: &AtomicBool,
+    cancel: &Control,
 ) -> Result<(u64, u64), ExportError> {
     let screen = &index.video;
     let timescale = screen.timescale;
@@ -683,9 +679,7 @@ fn render(
         output.sound(rest)?;
         audio_frames = Some(sound.total);
     }
-    if output.progress.cancel.load(Ordering::Acquire) {
-        return Err(ExportError::new("cancelled", "the export was cancelled"));
-    }
+    output.progress.cancel.checkpoint("export")?;
     let muxer = output.muxer.take().ok_or_else(|| ExportError::new("encode_failed", "the encoder made no picture"))?;
     let (finished, _) = muxer.finish_tracks(plan.duration, &[audio_frames]).map_err(|e| ExportError::write(&e, "finishing the export"))?;
     if let Some(reason) = finished.fragmented {
@@ -822,7 +816,7 @@ mod tests {
         let calls = Arc::new(Mutex::new(Calls::default()));
         let path = temp(name);
         let out = File::create(&path).unwrap();
-        let result = render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), out, &mut |_| {}, &AtomicBool::new(cancel));
+        let result = render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), out, &mut |_| {}, &Control::new(cancel));
         let calls = std::mem::take(&mut *calls.lock().unwrap());
         (result, calls, path)
     }
@@ -1035,7 +1029,7 @@ mod tests {
         std::fs::write(&plain, crate::edit::remux::tests::recording(2)).unwrap();
         let output = temp("plain-output");
         let options = RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: None, gains: vec![], sound_tracks: None };
-        let error = export(&plain, &output, &[], &options, &mut FakeRenderer(Arc::default()), &mut |_| {}, &AtomicBool::new(false)).err().unwrap();
+        let error = export(&plain, &output, &[], &options, &mut FakeRenderer(Arc::default()), &mut |_| {}, &Control::new(false)).err().unwrap();
         assert_eq!(error.code, "unsupported");
         assert!(!output.exists(), "nothing is created for a refused export");
         std::fs::remove_file(&plain).unwrap();
@@ -1048,7 +1042,7 @@ mod tests {
         let index = source::read(&std::fs::read(&source).unwrap()).unwrap();
         for (which, name) in [(Extract::Camera, "extract-camera"), (Extract::Sound(1), "extract-sound")] {
             let output = temp(name);
-            extract(&source, &output, which, &AtomicBool::new(false)).unwrap();
+            extract(&source, &output, which, &Control::new(false)).unwrap();
             let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
             assert_eq!(copied.tracks.len(), 1);
             let track = &copied.tracks[0];
@@ -1068,20 +1062,20 @@ mod tests {
                 }
             }
             // Never over a file that exists.
-            assert_eq!(extract(&source, &output, which, &AtomicBool::new(false)).unwrap_err().code, "output_exists");
+            assert_eq!(extract(&source, &output, which, &Control::new(false)).unwrap_err().code, "output_exists");
             std::fs::remove_file(&output).unwrap();
         }
         // The sound players play is never a preview track, nor a track the recording does not have.
         let output = temp("extract-none");
         for which in [Extract::Sound(0), Extract::Sound(2)] {
-            assert_eq!(extract(&source, &output, which, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
+            assert_eq!(extract(&source, &output, which, &Control::new(false)).unwrap_err().code, "unsupported");
             assert!(!output.exists());
         }
         // With a mix (plan 098), each input's own track, in order.
         let mixed = temp("extract-mixed-source");
         std::fs::write(&mixed, editable_recording_with(2, true, true)).unwrap();
         for (n, mark) in [(1, 2u8), (2, 3)] {
-            extract(&mixed, &output, Extract::Sound(n), &AtomicBool::new(false)).unwrap();
+            extract(&mixed, &output, Extract::Sound(n), &Control::new(false)).unwrap();
             let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
             assert!(copied.tracks[0].samples.iter().all(|s| s.data == [mark; 9]), "track {n}");
             std::fs::remove_file(&output).unwrap();
@@ -1089,7 +1083,7 @@ mod tests {
         std::fs::remove_file(&mixed).unwrap();
         let plain = temp("extract-plain");
         std::fs::write(&plain, crate::edit::remux::tests::recording(1)).unwrap();
-        assert_eq!(extract(&plain, &output, Extract::Camera, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
+        assert_eq!(extract(&plain, &output, Extract::Camera, &Control::new(false)).unwrap_err().code, "unsupported");
         assert!(!output.exists());
         std::fs::remove_file(&plain).unwrap();
         std::fs::remove_file(&source).unwrap();
@@ -1103,7 +1097,7 @@ mod tests {
         let index = source::read(&std::fs::read(&mixed).unwrap()).unwrap();
         let output = temp("copy-screen-and-mix");
         let mut reported = Vec::new();
-        copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Sound(0)], &mut |f| reported.push(f), &AtomicBool::new(false)).unwrap();
+        copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Sound(0)], &mut |f| reported.push(f), &Control::new(false)).unwrap();
         let copied = parse(&std::fs::read(&output).unwrap()).unwrap();
         assert_eq!(copied.tracks.len(), 2);
         assert!(!copied.tracks[0].fragmented, "a plain file");
@@ -1114,20 +1108,20 @@ mod tests {
         assert_eq!(copied.tracks[1].samples.len(), index.sound(0).unwrap().samples.len());
         assert_eq!(copied.tracks[1].edit.map(|(_, media)| media), Some(2112));
         assert_eq!(reported.last(), Some(&1.0));
-        assert_eq!(copy_tracks(&mixed, &output, &[Extract::Screen], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "output_exists");
+        assert_eq!(copy_tracks(&mixed, &output, &[Extract::Screen], &mut |_| {}, &Control::new(false)).unwrap_err().code, "output_exists");
         std::fs::remove_file(&output).unwrap();
         // Cancelled: an error, and the caller removes what was begun.
-        let cancelled = copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &AtomicBool::new(true));
+        let cancelled = copy_tracks(&mixed, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &Control::new(true));
         assert_eq!(cancelled.unwrap_err().code, "cancelled");
         std::fs::remove_file(&output).unwrap();
         // A track the recording does not have, or none at all, is refused before anything is created.
         let plain = temp("copy-plain");
         std::fs::write(&plain, crate::edit::remux::tests::recording(1)).unwrap();
-        assert_eq!(copy_tracks(&plain, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "unsupported");
-        assert_eq!(copy_tracks(&plain, &output, &[], &mut |_| {}, &AtomicBool::new(false)).unwrap_err().code, "invalid_range");
+        assert_eq!(copy_tracks(&plain, &output, &[Extract::Screen, Extract::Camera], &mut |_| {}, &Control::new(false)).unwrap_err().code, "unsupported");
+        assert_eq!(copy_tracks(&plain, &output, &[], &mut |_| {}, &Control::new(false)).unwrap_err().code, "invalid_range");
         assert!(!output.exists());
         // A plain recording's sound alone (Sound only of one never edited).
-        copy_tracks(&plain, &output, &[Extract::Sound(0)], &mut |_| {}, &AtomicBool::new(false)).unwrap();
+        copy_tracks(&plain, &output, &[Extract::Sound(0)], &mut |_| {}, &Control::new(false)).unwrap();
         let sound = parse(&std::fs::read(&output).unwrap()).unwrap();
         assert_eq!(sound.tracks.len(), 1);
         assert_eq!(sound.tracks[0].descriptions, ["mp4a"]);
@@ -1149,8 +1143,7 @@ mod tests {
         let options =
             RenderOptions { gain_stretches: Vec::new(), camera_hidden: Vec::new(), camera: Some(Layout::default()), gains: vec![1.0, 1.0], sound_tracks: None };
         let (_, frames) =
-            render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &AtomicBool::new(false))
-                .unwrap();
+            render(&file, &index, &plan, &options, &mut FakeRenderer(calls.clone()), File::create(&path).unwrap(), &mut |_| {}, &Control::new(false)).unwrap();
         assert_eq!(frames, 60);
         let calls = calls.lock().unwrap();
         assert!(calls.composed.iter().all(|(screen, camera)| camera.as_deref() == Some(&[4, screen[1]][..])));

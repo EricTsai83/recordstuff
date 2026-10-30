@@ -20,6 +20,8 @@ impl Platform for Fake {
     type Frame = u32;
     type Video = FakeVideo;
     type Audio = FakeAudio;
+    // As ScreenCaptureKit; the tests of change-driven capture say so where they need it.
+    const DELIVERS_EVERY_REFRESH: bool = true;
 
     fn now_ns() -> u64 {
         // Far from zero, as host clocks are.
@@ -192,10 +194,19 @@ impl Rig {
 
     /// As `made`, `mix` false leaving the mixed track out of separate tracks before the encoders are made (plan 098).
     fn made_with(name: &str, inputs: usize, separate: bool, mix: bool) -> Self {
+        Self::made_at(name, inputs, separate, mix, 30)
+    }
+
+    /// A recording at `frame_rate` frames a second, one sound input.
+    fn at_rate(name: &str, frame_rate: u32) -> Self {
+        Self::made_at(name, 1, false, true, frame_rate)
+    }
+
+    fn made_at(name: &str, inputs: usize, separate: bool, mix: bool, frame_rate: u32) -> Self {
         let path = std::env::temp_dir().join(format!("recordstuff-core-{name}-{}.mp4", std::process::id()));
         let file = File::create(&path).unwrap();
         let heard = Arc::new(Heard::default());
-        let core = Core::<Fake>::new(heard.clone(), 30, 192_000, inputs, file);
+        let core = Core::<Fake>::new(heard.clone(), frame_rate, 192_000, inputs, file);
         core.separate_sound(separate);
         if !mix {
             core.leave_out_mix();
@@ -1003,6 +1014,37 @@ fn a_refresh_capture_skipped_is_filled_with_the_newest_picture() {
     // too soon after that, is left out rather than kept 17 ms early.
     assert_eq!(gaps, [33, 33, 33, 33], "encoded {encoded:?}");
     assert_eq!(encoded[1..].iter().map(|&(frame, _)| frame).collect::<Vec<_>>(), [102, 104, 105, 108, 110]);
+    // The filled slot is one picture lost, counted once (plan 100 step 4's health).
+    assert_eq!(rig.shared.health().take().lost, 1);
+    rig.stop();
+}
+
+#[test]
+fn the_health_counts_the_pictures_lost_to_a_skipped_refresh_but_not_a_still_screen() {
+    // Plan 100 step 4: 60 fps from a 60 Hz display, every refresh a slot's, so a refresh capture skipped leaves a slot
+    // the pacer cannot fill (Codex F1).
+    let mut rig = Rig::at_rate("health", 60);
+    rig.shared.frame(1, Fake::now_ns());
+    rig.core.first_frame(Duration::from_secs(1)).unwrap();
+    rig.core.record().unwrap();
+    wait_for("the first frame", || !rig.encoded.lock().unwrap().is_empty());
+    let health = rig.shared.health();
+    health.take();
+    let t0 = rig.shared.t0_ns.load(Ordering::Acquire);
+    let refresh = |n: u64| t0 + n * 16_666_667 + 1_000_000;
+    for n in 1..=6 {
+        if n != 4 {
+            rig.shared.frame(100 + n as u32, refresh(n));
+        }
+    }
+    let sample = health.take();
+    assert_eq!(sample.lost, 1, "the skipped refresh's slot: {sample:?}");
+    // A still screen that changes again after a second loses nothing; nor do refreshes that all come.
+    rig.shared.frame(200, refresh(66));
+    for n in 67..=70 {
+        rig.shared.frame(200 + n as u32, refresh(n));
+    }
+    assert_eq!(health.take().lost, 0);
     rig.stop();
 }
 

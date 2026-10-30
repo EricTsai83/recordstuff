@@ -266,7 +266,7 @@ fn decode_aac(format: &AudioFormat, packets: &[Vec<u8>]) -> Result<Vec<f32>, Str
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicBool;
+    use crate::edit::control::Control;
 
     use super::*;
     use crate::edit::remux::{self, JoinPolicy};
@@ -352,7 +352,7 @@ mod tests {
         mp4.finish().unwrap();
         let before = std::fs::read(&path).unwrap();
         let output = dir.join("out.mp4");
-        let cancel = AtomicBool::new(false);
+        let cancel = Control::new(false);
         // Remove 0.5 s .. 1.5 s: the part resumes at frame 45, inside the group from 30.
         let report = remux::export(&path, &output, &[(45_000, 135_000)], JoinPolicy::Auto, &mut WinCodecs, &mut |_| {}, &cancel).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), before);

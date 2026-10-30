@@ -72,6 +72,8 @@ impl Platform for Mac {
     type Frame = Frame;
     type Video = Video;
     type Audio = AacEncoder;
+    // ScreenCaptureKit delivers every refresh, an unchanged one as idle.
+    const DELIVERS_EVERY_REFRESH: bool = true;
 
     fn now_ns() -> u64 {
         now_ns()
@@ -786,6 +788,11 @@ impl Session {
     /// The session's stage figures, when the development switch asks for them (plan 083).
     pub fn diagnostics(&self) -> Option<Arc<core::Diagnostics>> {
         self.core.shared().diagnostics()
+    }
+
+    /// The recording's health, read once a second while it runs (plan 100 step 4).
+    pub fn health(&self) -> Arc<core::health::Health> {
+        self.core.shared().health()
     }
 }
 

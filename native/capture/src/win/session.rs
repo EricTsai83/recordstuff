@@ -435,6 +435,11 @@ impl Session {
     pub fn diagnostics(&self) -> Option<Arc<core::Diagnostics>> {
         self.core.shared().diagnostics()
     }
+
+    /// The recording's health, read once a second while it runs (plan 100 step 4).
+    pub fn health(&self) -> Arc<core::health::Health> {
+        self.core.shared().health()
+    }
 }
 
 impl Drop for Session {

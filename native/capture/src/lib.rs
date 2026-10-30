@@ -444,6 +444,10 @@ type Finishing = core::Finishing;
 type Finishing = ();
 #[cfg(any(target_os = "macos", windows))]
 type SessionDiagnostics = Arc<core::Diagnostics>;
+#[cfg(any(target_os = "macos", windows))]
+type SessionHealth = Arc<core::health::Health>;
+#[cfg(not(any(target_os = "macos", windows)))]
+type SessionHealth = ();
 #[cfg(not(any(target_os = "macos", windows)))]
 type SessionDiagnostics = ();
 
@@ -461,6 +465,19 @@ pub struct NativeCapture {
     devices: Mutex<Option<DeviceWatch>>,
     /// The last prepared session's stage figures (plan 083), until the next session is prepared.
     diagnostics: Arc<Mutex<Option<SessionDiagnostics>>>,
+    /// The last prepared session's health (plan 100 step 4), until the next session is prepared.
+    health: Arc<Mutex<Option<SessionHealth>>>,
+}
+
+/// One second of a recording's health (core/health.rs).
+#[napi(object)]
+pub struct RecordingHealth {
+    /// Pictures handed over more than a frame's time after they were captured.
+    pub late: u32,
+    /// Pictures the recording lost: a refresh capture skipped, or one the encoder dropped.
+    pub lost: u32,
+    /// The most pictures in the encoder at once.
+    pub backlog: u32,
 }
 
 #[napi]
@@ -476,7 +493,26 @@ impl NativeCapture {
             meter: Arc::new(Mutex::new(None)),
             devices: Mutex::new(None),
             diagnostics: Arc::new(Mutex::new(None)),
+            health: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// The prepared session's health since the last read (plan 100 step 4): main's governor of the versions prepared
+    /// alongside a recording reads it once a second. Null before a session is prepared.
+    #[napi]
+    pub fn health(&self) -> Option<RecordingHealth> {
+        let current = self.health.lock().unwrap().clone();
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let sample = current?.take();
+            let count = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
+            Some(RecordingHealth { late: count(sample.late), lost: count(sample.lost), backlog: count(sample.backlog) })
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = current;
+            None
+        }
     }
 
     /// The latest session's stage figures so far as JSON (plan 083, core/diagnostics.rs), with the preview chunks this
@@ -588,6 +624,7 @@ impl NativeCapture {
             events: self.events.clone(),
             preview: self.preview.clone(),
             diagnostics: self.diagnostics.clone(),
+            health: self.health.clone(),
         })
     }
 
@@ -869,6 +906,7 @@ pub struct PrepareTask {
     events: Arc<EventCallback>,
     preview: Arc<Mutex<Option<PreviewSink>>>,
     diagnostics: Arc<Mutex<Option<SessionDiagnostics>>>,
+    health: Arc<Mutex<Option<SessionHealth>>>,
 }
 
 impl Task for PrepareTask {
@@ -913,6 +951,7 @@ impl Task for PrepareTask {
             let (session, prepared) =
                 Session::prepare(request, Arc::new(Emitter(self.events.clone(), self.preview.clone()))).map_err(|e| failure(e.code, e.detail))?;
             *self.diagnostics.lock().unwrap() = session.diagnostics();
+            *self.health.lock().unwrap() = Some(session.health());
             *self.session.lock().unwrap() = Some(session);
             Ok(PreparedInfo {
                 width: prepared.width,

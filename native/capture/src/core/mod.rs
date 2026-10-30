@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 mod camera;
 pub mod diagnostics;
 mod frame_log;
+pub mod health;
 pub mod meter;
 mod mixer;
 pub mod preview;
@@ -253,6 +254,10 @@ pub trait Platform: 'static {
     type Audio: AudioEncode + 'static;
     /// Host time now, on the clock capture stamps frames and sound with.
     fn now_ns() -> u64;
+    /// Whether capture delivers something at every display refresh, a picture or an unchanged one, so a gap between
+    /// deliveries is a refresh it skipped (ScreenCaptureKit). One that delivers only changes (Windows.Graphics.Capture)
+    /// leaves gaps on purpose, which the recording's health never counts as lost (Codex F5 of plan 100 step 4).
+    const DELIVERS_EVERY_REFRESH: bool = false;
 }
 
 /// What the recording's picture shows (plan 076, step 4: the engine and its tests; the pickers are a later plan).
@@ -464,6 +469,8 @@ struct VideoState<P: Platform> {
     pending: bool,
     /// When the newest frame was captured.
     last_pts: u64,
+    /// When capture last delivered anything while recording: a picture, an unchanged refresh or one without a picture.
+    last_delivery: u64,
 }
 
 struct AudioState<A> {
@@ -613,6 +620,8 @@ pub struct Shared<P: Platform> {
     meters: Meters,
     /// The stage figures, when the development switch asks for them (plan 083, diagnostics.rs).
     diagnostics: Option<Arc<Diagnostics>>,
+    /// The recording's health, read once a second by main's governor of versions prepared alongside it (plan 100).
+    health: Arc<health::Health>,
 }
 
 impl<P: Platform> Shared<P> {
@@ -644,6 +653,8 @@ impl<P: Platform> Shared<P> {
 
     /// Hands `frame` at `pts` to the encoder, timed when the session keeps figures (plan 083).
     fn submit(&self, encoder: &P::Video, frame: &P::Frame, pts: u64, key_frame: bool) -> Result<(), String> {
+        // Before the call, as the stage figures: an encoder may hand the sample back before it returns.
+        self.health.submitted();
         let Some(diagnostics) = self.diagnostics.as_ref() else { return encoder.encode(frame, pts, key_frame) };
         // Remembered before the call: an encoder may hand the sample back before it returns.
         diagnostics.submitted(pts, P::now_ns());
@@ -656,6 +667,11 @@ impl<P: Platform> Shared<P> {
     /// The session's stage figures, when the development switch asks for them.
     pub fn diagnostics(&self) -> Option<Arc<Diagnostics>> {
         self.diagnostics.clone()
+    }
+
+    /// The recording's health (health.rs), kept for every session.
+    pub fn health(&self) -> Arc<health::Health> {
+        self.health.clone()
     }
 
     /// A complete frame captured at `pts` host time. Kept as the newest; encoded when the pacer wants it.
@@ -674,6 +690,7 @@ impl<P: Platform> Shared<P> {
             self.lead_sum_us.fetch_add(lead, Ordering::Relaxed);
             self.lead_count.fetch_add(1, Ordering::Relaxed);
             self.lead_max_us.fetch_max(lead, Ordering::Relaxed);
+            self.health.handed(-lead * 1000, 1_000_000_000 / u64::from(self.frame_rate.max(1)));
         }
         let mut guard = self.video.lock().unwrap();
         let video = &mut *guard;
@@ -691,9 +708,12 @@ impl<P: Platform> Shared<P> {
             self.fail(detail);
             return;
         }
+        // The slot kept last, once a refresh capture skipped has been filled (`fill_skipped`): what a gap is judged from.
+        let kept_before = video.last_encoded_ns;
         let wanted = eligible && video.pacer.as_mut().is_some_and(|pacer| pacer.admit(pts));
         video.pending = eligible && !wanted && video.pacer.is_some();
         if wanted {
+            self.count_missed_slots(kept_before, video.last_delivery, pts);
             if let Some(encoder) = video.encoder.as_ref()
                 && let Err(detail) = self.submit(encoder, &frame, pts, false)
             {
@@ -706,6 +726,19 @@ impl<P: Platform> Shared<P> {
         self.log_frame(video, pts, "picture", wanted);
         video.last = Some(frame);
         video.last_pts = pts;
+        video.last_delivery = video.last_delivery.max(pts);
+    }
+
+    /// A picture kept at `pts`, the last slot kept at `kept_before` and capture's delivery before it at `previous`:
+    /// slots left between them while capture still delivered about a slot apart are pictures the recording lost, which
+    /// the pacer could not fill since no picture was left out before them (at 60 fps from a 60 Hz display, a refresh
+    /// capture skipped; Codex F1 of plan 100 step 4). Only where capture delivers at every refresh (Codex F5); a still
+    /// screen's long wait for its next delivery is no loss.
+    fn count_missed_slots(&self, kept_before: u64, previous: u64, pts: u64) {
+        let interval = 1_000_000_000 / u64::from(self.frame_rate.max(1));
+        for _ in 0..missed_slots(P::DELIVERS_EVERY_REFRESH, interval, kept_before, previous, pts) {
+            self.health.lost();
+        }
     }
 
     /// Before a delivery at `pts` is judged: when it shows that capture skipped the refresh the pacer wanted (see
@@ -719,6 +752,8 @@ impl<P: Platform> Shared<P> {
         if let (Some(encoder), Some(frame)) = (video.encoder.as_ref(), video.last.as_ref()) {
             self.submit(encoder, frame, at, false)?;
         }
+        // The refresh's own picture is lost: the one before it stands in for it.
+        self.health.lost();
         video.last_encoded_ns = at;
         video.pending = false;
         self.log_frame(video, at, "skipped", true);
@@ -728,7 +763,8 @@ impl<P: Platform> Shared<P> {
     /// Capture delivered a frame without a picture (blank, suspended and the like) at `pts`; counted while recording.
     pub fn frame_without_picture(&self, pts: u64) {
         self.count_without_picture();
-        let video = self.video.lock().unwrap();
+        let mut video = self.video.lock().unwrap();
+        video.last_delivery = video.last_delivery.max(pts);
         self.log_frame(&video, pts, "blank", false);
     }
 
@@ -747,6 +783,7 @@ impl<P: Platform> Shared<P> {
         self.count_without_picture();
         let mut guard = self.video.lock().unwrap();
         let video = &mut *guard;
+        video.last_delivery = video.last_delivery.max(pts);
         let phase = self.phase.load(Ordering::Acquire);
         let eligible = matches!(phase, RECORDING | DRAINING) && pts > video.last_encoded_ns && pts < self.stop_ns.load(Ordering::Acquire);
         if let Err(detail) = if eligible { self.fill_skipped(video, pts) } else { Ok(()) } {
@@ -994,6 +1031,9 @@ impl<P: Platform> VideoSink for Shared<P> {
         if let (Some(diagnostics), Media::Video { pts_ns, .. }) = (self.diagnostics.as_ref(), &media) {
             diagnostics.encoded(*pts_ns, P::now_ns());
         }
+        if matches!(media, Media::Video { .. }) {
+            self.health.returned(false);
+        }
         self.send(media);
     }
 
@@ -1005,6 +1045,7 @@ impl<P: Platform> VideoSink for Shared<P> {
         if let Some(diagnostics) = self.diagnostics.as_ref() {
             diagnostics.encoder_dropped.fetch_add(1, Ordering::Relaxed);
         }
+        self.health.returned(true);
     }
 }
 
@@ -1048,7 +1089,7 @@ impl<P: Platform> Core<P> {
             t0_ns: AtomicU64::new(0),
             failed: AtomicBool::new(false),
             failure: Mutex::new(None),
-            video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0 }),
+            video: Mutex::new(VideoState { encoder: None, last: None, last_encoded_ns: 0, pacer: None, pending: false, last_pts: 0, last_delivery: 0 }),
             audio: Mutex::new(AudioState {
                 encoders: Vec::new(),
                 mixers: Vec::new(),
@@ -1079,6 +1120,7 @@ impl<P: Platform> Core<P> {
             metadata: Mutex::new(None),
             meters: Meters::default(),
             diagnostics: Diagnostics::from_env().map(Arc::new),
+            health: Arc::default(),
         });
         Self { shared, file: Some(file), audio_bitrate, writer: None, refresher: None, audio_failure: None }
     }
@@ -1541,6 +1583,30 @@ fn refresh<P: Platform>(shared: Arc<Shared<P>>, t0: u64) {
 
 /// The bounds the Settings faders send within (src/shared/audio-volume.ts), from the file both sides are checked against.
 #[cfg(test)]
+mod missed_slots_tests {
+    use super::missed_slots;
+
+    const SLOT: u64 = 16_666_667;
+
+    #[test]
+    fn a_refresh_skipped_where_capture_delivers_every_refresh_is_one_slot_lost() {
+        assert_eq!(missed_slots(true, SLOT, 100 * SLOT, 100 * SLOT, 102 * SLOT), 1);
+        assert_eq!(missed_slots(true, SLOT, 100 * SLOT, 100 * SLOT, 101 * SLOT), 0, "the next slot");
+        assert_eq!(missed_slots(true, SLOT, 100 * SLOT, 101 * SLOT, 102 * SLOT), 1, "an earlier delivery after the slot kept, too soon to keep");
+    }
+
+    #[test]
+    fn a_still_screen_change_driven_capture_or_a_filled_slot_loses_nothing() {
+        assert_eq!(missed_slots(true, SLOT, 100 * SLOT, 100 * SLOT, 160 * SLOT), 0, "a still screen's wait");
+        // Windows.Graphics.Capture delivers only changes: two changes two slots apart are no loss (Codex F5).
+        assert_eq!(missed_slots(false, SLOT, 100 * SLOT, 100 * SLOT, 102 * SLOT), 0);
+        // fill_skipped kept the slot after the delivery before: counted there, not again.
+        assert_eq!(missed_slots(true, SLOT, 101 * SLOT, 100 * SLOT, 102 * SLOT), 0);
+        assert_eq!(missed_slots(true, SLOT, 0, 0, 2 * SLOT), 0, "nothing kept yet");
+    }
+}
+
+#[cfg(test)]
 mod gain_bounds_tests {
     use super::{MAX_GAIN_DB, SILENT_GAIN_DB};
 
@@ -1557,6 +1623,16 @@ mod gain_bounds_tests {
 
 /// How far ahead of the clock the recording's frames were stamped, on average and at most, in ms. No frame while
 /// recording (a still screen, a stop right after record) is 0 for both: the maximum's `i64::MIN` start is no lead.
+/// Slots between the one kept last, `kept_before`, and a picture kept at `pts` that capture skipped: none unless it
+/// delivers at every refresh (`every_refresh`) and its delivery before, at `previous`, came after the slot kept last and
+/// within two and a half intervals of `pts` (a still screen's long wait is no loss).
+fn missed_slots(every_refresh: bool, interval: u64, kept_before: u64, previous: u64, pts: u64) -> u64 {
+    if !every_refresh || kept_before == 0 || previous < kept_before || pts.saturating_sub(previous) > interval * 5 / 2 {
+        return 0;
+    }
+    ((pts.saturating_sub(kept_before) + interval / 2) / interval).saturating_sub(1)
+}
+
 fn frame_lead_ms(sum_us: i64, count: u64, max_us: i64) -> (f64, f64) {
     if count == 0 {
         return (0.0, 0.0);

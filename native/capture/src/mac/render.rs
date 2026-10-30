@@ -15,17 +15,30 @@ use super::edit::{AacDecoder, Decoder, Picture};
 use super::video::{EncoderOptions, VideoEncoder};
 use crate::camera_layout::Layout;
 use crate::core::{AudioEncode, Events, VideoSink};
+use crate::edit::control::Control;
 use crate::edit::remux::{AudioFormat, VideoFormat};
 use crate::edit::render::{Renderer, VideoRender};
 use crate::writer::{Media, WriteFailure};
 
 /// Pictures handed to the encoder and not yet back, at most: enough to keep it busy, bounded so memory is.
 const IN_FLIGHT: usize = 8;
+/// The same while a recording runs and the export is told to be careful (plan 100 step 4): the recording's pictures
+/// never wait behind more than one of the export's in the video engine.
+const IN_FLIGHT_CAREFUL: usize = 1;
 /// How long the encoder may hold one picture before the export is told it stalled.
 const ENCODER_STALL: Duration = Duration::from_secs(10);
 
+/// Renders on this Mac; `control` says how many pictures the encoder may hold (`Control::careful`).
 #[derive(Default)]
-pub struct MacRenderer;
+pub struct MacRenderer {
+    control: Arc<Control>,
+}
+
+impl MacRenderer {
+    pub fn new(control: Arc<Control>) -> Self {
+        Self { control }
+    }
+}
 
 impl Renderer for MacRenderer {
     fn video(&mut self, screen: &VideoFormat, camera: Option<(&VideoFormat, Layout)>, bitrate: u32) -> Result<Box<dyn VideoRender>, String> {
@@ -38,7 +51,16 @@ impl Renderer for MacRenderer {
         let encoded = Arc::new(Encoded::default());
         let options = EncoderOptions { real_time: false, level: screen.avcc.get(3).copied(), ..EncoderOptions::RECORDING };
         let encoder = VideoEncoder::with_options(width, height, screen.frame_rate, bitrate, options, encoded.clone()).map_err(|e| e.detail)?;
-        Ok(Box::new(MacVideo { screen: Decoder::with_forward(&screen.avcc, None)?, composed, feed, encoder, encoded, first: true, decoded: 0 }))
+        Ok(Box::new(MacVideo {
+            screen: Decoder::with_forward(&screen.avcc, None)?,
+            composed,
+            feed,
+            encoder,
+            encoded,
+            first: true,
+            decoded: 0,
+            control: self.control.clone(),
+        }))
     }
 
     fn decode_audio(&mut self, format: &AudioFormat, packets: &[Vec<u8>]) -> Result<Vec<f32>, String> {
@@ -131,6 +153,7 @@ struct MacVideo {
     first: bool,
     /// Samples decoded so far, numbering them for the decoder.
     decoded: usize,
+    control: Arc<Control>,
 }
 
 impl MacVideo {
@@ -158,7 +181,7 @@ impl VideoRender for MacVideo {
             return if out_ns.is_some() { Err("a kept picture did not decode".into()) } else { Ok(()) };
         };
         let picture = picture?;
-        self.encoded.wait_below(IN_FLIGHT)?;
+        self.encoded.wait_below(if self.control.careful() { IN_FLIGHT_CAREFUL } else { IN_FLIGHT })?;
         self.encoded.state.lock().unwrap().in_flight += 1;
         let key = std::mem::replace(&mut self.first, false);
         match self.composed.as_ref().filter(|_| with_camera) {

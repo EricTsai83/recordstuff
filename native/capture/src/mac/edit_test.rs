@@ -1,8 +1,8 @@
 //! Exports of real H.264 and AAC on this Mac (plan 085's gates): a fixture recording made with the recording's own
 //! encoders, cut by `remux::export` with VideoToolbox and AudioToolbox, then decoded again and compared with the source.
 
+use crate::edit::control::Control;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use objc2_core_foundation::CFRetained;
@@ -173,7 +173,7 @@ fn dir(name: &str) -> PathBuf {
 }
 
 fn export(source: &Path, output: &Path, removed: &[(u64, u64)], policy: JoinPolicy, codecs: &mut MacCodecs) -> ExportReport {
-    let cancel = AtomicBool::new(false);
+    let cancel = Control::new(false);
     remux::export(source, output, removed, policy, codecs, &mut |_| {}, &cancel).unwrap()
 }
 
