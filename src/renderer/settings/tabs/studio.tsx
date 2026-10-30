@@ -1,17 +1,19 @@
 /**
- * The Recording Studio (plan 075, D19; laid out again by plan 097, D1, and 2026-10-28): one toolbar over the preview,
- * what is recorded at its start (the record control, the recording type and the screen, camera and microphone pickers)
- * and what only changes what is watched at its end (the view, Live preview and the preview's rate); under the preview
- * what is watched and changed while recording, which follows the recording's type. Quiet when fine: a picker shows its device's name, and says a problem in its place
- * (D2). Every control is still a group main offers and answers (settings-model.ts), chosen as anywhere in Settings.
+ * The Recording Studio (plan 075, D19; laid out again by plan 097, D1, 2026-10-28 and 2026-10-31): one toolbar over the
+ * preview, the record control at its start and what only changes what is watched at its end (the view, Live preview and
+ * the preview's rate); under the preview the recording's sources on one short line each (the recording type and the
+ * screen, camera, system audio and microphone pickers), then what is watched and changed while recording, which
+ * follows the recording's type. Quiet when fine: a picker says On, its device's name in its tooltip and menu, and says a
+ * problem in the warning look (D2). Every control is still a group main offers and answers (settings-model.ts), chosen as anywhere in Settings.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
-import { Button } from "../../components/ui/button";
+import { Button, buttonVariants } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
 import { cn } from "../../lib/utils";
 import { ControlTooltip } from "../../components/control-tooltip";
@@ -32,8 +34,16 @@ const groupOf = (id: string): SettingsGroup | undefined => model.view?.groups.fi
  * colours ease: a control folding to its icon snaps, so its first fold as the Studio opens is never seen.
  */
 const CONTROL = "transition-[color,background-color,border-color,box-shadow] h-(--studio-control-height) data-[size=default]:h-(--studio-control-height) gap-1.5 rounded-(--studio-control-radius) px-(--studio-control-px) text-xs border-border bg-input/20 hover:bg-input/50 dark:bg-input/30 dark:hover:bg-input/50 [&_svg:not([class*='size-'])]:size-(--studio-control-icon)";
+/**
+ * A source under the preview (2026-10-31): the toolbar's surface on one short line, its icon and a word or two, as wide
+ * as it says, its words wrapping only where it is wider than the Studio (zoomed in, narrowest); locked while recording,
+ * still read at full strength, its lock and quieter words saying it is locked (ui.css).
+ */
+const SOURCE = "studio-source h-auto data-[size=default]:h-auto min-h-(--studio-source-height) py-1 max-w-full min-w-0 flex-none justify-start px-(--studio-source-px) disabled:opacity-100";
 /** A control folded to its icon: square, its words kept for assistive technology and its tooltip. */
-const ICON_ONLY = "w-(--studio-control-height) min-w-0 flex-none justify-center px-0 [&>[data-slot=select-value]~svg:not(.studio-picker-lock)]:hidden";
+const ICON_ONLY = "w-(--studio-control-height) min-w-0 flex-none justify-center px-0";
+/** Zoomed in the narrowest window, a control's words wrap onto a second line rather than run past the toolbar. */
+const WRAP = "h-auto min-h-(--studio-control-height) py-1 whitespace-normal data-[size=default]:h-auto";
 /** A picker's problem in the warning look (D2), over the surface in either theme and under the pointer. */
 const PROBLEM = "data-problem:border-warning-border data-problem:bg-warning-surface data-problem:text-warning dark:data-problem:bg-warning-surface hover:data-problem:bg-warning-surface dark:hover:data-problem:bg-warning-surface";
 
@@ -156,12 +166,13 @@ const PICKER_ICONS = {
 } as const;
 
 /**
- * One input's picker over the preview (plan 097): the device's name while it is fine, the problem in its place with
- * the warning look and the icon struck through when it is not (D2), Off while the input is off. Its menu holds the
- * input's switch, the devices to choose from and the rows that go with them; while a recording locks it, it shows a
- * lock and does not open.
+ * One input's picker under the preview (plan 097; moved there and made one short line on 2026-10-31, at the maintainer's
+ * request): its name and On, Off, or Problem in the warning look with the icon struck through (D2). The device's name
+ * or the problem in full is in its tooltip and its accessible name, the problem again atop its menu. Its state's words
+ * keep the room of the longest, so a problem said or gone moves nothing. Its menu holds the input's switch, the
+ * devices to choose from and the rows that go with them; while a recording locks it, it shows a lock and does not open.
  */
-function Picker({ group, iconOnly }: { group: SettingsGroup; iconOnly: boolean }) {
+function Picker({ group }: { group: SettingsGroup }) {
   const picker = group.picker!;
   const id = `setting-${group.id}`;
   const problem = picker.problem !== undefined && !picker.waiting;
@@ -175,21 +186,32 @@ function Picker({ group, iconOnly }: { group: SettingsGroup; iconOnly: boolean }
   const switches = rest.filter((part) => part.control === "switch");
   const pixels = fields[0]?.note;
   const name = `${group.label}: ${shown}`;
-  return (
-    <Popover>
-      <ControlTooltip label={name} enabled={iconOnly}>
-        <PopoverTrigger render={
-          <Button id={id} variant="outline" className={cn(CONTROL, PROBLEM, "studio-picker", iconOnly ? ICON_ONLY : "shrink")} data-input={picker.input}
-            data-icon-only={iconOnly || undefined} data-problem={problem || undefined} data-waiting={picker.waiting || undefined}
-            data-off={(picker.off && !problem) || undefined} disabled={picker.locked} aria-label={name} />
-        }>
+  const state = problem ? "Problem" : picker.off ? "Off" : "On";
+  const face = (<>
           <Icon aria-hidden="true" />
-          <span className={iconOnly ? "sr-only" : "studio-picker-name"}>{shown}</span>
+          <span className="studio-source-label">{group.label}</span>
+          <span className="studio-source-state" aria-hidden="true">
+            {(["On", "Off", "Problem"] as const).map((each) => <span key={each} data-shown={each === state || undefined}>{model.text(each)}</span>)}
+          </span>
           {picker.locked ? <Lock className="studio-picker-lock" aria-hidden="true" />
-            : !iconOnly && <ChevronDown className="studio-picker-chevron" aria-hidden="true" />}
-        </PopoverTrigger>
-      </ControlTooltip>
+            : <ChevronDown className="studio-picker-chevron" aria-hidden="true" />}
+  </>);
+  const button = (
+    <Button id={id} variant="outline" className={cn(CONTROL, PROBLEM, SOURCE, "studio-picker")} data-input={picker.input}
+      data-problem={problem || undefined} data-waiting={picker.waiting || undefined}
+      data-off={(picker.off && !problem) || undefined} data-locked={picker.locked || undefined}
+      disabled={picker.locked} aria-label={name}>
+      {face}
+    </Button>
+  );
+  return (
+    <ControlTooltip label={name}>
+      <span role="group" tabIndex={picker.locked ? 0 : undefined} aria-label={picker.locked ? name : undefined}
+        data-locked-source={picker.locked ? id : undefined} className="inline-flex min-w-0 max-w-full">
+      <Popover>
+        <PopoverTrigger render={button} />
       <PopoverContent align="start" className="studio-picker-menu w-80 gap-2">
+        {problem && <p className="studio-picker-problem"><TriangleAlert aria-hidden="true" />{picker.problem}</p>}
         {on && <SwitchRow group={on} />}
         <div role="radiogroup" aria-label={group.label} className="grid gap-[1px]" data-disabled={!group.enabled || undefined}>
           {group.choices.map((choice) => {
@@ -222,15 +244,18 @@ function Picker({ group, iconOnly }: { group: SettingsGroup; iconOnly: boolean }
         {switches.map((part) => <SwitchRow key={part.id} group={part} />)}
         <Failures groups={[group, ...parts]} />
       </PopoverContent>
-    </Popover>
+      </Popover>
+      </span>
+    </ControlTooltip>
   );
 }
 
 /**
- * The recording type (plan 097, D6), first among the choices: Plain or Editable, each saying in a line what it gives
- * while the menu is open; where editable recordings are unavailable, listed unavailable with why, never hidden.
+ * The recording type (plan 097, D6), first among the sources: Plain or Editable, the type chosen its words, each saying
+ * in a line what it gives while the menu is open; where editable recordings are unavailable, listed unavailable with why,
+ * never hidden. Locked while recording, it shows a lock in place of its menu's arrow.
  */
-function TypePicker({ type, iconOnly }: { type: SettingsGroup; iconOnly: boolean }) {
+function TypePicker({ type }: { type: SettingsGroup }) {
   const chosen = model.committed(type);
   if (!chosen) return null;
   const id = `setting-${type.id}`;
@@ -239,12 +264,12 @@ function TypePicker({ type, iconOnly }: { type: SettingsGroup; iconOnly: boolean
   return (<>
     <Select id={id} value={chosen} items={type.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!type.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(type.id, next, id); }}>
-      <ControlTooltip label={`${type.label}: ${current?.label ?? chosen}`} enabled={iconOnly}>
+      <ControlTooltip label={`${type.label}: ${current?.label ?? chosen}`}>
         <SelectTrigger id={id} data-value={chosen} aria-label={type.label} aria-describedby={description ? `${id}-description` : undefined}
-          data-icon-only={iconOnly || undefined} className={cn(CONTROL, "studio-type", iconOnly ? ICON_ONLY : "shrink-0")}>
-          {chosen === "editable" ? <Film aria-hidden="true" /> : <Video aria-hidden="true" />}<SelectValue className={iconOnly ? "sr-only" : undefined} />
-          {/* Kept in place while unlocked, so the line does not move as a recording starts. */}
-          <Lock className="studio-picker-lock" aria-hidden="true" data-shown={!type.enabled || undefined} />
+          data-locked={!type.enabled || undefined} className={cn(CONTROL, SOURCE, "studio-type")}>
+          {chosen === "editable" ? <Film aria-hidden="true" /> : <Video aria-hidden="true" />}
+          <SelectValue className="studio-source-label block flex-none overflow-visible whitespace-normal" />
+          {!type.enabled && <Lock className="studio-picker-lock" aria-hidden="true" />}
         </SelectTrigger>
       </ControlTooltip>
       <SelectContent alignItemWithTrigger={false} align="start">
@@ -265,10 +290,12 @@ function TypePicker({ type, iconOnly }: { type: SettingsGroup; iconOnly: boolean
 const VIEW_ICONS: Record<StudioView, typeof Monitor> = { composed: PictureInPicture2, camera: Video };
 
 /**
- * What the stage shows (plan 092, D3), a menu at the toolbar's end: its trigger names the picture shown, and every choice
- * says in one line what it shows while the menu is open: As recorded, or Check camera (plan 097: Screen only removed).
+ * What the stage shows (plan 092, D3), a menu at the toolbar's end: every choice says in one line what it shows while
+ * the menu is open, the one shown checked: As recorded, or Check camera (plan 097: Screen only removed). Its trigger
+ * says what it is, Preview view, at every width (2026-10-31: an icon alone said nothing at 549 px); the picture shown
+ * is its value, said to assistive technology and in its tooltip.
  */
-function ViewMenu({ view, iconOnly }: { view: SettingsGroup; iconOnly: boolean }) {
+function ViewMenu({ view, wrap }: { view: SettingsGroup; wrap: boolean }) {
   const chosen = model.committed(view);
   if (!chosen) return null;
   const id = `setting-${view.id}`;
@@ -278,10 +305,10 @@ function ViewMenu({ view, iconOnly }: { view: SettingsGroup; iconOnly: boolean }
   return (<>
     <Select id={id} value={chosen} items={view.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!view.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(view.id, next, id); }}>
-      <ControlTooltip label={`${view.label}: ${current?.label ?? chosen}`} enabled={iconOnly}>
+      <ControlTooltip label={`${view.label}: ${current?.label ?? chosen}`}>
         <SelectTrigger id={id} data-value={chosen} aria-label={view.label} aria-describedby={description ? `${id}-description` : undefined}
-          data-icon-only={iconOnly || undefined} className={cn(CONTROL, "studio-view", iconOnly && ICON_ONLY)}>
-          {icon(chosen)}<SelectValue className={iconOnly ? "sr-only" : undefined} />
+          className={cn(CONTROL, "studio-view", wrap && WRAP)}>
+          <span className="studio-view-name">{view.label}</span><SelectValue className="sr-only" />
         </SelectTrigger>
       </ControlTooltip>
       <SelectContent alignItemWithTrigger={false} align="end">
@@ -360,13 +387,13 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
  * The toolbar's end (plan 097, D1; moved from the page's title line to the record control's line on 2026-10-28, at the
  * maintainer's request): what only changes what is watched, never the file.
  */
-function StudioHead({ view, live, rate, iconOnly }: {
-  view: SettingsGroup | undefined; live: SettingsGroup | undefined; rate: SettingsGroup | undefined; iconOnly: boolean;
+function StudioHead({ view, live, rate, iconOnly, wrap }: {
+  view: SettingsGroup | undefined; live: SettingsGroup | undefined; rate: SettingsGroup | undefined; iconOnly: boolean; wrap: boolean;
 }) {
   if (!view && !live && !rate) return null;
   return (
     <div className="studio-head">
-      {view && <ViewMenu view={view} iconOnly={iconOnly} />}
+      {view && <ViewMenu view={view} wrap={wrap} />}
       {live && <LiveSwitch live={live} iconOnly={iconOnly} />}
       {rate && <RateMenu rate={rate} />}
     </div>
@@ -377,9 +404,9 @@ function StudioHead({ view, live, rate, iconOnly }: {
  * The recording's one control (2026-10-21): Start while ready, Cancel under a short countdown line, and Stop with the
  * elapsed time while recording, so the button itself says a recording is under way. Start and Stop are drawn in ink, black
  * or in the dark theme white, the recording's red kept to Stop's square (2026-10-21). The phase is said aloud always,
- * shown only while counting down or starting.
+ * shown only while counting down or starting, in a place of its own kept in every phase (2026-10-31).
  */
-function RecordControl({ controls }: { controls: SettingsGroup }) {
+function RecordControl({ controls, wrap }: { controls: SettingsGroup; wrap: boolean }) {
   const choice = controls.choices[0];
   const busy = Boolean(model.savingOf(controls.id)) || choice?.busy === true;
   const id = choice && `setting-${controls.id}-${choice.id}`;
@@ -388,73 +415,134 @@ function RecordControl({ controls }: { controls: SettingsGroup }) {
   return (
     <div className="studio-record">
       {choice && id && (
-        <Button id={id} data-action={choice.id} variant="outline"
-          className={cn(CONTROL, filled && "border-foreground bg-foreground text-background hover:bg-foreground/85 hover:text-background dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/85")}
-          disabled={!controls.enabled || !choice.enabled} aria-disabled={busy || !controls.enabled || !choice.enabled}
-          onClick={() => { if (!busy && controls.enabled && choice.enabled) void model.choose(controls.id, choice.id, id); }}>
-          {choice.id === "stop" && <Square className="size-2.5 fill-current text-primary" aria-hidden="true" />}
-          {choice.label}
-          {controls.elapsedSince && <Elapsed since={controls.elapsedSince} />}
-        </Button>
+        <div className="studio-record-slot">
+          {/* As wide as its widest phase, Stop with up to ten hours' time, unseen: Record keeps one width whatever the
+              phase or language, so nothing moves as a recording starts or lasts (2026-10-31). */}
+          <span aria-hidden="true" className={cn(buttonVariants({ variant: "outline" }), CONTROL, "studio-record-room grid")}>
+            {(["Start recording", "Cancel recording", "Saving…"] as const).map((label) => <span key={label}>{model.text(label)}</span>)}
+            <span><Square className="size-2.5" />{model.text("Stop recording")}<span className="studio-elapsed">0:00:00</span></span>
+          </span>
+          <Button id={id} data-action={choice.id} variant="outline"
+            className={cn(CONTROL, wrap && WRAP, filled && "border-foreground bg-foreground text-background hover:bg-foreground/85 hover:text-background dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/85")}
+            disabled={!controls.enabled || !choice.enabled} aria-disabled={busy || !controls.enabled || !choice.enabled}
+            onClick={() => { if (!busy && controls.enabled && choice.enabled) void model.choose(controls.id, choice.id, id); }}>
+            {choice.id === "stop" && <Square className="size-2.5 fill-current text-primary" aria-hidden="true" />}
+            {choice.label}
+            {controls.elapsedSince && <Elapsed since={controls.elapsedSince} />}
+          </Button>
+        </div>
       )}
-      <span className={shown ? "studio-state" : "sr-only"} id="setting-studioControls-label">{controls.label}</span>
+      {/* Its place kept in every phase, its words unseen but said while ready or recording (ui.css), so nothing moves as
+          a recording starts. */}
+      <span className="studio-state" data-shown={shown || undefined} id="setting-studioControls-label">{controls.label}</span>
     </div>
   );
 }
 
 /**
- * How much the toolbar says (2026-10-28): every control with its name while all fit; then the recording type and the
- * pickers as icons; then the view and Live preview as well; narrower still, Record takes a line of its own over every
- * icon (the maintainer's request: not the end left hanging under the line). Record keeps its words always. An icon
- * names itself in a tooltip and opens the same menu. Decided by the toolbar's own width, so the sidebar or zoom count
- * as the window does.
+ * How much the toolbar says (2026-10-28; since 2026-10-31 only Record, its phase and what is watched, the sources under
+ * the preview): every control with its name while all fit; then Live preview as its icon; then the phase's words in
+ * the room left, on up to two lines; then what is watched on a line of its own under Record; narrowest, zoomed in,
+ * Record's words wrap. Record and the view keep their words always. An icon names itself in a tooltip. Decided by the
+ * toolbar's own width, so the sidebar or zoom count as the window does.
+ *
+ * The widths below are only where a density may start: whether it fits is measured (2026-10-31). After each layout no
+ * two controls may overlap or pass the toolbar's edge; where they do, that density is marked too wide for that width
+ * and the next is taken, before the frame shows. The countdown's words keep their place in every phase (ui.css), so
+ * being ready, counting down and recording are measured alike and nothing moves between them.
  */
-type Density = "full" | "compact" | "icons" | "stacked";
-/** The narrowest toolbar (CSS px) each density fits in, its labels at their usual lengths. */
-const DENSITY_WIDTHS: [Density, number][] = [["full", 1100], ["compact", 620], ["icons", 430]];
+type Density = "full" | "compact" | "tight" | "stacked" | "wrapped";
+const DENSITIES: Density[] = ["full", "compact", "tight", "stacked", "wrapped"];
+/** The narrowest toolbar (CSS px) each density may start at, its labels at their usual lengths. */
+const DENSITY_WIDTHS: Partial<Record<Density, number>> = { full: 560, compact: 420 };
 
-function useDensity(toolbar: RefObject<HTMLDivElement | null>): Density {
+/** Whether any of the toolbar's controls overlap or pass its edges as it is laid out now. */
+function crowded(toolbar: HTMLElement): boolean {
+  const edge = toolbar.getBoundingClientRect();
+  // The controls in the flow: not a select's hidden native input or a name said only to assistive technology.
+  // Record and its phase rather than what holds them.
+  const boxes = [...toolbar.querySelectorAll(".studio-record > *, .studio-head > *")]
+    .filter((element) => !["absolute", "fixed"].includes(getComputedStyle(element).position))
+    .map((element) => element.getBoundingClientRect()).filter((box) => box.width > 0 && box.height > 0);
+  // Half a pixel either way: subpixel layout is not an overlap.
+  const apart = (a: DOMRect, b: DOMRect): boolean =>
+    a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
+  return boxes.some((box, i) => box.left < edge.left - 0.5 || box.right > edge.right + 0.5 || boxes.slice(i + 1).some((other) => !apart(box, other)));
+}
+
+function useDensity(toolbar: RefObject<HTMLDivElement | null>, content: string): Density {
   const [density, setDensity] = useState<Density>("full");
-  // Measured before the first paint, so a narrow window never shows the full toolbar for a frame.
+  // Failed widths belong to this content only: shorter state/device labels must be allowed to unfold again.
+  const seen = useRef({ content: "", tooNarrow: new Map<Density, number>() });
+  const settle = useCallback((update: (next: Density) => void) => {
+    const element = toolbar.current;
+    if (!element) return;
+    const width = element.clientWidth;
+    if (seen.current.content !== content) seen.current = { content, tooNarrow: new Map() };
+    const shown = element.dataset.density as Density | undefined;
+    if (shown && shown !== "wrapped" && crowded(element)) {
+      seen.current.tooNarrow.set(shown, Math.max(seen.current.tooNarrow.get(shown) ?? 0, width));
+    }
+    update(DENSITIES.find((each) => width >= (DENSITY_WIDTHS[each] ?? 0) && width > (seen.current.tooNarrow.get(each) ?? -1)) ?? "wrapped");
+  }, [toolbar, content]);
+  // After every layout, so a new language or a longer name is measured as well as a new width; a density that does not
+  // fit is replaced before the frame shows.
+  useLayoutEffect(() => settle(setDensity));
   useLayoutEffect(() => {
     const element = toolbar.current;
     if (!element) return;
-    const fit = (): void => setDensity(DENSITY_WIDTHS.find(([, width]) => element.clientWidth >= width)?.[0] ?? "stacked");
-    fit();
-    const observer = new ResizeObserver(fit);
+    const observer = new ResizeObserver(() => settle((next) => flushSync(() => setDensity(next))));
     observer.observe(element);
     return () => observer.disconnect();
-  }, [toolbar]);
+  }, [toolbar, settle]);
   return density;
 }
 
 /**
- * Over the preview (plan 097, D1; one line since 2026-10-28): what is recorded at its start, the record control, the
- * recording type, then the screen, camera and microphone pickers, the type, the screen and the camera locked while
- * recording; what is watched at its end. Narrower, the choices fold into icons before anything wraps.
+ * Over the preview (plan 097, D1; one line since 2026-10-28): the record control and its phase at its start, what is
+ * watched at its end. The sources it records are under the preview (2026-10-31), so they stay put and named as a
+ * recording starts.
  */
 function Toolbar({ controls }: { controls: SettingsGroup | undefined }) {
   const toolbar = useRef<HTMLDivElement>(null);
-  const density = useDensity(toolbar);
-  const type = groupOf("studioType");
   const view = groupOf("studioPreviewView");
   const live = groupOf("studioLive");
   const rate = groupOf("studioPreviewRate");
-  const pickers = ["studioScreen", "studioCameraDevice", "studioSystemAudio", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
+  const density = useDensity(toolbar, JSON.stringify([controls, view, live, rate]));
   return (
     <div ref={toolbar} className="studio-toolbar" data-density={density}>
       <div className="studio-toolbar-row">
         <section className="studio-choices" data-phase={controls?.phase} aria-labelledby="studio-choices-heading">
           <h2 id="studio-choices-heading" className="sr-only">{controls?.sectionHeading ?? model.text("What is recorded")}</h2>
-          {controls && <RecordControl controls={controls} />}
-          {type && <TypePicker type={type} iconOnly={density !== "full"} />}
-          {pickers.map((group) => <Picker key={group.id} group={group} iconOnly={density !== "full"} />)}
+          {controls && <RecordControl controls={controls} wrap={density === "wrapped"} />}
         </section>
-        <StudioHead view={view} live={live} rate={rate} iconOnly={density === "icons" || density === "stacked"} />
+        <StudioHead view={view} live={live} rate={rate} iconOnly={density !== "full"} wrap={density === "wrapped"} />
       </div>
-      <Failures groups={[controls, type]} />
+      <Failures groups={[controls]} />
       <Failures groups={[view, live]} />
     </div>
+  );
+}
+
+/**
+ * Under the preview, first (2026-10-31, at the maintainer's request: folded to icons over the preview they said neither
+ * what they were nor what they were set to; then, as two-line cards, they took too much of the preview's room): what
+ * the recording records, one short control each on a line that wraps only where it must, its heading said to
+ * assistive technology alone. The same in every phase; while a recording locks one, it shows a lock in its place.
+ */
+function Sources({ phase }: { phase: string | undefined }) {
+  const type = groupOf("studioType");
+  const pickers = ["studioScreen", "studioCameraDevice", "studioSystemAudio", "studioMicrophoneDevice"].map(groupOf).filter((group): group is SettingsGroup => Boolean(group?.picker));
+  if (!type && pickers.length === 0) return null;
+  return (
+    <section className="studio-sources" data-phase={phase} aria-labelledby="studio-sources-heading">
+      <h2 id="studio-sources-heading" className="sr-only">{model.text("Recording sources")}</h2>
+      <div className="studio-sources-grid">
+        {type && <TypePicker type={type} />}
+        {pickers.map((group) => <Picker key={group.id} group={group} />)}
+      </div>
+      <Failures groups={[type]} />
+    </section>
   );
 }
 
@@ -488,7 +576,7 @@ function LiveRow({ type }: { type: SettingsGroup | undefined }) {
   if (!shown && channels.length === 0) return null;
   return (
     <section className="studio-live-row" data-type={type?.recordingType} aria-labelledby="studio-live-heading">
-      <h2 id="studio-live-heading" className="sr-only">{channels[0]?.sectionHeading ?? shown?.sectionHeading ?? model.text("While recording")}</h2>
+      <h2 id="studio-live-heading" className="studio-heading">{channels[0]?.sectionHeading ?? shown?.sectionHeading ?? model.text("While recording")}</h2>
       <div className="studio-live-controls">
         {shown && (
           <div className="studio-channel studio-camera-shown">
@@ -503,15 +591,19 @@ function LiveRow({ type }: { type: SettingsGroup | undefined }) {
 }
 
 /**
- * Over the stage while Live preview is off (2026-10-25, at the maintainer's request): a glass button that shows while
- * the pointer is on the stage or it has focus, and turns Live preview on as the switch in the toolbar does.
+ * Over the stage while Live preview is off (2026-10-25, at the maintainer's request): a glass button in the middle of the
+ * picture that turns Live preview on as the switch in the toolbar does. Always in sight since 2026-10-31 (the
+ * maintainer's request: shown only on hover, the bare gradient read as a picture that had not loaded); its words say
+ * the preview is off, so nothing else is drawn, and assistive technology hears why the stage is empty.
  */
 function StageStart({ live }: { live: SettingsGroup }) {
   const id = `setting-${live.id}-stage`;
   return (
     <div className="studio-stage-start">
+      <p id={`${id}-said`} className="sr-only">{model.text("Live preview is off.")}</p>
       {/* Kept inside a narrow portrait picture, which clips: its words wrap rather than run past it. */}
-      <Button id={id} variant="outline" className="h-auto min-h-9 max-w-[calc(100%-12px)] gap-1.5 rounded-full px-4 py-1.5 text-center text-sm whitespace-normal"
+      <Button id={id} variant="outline" aria-describedby={`${id}-said`}
+        className="h-auto min-h-9 max-w-full gap-1.5 rounded-full border-(--studio-glass-edge) bg-transparent px-4 py-1.5 text-center text-sm whitespace-normal hover:bg-transparent hover:text-(--studio-live-ink-on) dark:bg-transparent"
         onClick={() => void model.choose(live.id, "on", id)}>
         <Radio aria-hidden="true" />{model.text("Turn on preview")}
       </Button>
@@ -584,6 +676,7 @@ export function Studio() {
           <Failures groups={[preview]} />
         </section>
       )}
+      <Sources phase={controls?.phase} />
       <LiveRow type={type} />
     </div>
   );

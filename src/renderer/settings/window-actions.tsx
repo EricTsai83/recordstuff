@@ -28,7 +28,7 @@ export function WindowActions({ group, quit, id, compact = false }: {
           <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("RecordStuff window actions")}
             disabled={!enabled(hide) && !enabled(quit)}
             render={<Button variant="ghost" size="icon" className="darwin:window-no-drag size-9 short:size-8 rounded-lg border-0 hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent" />}>
-            <Power aria-hidden="true" />
+            <Ellipsis aria-hidden="true" />
           </DropdownMenuTrigger>
         </ControlTooltip>
         <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="right" sideOffset={10} align="end"

@@ -1,7 +1,7 @@
 /**
  * The icons Settings rows and section headings carry, by group and section id, and the About links' marks.
  */
-import { AppWindow, AudioLines, Bell, Camera, CircleAlert, Clapperboard, Circle, Scissors, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, Info, Keyboard, Maximize, Mic, Monitor, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, PanelBottomDashed, PanelTopDashed, Play, Power, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Wallpaper, Webcam } from "lucide-react";
+import { AppWindow, AudioLines, Bell, Camera, CircleAlert, Clapperboard, Circle, Compass, Scissors, Eye, EyeOff, FileText, Film, FlipHorizontal2, Folder, Gauge, Globe, HardDrive, Info, Keyboard, Maximize, Mic, Monitor, MousePointerClick, Move, MoveHorizontal, MoveVertical, Palette, PanelBottomDashed, PanelTopDashed, Play, Power, RefreshCw, ScreenShare, Settings2, SquareRoundCorner, Sun, Timer, Volume2, Wallpaper, Webcam } from "lucide-react";
 
 const icons = {
   screen: Monitor,
@@ -54,7 +54,9 @@ const sectionIcons = {
   video: Clapperboard,
   controls: MousePointerClick,
   display: Palette,
+  storage: HardDrive,
   updates: RefreshCw,
+  setup: Compass,
   "shortcutList:global": Globe,
   "shortcutList:window": AppWindow,
   "shortcutList:recordings": Film,

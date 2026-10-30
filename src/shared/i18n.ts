@@ -898,6 +898,8 @@ export const ZH_TW = {
   "Shown or hidden while recording.": "錄影時可顯示或隱藏。",
   "This recording has no camera.": "這次錄影沒有相機。",
   "What is recorded": "錄製內容",
+  "Recording sources": "錄製來源",
+  Problem: "有問題",
   "While recording": "錄影時",
   "Don't record": "不錄製",
   "Don't record {label}": "不錄製{label}",

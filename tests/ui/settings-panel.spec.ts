@@ -907,25 +907,31 @@ test("S142 the Studio's choices over the preview and the toolbar's end: Live pre
   await expect(page.locator(".camera-preview-stage").getByRole("switch"), "S142 nothing laid over the picture").toHaveCount(0);
   // Said once, by the Camera picker (plan 097, D2): not over the stage, and with no status dot.
   const picker = page.locator("#setting-studioCameraDevice");
+  await expect(page.locator(".studio-sources #setting-studioCameraDevice"), "S142 the picker among the sources under the preview (2026-10-31)").toHaveCount(1);
   await expect(picker, "S142 waiting for its first frame").toHaveAccessibleName("Camera: Waiting for the camera…");
   await expect(picker, "S142 the camera starting is no warning").not.toHaveAttribute("data-problem", /.*/);
+  // One short line (2026-10-31): the input and its state in sight, the whole name in its accessible name and tooltip.
+  const state = picker.locator(".studio-source-state > [data-shown]");
+  await expect(state, "S142 starting, the camera is on").toHaveText("On");
   await expect(page.locator(".studio-stage").getByRole("status"), "S142 nothing said over the stage").toHaveCount(0);
   await expect(page.locator(".camera-preview-stage .camera-preview-status"), "S142 nor in the picture").toHaveCount(0);
   await recording("notReady");
   await expect(picker, "S142 not ready").toHaveAccessibleName("Camera: The camera is not ready");
   await expect(picker, "S142 in the warning look").toHaveAttribute("data-problem", "true");
+  await expect(state, "S142 a problem said in sight, not only in its tooltip").toHaveText("Problem");
   await recording("lost");
   await expect(picker, "S142 lost").toHaveAccessibleName("Camera: The camera dropped out");
   await recording();
   await expect(picker, "S142 the camera's name while it delivers").toHaveAccessibleName("Camera: FaceTime HD Camera");
   await expect(picker).not.toHaveAttribute("data-problem", /.*/);
+  await expect(state, "S142 delivering, On again").toHaveText("On");
   // A portrait screen's narrow window: the choices and the picture keep their places as it is said and goes.
   // setSize resolves once the page has the new size (hosts/settle.ts).
   await host.evaluate(h => h.setSize(541, 900));
   // The narrow window's own layout first: its sidebar collapses, which can come later than the size on a busy machine
   // (2026-10-26, CI: the places were taken with the sidebar still wide, then it collapsed and everything "moved").
   await expect(page.locator('main[data-sidebar="collapsed"]'), "S142 the narrow window's sidebar").toHaveCount(1);
-  const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-live-row"].map((selector) => {
+  const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-sources", ".studio-live-row"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
   }));
@@ -1099,7 +1105,7 @@ test("S143–S145 the Studio's preview: Power saving by default, no camera opene
   await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
-test("S147 Turn on preview over the stage while Live preview is off: shown only on hover or focus, it asks main as the switch does and moves nothing; none while the switch cannot act or once the preview is on (2026-10-25)", { tag: "@studio" }, async () => {
+test("S147 Turn on preview over the stage while Live preview is off: one button, always in sight (2026-10-31), what it means said to assistive technology; it asks main as the switch does and moves nothing; none while the switch cannot act or once the preview is on (2026-10-25)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
   await host.evaluate(h => {
     h.state.cameraState = undefined;
@@ -1115,7 +1121,14 @@ test("S147 Turn on preview over the stage while Live preview is off: shown only 
   const shown = (): Promise<boolean> => start.evaluate((button) => getComputedStyle(button).opacity !== "0");
   await expect(start, "S147 there while Live preview is off").toHaveCount(1);
   await page.mouse.move(5, 5);
-  await expect.poll(shown, { message: "S147 unseen until the pointer is on the stage" }).toBe(false);
+  // In sight without the pointer on the stage (2026-10-31, the maintainer's request): its own words say the preview is
+  // off, so no panel or line is drawn around it; assistive technology still hears why the stage is empty.
+  await expect.poll(shown, { message: "S147 in sight with the pointer away" }).toBe(true);
+  await expect(start, "S147 visible").toBeVisible();
+  await expect.poll(() => page.locator(".studio-stage-start").getByText("Live preview is off.").evaluate((said) => said.getBoundingClientRect().width <= 1),
+    { message: "S147 no line drawn beside it, said to assistive technology only" }).toBe(true);
+  await expect(page.locator(".studio-stage-start").getByRole("button"), "S147 one button, nothing else to press").toHaveCount(1);
+  await expect(start, "S147 described by why the stage is empty").toHaveAccessibleDescription("Live preview is off.");
   const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-live-row"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)];
@@ -1225,10 +1238,11 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   await expect.poll(async () => {
     const m = await measure();
     // Next to it: the space between them is only the Studio's own gap between its parts, whatever that is.
-    const [gap, rowGap] = await page.evaluate(() => [document.querySelector(".studio-live-row")!.getBoundingClientRect().top - document.querySelector(".studio-stage")!.getBoundingClientRect().bottom,
+    // The sources first under it since 2026-10-31.
+    const [gap, rowGap] = await page.evaluate(() => [document.querySelector(".studio-sources")!.getBoundingClientRect().top - document.querySelector(".studio-stage")!.getBoundingClientRect().bottom,
       parseFloat(getComputedStyle(document.querySelector(".studio")!).rowGap) || 0]);
     return { fills: Math.abs(m.picture.height - m.box.height) <= 1 && Math.abs(m.picture.width - m.box.width) <= 1, follows: Math.abs(gap - rowGap) <= 1 };
-  }, { message: "S146 a tall, narrow window: the stage is the picture's height and the live controls follow it" }).toEqual({ fills: true, follows: true });
+  }, { message: "S146 a tall, narrow window: the stage is the picture's height and the sources follow it" }).toEqual({ fills: true, follows: true });
   // Dragged on a large stage, the bubble is let go of where the recording composes it.
   await show("landscape");
   // Measured once the window's new size has been laid out (setSize waits for it, hosts/settle.ts) and the stage has
@@ -1250,22 +1264,23 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   await page.mouse.up();
   await expect.poll(async () => (await calls()).map(([group, choice]) => [group, ...String(choice).split(",").map(Number)]), { message: "S146 dragged to the middle of a large stage" })
     .toEqual([["cameraPreview", expect.closeTo(0.5, 1), expect.closeTo(0.5, 1)]]);
-  // The view and Live preview at the toolbar's end, the choices over the stage and the live controls under it (plan 097,
-  // D1), all in sight without scrolling at the default size.
+  // The view and Live preview at the toolbar's end, the sources and the live controls under the stage (plan 097, D1;
+  // 2026-10-31), all in sight without scrolling at the default size.
   await show("landscape", true);
   await host.evaluate(h => h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]));
-  const head = page.locator(".studio-head"), choices = page.locator(".studio-choices"), live = page.locator(".studio-live-row");
+  const head = page.locator(".studio-head"), choices = page.locator(".studio-choices"), sources = page.locator(".studio-sources"), live = page.locator(".studio-live-row");
   for (const control of [head.getByRole("combobox", { name: "Preview view" }), head.getByRole("switch", { name: "Live preview" }),
-    choices.getByRole("button", { name: /^Screen:/ }), choices.getByRole("button", { name: /^Camera:/ }), choices.getByRole("button", { name: /^Microphone:/ }),
-    choices.getByRole("combobox", { name: "Recording type" }),
+    sources.getByRole("button", { name: /^Screen:/ }), sources.getByRole("button", { name: /^Camera:/ }), sources.getByRole("button", { name: /^Microphone:/ }),
+    sources.getByRole("combobox", { name: "Recording type" }),
     live.getByRole("button", { name: "Don't record System audio" }), live.getByRole("button", { name: "Don't record Microphone" }),
     live.getByRole("meter", { name: "Microphone" }), live.getByRole("switch", { name: "Camera" })]) {
     await expect(control, "S146 in sight").toBeInViewport();
   }
   await expect(choices.getByRole("button", { name: /Don't record/ }), "S146 nothing live joins the choices as a recording starts").toHaveCount(0);
+  await expect(sources.getByRole("button", { name: /Don't record/ }), "S146 nor the sources").toHaveCount(0);
   // Nothing moves as a recording starts or a Live preview is said to be starting (2026-10-24, at the maintainer's
-  // request): the choices, the picture and the live controls keep their places and sizes.
-  const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-live-row"].map((selector) => {
+  // request): the choices, the picture, the sources and the live controls keep their places and sizes.
+  const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-sources", ".studio-live-row"].map((selector) => {
     const box = document.querySelector(selector)!.getBoundingClientRect();
     return [box.x, box.y, box.width, box.height].map(Math.round).join(",");
   }));
@@ -1290,7 +1305,7 @@ test("S149–S151 the recording type in the Studio, its live controls following 
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
   await page.locator("#tab-studio").click();
-  const type = page.locator(".studio-choices").getByRole("combobox", { name: "Recording type" });
+  const type = page.locator(".studio-sources").getByRole("combobox", { name: "Recording type" });
   await expect(type, "S149 a plain recording by default").toHaveText(/Plain recording/);
   await expect(type, "S149 described by what it gives").toHaveAccessibleDescription("Ready to share as soon as it stops.");
   const live = page.locator(".studio-live-row");
@@ -1383,6 +1398,29 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await expect(page.locator("#setting-cameraDevice-problem"), "S151 said by its row").toHaveText("USB Camera not found");
   await page.locator("#tab-studio").click();
   await expect(page.locator("#setting-studioCameraDevice"), "S151 and by the Studio's picker, in the same words").toHaveAccessibleName("Camera: USB Camera not found");
+  await expect(page.locator("#setting-studioCameraDevice .studio-source-state > [data-shown]"), "S151 a problem in sight on its one line").toHaveText("Problem");
+  await page.locator("#setting-studioCameraDevice").click();
+  await expect(page.locator(".studio-picker-problem"), "S151 and in full atop its menu").toHaveText("USB Camera not found");
+  await page.keyboard.press("Escape");
+  // Recording locks changes, not diagnosis: the full reason remains available to pointer and keyboard users.
+  await host.evaluate(h => {
+    h.state.cameraState = { type: "recording", startedAt: new Date().toISOString() };
+    h.push(h.settingsView(h.state.cameraState, h.state.cameraContext!));
+  });
+  const lockedCamera = page.locator("#setting-studioCameraDevice");
+  await expect(lockedCamera).toBeDisabled();
+  const diagnosis = page.locator('[data-locked-source="setting-studioCameraDevice"]');
+  await page.mouse.move(2, 2);
+  await diagnosis.hover();
+
+  await expect(page.locator('[data-slot="tooltip-content"][data-open]')).toHaveText("Camera: USB Camera not found");
+  await page.mouse.move(2, 2);
+  await diagnosis.focus();
+  await expect(diagnosis).toBeFocused();
+  await expect(page.locator('[data-slot="tooltip-content"][data-open]')).toHaveText("Camera: USB Camera not found");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".studio-picker-menu"), "S151 locked diagnosis never opens the change menu").toHaveCount(0);
+
   await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
@@ -1414,6 +1452,140 @@ test("S152 the System audio picker in the Studio: On or Off in its menu, its met
   await expect(picker, "S152 locked while recording").toBeDisabled();
   await expect(live.getByRole("meter", { name: "System audio" }), "S152 a recording without it has no meter for it").toHaveCount(0);
   await expect(live.getByRole("meter", { name: "Microphone" })).toHaveCount(1);
+});
+
+test("S153 the Studio at any width: the toolbar's controls never laid over one another or past its edge, Record at its own width, the view named in words; the sources under the preview, one short line each, each named, never laid over one another or cut off, reached by keyboard; in either language and zoomed, and nothing moving as a recording counts down, starts and lasts (2026-10-31)", { tag: "@studio" }, async () => {
+  // Two languages at eight widths, five phases at four and three zooms, each laid out and settled.
+  test.setTimeout(120_000);
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(1000, 720); });
+  await host.evaluate(h => {
+    h.state.cameraState = undefined;
+    h.state.cameraContext = { ...h.baseContext(), platform: "darwin", microphone: { enabled: true },
+      camera: { enabled: true, available: true, access: "granted", devices: [{ id: "facetime", name: "FaceTime HD Camera", default: true }] } };
+    h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
+  });
+  await page.locator("#tab-studio").click();
+  const toolbar = page.locator(".studio-toolbar");
+  const layout = () => page.evaluate(() => {
+    const bar = document.querySelector(".studio-toolbar")!, edge = bar.getBoundingClientRect();
+    const studio = document.querySelector(".studio")!.getBoundingClientRect(), stage = document.querySelector(".studio-stage")!.getBoundingClientRect();
+    const inFlow = (selector: string): DOMRect[] => [...document.querySelectorAll(selector)]
+      .filter((control) => !["absolute", "fixed"].includes(getComputedStyle(control).position))
+      .map((control) => control.getBoundingClientRect()).filter((box) => box.width > 0 && box.height > 0);
+    const apart = (a: DOMRect, b: DOMRect): boolean =>
+      a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
+    const overlaps = (boxes: DOMRect[]): number => boxes.reduce((count, box, i) => count + boxes.slice(i + 1).filter((other) => !apart(box, other)).length, 0);
+    // Record and its phase's place, and the view's controls.
+    const controls = inFlow(".studio-record > *, .studio-head > *");
+    const sources = inFlow(".studio-sources-grid > *");
+    const cut = (element: Element): boolean => element.scrollWidth > element.clientWidth + 0.5 || element.scrollHeight > element.clientHeight + 0.5;
+    return { controls: controls.length, outside: controls.filter((box) => box.left < edge.left - 0.5 || box.right > edge.right + 0.5).length,
+      overlaps: overlaps(controls),
+      recordAcross: bar.querySelector(".studio-record-slot > button")!.getBoundingClientRect().width >= edge.width - 0.5,
+      viewNamed: (() => { const name = bar.querySelector(".studio-view-name"); return name !== null && name.getBoundingClientRect().width > 0 && !cut(name); })(),
+      sources: sources.length, sourcesOverlap: overlaps(sources),
+      sourcesOutside: sources.filter((box) => box.left < studio.left - 0.5 || box.right > studio.right + 0.5).length,
+      sourcesUnderStage: sources.every((box) => box.top >= stage.bottom - 0.5),
+      // A source's name is never cut short; what it is set to may be, said whole in its name and its tooltip.
+      namesCut: [...document.querySelectorAll(".studio-sources-grid .studio-source-label")].filter(cut).length };
+  });
+  const fits = { outside: 0, overlaps: 0, recordAcross: false, viewNamed: true, sources: 5, sourcesOverlap: 0, sourcesOutside: 0, sourcesUnderStage: true, namesCut: 0 };
+  const sweep = async (label: string): Promise<void> => {
+    for (const width of [380, 440, 520, 549, 620, 760, 1000, 1240]) {
+      await host.evaluate((h, width) => h.setSize(width, 720), width);
+      await expect.poll(layout, { message: `S153 ${label} at ${width} px` }).toMatchObject(fits);
+      expect((await layout()).controls, `S153 ${label} at ${width} px: every toolbar control laid out`).toBeGreaterThanOrEqual(5);
+      await expect(page.locator("#setting-studioControls-start"), `S153 ${label} at ${width} px: Record`).toBeVisible();
+    }
+  };
+  // Ready, counting down, recording for a minute and for an hour, saving: the same arrangement, nothing moved.
+  const places = () => page.evaluate(() => JSON.stringify([document.querySelector(".studio-toolbar")!.getAttribute("data-density"),
+    ...[...document.querySelectorAll(".studio-record-slot > button, .studio-head > *, .studio-sources-grid > *")]
+      .filter((control) => !["absolute", "fixed"].includes(getComputedStyle(control).position))
+      .map((control) => { const box = control.getBoundingClientRect(); return [box.x, box.y, box.width, box.height].map(Math.round); })]));
+  const phases = async (label: string): Promise<void> => {
+    for (const width of [380, 549, 760, 1000]) {
+      await host.evaluate((h, width) => h.setSize(width, 720), width);
+      await host.evaluate(h => h.push(h.settingsView({ type: "idle" }, h.state.cameraContext!)));
+      await expect.poll(layout, { message: `S153 ${label} at ${width} px, ready` }).toMatchObject(fits);
+      const ready = await places();
+      for (const state of [{ type: "countdown", remaining: 10 }, { type: "recording", startedAt: new Date(Date.now() - 61_000).toISOString() },
+        { type: "recording", startedAt: new Date(Date.now() - 3_600_000).toISOString() }, { type: "stopping" }] as const) {
+        await host.evaluate((h, state) => h.push(h.settingsView(state, h.state.cameraContext!)), state);
+        await expect(page.locator(".studio-choices"), `S153 ${label} ${state.type}`).toHaveAttribute("data-phase", state.type === "stopping" ? "saving" : state.type);
+        await expect.poll(places, { message: `S153 ${label} at ${width} px: nothing moves while ${state.type}` }).toBe(ready);
+        await expect.poll(layout, { message: `S153 ${label} at ${width} px, ${state.type}` }).toMatchObject(fits);
+        if (state.type === "recording") {
+          // Locked while recording, still in sight with a lock; the microphone's input can still be chosen (plan 079, D3).
+          for (const id of ["studioType", "studioScreen", "studioCameraDevice", "studioSystemAudio"]) {
+            await expect(page.locator(`#setting-${id}`), `S153 ${label} ${id} locked`).toBeDisabled();
+            await expect(page.locator(`#setting-${id} .studio-picker-lock`), `S153 ${label} ${id} its lock`).toBeVisible();
+          }
+          await expect(page.locator("#setting-studioMicrophoneDevice"), `S153 ${label} the microphone's picker`).toBeEnabled();
+        }
+      }
+      await host.evaluate(h => h.push(h.settingsView({ type: "idle" }, h.state.cameraContext!)));
+    }
+  };
+  // The sources under the preview (2026-10-31): one short control each, the type chosen and each input named with its
+  // state in sight, the whole of it in its accessible name; their heading said to assistive technology alone.
+  const sources = page.getByRole("region", { name: "Recording sources" });
+  await expect(sources, "S153 the sources' region, named by its heading").toBeVisible();
+  await expect(sources.locator(".studio-source-label"), "S153 each source named").toHaveText(["Plain recording", "Screen", "Camera", "System audio", "Microphone"]);
+  await expect(sources.locator(".studio-source-state > [data-shown]"), "S153 each input's state in sight").toHaveText(["On", "On", "On", "On"]);
+  await expect(sources.getByRole("combobox", { name: "Recording type" }), "S153 the type's menu").toHaveCount(1);
+  await expect(sources.locator("#setting-studioScreen"), "S153 the device's whole name in its accessible name").toHaveAccessibleName(/^Screen: .+/);
+  // Reached in order by keyboard, each opening its menu.
+  await sources.getByRole("combobox", { name: "Recording type" }).focus();
+  for (const id of ["studioScreen", "studioCameraDevice", "studioSystemAudio", "studioMicrophoneDevice"]) {
+    await page.keyboard.press("Tab");
+    await expect(page.locator(`#setting-${id}`), `S153 ${id} reached by Tab`).toBeFocused();
+  }
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".studio-picker-menu"), "S153 its menu opened by keyboard").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".studio-picker-menu"), "S153 and closed").toHaveCount(0);
+  // The view in words, its name and accessible name the same, what it shows its value and in its menu.
+  const view = page.locator(".studio-head").getByRole("combobox", { name: "Preview view" });
+  await host.evaluate(h => h.setSize(549, 720));
+  await expect(view.locator(".studio-view-name"), "S153 the view named in words at 549 px").toHaveText("Preview view");
+  await expect(view, "S153 what it shows said as its value").toContainText("As recorded");
+  await sweep("English");
+  await phases("English");
+  // The same content at the same width must settle to the same arrangement after a long state label goes away.
+  await host.evaluate(h => h.setSize(1000, 720));
+  await expect.poll(layout).toMatchObject(fits);
+  const originalDensity = await toolbar.getAttribute("data-density");
+  await host.evaluate(h => {
+    const view = h.settingsView({ type: "idle" }, h.state.cameraContext!);
+    const controls = view.groups.find((group: { id: string }) => group.id === "studioControls")!;
+    controls.choices[0]!.label = "Preparing a recording with a much longer status message than any real one";
+    h.push(view);
+  });
+  await expect.poll(() => toolbar.getAttribute("data-density")).not.toBe(originalDensity);
+  await expect.poll(layout).toMatchObject(fits);
+  await host.evaluate(h => h.push(h.settingsView({ type: "idle" }, h.state.cameraContext!)));
+  await expect.poll(() => toolbar.getAttribute("data-density"), { message: "S153 restored content unfolds without resizing" }).toBe(originalDensity);
+  for (const [factor, width] of [[1.5, 549], [2, 760], [2, 380]] as const) {
+    await host.evaluate(async (h, [factor, width]) => { await h.setSize(width, 720); await h.setZoom(factor); }, [factor, width] as const);
+    // Zoomed into the narrowest window Record may take the toolbar's width, its words wrapping.
+    await expect.poll(layout, { message: `S153 at ${width} px zoomed ${factor * 100}%` }).toMatchObject({ ...fits, recordAcross: expect.any(Boolean) });
+    await host.evaluate(h => h.setZoom(1));
+  }
+  await page.locator("#tab-general").click();
+  await page.locator("#setting-language-zh-TW").click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-Hant");
+  // The language's answer is the plain fixture; the Studio's view again, now in Traditional Chinese.
+  await host.evaluate(h => h.push(h.settingsView({ type: "idle" }, { ...h.state.cameraContext!, language: "zh-TW" })));
+  await page.locator("#tab-studio").click();
+  await expect(page.locator("#setting-studioControls-start"), "S153 the Studio in Traditional Chinese").toHaveText("開始錄影");
+  await expect(page.getByRole("region", { name: "錄製來源" }), "S153 the sources' heading in Traditional Chinese").toBeVisible();
+  await expect(page.locator(".studio-view-name"), "S153 the view named in Traditional Chinese").toHaveText("預覽畫面");
+  await sweep("Traditional Chinese");
+  await phases("Traditional Chinese");
+  await page.locator("#tab-general").click();
+  await commitEnglish();
+  await host.evaluate(async h => { h.state.cameraState = undefined; await h.setSize(560, 680); });
 });
 
 test("S039–S041 the status card: no Start when ready; Change output folder… and Relaunch ask main for the card's own action", { tag: "@recording-settings" }, async () => {
