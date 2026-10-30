@@ -170,8 +170,13 @@ export class Sharing {
    * long as that takes (a recording in progress pauses it). Rejects when it could not be made.
    */
   async whenReady(source: string, kind: VersionKind): Promise<string> {
+    // A move that lands while this looks, before it waits, finds no one waiting to end: so it is checked for after the
+    // look (found on Windows CI, 2026-10-30).
+    const moves = this.movedAway.get(source) ?? 0;
     for (;;) {
       const given = await this.handOut(source, kind);
+      const movedTo = (this.movedAway.get(source) ?? 0) === moves ? undefined : this.movedTo.get(source);
+      if (movedTo !== undefined) throw new Error(`the recording moved from ${source} to ${movedTo}`);
       if ("file" in given) return given.file;
       if ("failed" in given) throw new VersionFailed(`the ${kind} of ${source} could not be made`);
       await new Promise<void>((resolve, reject) => {
@@ -181,6 +186,10 @@ export class Sharing {
       if (this.failed.has(jobId(source, kind))) throw new VersionFailed(`the ${kind} of ${source} could not be made`);
     }
   }
+
+  /** How many times a recording has moved away from each path, and where it went last (`whenReady`). */
+  private readonly movedAway = new Map<string, number>();
+  private readonly movedTo = new Map<string, string>();
 
   /** Those waiting for a version (`whenReady`), by job, told when it ends however it ends. */
   private readonly waiters = new Map<string, Array<{ resolve: () => void; reject: (cause: Error) => void }>>();
@@ -321,6 +330,8 @@ export class Sharing {
 
   /** A recording renamed or moved in the Recordings tab: its versions follow it. */
   async moved(from: string, to: string): Promise<void> {
+    this.movedAway.set(from, (this.movedAway.get(from) ?? 0) + 1);
+    this.movedTo.set(from, to);
     for (const job of this.queue) if (job.source === from) job.source = to;
     // A Copy or Save waiting for one of its versions ends now: it asked for the file at a path the recording has left,
     // and nothing is ever given from that path again (Codex review: a running job wakes only its old id, and another

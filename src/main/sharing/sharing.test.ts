@@ -11,6 +11,8 @@ import { VersionCache } from "./version-cache";
 
 let dir: string;
 let paused: string | undefined;
+/** When set, the edit store's load waits for it: a test lands something between a look and what follows it. */
+let loadGate: { entered: boolean; open: Promise<void> } | undefined;
 const logs: string[] = [];
 
 const MIXED = JSON.stringify({ version: 2, mix: true, sounds: ["system", "microphone"], camera: { width: 0.2, height: 0.2, rounding: 1, x: 1, y: 1, mirror: true } });
@@ -78,6 +80,7 @@ const settle = async (): Promise<void> => {
 };
 
 beforeEach(async () => {
+  loadGate = undefined;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "sharing-"));
   paused = undefined;
   logs.length = 0;
@@ -90,6 +93,8 @@ beforeEach(async () => {
     runner,
     store: {
       load: async (source, identity): Promise<LoadedEdit> => {
+        const gate = loadGate;
+        if (gate) { gate.entered = true; await gate.open; }
         const edit = edits.get(source);
         if (edit === "unreadable") return { kind: "unreadable", reason: "saved by a newer version" };
         const record = (removed: Array<[number, number]>, scene?: EditScene) => editRecord({ source: identity, timescale: 90000, removed, revision: 1, scene });
@@ -321,6 +326,29 @@ describe("Share…'s edges (Codex review)", () => {
       sharing.resume();
       await settle();
     }
+  });
+});
+
+describe("a recording moved while a copy starts waiting (CI on Windows, 2026-10-30)", () => {
+  it("ends the copy even when the move comes before it waits, between its look and its wait", async () => {
+    const file = recording("Early.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    paused = "editing";
+    // The move lands while whenReady is still looking (its edit read), before it has started to wait.
+    let open!: () => void;
+    loadGate = { entered: false, open: new Promise<void>((resolve) => { open = resolve; }) };
+    const waiting = sharing.whenReady(file, "video");
+    await vi.waitFor(() => expect(loadGate?.entered).toBe(true));
+    const moved = path.join(dir, "Early moved.mp4");
+    fs.renameSync(file, moved);
+    edits.set(moved, edits.get(file)!);
+    await sharing.moved(file, moved);
+    loadGate = undefined;
+    open();
+    await expect(Promise.race([waiting, new Promise((_, reject) => setTimeout(() => reject(new Error("still waiting")), 3000))])).rejects.toThrow("moved");
+    paused = undefined;
+    sharing.resume();
+    await settle();
   });
 });
 
