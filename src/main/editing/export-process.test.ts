@@ -59,6 +59,49 @@ describe("the export worker's versions (plan 100)", () => {
     expect(sent).toContainEqual({ type: "extracted", id: 4, bytes: 9 });
     expect(sent.some((message) => "id" in message && (message.id === 7 || message.id === 8))).toBe(false);
   });
+
+  it("paces only what is prepared ahead, as main last said, while it runs (plan 100 step 4)", async () => {
+    let listener: ((message: { data: unknown }) => void) | undefined;
+    const said: string[] = [];
+    let finish: (() => void) | undefined;
+    new ExportWorker(
+      { on: (_event, handler) => { listener = handler; }, postMessage: () => undefined },
+      {
+        inspect: async () => plan,
+        run: async (request) => {
+          said.push(`run ${request.source}`);
+          if (request.source === "/held.mp4") await new Promise<void>((resolve) => { finish = resolve; });
+          return { plan, bytes: 1, reencodedFrames: 0, reencodedPackets: 0 };
+        },
+        cancel: () => undefined,
+        extract: async () => 1,
+        pause: (on) => said.push(`pause ${on}`),
+        careful: (on) => said.push(`careful ${on}`),
+      },
+    );
+    const post = (data: unknown): void => listener!({ data });
+    const turn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+    // Said before any runs: kept, and applied as a version starts.
+    post({ type: "pace", held: true, careful: true });
+    expect(said, "nothing is paced while nothing prepared ahead runs").toEqual([]);
+    post({ type: "export", id: 1, request: { source: "/held.mp4", output: "/c/v.mp4", removed: [], background: true } });
+    await turn();
+    expect(said).toEqual(["pause true", "careful true", "run /held.mp4"]);
+    // Changed while it runs: at once.
+    post({ type: "pace", held: false, careful: true });
+    expect(said.slice(-2)).toEqual(["pause false", "careful true"]);
+    finish?.();
+    await turn();
+    // Let go as it ends, so what the person asks for next is never held, whatever main said.
+    expect(said.slice(-2)).toEqual(["pause false", "careful false"]);
+    post({ type: "pace", held: true, careful: true });
+    post({ type: "export", id: 2, request: { source: "/asked.mp4", output: "/.part", removed: [] } });
+    await turn();
+    expect(said.slice(-1)).toEqual(["run /asked.mp4"]);
+    // Not a pace main could send.
+    post({ type: "pace", held: "yes", careful: true });
+    expect(said.slice(-1)).toEqual(["run /asked.mp4"]);
+  });
 });
 
 describe("the export worker", () => {

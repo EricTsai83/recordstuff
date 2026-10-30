@@ -12,7 +12,7 @@ import type { RecordingFailure } from "../../shared/recording-result";
 import type { DisplayFailure } from "../../shared/display";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { HostStartError, type HostErrorCode, type HostMessage, type MicrophoneChoice } from "../../shared/protocol";
+import { HostStartError, type HostErrorCode, type HostMessage, type MicrophoneChoice, type HealthSample } from "../../shared/protocol";
 import { COUNTDOWN_TIMING, type CountdownSeconds } from "../../shared/countdown";
 import { describeCapture, type CaptureReport, type QualitySettings } from "../../shared/quality";
 import { isErrorCode, type ErrorCode, type RecordingState } from "../../shared/state";
@@ -210,6 +210,8 @@ export type RecorderEvent =
   | { type: "cameraNotReady"; sessionId: string; detail: string }
   /** The camera's state in `camera` changed (plan 090): Settings redraws what its preview says. */
   | { type: "cameraState" }
+  /** One second of a recording's health (plan 100 step 4), for the governor of versions prepared alongside it. */
+  | { type: "health"; sessionId: string; health: HealthSample }
   /** The host confirmed capture; `requested` is the session snapshot, `capture` what it got. */
   | { type: "captureStarted"; sessionId: string; requested: QualitySettings; capture: CaptureReport }
   | { type: "displayFailed"; detail: DisplayFailure }
@@ -1216,6 +1218,11 @@ export class Recorder {
       case "progress":
         // The engine writes the file itself and reports that media still arrives.
         this.mediaArrived(session, message.bytes, "engine progress");
+        return;
+      case "health":
+        // Plan 100 step 4: what paces a version prepared alongside the recording; nothing of the recording's own.
+        if (!this.acceptsMedia(session)) return;
+        this.emit({ type: "health", sessionId: session.id, health: { late: message.late, lost: message.lost, backlog: message.backlog } });
         return;
       case "writeError":
         if (!session.finalizing) void this.fail(session.id, message.code, message.detail);

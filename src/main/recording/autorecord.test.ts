@@ -26,6 +26,11 @@ describe("parseAutoRecord", () => {
     expect(parseAutoRecord('{"seconds":5,"countdown":"3"}', false)).toMatchObject({ ok: false });
     // It never ticks, even when asked to (plan 046), so matrix and audio-quality audio stays the material's own.
     expect(parseAutoRecord('{"seconds":5,"microphone":true}', false)).toMatchObject({ ok: true, config: { microphone: true } });
+    // Plan 100 step 4's gate: the camera only when named.
+    expect(parseAutoRecord('{"seconds":5,"camera":true}', false)).toMatchObject({ ok: true, config: { camera: true } });
+    expect(parseAutoRecord('{"seconds":5,"camera":false}', false)).toMatchObject({ ok: true, config: { microphone: false } });
+    expect(parseAutoRecord('{"seconds":5,"camera":false}', false)).not.toMatchObject({ config: { camera: expect.anything() } });
+    expect(parseAutoRecord('{"seconds":5,"camera":"yes"}', false)).toEqual({ ok: false, error: "camera must be true or false" });
     expect(parseAutoRecord('{"seconds":5,"microphone":"on"}', false)).toEqual({ ok: false, error: "microphone must be true or false" });
     expect(parseAutoRecord('{"seconds":5,"countdown":3,"countdownSound":true}', false)).toMatchObject({ ok: true, config: { countdown: 3, countdownSound: false, microphone: false } });
   });

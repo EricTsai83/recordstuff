@@ -105,7 +105,13 @@ export type ExportMainMessage =
   /** Copies an editable recording's track into a file of its own for the edit view's preview (plan 087). */
   | { type: "extract"; id: number; request: { source: string; track: ExtractTrack; output: string } }
   /** Copies tracks into one file, a version or a recording's sources (plan 100); answered `extracted`, with progress. */
-  | { type: "tracks"; id: number; request: CopyTracksRequest };
+  | { type: "tracks"; id: number; request: CopyTracksRequest }
+  /**
+   * How a version prepared ahead (a `background` request) runs now (plan 100 step 4): `held` at its next picture until
+   * told otherwise, and `careful`, one picture in the encoder at a time, while a recording runs. Kept for the versions
+   * after; what the person asked for is never held.
+   */
+  | { type: "pace"; held: boolean; careful: boolean };
 
 /** The worker serves `copy` only with this set to `1` (`pnpm bench:export`). */
 export const EXPORT_BENCH_ENV = "RECORDSTUFF_EXPORT_BENCH";
@@ -168,6 +174,7 @@ export function isExportMainMessage(value: unknown): value is ExportMainMessage 
   switch (value["type"]) {
     case "inspect": case "export": return isCount(value["id"]) && isRequest;
     case "cancel": return true;
+    case "pace": return typeof value["held"] === "boolean" && typeof value["careful"] === "boolean";
     case "ping": return isCount(value["id"]);
     case "copy": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string";
     case "extract": return isCount(value["id"]) && isRecord(request) && typeof request["source"] === "string" && typeof request["output"] === "string"

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostMessage, MicrophoneDevice, NativeStart } from "../../shared/protocol";
 import { DEFAULT_QUALITY } from "../../shared/quality";
-import { NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
+import { HEALTH_INTERVAL_MS, NativeHost, PREVIEW_PORT_MESSAGE, cameraPreviewOn, cameraPrototypeOn, developmentCapture, engineFailure, engineLoadExit, type ParentPort, type PreviewFrame, type PreviewPort } from "./native-host-process";
 
 class Port implements ParentPort {
   sent: HostMessage[] = [];
@@ -580,6 +580,31 @@ describe("NativeHost", () => {
     port.deliver({ type: "start", sessionId: "s1", quality: DEFAULT_QUALITY, native: { ...native, crop: { x: 0, y: 74, width: 3456, height: 2160 } } });
     await flush();
     expect(fake.engine.prepare).toHaveBeenCalledWith(expect.objectContaining({ source }));
+  });
+
+  it("sends the recording's health once a second while it records, counted from its start, and stops with it (plan 100 step 4)", async () => {
+    const { port, engine } = await prepared();
+    vi.useFakeTimers();
+    try {
+      const samples = [{ late: 9, lost: 9, backlog: 9 }, { late: 0, lost: 0, backlog: 1 }, { late: 2, lost: 1, backlog: 3 }];
+      const health = vi.fn(() => samples.shift() ?? null);
+      Object.assign(engine, { health });
+      await vi.advanceTimersByTimeAsync(HEALTH_INTERVAL_MS * 2);
+      expect(health, "nothing before the recording").not.toHaveBeenCalled();
+      port.deliver({ type: "record", sessionId: "s1" });
+      // The first read only starts the count: what came before the recording is not its.
+      expect(health).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(HEALTH_INTERVAL_MS * 2);
+      expect(port.sent.filter((message) => message.type === "health")).toEqual([
+        { type: "health", sessionId: "s1", late: 0, lost: 0, backlog: 1 },
+        { type: "health", sessionId: "s1", late: 2, lost: 1, backlog: 3 },
+      ]);
+      port.deliver({ type: "stop", sessionId: "s1" });
+      await vi.advanceTimersByTimeAsync(HEALTH_INTERVAL_MS * 3);
+      expect(health).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("logs audio that arrived too late to mix", async () => {

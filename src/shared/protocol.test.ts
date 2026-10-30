@@ -150,6 +150,12 @@ describe("isHostMessage", () => {
     expect(isHostMessage({ type: "progress", sessionId: "a", bytes: 0 })).toBe(true);
     expect(isHostMessage({ type: "progress", sessionId: "a", bytes: -1 })).toBe(false);
     expect(isHostMessage({ type: "progress", sessionId: "a", bytes: Number.NaN })).toBe(false);
+    // A second of a recording's health (plan 100 step 4): whole counts, never negative.
+    expect(isHostMessage({ type: "health", sessionId: "a", late: 0, lost: 1, backlog: 2 })).toBe(true);
+    expect(isHostMessage({ type: "health", sessionId: "a", late: -1, lost: 0, backlog: 0 })).toBe(false);
+    expect(isHostMessage({ type: "health", sessionId: "a", late: 0.5, lost: 0, backlog: 0 })).toBe(false);
+    expect(isHostMessage({ type: "health", sessionId: "a", late: 0, lost: 0 })).toBe(false);
+    expect(isHostMessage({ type: "health", sessionId: "", late: 0, lost: 0, backlog: 0 })).toBe(false);
     expect(isHostMessage({ type: "writeError", sessionId: "a", code: "disk_full", detail: "x" })).toBe(true);
     // A host may report only the write failures the engine can observe.
     expect(isHostMessage({ type: "writeError", sessionId: "a", code: "stop_timeout", detail: "x" })).toBe(false);

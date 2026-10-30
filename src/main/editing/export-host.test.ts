@@ -69,6 +69,22 @@ describe("the export worker's supervisor", () => {
     expect((await second).outputDuration).toBe(1);
   });
 
+  it("tells the worker how versions prepared ahead run, as it changes and again to a worker started later (plan 100 step 4)", async () => {
+    const ctx = setup();
+    ctx.host.pace(true, true);
+    void ctx.host.inspect({ source: "/a.mp4", removed: [] }).catch(() => undefined);
+    const child = await ready(ctx);
+    expect(child.sent[0], "first, before any request").toEqual({ type: "pace", held: true, careful: true });
+    ctx.host.pace(true, true);
+    ctx.host.pace(false, true);
+    expect(child.sent.filter((m) => m.type === "pace"), "only a change is told").toEqual([
+      { type: "pace", held: true, careful: true }, { type: "pace", held: false, careful: true }]);
+    child.kill();
+    void ctx.host.inspect({ source: "/a.mp4", removed: [] }).catch(() => undefined);
+    const next = await ready(ctx);
+    expect(next.sent[0]).toEqual({ type: "pace", held: false, careful: true });
+  });
+
   it("drops messages it does not expect, and fails a request the worker names as failed", async () => {
     const ctx = setup();
     const exported = ctx.host.export({ source: "/a.mp4", output: "/.a.part", removed: [] }, () => undefined);

@@ -8,7 +8,7 @@
  * while media arrives) and `writeError`. A crash in native code ends this process only;
  * main sees it exit, fails the session and keeps what was written, which is a readable fragmented MP4.
  */
-import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart } from "../../shared/protocol";
+import { MEDIA_COMPONENTS_MISSING_EXIT, OUTPUT_MIME_TYPE, isMainMessage, type CameraChoice, type HostErrorCode, type HostMessage, type MainMessage, type MicrophoneDevice, type NativeStart, type HealthSample } from "../../shared/protocol";
 import { cameraPreviewOn, PREVIEW_PORT_MESSAGE } from "../../shared/camera-preview";
 import { isStudioDrawn, isStudioPreviewDiagnostics, isStudioRate, isStudioViewMessage, STUDIO_DIAGNOSTICS_MS, STUDIO_STALL_ENV, studioStallOf, type StudioDiagnosticsRequest, type StudioStallRequest } from "../../shared/studio-port";
 import { DIAGNOSTICS_ENV, PIPELINE_SCHEMA } from "../../shared/pipeline-histogram";
@@ -103,6 +103,8 @@ interface NativeCapture {
   stopMeter?(): void;
   /** Plan 083: the last session's stage figures as JSON once it has ended; null unless it kept them. */
   diagnostics?(): string | null;
+  /** Plan 100 step 4: the recording's health since the last read; null before a session is prepared. */
+  health?(): HealthSample | null;
 }
 interface EngineModule { NativeCapture: new (onEvent: (event: EngineEvent) => void) => NativeCapture }
 
@@ -178,6 +180,8 @@ type Phase = "preparing" | "prepared" | "recording" | "stopping";
 const DEVICES_SETTLE_MS = 300;
 /** How often a running session's figures are logged under the diagnostics switch (plan 083). */
 const DIAGNOSTICS_SNAPSHOT_MS = 5000;
+/** How often a recording's health goes to main, whose governor paces the versions prepared alongside it (plan 100). */
+export const HEALTH_INTERVAL_MS = 1000;
 
 export class NativeHost {
   private session: { id: string; phase: Phase; recordingPath: string; cancelled: boolean } | undefined;
@@ -197,6 +201,8 @@ export class NativeHost {
   private previewFramesBefore = 0;
   /** The latest session's id: the page's last figures come once its port is let go, after the session ended. */
   private lastSessionId: string | undefined;
+  /** The recording's health sent every `HEALTH_INTERVAL_MS` while it records; it ends itself with the recording. */
+  private healthTimer: ReturnType<typeof setInterval> | undefined;
   /** The running session's figures logged every `DIAGNOSTICS_SNAPSHOT_MS`: main ends a Live preview by ending this process. */
   private snapshots: ReturnType<typeof setInterval> | undefined;
   /** Settings' meter (plan 079, D1): the latest request, and the requests applied one after another. */
@@ -614,6 +620,32 @@ export class NativeHost {
     }
     session.phase = "recording";
     this.send({ type: "started", sessionId });
+    this.watchHealth(sessionId);
+  }
+
+  /** Once a second while `sessionId` records, its health to main (plan 100 step 4); counted from the recording's start. */
+  private watchHealth(sessionId: string): void {
+    if (!this.capture.health) return;
+    this.stopHealth();
+    this.capture.health();
+    this.healthTimer = setInterval(() => {
+      const session = this.session;
+      if (session?.id !== sessionId || session.phase !== "recording") { this.stopHealth(); return; }
+      let sample: HealthSample | null | undefined;
+      try {
+        sample = this.capture.health?.();
+      } catch (cause) {
+        this.log(`health: not read: ${cause instanceof Error ? cause.message : String(cause)}`);
+        this.stopHealth();
+        return;
+      }
+      if (sample) this.send({ type: "health", sessionId, late: sample.late, lost: sample.lost, backlog: sample.backlog });
+    }, HEALTH_INTERVAL_MS);
+  }
+
+  private stopHealth(): void {
+    if (this.healthTimer !== undefined) clearInterval(this.healthTimer);
+    this.healthTimer = undefined;
   }
 
   private async stop(sessionId: string): Promise<void> {
@@ -626,6 +658,7 @@ export class NativeHost {
     if (session.phase === "stopping") return;
     const wasRecording = session.phase === "recording";
     session.phase = "stopping";
+    this.stopHealth();
     if (!wasRecording) {
       await this.capture.cancel().catch(() => undefined);
       this.logDiagnostics(sessionId, "cancelled");

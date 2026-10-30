@@ -23,6 +23,10 @@ interface NativeExport {
   copyTracks?(source: string, tracks: CopyTrack[], output: string): Promise<number>;
   /** Plan 100: Darwin's background policy for this process, on or off; false where there is none. */
   setBackground?(background: boolean): boolean;
+  /** Plan 100 step 4: holds the running export at its next picture, and the ones after, until resumed. */
+  pause?(paused: boolean): void;
+  /** Plan 100 step 4: one picture in the encoder at a time while a recording runs. */
+  careful?(careful: boolean): void;
 }
 
 interface EngineModule {
@@ -49,6 +53,9 @@ export class ExportWorker {
   private readonly queue = new SerialQueue();
   /** The export whose progress is reported, while one runs. */
   private exporting: number | undefined;
+  /** How versions prepared ahead run now (plan 100 step 4), and whether one is running. */
+  private pace = { held: false, careful: false };
+  private inBackground = false;
 
   constructor(private readonly port: ParentPort, private readonly engine: NativeExport, private readonly join?: string, private readonly bench = false) {
     port.on("message", ({ data }) => {
@@ -66,6 +73,10 @@ export class ExportWorker {
     switch (message.type) {
       case "ping": this.send({ type: "pong", id: message.id }); return;
       case "cancel": this.engine.cancel(); return;
+      case "pace":
+        this.pace = { held: message.held, careful: message.careful };
+        if (this.inBackground) this.applyPace(this.pace);
+        return;
       case "inspect": case "export": {
         void this.queue.run(() => this.serve(message));
         return;
@@ -109,7 +120,19 @@ export class ExportWorker {
   private async background<T>(background: true | undefined, work: () => Promise<T>): Promise<T> {
     if (!background) return work();
     this.engine.setBackground?.(true);
-    try { return await work(); } finally { this.engine.setBackground?.(false); }
+    // Paced only while it runs: what the person asks for next is never held or slowed (plan 100 step 4).
+    this.inBackground = true;
+    this.applyPace(this.pace);
+    try { return await work(); } finally {
+      this.inBackground = false;
+      this.applyPace({ held: false, careful: false });
+      this.engine.setBackground?.(false);
+    }
+  }
+
+  private applyPace(pace: { held: boolean; careful: boolean }): void {
+    this.engine.pause?.(pace.held);
+    this.engine.careful?.(pace.careful);
   }
 
   private async serve(message: ExportMainMessage & { type: "inspect" | "export" }): Promise<void> {

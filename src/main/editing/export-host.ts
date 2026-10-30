@@ -50,6 +50,8 @@ export class ExportHost {
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private missedPongs = 0;
   private cancelTimer: ReturnType<typeof setTimeout> | undefined;
+  /** How versions prepared ahead run (`pace`), kept for a worker started later. */
+  private paced = { held: false, careful: false };
   private readonly log: (message: string) => void;
 
   constructor(private readonly options: ExportHostOptions) {
@@ -108,6 +110,16 @@ export class ExportHost {
     }, this.options.cancelBoundMs ?? CANCEL_BOUND_MS);
   }
 
+  /**
+   * How versions prepared ahead run now (plan 100 step 4): `held` at their next picture, `careful` with one picture in
+   * the encoder at a time. Told to the worker now and to one started later; what the person asked for is never paced.
+   */
+  pace(held: boolean, careful: boolean): void {
+    if (this.paced.held === held && this.paced.careful === careful) return;
+    this.paced = { held, careful };
+    this.post({ type: "pace", held, careful });
+  }
+
   /** Ends the worker when nothing is in flight (the edit view closed); a running export keeps it. */
   closeIdle(): void {
     if (this.pending.size === 0) this.end(undefined);
@@ -161,6 +173,7 @@ export class ExportHost {
         }
         if (message.type === "ready") {
           clearTimeout(timer);
+          if (this.child === child) this.post({ type: "pace", ...this.paced });
           resolve(child);
           return;
         }

@@ -165,6 +165,17 @@ export interface EngineFileReport {
   fragmented?: string;
 }
 
+/**
+ * One second of a recording's health (native core/health.rs): pictures handed over more than a frame's time after they
+ * were captured, pictures the recording lost (a refresh capture skipped, or one the encoder dropped), and the most
+ * pictures in the encoder at once.
+ */
+export interface HealthSample {
+  late: number;
+  lost: number;
+  backlog: number;
+}
+
 /** The engine's answer on the screen grant: "unknown" when it could not tell (no such display, a timeout). */
 export type ScreenAccess = "granted" | "denied" | "unknown";
 const SCREEN_ACCESS = ["granted", "denied", "unknown"] as const satisfies readonly ScreenAccess[];
@@ -184,6 +195,8 @@ export type HostMessage =
   | { type: "error"; sessionId: string; code: HostErrorCode; detail: string; displayFailure?: "track_ended" }
   /** Media is still being written, `bytes` so far; what the stall guard watches. */
   | { type: "progress"; sessionId: string; bytes: number }
+  /** Once a second while recording (plan 100 step 4): the second's health, which paces versions prepared meanwhile. */
+  | ({ type: "health"; sessionId: string } & HealthSample)
   /** Writing the file failed; what was written is kept. */
   | { type: "writeError"; sessionId: string; code: EngineWriteErrorCode; detail: string }
   /** The microphone stopped while recording (plan 074): the recording goes on with system audio only. */
@@ -323,6 +336,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return isNonEmptyString(value["sessionId"]) && isEngineFileReport(value["file"]);
     case "progress":
       return isNonEmptyString(value["sessionId"]) && typeof value["bytes"] === "number" && Number.isFinite(value["bytes"]) && value["bytes"] >= 0;
+    case "health":
+      return isNonEmptyString(value["sessionId"]) && (["late", "lost", "backlog"] as const).every((key) => Number.isSafeInteger(value[key]) && (value[key] as number) >= 0);
     case "writeError":
       return isNonEmptyString(value["sessionId"]) &&
         (ENGINE_WRITE_ERROR_CODES as readonly unknown[]).includes(value["code"]) &&

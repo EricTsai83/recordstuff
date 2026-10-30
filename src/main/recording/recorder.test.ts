@@ -809,6 +809,15 @@ describe("native engine messages (plan 076)", () => {
     expect(logs).toContain("recorder: session s1 first chunk 4096 bytes (engine progress)");
   });
 
+  it("passes a recording's health on as it records, and never a session's it gave up (plan 100 step 4)", async () => {
+    const ctx = setup();
+    await startNative(ctx);
+    ctx.host.emit({ type: "progress", sessionId: "s1", bytes: 4096 });
+    ctx.host.emit({ type: "health", sessionId: "s1", late: 1, lost: 0, backlog: 2 });
+    ctx.host.emit({ type: "health", sessionId: "s0", late: 5, lost: 5, backlog: 5 });
+    expect(ctx.events.filter((event) => event.type === "health")).toEqual([{ type: "health", sessionId: "s1", health: { late: 1, lost: 0, backlog: 2 } }]);
+  });
+
   it("fails the start when the engine reports no media before the deadline", async () => {
     const ctx = setup();
     await startNative(ctx);

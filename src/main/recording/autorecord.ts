@@ -6,8 +6,8 @@
  * only; settings.json is never written. The countdown is 0 unless named, so
  * matrix and audio runs keep their timing, and it never ticks (plan 046), so
  * their audio cannot contain the tick. The microphone is off unless named (plan 074), whatever is stored, for the same
- * reason; `true` mixes the system default input in. A packaged build ignores the variable
- * entirely.
+ * reason; `true` mixes the system default input in. The camera is off unless `"camera":true` (plan 100 step 4's gate),
+ * which composes the default camera at the default layout. A packaged build ignores the variable entirely.
  */
 import path from "node:path";
 import {
@@ -35,6 +35,8 @@ export interface AutoRecordConfig {
   microphone: boolean;
   /** An absolute folder that replaces the stored one for this run, such as an isolated test volume. */
   outputDir?: string;
+  /** The default camera composed at the default layout, never the stored choice (plan 100 step 4's gate); off unless named. */
+  camera?: true;
 }
 
 export type AutoRecordParse = { ok: true; config: AutoRecordConfig } | { ok: false; error: string };
@@ -82,11 +84,13 @@ export function parseAutoRecord(value: string | undefined, isPackaged: boolean):
   if (!isCountdownSeconds(countdown)) return { ok: false, error: `countdown: unsupported value ${JSON.stringify(countdown)}` };
   const microphone = record["microphone"] ?? false;
   if (typeof microphone !== "boolean") return { ok: false, error: "microphone must be true or false" };
+  const camera = record["camera"] ?? false;
+  if (typeof camera !== "boolean") return { ok: false, error: "camera must be true or false" };
   const outputDir = record["outputDir"];
   if (outputDir !== undefined && (typeof outputDir !== "string" || !path.isAbsolute(outputDir))) {
     return { ok: false, error: "outputDir must be an absolute path" };
   }
-  return { ok: true, config: { seconds, quality: merged, countdown, countdownSound: false, microphone, ...(outputDir === undefined ? {} : { outputDir }) } };
+  return { ok: true, config: { seconds, quality: merged, countdown, countdownSound: false, microphone, ...(outputDir === undefined ? {} : { outputDir }), ...(camera ? { camera: true as const } : {}) } };
 }
 
 export interface AutoRecordDeps {
