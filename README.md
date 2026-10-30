@@ -36,7 +36,7 @@ Updates, removal and data locations: [installation guide](resources/INSTALL.md).
 1. Launch RecordStuff and grant screen and system-audio recording permission.
 2. Press **⇧⌘1** (Ctrl+Shift+1 on Windows), or choose **Start recording** from the menu bar icon. Recording starts after a 3-second countdown. Do the same to stop.
 3. Recordings are saved to `~/Movies/RecordStuff` (`Videos\RecordStuff` on Windows). Click the notification or choose **Open RecordStuff** to play, rename, reveal or delete them.
-4. To add your camera, check **Camera** under **Include in recordings** in the menu bar menu, then choose **Open Recording Studio…**. Above its preview you choose the recording type (plain, or editable on macOS), the screen, the camera and the microphone; a problem, such as a camera that is not found, is said on its own button. In the Camera button you also set the bubble's size, rounding and mirror, and you drag the bubble into place in the preview; **Live preview** shows the picture. Under the preview a plain recording offers showing or hiding the camera, **Don't record** for each sound and its volume; an editable recording keeps everything and lets you set it afterwards in **Edit…**. The camera is drawn into the video, not shown on your screen.
+4. Under **Include in recordings** in the menu bar menu, check what each recording takes: **System audio** (the sound your computer plays), **Microphone** and **Camera**; uncheck System audio for a narrated walkthrough without notification sounds or music. To arrange the camera, choose **Open Recording Studio…**. Above its preview you choose the recording type (plain, or editable on macOS), the screen, the camera, system audio and the microphone; a problem, such as a camera that is not found, is said on its own button. In the Camera button you also set the bubble's size, rounding and mirror, and you drag the bubble into place in the preview; **Live preview** shows the picture. Under the preview a plain recording offers showing or hiding the camera, **Don't record** for each sound and its volume; an editable recording keeps everything and lets you set it afterwards in **Edit…**. The camera is drawn into the video, not shown on your screen.
 5. To send a recording, drag its card out of the Recordings tab: you give what the card plays, cuts applied and the camera composed (⌥-drag gives the original). **Share…** in the card's menu also offers the sound alone, the original, the video without the camera and each track as its own file (for an editor), with **Copy** and **Save to…**; ⌘C on a card copies its video. **Edit…** cuts a recording without changing it, and **Save a copy…** there saves the result as a file of your own.
 
 Open settings with **⌥⌘,**:
@@ -49,9 +49,10 @@ Open settings with **⌥⌘,**:
 | Hide desktop icons and widgets | On / Off; leaves desktop icons and widgets out of recordings (macOS only) | Off |
 | Output folder | Any folder | Movies → RecordStuff |
 | Countdown | Off / 3 / 5 / 10 s, optional tick | 3 s, tick on |
-| Microphone | On / Off, also in the menu bar menu; recorded with system audio in one track (headphones avoid speaker echo) | Off |
+| System audio | On / Off, also in the menu bar menu and the Recording Studio; off records none of the computer's sound | On |
+| Microphone | On / Off, also in the menu bar menu; recorded with system audio in one track (headphones avoid speaker echo) | On |
 | Input device | System default / a connected microphone | System default |
-| Camera | On / Off, also in the menu bar menu; arranged in the Recording Studio (not yet tested with a camera on Windows) | Off |
+| Camera | On / Off, also in the menu bar menu; arranged in the Recording Studio (not yet tested with a camera on Windows) | On |
 | Camera device | System default / a connected camera | System default |
 | Video quality | Economy / Standard / High | Standard |
 | Resolution cap | 1080p / 1440p / 4K / Source | Source |
