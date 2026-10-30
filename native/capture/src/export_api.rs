@@ -186,7 +186,10 @@ fn renderer(control: Arc<Control>) -> std::result::Result<Box<dyn Renderer>, Exp
         Ok(Box::new(crate::mac::render::MacRenderer::new(control)))
     }
     #[cfg(not(target_os = "macos"))]
-    Err(ExportError { code: "unsupported", detail: "an editable recording is exported on macOS only".into() })
+    {
+        let _ = control;
+        Err(ExportError { code: "unsupported", detail: "an editable recording is exported on macOS only".into() })
+    }
 }
 
 fn parse(request: ExportRequest) -> Result<Parsed> {
