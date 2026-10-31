@@ -115,30 +115,32 @@ const savedFile = "2026-09-20 21-14-33.mp4";
       <text x="372" y="30" class="ds-toast-time" text-anchor="end">now</text>
     </g>
 
-    <!-- the status item's menus, as tray-model.ts builds them while idle and while recording; the highlight is the item under the pointer -->
+    <!-- Simplified workflow excerpts of tray-model.ts, not a full native menu capture; the highlight follows the pointer. -->
     <g class="ds-menu ds-menu-idle" transform="translate(1330 56)">
-      <rect width="250" height="118" rx="9" class="ds-menu-bg" />
+      <rect width="250" height="140" rx="9" class="ds-menu-bg" />
       <rect x="5" y="5" width="240" height="22" rx="5" class="ds-menu-hl" />
       <text x="14" y="16" class="ds-menu-text">Start recording</text>
       <text x="236" y="16" class="ds-menu-key">⇧⌘1</text>
       <line x1="12" x2="238" y1="32" y2="32" class="ds-menu-sep" />
       <text x="14" y="48" class="ds-menu-text">Open RecordStuff</text>
       <text x="236" y="48" class="ds-menu-key">⌥⌘,</text>
-      <text x="14" y="70" class="ds-menu-text">Show last recording</text>
-      <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
-      <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
+      <text x="14" y="70" class="ds-menu-text">Open Recording Studio…</text>
+      <text x="14" y="92" class="ds-menu-text">Show last recording</text>
+      <line x1="12" x2="238" y1="108" y2="108" class="ds-menu-sep" />
+      <text x="14" y="124" class="ds-menu-text">Quit RecordStuff</text>
     </g>
     <g class="ds-menu ds-menu-rec" transform="translate(1312 56)">
-      <rect width="250" height="118" rx="9" class="ds-menu-bg" />
+      <rect width="250" height="140" rx="9" class="ds-menu-bg" />
       <rect x="5" y="5" width="240" height="22" rx="5" class="ds-menu-hl" />
       <text x="14" y="16" class="ds-menu-text">Stop</text>
       <text x="236" y="16" class="ds-menu-key">⇧⌘1</text>
       <line x1="12" x2="238" y1="32" y2="32" class="ds-menu-sep" />
       <text x="14" y="48" class="ds-menu-text">Open RecordStuff</text>
       <text x="236" y="48" class="ds-menu-key">⌥⌘,</text>
-      <text x="14" y="70" class="ds-menu-text">Show last recording</text>
-      <line x1="12" x2="238" y1="86" y2="86" class="ds-menu-sep" />
-      <text x="14" y="102" class="ds-menu-text">Quit RecordStuff</text>
+      <text x="14" y="70" class="ds-menu-text">Open Recording Studio…</text>
+      <text x="14" y="92" class="ds-menu-text">Show last recording</text>
+      <line x1="12" x2="238" y1="108" y2="108" class="ds-menu-sep" />
+      <text x="14" y="124" class="ds-menu-text">Quit RecordStuff</text>
     </g>
     <!-- pointer -->
     <g class="ds-pointer">
@@ -330,7 +332,8 @@ const savedFile = "2026-09-20 21-14-33.mp4";
   }
   .ds-pointer {
     transform: translate(1040px, 520px);
-    animation: ds-pointer var(--story) cubic-bezier(0.45, 0, 0.15, 1) infinite;
+    animation: ds-pointer var(--story) cubic-bezier(0.4, 0, 0.25, 1) infinite;
+    will-change: transform;
   }
 
   @keyframes ds-pointer {

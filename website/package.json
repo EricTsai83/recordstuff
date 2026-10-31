@@ -27,6 +27,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/node": "24.13.4",
+    "happy-dom": "^20.14.6",
     "puppeteer-core": "^25.12.0",
     "typescript": "~6.0.3"
   },

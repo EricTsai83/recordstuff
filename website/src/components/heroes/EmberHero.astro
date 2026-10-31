@@ -35,23 +35,28 @@ const windows = release.windows;
     <div class="workflow" data-workflow>
       <div class="workflow-controls">
         <div class="workflow-badge" role="group" aria-label="Demo playback">
-          <button class="badge-arrow" type="button" data-previous aria-label="Previous stage: Edit"><span aria-hidden="true">←</span></button>
-          <button class="badge-stage" type="button" data-toggle aria-label="Pause Record demo">
-            <span class="badge-name" id="workflow-stage-label" data-stage-name>Record</span>
+          <button class="badge-arrow" type="button" data-previous aria-label="Previous stage: Record" disabled><span aria-hidden="true">←</span></button>
+          <button class="badge-stage" type="button" data-toggle aria-label="Record Playing, pause demo">
+            <span class="badge-action" data-play-icon hidden aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m5 3 8 5-8 5Z" /></svg></span>
+            <span class="badge-action" data-pause-icon aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 3v10M11 3v10" /></svg></span>
+            <span class="badge-copy"><span class="badge-name" id="workflow-stage-label" data-stage-name>Record</span><span class="badge-state" data-playback-state>Playing</span></span>
           </button>
           <button class="badge-arrow" type="button" data-next aria-label="Next stage: Edit"><span aria-hidden="true">→</span></button>
-          <span class="badge-progress" aria-hidden="true"><span data-workflow-progress></span></span>
+          <svg class="badge-progress" viewBox="0 0 156 36" preserveAspectRatio="none" aria-hidden="true">
+            <rect x="0.75" y="0.75" width="154.5" height="34.5" rx="17.25" pathLength="1" data-workflow-progress />
+          </svg>
         </div>
         <span class="visually-hidden" data-stage-status>Record → Edit</span>
       </div>
       <div class="workflow-stage">
-        <div id="record-demo" role="region" data-chapter-panel aria-label="Recording demonstration" class="workflow-panel" tabindex="0" data-active>
+        <div id="record-demo" role="region" data-chapter-panel aria-label="Recording demonstration" class="workflow-panel" data-active>
     <div class="hero-scene">
       <div class="scene-frame" data-scene-frame><DesktopScene /></div>
+      <span class="scene-note">Simplified recording walkthrough</span>
 
     </div>
         </div>
-        <div id="edit-demo" role="region" data-chapter-panel aria-label="Editing demonstration" class="workflow-panel" tabindex="0" inert aria-hidden="true">
+        <div id="edit-demo" role="region" data-chapter-panel aria-label="Editing demonstration" class="workflow-panel" inert aria-hidden="true">
           <div class="editor-motion">
             <Image src={editor} alt="RecordStuff’s timeline, ready to select a section." widths={[640, 1120]} sizes="(max-width: 860px) 100vw, 820px" format="webp" loading="eager" />
             <video data-edit-video src={editorVideo} poster={editor.src} preload="auto" muted playsinline disablepictureinpicture aria-label="Demonstration: select and remove a section, then save an edited copy."></video>
@@ -112,14 +117,21 @@ const windows = release.windows;
   }
   .workflow { position: relative; width: 100%; max-width: 820px; margin-top: 1rem; }
   .workflow-controls { display: flex; justify-content: center; margin-bottom: 12px; }
-  .workflow-badge { position: relative; display: grid; grid-template-columns: 30px 1fr 30px; width: 132px; max-width: calc(100vw - 56px); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 999px; background: linear-gradient(180deg, #202022, #171719); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.035); }
+  .workflow-badge { position: relative; display: grid; grid-template-columns: 30px 1fr 30px; width: 156px; max-width: calc(100vw - 56px); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 999px; background: linear-gradient(180deg, #202022, #171719); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.035); }
   .workflow-badge button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0; border: 0; font: inherit; color: var(--fg-muted); background: none; cursor: pointer; transition: color 150ms ease, background 150ms ease; }
-  .workflow-badge button:hover { color: var(--fg); background: rgba(255, 255, 255, 0.035); }
+  .workflow-badge button:hover:not(:disabled) { color: var(--fg); background: rgba(255, 255, 255, 0.035); }
+  .workflow-badge button:disabled { opacity: 0.28; cursor: default; }
   .workflow-badge button:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: -4px; border-radius: 999px; }
   .workflow-badge .badge-arrow { font-size: 0.8rem; }
-  .badge-name { min-width: 38px; text-align: center; font-size: 12px; font-weight: 500; color: var(--fg); }
-  .badge-progress { position: absolute; bottom: 0; left: 14px; right: 14px; height: 1px; overflow: hidden; background: rgba(255, 255, 255, 0.06); pointer-events: none; }
-  .badge-progress span { display: block; height: 100%; background: rgba(255, 255, 255, 0.7); transform: scaleX(0); transform-origin: left; }
+  .workflow-badge .badge-stage { min-height: 34px; gap: 7px; }
+  .badge-action { display: inline-flex; width: 14px; height: 14px; color: var(--fg); }
+  .badge-action[hidden] { display: none; }
+  .badge-action svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .badge-copy { display: grid; gap: 1px; min-width: 42px; text-align: left; line-height: 1; }
+  .badge-name { font-size: 12px; font-weight: 500; color: var(--fg); }
+  .badge-state { font-size: 10px; font-weight: 400; color: var(--fg-muted); }
+  .badge-progress { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .badge-progress rect { fill: none; stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; }
   @media (prefers-reduced-motion: reduce) { .workflow-badge button { transition: none; } }
   .workflow-stage { display: grid; aspect-ratio: 1096 / 696; grid-template-rows: minmax(0, 1fr); align-items: center; }
   .workflow-panel { visibility: hidden; opacity: 0; pointer-events: none; grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; align-self: start; }
@@ -138,5 +150,6 @@ const windows = release.windows;
     max-width: 820px;
     margin-top: 0;
   }
+  .scene-note { position: absolute; right: 10px; bottom: 8px; color: var(--fg-muted); font-size: 10px; pointer-events: none; }
 
 </style>
