@@ -59,9 +59,9 @@
   --text-2xs--line-height: 1.4;
   --text-3xs: 0.6875rem;
   --text-3xs--line-height: 1.35;
-  /* A page's own title. */
-  --text-title: 1.625rem;
-  --text-title--line-height: 1.2;
+  /* A page's own title, as the page head draws it. */
+  --text-title: 1.875rem;
+  --text-title--line-height: 1.1;
 }
 
 /* Shared reference palette: stone surfaces in the light theme, neutral grey in the dark, and the same red primary.
@@ -495,9 +495,9 @@
     pointer-events: none;
   }
   main {
-    --main-top: 16px;
+    --main-top: --spacing(4);
     height: 100dvh;
-    --main-right: 20px;
+    --main-right: --spacing(5);
     padding: var(--main-top) var(--main-right) 0;
     display: flex;
     flex-direction: column;
@@ -619,7 +619,7 @@
     margin-left: calc(-1 * var(--settings-shadow-gutter));
     padding-left: var(--settings-shadow-gutter);
     /* The space after the card scrolls into view only at the end of an overflowing page. */
-    padding-bottom: 24px;
+    padding-bottom: --spacing(6);
     scroll-padding-block: 36px 46px;
     overscroll-behavior: contain;
     scrollbar-width: none;
@@ -632,18 +632,18 @@
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
-    column-gap: 12px;
+    column-gap: --spacing(3);
     flex: none;
     position: relative;
     background: var(--background) var(--surface-grain) 0 0 / 256px 256px;
-    padding: 12px var(--content-x) 0;
+    padding: --spacing(3) var(--content-x) 0;
   }
   .settings-head > [role="tablist"] {
     flex-basis: 100%;
   }
   /* Room under Troubleshooting's section tabs for their focus ring, which the head's foot would cut. */
   .settings-head:has(> [role="tablist"]) {
-    padding-bottom: 6px;
+    padding-bottom: --spacing(1.5);
   }
   .settings-head-tools {
     flex: 1 1 auto;
@@ -669,20 +669,20 @@
     min-height: 100%;
     color: var(--foreground);
     overflow: clip;
-    padding: 0 var(--content-x) 44px;
+    padding: 0 var(--content-x) --spacing(11);
   }
   .page-title {
-    font-size: 26px;
+    font-size: var(--text-title);
     font-weight: 680;
     letter-spacing: -0.03em;
-    margin: 0 0 18px;
+    margin: 0 0 --spacing(5);
   }
   .section {
-    margin-bottom: 28px;
+    margin-bottom: --spacing(6);
   }
   .cleanup-section {
-    margin-top: 28px;
-    padding-top: 12px;
+    margin-top: --spacing(6);
+    padding-top: --spacing(3);
     border-top: 1px solid var(--border);
   }
   .cleanup-section .row-icon,
@@ -691,15 +691,15 @@
   }
   /* The warning reads as the description's second line rather than a separate paragraph. */
   .cleanup-section .cleanup-warning {
-    margin-top: 2px;
+    margin-top: --spacing(0.5);
   }
   .about {
-    margin-top: 44px;
+    margin-top: --spacing(11);
     margin-bottom: 0;
-    padding: 0 2px;
+    padding: 0 --spacing(0.5);
   }
   .settings-panel:has(> .about) {
-    padding-bottom: 24px;
+    padding-bottom: --spacing(6);
     scroll-padding-bottom: 26px;
   }
   .about .about-row {
@@ -709,30 +709,30 @@
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 16px;
+    gap: --spacing(2) --spacing(4);
   }
   .about-identity {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 4px 10px;
+    gap: --spacing(1) --spacing(2.5);
     flex: 1 1 auto;
     min-width: 0;
   }
   .about-mark {
-    --m: 16px;
+    --m: --spacing(4);
   }
   .about-version,
   .about-credit {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   .about-row .controls {
     flex: none;
     max-width: 100%;
     margin-left: auto;
-    gap: 4px 8px;
+    gap: --spacing(1) --spacing(2);
   }
   .about-row .diagnostics {
     margin-left: 0;
@@ -741,11 +741,12 @@
   .section-heading {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
+    gap: --spacing(2);
+    font-size: var(--text-sm);
     font-weight: 620;
     color: var(--foreground);
-    margin: 14px 0 10px 2px;
+    /* The same room above and under as the Recordings tab's headings (plan 102). */
+    margin: --spacing(5) 0 --spacing(3) --spacing(0.5);
   }
   /* A day of recordings or failures: its name and, for recordings, the count beside it. Days are divided by one
      separator between them, nothing beside or under the heading. */
@@ -778,19 +779,20 @@
   }
   /* Without a card under it, a muted label reads as a caption; sections of bare rows get a real heading. */
   .plain-section > .section-heading {
-    font-size: 15px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--foreground);
-    margin: 12px 0 4px;
+    margin: --spacing(3) 0 --spacing(1);
   }
+  /* One row height and padding wherever rows are listed (plan 102). */
   .row {
-    min-height: 56px;
-    padding: 14px 0;
+    min-height: --spacing(13);
+    padding: --spacing(3) 0;
   }
   /* Rows in a panel are spaced, not ruled. */
   .inset-list > .row {
-    min-height: 52px;
-    padding: 12px 0;
+    min-height: --spacing(13);
+    padding: --spacing(3) 0;
   }
   /* Where a jump landed (lib/arrival.ts): outlined in the primary accent, which then fades. An element with an
      `::after` of its own (a recording card's state line) keeps its shape; others take one from --arrival-inset and
@@ -822,23 +824,23 @@
   /* A settings row's outline stands a little clear of its text. */
   .inset-list > .row {
     --arrival-inset: 2px -10px;
-    --arrival-radius: 10px;
+    --arrival-radius: var(--radius-md);
   }
   .row-line {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: --spacing(3);
     justify-content: space-between;
   }
   .group-title {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: --spacing(2);
     min-width: 0;
   }
   .row-icon {
-    width: 18px;
-    height: 18px;
+    width: --spacing(4.5);
+    height: --spacing(4.5);
     flex: none;
     color: var(--muted-foreground);
   }
@@ -850,12 +852,12 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 7px;
+    gap: --spacing(2);
     max-width: 60%;
   }
   /* Grouped choices sit in a recessed track; the pressed one is a raised tile, a text choice marked by a red dot. */
   .segments {
-    padding: 2px;
+    padding: --spacing(0.5);
     border-radius: 9px;
     background: var(--muted);
   }
@@ -873,7 +875,7 @@
   .row-line:has(> .controls > .camera-preview) {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: --spacing(2.5);
   }
   .controls:has(> .camera-preview) {
     max-width: 100%;
@@ -1642,9 +1644,9 @@
   .row-problem {
     display: flex;
     align-items: center;
-    gap: 5px;
-    margin: 4px 0 0;
-    font-size: 12px;
+    gap: --spacing(1);
+    margin: --spacing(1) 0 0;
+    font-size: var(--text-2xs);
     color: var(--warning);
   }
   .row-problem svg {
@@ -1879,9 +1881,9 @@
   .slider-setting {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: --spacing(2.5);
     /* A fixed width: in the controls' shrink-to-fit box a percentage leaves the track no length to place its thumb on. */
-    width: 220px;
+    width: --spacing(55);
     max-width: 100%;
   }
   .slider-setting-track {
@@ -1923,13 +1925,13 @@
     align-items: flex-start;
   }
   .row-line:has(> .controls > .text-field) > .group-title {
-    min-height: 28px;
+    min-height: --spacing(7);
   }
   /* The Screen row's arrangement takes the row's full width under its label. */
   .row-line:has(> .controls > .arrangement) {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: --spacing(2.5);
   }
   .controls:has(> .arrangement) {
     max-width: 100%;
@@ -2171,11 +2173,11 @@
   .row-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 7px;
-    margin: 8px 0 0;
+    gap: --spacing(2);
+    margin: --spacing(2) 0 0;
   }
   .diagnostics {
-    margin: 10px 0 0;
+    margin: --spacing(2.5) 0 0;
   }
   .diagnostic + .diagnostic {
     margin-top: 9px;
@@ -2247,7 +2249,7 @@
   }
   .status {
     align-items: center;
-    margin-bottom: 14px;
+    margin-bottom: --spacing(3);
   }
   .status-title {
     font-weight: 600;
@@ -2270,7 +2272,7 @@
     height: 15px;
   }
   .status[data-permission] .status-title {
-    font-size: 13px;
+    font-size: var(--text-xs);
     line-height: 1.4;
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
@@ -2283,22 +2285,22 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
-    margin-top: 2px;
+    gap: --spacing(0.5);
+    margin-top: --spacing(0.5);
   }
   /* A refused action's message on the permission card, in an ink each theme's card can carry at 4.5:1. */
   .status[data-permission] .status-error {
     color: var(--permission-link-ink);
   }
   .status[data-permission] #status-secondary {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 1.5;
   }
   .status-detail,
   #hint {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
-    margin-top: 3px;
+    margin-top: --spacing(1);
   }
   .status[data-tone="recording"] .status-title {
     color: var(--recording);
@@ -4723,34 +4725,34 @@
   }
   .settings-head,
   .settings-card {
-    --content-x: 40px;
+    --content-x: --spacing(10);
   }
   /* A narrow window gives the page what the collapsed sidebar leaves; the smallest (a minimum window zoomed in) keeps
      only the toolbar's own room. */
   @media (max-width: 599px) {
     .settings-head,
     .settings-card {
-      --content-x: 20px;
+      --content-x: --spacing(5);
     }
   }
   @media (max-width: 420px) {
     main {
-      padding-left: 8px;
-      column-gap: 8px;
+      padding-left: --spacing(2);
+      column-gap: --spacing(2);
     }
     .settings-head,
     .settings-card {
-      --content-x: 12px;
+      --content-x: --spacing(3);
     }
   }
   /* The title sits below the window controls' strip, with the page's air above it. */
   .settings-head {
-    padding-top: 34px;
+    padding-top: --spacing(8.5);
   }
   .page-title {
-    font-size: 30px;
-    line-height: 1.1;
-    margin-bottom: 18px;
+    font-size: var(--text-title);
+    line-height: var(--text-title--line-height);
+    margin-bottom: --spacing(5);
   }
   .settings-head-controls .library-head {
     margin-bottom: --spacing(3);
@@ -4769,7 +4771,7 @@
   }
   @media (max-width: 599px) {
     .row-line {
-      gap: 8px;
+      gap: --spacing(2);
     }
     .controls {
       max-width: 55%;
@@ -4785,7 +4787,7 @@
   }
   @media (max-height: 480px) {
     .settings-card {
-      padding-bottom: 24px;
+      padding-bottom: --spacing(6);
     }
     /* A narrow, short window keeps its few lines for the recordings: the summary's line of count and size gives way to
        the controls and the search, which have a line each there. */

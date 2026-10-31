@@ -2,7 +2,7 @@
 
 [English](102-design-tokens.md) | [繁體中文](102-design-tokens.zh-TW.md)
 
-Status: in progress; step 1 (the Recordings tab, the pilot) done on 2026-10-31. Created: 2026-10-31 at the maintainer's request: "use shadcn as the base for the whole CSS, avoid Tailwind's defaults and hard-coded pixels, keep everything consistent, and show before and after pictures of every change." Hard dependencies: none open. It builds on the closed 067 (the type scale, targets and contrast) and 069 (the style layers and `tests/style-guard.test.ts`). Execute in order under the [plan index](README.md).
+Status: in progress; steps 1 (the Recordings tab, the pilot) and 2 (the shared preference layout: General and Recording settings) done on 2026-10-31. Created: 2026-10-31 at the maintainer's request: "use shadcn as the base for the whole CSS, avoid Tailwind's defaults and hard-coded pixels, keep everything consistent, and show before and after pictures of every change." Hard dependencies: none open. It builds on the closed 067 (the type scale, targets and contrast) and 069 (the style layers and `tests/style-guard.test.ts`). Execute in order under the [plan index](README.md).
 
 ## The problem today
 
@@ -31,7 +31,7 @@ Colours are tokens everywhere (069's style guard refuses a literal colour), but 
 Each step: before pictures, the change, after pictures paired with `pnpm preview:ui`'s `shots.json` or the pilot's side-by-side diff (changed regions boxed), the affected `pnpm test:scope` scopes, a Codex GPT-6.1 Sol review, then a commit of its own. The pictures go to the maintainer with the step's report.
 
 1. **Recordings tab (pilot) — done 2026-10-31.** The tokens above; the tab's CSS and TSX on them. Shared `.day-heading` and `.result-day` brought Troubleshooting's day spacing along.
-2. **General and Recording settings:** sections, rows, section headings, the about block, the cleanup section; the page title token.
+2. **General and Recording settings — done 2026-10-31.** The shared preference layout (page head, title, sections, section headings 20/12 like the Recordings tab, rows 52px with 12px padding, controls, the about block, the cleanup section, the status card, hints); `--text-title` is the 30px the page head draws (the design note's 24px was stale; step 7 updates it). Being shared, it reached every preference page and the Recordings head (2px lower).
 3. **Recording Studio and Keyboard Shortcuts.**
 4. **Troubleshooting** (rows, guidance, actions, details) and the onboarding guide.
 5. **Shared chrome:** sidebar, page head, dialogs, menus, toasts, the zoom notice, tooltips; the shadcn primitives' arbitrary values moved into variants.

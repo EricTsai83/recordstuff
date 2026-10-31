@@ -66,7 +66,7 @@ const sectionIcons = {
 };
 export function SectionIcon({ id }: { id: string }) {
   const Icon = sectionIcons[id as keyof typeof sectionIcons];
-  return Icon ? <Icon className="section-icon flex-none w-[16px] h-[16px] text-primary" aria-hidden="true" /> : null;
+  return Icon ? <Icon className="section-icon flex-none size-4 text-primary" aria-hidden="true" /> : null;
 }
 
 export function GroupIcon({ id }: { id: string }) {

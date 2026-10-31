@@ -92,7 +92,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
           <Action group={group} choice={group.choices[0]!} wrap />
         ) : group.id === "about" ? (
           <div className="about-identity">
-            <h2 id={`${id}-label`} className="inline-flex items-center gap-[6px] text-muted-foreground m-0 text-[12px] font-medium">
+            <h2 id={`${id}-label`} className="inline-flex items-center gap-1.5 text-muted-foreground m-0 text-2xs font-medium">
               <span className="about-mark" aria-hidden="true" />
               RecordStuff
             </h2>
@@ -239,7 +239,7 @@ function PreferenceRow({ group }: { group: SettingsGroup }) {
               <SelectTrigger
                 id={id}
                 data-value={value}
-                className="max-w-[min(280px,100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4]"
+                className="max-w-[min(calc(var(--spacing)*70),100%)] whitespace-normal data-[size=default]:h-auto min-h-7 py-1 leading-[1.4]"
                 {...desc}
               >
                 {/* A block, not a flex box: a long choice (a screen with its size) wraps in full instead of running past the card. */}
