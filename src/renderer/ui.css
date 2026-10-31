@@ -435,7 +435,7 @@
   }
   body {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--text-xs);
     letter-spacing: var(--tracking-normal);
   }
   [hidden] {
@@ -510,8 +510,8 @@
     display: flex;
     align-items: center;
     gap: 0.5em;
-    margin-bottom: 20px;
-    font-size: 18px;
+    margin-bottom: --spacing(5);
+    font-size: var(--text-lg);
     font-weight: 650;
     letter-spacing: -0.01em;
   }
@@ -589,7 +589,7 @@
     background: none;
     color: var(--brand-foreground);
     font-weight: 800;
-    font-size: 13px;
+    font-size: var(--text-xs);
   }
   /* The right column is a fixed viewport; the card inside grows beyond it with the page. */
   .settings-content {
@@ -866,7 +866,7 @@
     flex: none;
     width: 5px;
     height: 5px;
-    margin-right: 2px;
+    margin-right: --spacing(0.5);
     border-radius: 50%;
     background: var(--primary);
   }
@@ -885,7 +885,7 @@
     min-width: 0;
     display: grid;
     justify-items: center;
-    padding: 14px 16px;
+    padding: --spacing(3) --spacing(4);
     border-radius: var(--radius-md);
     background: var(--muted);
   }
@@ -1660,8 +1660,8 @@
   .device-stage {
     display: grid;
     justify-items: start;
-    gap: 6px;
-    padding: 2px 0 12px;
+    gap: --spacing(1.5);
+    padding: --spacing(0.5) 0 --spacing(3);
   }
   .device-stage-frame {
     position: relative;
@@ -1679,23 +1679,23 @@
     object-fit: cover;
   }
   .device-stage-frame > .device-stage-caption {
-    padding: 12px;
+    padding: --spacing(3);
     color: var(--media-foreground);
   }
   /* Stop over the running picture, in its corner. */
   .device-stage-stop {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: --spacing(2);
+    right: --spacing(2);
   }
   /* As wide as the camera's frame: a longer bar shows the level no better. */
   .device-stage-strip {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: --spacing(2.5);
     width: 400px;
     max-width: 100%;
-    padding: 8px 8px 8px 12px;
+    padding: --spacing(2) --spacing(2) --spacing(2) --spacing(3);
     border-radius: var(--radius-md);
     background: var(--muted);
   }
@@ -1705,7 +1705,7 @@
   }
   .device-stage-caption {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: var(--muted-foreground);
   }
@@ -1717,21 +1717,21 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 32px;
-    height: 32px;
+    width: --spacing(8);
+    height: --spacing(8);
     border-radius: 50%;
     background: var(--muted);
     color: var(--muted-foreground);
   }
   .device-stage-tile-icon > svg {
-    width: 16px;
-    height: 16px;
+    width: --spacing(4);
+    height: --spacing(4);
   }
   .studio-record {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    font-size: 12px;
+    gap: --spacing(2.5);
+    font-size: var(--text-2xs);
   }
   /* The recording's phase, in a place of its own whatever the phase (2026-10-31): unseen while ready or recording, but
      still said, so its words coming and going move nothing. */
@@ -1739,7 +1739,7 @@
     flex: 0 0 var(--studio-state-room);
     min-width: 0;
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1772,29 +1772,29 @@
     grid-area: 1 / 1;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   /* The view's menu: its name and its arrow, as wide whichever picture is shown (2026-10-31). */
   .studio-view {
     flex: none;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   .studio-view-option {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: --spacing(2);
   }
   .studio-view-option > svg {
-    width: 14px;
-    height: 14px;
-    margin-top: 2px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
+    margin-top: --spacing(0.5);
     flex: none;
   }
   /* Live preview at the end of the Studio's line of controls (2026-10-23), beside Start and Stop: always in sight, and
      nothing over the picture. On, its signal is green, not the recording's red. */
   .studio-live svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
   }
   .studio-live[aria-checked="true"] svg {
     color: var(--studio-live-signal);
@@ -1803,7 +1803,7 @@
      control, not the recording's red. */
   .studio-note {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   .studio-failure {
@@ -1815,14 +1815,14 @@
   .audio-meter {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: --spacing(2);
     width: 240px;
     max-width: 100%;
   }
   .audio-meter-track {
     position: relative;
     flex: 1;
-    height: 6px;
+    height: --spacing(1.5);
     overflow: hidden;
     border-radius: 3px;
     background: var(--muted);
@@ -1841,7 +1841,7 @@
   }
   /* Test microphone's meter: taller, drawn in steps, its level in dB beside it. */
   .input-meter[data-segmented] .audio-meter-track {
-    height: 10px;
+    height: --spacing(2.5);
     border-radius: 2px;
     mask-image: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 7px);
   }
@@ -1862,7 +1862,7 @@
     flex: none;
     min-width: 6em;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
     text-align: right;
     color: var(--muted-foreground);
@@ -1874,7 +1874,7 @@
   /* The Recording Studio's elapsed time, before its Stop (plan 075, D19). */
   /* The elapsed time inside Stop, set off from its label. */
   .studio-elapsed {
-    padding-left: 6px;
+    padding-left: --spacing(1.5);
     border-left: 1px solid color-mix(in oklch, currentColor 40%, transparent);
     font-variant-numeric: tabular-nums;
   }
@@ -1944,7 +1944,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: --spacing(2.5);
   }
   /* The desk is the arrangement's bounding box, scaled to fit the stage's height or width, whichever runs out first;
      each screen is placed in it by percentages. */
@@ -1954,7 +1954,7 @@
     --stage-height: calc(128px * var(--arrangement-scale, 1));
     display: grid;
     justify-items: center;
-    gap: 12px;
+    gap: --spacing(3);
     /* 16px clear of a screen on every side: over the screens, less the room each keeps for its ring. */
     padding: calc(16px - 8px * var(--arrangement-scale, 1)) 12px 16px 16px;
     border-radius: var(--radius-md);
@@ -1967,7 +1967,7 @@
   .arrangement-screens {
     display: grid;
     justify-items: center;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   .arrangement-desk {
     position: relative;
@@ -2031,7 +2031,7 @@
     position: absolute;
     inset: calc(var(--tile-room) - 4px);
     border: 2px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     pointer-events: none;
     transition: border-color 120ms ease-out;
   }
@@ -2119,19 +2119,19 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 6px 16px;
+    gap: --spacing(1.5) --spacing(4);
     max-width: 100%;
   }
   .arrangement-option {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    min-height: 24px;
-    padding: 0 2px;
+    gap: --spacing(2);
+    min-height: --spacing(6);
+    padding: 0 --spacing(0.5);
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     background: none;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--foreground);
     cursor: pointer;
   }
@@ -2155,8 +2155,8 @@
   }
   .arrangement-radio {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     border-radius: 50%;
     box-shadow: inset 0 0 0 1.5px var(--input);
     background: var(--card);
@@ -2261,8 +2261,8 @@
   .permission-icon {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: --spacing(7.5);
+    height: --spacing(7.5);
     border-radius: 50%;
     background: var(--permission-icon-ring);
     color: var(--primary);
@@ -2307,7 +2307,7 @@
   }
   .sidebar-about {
     margin-top: auto;
-    padding: 12px 0;
+    padding: --spacing(3) 0;
   }
   /* The sidebar toggle (2026-10-20): one place in either mode, at the top of the sidebar's corner. macOS draws its window
      controls at their own size at any zoom, so there it keeps level with them and clear of their corner by the page's
@@ -2315,8 +2315,8 @@
   .sidebar-toggle {
     position: fixed;
     z-index: 2;
-    top: 12px;
-    left: 20px;
+    top: --spacing(3);
+    left: --spacing(5);
   }
   :root[data-platform="darwin"] .sidebar-toggle {
     top: calc(25px / var(--page-zoom, 1) - 14px);
@@ -2365,14 +2365,14 @@
   .modal-drag-handle {
     --ease-out-quart-handle: cubic-bezier(0.165, 0.84, 0.44, 1);
     position: fixed;
-    top: 6px;
+    top: --spacing(1.5);
     left: 50%;
     z-index: 60;
     display: none;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 12px 0 8px;
+    gap: --spacing(1.5);
+    height: --spacing(7);
+    padding: 0 --spacing(3) 0 --spacing(2);
     /* It comes down the last 4 px as it fades in, so it reads as arriving from the window's edge. */
     transform: translate(-50%, -4px);
     border: 1px solid color-mix(in oklab, var(--media-foreground) 22%, transparent);
@@ -2381,7 +2381,7 @@
     box-shadow: var(--shadow-md);
     backdrop-filter: blur(12px);
     color: var(--media-foreground);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     cursor: default;
     user-select: none;
@@ -2393,8 +2393,8 @@
     -webkit-app-region: no-drag;
   }
   .modal-drag-handle svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
   }
   /* A dialog's popup is positioned by no trigger; a popover's, an explanation's included, carries the side it sits on. */
   :root[data-platform="darwin"]:has([role="dialog"][data-open]:not([data-side])):not(:has([role="menu"][data-open], [role="listbox"][data-open], [role="dialog"][data-side][data-open])) .modal-drag-handle {
@@ -2537,9 +2537,9 @@
   .technical-summary {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    min-height: 24px;
-    font-size: 12px;
+    gap: --spacing(1);
+    min-height: --spacing(6);
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
     cursor: pointer;
     text-underline-offset: 3px;
@@ -2551,8 +2551,8 @@
   }
   .technical-chevron {
     flex: none;
-    width: 12px;
-    height: 12px;
+    width: --spacing(3);
+    height: --spacing(3);
     transition: transform 150ms ease;
   }
   .technical-summary[data-panel-open] .technical-chevron {
@@ -4572,7 +4572,7 @@
     grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
     /* The tabs take what they need, and in a window too short for them, what there is: they scroll (settings-app). */
     grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto;
-    column-gap: 12px;
+    column-gap: --spacing(3);
   }
   /* The existing drag surface shares the window's plane; a hairline is all that divides it from the page. */
   .sidebar-background {
@@ -4597,7 +4597,7 @@
     margin-top: 30px;
   }
   :root:not([data-platform="darwin"]) .brand {
-    margin-top: 32px;
+    margin-top: --spacing(8);
   }
   /* The form and the tabs lay their parts straight into this grid: the brand, the tabs, the status card and Quit down the
      sidebar, and the content beside them from the window's top to its foot. */
@@ -4608,7 +4608,7 @@
     grid-column: 1;
     grid-row: 4;
     flex-wrap: wrap;
-    margin-bottom: 6px;
+    margin-bottom: --spacing(1.5);
   }
   .settings-content {
     grid-column: 2;
@@ -4624,12 +4624,12 @@
   .tabs-separator {
     flex: none;
     height: 1px;
-    margin: 6px 10px;
+    margin: --spacing(1.5) --spacing(2.5);
     background: var(--sidebar-border);
   }
   /* As far below the tab over it either way, so each icon stays where it was as the sidebar collapses. */
   main[data-sidebar="collapsed"] .tabs-separator {
-    margin-inline: 6px;
+    margin-inline: --spacing(1.5);
   }
   /* A collapsed sidebar (2026-10-20), and a narrow window's, too narrow for the full one: its plane gives way to
      floating toolbars of icons, each named by its tooltip, the tabs above and the window's own actions below. Every
@@ -4646,7 +4646,7 @@
   }
   /* The tabs' toolbar takes the same look in its classes (settings-app), over the tab list's own. */
   main[data-sidebar="collapsed"] .sidebar-about {
-    padding: 4px;
+    padding: --spacing(1);
     border-radius: 14px;
     background: var(--sidebar);
     box-shadow: var(--sidebar-toolbar-shadow);
@@ -4665,9 +4665,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    margin-top: 8px;
-    margin-bottom: 12px;
+    gap: --spacing(1);
+    margin-top: --spacing(2);
+    margin-bottom: --spacing(3);
   }
   /* The window's actions follow the tabs' toolbar, a small gap apart, not at the window's foot (2026-10-28, the
      maintainer's request): the room left over goes under them. A short window still scrolls the tabs, never them. */
@@ -4698,7 +4698,7 @@
     bottom: 0;
     width: 200px;
     margin: 0;
-    padding: 8px 10px;
+    padding: --spacing(2) --spacing(2.5);
     border-radius: var(--radius-md);
     background: var(--popover);
     box-shadow: var(--sidebar-note-shadow);
@@ -4818,7 +4818,7 @@
     .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) {
       flex-direction: column;
       align-items: stretch;
-      gap: 8px;
+      gap: --spacing(2);
     }
     .row:not(.about-row) .row-line:has(> .controls):not(:has([role="switch"])) > .controls {
       flex: none;

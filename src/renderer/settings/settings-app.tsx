@@ -262,7 +262,7 @@ export function SettingsApp() {
               // own. In a window too short for them (a small one zoomed in, or one with the status card) the tabs scroll,
               // so the card and the window actions below stay whole.
               className={`tabs col-start-1 row-start-2 max-h-full w-full flex-none flex-col items-stretch justify-start self-start overflow-y-auto [scrollbar-width:none] ${rail
-                ? "rounded-[14px] bg-sidebar p-1 pt-[3px] shadow-(--sidebar-toolbar-shadow)" : ""}`}
+                ? "rounded-[14px] bg-sidebar p-1 pt-0.75 shadow-(--sidebar-toolbar-shadow)" : ""}`}
               variant="sidebar"
               aria-label={current?.title ?? "RecordStuff"}
               onKeyDown={(event) => {
@@ -315,7 +315,7 @@ export function SettingsApp() {
                             <>
                               <span className="sr-only">{count[2]}</span>
                               <Badge
-                                className={`tab-badge h-[18px] min-w-[18px] shrink-0 px-0.5 tabular-nums ${rail ? "hidden" : ""}`}
+                                className={`tab-badge h-4.5 min-w-4.5 shrink-0 px-0.5 tabular-nums ${rail ? "hidden" : ""}`}
                                 variant="default"
                                 size="md"
                               >

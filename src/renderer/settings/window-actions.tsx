@@ -48,7 +48,7 @@ export function WindowActions({ group, quit, id, compact = false }: {
       className="inline-flex min-h-9 w-full max-w-full items-stretch gap-1 text-muted-foreground">
       <Button id={id} data-action="hide" variant="ghost" aria-label={model.text("Hide interface")}
         disabled={!group.enabled || !hide?.enabled} aria-disabled={!enabled(hide)}
-        className="darwin:window-no-drag h-auto min-h-[34px] min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent px-3 py-1.5 text-left whitespace-normal"
+        className="darwin:window-no-drag h-auto min-h-8.5 min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent px-3 py-1.5 text-left whitespace-normal"
         onClick={() => { if (hide) choose(hide); }}>
         <EyeOff aria-hidden="true" />
         {model.text("Hide interface")}
@@ -56,7 +56,7 @@ export function WindowActions({ group, quit, id, compact = false }: {
       <DropdownMenu>
         <DropdownMenuTrigger id={`${id}-menu`} aria-label={model.text("More window actions")}
           disabled={!enabled(quit)}
-          render={<Button variant="ghost" size="icon" className="darwin:window-no-drag relative h-auto min-h-[34px] w-9 rounded-lg border-0 hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent" />}>
+          render={<Button variant="ghost" size="icon" className="darwin:window-no-drag relative h-auto min-h-8.5 w-9 rounded-lg border-0 hover:bg-sidebar-accent aria-expanded:bg-sidebar-accent" />}>
           <Ellipsis aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent id={`${id}-menu-content`} data-window-actions="" side="top" sideOffset={8} align="end"

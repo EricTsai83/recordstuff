@@ -138,7 +138,7 @@ function FieldDescription({
       className={cn(
         "text-left leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance",
         variant === "note"
-          ? "text-[12px]"
+          ? "text-2xs"
           : "text-xs/relaxed [[data-variant=legend]+&]:-mt-1.5 last:mt-0 nth-last-2:-mt-1",
         "[&>a]:underline [&>a]:decoration-primary [&>a]:underline-offset-4 [&>a:hover]:text-primary",
         className,
