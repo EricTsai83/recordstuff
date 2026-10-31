@@ -551,7 +551,7 @@ function Sources({ phase }: { phase: string | undefined }) {
  * One input under the preview: its name and, in a plain recording, a speaker beside it that says and switches whether
  * the input is recorded (2026-10-31, the maintainer's choice: a speaker, struck through when not recorded, in place of
  * Don't record); its level; its fader. Not recorded, the name, level and fader are greyed and the speaker is struck
- * through in the accent colour. Assistive technology hears a switch, Record and the input's name, on while it is recorded.
+ * through in the warning colour. Assistive technology hears a switch, Record and the input's name, on while it is recorded.
  */
 function Channel({ group }: { group: SettingsGroup }) {
   const fader = groupOf(`${group.meter!.source}Gain`);

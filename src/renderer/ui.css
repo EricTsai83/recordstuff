@@ -1211,15 +1211,16 @@
     min-width: 0;
     font-weight: 600;
   }
-  /* Whether the input is recorded (2026-10-31): a speaker right after its name, struck through in the accent colour
+  /* Whether the input is recorded (2026-10-31): a speaker right after its name, struck through in the warning colour
      when not; within the name's line, so Camera and System audio still share a top line. */
   .studio-channel-record {
     flex: none;
     margin-block: --spacing(-0.5);
     color: var(--muted-foreground);
   }
+  /* In the warning colour, not the app's red (the maintainer's request, 2026-10-31): left out is a caution, not an action. */
   .studio-channel[data-muted] .studio-channel-record {
-    color: var(--primary);
+    color: var(--warning);
   }
   /* Not recorded: the name, the level and the fader greyed, the speaker the one thing in colour. */
   .studio-channel[data-muted] .studio-channel-head > span,
