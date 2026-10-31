@@ -8,7 +8,7 @@ function setup(ready = true, observeImmediately = true) {
   const document = window.document;
   document.body.innerHTML = `<div data-workflow><div role="group">
     <button data-previous></button><button data-toggle><span data-play-icon></span><span data-pause-icon></span><span data-stage-name></span><span data-playback-state></span></button><button data-next></button>
-    <svg><rect data-workflow-progress /></svg><span data-stage-status></span></div>
+    <svg><path data-workflow-progress /></svg><span data-stage-status></span></div>
     <div class="workflow-stage"><div data-chapter-panel><div data-scene-frame></div></div><div data-chapter-panel><video data-edit-video></video></div></div></div>`;
   let frame: FrameRequestCallback = () => {};
   let visibility: (entries: unknown[]) => void = () => {};

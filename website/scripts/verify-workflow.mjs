@@ -35,7 +35,7 @@ try {
     await p.waitForSelector('[data-workflow][data-playing]');
     assert(await p.$eval('[data-previous]', e => e.disabled));
     assert(await p.$eval('[data-next]', e => !e.disabled));
-    assert(await p.$eval('[data-workflow-progress]', e => e.tagName === 'rect' && e.getAttribute('pathLength') === '1'));
+    assert(await p.$eval('[data-workflow-progress]', e => e.tagName === 'path' && e.getAttribute('pathLength') === '1'));
     await p.$eval('.workflow', e => scrollTo(0, e.getBoundingClientRect().top + scrollY - 85));
     await p.setViewport({ width: 1280, height: 280 });
     await p.waitForFunction(() => document.querySelector('[data-playback-state]').textContent === 'Playing');

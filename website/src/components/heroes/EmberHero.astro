@@ -43,7 +43,8 @@ const windows = release.windows;
           </button>
           <button class="badge-arrow" type="button" data-next aria-label="Next stage: Edit"><span aria-hidden="true">→</span></button>
           <svg class="badge-progress" viewBox="0 0 156 36" preserveAspectRatio="none" aria-hidden="true">
-            <rect x="0.75" y="0.75" width="154.5" height="34.5" rx="17.25" pathLength="1" data-workflow-progress />
+            <!-- A path, not a rect: a rect's stroke starts at its top edge; this one starts at the left middle and runs clockwise. -->
+            <path d="M0.75 18A17.25 17.25 0 0 1 18 0.75H138A17.25 17.25 0 0 1 138 35.25H18A17.25 17.25 0 0 1 0.75 18Z" pathLength="1" data-workflow-progress />
           </svg>
         </div>
         <span class="visually-hidden" data-stage-status>Record → Edit</span>
@@ -131,7 +132,7 @@ const windows = release.windows;
   .badge-name { font-size: 12px; font-weight: 500; color: var(--fg); }
   .badge-state { font-size: 10px; font-weight: 400; color: var(--fg-muted); }
   .badge-progress { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .badge-progress rect { fill: none; stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .badge-progress path { fill: none; stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; }
   @media (prefers-reduced-motion: reduce) { .workflow-badge button { transition: none; } }
   .workflow-stage { display: grid; aspect-ratio: 1096 / 696; grid-template-rows: minmax(0, 1fr); align-items: center; }
   .workflow-panel { visibility: hidden; opacity: 0; pointer-events: none; grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; align-self: start; }
