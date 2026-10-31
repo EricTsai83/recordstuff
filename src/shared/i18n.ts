@@ -876,7 +876,6 @@ export const ZH_TW = {
   "Start recording from the menu bar icon.": "從選單列圖示開始錄影。",
   "Set up later": "稍後再設定",
   "Allow these to start recording.": "允許以下項目就能開始錄影。",
-  "Not allowed": "未允許",
   "Press {keys} to start recording.": "按 {keys} 開始錄影。",
   Done: "完成",
   "Open Recording Studio": "開啟錄影工作室",

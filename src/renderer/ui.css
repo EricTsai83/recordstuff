@@ -1092,6 +1092,31 @@
   .onboarding-step:first-child {
     border-top: 0;
   }
+  /* An input macOS refused (2026-11-01): why, in the warning look, with the press that fixes it, under its name. */
+  .onboarding-step-notice {
+    grid-column: 2 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: --spacing(2);
+    margin-bottom: --spacing(1);
+    padding: --spacing(2) --spacing(2.5);
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-md);
+    background: var(--warning-surface);
+    color: var(--warning);
+    font-size: var(--text-2xs);
+  }
+  .onboarding-step-notice > svg {
+    flex: none;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
+  }
+  .onboarding-step-notice > p {
+    flex: 1 1 12rem;
+    min-width: 0;
+    margin: 0;
+  }
   .onboarding-step-icon {
     display: grid;
     place-items: center;

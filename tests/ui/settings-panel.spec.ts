@@ -1961,8 +1961,12 @@ test("S148 the first-launch guide: the screen's step, then each input's one swit
   await clearCalls();
   await page.getByRole("switch", { name: "Camera" }).click();
   await expect.poll(calls).toEqual([["onboarding", "camera:on"]]);
-  await expect(page.getByRole("switch", { name: "Camera" }), "S148 refused at the prompt: back off").not.toBeChecked();
+  // Refused, the switch can do nothing until System Settings allows it: why is said, with the press that fixes it.
+  await expect(page.getByRole("switch", { name: "Camera" }), "S148 refused at the prompt: no switch to press").toHaveCount(0);
+  await expect(page.locator("#onboarding-camera-refused"), "S148 says why").toHaveText("macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.");
+  await expect(page.locator("#onboarding-camera-settings"), "S148 the press described by why").toHaveAccessibleDescription("macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.");
   await expect(page.locator("#onboarding-camera-settings"), "S148 and offers System Settings").toBeVisible();
+  await expect(page.locator("#onboarding-camera-settings"), "S148 the focus the gone switch had, inside the dialog").toBeFocused();
   await expect(guide.getByText("Press ⇧⌘1 to start recording."), "S148 where recording begins, once nothing is left to allow").toBeVisible();
   await clearCalls();
   await page.getByRole("switch", { name: "Microphone" }).click();

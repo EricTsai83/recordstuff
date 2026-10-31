@@ -6,7 +6,7 @@
  * each step stands at (`view.onboarding`) and owns every press (the `onboarding` group's choices); the page words them.
  */
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Camera, CircleCheck, CircleHelp, Mic, MonitorUp } from "lucide-react";
+import { Camera, CircleCheck, CircleHelp, Mic, MonitorUp, TriangleAlert } from "lucide-react";
 import type { OnboardingInputView } from "../../shared/settings-panel";
 import { translate, type PlainMessageKey } from "../../shared/i18n";
 import { Button } from "../components/ui/button";
@@ -25,9 +25,9 @@ function Allowed() {
   return <span className="onboarding-allowed"><CircleCheck aria-hidden="true" />{model.text("Allowed")}</span>;
 }
 
-/** One step: its icon, name, badge and ⓘ, then where it stands with its press at the line's end. */
-function Step({ id, icon, title, badge, about, children }: {
-  id: string; icon: ReactNode; title: string; badge: string; about: PlainMessageKey; children: ReactNode;
+/** One step: its icon, name, badge and ⓘ, then where it stands with its press at the line's end; a notice under it. */
+function Step({ id, icon, title, badge, about, children, notice }: {
+  id: string; icon: ReactNode; title: string; badge: string; about: PlainMessageKey; children: ReactNode; notice?: ReactNode;
 }) {
   const detail = model.text(about);
   return (
@@ -46,14 +46,18 @@ function Step({ id, icon, title, badge, about, children }: {
         <span id={`${id}-detail`} className="sr-only">{detail}</span>
       </span>
       <span className="flex items-center justify-end gap-2">{children}</span>
+      {notice}
     </li>
   );
 }
 
 /**
  * The microphone's or the camera's line (2026-11-01, the maintainer's choice of one control): its switch, which asks
- * macOS as it is turned on and reads on only once the input will be recorded (allowed, or kept on though macOS refused
- * it, which is said with the way to System Settings); Allowed beside it when it is.
+ * macOS as it is turned on and reads on only once the input will be recorded; Allowed beside it when it is. Refused by
+ * macOS, the switch can do nothing until System Settings allows it, so in its place a notice under the line says why,
+ * in the words Recording settings uses, with the same filled Open Settings as the screen's step (the maintainer's
+ * request the same day: a grey "Not allowed", an outlined button and an off switch side by side said neither why nor
+ * what to press).
  */
 function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camera"; input: OnboardingInputView; busy: boolean; waiting: boolean }) {
   const id = `onboarding-${name}`;
@@ -62,18 +66,36 @@ function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camer
   const disabled = busy || input.locked || waiting;
   // Never asked, it is not recorded yet, whatever is stored: off until turned on asks macOS (finishing turns it off).
   const on = input.enabled && input.access !== "ask";
+  const refused = input.access === "denied";
+  // Refused at the prompt, the switch the press came from is gone: its place in the dialog is Open Settings, whose
+  // description says why (review, 2026-11-01), not the tab under the modal dialog, which cannot take the focus.
+  const toggle = (checked: boolean): void => {
+    void model.choose(GROUP, `${name}:${checked ? "on" : "off"}`, `${id}-switch`).then(() => requestAnimationFrame(() => {
+      const settings = document.getElementById(`${id}-settings`);
+      if (settings && !document.getElementById(`${id}-switch`) && !document.getElementById("onboarding")?.contains(document.activeElement))
+        settings.focus({ preventScroll: true });
+    }));
+  };
+  const notice = refused ? (
+    <div className="onboarding-step-notice">
+      <TriangleAlert aria-hidden="true" />
+      <p id={`${id}-refused`}>{model.text(name === "microphone"
+        ? "macOS does not allow the microphone. Allow RecordStuff in System Settings to turn it on."
+        : "macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.")}</p>
+      <Button id={`${id}-settings`} size="sm" disabled={busy} aria-describedby={`${id}-refused`}
+        onClick={() => press(`${name}:settings`, `${id}-settings`)}>
+        {model.text("Open Settings")}
+      </Button>
+    </div>
+  ) : undefined;
   return (
-    <Step id={id} icon={name === "microphone" ? <Mic /> : <Camera />} title={label} badge={model.text("Optional")}
+    <Step id={id} icon={name === "microphone" ? <Mic /> : <Camera />} title={label} badge={model.text("Optional")} notice={notice}
       about={name === "microphone" ? "Mixes your voice with the system's sound in the recording." : "Shows you in a bubble over the recording."}>
-      {input.access === "denied" ? (<>
-        <span className="onboarding-note">{model.text("Not allowed")}</span>
-        <Button id={`${id}-settings`} variant="outline" size="sm" disabled={busy} onClick={() => press(`${name}:settings`, `${id}-settings`)}>
-          {model.text("Open Settings")}
-        </Button>
-      </>)
-        : on ? <Allowed /> : null}
-      <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={`${id}-detail`} checked={on}
-        disabled={disabled} onCheckedChange={(checked) => press(`${name}:${checked ? "on" : "off"}`, `${id}-switch`)} />
+      {refused ? null : (<>
+        {on && <Allowed />}
+        <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={`${id}-detail`} checked={on}
+          disabled={disabled} onCheckedChange={toggle} />
+      </>)}
     </Step>
   );
 }
