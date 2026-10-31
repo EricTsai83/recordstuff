@@ -246,7 +246,10 @@ export function settingsAction(
     return accelerator && !isSettingsShortcut(accelerator, ctx.platform) ? { setHotkey: { enabled: true, accelerator } } : undefined;
   }
   const choice = find(state, ctx, groupId, choiceId);
-  return choice?.group.enabled && choice.enabled && !choice.busy ? choice.action : undefined;
+  // A privacy pane changes nothing of the recording, so a lock on its group's choices (a picker during a recording that
+  // left the refused input out) does not hold it back (review, 2026-11-01).
+  const opensPane = choice?.action === "openMicrophoneSettings" || choice?.action === "openCameraSettings";
+  return (choice?.group.enabled || opensPane) && choice?.enabled && !choice.busy ? choice.action : undefined;
 }
 
 /** Whether a choice is the committed one; how main reports that a save took effect. */

@@ -337,6 +337,19 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
       await deps.savePreference(input, { locked: true,
         write: () => input === "microphone" ? settings.setMicrophone(enabled) : settings.setCamera(enabled),
         applied: () => log(`settings: ${input} ${enabled ? "on" : "off"} (setup guide)`) });
+      // One switch for each input (2026-11-01, the maintainer's choice): turned on, it asks macOS when macOS has not been
+      // asked, and goes back off when refused at that prompt, the user's own answer; refused before, the switch stays on
+      // and System Settings opens, as macOS asks only once.
+      const on = input === "microphone" ? settings.microphone : settings.camera;
+      if (enabled && on && deps.platform === "darwin") {
+        const access = deps.inputAccess(input);
+        if (access === "not-determined" && !(await (input === "microphone" ? deps.askMicrophoneAccess() : deps.askCameraAccess()))) {
+          log(`settings: ${input} access is not allowed: turned off (setup guide)`);
+          await deps.savePreference(input, { locked: true, write: () => input === "microphone" ? settings.setMicrophone(false) : settings.setCamera(false) });
+        } else if (access === "denied" || access === "restricted") {
+          await handleAction(input === "microphone" ? "openMicrophoneSettings" : "openCameraSettings");
+        }
+      }
       deps.refresh();
       return;
     }

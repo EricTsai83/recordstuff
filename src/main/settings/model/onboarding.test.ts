@@ -47,14 +47,11 @@ describe("the first-launch guide (2026-10-26)", () => {
     expect(offered(needed, open())).toEqual(["screen:open", "screen:relaunch", "finish", "studio"]);
   });
 
-  it("asks macOS only through Allow, for an input that is on and never asked", () => {
-    expect(settingsAction(idle, open(), "onboarding", "microphone:allow")).toBe("askMicrophone");
-    expect(settingsAction(idle, open(), "onboarding", "camera:allow")).toBe("askCamera");
-    const off = open({ microphone: { enabled: false, access: "not-determined" } });
-    expect(settingsAction(idle, off, "onboarding", "microphone:allow")).toBeUndefined();
+  it("has no Allow of its own: an input's switch asks macOS as it is turned on (2026-11-01)", () => {
+    for (const ctx of [open(), open({ microphone: { enabled: false, access: "not-determined" } })])
+      expect(settingsAction(idle, ctx, "onboarding", "microphone:allow")).toBeUndefined();
     const granted = open({ microphone: { enabled: true, access: "granted" } });
     expect(settingsView(idle, granted).onboarding?.microphone.access).toBe("granted");
-    expect(settingsAction(idle, granted, "onboarding", "microphone:allow")).toBeUndefined();
   });
 
   it("offers System Settings for a refused input, which reads as refused even with its switch off", () => {
@@ -64,12 +61,16 @@ describe("the first-launch guide (2026-10-26)", () => {
     expect(settingsAction(idle, refused, "onboarding", "camera:allow")).toBeUndefined();
   });
 
-  it("switches an input's own setting without asking, and reports a switch applied only when it reads so", () => {
-    // The guide's own switches save only, so turning one back on never asks macOS (review F2).
+  it("switches an input's own setting, and reports On applied once macOS has answered, the input on or refused", () => {
     expect(settingsAction(idle, open(), "onboarding", "microphone:off")).toEqual({ setOnboardingInput: { input: "microphone", enabled: false } });
     expect(settingsAction(idle, open(), "onboarding", "camera:on")).toEqual({ setOnboardingInput: { input: "camera", enabled: true } });
-    expect(settingsChecked(idle, open(), "onboarding", "microphone:on")).toBe(true);
+    // Never asked: not applied yet, whatever is stored.
+    expect(settingsChecked(idle, open(), "onboarding", "microphone:on")).toBe(false);
+    expect(settingsChecked(idle, open({ microphone: { enabled: true, access: "granted" } }), "onboarding", "microphone:on")).toBe(true);
+    expect(settingsChecked(idle, open({ microphone: { enabled: false, access: "denied" } }), "onboarding", "microphone:on")).toBe(true);
+    expect(settingsChecked(idle, open({ microphone: { enabled: false, access: "granted" } }), "onboarding", "microphone:on")).toBe(false);
     expect(settingsChecked(idle, open(), "onboarding", "microphone:off")).toBe(false);
+    expect(settingsChecked(idle, open({ microphone: { enabled: false, access: "not-determined" } }), "onboarding", "microphone:off")).toBe(true);
     expect(settingsChecked(idle, open(), "onboarding", "finish")).toBe(true);
   });
 

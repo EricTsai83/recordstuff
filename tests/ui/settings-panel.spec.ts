@@ -1930,7 +1930,7 @@ for (const platform of ["darwin", "win32"] as const) {
   });
 }
 
-test("S148 the first-launch guide: the screen's step, then Allow asks for each input, a refusal turns it off, Escape sets it aside, and General opens it again (2026-10-26)", { tag: "@general" }, async () => {
+test("S148 the first-launch guide: the screen's step, then each input's one switch asks as it is turned on, a refusal turns it back off, Escape sets it aside, and General opens it again (2026-10-26; one switch 2026-11-01)", { tag: "@general" }, async () => {
   await host.evaluate(async h => {
     h.theme("light"); await h.setSize(h.SNAPSHOT_SIZES.default[0], h.SNAPSHOT_SIZES.default[1]);
     h.state.onboardingState = { type: "needsPermission", needsRelaunch: false };
@@ -1942,23 +1942,26 @@ test("S148 the first-launch guide: the screen's step, then Allow asks for each i
   const guide = page.getByRole("dialog", { name: "Welcome to RecordStuff" });
   await expect(guide, "S148 the guide opens over the window").toBeVisible();
   await expect(page.locator("#onboarding-done"), "S148 nothing to finish before the screen is allowed").toHaveCount(0);
-  await expect(page.locator("#onboarding-microphone-allow"), "S148 the inputs wait for the screen").toBeDisabled();
-  await expect(page.getByRole("switch", { name: "Camera" }), "S148 their switches too").toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Microphone" }), "S148 the inputs wait for the screen").toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Camera" }), "S148 both").toBeDisabled();
+  await expect(guide.getByRole("button", { name: "Allow" }), "S148 one control per input: no Allow beside its switch").toHaveCount(0);
   await clearCalls();
   await clickAt(page, "#onboarding-screen-open", { scroll: false });
   await expect.poll(calls, { message: "S148 the screen's step opens System Settings through main" }).toEqual([["onboarding", "screen:open"]]);
   // The screen allowed: its step reads Allowed, and the way to begin recording is said.
   await host.evaluate(h => { h.state.onboardingState = { type: "idle" }; h.push(h.settingsView(h.state.onboardingState, h.state.onboardingContext!)); });
-  await expect(guide.getByText("Not allowed ones turn off when you finish."), "S148 said while an input is still to allow").toBeVisible();
+  // Never asked, an input is not recorded yet: its switch reads off though it is stored on.
+  await expect(page.getByRole("switch", { name: "Microphone" }), "S148 not asked yet: off").not.toBeChecked();
   await clearCalls();
-  await clickAt(page, "#onboarding-microphone-allow", { scroll: false });
-  await expect.poll(calls, { message: "S148 Allow asks main, which asks macOS" }).toEqual([["onboarding", "microphone:allow"]]);
-  await expect(page.locator("#onboarding-microphone-allow"), "S148 an allowed input offers no Allow").toHaveCount(0);
+  await page.getByRole("switch", { name: "Microphone" }).click();
+  await expect.poll(calls, { message: "S148 turning it on asks main, which asks macOS" }).toEqual([["onboarding", "microphone:on"]]);
+  await expect(page.getByRole("switch", { name: "Microphone" }), "S148 allowed: on").toBeChecked();
+  await expect(guide.locator("li", { has: page.getByRole("switch", { name: "Microphone" }) }).getByText("Allowed"), "S148 and said allowed").toBeVisible();
   await host.evaluate(h => { h.state.onboardingAllows = false; });
   await clearCalls();
-  await clickAt(page, "#onboarding-camera-allow", { scroll: false });
-  await expect.poll(calls).toEqual([["onboarding", "camera:allow"]]);
-  await expect(page.getByRole("switch", { name: "Camera" }), "S148 a refused input is turned off").not.toBeChecked();
+  await page.getByRole("switch", { name: "Camera" }).click();
+  await expect.poll(calls).toEqual([["onboarding", "camera:on"]]);
+  await expect(page.getByRole("switch", { name: "Camera" }), "S148 refused at the prompt: back off").not.toBeChecked();
   await expect(page.locator("#onboarding-camera-settings"), "S148 and offers System Settings").toBeVisible();
   await expect(guide.getByText("Press ⇧⌘1 to start recording."), "S148 where recording begins, once nothing is left to allow").toBeVisible();
   await clearCalls();

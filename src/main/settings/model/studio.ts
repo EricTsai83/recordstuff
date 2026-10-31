@@ -112,6 +112,19 @@ function studioScreenGroups(ctx: AppContext, unlocked: boolean, problems: InputP
  * bubble's shape and mirror, all chosen before recording and locked with the picker; the bubble's place is dragged in
  * the preview at any time.
  */
+/**
+ * An input that is on but that macOS does not allow (2026-11-01, the maintainer's choice): its picker's menu offers the
+ * pane that allows it, beside the switch that turns it off, so either way is one press. The switch stays on: a refusal
+ * seen later is said, not settled for the user (only a refusal to the app's own prompt turns a switch off).
+ */
+function privacyActions(ctx: AppContext, input: "microphone" | "camera"): NonNullable<Group["actions"]> {
+  const state = input === "microphone" ? ctx.microphone : ctx.camera;
+  if (ctx.platform !== "darwin" || !state?.enabled || (state.access !== "denied" && state.access !== "restricted")) return [];
+  const language = ctx.language;
+  return [{ id: "openSettings", label: t(input === "microphone" ? "Open microphone settings…" : "Open camera settings…", language), enabled: true,
+    checked: false, action: (input === "microphone" ? "openMicrophoneSettings" : "openCameraSettings") satisfies AppAction }];
+}
+
 function studioCameraGroups(ctx: AppContext, unlocked: boolean, problems: InputProblems): Group[] {
   const camera = ctx.camera;
   if (!camera?.available) return [];
@@ -120,6 +133,7 @@ function studioCameraGroups(ctx: AppContext, unlocked: boolean, problems: InputP
   const on = { ...group("studioCamera", t("Camera", language), unlocked, switchChoices(language, camera.enabled, (value) => ({ setCamera: value }))) };
   return [
     { ...group("studioCameraDevice", t("Camera", language), unlocked && camera.enabled, device.choices),
+      ...(privacyActions(ctx, "camera").length ? { actions: privacyActions(ctx, "camera") } : {}),
       picker: { input: "camera", name: inputNames(ctx).camera, off: !camera.enabled, ...pickerProblem(problems.camera), locked: !unlocked,
         parts: ["studioCamera", "cameraWidth", "cameraHeight", "cameraRounding", "cameraMirror"] } },
     on,
@@ -148,7 +162,7 @@ function studioMicrophoneGroups(ctx: AppContext, unlocked: boolean, problems: In
   const on = microphoneGroup(ctx, unlocked);
   return [
     { ...group("studioMicrophoneDevice", t("Microphone", language), device.enabled, device.choices),
-      ...(device.actions ? { actions: device.actions } : {}),
+      ...(device.actions || privacyActions(ctx, "microphone").length ? { actions: [...(device.actions ?? []), ...privacyActions(ctx, "microphone")] } : {}),
       picker: { input: "microphone", name: inputNames(ctx).microphone, off: !(ctx.microphone?.enabled ?? false), ...pickerProblem(problems.microphone),
         parts: ["studioMicrophone"] } },
     { ...group("studioMicrophone", t("Microphone", language), on.enabled, on.choices), control: "switch" },

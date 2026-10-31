@@ -303,19 +303,18 @@ function installPanelHandlers(): void {
       if (typeof action === "object" && "setCountdownSound" in action) state.soundContext = { ...state.soundContext, countdownSound: action.setCountdownSound };
       return { view: settingsView({ type: "idle" }, state.soundContext), applied: action !== undefined };
     }
-    // The guide's presses, as main acts on them: a switch saved, Allow answered by `onboardingAllows` (a refusal turns the
-    // switch off), and finishing closes it.
+    // The guide's presses, as main acts on them: a switch saved, turned on it asks macOS when never asked, answered by
+    // `onboardingAllows` (a refusal at that prompt turns it back off), and finishing closes it.
     if (group === "onboarding" && state.onboardingContext) {
       const context = state.onboardingContext;
       const action = settingsAction(state.onboardingState, context, group, choice);
       const input = (name: "microphone" | "camera", change: { enabled?: boolean; access?: string }): AppContext =>
         ({ ...context, [name]: { ...context[name], ...change } }) as AppContext;
       if (typeof action === "object" && "setOnboardingInput" in action) {
-        state.onboardingContext = input(action.setOnboardingInput.input, { enabled: action.setOnboardingInput.enabled });
-      }
-      if (action === "askMicrophone" || action === "askCamera") {
-        state.onboardingContext = input(action === "askMicrophone" ? "microphone" : "camera",
-          state.onboardingAllows ? { access: "granted" } : { access: "denied", enabled: false });
+        const { input: name, enabled } = action.setOnboardingInput;
+        state.onboardingContext = input(name, { enabled });
+        if (enabled && state.onboardingContext[name]?.access === "not-determined")
+          state.onboardingContext = input(name, state.onboardingAllows ? { access: "granted" } : { access: "denied", enabled: false });
       }
       if (typeof action === "object" && "finishOnboarding" in action && state.onboardingFinishFails) {
         return { view: settingsView(state.onboardingState, context), applied: false };

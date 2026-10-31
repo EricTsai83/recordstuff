@@ -2,7 +2,8 @@
  * The first-launch guide (2026-10-26, the maintainer's request): on a new install, the main window opens over a guide
  * through what a recording needs, so that no system prompt comes before the user knows what it is for and presses for
  * it. Screen & System Audio Recording first (required: System Settings, then a relaunch macOS may ask for), then the
- * microphone and the camera (optional, on by default: Allow asks macOS, Off means it is never asked), then where
+ * microphone and the camera (optional, on by default: one switch each since 2026-11-01, which asks macOS as it is turned on
+ * and goes back off when refused; Off means it is never asked), then where
  * recording begins. Finished or set aside it does not open again by itself; General opens it.
  */
 import type { AppAction, AppContext } from "../../app/ui-model";
@@ -47,13 +48,12 @@ function onboardingActions(state: RecordingState, ctx: AppContext): Map<string, 
   const inputs = [["microphone", view.microphone], ["camera", view.camera]] as const;
   for (const [name, input] of inputs) {
     if (!input) continue;
-    // Saved only: the guide asks macOS at Allow alone, so turning a switch back on asks nothing (review F2).
+    // On asks macOS when it has not been asked, or opens System Settings when it refused (actions.ts, 2026-11-01).
     const set = (value: boolean): AppAction => ({ setOnboardingInput: { input: name, enabled: value } });
     // The screen first (native round, 2026-10-26): the inputs wait for its grant, so the guide is taken in order.
     if (!input.locked && view.screen === "granted") {
       actions.set(`${name}:on`, set(true));
       actions.set(`${name}:off`, set(false));
-      if (input.enabled && input.access === "ask") actions.set(`${name}:allow`, name === "microphone" ? "askMicrophone" : "askCamera");
     }
     if (input.access === "denied") actions.set(`${name}:settings`, name === "microphone" ? "openMicrophoneSettings" : "openCameraSettings");
   }
@@ -66,12 +66,17 @@ export function onboardingAction(state: RecordingState, ctx: AppContext, choiceI
   return typeof choiceId === "string" ? onboardingActions(state, ctx).get(choiceId) : undefined;
 }
 
-/** A switch's press took effect when the switch reads it; every other press is a request the guide then shows. */
+/**
+ * A switch's press took effect when the switch reads it: Off once the input is off; On once macOS has answered, the
+ * input on or, refused at its prompt, back off. Every other press is a request the guide then shows.
+ */
 export function onboardingChecked(ctx: AppContext, choiceId: unknown): boolean {
   const match = typeof choiceId === "string" ? /^(microphone|camera):(on|off)$/.exec(choiceId) : null;
   if (!match) return true;
-  const enabled = match[1] === "microphone" ? ctx.microphone?.enabled : ctx.camera?.enabled;
-  return (enabled ?? false) === (match[2] === "on");
+  const input = match[1] === "microphone" ? ctx.microphone : ctx.camera;
+  if (match[2] === "off") return !(input?.enabled ?? false);
+  const refused = input?.access === "denied" || input?.access === "restricted";
+  return input?.access !== "not-determined" && ((input?.enabled ?? false) || refused);
 }
 
 /** General's way back to the guide, on macOS. */

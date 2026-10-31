@@ -549,6 +549,17 @@ describe("the Recording Studio's choices (plan 097)", () => {
     expect(group(idle, gone, "studioCameraDevice")?.picker?.problem).toBe("USB Camera not found");
     expect(group(idle, gone, "cameraDevice")?.problem).toBe("USB Camera not found");
     expect(group(idle, gone, "studioMicrophoneDevice")?.picker?.problem).toBe("No microphone access");
+    // Refused in System Settings, the switch stays on and the picker's menu offers the pane beside it (2026-11-01).
+    expect(group(idle, gone, "studioMicrophoneDevice")?.actions?.map((action) => action.label)).toContain("Open microphone settings…");
+    expect(settingsAction(idle, gone, "studioMicrophoneDevice", "openSettings")).toBe("openMicrophoneSettings");
+    expect(group(idle, mac, "studioMicrophoneDevice")?.actions?.some((action) => action.id === "openSettings") ?? false, "allowed: no pane offered").toBe(false);
+    // A recording that left the refused microphone out locks its device choices, not the pane (review, 2026-11-01).
+    const leftOut = { ...gone, audioSession: { systemMuted: false } };
+    expect(group(recording, leftOut, "studioMicrophoneDevice")?.enabled).toBe(false);
+    expect(settingsAction(recording, leftOut, "studioMicrophoneDevice", "openSettings")).toBe("openMicrophoneSettings");
+    const cameraRefused = { ...mac, camera: { ...mac.camera, access: "denied" as const } };
+    expect(settingsAction(idle, cameraRefused, "studioCameraDevice", "openSettings")).toBe("openCameraSettings");
+    expect(settingsAction(idle, { ...cameraRefused, camera: { ...cameraRefused.camera, enabled: false } }, "studioCameraDevice", "openSettings"), "off: nothing to fix").toBeUndefined();
     expect(group(idle, { ...gone, language: "zh-TW" }, "studioCameraDevice")?.picker?.problem).toBe("找不到 USB Camera");
     expect(group({ type: "needsPermission", needsRelaunch: false }, mac, "studioScreen")?.picker?.problem).toBe("No screen recording permission");
     // The camera's state while a session composes it (plan 090), from the line over the stage to its picker.

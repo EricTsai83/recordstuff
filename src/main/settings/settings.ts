@@ -95,7 +95,7 @@ export interface Settings {
   systemAudio: boolean;
   /**
    * Mix the microphone into the recording's track (plan 074). On by default since 2026-10-26 (the maintainer's decision),
-   * turned off when macOS refuses it (input-access.ts); a settings file saves every field, so this reaches new installs only.
+   * turned off when macOS refuses it at the app's own prompt (input-access.ts); a settings file saves every field, so this reaches new installs only.
    */
   microphone: boolean;
   /** The chosen input, by the id the engine listed and the name it had then; absent is the system default input. */

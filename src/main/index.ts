@@ -66,7 +66,7 @@ import { SessionSentinels, reportInterruptions } from "./recording/session-senti
 import { SavedNotification } from "./recording/saved-notification";
 import { CaptureNotices } from "./recording/capture-notices";
 import { PermissionNotices } from "./permission/permission-notices";
-import { accessRefused, settleInputAccess } from "./settings/input-access";
+import { accessRefused } from "./settings/input-access";
 import { holdEarlyReopens, watchReopen, type EarlyReopens, type ReopenWatcher } from "./app/reopen";
 import { holdSessionEnd } from "./app/session-end";
 import { SettingsStore } from "./settings/settings";
@@ -1429,21 +1429,9 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
   }
 
   // The microphone and the camera are on by default (2026-10-26), and macOS is asked for them only at the user's own
-  // press (the first-launch guide, or a switch turned on): at launch one it refused earlier is turned off, asking
-  // nothing. Autorecord keeps its own configuration.
-  if (!autoRecord?.ok) {
-    // Locked while recording: the refused input is left out of it all the same, and the next launch turns it off.
-    const turnedOff = (save: () => Promise<void>) => async (): Promise<boolean> => {
-      if (!preferencesUnlocked(recorder.state)) return false;
-      await save();
-      refreshUi();
-      return true;
-    };
-    void settleInputAccess([
-      { name: "microphone", enabled: () => settings.microphone, status: () => microphoneAccess(), turnOff: turnedOff(() => settings.setMicrophone(false)) },
-      { name: "camera", enabled: () => settings.camera && cameraAvailable(), status: () => cameraAccess(), turnOff: turnedOff(() => settings.setCamera(false)) },
-    ], log);
-  }
+  // press (the first-launch guide, or a switch turned on), which turns a switch back off when refused. A refusal found
+  // later, made in System Settings, leaves the switch on and is said where the input is (2026-11-01, the maintainer's
+  // choice): the user's intent is kept, and the pane that allows it or the switch that turns it off is one press away.
   // A new install meets the guide in the main window, as nothing else shows at launch for a menu bar app.
   if (onboardingOpen) settingsWindow.show();
   permission?.start();

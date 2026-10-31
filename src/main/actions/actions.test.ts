@@ -60,16 +60,37 @@ describe("createActionHandler", () => {
       return { ...ctx, settings, onboarding, settingsWindow, askMicrophoneAccess, askCameraAccess, access };
     }
 
-    it("saves the guide's switches without asking macOS, also when one is turned back on (review F2)", async () => {
+    it("asks macOS as a guide's switch is turned on when it was never asked, and turned off asks nothing (2026-11-01)", async () => {
       const ctx = guideHarness(true);
       ctx.access.microphone = "not-determined";
       await ctx.act({ setOnboardingInput: { input: "microphone", enabled: false } });
-      await ctx.act({ setOnboardingInput: { input: "microphone", enabled: true } });
-      await ctx.act({ setOnboardingInput: { input: "camera", enabled: false } });
-      expect(ctx.settings.setMicrophone.mock.calls).toEqual([[false], [true]]);
-      expect(ctx.settings.camera).toBe(false);
       expect(ctx.askMicrophoneAccess).not.toHaveBeenCalled();
+      await ctx.act({ setOnboardingInput: { input: "microphone", enabled: true } });
+      expect(ctx.askMicrophoneAccess).toHaveBeenCalledTimes(1);
+      expect(ctx.settings.setMicrophone.mock.calls).toEqual([[false], [true]]);
+      // Allowed already: saved, nothing asked.
+      await ctx.act({ setOnboardingInput: { input: "camera", enabled: true } });
       expect(ctx.askCameraAccess).not.toHaveBeenCalled();
+      expect(ctx.settings.camera).toBe(true);
+    });
+
+    it("turns a guide's switch back off when macOS is refused at its prompt, the user's own answer (2026-11-01)", async () => {
+      const ctx = guideHarness(false);
+      ctx.access.camera = "not-determined";
+      await ctx.act({ setOnboardingInput: { input: "camera", enabled: true } });
+      expect(ctx.askCameraAccess).toHaveBeenCalledTimes(1);
+      expect(ctx.settings.camera).toBe(false);
+      expect(ctx.deps.log).toHaveBeenCalledWith("settings: camera access is not allowed: turned off (setup guide)");
+    });
+
+    it("keeps a guide's switch on and opens System Settings when macOS refused before, as it asks only once (2026-11-01)", async () => {
+      const ctx = guideHarness(true);
+      ctx.access.microphone = "denied";
+      ctx.settings.microphone = false;
+      await ctx.act({ setOnboardingInput: { input: "microphone", enabled: true } });
+      expect(ctx.askMicrophoneAccess).not.toHaveBeenCalled();
+      expect(ctx.settings.microphone).toBe(true);
+      expect(ctx.deps.log).toHaveBeenCalledWith(expect.stringContaining("microphone"));
     });
 
     it("turns off, as it closes, an input left on that macOS was never asked for, and keeps an allowed one (review F1)", async () => {

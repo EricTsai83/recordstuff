@@ -50,12 +50,18 @@ function Step({ id, icon, title, badge, about, children }: {
   );
 }
 
-/** The microphone's or the camera's line: Allow, Allowed or the way to System Settings, and its switch. */
+/**
+ * The microphone's or the camera's line (2026-11-01, the maintainer's choice of one control): its switch, which asks
+ * macOS as it is turned on and reads on only once the input will be recorded (allowed, or kept on though macOS refused
+ * it, which is said with the way to System Settings); Allowed beside it when it is.
+ */
 function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camera"; input: OnboardingInputView; busy: boolean; waiting: boolean }) {
   const id = `onboarding-${name}`;
   const label = model.text(name === "microphone" ? "Microphone" : "Camera");
   // The screen first (native round, 2026-10-26): the inputs wait for it, so the first press is plain.
   const disabled = busy || input.locked || waiting;
+  // Never asked, it is not recorded yet, whatever is stored: off until turned on asks macOS (finishing turns it off).
+  const on = input.enabled && input.access !== "ask";
   return (
     <Step id={id} icon={name === "microphone" ? <Mic /> : <Camera />} title={label} badge={model.text("Optional")}
       about={name === "microphone" ? "Mixes your voice with the system's sound in the recording." : "Shows you in a bubble over the recording."}>
@@ -65,14 +71,8 @@ function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camer
           {model.text("Open Settings")}
         </Button>
       </>)
-        : !input.enabled ? null
-        : input.access === "granted" ? <Allowed />
-        : (
-          <Button id={`${id}-allow`} size="sm" disabled={disabled} onClick={() => press(`${name}:allow`, `${id}-allow`)}>
-            {model.text("Allow")}
-          </Button>
-        )}
-      <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={`${id}-detail`} checked={input.enabled}
+        : on ? <Allowed /> : null}
+      <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={`${id}-detail`} checked={on}
         disabled={disabled} onCheckedChange={(checked) => press(`${name}:${checked ? "on" : "off"}`, `${id}-switch`)} />
     </Step>
   );
@@ -82,12 +82,10 @@ export function OnboardingDialog() {
   useSyncExternalStore(model.subscribe, model.snapshot);
   const guide = model.view?.onboarding;
   const language = model.view?.language;
-  // One press at a time: Allow waits on macOS's prompt, and nothing else should start under it.
+  // One press at a time: a switch turned on waits on macOS's prompt, and nothing else should start under it.
   const busy = model.savingOf(GROUP) !== undefined;
   const ready = guide?.screen === "granted";
   const failure = model.failureOf(GROUP)?.text;
-  // An optional input still to allow goes off as the guide closes: said once, beside the way out, only while one is.
-  const unasked = guide ? [guide.microphone, guide.camera].some(input => input?.enabled && input.access === "ask") : false;
   return (
     <Dialog open={guide !== undefined} onOpenChange={(open) => { if (!open && !busy) press("finish", "onboarding-later"); }}>
       {guide && (
@@ -118,7 +116,7 @@ export function OnboardingDialog() {
           {failure && <p id="onboarding-failure" className="m-0 text-2xs text-destructive-ink" role="alert">{failure}</p>}
           <DialogFooter className="onboarding-footer">
             <span className="onboarding-start">
-              {!ready ? "" : unasked ? model.text("Not allowed ones turn off when you finish.")
+              {!ready ? ""
                 : guide.shortcut ? translate("Press {keys} to start recording.", language, { keys: guide.shortcut })
                 : model.text("Start recording from the menu bar icon.")}
             </span>
