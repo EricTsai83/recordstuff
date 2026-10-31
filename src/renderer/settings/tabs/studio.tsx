@@ -11,7 +11,7 @@ import { flushSync } from "react-dom";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Camera, CameraOff, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
+import { Camera, CameraOff, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
@@ -288,8 +288,6 @@ function TypePicker({ type }: { type: SettingsGroup }) {
   </>);
 }
 
-const VIEW_ICONS: Record<StudioView, typeof Monitor> = { composed: PictureInPicture2, camera: Video };
-
 /**
  * What the stage shows (plan 092, D3), a menu at the toolbar's end: every choice says in one line what it shows while
  * the menu is open, the one shown checked: As recorded, or Check camera (plan 097: Screen only removed). Its trigger
@@ -302,7 +300,6 @@ function ViewMenu({ view, wrap }: { view: SettingsGroup; wrap: boolean }) {
   const id = `setting-${view.id}`;
   const current = view.choices.find((choice) => choice.id === chosen);
   const description = current?.description;
-  const icon = (choice: string) => { const Icon = isStudioView(choice) ? VIEW_ICONS[choice] : Monitor; return <Icon aria-hidden="true" />; };
   return (<>
     <Select id={id} value={chosen} items={view.choices.map((choice) => ({ value: choice.id, label: choice.label }))} disabled={!view.enabled}
       onValueChange={(next) => { if (typeof next === "string" && next !== chosen) void model.choose(view.id, next, id); }}>
@@ -315,12 +312,10 @@ function ViewMenu({ view, wrap }: { view: SettingsGroup; wrap: boolean }) {
       <SelectContent alignItemWithTrigger={false} align="end">
         {view.choices.map((choice) => (
           <SelectItem key={choice.id} value={choice.id} data-value={choice.id} disabled={!choice.enabled}>
-            <span className="studio-view-option">
-              {icon(choice.id)}
-              <span className="studio-preview-option">
-                <span>{choice.label}</span>
-                {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
-              </span>
+            {/* The radio alone marks the choice (2026-11-01): no icon beside it. */}
+            <span className="studio-preview-option">
+              <span>{choice.label}</span>
+              {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}
             </span>
           </SelectItem>
         ))}

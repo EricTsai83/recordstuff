@@ -1796,17 +1796,6 @@
     flex: none;
     gap: --spacing(1.5);
   }
-  .studio-view-option {
-    display: flex;
-    align-items: flex-start;
-    gap: --spacing(2);
-  }
-  .studio-view-option > svg {
-    width: --spacing(3.5);
-    height: --spacing(3.5);
-    margin-top: --spacing(0.5);
-    flex: none;
-  }
   /* Live preview at the end of the Studio's line of controls (2026-10-23), beside Start and Stop: always in sight, and
      nothing over the picture. On, its signal is green, not the recording's red. */
   .studio-live svg {
