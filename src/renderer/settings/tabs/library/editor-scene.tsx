@@ -424,7 +424,7 @@ export function EditorOptions({ editor }: { editor: EditorView }) {
             <Ellipsis aria-hidden="true" />
           </PopoverTrigger>
         </ControlTooltip>
-        <PopoverContent side="top" align="end" id="editor-options-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={name}
+        <PopoverContent side="top" align="end" id="editor-options-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0" aria-label={name}
           initialFocus={() => document.getElementById("editor-skim")}>
           {/* What is set once and seldom again (the maintainer's review of 2026-10-26: the overall volumes, adjusted while
               listening, have a panel of their own that stays open as the preview plays). */}
@@ -579,7 +579,7 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
           <span className="editor-tool-label">{name}</span>
         </PopoverTrigger>
       </ControlTooltip>
-      <PopoverContent side="top" align="end" id="editor-mix-popup" className="editor-mix-popup w-auto max-w-[calc(100vw-24px)] gap-0 p-3" aria-label={name}
+      <PopoverContent side="top" align="end" id="editor-mix-popup" className="editor-mix-popup w-auto max-w-[calc(100vw-24px)] gap-0" aria-label={name}
         // Focus on the first volume, not on the ⓘ before it, whose note would open and take the first Escape.
         initialFocus={() => document.querySelector<HTMLElement>('#editor-mix-popup input[type="range"]')}
         onKeyDown={(event) => {
@@ -640,7 +640,7 @@ export function VolumeButton({ editor }: { editor: EditorView }) {
           <Kbd aria-hidden="true">V</Kbd>
         </PopoverTrigger>
       </ControlTooltip>
-      <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0 p-3" aria-label={model.text("Volume of the selection")}>
+      <PopoverContent side="top" align="start" id="editor-volume-popup" className="editor-options-popup w-auto max-h-(--available-height) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto gap-0" aria-label={model.text("Volume of the selection")}>
         {target && (
           <div className="editor-options editor-volume-options" role="group" aria-label={model.text("Volume of the selection")}>
             <p className="editor-keys-title">
