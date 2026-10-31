@@ -2701,6 +2701,21 @@
     font-size: 18px;
     font-weight: 600;
   }
+  /* A search with no match sits in the middle of the room under the head rather than at its top: the page, the tab and
+     the recordings become columns, and the empty state takes what is left. Only while it shows, so the cards keep
+     their own flow. */
+  /* The Recordings tab's wrapper stays mounted, only hidden, on the other tabs, so each rule asks for it to be shown:
+     the shared page keeps its own flow under every other tab (review pass 1, P2). */
+  .settings-card:has(> div:not([hidden]) > #library > #library-no-match:not([hidden])),
+  .settings-card > div:not([hidden]):has(> #library > #library-no-match:not([hidden])),
+  #library:has(> #library-no-match:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+  }
+  .settings-card > div:not([hidden]):has(> #library > #library-no-match:not([hidden])),
+  #library:has(> #library-no-match:not([hidden])) {
+    flex: 1 0 auto;
+  }
   /* A day out of view skips layout and paint: resizing or zooming the window (a title-bar double-click animates through
      dozens of widths) then lays out only the visible days instead of every card in the library. The clip margin keeps
      the cards' state lines, drawn 5px outside each card, from being cut at the day's edge. */

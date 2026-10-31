@@ -3,15 +3,16 @@
  * search (plan 071).
  */
 import { useDeferredValue, useEffect, useMemo } from "react";
-import { Film, Folder, SearchX } from "lucide-react";
+import { Film, Folder } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
 import { Button } from "../../components/ui/button";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "../../components/ui/empty";
+import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "../../components/ui/empty";
 import * as model from "../settings-controller";
 import { stopPreview } from "./clip-preview";
 import { CategoryHeader } from "./library/category";
 import { Clip } from "./library/clip";
+import { NoMatchArt } from "./library/no-match-art";
 
 // The tab's parts live under library/; these are what Settings imports, as before the split.
 export { LibraryHead, LibrarySummary } from "./library/head";
@@ -29,6 +30,8 @@ export function Library() {
     query = model.queryNow ? model.query : deferredQuery,
     items = useMemo(() => model.shownItems(library, query), [all, shownFolder, query]),
     narrowed = Boolean(all?.length) && (shownFolder !== undefined || query.trim() !== ""),
+    // Nothing to show where something could be: the search or the category shown leaves no card.
+    empty = !items.length && !library?.status && Boolean(library) && (narrowed || Boolean(shownFolder)),
     layout = model.shownLayout();
   const days = useMemo(() => {
     const groups = new Map<string, LibraryItemView[]>();
@@ -66,19 +69,20 @@ export function Library() {
       <p className="library-status" hidden={!library?.status}>
         {library?.status}
       </p>
+      <NoSearchMatch
+        query={query}
+        hidden={Boolean(!empty || !query.trim())}
+        elsewhere={shownFolder ? (all ?? []).filter((item) => model.matchesSearch(item, query)).length : 0}
+      />
       <Empty
         id="library-none-shown"
         className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]"
-        hidden={Boolean(items.length || library?.status || !library || !(narrowed || shownFolder))}
+        hidden={Boolean(!empty || query.trim())}
       >
         <EmptyHeader className="max-w-full">
-          <EmptyMedia>{query.trim() ? <SearchX className="size-[38px]" /> : <Folder className="size-[38px]" />}</EmptyMedia>
-          <EmptyTitle className="library-empty-title text-base">
-            {query.trim()
-              ? translate("No recordings match “{query}”.", model.view?.language, { query: query.trim() })
-              : model.text("This category is empty.")}
-          </EmptyTitle>
-          <EmptyDescription className="library-empty-detail" hidden={Boolean(query.trim())}>
+          <EmptyMedia><Folder className="size-[38px]" /></EmptyMedia>
+          <EmptyTitle className="library-empty-title text-base">{model.text("This category is empty.")}</EmptyTitle>
+          <EmptyDescription className="library-empty-detail">
             {model.text("Choose Move to in a recording's menu to add it here.")}
           </EmptyDescription>
         </EmptyHeader>
@@ -116,5 +120,87 @@ export function Library() {
         ))}
       </div>
     </section>
+  );
+}
+
+/** A search past this many characters is cut short where the empty state repeats it; the field still holds all of it. */
+const QUOTED_QUERY = 40;
+/** Where the search's words and the category go in the sentence, so each can be drawn as a tag of its own. */
+const QUERY_MARK = "\u0000",
+  FOLDER_MARK = "\u0001";
+
+/**
+ * The search found nothing in what is shown: what was searched and where, a way to clear it, and, from a category, the
+ * recordings elsewhere that do match.
+ */
+function NoSearchMatch({ query, hidden, elsewhere }: { query: string; hidden: boolean; elsewhere: number }) {
+  const language = model.view?.language,
+    words = query.trim(),
+    quoted = words.length > QUOTED_QUERY ? `${words.slice(0, QUOTED_QUERY).trimEnd()}…` : words,
+    folder = model.shownFolder,
+    folderName = folder ? (folder.folder ?? model.text("Uncategorized")) : "",
+    sentence = folder
+      ? translate("No recording names in {folder} contain {query}.", language, { folder: FOLDER_MARK, query: QUERY_MARK })
+      : translate("No recording names contain {query}.", language, { query: QUERY_MARK }),
+    // The sentence's own words, with the category and the search as tags where the translation puts them.
+    parts = sentence.split(/([\u0000\u0001])/).map((part, at) =>
+      part === QUERY_MARK ? (
+        <span
+          key={at}
+          className="library-no-match-query mx-px rounded-md bg-muted px-1.5 py-px font-medium text-foreground [box-decoration-break:clone]"
+          title={quoted === words ? undefined : words}
+        >
+          {quoted}
+        </span>
+      ) : part === FOLDER_MARK ? (
+        <span
+          key={at}
+          className="library-no-match-folder mx-px inline-flex max-w-48 items-baseline gap-1 rounded-md bg-muted px-1.5 py-px align-baseline font-medium text-foreground"
+          title={folderName}
+        >
+          <Folder className="size-3.5 shrink-0 self-center" />
+          <span className="truncate">{folderName}</span>
+        </span>
+      ) : (
+        part
+      ),
+    );
+  // Either way the button goes, so the focus goes back to the search to type again.
+  const focusSearch = () => document.getElementById("library-search")?.focus();
+  return (
+    <Empty id="library-no-match" className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]" hidden={hidden}>
+      <EmptyHeader className="max-w-full gap-1.5">
+        <EmptyMedia>
+          <NoMatchArt className="size-24" />
+        </EmptyMedia>
+        <EmptyTitle className="library-empty-title text-[17px] font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
+        <EmptyDescription className="library-empty-detail max-w-[22rem] text-[13px] leading-6">
+          {parts}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent className="mt-1 flex-row flex-wrap justify-center">
+        {elsewhere > 0 && (
+          <Button
+            id="library-no-match-all"
+            onClick={() => {
+              model.showFolder(undefined);
+              focusSearch();
+            }}
+          >
+            {translate("Search all recordings ({count})", language, { count: elsewhere })}
+          </Button>
+        )}
+        <Button
+          id="library-no-match-clear"
+          variant="outline"
+          onClick={() => {
+            model.search("");
+            focusSearch();
+          }}
+        >
+          {model.text("Clear search")}
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }

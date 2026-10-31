@@ -125,11 +125,15 @@ export function takeShown(library: LibraryView | undefined): void {
   shownTaken = true;
   shownFolder = library.shown;
 }
+/** Whether `item`'s name holds the search `text`, ignoring case and whatever category it is in. */
+export function matchesSearch(item: LibraryItemView, text = query): boolean {
+  const words = text.trim().toLocaleLowerCase();
+  return !words || item.title.toLocaleLowerCase().includes(words);
+}
 /** Whether `item` is in the shown folder and matches the search, ignoring case. */
 export function isShown(item: LibraryItemView, text = query): boolean {
   if (shownFolder && (item.folder ?? null) !== shownFolder.folder) return false;
-  const words = text.trim().toLocaleLowerCase();
-  return !words || item.title.toLocaleLowerCase().includes(words);
+  return matchesSearch(item, text);
 }
 /** The cards for the search `text`: the tab passes a deferred copy of `query`, so typing never waits for the list. */
 export function shownItems(library: LibraryView | undefined, text = query): LibraryItemView[] {

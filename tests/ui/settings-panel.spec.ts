@@ -182,6 +182,28 @@ test("S022 the Recordings folder is read by the app's library: names, dates, siz
   expect(files).toEqual(expected.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
 });
 
+test("S022a a search that matches nothing keeps to the Recordings tab: another tab lays out as it does with no search (2026-10-31)", { tag: "@library" }, async () => {
+  // The fixture's third recording has no picture: the scheme answers its thumbnail 404 (S028).
+  host.expectedErrors.push(/Failed to load resource: the server responded with a status of 404 .*\(recordstuff-media:\/\/thumb\//);
+  await host.evaluate(async h => { h.theme("light"); await h.setSize(...h.SNAPSHOT_SIZES.default); });
+  await drawn(page, () => host.evaluate(h => h.push(h.settingsView({ type: "idle" }, { ...h.baseContext(), library: h.library().state, now: h.snapshotNow() }))));
+  // The General tab's page as laid out: its card's flow and every section's place, read the same way twice.
+  const general = async (): Promise<string> => {
+    await page.locator("#tab-general").click();
+    await expect(page.locator("#tab-general")).toHaveAttribute("aria-selected", "true");
+    return read<string>(page, `(() => { const card = document.querySelector(".settings-card");
+      return JSON.stringify([getComputedStyle(card).display, card.scrollHeight, [...card.querySelectorAll("section, .section")].filter(el => el.checkVisibility()).map(el => Math.round(el.getBoundingClientRect().top))]); })()`);
+  };
+  const before = await general();
+  await page.locator("#tab-library").click();
+  await page.locator("#library-search").fill("nothing is called this");
+  await expect(page.locator("#library-no-match")).toBeVisible();
+  expect.soft(await general(), "S022a the General tab lays out as before while Recordings keeps a search with no match").toBe(before);
+  // Back on Recordings, the search and its empty state are still there.
+  await page.locator("#tab-library").click();
+  await expect(page.locator("#library-no-match")).toBeVisible();
+});
+
 test("S037–S038 countdown sound: a click on the checked switch asks main for off; under countdown Off it is disabled, keeps its value and sends nothing", { tag: "@recording-settings" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await page.locator("#tab-recording").click();
