@@ -141,7 +141,7 @@ async function run(): Promise<boolean> {
   await settle(200);
   if (!await until(() => read<boolean>(window, `Boolean(document.querySelector(".recording-result"))`))) throw new Error("the failures tab did not show its rows");
   const colours = await read<{ accent: string }>(window, `(() => { const probe = document.createElement("div"); document.body.append(probe);
-    probe.style.color = "var(--focus)"; const accent = getComputedStyle(probe).color; probe.remove(); return { accent }; })()`);
+    probe.style.color = "var(--ring)"; const accent = getComputedStyle(probe).color; probe.remove(); return { accent }; })()`);
 
   // N-S103: a keyboard-focused header, then another window in front.
   await read(window, `document.querySelectorAll(".recording-result > .result-summary")[0].focus()`); press("Down"); press("Up"); await settle(60);

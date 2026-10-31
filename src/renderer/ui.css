@@ -4922,6 +4922,12 @@
     border-radius: var(--radius);
     overflow-wrap: anywhere;
   }
+  /* A row whose header has the keyboard's focus is outlined by its own edge in the focus colour, as a Recordings card is;
+     not for the pointer, nor while the window is inactive (2026-11-01: the line went with the shared focus utilities in
+     bf9f5162, so a keyboard user could not see which row was focused; N-S103). */
+  .recording-result:has(> .result-summary:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
+    border-color: var(--ring);
+  }
   .recording-result + .recording-result::before {
     content: "";
     position: absolute;

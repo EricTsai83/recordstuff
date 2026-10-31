@@ -62,7 +62,7 @@ function FailureRow({ result }: { result: RecordingResultView }) {
     >
       <CollapsibleTrigger
         id={`${id}-summary`}
-        className="result-summary outline-none focus-visible:border-ring/80 focus-visible:ring-[0.5px] focus-visible:ring-ring/80"
+        className="result-summary outline-none"
         onKeyDown={(event) => {
           if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key))
             return;

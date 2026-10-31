@@ -409,7 +409,11 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   };
   await page.locator(".recording-result > .result-summary").nth(1).focus();
   await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowUp"); await page.waitForTimeout(60);
-  const headerFocus = { visible: await read<boolean>(page, `document.activeElement.matches(":focus-visible")`), shown: await focusShown() };
+  // A header's indicator is its row's edge in the focus colour (2026-11-01), the card's own border rather than the button's.
+  const rowEdge = `getComputedStyle(document.activeElement.closest(".recording-result")).borderTopColor`;
+  const headerFocus = { visible: await read<boolean>(page, `document.activeElement.matches(":focus-visible")`),
+    shown: await read<boolean>(page, `${rowEdge} === (() => { const probe = document.createElement("div"); document.body.append(probe);
+      probe.style.color = "var(--ring)"; const ring = getComputedStyle(probe).color; probe.remove(); return ring; })()`) };
   for (const scheme of ["light", "dark"] as const) {
     await host.evaluate((h, value) => h.theme(value), scheme);
     await page.waitForTimeout(150);
@@ -427,6 +431,8 @@ test("S094–S102, S104, S106–S109 the failures tab: day groups, tab strip, ke
   await page.waitForTimeout(80);
   const clicked = await read<{ input: string | undefined; visible: boolean }>(page, `({ input: document.documentElement.dataset.input, visible: document.activeElement.matches(":focus-visible") })`);
   expect.soft(clicked, `S102 a pointer click is pointer input and not keyboard focus ${JSON.stringify(clicked)}`).toEqual({ input: "pointer", visible: false });
+  expect.soft(await read<string>(page, `getComputedStyle(document.querySelector(".recording-result:nth-child(1)")).borderTopColor`),
+    "S102 and its row draws no focus edge").toBe("rgba(0, 0, 0, 0)");
   // S103 (an inactive window) is a desktop case: pnpm acceptance:settings-native.
   // A day rollover moves rows between groups without dropping focus, and Technical details shows the focus line.
   const where = (): Promise<{ active: string; day: string }> => read(page, `({ active: document.activeElement.id || document.activeElement.dataset.action || document.activeElement.tagName,
