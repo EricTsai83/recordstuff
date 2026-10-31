@@ -617,7 +617,7 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
   });
   await expect(page.getByRole("timer"), "S131 the elapsed time while recording").toHaveText(/^1:0[5-9]$/);
   // Showing the camera is under the preview, a plain recording's live control (plan 097, D6): the one switch for it.
-  const shown = page.locator(".studio-live-row").getByRole("switch", { name: "Camera" });
+  const shown = page.locator(".studio-live-row").getByRole("switch", { name: "Show camera" });
   await expect(shown, "S131 the camera's showing while recording (D13)").toHaveAttribute("aria-checked", "true");
   await expect(shown).toBeEnabled();
   await clearCalls();
@@ -1273,11 +1273,12 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
     sources.getByRole("button", { name: /^Screen:/ }), sources.getByRole("button", { name: /^Camera:/ }), sources.getByRole("button", { name: /^Microphone:/ }),
     sources.getByRole("combobox", { name: "Recording type" }),
     live.getByRole("button", { name: "Don't record System audio" }), live.getByRole("button", { name: "Don't record Microphone" }),
-    live.getByRole("meter", { name: "Microphone" }), live.getByRole("switch", { name: "Camera" })]) {
+    live.getByRole("meter", { name: "Microphone" }), live.getByRole("switch", { name: "Show camera" })]) {
     await expect(control, "S146 in sight").toBeInViewport();
   }
   await expect(choices.getByRole("button", { name: /Don't record/ }), "S146 nothing live joins the choices as a recording starts").toHaveCount(0);
   await expect(sources.getByRole("button", { name: /Don't record/ }), "S146 nor the sources").toHaveCount(0);
+  await keep("studio-live-controls.png");
   // Nothing moves as a recording starts or a Live preview is said to be starting (2026-10-24, at the maintainer's
   // request): the choices, the picture, the sources and the live controls keep their places and sizes.
   const places = () => page.evaluate(() => [".studio-choices", ".studio-stage .camera-preview-stage", ".studio-sources", ".studio-live-row"].map((selector) => {
@@ -1478,6 +1479,8 @@ test("S153 the Studio at any width: the toolbar's controls never laid over one a
     // Record and its phase's place, and the view's controls.
     const controls = inFlow(".studio-record > *, .studio-head > *");
     const sources = inFlow(".studio-sources-grid > *");
+    const live = inFlow(".studio-live-controls > *");
+    const liveParts = inFlow(".studio-live-controls button, .studio-live-controls [role='switch'], .studio-live-controls [role='slider'], .studio-live-controls .slider-setting-value, .studio-live-controls .studio-channel-head, .studio-live-controls .studio-switch-note");
     const cut = (element: Element): boolean => element.scrollWidth > element.clientWidth + 0.5 || element.scrollHeight > element.clientHeight + 0.5;
     return { controls: controls.length, outside: controls.filter((box) => box.left < edge.left - 0.5 || box.right > edge.right + 0.5).length,
       overlaps: overlaps(controls),
@@ -1486,10 +1489,12 @@ test("S153 the Studio at any width: the toolbar's controls never laid over one a
       sources: sources.length, sourcesOverlap: overlaps(sources),
       sourcesOutside: sources.filter((box) => box.left < studio.left - 0.5 || box.right > studio.right + 0.5).length,
       sourcesUnderStage: sources.every((box) => box.top >= stage.bottom - 0.5),
+      liveOverlap: overlaps(live),
+      liveOutside: liveParts.filter((box) => box.left < studio.left - 0.5 || box.right > studio.right + 0.5).length,
       // A source's name is never cut short; what it is set to may be, said whole in its name and its tooltip.
       namesCut: [...document.querySelectorAll(".studio-sources-grid .studio-source-label")].filter(cut).length };
   });
-  const fits = { outside: 0, overlaps: 0, recordAcross: false, viewNamed: true, sources: 5, sourcesOverlap: 0, sourcesOutside: 0, sourcesUnderStage: true, namesCut: 0 };
+  const fits = { outside: 0, overlaps: 0, recordAcross: false, viewNamed: true, sources: 5, sourcesOverlap: 0, sourcesOutside: 0, sourcesUnderStage: true, liveOverlap: 0, liveOutside: 0, namesCut: 0 };
   const sweep = async (label: string): Promise<void> => {
     for (const width of [380, 440, 520, 549, 620, 760, 1000, 1240]) {
       await host.evaluate((h, width) => h.setSize(width, 720), width);

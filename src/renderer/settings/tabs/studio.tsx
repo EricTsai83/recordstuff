@@ -39,7 +39,7 @@ const CONTROL = "transition-[color,background-color,border-color,box-shadow] h-(
  * as it says, its words wrapping only where it is wider than the Studio (zoomed in, narrowest); locked while recording,
  * still read at full strength, its lock and quieter words saying it is locked (ui.css).
  */
-const SOURCE = "studio-source h-auto data-[size=default]:h-auto min-h-(--studio-source-height) py-1 max-w-full min-w-0 flex-none justify-start px-(--studio-source-px) disabled:opacity-100";
+const SOURCE = "studio-source h-auto data-[size=default]:h-auto min-h-(--studio-source-height) py-1 max-w-full min-w-0 flex-none justify-start px-(--studio-source-px) border-transparent bg-transparent dark:bg-transparent shadow-none disabled:opacity-100";
 /** A control folded to its icon: square, its words kept for assistive technology and its tooltip. */
 const ICON_ONLY = "w-(--studio-control-height) min-w-0 flex-none justify-center px-0";
 /** Zoomed in the narrowest window, a control's words wrap onto a second line rather than run past the toolbar. */
@@ -142,13 +142,13 @@ function NumberSetting({ group, field, disabled, describedBy }: {
  * An on/off group as a line of its own: its name, what it says, and its switch at the end. `steady` keeps the line under
  * it while there is nothing to say, so the live row keeps its height as a recording starts.
  */
-function SwitchRow({ group, steady }: { group: SettingsGroup; steady?: boolean }) {
+function SwitchRow({ group, steady, label = group.label }: { group: SettingsGroup; steady?: boolean; label?: string }) {
   const id = `setting-${group.id}`;
   const on = model.committed(group) === "on";
   const said = group.note ?? group.info;
   return (
     <div className="studio-switch-row" data-disabled={!group.enabled || undefined}>
-      <span id={`${id}-label`} className="font-semibold">{group.label}</span>
+      <span id={`${id}-label`} className="font-semibold">{label}</span>
       <Switch id={id} aria-labelledby={`${id}-label`} checked={on} disabled={!group.enabled}
         aria-describedby={said ? `${id}-note` : undefined}
         onCheckedChange={(checked) => void model.choose(group.id, checked ? "on" : "off", id)} />
@@ -580,7 +580,7 @@ function LiveRow({ type }: { type: SettingsGroup | undefined }) {
       <div className="studio-live-controls">
         {shown && (
           <div className="studio-channel studio-camera-shown">
-            <SwitchRow group={shown} steady />
+            <SwitchRow group={shown} steady label={model.text("Show camera")} />
           </div>
         )}
         {channels.map((group) => <Channel key={group.id} group={group} />)}

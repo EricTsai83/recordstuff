@@ -1184,6 +1184,7 @@
      the extra height between them (2026-10-31). */
   .studio-channel {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 2px;
     font-size: 12px;
@@ -1386,7 +1387,8 @@
   .studio-sources-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    justify-content: center;
+    gap: 4px 6px;
   }
   .studio-sources > .studio-failure {
     margin: 0;
@@ -1522,18 +1524,61 @@
   /* Under the preview (plan 097, D6): the live controls of the recording's type, side by side while they fit. */
   .studio-live-row {
     display: grid;
-    gap: 6px;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
   }
-  /* Each control at most 340px wide, from the start (2026-10-28): system audio alone does not run across the window. */
+  /* An open control area (2026-10-31): aligned columns, without another card around the sources and live controls.
+     Keep room for each switch's extended hit area at the page edge. */
   .studio-live-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px 28px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px 24px;
+    padding-inline: 6px 12px;
   }
   .studio-live-controls > * {
-    flex: 1 1 220px;
     min-width: 0;
     max-width: 340px;
+  }
+  @container (max-width: 660px) {
+    .studio-live-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .studio-camera-shown {
+      grid-column: 1 / -1;
+      max-width: none;
+    }
+  }
+  @container (max-width: 399px) {
+    .studio-live-controls {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* At high zoom in the minimum window, keep the meter, mute and value reachable on separate lines. */
+  @container (max-width: 220px) {
+    .studio-channel .audio-meter {
+      flex-wrap: wrap;
+    }
+    .studio-channel .audio-meter-track {
+      flex-basis: 100%;
+    }
+    .studio-channel .audio-meter-mute {
+      max-width: 100%;
+      height: auto;
+      min-height: 24px;
+      white-space: normal;
+    }
+    .studio-channel .slider-setting {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .studio-channel .slider-setting-value {
+      align-self: end;
+    }
+    .studio-channel-head > span,
+    .studio-camera-shown .studio-switch-row > span {
+      overflow-wrap: anywhere;
+    }
   }
   /* The camera's switch no taller than an input's name line, so Camera and System audio share a top line. */
   .studio-camera-shown > .studio-switch-row {
