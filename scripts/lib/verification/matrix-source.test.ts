@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { matrixSourceSize, type MatrixDisplay } from "./matrix-source.mts";
+import { matrixSourceSettings, matrixSourceSize, type MatrixDisplay } from "./matrix-source.mts";
+import { parseSettings, SETTINGS_VERSION } from "../../../src/main/settings/settings";
 
 const primary: MatrixDisplay = { id: "3", bounds: { x: 0, y: 0, width: 1920, height: 1080 },
   workArea: { x: 0, y: 0, width: 1920, height: 1050 }, scaleFactor: 1 };
 
 describe("matrix's independent recording source", () => {
+  it("matches production settings migration, validation and defaults", () => {
+    expect(SETTINGS_VERSION).toBe(5);
+    const cases = [
+      { version: 5, outputDir: "/tmp/out", hideMenuBar: true, hideDock: false },
+      { version: 4, outputDir: "/tmp/out", hideSystemUi: true, hideDock: false },
+      { version: 4, outputDir: "/tmp/out", hideSystemUi: "bad", hideMenuBar: true },
+      { version: 99, outputDir: "/tmp/out", hideDock: true },
+      { version: 5, outputDir: "relative", hideMenuBar: true },
+      { version: 5, outputDir: "/tmp/out", display: { kind: "display", id: "2", label: "Portrait" }, hideDock: true },
+      { version: 5, outputDir: "/tmp/out", display: { kind: "display", id: "bad", label: "Invalid" }, hideMenuBar: "true" },
+    ].map(v => JSON.stringify(v)).concat("malformed", "null", "[]");
+    for (const text of cases) {
+      const parsed = parseSettings(text, "darwin")?.settings;
+      const expected = parsed ? { display: parsed.display, hideMenuBar: parsed.hideMenuBar,
+        hideDock: parsed.hideDock, hideDesktop: parsed.hideDesktop } : {};
+      expect(matrixSourceSettings(text)).toEqual(expected);
+    }
+  });
   it("keeps the full screen unless its reserved strip is hidden", () => {
     expect(matrixSourceSize([primary], {})).toEqual({ width: 1920, height: 1080 });
     expect(matrixSourceSize([primary], { hideMenuBar: true })).toEqual({ width: 1920, height: 1050 });

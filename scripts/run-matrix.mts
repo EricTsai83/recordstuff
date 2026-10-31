@@ -6,9 +6,9 @@
  * `<file>` afresh, so it runs alongside the recording, at the pace forced; compare with the same cases run without.
  *
  * Defaults do the right thing: the test material page is opened full screen
- * on the main display by Chrome (kiosk, private profile) and the main
- * display's size is detected for the aspect check. `--no-open-material`
- * when you are showing the material yourself; `--screen` to override.
+ * on the main display by Chrome (kiosk, private profile). Before each recording,
+ * the selected display's cropped pixel size is snapshotted independently.
+ * `--no-open-material` keeps manual material; `--screen` overrides with a legacy aspect check.
  *
  * One invocation is one desktop round (plan 042): build the app once, open
  * the material once, then run every case of the named matrices in order,
@@ -34,7 +34,7 @@
  * recording in progress) and material browser and write no measurements;
  * 0 otherwise.
  */
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { APP_LOG_PATH, APP_SETTINGS_PATH, scrubbedEnv, runnerArgs } from "./lib/runner/runner-env.mts";
 import fs from "node:fs";
 import os from "node:os";
@@ -66,7 +66,7 @@ import { INTERRUPT_EXIT, electronPattern, escapeRegExp, groupAlive, interruptExi
 import { ToolMissingError, hasTool, requireMediaTimeout, timeTools, type ToolTiming } from "./lib/verification/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verification/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verification/verify.mts";
-import { matrixSourceSize, readMatrixDisplays } from "./lib/verification/matrix-source.mts";
+import { matrixSourceSettings, matrixSourceSize, readMatrixDisplays } from "./lib/verification/matrix-source.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verification/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
@@ -91,25 +91,10 @@ const explicitScreen = parsed.options.screen;
 const cases = planCases(names, repeat);
 const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""}${prepare ? ` --prepare ${prepare}` : ""}${pace ? ` --pace ${pace}` : ""}`;
 if (prepare && !fs.existsSync(prepare)) usage(`--prepare: no file at ${prepare}`);
-const screen = parsed.options.screen ?? mainDisplaySize();
-if (!screen) console.error("Primary display size unavailable; aspect checks may be unavailable (use --screen WxH)");
+const screen = explicitScreen;
 if (process.platform !== "darwin") {
   console.error("pnpm matrix currently requires macOS (open/ps/pgrep); other platforms are unverified");
   process.exit(2);
-}
-
-/**
- * Logical size of the main display (the one the app records) from
- * `system_profiler`: the block marked `Main Display: Yes`, using `UI Looks
- * like` when present (HiDPI) and `Resolution` otherwise.
- */
-function mainDisplaySize(): { width: number; height: number } | undefined {
-  const text = spawnSync("system_profiler", ["SPDisplaysDataType"], { encoding: "utf8" }).stdout ?? "";
-  const blocks = text.split(/\n(?=\s{8}\S)/);
-  const main = blocks.find((block) => /Main Display: Yes/.test(block));
-  if (!main) return undefined;
-  const ui = /UI Looks like:\s*(\d+) x (\d+)/.exec(main) ?? /Resolution:\s*(\d+) x (\d+)/.exec(main);
-  return ui ? { width: Number(ui[1]), height: Number(ui[2]) } : undefined;
 }
 
 function outputDir(): string {
@@ -341,7 +326,7 @@ function build(): Promise<number> {
 
 async function main(): Promise<void> {
   const dir = outputDir();
-  console.log(`Matrix ${names.join(",")}${repeat > 1 ? ` × ${repeat}` : ""}: ${cases.length} cases; output ${dir}; log ${LOG_PATH}; primary display ${screen ? `${screen.width}x${screen.height}` : "unknown"}; material ${openMaterial ? "automatic (Chrome kiosk)" : "manual"}`);
+  console.log(`Matrix ${names.join(",")}${repeat > 1 ? ` × ${repeat}` : ""}: ${cases.length} cases; output ${dir}; log ${LOG_PATH}; source ${screen ? `manual aspect ${screen.width}x${screen.height}` : "per-case geometry snapshot"}; material ${openMaterial ? "automatic (Chrome kiosk)" : "manual"}`);
   if (dryRun) {
     for (const [index, planned] of cases.entries()) console.log(`  ${index + 1}. ${planned.title}: ${JSON.stringify(planned.entry.quality)}`);
     return;
@@ -424,8 +409,17 @@ async function main(): Promise<void> {
       const { entry } = planned;
       console.log(`▶ [${index + 1}/${cases.length}] ${planned.title}`);
       // Snapshot before capture, independently of its track report. An explicit --screen keeps its legacy aspect override.
-      const sourceSize = explicitScreen ? undefined : matrixSourceSize(readMatrixDisplays(),
-        fs.existsSync(SETTINGS_PATH) ? JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown> : {});
+      let sourceSize;
+      try {
+        sourceSize = explicitScreen ? undefined : matrixSourceSize(readMatrixDisplays(),
+          matrixSourceSettings(fs.existsSync(SETTINGS_PATH) ? fs.readFileSync(SETTINGS_PATH, "utf8") : ""));
+      } catch (cause) {
+        runs.push({ planned, result: undefined, blocked: true,
+          error: `source geometry unavailable: ${cause instanceof Error ? cause.message : String(cause)}` });
+        console.error(`  ✗ ${runs[runs.length - 1]?.error}`);
+        break;
+      }
+      if (sourceSize) console.log(`  Expected source ${sourceSize.width}x${sourceSize.height} pixels before the resolution cap`);
       const outcome = await recordOnce(entry, planned.key);
       if (interrupted) await halt();
       const tools: ToolTiming[] = [];
@@ -488,7 +482,7 @@ async function main(): Promise<void> {
   }
   if (left.length > 0) console.error(`CLEANUP INCOMPLETE: ${left.join("; ")} still running`);
 
-  const judged = withUnreached(cases, runs, "not run: the round stopped early after a tool went missing");
+  const judged = withUnreached(cases, runs, "not run: the round stopped early because required evidence was unavailable");
   const verified = runs.filter((r) => r.result !== undefined);
   const target = measurementsPath();
   // Even a round with nothing verified goes through appendMeasurements, so a new file gets its header.

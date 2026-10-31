@@ -1,10 +1,27 @@
 /** Independent source geometry for matrix checks, before the encoder reports its output. */
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import type { Dimensions } from "../../../src/shared/quality.ts";
 import { systemUiCrop } from "../../../src/shared/system-ui.ts";
 
 interface Rect { x: number; y: number; width: number; height: number }
 export interface MatrixDisplay { id: string; bounds: Rect; workArea: Rect; scaleFactor: number }
+
+/** Geometry-relevant subset of parseSettings; tested against the production parser for migrations and defaults. */
+export function matrixSourceSettings(text: string): Record<string, unknown> {
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { return {}; }
+  if (!value || typeof value !== "object") return {};
+  const v = value as Record<string, unknown>;
+  if ((v["version"] !== 5 && v["version"] !== 4) || typeof v["outputDir"] !== "string"
+    || !path.isAbsolute(v["outputDir"])) return {};
+  const hide = (key: string): boolean => (v["version"] === 4 ? v["hideSystemUi"] : v[key]) === true;
+  const d = v["display"] as { kind?: string; id?: string; label?: string } | null | undefined;
+  const validDisplay = d?.kind === "primary" || (d?.kind === "display" && typeof d.id === "string"
+    && /^(0|[1-9]\d*)$/.test(d.id) && Number.isSafeInteger(Number(d.id)) && typeof d.label === "string");
+  return { display: validDisplay ? d : { kind: "primary" },
+    hideMenuBar: hide("hideMenuBar"), hideDock: hide("hideDock"), hideDesktop: hide("hideDesktop") };
+}
 
 /** AppKit uses bottom-left coordinates; normalise each work area relative to its display's top-left. */
 export function matrixSourceSize(displays: MatrixDisplay[], settings: Record<string, unknown>): Dimensions {

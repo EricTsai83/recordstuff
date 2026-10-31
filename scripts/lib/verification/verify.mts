@@ -925,8 +925,9 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     const trackSize = entry?.track.width !== undefined && entry.track.height !== undefined ? `${entry.track.width}x${entry.track.height}` : undefined;
     const notes: string[] = [];
     let ok: boolean | undefined;
-    if (options.sourceSize && entry) {
-      const expected = fitWithinCap(options.sourceSize, entry.requested.resolutionCap);
+    const expectedSize = options.sourceSize && entry ? fitWithinCap(options.sourceSize, entry.requested.resolutionCap) : undefined;
+    if (expectedSize) {
+      const expected = expectedSize;
       ok = m.video.width === expected.width && m.video.height === expected.height;
       if (!ok) notes.push(`differs from expected source output ${expected.width}x${expected.height}`);
     }
@@ -949,7 +950,7 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     }
     checks.push({
       metric: "Output dimensions",
-      expected: trackSize ?? (cap ? `cap ${cap}` : "—"),
+      expected: expectedSize ? `${expectedSize.width}x${expectedSize.height}` : trackSize ?? (cap ? `cap ${cap}` : "—"),
       actual,
       verdict: ok === undefined ? "n/a" : pass(ok),
       ...(notes.length > 0 ? { note: notes.join("; ") } : {}),

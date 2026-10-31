@@ -108,6 +108,7 @@ export function verifyRecording(
   if (entry) extras.nominalFps = entry.requested.frameRate;
   const measurement = measure(file, fileBytes, info, intervals, extras);
   const judgeOptions: VerifyOptions = {};
+  if (options.sourceSize) judgeOptions.sourceSize = options.sourceSize;
   if (options.screen) judgeOptions.screen = options.screen;
   if (options.expectedDurationSeconds !== undefined) judgeOptions.expectedDurationSeconds = options.expectedDurationSeconds;
   if (options.required) judgeOptions.required = options.required;
