@@ -39,6 +39,7 @@ Computer Use 的游標無法按住拖曳停在中途，也無法不按鍵移動�
 - 先讀 AGENTS.md 與 .agents/skills/native-acceptance/SKILL.md（依其中的工具規則與收尾規則；這輪是探索式體驗測試，不是完整基本驗收）。
 - 先確認你有原生 Computer Use 工具可用；沒有就立即回報 blocked 並停止。
 - 維護者已完成桌面交接（已回覆「好了」），你可以直接操作桌面。
+- 工具回報狀態被外部改變或疑似干擾時，不要中止整輪：重新讀取狀態、回到該步驟應有的畫面並重做，繼續後續項目；重做後仍無法判定的那一項才記 blocked。只有維護者要求暫停／拿回控制權，或同一步驟連續 3 次收到干擾訊號，才停止並收尾（見 native-acceptance skill「接管前等待使用者回覆」）。
 - App 已由呼叫者以 `pnpm start:app` 建置並開啟（commit <SHA>，產物 dist/mac-arm64/RecordStuff.app），輸出在 <start-app.log 路徑>。不要再執行 pnpm start:app 或重建；中途需要重開時，正常結束後用 `pnpm open:app`。App log：~/Library/Logs/recordstuff/recordstuff.log。
 - RecordStuff 是選單列 App，沒有主視窗。Computer Use 對純 tray 程序可能回 -10005 timeoutReached，此時直接在螢幕上點選單列圖示，或用 `pnpm native:input`（elements / press <標題> / click / scroll / shortcut，見 docs/zh-TW/system-design/tooling.md#執行者輸入）操作設定視窗。錄影快捷鍵 <目前設定>；設定快捷鍵 ⌥⌘,（可用 `pnpm acceptance:settings-shortcut -- --observe` 送出）。
 
