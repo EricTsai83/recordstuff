@@ -33,9 +33,9 @@ function Step({ id, icon, title, badge, about, children }: {
   return (
     <li className="onboarding-step">
       <span className="onboarding-step-icon" aria-hidden="true">{icon}</span>
-      <span className="flex items-center gap-[6px] min-w-0">
-        <span id={`${id}-title`} className="text-[13px] font-semibold">{title}</span>
-        <span className="py-0 px-[6px] rounded-[999px] text-[12px] text-muted-foreground bg-muted">{badge}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span id={`${id}-title`} className="text-xs font-semibold">{title}</span>
+        <span className="py-0 px-1.5 rounded-full text-2xs text-muted-foreground bg-muted">{badge}</span>
         {/* Opened at once, as every ? in the app (2026-10-26, the maintainer's request): it is hovered to be read. */}
         <ControlTooltip label={detail} delay={0}>
           <Button variant="ghost" size="icon-sm" className="onboarding-about" id={`${id}-about`}
@@ -91,7 +91,7 @@ export function OnboardingDialog() {
   return (
     <Dialog open={guide !== undefined} onOpenChange={(open) => { if (!open && !busy) press("finish", "onboarding-later"); }}>
       {guide && (
-        <DialogContent id="onboarding" className="onboarding max-h-[calc(100dvh-32px)] overflow-y-auto sm:max-w-[460px]" showCloseButton={false}
+        <DialogContent id="onboarding" className="onboarding max-h-[calc(100dvh-32px)] overflow-y-auto sm:max-w-115" showCloseButton={false}
           finalFocus={false}>
           <DialogHeader>
             <DialogTitle id="onboarding-title">{model.text("Welcome to RecordStuff")}</DialogTitle>
@@ -115,7 +115,7 @@ export function OnboardingDialog() {
             {guide.camera && <InputStep name="camera" input={guide.camera} busy={busy} waiting={!ready} />}
           </ol>
           {/* A press that did not apply, said in the dialog, which hides the page under it (review pass 2). */}
-          {failure && <p id="onboarding-failure" className="m-0 text-[12px] text-destructive-ink" role="alert">{failure}</p>}
+          {failure && <p id="onboarding-failure" className="m-0 text-2xs text-destructive-ink" role="alert">{failure}</p>}
           <DialogFooter className="onboarding-footer">
             <span className="onboarding-start">
               {!ready ? "" : unasked ? model.text("Not allowed ones turn off when you finish.")

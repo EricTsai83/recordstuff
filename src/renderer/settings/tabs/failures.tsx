@@ -88,8 +88,8 @@ function FailureRow({ result }: { result: RecordingResultView }) {
           <Icon />
           <span className="result-unread" hidden={result.acknowledged} />
         </span>
-        <span className="flex-1 min-w-0 flex flex-col gap-[2px] pt-[1px]">
-          <span className="flex items-start gap-[7px]">
+        <span className="flex-1 min-w-0 flex flex-col gap-0.5 pt-px">
+          <span className="flex items-start gap-2">
             <span
               className="sr-only result-unread-label"
               hidden={result.acknowledged}
@@ -99,7 +99,7 @@ function FailureRow({ result }: { result: RecordingResultView }) {
             <span className="result-heading">
               <span className="result-reason">{result.reason}</span>
               <Badge
-                className={`result-badge h-auto min-h-[18px] max-w-full rounded-[3px] px-1 py-0 leading-4 whitespace-normal ${
+                className={`result-badge h-auto min-h-4.5 max-w-full rounded-xs px-1 py-0 leading-4 whitespace-normal ${
                   result.outcomeState === "partial"
                     ? "bg-warning-surface text-warning"
                     : result.outcomeState === "pending" || result.outcomeState === "unknown"
@@ -113,10 +113,10 @@ function FailureRow({ result }: { result: RecordingResultView }) {
                 {model.text(outcomeLabels[result.outcomeState])}
               </Badge>
             </span>
-            <span className="result-time flex-none text-muted-foreground text-[12px] tabular-nums">{result.time}</span>
+            <span className="result-time flex-none text-muted-foreground text-2xs tabular-nums">{result.time}</span>
             <ChevronDown className="result-chevron" aria-hidden="true" />
           </span>
-          <span className="result-outcome block text-muted-foreground text-[12px]">{result.outcome}</span>
+          <span className="result-outcome block text-muted-foreground text-2xs">{result.outcome}</span>
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="result-details" keepMounted>
@@ -127,7 +127,7 @@ function FailureRow({ result }: { result: RecordingResultView }) {
         <p className="result-persistence" hidden={!result.persistenceWarning}>
           {result.persistenceWarning}
         </p>
-        <div className="result-actions flex flex-wrap gap-[6px] my-[10px] mx-0">
+        <div className="result-actions flex flex-wrap gap-1.5 my-2.5 mx-0">
           {result.actions.map((action) => (
             <Button
               key={action.id}
@@ -198,7 +198,7 @@ export function Failures({ headingHidden = false }: { headingHidden?: boolean } 
       )}
       <Empty className="result-empty py-10 text-muted-foreground" hidden={Boolean(results.length || status)}>
         <EmptyHeader>
-          <EmptyMedia><CircleAlert className="size-[38px]" /></EmptyMedia>
+          <EmptyMedia><CircleAlert className="size-10" /></EmptyMedia>
           <EmptyDescription>{model.text("No recording failures.")}</EmptyDescription>
         </EmptyHeader>
       </Empty>

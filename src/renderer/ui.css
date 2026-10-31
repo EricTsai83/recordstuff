@@ -1084,9 +1084,9 @@
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 6px 0;
+    gap: --spacing(2.5);
+    min-height: --spacing(12);
+    padding: --spacing(1.5) 0;
     border-top: 1px solid var(--border);
   }
   .onboarding-step:first-child {
@@ -1095,28 +1095,28 @@
   .onboarding-step-icon {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: --spacing(7);
+    height: --spacing(7);
+    border-radius: var(--radius-sm);
     color: var(--primary);
     background: color-mix(in oklch, var(--primary) 10%, transparent);
   }
   .onboarding-step-icon svg {
-    width: 16px;
-    height: 16px;
+    width: --spacing(4);
+    height: --spacing(4);
   }
   .onboarding-about {
-    margin-inline-start: -2px;
+    margin-inline-start: --spacing(-0.5);
     color: var(--muted-foreground);
   }
   .onboarding-about svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
   }
   .onboarding-note,
   .onboarding-start {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   .onboarding-footer {
@@ -1128,13 +1128,13 @@
   .onboarding-allowed {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 12px;
+    gap: --spacing(1);
+    font-size: var(--text-2xs);
     font-weight: 600;
   }
   .onboarding-allowed svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     color: var(--success);
   }
   /* A number field with its short name inside it, as a design tool's: the name is dragged sideways to change it. */
@@ -1808,7 +1808,7 @@
   }
   .studio-failure {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--destructive-ink);
   }
   /* The Recording Studio's level meters (plan 075, D19): a bar from silence to full scale, quiet when muted. */
@@ -2180,11 +2180,11 @@
     margin: --spacing(2.5) 0 0;
   }
   .diagnostic + .diagnostic {
-    margin-top: 9px;
+    margin-top: --spacing(2);
   }
   .diagnostic-heading {
     display: flex;
-    gap: 6px;
+    gap: --spacing(1.5);
     align-items: center;
   }
   .diagnostic-heading svg {
@@ -2202,10 +2202,10 @@
     overflow-wrap: anywhere;
   }
   .diagnostic p {
-    margin: 4px 0;
+    margin: --spacing(1) 0;
   }
   .diagnostics button {
-    margin: 6px 6px 0 0;
+    margin: --spacing(1.5) --spacing(1.5) 0 0;
   }
   .capture-area {
     display: flex;
@@ -2453,10 +2453,10 @@
     --result-hover: var(--muted);
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: --spacing(3);
     width: 100%;
     text-align: left;
-    padding: 12px 10px;
+    padding: --spacing(3) --spacing(2.5);
     border-radius: var(--radius-md);
   }
   .result-summary:hover {
@@ -2468,15 +2468,15 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: --spacing(7);
+    height: --spacing(7);
     border-radius: var(--radius-md);
     background: var(--muted);
     color: var(--muted-foreground);
   }
   .result-mark svg {
-    width: 16px;
-    height: 16px;
+    width: --spacing(4);
+    height: --spacing(4);
   }
   .result-heading {
     flex: 1;
@@ -2484,7 +2484,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 7px;
+    gap: --spacing(1) --spacing(2);
   }
   .result-reason {
     overflow-wrap: anywhere;
@@ -2495,8 +2495,8 @@
   }
   .result-chevron {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     color: var(--muted-foreground);
     transition: transform 150ms ease;
   }
@@ -2515,24 +2515,24 @@
     box-shadow: 0 0 0 2px var(--background);
   }
   .result-details {
-    padding: 2px 16px 12px 56px;
+    padding: --spacing(0.5) --spacing(4) --spacing(3) --spacing(14);
   }
   .result-details p {
-    margin: 6px 0;
+    margin: --spacing(1.5) 0;
   }
   .result-guidance {
-    padding: 8px 10px;
+    padding: --spacing(2) --spacing(2.5);
     border-radius: var(--radius-lg);
     background: var(--muted);
   }
   .result-file {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
     overflow-wrap: anywhere;
   }
   .result-technical {
-    margin-top: 8px;
+    margin-top: --spacing(2);
   }
   .technical-summary {
     display: inline-flex;
@@ -2562,14 +2562,14 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-family: var(--font-mono);
-    font-size: 12px;
-    margin-top: 8px;
-    padding: 8px 10px;
+    font-size: var(--text-2xs);
+    margin-top: --spacing(2);
+    padding: --spacing(2) --spacing(2.5);
     border-radius: var(--radius-md);
     background: var(--muted);
   }
   .result-day {
-    margin-bottom: 18px;
+    margin-bottom: --spacing(5);
   }
   /* The controls line is a grid of named areas (2026-10-09): the selector gives way first (96–200px, its name cut), the
      search keeps 160–320px, and the layout switch and Show in Finder keep the line's end. Flex wrapping moved whole
@@ -4904,7 +4904,7 @@
     pointer-events: none;
     top: calc(-1 * 1px - 0.5px);
     left: 50px;
-    right: 10px;
+    right: --spacing(2.5);
     border-top: 1px solid var(--border);
   }
 
