@@ -129,35 +129,40 @@ function NoSearchMatch({ hidden, elsewhere }: { hidden: boolean; elsewhere: numb
   const focusSearch = () => document.getElementById("library-search")?.focus();
   return (
     <Empty id="library-no-match" className="library-empty py-10 text-muted-foreground [overflow-wrap:anywhere]" hidden={hidden}>
-      <EmptyHeader className="max-w-full gap-1.5">
-        <EmptyMedia>
-          <NoMatchArt className="size-24" />
-        </EmptyMedia>
-        <EmptyTitle className="library-empty-title text-lg font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
-      </EmptyHeader>
-      <EmptyContent className="mt-1 flex-row flex-wrap justify-center">
-        {elsewhere > 0 && (
-          <Button
-            id="library-no-match-all"
-            onClick={() => {
-              model.showFolder(undefined);
-              focusSearch();
-            }}
-          >
-            {translate("Search all recordings ({count})", language, { count: elsewhere })}
-          </Button>
-        )}
-        <Button
-          id="library-no-match-clear"
-          variant="outline"
-          onClick={() => {
-            model.search("");
-            focusSearch();
-          }}
-        >
-          {model.text("Clear search")}
-        </Button>
-      </EmptyContent>
+      {/* Hidden, it holds nothing: no button of it stays in the page for the keyboard or a page-wide query to find. */}
+      {!hidden && (
+        <>
+          <EmptyHeader className="max-w-full gap-1.5">
+            <EmptyMedia>
+              <NoMatchArt className="size-24" />
+            </EmptyMedia>
+            <EmptyTitle className="library-empty-title text-lg font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
+          </EmptyHeader>
+          <EmptyContent className="mt-1 flex-row flex-wrap justify-center">
+            {elsewhere > 0 && (
+              <Button
+                id="library-no-match-all"
+                onClick={() => {
+                  model.showFolder(undefined);
+                  focusSearch();
+                }}
+              >
+                {translate("Search all recordings ({count})", language, { count: elsewhere })}
+              </Button>
+            )}
+            <Button
+              id="library-no-match-clear"
+              variant="outline"
+              onClick={() => {
+                model.search("");
+                focusSearch();
+              }}
+            >
+              {model.text("Clear search")}
+            </Button>
+          </EmptyContent>
+        </>
+      )}
     </Empty>
   );
 }
