@@ -213,7 +213,7 @@ function Picker({ group }: { group: SettingsGroup }) {
       <PopoverContent align="start" className="studio-picker-menu w-80 gap-2">
         {problem && <p className="studio-picker-problem"><TriangleAlert aria-hidden="true" />{picker.problem}</p>}
         {on && <SwitchRow group={on} />}
-        <div role="radiogroup" aria-label={group.label} className="grid gap-[1px]" data-disabled={!group.enabled || undefined}>
+        <div role="radiogroup" aria-label={group.label} className="grid gap-px" data-disabled={!group.enabled || undefined}>
           {group.choices.map((choice) => {
             const checked = model.committed(group) === choice.id;
             return (
@@ -360,7 +360,7 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
         </PopoverTrigger>
       </ControlTooltip>
       <PopoverContent align="end" className="studio-picker-menu w-72 gap-2">
-        <div role="radiogroup" aria-label={rate.label} className="grid gap-[1px]">
+        <div role="radiogroup" aria-label={rate.label} className="grid gap-px">
           <span className="font-semibold">{rate.label}</span>
           {rate.choices.map((choice) => {
             const checked = chosen === choice.id;

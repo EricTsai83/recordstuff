@@ -987,10 +987,10 @@
   }
   .camera-preview-status {
     position: absolute;
-    inset: auto 8px 8px;
+    inset: auto --spacing(2) --spacing(2);
     margin: 0;
     color: var(--display-ink);
-    font-size: 11px;
+    font-size: var(--text-3xs);
     text-align: center;
     text-shadow: var(--media-text-shadow);
     pointer-events: none;
@@ -999,11 +999,11 @@
      at the picture's foot, so one short line reads over any screen in either theme. */
   .camera-preview[data-mode="recording"] .camera-preview-status,
   .camera-preview[data-view="camera"]:not([data-off]) .camera-preview-status {
-    inset: auto 0 10px;
+    inset: auto 0 --spacing(2.5);
     width: fit-content;
-    max-width: calc(100% - 20px);
+    max-width: calc(100% - --spacing(5));
     margin-inline: auto;
-    padding: 5px 10px;
+    padding: --spacing(1) --spacing(2.5);
     border: 1px solid var(--studio-live-edge);
     border-radius: 999px;
     background: var(--studio-live-glass);
@@ -1028,18 +1028,18 @@
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding-bottom: 12px;
+    gap: --spacing(3);
+    padding-bottom: --spacing(3);
   }
   .studio-stage {
-    --bezel: 6px;
+    --bezel: --spacing(1.5);
     position: relative;
     flex: 1 1 0;
     min-height: var(--studio-stage-floor);
     max-height: calc((100cqw - var(--bezel)) / var(--preview-ratio, 16 / 9) + var(--bezel));
     display: grid;
     grid-template-rows: minmax(0, 1fr);
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   /* The grey is only the letterbox the display's shape leaves: the picture is the largest at its ratio that fits the
      stage, meeting it on one axis (plan 095, R1). The stage is a size container, so its own size never follows the
@@ -1070,13 +1070,13 @@
   .studio-fields {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: --spacing(1);
   }
   .studio-fields .number-setting-name {
-    padding-left: 5px;
+    padding-left: --spacing(1);
   }
   .studio-fields .number-setting-unit {
-    padding-right: 5px;
+    padding-right: --spacing(1);
   }
   /* The first-launch guide (2026-10-26): one line to a step, its icon, name, badge and ⓘ, then where it stands with its
      press at the end; what each is for is behind its ⓘ (the maintainer's choice of a sparse layout). */
@@ -1143,11 +1143,11 @@
     display: flex;
     align-items: center;
     min-width: max-content;
-    height: 30px;
+    height: --spacing(7.5);
     border: 1px solid var(--input);
     border-radius: var(--radius-md);
     background: color-mix(in oklch, var(--input) 20%, transparent);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     transition: border-color 150ms ease-out;
   }
   .dark .number-setting {
@@ -1164,7 +1164,7 @@
     align-self: stretch;
     display: inline-flex;
     align-items: center;
-    padding-left: 8px;
+    padding-left: --spacing(2);
     font-weight: 600;
     color: var(--muted-foreground);
     white-space: nowrap;
@@ -1178,17 +1178,17 @@
   .number-setting input {
     field-sizing: content;
     min-width: 2ch;
-    padding: 0 1px 0 5px;
+    padding: 0 1px 0 --spacing(1);
     border: 0;
     outline: none;
     background: transparent;
     color: var(--foreground);
     font: inherit;
-    font-size: 13px;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
   .number-setting-unit {
-    padding-right: 8px;
+    padding-right: --spacing(2);
     color: var(--muted-foreground);
   }
   /* At the top of its line: beside a taller input, the camera's switch and its note stay together rather than share
@@ -1197,15 +1197,15 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
-    gap: 2px;
-    font-size: 12px;
+    gap: --spacing(0.5);
+    font-size: var(--text-2xs);
   }
   /* An input under the preview (plan 097): its name, then its level with Don't record, then its fader. */
   .studio-channel-head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    min-height: 20px;
+    gap: --spacing(1.5);
+    min-height: --spacing(5);
   }
   .studio-channel-head > span {
     flex: 1;
@@ -1216,15 +1216,15 @@
   }
   .studio-channel-head > svg {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
   }
   /* The level in segments, a reading of the sound, unlike the fader's long track. */
   .studio-channel .audio-meter {
     width: auto;
   }
   .studio-channel .audio-meter-track {
-    height: 8px;
+    height: --spacing(2);
     border-radius: 0;
     mask: repeating-linear-gradient(90deg, var(--mask-opaque) 0 5px, transparent 5px 7px);
   }
@@ -1238,7 +1238,7 @@
   /* The meter and fader share tracks, rather than each subtracting a different label width. */
   .studio-channel:has(.slider-setting) {
     grid-template-columns: minmax(0, 1fr) max-content;
-    column-gap: 10px;
+    column-gap: --spacing(2.5);
   }
   .studio-channel:has(.slider-setting) > .studio-channel-head {
     grid-column: 1 / -1;
@@ -1248,7 +1248,7 @@
     display: grid;
     grid-template-columns: subgrid;
     align-items: center;
-    column-gap: 10px;
+    column-gap: --spacing(2.5);
   }
   .studio-channel .audio-meter-mute {
     justify-self: start;
@@ -1262,28 +1262,28 @@
      picture while it is said (2026-10-24), and what the camera is doing while it gives no picture (2026-10-25). */
   .studio-stage-note {
     position: absolute;
-    inset: auto 0 10px;
+    inset: auto 0 --spacing(2.5);
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: --spacing(1);
     width: fit-content;
-    max-width: calc(100% - 20px);
+    max-width: calc(100% - --spacing(5));
     margin: 0 auto;
-    padding: 5px 10px;
+    padding: --spacing(1) --spacing(2.5);
     border: 1px solid var(--studio-live-edge);
     border-radius: 999px;
     background: var(--studio-live-glass);
     backdrop-filter: blur(8px);
     color: var(--studio-live-ink-on);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 500;
     line-height: 1.2;
     /* Only said: the bubble under it is still dragged. */
     pointer-events: none;
   }
   .studio-stage-note svg {
-    width: 12px;
-    height: 12px;
+    width: --spacing(3);
+    height: --spacing(3);
     flex: none;
   }
   /* Turn on preview over the stage while Live preview is off (2026-10-25): one glass button in the middle of the
@@ -1295,7 +1295,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    padding: 6px;
+    padding: --spacing(1.5);
     pointer-events: none;
   }
   .studio-stage-start > button {
@@ -1316,8 +1316,8 @@
   /* A narrow portrait picture keeps the button inside it: closer to its words, its icon left out. */
   @container (max-width: 200px) {
     .studio-stage-start > button {
-      padding-inline: 10px;
-      font-size: 12px;
+      padding-inline: --spacing(2.5);
+      font-size: var(--text-2xs);
     }
     .studio-stage-start > button > svg {
       display: none;
@@ -1326,23 +1326,23 @@
   /* The Studio's controls (2026-10-28): its one set of tokens. Every control, over the preview or under it, takes its
      height, corner, padding and icon from here (CONTROL in studio.tsx), so a menu, a picker and a button always match. */
   .studio {
-    --studio-control-height: 32px;
+    --studio-control-height: --spacing(8);
     /* A source under the preview: one short line, its words at the toolbar's size. */
-    --studio-source-height: 28px;
-    --studio-source-px: 10px;
+    --studio-source-height: --spacing(7);
+    --studio-source-px: --spacing(2.5);
     /* Where the recording's phase is shown, Cancel's countdown at its longest. */
     --studio-state-room: 9.5rem;
     --studio-control-radius: var(--radius-md);
-    --studio-control-px: 12px;
-    --studio-control-icon: 14px;
-    --studio-toolbar-gap: 8px;
+    --studio-control-px: --spacing(3);
+    --studio-control-icon: --spacing(3.5);
+    --studio-toolbar-gap: --spacing(2);
   }
   .studio-toolbar {
     display: grid;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   .studio-toolbar:is([data-density="tight"], [data-density="stacked"], [data-density="wrapped"]) {
-    --studio-toolbar-gap: 6px;
+    --studio-toolbar-gap: --spacing(1.5);
   }
   /* Record and its phase at the start, what is watched at the end. */
   .studio-toolbar-row {
@@ -1398,19 +1398,19 @@
     margin: 0;
   }
   .studio-more svg {
-    width: 16px;
-    height: 16px;
+    width: --spacing(4);
+    height: --spacing(4);
   }
   /* The recording's sources under the preview (2026-10-31): one short control each, side by side, wrapping onto a
      further line only where the Studio is too narrow; the same in every phase. */
   .studio-sources {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   .studio-heading {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     color: var(--muted-foreground);
   }
@@ -1418,7 +1418,7 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 4px 6px;
+    gap: --spacing(1) --spacing(1.5);
   }
   .studio-sources > .studio-failure {
     margin: 0;
@@ -1427,7 +1427,7 @@
   /* Wider than the Studio (zoomed in, narrowest), its parts take a second line rather than cut its name short. */
   .studio-source {
     flex-wrap: wrap;
-    column-gap: 6px;
+    column-gap: --spacing(1.5);
     row-gap: 0;
     text-align: start;
   }
@@ -1467,24 +1467,24 @@
   .studio-picker-problem {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
+    gap: --spacing(1.5);
     margin: 0;
-    padding: 6px 8px;
+    padding: --spacing(1.5) --spacing(2);
     border: 1px solid var(--warning-border);
     border-radius: var(--radius-sm);
     background: var(--warning-surface);
     color: var(--warning);
-    font-size: 12px;
+    font-size: var(--text-2xs);
   }
   .studio-picker-problem > svg {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     margin-top: 1px;
   }
   .studio-picker svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     flex: none;
   }
   .studio-picker-chevron,
@@ -1503,12 +1503,12 @@
   .studio-picker-choice {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
+    gap: --spacing(1.5);
     width: 100%;
-    padding: 5px 6px;
+    padding: --spacing(1.5) --spacing(2);
     border-radius: var(--radius-sm);
     text-align: start;
-    font-size: 12px;
+    font-size: var(--text-2xs);
   }
   .studio-picker-choice:hover:not(:disabled) {
     background: var(--accent);
@@ -1522,8 +1522,8 @@
   }
   .studio-picker-check {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     margin-top: 1px;
     visibility: hidden;
   }
@@ -1531,8 +1531,8 @@
     visibility: visible;
   }
   .studio-type > svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     flex: none;
   }
   .studio-type .studio-picker-lock {
@@ -1543,9 +1543,9 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 2px 10px;
-    min-height: 28px;
-    font-size: 12px;
+    gap: --spacing(0.5) --spacing(2.5);
+    min-height: --spacing(7);
+    font-size: var(--text-2xs);
   }
   .studio-switch-note {
     grid-column: 1 / -1;
@@ -1554,8 +1554,8 @@
   /* Under the preview (plan 097, D6): the live controls of the recording's type, side by side while they fit. */
   .studio-live-row {
     display: grid;
-    gap: 10px;
-    padding-top: 14px;
+    gap: --spacing(2.5);
+    padding-top: --spacing(3);
     border-top: 1px solid var(--border);
   }
   /* An open control area (2026-10-31): aligned columns, without another card around the sources and live controls.
@@ -1563,8 +1563,8 @@
   .studio-live-controls {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px 24px;
-    padding-inline: 6px 12px;
+    gap: --spacing(4) --spacing(6);
+    padding-inline: --spacing(1.5) --spacing(3);
   }
   .studio-live-controls > * {
     min-width: 0;
@@ -1601,7 +1601,7 @@
     .studio-channel .audio-meter-mute {
       max-width: 100%;
       height: auto;
-      min-height: 24px;
+      min-height: --spacing(6);
       white-space: normal;
     }
     .studio-channel .slider-setting {
@@ -1618,7 +1618,7 @@
   }
   /* The camera's switch no taller than an input's name line, so Camera and System audio share a top line. */
   .studio-camera-shown > .studio-switch-row {
-    min-height: 20px;
+    min-height: --spacing(5);
     grid-template-columns: minmax(0, max-content) auto;
     justify-content: start;
   }
@@ -1631,8 +1631,8 @@
   }
   /* An input not recorded: the whole input in the warning look, saying so in place of its name (D6). */
   .studio-channel[data-problem] {
-    margin: -4px -6px;
-    padding: 4px 6px;
+    margin: --spacing(-1) --spacing(-1.5);
+    padding: --spacing(1) --spacing(1.5);
     border: 1px solid var(--warning-border);
     border-radius: var(--radius-md);
     background: var(--warning-surface);
@@ -1904,9 +1904,9 @@
   .section-footnote,
   .capture-help,
   .capture-timeout {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
-    margin: 6px 0 0;
+    margin: --spacing(1.5) 0 0;
     overflow-wrap: anywhere;
   }
   .text-note {
@@ -2211,8 +2211,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin: 10px 0 0;
+    gap: --spacing(2);
+    margin: --spacing(2.5) 0 0;
   }
   .capture-help {
     flex-basis: 100%;

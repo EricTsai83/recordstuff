@@ -2,7 +2,7 @@
 
 [English](102-design-tokens.md) | [繁體中文](102-design-tokens.zh-TW.md)
 
-Status: in progress; steps 1 (the Recordings tab, the pilot) and 2 (the shared preference layout: General and Recording settings) done on 2026-10-31. Created: 2026-10-31 at the maintainer's request: "use shadcn as the base for the whole CSS, avoid Tailwind's defaults and hard-coded pixels, keep everything consistent, and show before and after pictures of every change." Hard dependencies: none open. It builds on the closed 067 (the type scale, targets and contrast) and 069 (the style layers and `tests/style-guard.test.ts`). Execute in order under the [plan index](README.md).
+Status: in progress; steps 1 (the Recordings tab, the pilot), 2 (the shared preference layout: General and Recording settings) and 3 (the Recording Studio and Keyboard Shortcuts) done on 2026-10-31. Created: 2026-10-31 at the maintainer's request: "use shadcn as the base for the whole CSS, avoid Tailwind's defaults and hard-coded pixels, keep everything consistent, and show before and after pictures of every change." Hard dependencies: none open. It builds on the closed 067 (the type scale, targets and contrast) and 069 (the style layers and `tests/style-guard.test.ts`). Execute in order under the [plan index](README.md).
 
 ## The problem today
 
@@ -32,7 +32,7 @@ Each step: before pictures, the change, after pictures paired with `pnpm preview
 
 1. **Recordings tab (pilot) — done 2026-10-31.** The tokens above; the tab's CSS and TSX on them. Shared `.day-heading` and `.result-day` brought Troubleshooting's day spacing along.
 2. **General and Recording settings — done 2026-10-31.** The shared preference layout (page head, title, sections, section headings 20/12 like the Recordings tab, rows 52px with 12px padding, controls, the about block, the cleanup section, the status card, hints); `--text-title` is the 30px the page head draws (the design note's 24px was stale; step 7 updates it). Being shared, it reached every preference page and the Recordings head (2px lower).
-3. **Recording Studio and Keyboard Shortcuts.**
+3. **Recording Studio and Keyboard Shortcuts — done 2026-10-31.** The Studio's stage, toolbar and control tokens (same pixels: 32px controls, 28px sources), sources, pickers, number fields, inputs, live controls, stage notes and the camera preview's status pill; the shortcut rows' notes, capture help and capture area. Snaps: 5px paddings and gaps to 4px, a picker's choice to shadcn's 6 by 8, the live controls' top padding 14 to 12 (the Studio's own gap). Kept: the stage floor, the live controls' 340px cap, the meter's segments, the listening indicator's glyph, 1px nudges. Only the Studio's pictures moved (the live controls 2px up); the shared notes kept their pixels.
 4. **Troubleshooting** (rows, guidance, actions, details) and the onboarding guide.
 5. **Shared chrome:** sidebar, page head, dialogs, menus, toasts, the zoom notice, tooltips; the shadcn primitives' arbitrary values moved into variants.
 6. **Edit view and player:** spacing and type only; timeline geometry stays.
