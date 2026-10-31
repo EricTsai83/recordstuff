@@ -1,7 +1,7 @@
 /**
  * Dates as rows show them, and the Failures tab: each failure's view and the actions it offers.
  */
-import { failureReason, failureGuidance, failureOutcome, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../../recording/recording-result";
+import { failedInput, failureReason, failureGuidance, failureOutcome, hasInputPrivacyPage, isOutputFolderFailure, isPermissionFailure, persistenceWarning } from "../../recording/recording-result";
 import { translate as t, type Language, type PlainMessageKey } from "../../../shared/i18n";
 import type { RecordingResultView, SettingsChoice, SettingsView } from "../../../shared/settings-panel";
 import type { RecordingResult, RecordingResultAction } from "../../../shared/recording-result";
@@ -108,6 +108,14 @@ export function resultActions(state: RecordingState, ctx: AppContext, result: Re
   if (result.outcome === "partial" && result.partialPath) add("reveal", "Show partial recording", true);
   if (isOutputFolderFailure(result.code))
     add("folder", "Change output folder", preferencesUnlocked(state) && result.outcome !== "pending");
+  // A missing microphone or camera (2026-10-31): its privacy page where the system has one, and Recording settings, where
+  // it is turned off, as the guidance says.
+  const input = failedInput(result.code);
+  if (input) {
+    if (hasInputPrivacyPage(input, ctx.platform))
+      add("inputPrivacy", input === "microphone" ? "Open microphone settings…" : "Open camera settings…", true);
+    add("inputSettings", "Open Recording settings", true);
+  }
   if (ctx.platform === "darwin" && isPermissionFailure(result.code)) {
     add("permission", "Open System Settings", preferencesUnlocked(state));
     if (!result.restored || (state.type === "needsPermission" && state.needsRelaunch))

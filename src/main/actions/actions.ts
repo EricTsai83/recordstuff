@@ -326,6 +326,9 @@ export function createActionHandler(deps: ActionDeps): ActionHandler {
         reveal: deps.revealFile, folder: async () => { await deps.changeOutputDir(); },
         permission: async () => { await handleAction("openPermissionSettings"); },
         relaunch: async () => { await handleAction("relaunch"); },
+        // Whether the page opened, so the row says when it did not (review F1).
+        inputPrivacy: async input => await handleAction(input === "microphone" ? "openMicrophoneSettings" : "openCameraSettings") !== false,
+        inputSettings: async () => { await handleAction("openRecordingSettings"); },
         needsRelaunch: () => recorder.state.type === "needsPermission" && recorder.state.needsRelaunch,
       });
     }

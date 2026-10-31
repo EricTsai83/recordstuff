@@ -13,7 +13,8 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); fs.rmSync(dir, { rec
 const stat = (file: string) => fs.promises.stat(file);
 const load = (target = file) => new RecordingResultStore(target).load();
 const io = { stat, refresh: vi.fn(), settled: () => true, platform: "darwin" as const,
-  reveal: vi.fn(), folder: async () => {}, permission: async () => {}, relaunch: async () => {} };
+  reveal: vi.fn(), folder: async () => {}, permission: async () => {}, relaunch: async () => {},
+  inputPrivacy: async () => true, inputSettings: async () => {} };
 
 it("ignores a corrupt old single-result file and creates empty current history", async () => {
   const legacy = path.join(dir, "recording-result.json"), raw = "{ broken";

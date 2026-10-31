@@ -9,6 +9,12 @@ const PERMISSION_FAILURES: readonly ErrorCode[] = ["permission_denied", "no_audi
 
 /** Recovered by freeing space or choosing another output folder. */
 export const isOutputFolderFailure = (code: ErrorCode): boolean => OUTPUT_FOLDER_FAILURES.includes(code);
+/** The input a failure refused to start without, when it is the microphone or the camera. */
+export const failedInput = (code: ErrorCode): "microphone" | "camera" | undefined =>
+  code === "microphone_unavailable" ? "microphone" : code === "camera_unavailable" ? "camera" : undefined;
+/** Whether the system has a privacy page RecordStuff can open for `input`: the camera's on macOS and Windows, the microphone's on macOS. */
+export const hasInputPrivacyPage = (input: "microphone" | "camera", platform: NodeJS.Platform): boolean =>
+  platform === "darwin" || (input === "camera" && platform === "win32");
 /** Recovered through capture permission in System Settings, possibly followed by a relaunch. */
 export const isPermissionFailure = (code: ErrorCode): boolean => PERMISSION_FAILURES.includes(code);
 
@@ -34,6 +40,10 @@ interface ResultActions {
   folder(): Promise<void>;
   permission(): Promise<void>;
   relaunch(): Promise<void>;
+  /** The system's privacy page for the microphone or the camera a failure names; false when it did not open. */
+  inputPrivacy(input: "microphone" | "camera"): Promise<boolean>;
+  /** Settings on the Recording tab, where the microphone and the camera are turned off. */
+  inputSettings(): Promise<void>;
   needsRelaunch?(): boolean;
 }
 interface PendingAction {
@@ -493,6 +503,16 @@ export class RecordingResults {
       }
       effects.reveal(result.partialPath);
       return true;
+    }
+    // A missing input's ways out only open a page, so neither a pending record nor a recording holds them (review F2).
+    if (action === "inputPrivacy" || action === "inputSettings") {
+      const input = failedInput(result.code);
+      if (!input) return false;
+      if (action === "inputSettings") {
+        await effects.inputSettings();
+        return true;
+      }
+      return hasInputPrivacyPage(input, effects.platform) && await effects.inputPrivacy(input);
     }
     if (!effects.settled() || (action !== "permission" && result.outcome === "pending")) return false;
     if (action === "relaunch" && result.restored && !effects.needsRelaunch?.()) return false;

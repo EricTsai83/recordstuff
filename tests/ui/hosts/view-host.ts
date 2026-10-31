@@ -294,6 +294,7 @@ function installPanelHandlers(): void {
         && await recordingResults.act(action.recordingResult.id, action.recordingResult.action, {
           stat: async () => ({ isFile: () => true, size: 1 }), refresh: pushCurrent, settled: () => true,
           platform: "darwin", reveal: () => {}, folder: async () => {}, permission: async () => {}, relaunch: async () => {},
+          inputPrivacy: async () => true, inputSettings: async () => {},
         });
       return { applied, view: resultView() };
     }

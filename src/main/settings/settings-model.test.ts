@@ -1348,6 +1348,26 @@ it("offers macOS permission recovery with pending relaunch locked and no macOS a
   expect(settingsView(idle, windows).recordingResults?.[0]?.guidance).not.toContain("System Settings");
 });
 
+it("offers a missing microphone's or camera's privacy page where the system has one, and Recording settings (2026-10-31)", () => {
+  const failure = (code: "microphone_unavailable" | "camera_unavailable") =>
+    ({ id: code, occurredAt: "2026-10-31T12:00:00Z", code, detail: "", outcome: "empty" as const, acknowledged: false });
+  const ids = (platform: "darwin" | "win32", code: "microphone_unavailable" | "camera_unavailable") =>
+    settingsView(idle, { ...context, platform, recordingResults: [failure(code)] }).recordingResults![0]!.actions.map(a => [a.id, a.label, a.enabled]);
+  expect(ids("darwin", "microphone_unavailable")).toEqual([
+    ["inputPrivacy", "Open microphone settings…", true], ["inputSettings", "Open Recording settings", true], ["acknowledge", "Got it", true]]);
+  expect(ids("darwin", "camera_unavailable")).toEqual([
+    ["inputPrivacy", "Open camera settings…", true], ["inputSettings", "Open Recording settings", true], ["acknowledge", "Got it", true]]);
+  // Windows opens the camera's privacy page but has no microphone page RecordStuff opens.
+  expect(ids("win32", "camera_unavailable").map(([id]) => id)).toEqual(["inputPrivacy", "inputSettings", "acknowledge"]);
+  expect(ids("win32", "microphone_unavailable").map(([id]) => id)).toEqual(["inputSettings", "acknowledge"]);
+  // Each reaches main as the record's own action; another failure offers neither.
+  const ctx = { ...context, platform: "darwin" as const, recordingResults: [failure("microphone_unavailable")] };
+  expect(settingsAction(idle, ctx, "recordingResult:microphone_unavailable", "inputSettings"))
+    .toEqual({ recordingResult: { id: "microphone_unavailable", action: "inputSettings" } });
+  const disk = { ...context, platform: "darwin" as const, recordingResults: [{ ...failure("microphone_unavailable"), id: "disk", code: "disk_full" as const }] };
+  expect(settingsView(idle, disk).recordingResults![0]!.actions.map(a => a.id)).not.toContain("inputSettings");
+});
+
 it("offers persistence retry for an acknowledged result and bases restored relaunch on current state", () => {
   const result = { id: "old", occurredAt: "2026-09-25T00:00:00Z", code: "permission_denied" as const,
     detail: "", outcome: "empty" as const, acknowledged: true, restored: true, persistenceFailed: "io" as const };

@@ -436,6 +436,21 @@ describe("createActionHandler", () => {
     });
   });
 
+  it("routes a missing input's ways out from a failure record to its privacy page and to Recording settings (2026-10-31)", async () => {
+    let effects: { inputPrivacy(input: "microphone" | "camera"): Promise<boolean>; inputSettings(): Promise<void> } | undefined;
+    const act = vi.fn(async (_id: string, _action: string, given: typeof effects) => { effects = given; return true; });
+    const ctx = harness({ recordingResults: { act }, openMicrophoneSettings: vi.fn(async () => {}), openCameraSettings: vi.fn(async () => {}) } as unknown as Partial<ActionDeps>);
+    expect(await ctx.act({ recordingResult: { id: "mic", action: "inputPrivacy" } })).toBe(true);
+    expect(act).toHaveBeenCalledWith("mic", "inputPrivacy", expect.anything());
+    expect([await effects!.inputPrivacy("microphone"), await effects!.inputPrivacy("camera")]).toEqual([true, true]);
+    await effects!.inputSettings();
+    expect([vi.mocked(ctx.deps.openMicrophoneSettings).mock.calls.length, vi.mocked(ctx.deps.openCameraSettings).mock.calls.length,
+      vi.mocked(ctx.deps.settingsWindow.showRecording).mock.calls.length]).toEqual([1, 1, 1]);
+    // A pane the system refused to open answers false, so the row says the action did not complete (review F1).
+    vi.mocked(ctx.deps.openMicrophoneSettings).mockRejectedValueOnce(new Error("refused"));
+    expect(await effects!.inputPrivacy("microphone")).toBe(false);
+  });
+
   it("saves hiding the menu bar, the Dock and the desktop only on macOS (plan 076, D6; plan 099)", async () => {
     const windows = harness({ platform: "win32" });
     for (const action of [{ setHideMenuBar: true }, { setHideDock: true }, { setHideDesktop: true }]) await windows.act(action);

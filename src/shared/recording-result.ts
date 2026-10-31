@@ -3,8 +3,11 @@ import type { ErrorCode } from "./state";
 /** Reviewed records the history keeps, newest review first; unreviewed ones are all kept. */
 export const REVIEWED_FAILURES_KEPT = 20;
 
-/** What the user can do with one failure-history record. */
-export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch";
+/**
+ * What the user can do with one failure-history record. `inputPrivacy` and `inputSettings` are a missing microphone's
+ * or camera's ways out (2026-10-31): the system's privacy page for it, and Recording settings, where it is turned off.
+ */
+export type RecordingResultAction = "acknowledge" | "retry" | "remove" | "reveal" | "folder" | "permission" | "relaunch" | "inputPrivacy" | "inputSettings";
 
 /** The actions that change the saved history, so each waits for a durable save; the others only open something. */
 export type PersistingResultAction = Extract<RecordingResultAction, "acknowledge" | "remove" | "retry">;

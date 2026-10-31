@@ -107,6 +107,29 @@ test("each failure shows its outcome label, and the rows and tab fit, in both la
   await expect(page.locator("#recording-result-disk-summary")).toContainText("部分保留");
 });
 
+test("a missing microphone's or camera's row offers its privacy page and Recording settings, each sent to main (2026-10-31)", async ({}, testInfo) => {
+  for (const failure of [{ id: "mic", code: "microphone_unavailable", outcome: "empty" }, { id: "cam", code: "camera_unavailable", outcome: "empty" }]) {
+    await update({ ...failure, outcome: "pending" });
+    await update(failure);
+  }
+  await persist();
+  for (const lang of ["en", "zh-TW"] as const) {
+    await pushResult(lang);
+    await page.locator("#tab-failures").click();
+    await openRowWith('[data-result-id="mic"] [data-action="inputSettings"]');
+    const labels = await read<string[]>(page, `[...document.querySelectorAll('[data-result-id="mic"] .result-actions button')].map(b => b.textContent)`);
+    expect(labels).toEqual(lang === "en" ? ["Open microphone settings…", "Open Recording settings", "Got it"] : ["開啟麥克風設定…", "開啟錄影設定", "知道了"]);
+    await shot(testInfo, `input-failure-actions-${lang}.png`);
+  }
+  for (const [id, action] of [["mic", "inputPrivacy"], ["mic", "inputSettings"], ["cam", "inputPrivacy"]] as const) {
+    await openRowWith(`[data-result-id="${id}"] [data-action="${action}"]`);
+    const before = await callCount();
+    await clickAt(page, `[data-result-id="${id}"] [data-action="${action}"]`);
+    await expect.poll(callCount, { message: `${id} ${action} reaches main` }).toBeGreaterThan(before);
+    expect((await host.evaluate(h => h.chooseCalls.at(-1)))).toEqual([`recordingResult:${id}`, action]);
+  }
+});
+
 test("S067–S086 the failure history: pending, partial, acknowledgement, entries, a stale press, persistence failures, retries and removal by mouse and keyboard", async ({}, testInfo) => {
   await host.evaluate(h => h.setSize(380, 360));
   await update({});

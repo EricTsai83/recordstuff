@@ -241,6 +241,7 @@ export const ZH_TW = {
   "macOS reserves this combination.": "macOS 已保留這個組合。",
   "Other apps use this combination.": "其他 App 會使用這個組合。",
   "Recording settings": "錄影設定",
+  "Open Recording settings": "開啟錄影設定",
   General: "一般",
   Updates: "更新",
   "Manual check": "手動檢查",

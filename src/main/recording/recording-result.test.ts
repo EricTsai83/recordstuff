@@ -8,7 +8,8 @@ const partial = { ...a, outcome: "partial" as const, partialPath: "/a.mp4" };
 function effects() {
   return { stat: vi.fn(async () => ({ isFile: (): boolean => true, size: 1 })), refresh: vi.fn(), notify: vi.fn(),
     settled: () => true, platform: "darwin" as NodeJS.Platform, reveal: vi.fn(), folder: vi.fn(async () => {}),
-    permission: vi.fn(async () => {}), relaunch: vi.fn(async () => {}) };
+    permission: vi.fn(async () => {}), relaunch: vi.fn(async () => {}),
+    inputPrivacy: vi.fn(async (_input: "microphone" | "camera") => true), inputSettings: vi.fn(async () => {}) };
 }
 it("notifies immediately only on pending and discards a stale asynchronous confirmation", async () => {
   const store = new RecordingResults(), io = effects();
@@ -122,6 +123,35 @@ it("names both causes of missing system audio on macOS, a very busy Mac first, a
   expect(failureGuidance("no_audio_track", "en", "linux")).toContain("audio devices");
   expect(failureGuidance("permission_denied", "en", "win32")).toContain("audio devices");
   expect(isPermissionFailure("no_audio_track")).toBe(true);
+});
+
+it("opens a missing input's privacy page or Recording settings, and refuses them for other failures and pages the system lacks (2026-10-31)", async () => {
+  const store = new RecordingResults(), io = effects();
+  const failure = (id: string, code: "microphone_unavailable" | "camera_unavailable" | "disk_full") =>
+    ({ id, occurredAt: "2026-10-31T12:00:00Z", code, detail: "", outcome: "empty" as const, acknowledged: false });
+  // Each arrives pending, as the recorder reports it, then settles.
+  for (const [id, code] of [["mic", "microphone_unavailable"], ["cam", "camera_unavailable"], ["disk", "disk_full"]] as const) {
+    store.update({ ...failure(id, code), outcome: "pending" });
+    store.update(failure(id, code));
+  }
+  expect(await store.act("mic", "inputPrivacy", io)).toBe(true);
+  expect(await store.act("cam", "inputPrivacy", io)).toBe(true);
+  expect(io.inputPrivacy.mock.calls).toEqual([["microphone"], ["camera"]]);
+  expect(await store.act("mic", "inputSettings", io)).toBe(true);
+  expect(io.inputSettings).toHaveBeenCalledTimes(1);
+  expect([await store.act("disk", "inputPrivacy", io), await store.act("disk", "inputSettings", io)]).toEqual([false, false]);
+  // Windows: the camera's page opens, the microphone has none RecordStuff opens.
+  const windows = { ...io, platform: "win32" as NodeJS.Platform };
+  expect([await store.act("cam", "inputPrivacy", windows), await store.act("mic", "inputPrivacy", windows)]).toEqual([true, false]);
+  expect(io.inputPrivacy).toHaveBeenCalledTimes(3);
+  // A page that did not open is said to the row (review F1).
+  io.inputPrivacy.mockResolvedValueOnce(false);
+  expect(await store.act("mic", "inputPrivacy", io)).toBe(false);
+  // They only open a page: a recording under way and a record still pending hold neither (review F2).
+  const recording = { ...io, settled: () => false };
+  expect([await store.act("mic", "inputPrivacy", recording), await store.act("mic", "inputSettings", recording)]).toEqual([true, true]);
+  store.update({ ...failure("cam2", "camera_unavailable"), outcome: "pending" });
+  expect([await store.act("cam2", "inputPrivacy", io), await store.act("cam2", "inputSettings", io)]).toEqual([true, true]);
 });
 
 it("explains an unavailable microphone on each platform, with turning it off as the way to record without it (plan 074)", () => {
