@@ -54,6 +54,14 @@
 @theme {
   --text-xs: 0.8125rem;
   --text-xs--line-height: 1.45;
+  /* Below the control size (2026-10-31): 12px for help, metadata and counts, 11px for the densest captions only. */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1.4;
+  --text-3xs: 0.6875rem;
+  --text-3xs--line-height: 1.35;
+  /* A page's own title. */
+  --text-title: 1.625rem;
+  --text-title--line-height: 1.2;
 }
 
 /* Shared reference palette: stone surfaces in the light theme, neutral grey in the dark, and the same red primary.
@@ -132,6 +140,7 @@
   --tracking-wide: calc(var(--tracking-normal) + 0.025em);
   --tracking-wider: calc(var(--tracking-normal) + 0.05em);
   --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+  --radius-xs: calc(var(--radius) - 6px);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -743,11 +752,11 @@
   .day-heading {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: --spacing(2);
+    font-size: var(--text-2xs);
     font-weight: 600;
     color: var(--foreground);
-    margin: 18px 0 12px;
+    margin: --spacing(5) 0 --spacing(3);
   }
   /* The count is drawn, not written: the heading's text and accessible name stay the day alone. */
   /* The count shares the heading's font, so both centre on the same line box; tabular figures keep it steady. */
@@ -761,11 +770,11 @@
   }
   .library-day + .library-day,
   .result-day + .result-day {
-    margin-top: 28px;
+    margin-top: --spacing(6);
     border-top: 1px solid var(--border);
   }
   :is(.library-day, .result-day) + :is(.library-day, .result-day) > .day-heading {
-    margin-top: 22px;
+    margin-top: --spacing(5);
   }
   /* Without a card under it, a muted label reads as a caption; sections of bare rows get a real heading. */
   .plain-section > .section-heading {
@@ -875,7 +884,7 @@
     display: grid;
     justify-items: center;
     padding: 14px 16px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--muted);
   }
   /* The recorded display to scale, in the arrangement's bezel and wallpaper, at most as tall as a portrait screen fits. */
@@ -1658,7 +1667,7 @@
     max-width: 100%;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--display-bezel);
   }
   .device-stage-frame > video {
@@ -1685,7 +1694,7 @@
     width: 400px;
     max-width: 100%;
     padding: 8px 8px 8px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--muted);
   }
   .device-stage-strip .input-meter {
@@ -1700,7 +1709,7 @@
   }
   /* The tile: one dashed control that opens into the stage. */
   .device-stage-tile {
-    border-radius: 10px;
+    border-radius: var(--radius-md);
   }
   .device-stage-tile-icon {
     display: grid;
@@ -1946,7 +1955,7 @@
     gap: 12px;
     /* 16px clear of a screen on every side: over the screens, less the room each keeps for its ring. */
     padding: calc(16px - 8px * var(--arrangement-scale, 1)) 12px 16px 16px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--muted);
   }
   .arrangement-stage > .arrangement-screens {
@@ -2568,8 +2577,8 @@
     grid-template-columns: minmax(96px, max-content) minmax(160px, 320px) 1fr auto auto;
     grid-template-areas: "picker search . layout reveal";
     align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: --spacing(2);
+    margin-bottom: --spacing(3);
   }
   .library-head > .library-category {
     grid-area: picker;
@@ -2627,7 +2636,7 @@
   }
   .library-summary {
     flex: 1;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
 
@@ -2646,18 +2655,18 @@
     overflow-y: auto;
   }
   .library-category-heading {
-    padding: 8px 8px 3px;
-    font-size: 12px;
+    padding: --spacing(2) --spacing(2) --spacing(1);
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   .library-category-option {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 28px;
-    padding: 0 8px;
+    gap: --spacing(2);
+    min-height: --spacing(7);
+    padding: 0 --spacing(2);
     border-radius: var(--radius-md);
-    font-size: 13px;
+    font-size: var(--text-xs);
     cursor: default;
   }
   .library-category-option[data-active] {
@@ -2666,8 +2675,8 @@
   }
   .library-category-check {
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     visibility: hidden;
   }
   .library-category-option[aria-selected="true"] .library-category-check {
@@ -2689,8 +2698,9 @@
   .library-category-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 20px 0 16px;
+    gap: --spacing(2);
+    /* The same room above and under as a day's heading, so every heading of the recordings sits alike. */
+    margin: --spacing(5) 0 --spacing(3);
     min-width: 0;
   }
   .library-category-title {
@@ -2698,7 +2708,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 18px;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
   /* A search with no match sits in the middle of the room under the head rather than at its top: the page, the tab and
@@ -2729,8 +2739,8 @@
      narrowest card whose picture still holds the hover preview's fixed frame picture, its time and the risen bar. */
   .library-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, max(272px, calc((100% - 40px) / 3))), 1fr));
-    gap: 26px 20px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, max(272px, calc((100% - 2 * --spacing(5)) / 3))), 1fr));
+    gap: --spacing(6) --spacing(5);
   }
   .clip {
     position: relative;
@@ -2753,7 +2763,7 @@
     position: relative;
     aspect-ratio: 16/9;
     overflow: hidden;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--muted);
   }
   /* A hairline over the picture's edge, so a light or dark frame still meets the page cleanly. */
@@ -2791,14 +2801,14 @@
   }
   .clip-duration {
     position: absolute;
-    right: 8px;
-    bottom: 8px;
-    border-radius: 6px;
-    padding: 1px 6px;
+    right: --spacing(2);
+    bottom: --spacing(2);
+    border-radius: var(--radius-xs);
+    padding: 1px --spacing(1.5);
     color: var(--media-foreground);
     background: var(--media-scrim);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0;
   }
@@ -2812,17 +2822,17 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 8px;
+    gap: --spacing(0.5);
+    padding: --spacing(2);
     color: var(--media-foreground);
     background: var(--media-scrim);
     text-align: center;
-    font-size: 13px;
+    font-size: var(--text-xs);
     font-weight: 600;
     line-height: 1.3;
   }
   .clip-preparing-hint {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 400;
     opacity: 0.85;
   }
@@ -2841,7 +2851,7 @@
   }
   /* A list row's picture is too small for two lines: the label alone, smaller. */
   [data-layout="list"] .clip-preparing {
-    font-size: 11px;
+    font-size: var(--text-3xs);
   }
   [data-layout="list"] .clip-preparing-hint {
     display: none;
@@ -2914,7 +2924,7 @@
     align-items: center;
     gap: 2px;
     padding: 8px 4px 6px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: inherit;
     text-align: center;
     cursor: grab;
@@ -3096,14 +3106,14 @@
   }
   .clip-text {
     /* Room on the title's line for the ⋮ button at its right. */
-    padding: 10px 32px 0 2px;
+    padding: --spacing(2.5) --spacing(8) 0 --spacing(0.5);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: --spacing(1);
     min-width: 0;
   }
   .clip-title {
-    font-size: 13px;
+    font-size: var(--text-xs);
     font-weight: 500;
     overflow: hidden;
     white-space: nowrap;
@@ -3112,7 +3122,7 @@
   }
   .clip-meta,
   .clip-detail {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   .clip-detail {
@@ -3124,7 +3134,7 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   #library[data-layout="list"] .clip-saved-from {
@@ -3136,7 +3146,7 @@
     flex-direction: column;
   }
   .clip-copy-name {
-    font-size: 12px;
+    font-size: var(--text-2xs);
     color: var(--muted-foreground);
   }
   /* An editable recording's mark, a click on which opens the edit view (2026-10-26): a link under the pointer, the
@@ -3154,7 +3164,7 @@
      request). */
   .clip-more {
     position: absolute;
-    top: calc(100cqw * 9 / 16 + 6px);
+    top: calc(100cqw * 9 / 16 + --spacing(1.5));
     right: 0;
     color: var(--foreground);
     opacity: 0;
@@ -3324,15 +3334,15 @@
   #library[data-layout="list"] .library-grid {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   #library[data-layout="list"] .clip-thumb {
-    width: 88px;
+    width: --spacing(22);
     flex: none;
-    border-radius: 7px;
+    border-radius: var(--radius-xs);
   }
   #library[data-layout="list"] .clip-text {
-    padding: 4px 14px;
+    padding: --spacing(1) --spacing(3);
   }
   #library[data-layout="list"] .clip-meta {
     display: none;
@@ -3342,7 +3352,7 @@
   }
   #library[data-layout="list"] .clip-more {
     top: 50%;
-    right: 7px;
+    right: --spacing(2);
     transform: translateY(-50%);
   }
   /* Behind the player the page itself is blurred, not the dialog's backdrop: a backdrop-filter is redrawn with every
@@ -3372,7 +3382,7 @@
     display: flex;
     gap: 2px;
     padding: 2px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: color-mix(in oklab, var(--media) 45%, transparent);
   }
   /* Enlarge preview (2026-10-27): the panel steps aside and the stage takes its room. */
@@ -3707,7 +3717,7 @@
     gap: 2px;
     height: 32px;
     padding: 0 3px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--popover-foreground);
     background: var(--popover);
     box-shadow: var(--shadow-md), 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
@@ -4687,7 +4697,7 @@
     width: 200px;
     margin: 0;
     padding: 8px 10px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--popover);
     box-shadow: var(--sidebar-note-shadow);
   }
@@ -4743,7 +4753,7 @@
     margin-bottom: 18px;
   }
   .settings-head-controls .library-head {
-    margin-bottom: 14px;
+    margin-bottom: --spacing(3);
   }
   /* The scroll viewport stays below the drag strip, even after content scrolls. */
   :root[data-platform="darwin"] main {

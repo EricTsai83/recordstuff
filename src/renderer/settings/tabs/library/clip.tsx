@@ -52,7 +52,7 @@ export const Clip = memo(function Clip({
     >
       <ContextMenuTrigger render={<Card />}
         id={`clip-${item.id}`}
-        className="clip gap-0 overflow-visible rounded-[14px] bg-transparent p-0 shadow-none ring-0 dark:bg-transparent"
+        className="clip gap-0 overflow-visible rounded-xl bg-transparent p-0 shadow-none ring-0 dark:bg-transparent"
         data-id={item.id}
         draggable
         onDragStart={(event) => {
@@ -178,7 +178,7 @@ export const Clip = memo(function Clip({
               size="icon-sm"
               id={`clip-${item.id}-sound`}
               // The preview's speaker, at the picture's top right while the preview plays.
-              className="clip-sound absolute top-[7px] right-[7px]"
+              className="clip-sound absolute top-2 right-2"
               aria-label={translate(sound ? "Mute" : "Unmute", language)}
               onPointerLeave={(event) => {
                 const back = event.relatedTarget instanceof Node && event.currentTarget.closest(".clip")?.querySelector(".clip-thumb")?.contains(event.relatedTarget);
@@ -211,14 +211,14 @@ export const Clip = memo(function Clip({
                 { title: item.title },
               )}
             >
-              <EllipsisVertical className="size-[18px]" strokeWidth={2.5} />
+              <EllipsisVertical className="size-4.5" strokeWidth={2.5} />
             </DropdownMenuTrigger>
           </ControlTooltip>
           <DropdownMenuContent
             finalFocus={false}
             id="clip-menu"
             // As wide as its longest item, never wrapping one (as a macOS menu), whatever the ⋯ button's width.
-            className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
+            className="clip-menu w-auto min-w-49 whitespace-nowrap"
             align="end"
             onKeyDown={(event) => {
               if (event.key === "Tab") {
@@ -234,7 +234,7 @@ export const Clip = memo(function Clip({
       </ContextMenuTrigger>
       <ContextMenuContent
         id="clip-context-menu"
-        className="clip-menu w-auto min-w-[196px] whitespace-nowrap"
+        className="clip-menu w-auto min-w-49 whitespace-nowrap"
         finalFocus={false}
         onKeyDown={(event) => {
           if (event.key === "Tab") {
@@ -291,7 +291,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
             <Files />
             <span className="menu-label">{t("Saved copies")}</span>
           </SubTrigger>
-          <SubContent className="clip-menu w-auto min-w-[160px] whitespace-nowrap">
+          <SubContent className="clip-menu w-auto min-w-40 whitespace-nowrap">
             {item.copies.map((copy, index) => (
               <Item key={copy.name} id={`${prefix}-copy-${index}`} onClick={() => void model.fileAction(item.id, `revealCopy:${index}`)}>
                 <span className="menu-label clip-copy">
@@ -330,7 +330,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
             <FolderInput />
             <span className="menu-label">{t("Move to")}</span>
           </SubTrigger>
-          <SubContent className="clip-menu w-auto min-w-[160px] whitespace-nowrap">
+          <SubContent className="clip-menu w-auto min-w-40 whitespace-nowrap">
             {targets.map((target, index) => (
               <Item
                 key={target.folder ?? ""}

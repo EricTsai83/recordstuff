@@ -79,7 +79,7 @@ export function Library() {
         hidden={Boolean(!empty || query.trim())}
       >
         <EmptyHeader className="max-w-full">
-          <EmptyMedia><Folder className="size-[38px]" /></EmptyMedia>
+          <EmptyMedia><Folder className="size-10" /></EmptyMedia>
           <EmptyTitle className="library-empty-title text-base">{model.text("This category is empty.")}</EmptyTitle>
           <EmptyDescription className="library-empty-detail">
             {model.text("Choose Move to in a recording's menu to add it here.")}
@@ -91,7 +91,7 @@ export function Library() {
         hidden={Boolean(all?.length || library?.status || !library || shownFolder)}
       >
         <EmptyHeader className="max-w-full">
-        <EmptyMedia><Film className="size-[38px]" /></EmptyMedia>
+        <EmptyMedia><Film className="size-10" /></EmptyMedia>
         <EmptyTitle className="library-empty-title text-base">{model.text("No recordings yet")}</EmptyTitle>
         <EmptyDescription className="library-empty-detail">
           {translate(
@@ -133,7 +133,7 @@ function NoSearchMatch({ hidden, elsewhere }: { hidden: boolean; elsewhere: numb
         <EmptyMedia>
           <NoMatchArt className="size-24" />
         </EmptyMedia>
-        <EmptyTitle className="library-empty-title text-[17px] font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
+        <EmptyTitle className="library-empty-title text-lg font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
       </EmptyHeader>
       <EmptyContent className="mt-1 flex-row flex-wrap justify-center">
         {elsewhere > 0 && (

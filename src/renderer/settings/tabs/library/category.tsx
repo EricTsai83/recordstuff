@@ -104,7 +104,7 @@ export function CategoryPicker() {
         render={<Button variant="outline" />}
         id="library-category"
         // At most 200px; on a short line it gives way first, down to 96px, its name cut by an ellipsis (ui.css .library-head).
-        className="library-category min-w-0 max-w-[200px] darwin:window-no-drag"
+        className="library-category min-w-0 max-w-50 darwin:window-no-drag"
         disabled={!library || Boolean(library.status)}
         aria-label={translate("Category: {name}", language, { name: label })}
       >
@@ -157,10 +157,10 @@ export function CategoryPicker() {
           {group("favorites", model.text("Favorites"))}
           {group("others", model.text("All categories"))}
           {!options.length && (
-            <p className="library-category-none p-2 text-[12px] text-muted-foreground wrap-anywhere">{translate("No categories match “{query}”.", language, { query: filter.trim() })}</p>
+            <p className="library-category-none p-2 text-2xs text-muted-foreground wrap-anywhere">{translate("No categories match “{query}”.", language, { query: filter.trim() })}</p>
           )}
         </div>
-        <div className="h-[1px] my-1 mx-[2px] bg-border" role="separator" />
+        <div className="h-px my-1 mx-0.5 bg-border" role="separator" />
         <Button
           id="library-category-new"
           variant="ghost"
@@ -197,9 +197,9 @@ export function CategoryHeader() {
   return (
     <div className="library-category-head" id="library-category-head">
       <h2 className="library-category-title">{name}</h2>
-      <span className="library-category-total flex-none text-[13px] text-muted-foreground">{translate(count === 1 ? "1 recording" : "{count} recordings", language, { count })}</span>
+      <span className="library-category-total flex-none text-xs text-muted-foreground">{translate(count === 1 ? "1 recording" : "{count} recordings", language, { count })}</span>
       {typeof folder === "string" && (
-        <span className="flex gap-[2px] ml-auto text-muted-foreground">
+        <span className="flex gap-0.5 ml-auto text-muted-foreground">
           <ControlTooltip label={favoriteLabel}>
             <Button
               id="library-category-favorite"
@@ -224,7 +224,7 @@ export function CategoryHeader() {
                 <Settings2 />
               </DropdownMenuTrigger>
             </ControlTooltip>
-            <DropdownMenuContent data-folder-actions="" align="end" className="clip-menu w-auto min-w-[196px] whitespace-nowrap" finalFocus={false}>
+            <DropdownMenuContent data-folder-actions="" align="end" className="clip-menu w-auto min-w-49 whitespace-nowrap" finalFocus={false}>
               <DropdownMenuItem id="library-category-rename" onClick={() => model.openFolderDialog(folder)}>
                 <FileText />
                 <span className="menu-label">{model.text("Rename category…")}</span>
