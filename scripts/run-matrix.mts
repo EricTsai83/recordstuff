@@ -66,6 +66,7 @@ import { INTERRUPT_EXIT, electronPattern, escapeRegExp, groupAlive, interruptExi
 import { ToolMissingError, hasTool, requireMediaTimeout, timeTools, type ToolTiming } from "./lib/verification/media-tools.mts";
 import { REPO_ROOT, appendMeasurements, measurementsPath, verifyRecording, type VerifyResult } from "./lib/verification/verify-recording.mts";
 import { pairRecordingsWithLog } from "./lib/verification/verify.mts";
+import { matrixSourceSize, readMatrixDisplays } from "./lib/verification/matrix-source.mts";
 import { BLOCKED_EXIT, blocksSuccess, formatText, parseAutorecordOutcome, verdictExitCode, type CpuFigures } from "./lib/verification/verify.mts";
 
 const ELECTRON_APP = path.join(REPO_ROOT, "node_modules/electron/dist/Electron.app");
@@ -86,6 +87,7 @@ const argv = runnerArgs();
 const parsed = parseMatrixArgs(argv, Object.keys(MATRICES));
 if (!parsed.ok) usage(parsed.error);
 const { names, repeat, openMaterial, dryRun, prepare, pace } = parsed.options;
+const explicitScreen = parsed.options.screen;
 const cases = planCases(names, repeat);
 const runLabel = `pnpm matrix -- ${names.join(",")}${repeat > 1 ? ` --repeat ${repeat}` : ""}${prepare ? ` --prepare ${prepare}` : ""}${pace ? ` --pace ${pace}` : ""}`;
 if (prepare && !fs.existsSync(prepare)) usage(`--prepare: no file at ${prepare}`);
@@ -421,6 +423,9 @@ async function main(): Promise<void> {
       if (interrupted) await halt();
       const { entry } = planned;
       console.log(`▶ [${index + 1}/${cases.length}] ${planned.title}`);
+      // Snapshot before capture, independently of its track report. An explicit --screen keeps its legacy aspect override.
+      const sourceSize = explicitScreen ? undefined : matrixSourceSize(readMatrixDisplays(),
+        fs.existsSync(SETTINGS_PATH) ? JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")) as Record<string, unknown> : {});
       const outcome = await recordOnce(entry, planned.key);
       if (interrupted) await halt();
       const tools: ToolTiming[] = [];
@@ -444,7 +449,8 @@ async function main(): Promise<void> {
             sync: true, expectedDurationSeconds: entry.seconds, required: { energy: true, sync: true },
           };
           if (outcome.cpu) options.cpu = outcome.cpu;
-          if (screen) options.screen = screen;
+          if (sourceSize) options.sourceSize = sourceSize;
+          else if (screen) options.screen = screen;
           const file = outcome.file;
           // Only this case's lines: its own `start:`, capture and saved records all follow the cursor taken
           // before launch, so the retained history is not re-read and re-paired for every case.

@@ -835,6 +835,8 @@ export interface Check {
 }
 
 export interface VerifyOptions {
+  /** Independent source dimensions in pixels, before applying the requested resolution cap. */
+  sourceSize?: Dimensions;
   /** Logical or physical size of the recorded screen, for the aspect-ratio check. */
   screen?: Dimensions;
   /** Seconds the run asked for (matrix); overrides the log-derived session length. */
@@ -923,9 +925,15 @@ export function judge(m: Measurement, entry: CaptureLogEntry | undefined, option
     const trackSize = entry?.track.width !== undefined && entry.track.height !== undefined ? `${entry.track.width}x${entry.track.height}` : undefined;
     const notes: string[] = [];
     let ok: boolean | undefined;
+    if (options.sourceSize && entry) {
+      const expected = fitWithinCap(options.sourceSize, entry.requested.resolutionCap);
+      ok = m.video.width === expected.width && m.video.height === expected.height;
+      if (!ok) notes.push(`differs from expected source output ${expected.width}x${expected.height}`);
+    }
     if (trackSize !== undefined) {
-      ok = trackSize === actual;
-      if (!ok) notes.push(`differs from track size ${trackSize}`);
+      const matchesTrack = trackSize === actual;
+      ok = (ok ?? true) && matchesTrack;
+      if (!matchesTrack) notes.push(`differs from track size ${trackSize}`);
     }
     if (cap && cap !== "source") {
       // Within the cap: fitting the output into the cap must leave it unchanged (review F3: no --screen needed).

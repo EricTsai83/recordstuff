@@ -499,6 +499,23 @@ describe("measure + judge", () => {
     expect(cpuCheck({ averagePercent: 41, peakPercent: 45 }, at60).verdict).toBe("fail");
   });
 
+  it("judges cropped source dimensions independently of the encoder report and applies the cap", () => {
+    const sourceSize = { width: 3840, height: 2100 };
+    const entry = { ...ENTRY, requested: { ...ENTRY.requested, resolutionCap: "1080p" as const },
+      track: { ...ENTRY.track, width: 1920, height: 1050 } };
+    const check = (width: number, height: number) => {
+      const m = measure("crop.mp4", 1, info({ video: { width, height } }), [evenFrames(900, 30)], {});
+      return judge(m, entry, { sourceSize }).find(c => c.metric === "Output dimensions");
+    };
+    expect(check(1920, 1050)?.verdict).toBe("pass");
+    expect(check(1920, 1080)?.verdict).toBe("fail");
+    // A matching encoder report alone cannot make the wrong source size pass.
+    const wrong = { ...entry, track: { ...entry.track, width: 1280, height: 700 } };
+    const m = measure("wrong.mp4", 1, info({ video: { width: 1280, height: 700 } }), [evenFrames(900, 30)], {});
+    expect(judge(m, wrong, { sourceSize }).find(c => c.metric === "Output dimensions")?.verdict).toBe("fail");
+    expect(judge(m, wrong, { sourceSize }).find(c => c.metric === "Output dimensions")?.note).toContain("expected source output 1920x1050");
+  });
+
   it("fails size, aspect, fps, drops, offsets, mono audio and clamped bitrate", () => {
     // Square output from a 1440p cap on a 16:9 screen, mono, 20 fps, audio 130 ms late, bitrate at 55 % of target.
     const entry = parseCaptureLine(
