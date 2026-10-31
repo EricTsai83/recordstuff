@@ -667,7 +667,7 @@ test("S131–S132 the Recording Studio: its own tab with Start, then Stop beside
   await expect(page.locator("#tab-studio"), "S131 zh-TW").toHaveAccessibleName("錄影工作室");
 });
 
-test("S133–S134 the Recording Studio's meters: levels while recording and in sight, Don't record per input with its not-recorded look, said to assistive technology (plan 075, D19; plan 097, D6)", { tag: "@studio" }, async () => {
+test("S133–S134 the Recording Studio's meters: levels while recording and in sight, whether each input is recorded, a speaker switch beside its name, its not-recorded look said to assistive technology (plan 075, D19; plan 097, D6; 2026-10-31)", { tag: "@studio" }, async () => {
   await host.evaluate(async h => { h.theme("light"); await h.setSize(560, 680); });
   await host.evaluate(h => {
     h.levelWatches.length = 0;
@@ -676,7 +676,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
     h.push(h.settingsView({ type: "idle" }, h.state.cameraContext));
   });
   await page.locator("#tab-studio").click();
-  const system = page.getByRole("button", { name: "Don't record System audio" });
+  const system = page.getByRole("switch", { name: "Record System audio" });
   await page.getByRole("slider", { name: "Microphone volume" }).scrollIntoViewIfNeeded();
   await expect(page.getByRole("slider", { name: "Microphone volume" }), "S133 the microphone's fader while its switch is on").toBeVisible();
   // Between recordings there is no level to show and nothing to mute, but each input's meter and mute keep their place
@@ -693,7 +693,7 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
     h.push(h.settingsView(h.state.cameraState, h.state.cameraContext));
   });
   await expect(system, "S133 a recording's mute, under its input's name").toBeEnabled();
-  await expect(page.locator(".studio-live-row").getByRole("button", { name: "Don't record System audio" }), "S133 under the preview").toBeVisible();
+  await expect(page.locator(".studio-live-row").getByRole("switch", { name: "Record System audio" }), "S133 under the preview").toBeVisible();
   await expect(page.getByRole("meter", { name: "Microphone" }), "S133 and each input's meter").toBeVisible();
   await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 a recording's meter in sight asks for levels" }).toEqual([true]);
   await host.evaluate(h => h.pushLevels({ system: 0.5, microphone: 0.1 }));
@@ -709,15 +709,20 @@ test("S133–S134 the Recording Studio's meters: levels while recording and in s
   await expect.poll(valueNow, { message: "S133 a level past full scale arrives" }).toBeGreaterThanOrEqual(-5);
   expect(await valueNow(), "S133 and reads full scale at most").toBeLessThanOrEqual(0);
   await clearCalls();
-  await page.getByRole("button", { name: "Don't record Microphone" }).click();
-  await expect.poll(calls, { message: "S134 Don't record asks main" }).toEqual([["microphoneAudio", "mute"]]);
-  await expect(page.getByRole("button", { name: "Record Microphone" }), "S134 and shows it").toHaveAttribute("aria-pressed", "true");
-  // Not recorded, the whole input says so in the warning look, not only a greyed meter (plan 097, D6).
-  const left = page.locator(".studio-channel[data-problem]");
+  const microphone = page.locator(".studio-live-row").getByRole("switch", { name: "Record Microphone" });
+  await expect(microphone, "S134 recorded: the switch on").toHaveAttribute("aria-checked", "true");
+  await microphone.click();
+  await expect.poll(calls, { message: "S134 turning it off asks main not to record it" }).toEqual([["microphoneAudio", "mute"]]);
+  await expect(microphone, "S134 and says it is off").toHaveAttribute("aria-checked", "false");
+  // Not recorded, the input is marked as left out (2026-10-31: greyed, its speaker struck through), the other not.
+  const left = page.locator(".studio-channel[data-muted]");
   await expect(left, "S134 the input left out").toHaveCount(1);
-  await expect(left, "S134 says it is not recorded").toContainText("Microphone not recorded");
-  await page.getByRole("button", { name: "Record Microphone" }).click();
-  await expect(left, "S134 recorded again: quiet").toHaveCount(0);
+  await expect(left, "S134 it is the microphone").toContainText("Microphone");
+  await clearCalls();
+  await microphone.click();
+  await expect.poll(calls, { message: "S134 turning it on asks main to record it again" }).toEqual([["microphoneAudio", "unmute"]]);
+  await expect(microphone).toHaveAttribute("aria-checked", "true");
+  await expect(left, "S134 recorded again: nothing left out").toHaveCount(0);
 
   await page.locator("#tab-general").click();
   await expect.poll(() => host.evaluate(h => [...h.levelWatches]), { message: "S133 leaving the tab lets the levels go" }).toEqual([true, false]);
@@ -1294,12 +1299,12 @@ test("S146 the Studio's stage: the largest picture at the display's shape that f
   for (const control of [head.getByRole("combobox", { name: "Preview view" }), head.getByRole("switch", { name: "Live preview" }),
     sources.getByRole("button", { name: /^Screen:/ }), sources.getByRole("button", { name: /^Camera:/ }), sources.getByRole("button", { name: /^Microphone:/ }),
     sources.getByRole("combobox", { name: "Recording type" }),
-    live.getByRole("button", { name: "Don't record System audio" }), live.getByRole("button", { name: "Don't record Microphone" }),
+    live.getByRole("switch", { name: "Record System audio" }), live.getByRole("switch", { name: "Record Microphone" }),
     live.getByRole("meter", { name: "Microphone" }), live.getByRole("switch", { name: "Show camera" })]) {
     await expect(control, "S146 in sight").toBeInViewport();
   }
-  await expect(choices.getByRole("button", { name: /Don't record/ }), "S146 nothing live joins the choices as a recording starts").toHaveCount(0);
-  await expect(sources.getByRole("button", { name: /Don't record/ }), "S146 nor the sources").toHaveCount(0);
+  await expect(choices.getByRole("switch", { name: /^Record / }), "S146 nothing live joins the choices as a recording starts").toHaveCount(0);
+  await expect(sources.getByRole("switch", { name: /^Record / }), "S146 nor the sources").toHaveCount(0);
   await keep("studio-live-controls.png");
   // Nothing moves as a recording starts or a Live preview is said to be starting (2026-10-24, at the maintainer's
   // request): the choices, the picture, the sources and the live controls keep their places and sizes.
@@ -1332,7 +1337,7 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await expect(type, "S149 a plain recording by default").toHaveText(/Plain recording/);
   await expect(type, "S149 described by what it gives").toHaveAccessibleDescription("Ready to share as soon as it stops.");
   const live = page.locator(".studio-live-row");
-  await expect(live.getByRole("button", { name: "Don't record Microphone" }), "S149 a plain recording's live controls").toHaveCount(1);
+  await expect(live.getByRole("switch", { name: "Record Microphone" }), "S149 a plain recording's live controls").toHaveCount(1);
   await expect(live.getByRole("slider", { name: "Microphone volume" })).toHaveCount(1);
   await type.click();
   await expect(page.getByRole("option", { name: /^Editable recording/ }), "S149 each type says what it gives").toContainText("Share… gives the finished video");
@@ -1342,7 +1347,7 @@ test("S149–S151 the recording type in the Studio, its live controls following 
   await expect(type).toHaveText(/Editable recording/);
   // S150 an editable recording records every input as it comes: its meters alone, with no line under them (2026-10-28).
   await expect(live.getByRole("meter"), "S150 its meters stay").toHaveCount(2);
-  await expect(live.getByRole("button", { name: /Don't record/ }), "S150 no Don't record").toHaveCount(0);
+  await expect(live.getByRole("switch", { name: /^Record / }), "S150 no recording switch").toHaveCount(0);
   await expect(live.getByRole("slider"), "S150 no fader").toHaveCount(0);
   await expect(live.getByRole("switch", { name: "Camera" }), "S150 no Show / Hide").toHaveCount(0);
   await expect(live.locator(".studio-note"), "S150 no line under them").toHaveCount(0);

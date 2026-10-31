@@ -18,6 +18,7 @@ import { Switch } from "../../components/ui/switch";
 import { cn } from "../../lib/utils";
 import { ControlTooltip } from "../../components/control-tooltip";
 import { usePendingValue } from "../../lib/use-pending-value";
+import { translate } from "../../../shared/i18n";
 import * as model from "../settings-controller";
 import { CameraPreview, type PreviewShown } from "./camera-preview";
 import { AudioMeter } from "./audio-meter";
@@ -547,17 +548,32 @@ function Sources({ phase }: { phase: string | undefined }) {
 }
 
 /**
- * One input under the preview: its name and, in a plain recording, Don't record; its level; its fader. Not recorded,
- * the whole input takes the warning look and says so in place of its name (plan 097, D6), not only a greyed meter.
+ * One input under the preview: its name and, in a plain recording, a speaker beside it that says and switches whether
+ * the input is recorded (2026-10-31, the maintainer's choice: a speaker, struck through when not recorded, in place of
+ * Don't record); its level; its fader. Not recorded, the name, level and fader are greyed and the speaker is struck
+ * through in the accent colour. Assistive technology hears a switch, Record and the input's name, on while it is recorded.
  */
 function Channel({ group }: { group: SettingsGroup }) {
   const fader = groupOf(`${group.meter!.source}Gain`);
   const muted = model.committed(group) === "mute";
+  const recordable = group.choices.some((choice) => choice.id === "mute");
+  const id = `setting-${group.id}`;
+  const Icon = muted ? VolumeX : Volume2;
+  const language = model.view?.language;
+  const press = translate(muted ? "Record {label}" : "Don't record {label}", language, { label: group.label });
   return (
-    <div className="studio-channel" data-problem={group.problem ? true : undefined}>
+    <div className="studio-channel" data-muted={recordable && muted ? true : undefined}>
       <div className="studio-channel-head">
-        {group.problem && <TriangleAlert aria-hidden="true" />}
-        <span id={`setting-${group.id}-label`}>{group.problem ?? group.label}</span>
+        <span id={`${id}-label`}>{group.label}</span>
+        {recordable && (
+          <ControlTooltip label={press}>
+            <Button id={id} variant="ghost" size="icon-sm" className="studio-channel-record" role="switch"
+              aria-checked={!muted} aria-label={translate("Record {label}", language, { label: group.label })} disabled={!group.enabled}
+              onClick={() => void model.choose(group.id, muted ? "unmute" : "mute", id)}>
+              <Icon className="size-4" aria-hidden="true" />
+            </Button>
+          </ControlTooltip>
+        )}
       </div>
       <AudioMeter group={group} source={group.meter!.source} muted={muted} disabled={!group.enabled} describedBy={undefined} />
       {fader?.slider && <SliderSetting id={`setting-${fader.id}`} group={fader} slider={fader.slider} disabled={!fader.enabled} />}
@@ -567,7 +583,7 @@ function Channel({ group }: { group: SettingsGroup }) {
 
 /**
  * Under the preview (plan 097, D6): the live controls of the recording's type. A plain recording's camera Show / Hide
- * and each input's Don't record, meter and fader; an editable recording's meters alone (the line saying where its
+ * and each input's speaker toggle, meter and fader; an editable recording's meters alone (the line saying where its
  * volumes and the camera are set removed on 2026-10-28 at the maintainer's request: the type's own description says it).
  */
 function LiveRow({ type }: { type: SettingsGroup | undefined }) {

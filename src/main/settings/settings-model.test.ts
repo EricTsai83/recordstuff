@@ -458,9 +458,9 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
     expect(group(idle, context, "microphoneAudio")).toBeUndefined();
     expect(group(idle, { ...context, microphone: { enabled: true } }, "microphoneAudio")).toMatchObject({ enabled: false, meter: { source: "microphone" } });
     const live = { ...context, audioSession: { systemMuted: true, microphone: { muted: false } } };
-    expect(group(recording, live, "systemAudio")).toMatchObject({ enabled: true, choices: [{ id: "mute", label: "Don't record", checked: true }, { id: "unmute", checked: false }],
-      problem: "System audio not recorded" });
-    expect(group(recording, live, "microphoneAudio"), "recorded: nothing to say").not.toHaveProperty("problem");
+    expect(group(recording, live, "systemAudio")).toMatchObject({ enabled: true, choices: [{ id: "mute", label: "Don't record", checked: true }, { id: "unmute", checked: false }] });
+    expect(group(recording, live, "systemAudio"), "not recorded: the speaker toggle says so, not a problem").not.toHaveProperty("problem");
+    expect(group(recording, live, "microphoneAudio")).not.toHaveProperty("problem");
     expect(group(recording, live, "systemAudio")?.note).toBeUndefined();
     expect(checked(recording, live, "microphoneAudio")).toBe("unmute");
     expect(settingsAction(recording, live, "systemAudio", "unmute")).toEqual({ setAudioMuted: { source: "system", muted: false } });
@@ -480,7 +480,7 @@ describe("the Recording Studio's audio (plan 075, D19)", () => {
     expect(settingsAction(idle, context, "systemGain", "71")).toEqual({ setAudioVolume: { source: "system", volume: 71 } });
     for (const choice of ["601", "-5", "1.5", "loud"]) expect(settingsAction(idle, context, "systemGain", choice), choice).toBeUndefined();
     expect(settingsAction(idle, context, "microphoneGain", "100"), "no microphone: no fader").toBeUndefined();
-    expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "錄影時", problem: "未錄製系統聲音" });
+    expect(group(recording, { ...live, language: "zh-TW" }, "systemAudio")).toMatchObject({ label: "系統聲音", sectionHeading: "錄影時" });
   });
 
   it("offers an editable recording's meters alone: no Don't record, no fader, no Show / Hide (plan 097, D6)", () => {

@@ -58,7 +58,7 @@ export function microphoneGroup(ctx: AppContext, enabled: boolean): Group {
 /**
  * The recording's inputs under the Studio's preview (D19; plan 097, D6): each one's level, for the session in progress
  * only; the system's and the microphone's while the session takes them, or before one while their switches are on. A plain recording's also say
- * whether the input is recorded (Don't record, the mute until plan 097) and its fader; an editable recording's are the
+ * whether the input is recorded (Don't record, the mute until plan 097; the Studio's speaker toggle since 2026-10-31) and its fader; an editable recording's are the
  * level alone, since it records every input as it comes.
  */
 export function studioAudioGroups(ctx: AppContext, type: "plain" | "editable"): Group[] {
@@ -70,7 +70,6 @@ export function studioAudioGroups(ctx: AppContext, type: "plain" | "editable"): 
       { id: "unmute", label: t("Record", language), enabled: true, checked: !muted, action: { setAudioMuted: { source, muted: false } } },
     ]),
     control: "meter", meter: { source },
-    ...(muted && type === "plain" ? { problem: t(source === "system" ? "System audio not recorded" : "Microphone not recorded", language) } : {}),
   });
   // Each input's fader (D21): a setting, so offered before, during and between plain recordings alike.
   const fader = (id: AudioVolumeGroup, label: PlainMessageKey): Group[] => {

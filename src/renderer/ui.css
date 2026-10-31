@@ -1208,16 +1208,28 @@
     min-height: --spacing(5);
   }
   .studio-channel-head > span {
-    flex: 1;
     min-width: 0;
-  }
-  .studio-channel-head > span {
     font-weight: 600;
   }
-  .studio-channel-head > svg {
+  /* Whether the input is recorded (2026-10-31): a speaker right after its name, struck through in the accent colour
+     when not; within the name's line, so Camera and System audio still share a top line. */
+  .studio-channel-record {
     flex: none;
-    width: --spacing(3.5);
-    height: --spacing(3.5);
+    margin-block: --spacing(-0.5);
+    color: var(--muted-foreground);
+  }
+  .studio-channel[data-muted] .studio-channel-record {
+    color: var(--primary);
+  }
+  /* Not recorded: the name, the level and the fader greyed, the speaker the one thing in colour. */
+  .studio-channel[data-muted] .studio-channel-head > span,
+  .studio-channel[data-muted] .slider-setting-value {
+    color: var(--muted-foreground);
+  }
+  /* The fader's fill and its thumb's edge in the grey: its focus ring too, which keeps the grey's 4.5:1. */
+  .studio-channel[data-muted] .slider-setting {
+    --primary: var(--muted-foreground);
+    --ring: var(--muted-foreground);
   }
   /* The level in segments, a reading of the sound, unlike the fader's long track. */
   .studio-channel .audio-meter {
@@ -1227,10 +1239,6 @@
     height: --spacing(2);
     border-radius: 0;
     mask: repeating-linear-gradient(90deg, var(--mask-opaque) 0 5px, transparent 5px 7px);
-  }
-  .audio-meter-mute[aria-pressed="true"] {
-    color: var(--primary);
-    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
   }
   .studio-channel .slider-setting {
     width: 100%;
@@ -1249,9 +1257,6 @@
     grid-template-columns: subgrid;
     align-items: center;
     column-gap: --spacing(2.5);
-  }
-  .studio-channel .audio-meter-mute {
-    justify-self: start;
   }
   /* Room for "−60 dB" so the track holds still as the value changes. */
   .studio-channel .slider-setting-value {
@@ -1584,7 +1589,7 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
-  /* At high zoom in the minimum window, keep the meter, mute and value reachable on separate lines. */
+  /* At high zoom in the minimum window, keep the meter and the fader's value reachable on separate lines. */
   @container (max-width: 220px) {
     .studio-channel:has(.slider-setting) {
       grid-template-columns: minmax(0, 1fr);
@@ -1597,12 +1602,6 @@
     }
     .studio-channel .audio-meter-track {
       flex-basis: 100%;
-    }
-    .studio-channel .audio-meter-mute {
-      max-width: 100%;
-      height: auto;
-      min-height: --spacing(6);
-      white-space: normal;
     }
     .studio-channel .slider-setting {
       flex-direction: column;
@@ -1622,23 +1621,23 @@
     grid-template-columns: minmax(0, max-content) auto;
     justify-content: start;
   }
+  /* Its note is one line before a recording and may be two during one ("The camera joins from the next recording.")
+     in a column of three: two lines kept, so the live row, and the stage above it, keep their height through every
+     phase now the inputs beside it are shorter (2026-10-31). Across the row, one line is enough. */
+  .studio-camera-shown .studio-switch-note {
+    min-height: 2lh;
+  }
+  @container (max-width: 660px) {
+    .studio-camera-shown .studio-switch-note {
+      min-height: 0;
+    }
+  }
   .studio-camera-shown > .studio-switch-row > [role="switch"] {
     justify-self: start;
   }
   .studio-live-row > .studio-note,
   .studio-live-row > .studio-failure {
     margin: 0;
-  }
-  /* An input not recorded: the whole input in the warning look, saying so in place of its name (D6). */
-  .studio-channel[data-problem] {
-    margin: --spacing(-1) --spacing(-1.5);
-    padding: --spacing(1) --spacing(1.5);
-    border: 1px solid var(--warning-border);
-    border-radius: var(--radius-md);
-    background: var(--warning-surface);
-  }
-  .studio-channel[data-problem] .studio-channel-head {
-    color: var(--warning);
   }
   /* A device row's problem in the Recording tab, in the Studio picker's words (plan 097, D2). */
   .row-problem {

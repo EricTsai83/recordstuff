@@ -92,6 +92,8 @@ async function run(): Promise<void> {
   let studioPreview: AppContext["studioPreview"];
   /** The recording's camera while it gives no picture (plan 090): waiting for its first frame, not ready or lost. */
   let cameraState: "waiting" | "notReady" | "lost" | undefined;
+  /** System audio left out of the recording in progress by the Studio's speaker toggle (2026-10-31). */
+  let systemMuted = false;
   /** The first-launch guide open (2026-10-26), with what macOS answered for the microphone and the camera. */
   let guide: { microphone: NonNullable<AppContext["microphone"]>; camera: { enabled: boolean; access: "granted" | "denied" | "not-determined" } } | undefined;
   /** The display recorded: the landscape primary, or the portrait screen for the Studio's stage at its shape (plan 095). */
@@ -110,7 +112,7 @@ async function run(): Promise<void> {
       ...(guide ? guide.camera : {}) },
     ...(guide ? { onboarding: { open: true as const }, microphone: guide.microphone } : {}),
     audioVolume: { ...DEFAULT_AUDIO_VOLUME }, studio, ...(studioPreview ? { studioPreview } : {}),
-    ...(state.type === "recording" ? { audioSession: { systemMuted: false } } : {}) });
+    ...(state.type === "recording" ? { audioSession: { systemMuted } } : {}) });
   let entry = 0;
   let tab: SettingsTab = "library";
   const view = () => ({ ...settingsView(state, context()), resultFocus: entry, entryTab: tab });
@@ -216,6 +218,11 @@ async function run(): Promise<void> {
       studioPreview = { rate: "power", view: "composed" };
       await show(window, "studio");
       await shoot(window, `studio-recording-${lang}-${scheme}.png`, `the Studio while recording · ${lang} · ${scheme}`, { state: "recording" });
+      // System audio not recorded: its speaker struck through, its name, level and fader greyed (2026-10-31).
+      systemMuted = true;
+      await show(window, "studio");
+      await shoot(window, `studio-recording-muted-${lang}-${scheme}.png`, `the Studio while recording, system audio not recorded · ${lang} · ${scheme}`, { state: "recording-muted" });
+      systemMuted = false;
       // The camera not yet giving a picture (plan 090): the Studio says so in its line of controls.
       cameraState = "waiting";
       await show(window, "studio");

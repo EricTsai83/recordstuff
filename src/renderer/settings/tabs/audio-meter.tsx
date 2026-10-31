@@ -5,10 +5,7 @@
  * the same way the chosen input's levels between recordings, which main gives only to a focused window.
  */
 import { useEffect, useState } from "react";
-import { Volume2, VolumeX } from "lucide-react";
 import type { MicrophoneLevel, SettingsGroup, StudioLevels } from "../../../shared/settings-panel";
-import { translate } from "../../../shared/i18n";
-import { Button } from "../../components/ui/button";
 import * as model from "../settings-controller";
 import { onFrame } from "./frame-clock";
 import { onLevels } from "./studio-feed";
@@ -158,20 +155,16 @@ function useMeter(track: HTMLDivElement | null, cover: HTMLDivElement | null, so
 }
 
 /**
- * An input's level and, in a plain recording, whether it is recorded (plan 097, D6: Don't record, the mute until then,
- * which read as a monitor's mute), its state the button's pressed look; assistive technology hears what a press does.
- * An editable recording's input has no such button: it records every input as it comes.
+ * An input's level, as it arrives and before muting; greyed while the input is not recorded. Whether it is recorded
+ * is the Studio's speaker toggle beside the input's name (studio.tsx), not part of the meter (2026-10-31).
  */
 export function AudioMeter({ group, source, muted, disabled, describedBy }: {
   group: SettingsGroup; source: "system" | "microphone"; muted: boolean; disabled: boolean; describedBy: string | undefined;
 }) {
-  const recordable = group.choices.some((choice) => choice.id === "mute");
   const id = `setting-${group.id}`;
   const [track, setTrack] = useState<HTMLDivElement | null>(null);
   const [cover, setCover] = useState<HTMLDivElement | null>(null);
   useMeter(track, cover, source, disabled);
-  const language = model.view?.language;
-  const Icon = muted ? VolumeX : Volume2;
   return (
     <div className="audio-meter" data-muted={muted || undefined}>
       {/* The value is written by useMeter as levels come, never by a render. */}
@@ -180,6 +173,7 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
         className="audio-meter-track"
         role="meter"
         aria-labelledby={`${id}-label`}
+        aria-describedby={describedBy}
         aria-valuemin={FLOOR_DB}
         aria-valuemax={0}
         aria-valuenow={FLOOR_DB}
@@ -188,20 +182,6 @@ export function AudioMeter({ group, source, muted, disabled, describedBy }: {
         <div className="audio-meter-fill" />
         <div ref={setCover} className="audio-meter-cover" />
       </div>
-      {recordable && <Button
-        id={id}
-        variant="outline"
-        size="sm"
-        className="audio-meter-mute"
-        disabled={disabled}
-        aria-pressed={muted}
-        aria-label={translate(muted ? "Record {label}" : "Don't record {label}", language, { label: group.label })}
-        aria-describedby={describedBy}
-        onClick={() => void model.choose(group.id, muted ? "unmute" : "mute", id)}
-      >
-        <Icon aria-hidden="true" />
-        <span aria-hidden="true">{translate("Don't record", language)}</span>
-      </Button>}
     </div>
   );
 }
