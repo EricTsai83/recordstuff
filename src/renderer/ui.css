@@ -1224,9 +1224,28 @@
   .studio-channel .slider-setting {
     width: 100%;
   }
+  /* The meter and fader share tracks, rather than each subtracting a different label width. */
+  .studio-channel:has(.slider-setting) {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 10px;
+  }
+  .studio-channel:has(.slider-setting) > .studio-channel-head {
+    grid-column: 1 / -1;
+  }
+  .studio-channel:has(.slider-setting) > :is(.audio-meter, .slider-setting) {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    column-gap: 10px;
+  }
+  .studio-channel .audio-meter-mute {
+    justify-self: start;
+  }
   /* Room for "−60 dB" so the track holds still as the value changes. */
   .studio-channel .slider-setting-value {
     min-width: 6ch;
+    text-align: start;
   }
   /* A Live preview's start or failure, over the foot of the stage rather than a line under it, which would shrink the
      picture while it is said (2026-10-24), and what the camera is doing while it gives no picture (2026-10-25). */
@@ -1556,6 +1575,12 @@
   }
   /* At high zoom in the minimum window, keep the meter, mute and value reachable on separate lines. */
   @container (max-width: 220px) {
+    .studio-channel:has(.slider-setting) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .studio-channel:has(.slider-setting) > :is(.audio-meter, .slider-setting) {
+      display: flex;
+    }
     .studio-channel .audio-meter {
       flex-wrap: wrap;
     }
@@ -1573,7 +1598,7 @@
       align-items: stretch;
     }
     .studio-channel .slider-setting-value {
-      align-self: end;
+      align-self: start;
     }
     .studio-channel-head > span,
     .studio-camera-shown .studio-switch-row > span {
