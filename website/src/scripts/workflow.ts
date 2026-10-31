@@ -22,7 +22,7 @@ export function startWorkflow(root: HTMLElement): void {
   let artwork: Animation[] = [];
   let recordClock: Animation | undefined;
   let duration = 27000;
-  const editDuration = (): number => Number.isFinite(video.duration) ? video.duration * 1000 : 13567;
+  const editDuration = (): number => Number.isFinite(video.duration) ? video.duration * 1000 : 12967;
   // Resolve readiness before replacing the outgoing panel. On failure keep its last painted frame.
   const editReady = new Promise<boolean>(resolve => {
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) { resolve(true); return; }
