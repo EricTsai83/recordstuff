@@ -128,16 +128,13 @@ it("opens on the remembered category, selects, favorites, makes, renames and del
   expect([search.value, close.mock.calls.length]).toEqual(["", 0]);
   await vi.waitFor(() => expect(cards()).toEqual(["a", "c"]));
 
-  // A search that finds nothing says what was searched and where, and Clear search empties it and goes back to the field.
+  // A search that finds nothing says so, with its picture and no sentence (2026-10-31), and Clear search empties it and
+  // goes back to the field.
   const noMatch = () => document.getElementById("library-no-match")!;
   enter(search, "zzz");
   await vi.waitFor(() => expect(noMatch().hidden).toBe(false));
-  expect([noMatch().querySelector(".library-empty-title")!.textContent, noMatch().querySelector(".library-empty-detail")!.textContent,
-    noMatch().querySelector(".library-no-match-query")!.textContent, document.getElementById("library-no-match-all"), document.getElementById("library-none-shown")!.hidden])
-    .toEqual(["No matching recordings", "No recording names in Uncategorized contain zzz.", "zzz", null, true]);
-  // The category and the search are tags of their own in the sentence, the category's with its folder icon.
-  expect([noMatch().querySelector(".library-no-match-folder")!.textContent, Boolean(noMatch().querySelector(".library-no-match-folder svg"))])
-    .toEqual(["Uncategorized", true]);
+  expect([noMatch().textContent, Boolean(noMatch().querySelector("svg[aria-hidden='true']")), document.getElementById("library-no-match-all"), document.getElementById("library-none-shown")!.hidden])
+    .toEqual(["No matching recordingsClear search", true, null, true]);
   click(document.getElementById("library-no-match-clear")!);
   await vi.waitFor(() => expect(cards()).toEqual(["a", "c"]));
   expect([search.value, document.activeElement, noMatch().hidden]).toEqual(["", search, true]);
@@ -148,11 +145,10 @@ it("opens on the remembered category, selects, favorites, makes, renames and del
   await vi.waitFor(() => expect(cards()).toEqual(["b"]));
   expect([picker().textContent, search.value, document.activeElement, noMatch().hidden]).toEqual(["All", "demo", search, true]);
   expect(choose).toHaveBeenLastCalledWith("libraryFolder", { action: "showAll" });
-  // Every recording searched and none matching: only Clear search is offered, and the sentence names no category.
+  // Every recording searched and none matching: only Clear search is offered.
   enter(search, "zzz");
   await vi.waitFor(() => expect(noMatch().hidden).toBe(false));
-  expect([noMatch().querySelector(".library-empty-detail")!.textContent, document.getElementById("library-no-match-all")])
-    .toEqual(["No recording names contain zzz.", null]);
+  expect(document.getElementById("library-no-match-all")).toBeNull();
   key(search, "Escape");
   await pick("Uncategorized");
   await vi.waitFor(() => expect(cards()).toEqual(["a", "c"]));

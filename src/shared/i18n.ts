@@ -151,8 +151,6 @@ export const ZH_TW = {
   "Search recordings": "搜尋錄影",
   "Clear search": "清除搜尋",
   "No matching recordings": "找不到符合的錄影",
-  "No recording names contain {query}.": "沒有錄影名稱包含{query}",
-  "No recording names in {folder} contain {query}.": "{folder}中沒有錄影名稱包含{query}",
   "Search all recordings ({count})": "在所有錄影中搜尋（{count}）",
   "This category is empty.": "這個分類是空的。",
   "Choose Move to in a recording's menu to add it here.": "在錄影選單中選擇「移到」，即可加入這個分類。",

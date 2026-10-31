@@ -70,7 +70,6 @@ export function Library() {
         {library?.status}
       </p>
       <NoSearchMatch
-        query={query}
         hidden={Boolean(!empty || !query.trim())}
         elsewhere={shownFolder ? (all ?? []).filter((item) => model.matchesSearch(item, query)).length : 0}
       />
@@ -123,48 +122,9 @@ export function Library() {
   );
 }
 
-/** A search past this many characters is cut short where the empty state repeats it; the field still holds all of it. */
-const QUOTED_QUERY = 40;
-/** Where the search's words and the category go in the sentence, so each can be drawn as a tag of its own. */
-const QUERY_MARK = "\u0000",
-  FOLDER_MARK = "\u0001";
-
-/**
- * The search found nothing in what is shown: what was searched and where, a way to clear it, and, from a category, the
- * recordings elsewhere that do match.
- */
-function NoSearchMatch({ query, hidden, elsewhere }: { query: string; hidden: boolean; elsewhere: number }) {
-  const language = model.view?.language,
-    words = query.trim(),
-    quoted = words.length > QUOTED_QUERY ? `${words.slice(0, QUOTED_QUERY).trimEnd()}…` : words,
-    folder = model.shownFolder,
-    folderName = folder ? (folder.folder ?? model.text("Uncategorized")) : "",
-    sentence = folder
-      ? translate("No recording names in {folder} contain {query}.", language, { folder: FOLDER_MARK, query: QUERY_MARK })
-      : translate("No recording names contain {query}.", language, { query: QUERY_MARK }),
-    // The sentence's own words, with the category and the search as tags where the translation puts them.
-    parts = sentence.split(/([\u0000\u0001])/).map((part, at) =>
-      part === QUERY_MARK ? (
-        <span
-          key={at}
-          className="library-no-match-query mx-px rounded-md bg-muted px-1.5 py-px font-medium text-foreground [box-decoration-break:clone]"
-          title={quoted === words ? undefined : words}
-        >
-          {quoted}
-        </span>
-      ) : part === FOLDER_MARK ? (
-        <span
-          key={at}
-          className="library-no-match-folder mx-px inline-flex max-w-48 items-baseline gap-1 rounded-md bg-muted px-1.5 py-px align-baseline font-medium text-foreground"
-          title={folderName}
-        >
-          <Folder className="size-3.5 shrink-0 self-center" />
-          <span className="truncate">{folderName}</span>
-        </span>
-      ) : (
-        part
-      ),
-    );
+/** The search found nothing in what is shown: a way to clear it and, from a category, the recordings elsewhere that match. */
+function NoSearchMatch({ hidden, elsewhere }: { hidden: boolean; elsewhere: number }) {
+  const language = model.view?.language;
   // Either way the button goes, so the focus goes back to the search to type again.
   const focusSearch = () => document.getElementById("library-search")?.focus();
   return (
@@ -174,9 +134,6 @@ function NoSearchMatch({ query, hidden, elsewhere }: { query: string; hidden: bo
           <NoMatchArt className="size-24" />
         </EmptyMedia>
         <EmptyTitle className="library-empty-title text-[17px] font-semibold text-foreground">{model.text("No matching recordings")}</EmptyTitle>
-        <EmptyDescription className="library-empty-detail max-w-[22rem] text-[13px] leading-6">
-          {parts}
-        </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="mt-1 flex-row flex-wrap justify-center">
         {elsewhere > 0 && (
