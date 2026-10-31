@@ -1531,35 +1531,27 @@
     overflow-x: hidden;
     overflow-y: auto;
   }
+  /* A source's or the preview rate's choices as a plain column of radio buttons (2026-11-01, as Save a copy…): no
+     fills, the text lined up with the menu's own, the chosen one set heavier; keyboard focus rings the radio. */
   .studio-picker-choice {
     display: flex;
     align-items: flex-start;
-    gap: --spacing(1.5);
+    gap: --spacing(3);
     width: 100%;
-    padding: --spacing(1.5) --spacing(2);
-    border-radius: var(--radius-sm);
+    padding: --spacing(1.5) 0;
     text-align: start;
     font-size: var(--text-2xs);
+    outline: none;
   }
-  .studio-picker-choice:hover:not(:disabled) {
-    background: var(--accent);
+  /* A source's actions (Search for devices) start where the choices' radios do; their hover reaches past it. */
+  .studio-picker-action {
+    margin-inline-start: --spacing(-2);
   }
-  .studio-picker-choice:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: -2px;
+  .studio-picker-choice[aria-checked="true"] {
+    font-weight: 500;
   }
   .studio-picker-choice:disabled {
     color: var(--muted-foreground);
-  }
-  .studio-picker-check {
-    flex: none;
-    width: --spacing(3.5);
-    height: --spacing(3.5);
-    margin-top: 1px;
-    visibility: hidden;
-  }
-  .studio-picker-check[data-checked] {
-    visibility: visible;
   }
   .studio-type > svg {
     width: --spacing(3.5);
@@ -2700,14 +2692,8 @@
     background: var(--accent);
     color: var(--accent-foreground);
   }
-  .library-category-check {
-    flex: none;
-    width: --spacing(3.5);
-    height: --spacing(3.5);
-    visibility: hidden;
-  }
-  .library-category-option[aria-selected="true"] .library-category-check {
-    visibility: visible;
+  .library-category-option[aria-selected="true"] {
+    font-weight: 500;
   }
   .library-category-label {
     flex: 1;
@@ -4155,31 +4141,63 @@
     padding-top: --spacing(3);
     border-top: 1px solid var(--border);
   }
-  /* Save a copy… (plan 100): the forms as a column of choices, each with the file it makes, then where it saves. */
+  /* The radio of every one-of-several list (2026-11-01, the maintainer's choice, C): Save a copy…, a source's and the
+     preview rate's choices, the select menus and the category picker. A ring, filled with the brand colour when its
+     item is chosen; drawn by the list's item, which says checked or selected. Menus that keep a highlight (select,
+     categories) show the keyboard's place by it; radio buttons ring the radio itself. Actions, segments, the screens'
+     arrangement and Share…'s files keep their own marks. */
+  .choice-radio {
+    flex: none;
+    box-sizing: border-box;
+    width: 1rem;
+    height: 1rem;
+    border: 1.5px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+    border-radius: 9999px;
+  }
+  :is(:hover, [data-highlighted], [data-active]) > .choice-radio {
+    border-color: color-mix(in oklab, var(--foreground) 55%, transparent);
+  }
+  :is([aria-checked="true"], [aria-selected="true"], [data-selected]) > .choice-radio {
+    border: 0.3rem solid var(--primary);
+    background: var(--primary-foreground);
+  }
+  :disabled > .choice-radio {
+    opacity: 0.5;
+  }
+  [role="radio"]:focus-visible > .choice-radio {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Beside a choice described under its name, the radio stays with the name's line. */
+  :has(> * .studio-preview-option-note) > .choice-radio,
+  .studio-picker-choice > .choice-radio {
+    align-self: flex-start;
+    margin-top: calc((1lh - 1rem) / 2);
+  }
+  /* Save a copy… (plan 100): the forms as a plain column of radio buttons (2026-11-01, the maintainer's choice, C):
+     no frames, fills or rules, in a popup with the room at its sides every panel popup has (16 px, the shared default since 2026-11-01; w-80); the text lines up with the popup's own and the chosen form's name is set heavier, then
+     where it saves. The radio is the shared .choice-radio; keyboard focus rings it, not the row. */
   .editor-copy-forms {
     display: grid;
-    gap: --spacing(1);
   }
   .editor-copy-form {
     display: grid;
-    gap: --spacing(0.5);
-    padding: --spacing(1.5) --spacing(2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: --spacing(3);
+    padding: --spacing(2.5) 0;
     text-align: start;
     font-size: var(--text-sm);
     cursor: default;
+    outline: none;
   }
-  .editor-copy-form:hover {
-    background: var(--accent);
+  .editor-copy-form[aria-checked="true"] .editor-copy-label {
+    font-weight: 500;
   }
-  .editor-copy-form[aria-checked="true"] {
-    border-color: var(--primary);
-    box-shadow: inset 0 0 0 1px var(--primary);
-  }
-  .editor-copy-form:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 1px;
+  .editor-copy-text {
+    display: grid;
+    gap: --spacing(0.5);
+    min-width: 0;
   }
   .editor-copy-detail,
   .editor-copy-name {

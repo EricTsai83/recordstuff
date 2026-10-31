@@ -1108,7 +1108,7 @@ function SaveCopy({ editor }: { editor: EditorView }) {
             <span className="editor-export-label">{name}</span>
           </PopoverTrigger>
         </ControlTooltip>
-        <PopoverContent side="top" align="end" id="editor-copy-popup" className="editor-options-popup w-72 gap-3 p-3" aria-label={model.text("Save a copy")}
+        <PopoverContent side="top" align="end" id="editor-copy-popup" className="editor-options-popup w-80" aria-label={model.text("Save a copy")}
           initialFocus={() => document.querySelector<HTMLElement>("#editor-copy-forms [aria-checked=true]")}>
           <div role="radiogroup" id="editor-copy-forms" className="editor-copy-forms" aria-label={model.text("Save a copy")}
             onKeyDown={(event) => {
@@ -1126,8 +1126,11 @@ function SaveCopy({ editor }: { editor: EditorView }) {
               <button key={entry.form} type="button" role="radio" id={`editor-copy-${entry.form}`} className="editor-copy-form"
                 aria-checked={entry.form === chosen?.form} tabIndex={entry.form === chosen?.form ? 0 : -1}
                 aria-describedby={`editor-copy-${entry.form}-name`} onClick={() => setForm(entry.form)}>
-                <span className="editor-copy-label">{entry.label}<span className="editor-copy-detail"> · {entry.detail}</span></span>
-                <span id={`editor-copy-${entry.form}-name`} className="editor-copy-name">{entry.fileName}</span>
+                <span className="choice-radio" aria-hidden="true" />
+                <span className="editor-copy-text">
+                  <span className="editor-copy-label">{entry.label}<span className="editor-copy-detail"> · {entry.detail}</span></span>
+                  <span id={`editor-copy-${entry.form}-name`} className="editor-copy-name">{entry.fileName}</span>
+                </span>
               </button>
             ))}
           </div>

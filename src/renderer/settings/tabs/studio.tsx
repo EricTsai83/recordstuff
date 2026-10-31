@@ -11,7 +11,7 @@ import { flushSync } from "react-dom";
 import { isStudioPreviewRate, isStudioView, type StudioPreviewRate, type StudioView } from "../../../shared/studio-port";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Camera, CameraOff, Check, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
+import { Camera, CameraOff, ChevronDown, Ellipsis, Film, Lock, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Square, TriangleAlert, Video, Volume2, VolumeX } from "lucide-react";
 import type { SettingsGroup } from "../../../shared/settings-panel";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { Switch } from "../../components/ui/switch";
@@ -221,14 +221,14 @@ function Picker({ group }: { group: SettingsGroup }) {
               <button key={choice.id} type="button" role="radio" aria-checked={checked} id={`${id}-${choice.id}`}
                 className="studio-picker-choice" disabled={!group.enabled || !choice.enabled}
                 onClick={() => { if (!checked) void model.choose(group.id, choice.id, `${id}-${choice.id}`); }}>
-                <Check className="studio-picker-check" aria-hidden="true" data-checked={checked || undefined} />
+                <span className="choice-radio" aria-hidden="true" />
                 <span>{choice.label}</span>
               </button>
             );
           })}
         </div>
         {group.actions?.map((action) => (
-          <Button key={action.id} id={`${id}-${action.id}`} variant="ghost" size="sm" className="justify-start"
+          <Button key={action.id} id={`${id}-${action.id}`} variant="ghost" size="sm" className="studio-picker-action justify-start"
             disabled={!action.enabled || action.busy} onClick={() => void model.choose(group.id, action.id, `${id}-${action.id}`)}>
             {action.label}
           </Button>
@@ -369,7 +369,7 @@ function RateMenu({ rate }: { rate: SettingsGroup }) {
               <button key={choice.id} type="button" role="radio" aria-checked={checked} id={`${id}-${choice.id}`} data-value={choice.id}
                 className="studio-picker-choice" disabled={!rate.enabled || !choice.enabled}
                 onClick={() => { if (!checked) void model.choose(rate.id, choice.id, `${id}-${choice.id}`); }}>
-                <Check className="studio-picker-check" aria-hidden="true" data-checked={checked || undefined} />
+                <span className="choice-radio" aria-hidden="true" />
                 <span className="studio-preview-option">
                   <span>{choice.label}</span>
                   {choice.description && <span className="studio-preview-option-note">{choice.description}</span>}

@@ -8,7 +8,7 @@
 
 import * as React from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const Select = SelectPrimitive.Root;
@@ -124,21 +124,16 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex min-h-8 w-full cursor-default items-center gap-2 rounded-md py-1 pr-8 pl-2 text-xs/relaxed whitespace-nowrap outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "relative flex min-h-8 w-full cursor-default items-center gap-2.5 rounded-md py-1 pr-2 pl-2 text-xs/relaxed whitespace-nowrap outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-selected:font-medium data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className,
       )}
       {...props}
     >
+      {/* Outside the item's text, which the trigger repeats as its value. */}
+      <span className="choice-radio" aria-hidden="true" />
       <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2">
         {children}
       </SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator
-        render={
-          <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center" />
-        }
-      >
-        <CheckIcon />
-      </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   );
 }

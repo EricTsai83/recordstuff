@@ -3,7 +3,7 @@
  * category, filtered as one types, with New category; rename, delete and favorite from its settings menu.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, HardDrive, Search, FolderOpen, ChevronDown, Check, Plus, Star, Settings2 } from "lucide-react";
+import { FileText, HardDrive, Search, FolderOpen, ChevronDown, Plus, Star, Settings2 } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../../../components/ui/popover";
 import { translate } from "../../../../shared/i18n";
 import { Button } from "../../../components/ui/button";
@@ -77,7 +77,7 @@ export function CategoryPicker() {
             onPointerMove={() => setActive(options.indexOf(option))}
             onClick={() => choose(option)}
           >
-            <Check className="library-category-check" aria-hidden="true" />
+            <span className="choice-radio" aria-hidden="true" />
             <span className="library-category-label">{option.label}</span>
             <span className="library-category-count tabular-nums text-muted-foreground">{count(option.scope?.folder)}</span>
           </div>
