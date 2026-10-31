@@ -1583,6 +1583,11 @@
   /* The camera's switch no taller than an input's name line, so Camera and System audio share a top line. */
   .studio-camera-shown > .studio-switch-row {
     min-height: 20px;
+    grid-template-columns: minmax(0, max-content) auto;
+    justify-content: start;
+  }
+  .studio-camera-shown > .studio-switch-row > [role="switch"] {
+    justify-self: start;
   }
   .studio-live-row > .studio-note,
   .studio-live-row > .studio-failure {
