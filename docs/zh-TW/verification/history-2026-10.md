@@ -4,6 +4,19 @@
 
 [返回驗證索引](README.md)。以下是歷史證據；現行選測規則見[測試指南](../testing.md)。原始 measurements 連結僅本機可用，新 clone 不會包含。
 
+## Plan 102 結案 — 2026-10-31
+
+Plan 102（所有頁面共用一套設計 token，依維護者 2026-10-31 的要求：「整個 CSS 以 shadcn 為基底，盡量不要用 Tailwind 預設或寫死像素，讓所有地方一致，每次改動都附前後比較圖」）於 2026-10-31 結案。Claude 逐步實作，每一步都經唯讀的 Codex GPT-6.1 Sol review，以 `pnpm preview:ui` 的前後對照圖交給維護者，並各自 commit 在 main。長期規則見[字級與 token](../system-design/desktop.md#設定視窗)與 [renderer 樣式分層](../system-design/repository.md)。
+
+- **決定。** 維持 macOS 密度（維護者的選擇）：`text-xs` 維持 067 的 13px，控制項 28px；新增 `--text-3xs` 11px 與 `--text-2xs` 12px，`--text-title` 為頁首實際畫的 30px（設計文件的 24px 已過時），shadcn 圓角旁新增 `--radius-xs`；間距以 4px 的 `--spacing` 為單位，用半格，只有元件本身的幾何才用四分之一格。
+- **步驟。** 1 錄影檔分頁（`ea5d9a9a`）；2 共用的偏好設定版面（`b53cb746`）；3 錄影工作室與鍵盤快捷鍵（`794fef07`）；4 疑難排解與首次使用引導（`8a7667e0`）；5 共用外框與 shadcn 元件（`7094338c`）；6 剪輯畫面、「分享…」與播放器（`d397b222`）；7 防護與設計文件（`7df1c506`）。不在刻度上的值改為最接近的一格（多數移動 2px）；同一用途一個值：列表上方標題上 20、下 12px，區段之間 24px，列高 52px、內距 12px，控制項間距 8px。
+- **保留像素。** 1px 細線、焦點框、邊框與陰影、斷點與容器查詢、尺寸下限與上限、奇數的圖形尺寸、小於 `--radius-xs` 的圓角、時間軸與預覽拖曳條經量測的幾何、「分享…」畫出的檔案，以及少數列出的位移與巢狀圓角；都列在 `tests/style-guard.test.ts`。
+- **防護。** style guard 擋下 `ui.css` 中像素的 margin、padding、gap、位移、字級、圓角與小的偶數尺寸，以及 TSX 中 Tailwind 的任意像素值。三輪 review 找到九個漏洞（`!important` 與大小寫、區塊最後一條宣告、選擇器清單、子字串豁免、型別提示、邏輯位移、混合值、單角與橢圓圓角、沒有鑑別力的測試案例），全部修正；修正後它又抓到播放器對話框的 14px 圓角與兩個混合值，已轉換。
+- **檢查。** 第 2、3、5 步後跑 `pnpm acceptance:regression`（2504 個 TypeScript 測試、Rust 測試、202 個背景 UI 案例）；其他步驟跑受影響的 scope（failures、layout、settings-bridge、editing、player、library、studio、recording-settings）；每一步前後各一套 366–370 張的 `pnpm preview:ui` 截圖；剪輯畫面的圖由一支暫時的背景 spec 拍攝，之後已移除。
+- **桌面回合**（2026-11-01 00:13，M1 Pro，開發版，`pnpm acceptance:settings-native`，維護者回覆「好了」之後）。N-S001 視窗外框、N-S105 非作用中時跨日與 N-S000 沒有 console 錯誤通過；真實視窗在 380×360 最小尺寸下的 token 繪製和離屏一致，鍵盤焦點框可見。N-S103 失敗：失敗紀錄列的標題有鍵盤焦點時，不論視窗是否作用中都不畫焦點邊框。自 2026-10-13 的回合起就失敗：這個邊框在 `bf9f5162`（2026-10-08）隨共用焦點 utility 一起移除，早於本計畫，本計畫沒有改任何焦點樣式。留給維護者決定。
+- **Review。** 第 1–6 步：一項 finding（第 1 步的置中規則影響其他分頁，commit 前已修正），以及回歸測試抓到的一個回歸（`aabc84e9`）；第 7 步：九項，皆已修正。
+- **未驗證。** 其他頁面在真實視窗中的樣子（背景套件以相同 CSS 在離屏繪出）；VoiceOver；Windows 只由 CI 檢查。
+
 ## Plan 101 結案 — 2026-10-30
 
 Plan 101（和麥克風、相機並列的「系統聲音」開關，2026-10-29 依維護者要求加入）於 2026-10-30 結案。Claude 實作，Codex GPT-6.1 Sol 唯讀審查一次，桌面回合在參考機 M1 Pro（macOS 26.6，主螢幕 BenQ GW2785TC、直立的 BL2480T）上執行，每回合都在維護者回覆「好了」後開始。耐久設計見[系統聲音開關](../system-design/desktop.md#系統聲音開關)、[錄影的音訊](../system-design/recording.md#音訊)與[設計決策](../system-design/decisions.md)。
