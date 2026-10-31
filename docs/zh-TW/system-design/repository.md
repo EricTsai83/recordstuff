@@ -187,7 +187,7 @@ App 的更新檢查讀取本網站的 `release.json`，因此 `scripts/lib/relea
 - 兩個程序都需要的型別或純函式：`src/shared/`，不得匯入 Electron 或 DOM。
 - 擷取、編碼或檔案格式的程式碼：放進它所屬的 `native/capture/src/` 資料夾，能與平台無關就與平台無關，測試放在旁邊；新的引擎方法也要加入 `native-host-process.ts` 的宣告與 `native-load.mjs` 的方法清單。
 - 使用者會讀到的文字：`src/shared/i18n.ts`，雙語同步。
-- Renderer 樣式（[三層](desktop.md#設定視窗)）：顏色是 `ui.css` 的 token（`:root` 與 `.dark`）；對 primitive 的改動是 `components/ui/` 中的 variant 或 prop；頁面自己的版面是呼叫端的 utilities，或 `ui.css` `@layer components` 中的規則。`tests/style-guard.test.ts` 讓其他地方不出現顏色與 `[data-slot]` selector。
+- Renderer 樣式（[三層](desktop.md#設定視窗)）：顏色是 `ui.css` 的 token（`:root` 與 `.dark`）；對 primitive 的改動是 `components/ui/` 中的 variant 或 prop；頁面自己的版面是呼叫端的 utilities，或 `ui.css` `@layer components` 中的規則。尺寸也是 token：間距 `--spacing(n)`（TSX 用 Tailwind 的數字名稱）、字級 `var(--text-*)`、圓角 `var(--radius-*)`（[刻度](desktop.md#設定視窗)，plan 102）。`tests/style-guard.test.ts` 讓其他地方不出現顏色、列出的幾何以外的像素尺寸，以及 `[data-slot]` selector。
 - 手動或由 CI 執行的工具：入口放 `scripts/`，邏輯放進它所屬的 `scripts/lib/` 分組以便測試。
 - 關於行為的長期結論：`docs/system-design/`，並在同一次修改更新繁體中文鏡像。
 - 執行結果的證據：在 `docs/verification/README.md` 摘要；原始輸出留在已忽略的 `measurements/`。
