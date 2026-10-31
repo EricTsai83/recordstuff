@@ -6,7 +6,7 @@
  * each step stands at (`view.onboarding`) and owns every press (the `onboarding` group's choices); the page words them.
  */
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Camera, CircleCheck, CircleHelp, Mic, MonitorUp, TriangleAlert } from "lucide-react";
+import { Camera, CircleCheck, CircleHelp, ExternalLink, Mic, MonitorUp, TriangleAlert } from "lucide-react";
 import type { OnboardingInputView } from "../../shared/settings-panel";
 import { translate, type PlainMessageKey } from "../../shared/i18n";
 import { Button } from "../components/ui/button";
@@ -53,11 +53,11 @@ function Step({ id, icon, title, badge, about, children, notice }: {
 
 /**
  * The microphone's or the camera's line (2026-11-01, the maintainer's choice of one control): its switch, which asks
- * macOS as it is turned on and reads on only once the input will be recorded; Allowed beside it when it is. Refused by
- * macOS, the switch can do nothing until System Settings allows it, so in its place a notice under the line says why,
- * in the words Recording settings uses, with the same filled Open Settings as the screen's step (the maintainer's
- * request the same day: a grey "Not allowed", an outlined button and an off switch side by side said neither why nor
- * what to press).
+ * macOS as it is turned on and reads on once macOS has answered; Allowed beside it when allowed. Refused by macOS, a
+ * notice under the line says why, in the words Recording settings uses, with Open Settings in the notice's own warning
+ * colours (the maintainer's requests the same day: a grey "Not allowed" beside an outlined button said neither why nor
+ * what to press, and the app's red on the warning's yellow clashed); the switch stays, on when the user had it on, so
+ * it is plain that the input was turned on and macOS is what stops it.
  */
 function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camera"; input: OnboardingInputView; busy: boolean; waiting: boolean }) {
   const id = `onboarding-${name}`;
@@ -67,35 +67,25 @@ function InputStep({ name, input, busy, waiting }: { name: "microphone" | "camer
   // Never asked, it is not recorded yet, whatever is stored: off until turned on asks macOS (finishing turns it off).
   const on = input.enabled && input.access !== "ask";
   const refused = input.access === "denied";
-  // Refused at the prompt, the switch the press came from is gone: its place in the dialog is Open Settings, whose
-  // description says why (review, 2026-11-01), not the tab under the modal dialog, which cannot take the focus.
-  const toggle = (checked: boolean): void => {
-    void model.choose(GROUP, `${name}:${checked ? "on" : "off"}`, `${id}-switch`).then(() => requestAnimationFrame(() => {
-      const settings = document.getElementById(`${id}-settings`);
-      if (settings && !document.getElementById(`${id}-switch`) && !document.getElementById("onboarding")?.contains(document.activeElement))
-        settings.focus({ preventScroll: true });
-    }));
-  };
   const notice = refused ? (
     <div className="onboarding-step-notice">
       <TriangleAlert aria-hidden="true" />
       <p id={`${id}-refused`}>{model.text(name === "microphone"
         ? "macOS does not allow the microphone. Allow RecordStuff in System Settings to turn it on."
         : "macOS does not allow the camera. Allow RecordStuff in System Settings to turn it on.")}</p>
-      <Button id={`${id}-settings`} size="sm" disabled={busy} aria-describedby={`${id}-refused`}
-        onClick={() => press(`${name}:settings`, `${id}-settings`)}>
+      <Button id={`${id}-settings`} variant="outline" size="sm" className="flex-none border-warning-border bg-background text-warning hover:border-warning hover:bg-warning-surface hover:text-warning dark:bg-background dark:hover:bg-warning-surface" disabled={busy}
+        aria-describedby={`${id}-refused`} onClick={() => press(`${name}:settings`, `${id}-settings`)}>
         {model.text("Open Settings")}
+        <ExternalLink data-icon="inline-end" aria-hidden="true" />
       </Button>
     </div>
   ) : undefined;
   return (
     <Step id={id} icon={name === "microphone" ? <Mic /> : <Camera />} title={label} badge={model.text("Optional")} notice={notice}
       about={name === "microphone" ? "Mixes your voice with the system's sound in the recording." : "Shows you in a bubble over the recording."}>
-      {refused ? null : (<>
-        {on && <Allowed />}
-        <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={`${id}-detail`} checked={on}
-          disabled={disabled} onCheckedChange={toggle} />
-      </>)}
+      {on && !refused && <Allowed />}
+      <Switch id={`${id}-switch`} aria-labelledby={`${id}-title`} aria-describedby={refused ? `${id}-refused` : `${id}-detail`} checked={on}
+        disabled={disabled} onCheckedChange={(checked) => press(`${name}:${checked ? "on" : "off"}`, `${id}-switch`)} />
     </Step>
   );
 }

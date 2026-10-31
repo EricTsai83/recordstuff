@@ -251,13 +251,15 @@ async function run(): Promise<void> {
       await show(window, "library");
       await shoot(window, `permission-${lang}-${scheme}.png`, `screen recording permission missing · ${lang} · ${scheme}`, { state: "needsPermission" });
       // The first-launch guide (2026-10-26), step by step as a new install meets it: the screen not allowed yet, allowed
-      // but waiting on a relaunch, then the microphone and the camera to ask for, one refused, and all set.
+      // but waiting on a relaunch, then the microphone and the camera to ask for, one refused, one refused later in System Settings, and all set.
       const ask = { enabled: true, access: "not-determined" as const };
       for (const [name, screen, microphone, camera] of [
         ["screen", { type: "needsPermission", needsRelaunch: false }, ask, ask],
         ["relaunch", { type: "needsPermission", needsRelaunch: true }, ask, ask],
         ["inputs", { type: "idle" }, ask, ask],
         ["refused", { type: "idle" }, { enabled: true, access: "granted" }, { enabled: false, access: "denied" }],
+        // On, then refused in System Settings (2026-11-01): the switch still on beside why.
+        ["revoked", { type: "idle" }, { enabled: true, access: "granted" }, { enabled: true, access: "denied" }],
         ["ready", { type: "idle" }, { enabled: true, access: "granted" }, { enabled: true, access: "granted" }],
       ] as const) {
         state = screen; guide = { microphone, camera };
