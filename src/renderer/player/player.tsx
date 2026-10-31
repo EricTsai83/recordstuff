@@ -546,7 +546,7 @@ export function Player({
                 id={`${id}-volume`}
                 className={
                   large
-                    ? "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-[88px] group-focus-within/volume:data-[orientation=horizontal]:w-[88px]"
+                    ? "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-22 group-focus-within/volume:data-[orientation=horizontal]:w-22"
                     : "pc-level data-[orientation=horizontal]:w-0 group-hover/volume:data-[orientation=horizontal]:w-16 group-focus-within/volume:data-[orientation=horizontal]:w-16"
                 }
                 variant="media"

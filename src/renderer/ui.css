@@ -2863,13 +2863,13 @@
   .share-panel {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 10px 10px;
+    gap: --spacing(2);
+    padding: --spacing(2) --spacing(2.5) --spacing(2.5);
     border-radius: 14px;
     background: var(--popover);
     color: var(--popover-foreground);
     box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 1.3;
   }
   .share-over-card {
@@ -2883,31 +2883,31 @@
   }
   .share-head {
     display: flex;
-    min-height: 28px;
+    min-height: --spacing(7);
     align-items: center;
-    gap: 4px;
+    gap: --spacing(1);
   }
   .share-title {
     flex: none;
-    font-size: 13px;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
   .share-crumb {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
     color: var(--muted-foreground);
   }
   .share-back {
-    margin-left: -6px;
-    padding-inline: 4px 6px;
+    margin-left: --spacing(-1.5);
+    padding-inline: --spacing(1) --spacing(1.5);
     color: var(--muted-foreground);
-    font-size: 13px;
+    font-size: var(--text-xs);
   }
   .share-subject {
     min-width: 0;
     flex: 1;
     overflow: hidden;
-    padding-left: 6px;
+    padding-left: --spacing(1.5);
     color: var(--muted-foreground);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2917,15 +2917,15 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
     align-content: center;
-    gap: 2px;
+    gap: --spacing(0.5);
   }
   .share-file {
     display: flex;
     min-width: 0;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 8px 4px 6px;
+    gap: --spacing(0.5);
+    padding: --spacing(2) --spacing(1) --spacing(1.5);
     border-radius: var(--radius-md);
     color: inherit;
     text-align: center;
@@ -3043,7 +3043,7 @@
   }
   .share-detail {
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-3xs);
   }
 
   /* A version being prepared: a ring of its progress over the page's top right corner, so every file keeps its two
@@ -3061,7 +3061,7 @@
   .share-mark-failed {
     background: var(--destructive);
     color: var(--primary-foreground);
-    font-size: 11px;
+    font-size: var(--text-3xs);
     font-weight: 700;
   }
   .share-icon[data-state="failed"] .share-doc,
@@ -3073,10 +3073,10 @@
   }
   .share-bar {
     display: flex;
-    min-height: 36px;
+    min-height: --spacing(9);
     align-items: center;
-    gap: 6px;
-    padding-top: 8px;
+    gap: --spacing(1.5);
+    padding-top: --spacing(2);
     border-top: 1px solid var(--border);
   }
   .share-picked {
@@ -3099,7 +3099,7 @@
   .share-hint {
     overflow: hidden;
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-3xs);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -3286,7 +3286,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: --spacing(1);
     pointer-events: none;
   }
   .frame-peek-picture {
@@ -3294,7 +3294,7 @@
     aspect-ratio: 16/9;
     overflow: hidden;
     border: 2px solid var(--media-foreground);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     background: var(--media);
   }
   .frame-peek-picture video {
@@ -3308,12 +3308,12 @@
     opacity: 1;
   }
   .frame-peek-time {
-    border-radius: 6px;
-    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    padding: 1px --spacing(1.5);
     color: var(--media-foreground);
     background: var(--media-scrim);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     white-space: nowrap;
   }
@@ -3323,7 +3323,7 @@
   .clip-scrub .frame-peek {
     --peek-side: 8px;
     --peek-room: 60px;
-    bottom: 26px;
+    bottom: --spacing(6);
   }
   .pc-seek-area {
     position: relative;
@@ -3378,12 +3378,12 @@
      wash so they read over any picture; enlarged, they go into the player's own controls. */
   .editor-view-buttons {
     position: absolute;
-    right: 12px;
-    bottom: 12px;
+    right: --spacing(3);
+    bottom: --spacing(3);
     z-index: 2;
     display: flex;
-    gap: 2px;
-    padding: 2px;
+    gap: --spacing(0.5);
+    padding: --spacing(0.5);
     border-radius: var(--radius-md);
     background: color-mix(in oklab, var(--media) 45%, transparent);
   }
@@ -3410,8 +3410,8 @@
   .editor-panel {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px 14px 14px;
+    gap: --spacing(2.5);
+    padding: --spacing(3);
     font-size: var(--text-xs);
   }
   /* The parts sit side by side across the bar, as long as they last: a kept one tinted, a removed one hatched. */
@@ -3571,9 +3571,9 @@
     bottom: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: --spacing(1);
     min-width: 0;
-    padding: 0 6px;
+    padding: 0 --spacing(1.5);
     overflow: hidden;
     border: 0;
     border-radius: 0;
@@ -3600,7 +3600,7 @@
   .editor-camera-stretch span {
     min-width: 0;
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 1;
     text-overflow: clip;
     white-space: nowrap;
@@ -3630,16 +3630,16 @@
   /* Each action's key right after its name, drawn as a key (2026-10-26, the maintainer's review: set apart at the
      button's end it read as nothing to do with it). */
   .editor-selection-actions kbd {
-    min-width: 18px;
-    height: 18px;
-    margin-inline-start: 2px;
-    padding: 0 4px;
+    min-width: --spacing(4.5);
+    height: --spacing(4.5);
+    margin-inline-start: --spacing(0.5);
+    padding: 0 --spacing(1);
     border: 1px solid var(--border);
     border-bottom-width: 2px;
     border-radius: 5px;
     color: var(--muted-foreground);
     background: var(--muted);
-    font-size: 11px;
+    font-size: var(--text-3xs);
     line-height: 1;
   }
   /* A narrow view keeps the toolbar on one row: Split and Options by their icons alone, named by their tooltips and
@@ -3666,21 +3666,21 @@
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
+    gap: --spacing(3);
     /* Close to both (2026-10-26 and 2026-10-27, the maintainer's reviews: the room between the toolbar and the timeline
        was too much), yet a selection's actions stand a little apart from its frame (2026-10-27): they rise 4 px short of
        the toolbar and 9 px over the timeline; the times keep the line's foot, 4 px over it. */
-    height: 32px;
+    height: --spacing(8);
     margin-top: -1px;
-    margin-bottom: -6px;
+    margin-bottom: --spacing(-1.5);
     /* The smallest the view writes (its UI tests hold every text at 12 px or more). */
-    font-size: 12px;
+    font-size: var(--text-2xs);
     line-height: 16px;
     color: var(--muted-foreground);
   }
   .editor-readouts {
     display: flex;
-    gap: 12px;
+    gap: --spacing(3);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
@@ -3716,9 +3716,9 @@
     z-index: 10;
     display: flex;
     align-items: center;
-    gap: 2px;
-    height: 32px;
-    padding: 0 3px;
+    gap: --spacing(0.5);
+    height: --spacing(8);
+    padding: 0 --spacing(1);
     border-radius: var(--radius-md);
     color: var(--popover-foreground);
     background: var(--popover);
@@ -3735,26 +3735,26 @@
     position: absolute;
     bottom: calc(100% + 6px);
     left: 50%;
-    padding: 4px 10px;
-    border-radius: 6px;
+    padding: --spacing(1) --spacing(2.5);
+    border-radius: var(--radius-xs);
     background: var(--foreground);
     color: var(--background);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     transform: translateX(-50%);
     pointer-events: none;
   }
   /* The selection's length, last and apart: information, not an action (2026-10-27). */
   .editor-selection-length {
-    margin-inline: 2px 6px;
+    margin-inline: --spacing(0.5) --spacing(1.5);
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
   .editor-selection-divider {
     flex: none;
     width: 1px;
-    height: 16px;
-    margin-inline: 4px;
+    height: --spacing(4);
+    margin-inline: --spacing(1);
     background: var(--border);
   }
   /* Too narrow for all of it: first the selection's length gives way, then the names but Remove's, which stay the
@@ -3799,7 +3799,7 @@
     overflow: clip;
     overflow-clip-margin: 6px;
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
     line-height: 14px;
   }
@@ -3840,12 +3840,12 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: --spacing(1);
   }
   .editor-divider {
     width: 1px;
-    height: 16px;
-    margin-inline: 4px;
+    height: --spacing(4);
+    margin-inline: --spacing(1);
     background: var(--border);
   }
   /* Lighter in the dark theme, where the border token is all but the panel's own colour (2026-10-27, the maintainer's
@@ -3859,7 +3859,7 @@
     max-width: 320px;
   }
   .editor-keys-title {
-    margin: 0 0 6px;
+    margin: 0 0 --spacing(1.5);
     font-weight: 600;
   }
   /* Each key beside what it does (2026-10-26): the keys in a column as wide as the widest, never broken across lines. */
@@ -3867,7 +3867,7 @@
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     align-items: baseline;
-    gap: 6px 12px;
+    gap: --spacing(1.5) --spacing(3);
     margin: 0;
   }
   .editor-keys-popup dl > div {
@@ -3933,7 +3933,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: --spacing(2);
   }
   .editor-export {
     flex-wrap: nowrap;
@@ -3943,11 +3943,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 24px;
-    padding: 0 7px;
+    height: --spacing(6);
+    padding: 0 --spacing(2);
     border: 1px solid var(--border);
     border-bottom-width: 2px;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     color: var(--muted-foreground);
     background: var(--muted);
     outline: none;
@@ -4079,20 +4079,20 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    padding: 4px;
+    gap: --spacing(1);
+    padding: --spacing(1);
     border: 2px dashed color-mix(in oklab, var(--media-foreground) 75%, transparent);
     background: color-mix(in oklab, var(--media) 30%, transparent);
     color: var(--media-foreground);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     text-align: center;
     text-shadow: var(--media-text-shadow);
     pointer-events: auto;
     cursor: default;
   }
   .editor-camera-ghost svg {
-    width: 20px;
-    height: 20px;
+    width: --spacing(5);
+    height: --spacing(5);
     filter: drop-shadow(var(--media-icon-shadow));
   }
   .editor-camera > video {
@@ -4107,7 +4107,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    padding: 4px;
+    padding: --spacing(1);
     color: var(--media-foreground);
     font-size: var(--text-xs);
     text-align: center;
@@ -4116,29 +4116,29 @@
      group apart: Skimming and the camera, the lanes, then Revert. */
   .editor-options {
     display: grid;
-    gap: 14px;
+    gap: --spacing(3);
     min-width: 260px;
     max-width: 320px;
   }
   .editor-options-note {
-    margin: 4px 0 0;
+    margin: --spacing(1) 0 0;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     white-space: normal;
   }
   .editor-options > * + * {
-    padding-top: 14px;
+    padding-top: --spacing(3);
     border-top: 1px solid var(--border);
   }
   /* Save a copy… (plan 100): the forms as a column of choices, each with the file it makes, then where it saves. */
   .editor-copy-forms {
     display: grid;
-    gap: 4px;
+    gap: --spacing(1);
   }
   .editor-copy-form {
     display: grid;
-    gap: 2px;
-    padding: 6px 8px;
+    gap: --spacing(0.5);
+    padding: --spacing(1.5) --spacing(2);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     text-align: start;
@@ -4175,14 +4175,14 @@
   /* The overall volumes' panel (2026-10-26): the two inputs under their heading, Reset small at the heading's end. */
   .editor-mix {
     display: grid;
-    gap: 4px;
+    gap: --spacing(1);
     min-width: 260px;
   }
   .editor-mix .editor-options-title-row {
-    margin: 0 0 4px;
+    margin: 0 0 --spacing(1);
   }
   #editor-mix-reset {
-    margin-inline-end: -6px;
+    margin-inline-end: --spacing(-1.5);
     color: var(--muted-foreground);
   }
   /* The export's toast (2026-10-26) over the stage's foot, inside the edit view rather than the window's corner. */
@@ -4192,7 +4192,7 @@
   .editor-scene-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: --spacing(3);
     white-space: nowrap;
   }
   .editor-scene-row > :first-child {
@@ -4200,14 +4200,14 @@
   }
   /* Version A (2026-10-26): every group of Options under one kind of small heading. */
   .editor-options-title {
-    margin: 0 0 6px;
+    margin: 0 0 --spacing(1.5);
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     white-space: nowrap;
   }
   .editor-options-title-row {
-    margin-top: 8px;
+    margin-top: --spacing(2);
   }
   .editor-options-title-row .editor-options-title {
     flex: none;
@@ -4227,8 +4227,8 @@
     outline: none;
   }
   .editor-options-info svg {
-    width: 14px;
-    height: 14px;
+    width: --spacing(3.5);
+    height: --spacing(3.5);
   }
   .editor-options-info:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
@@ -4238,14 +4238,14 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 12px;
+    gap: --spacing(1.5) --spacing(3);
   }
   .editor-options-revert .editor-options-note {
     margin: 0;
   }
   .editor-scene-reset {
     justify-self: start;
-    margin-inline-start: -8px;
+    margin-inline-start: --spacing(-2);
   }
   .editor-scene-value {
     min-width: 5ch;
@@ -4283,22 +4283,22 @@
   }
   .pc-top {
     top: 0;
-    padding: 14px 14px 40px 18px;
+    padding: --spacing(3) --spacing(3) --spacing(10) --spacing(5);
     background: var(--media-shade-top);
   }
   .pc-bottom {
     bottom: 0;
-    padding: 32px 12px 4px;
+    padding: --spacing(8) --spacing(3) --spacing(1);
     background: var(--media-shade-bottom);
   }
   .pc-heading-text {
     flex: 1;
     min-width: 0;
-    padding-top: 2px;
+    padding-top: --spacing(0.5);
     text-shadow: var(--media-text-shadow);
   }
   .pc-title {
-    font-size: 15px;
+    font-size: var(--text-base);
     font-weight: 600;
     letter-spacing: var(--tracking-normal);
     overflow: hidden;
@@ -4306,8 +4306,8 @@
     white-space: nowrap;
   }
   .pc-meta {
-    margin-top: 2px;
-    font-size: 12px;
+    margin-top: --spacing(0.5);
+    font-size: var(--text-2xs);
     opacity: 0.8;
     font-variant-numeric: tabular-nums;
     overflow: hidden;
@@ -4315,24 +4315,24 @@
     white-space: nowrap;
   }
   .pc-error {
-    margin-top: 6px;
-    font-size: 12px;
+    margin-top: --spacing(1.5);
+    font-size: var(--text-2xs);
     color: var(--media-error);
     text-shadow: none;
   }
   .pc-row {
     display: flex;
-    height: 42px;
+    height: --spacing(10.5);
     align-items: center;
-    gap: 2px;
+    gap: --spacing(0.5);
   }
   .pc-volume {
     display: flex;
     align-items: center;
   }
   .pc-time {
-    margin-left: 8px;
-    font-size: 12px;
+    margin-left: --spacing(2);
+    font-size: var(--text-2xs);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -4357,7 +4357,7 @@
   .pc-volume:focus-within .pc-level {
     opacity: 1;
     overflow: visible;
-    margin-inline: 2px 8px;
+    margin-inline: --spacing(0.5) --spacing(2);
   }
   .pc-idle,
   .pc-idle video {
@@ -4391,8 +4391,8 @@
     animation: media-bezel 0.5s linear forwards;
   }
   .pc-bezel svg {
-    width: 32px;
-    height: 32px;
+    width: --spacing(8);
+    height: --spacing(8);
   }
   .pc-bezel[data-kind="play"] svg,
   .pc-bezel[data-kind="pause"] svg {
@@ -4402,10 +4402,10 @@
     top: 10%;
     left: 50%;
     transform: translateX(-50%);
-    padding: 6px 14px;
+    padding: --spacing(1.5) --spacing(3);
     border-radius: var(--radius-sm);
     background: var(--media-veil);
-    font-size: 18px;
+    font-size: var(--text-lg);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     animation: media-hold 0.8s linear forwards;
@@ -4418,7 +4418,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: --spacing(1.5);
     background: var(--media-hover);
     animation: media-hold-seek 0.65s linear forwards;
   }
@@ -4452,7 +4452,7 @@
     animation-delay: 0.2s;
   }
   .pc-seek-label {
-    font-size: 15px;
+    font-size: var(--text-base);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     text-shadow: var(--media-text-shadow);
@@ -4485,24 +4485,24 @@
     object-fit: cover;
   }
   :root[data-surface="video"] .pc-top {
-    padding: 26px 28px 72px 32px;
+    padding: --spacing(6) --spacing(6) --spacing(18) --spacing(8);
   }
   :root[data-surface="video"] .pc-title {
-    font-size: 22px;
+    font-size: var(--text-2xl);
   }
   :root[data-surface="video"] .pc-bottom {
-    padding: 64px 24px 10px;
+    padding: --spacing(16) --spacing(6) --spacing(2.5);
   }
   :root[data-surface="video"] .pc-seek {
     --seek-padding: 8px;
   }
   :root[data-surface="video"] .pc-row {
     height: 60px;
-    gap: 6px;
+    gap: --spacing(1.5);
   }
   :root[data-surface="video"] .pc-time {
-    margin-left: 12px;
-    font-size: 16px;
+    margin-left: --spacing(3);
+    font-size: var(--text-base);
   }
   /* Loading or buffering (2026-10-25), as YouTube's: a white arc turning in the picture's middle. */
   .pc-spinner {

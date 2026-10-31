@@ -313,7 +313,7 @@ export function EditorDialog() {
         // The whole window but its margins, as the player's (2026-10-25, at the maintainer's request: a picture sized
         // to 16:9 over the panel left wide bands of the page either side): the panel at the foot, the stage taking the
         // rest of the height, the picture contained in it. A window too short for both scrolls.
-        className="editor flex h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] w-[calc(100vw-2*var(--dialog-margin))] max-w-none flex-col gap-0 overflow-y-auto rounded-[14px] p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
+        className="editor flex h-[calc(100dvh-2*var(--dialog-margin)-var(--dialog-top-reserve))] w-[calc(100vw-2*var(--dialog-margin))] max-w-none flex-col gap-0 overflow-y-auto rounded-xl p-0 shadow-player ring-0 sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
         data-id={item?.id}
         data-enlarged={model.enlarged || undefined}
         showCloseButton={false}
@@ -926,7 +926,7 @@ function EditorPanel() {
           <span key={note.at} className="editor-note-mark" style={{ left: `${(note.at / editor.seconds) * 100}%` }} aria-hidden="true" />
         ))}
         {/* Where the pointer skims (2026-10-25): thinner than the playhead and of the accent, so the two are told apart. */}
-        {model.skimAt !== undefined && <span className="editor-skimmer absolute top-0 bottom-0 z-[3] w-[1px] bg-primary pointer-events-none" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
+        {model.skimAt !== undefined && <span className="editor-skimmer absolute top-0 bottom-0 z-[3] w-px bg-primary pointer-events-none" style={{ left: percent(model.skimAt) }} aria-hidden="true" />}
         </div>
         {/* The camera's lane (2026-10-26): where the camera is in the picture, and where it is hidden, on the same
             time as the pictures above; a stretch is selected by a click, or by Enter on it. */}

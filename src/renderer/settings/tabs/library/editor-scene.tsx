@@ -358,7 +358,7 @@ function VolumeRow({ id, label, value, disabled, focusRing, set }: { id: string;
       <span aria-hidden="true">{label}</span>
       {/* A fixed width, as `.slider-setting`'s: in a shrink-to-fit row a percentage leaves the track no length, and the
           slider would never measure itself to show its thumb. */}
-      <span className="flex flex-none w-[140px]">
+      <span className="flex flex-none w-35">
         <Slider
           id={id}
           value={[volumeToFader(value)]}
@@ -679,7 +679,7 @@ function SelectionVolumeRow({ editor, input }: { editor: EditorView; input: Volu
           <Icon />
         </Button>
       </ControlTooltip>
-      <span className="flex flex-none w-[140px]">
+      <span className="flex flex-none w-35">
         <Slider
           id={`editor-volume-selection-${input}`}
           value={[volumeToFader(value)]}

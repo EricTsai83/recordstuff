@@ -188,7 +188,7 @@ export function PlayerDialog() {
         // 16:9), at least wide enough for its controls, black in both themes, below the title bar on macOS (ui.css
         // `.player`). The backdrop only darkens; ui.css blurs the page under it (#root), which costs nothing per frame.
         overlayClassName="bg-media-backdrop supports-backdrop-filter:backdrop-blur-none"
-        className="player rounded-[14px] shadow-player ring-0 max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
+        className="player rounded-xl shadow-player ring-0 max-w-none gap-0 overflow-hidden bg-media p-0 text-media-foreground sm:max-w-none top-[calc(50%+var(--dialog-top-reserve)/2)]"
         // Inline, so the dialog's own width utilities do not win over it.
         style={{ "--player-ratio": model.playerRatio, width: "var(--player-w)", height: "var(--player-h)" } as React.CSSProperties}
         data-id={item?.id}
