@@ -25,6 +25,7 @@ import { ScrollFades } from "../../../components/scroll-fades";
 import { useShownWhile } from "../../../lib/use-shown-while";
 import { stopPreview } from "../clip-preview";
 import { Button } from "../../../components/ui/button";
+import { ControlTooltip } from "../../../components/control-tooltip";
 import * as model from "../../settings-controller";
 
 export function ShareOverlay({ item }: { item: LibraryItemView }) {
@@ -156,6 +157,8 @@ function FileItem({ item, share, version, picked }: { item: LibraryItemView; sha
   const preparing = useShownWhile(version.state === "preparing", { since: version.since, cut: version.state === "failed" });
   // Made while still shown, it stays full for the rest of its time.
   const progress = version.state === "preparing" ? (version.progress ?? 0) : 1;
+  // No tooltip of its own (2026-11-01: the system's was the app's only one left): the picked file's name is the bar's,
+  // and the app's tooltip, opening on focus, would come up at every arrow and take the panel's Escape.
   return (
     <button
       type="button"
@@ -166,7 +169,6 @@ function FileItem({ item, share, version, picked }: { item: LibraryItemView; sha
       aria-label={`${version.label}, ${version.fileName}`}
       data-picked={picked || undefined}
       data-state={version.state}
-      title={version.fileName}
       draggable
       tabIndex={picked ? 0 : -1}
       onClick={(event) => {
@@ -188,7 +190,7 @@ function FileItem({ item, share, version, picked }: { item: LibraryItemView; sha
         {/* The corner says what the file is to you (picked) or that it could not be made; being prepared is a bar under
             the icon, as Finder draws a file still being copied, so a picked file keeps its check meanwhile. */}
         {version.state === "failed" ? (
-          <span className="share-mark share-mark-failed" title={share.labels.failed}>!</span>
+          <ControlTooltip label={share.labels.failed}><span className="share-mark share-mark-failed">!</span></ControlTooltip>
         ) : picked ? (
           <span className="share-mark share-mark-picked" aria-hidden="true"><Check strokeWidth={3} /></span>
         ) : null}
@@ -223,7 +225,7 @@ function PickedBar({ item, share, selected }: { item: LibraryItemView; share: Sh
   const busy = model.sharing?.busy === true;
   return (
     <>
-      <span className="share-picked-name" title={one?.fileName}>{one ? one.fileName : share.labels.selected.replace("{count}", String(selected.length))}</span>
+      <ControlTooltip label={one?.fileName} delay={1000}><span className="share-picked-name">{one ? one.fileName : share.labels.selected.replace("{count}", String(selected.length))}</span></ControlTooltip>
       <span className="share-picked-note" aria-live="polite">{note}</span>
       <Button variant="outline" size="sm" id={`share-${item.id}-copy`} disabled={busy || Boolean(failed)} onClick={() => void model.shareAction(item.id, "copy")}>
         <Copy />{share.labels.copy}
