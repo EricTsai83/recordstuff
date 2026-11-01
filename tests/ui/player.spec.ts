@@ -541,12 +541,12 @@ test("switching tabs from the keyboard ends a preview, or one waiting to start, 
   await page.keyboard.press("ArrowDown");
   await expect(page.locator("#tab-library")).toHaveAttribute("aria-selected", "false");
   await expect(previews).toHaveCount(0);
-  // Back on the tab, a rest that is interrupted by a switch within its 400 ms starts nothing on the hidden tab.
+  // Back on the tab, a rest that is interrupted by a switch within its 600 ms starts nothing on the hidden tab.
   await page.locator("#tab-library").click();
   await thumbs.nth(1).hover();
   await page.locator("#tab-library").focus();
   await page.keyboard.press("ArrowDown");
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(800);
   await expect(previews).toHaveCount(0);
 });
 

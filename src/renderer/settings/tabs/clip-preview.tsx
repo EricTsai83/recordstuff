@@ -11,8 +11,11 @@ import { useEffect, useRef, useState } from "react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { FramePeek, seeker, unload, type FramePeekHandle } from "../../player/frame-peek";
 
-/** How long the pointer rests on a picture before its preview starts, so a pass across the grid starts none. */
-const PREVIEW_DELAY_MS = 400;
+/**
+ * How long the pointer rests on a picture before its preview starts, so a pass across the grid starts none (400 ms
+ * until 2026-11-01, when the maintainer asked for a little longer).
+ */
+const PREVIEW_DELAY_MS = 600;
 
 let previewId: string | undefined,
   pendingId: string | undefined,
