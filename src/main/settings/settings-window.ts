@@ -678,12 +678,16 @@ export class SettingsWindow {
       : await this.options.act(action!) === true;
     const applied = dragged === true;
     const view = this.view();
-    // A Video not ready yet (plan 100, D1): the drag waits, and the page says why and what ⌥-drag gives meanwhile.
-    const item = typeof dragged === "object" && file ? view.library?.items.find((entry) => entry.id === file.id) : undefined;
-    const failure = typeof dragged === "object"
-      ? sentences([translate(dragged.problem === "preparing" ? "The video is still being prepared." : "The video could not be prepared. Drag again to retry.", view.language),
-        originalDragNote({ editable: Boolean(item?.editable), edited: Boolean(item?.edited) }, process.platform, view.language)], view.language)
-      : translate("Could not complete this action. Try again.", view.language);
+    // A Video not ready yet (plan 100, D1): the drag waits, and a toast says why, titled, with what ⌥-drag gives
+    // meanwhile under it (2026-11-01: a line kept over the recordings, and a scrim over the card's picture, before).
+    if (typeof dragged === "object") {
+      const item = file ? view.library?.items.find((entry) => entry.id === file.id) : undefined;
+      const note = originalDragNote({ editable: Boolean(item?.editable), edited: Boolean(item?.edited) }, process.platform, view.language);
+      return this.deliver({ view, applied: false,
+        failure: translate(dragged.problem === "preparing" ? "Video still being prepared" : "Video not prepared", view.language),
+        failureDetail: dragged.problem === "preparing" ? note : sentences([translate("Drag again to retry.", view.language), note], view.language) }, recipient);
+    }
+    const failure = translate("Could not complete this action. Try again.", view.language);
     return this.deliver({ view, applied, ...(applied ? {} : { failure }) }, recipient);
   }
 

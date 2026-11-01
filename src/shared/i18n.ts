@@ -751,10 +751,11 @@ export const ZH_TW = {
   "{title} - Camera": "{title} - 相機",
   "{title} - System audio": "{title} - 系統聲音",
   "{title} - Microphone": "{title} - 麥克風",
-  // A card's Video not ready (plan 100, D1), and what ⌥-drag gives meanwhile, said by what that file lacks rather than a
-  // name for it (2026-11-01, the maintainer's request: "the original" told a person nothing). {key} is Option or Alt.
-  "The video is still being prepared.": "影片還在準備中。",
-  "The video could not be prepared. Drag again to retry.": "無法準備影片，再拖曳一次可重試。",
+  // A drag refused because the card's Video is not ready (plan 100, D1), said in a toast (2026-11-01), with what ⌥-drag
+  // gives meanwhile by what that file lacks rather than a name for it ("the original" told a person nothing). {key} is
+  // Option or Alt.
+  "Video still being prepared": "影片還在準備中",
+  "Drag again to retry.": "再拖曳一次可重試。",
   "{key}-drag to give the file now, without your edits.": "按住 {key} 拖曳可先給出檔案，但不含你的剪輯。",
   "{key}-drag to give the file now, with the camera and each sound still separate.": "按住 {key} 拖曳可先給出檔案，但相機和各個聲音仍是分開的。",
   "{key}-drag to give the file now, without your edits and with the camera and each sound still separate.": "按住 {key} 拖曳可先給出檔案，但不含剪輯，相機和各個聲音也仍是分開的。",

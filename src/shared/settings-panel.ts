@@ -245,9 +245,10 @@ export interface LibraryItemView {
   edited?: string;
   /**
    * Plan 100: its Video while it is being prepared, or when it could not be, localized; absent when a drag gives it at
-   * once. A drag waits meanwhile (D1), and `hint` says what ⌥-drag gives meanwhile, by what that file lacks.
+   * once. A drag waits meanwhile (D1); the card draws a thin bar, `label` is read by assistive technology, and a refused
+   * drag's toast says what ⌥-drag gives (2026-11-01).
    */
-  preparing?: { state: "preparing" | "failed"; label: string; hint: string; progress?: number };
+  preparing?: { state: "preparing" | "failed"; label: string; progress?: number };
   /** Localized tooltip of the Editable mark: what an editable recording is and how to send it (plan 100). */
   editableHint?: string;
   /** Share… (plan 100 step 3): the versions this recording offers, localized, in the order they are shown. */
@@ -448,6 +449,8 @@ export interface SettingsChoiceResult {
   /** Whether the requested choice is the committed one now. */
   applied: boolean;
   failure?: string;
+  /** What to do about `failure`, said under it where it is a toast's title (a refused drag of a card, 2026-11-01). */
+  failureDetail?: string;
   /** Main refused the value itself (a reserved or invalid shortcut): nothing was saved and choosing it again fails the same way. */
   refused?: true;
   /** Share…: refused only because what it gives is still being prepared (a drag), not because it failed. */

@@ -491,7 +491,12 @@ export async function fileAction(
     const result = await window.settings.choose(`recordingFile:${id}`, action);
     if (result.applied && action === "trash") trashedCards.push(id);
     render(result.view);
-    if (!result.applied)
+    // A drag refused because its Video is not ready says why in a toast that leaves by itself, with what ⌥-drag gives
+    // under it, not in a line kept over the recordings (2026-11-01, the maintainer's request).
+    if (!result.applied && dragging && result.failure) {
+      announce(result.failureDetail ? `${result.failure}. ${result.failureDetail}` : result.failure);
+      showToast("notice", result.failure, result.failureDetail ?? "", 7000);
+    } else if (!result.applied)
       libraryError = view?.library?.items.some((item) => item.id === id)
         ? (failedText(result.failure))
         : text("This recording is no longer in the folder.");

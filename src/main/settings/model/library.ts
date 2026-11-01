@@ -6,19 +6,21 @@ import { formatBytes } from "../../../shared/quality";
 import { formatDuration } from "../../../shared/video-player";
 import type { LibraryItemView, LibraryView } from "../../../shared/settings-panel";
 import type { VideoState } from "../../sharing/sharing";
-import { MORE_VERSIONS, offeredVersions, originalDragNote, recordingTitle, versionName, type OriginalKind, type VersionKind, type VersionSubject } from "../../../shared/versions";
+import { MORE_VERSIONS, offeredVersions, recordingTitle, versionName, type VersionKind, type VersionSubject } from "../../../shared/versions";
 import type { ShareView } from "../../../shared/settings-panel";
 import { MEDIA_SCHEME } from "../../library/recordings-library";
 import { abbreviateHome, type AppContext } from "../../app/ui-model";
 import { type DateFormats, dayHeading, shortTime } from "./history";
 
-/** A card's Video while it is prepared or failed (plan 100), in the card's words. */
-function videoStateView(state: VideoState | undefined, language: AppContext["language"], platform: NodeJS.Platform | undefined, kind: OriginalKind): Pick<LibraryItemView, "preparing"> {
+/**
+ * A card's Video while it is prepared or failed (plan 100): a thin bar along its picture's foot, and these words read by
+ * assistive technology (2026-11-01: a scrim with words over the picture, before); a refused drag says the rest in a toast.
+ */
+function videoStateView(state: VideoState | undefined, language: AppContext["language"]): Pick<LibraryItemView, "preparing"> {
   if (!state) return {};
-  const hint = originalDragNote(kind, platform, language);
-  if (state.state === "failed") return { preparing: { state: "failed", label: t("Video not prepared", language), hint } };
+  if (state.state === "failed") return { preparing: { state: "failed", label: t("Video not prepared", language) } };
   const percent = Math.floor(state.progress * 100);
-  return { preparing: { state: "preparing", progress: state.progress, hint,
+  return { preparing: { state: "preparing", progress: state.progress,
     label: percent > 0 ? t("Preparing video… {percent}%", language, { percent }) : t("Preparing video…", language) } };
 }
 
@@ -120,8 +122,7 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         ...(file.folder === undefined ? {} : { folder: file.folder }),
         ...(file.editable ? { editable: t("Editable", language),
           editableHint: t("Keeps the camera and each sound apart, so you can still change them here or in RecordStuff on another Mac. Drag the card or use Share… to send it.", language) } : {}),
-        ...videoStateView(ctx.preparingVideos?.get(file.path), language, ctx.platform,
-          { editable: Boolean(file.editable), edited: ctx.editedRecordings?.get(file.path) === file.size }),
+        ...videoStateView(ctx.preparingVideos?.get(file.path), language),
         share: shareView({ fileName: file.name, edited: ctx.editedRecordings?.get(file.path) === file.size,
           // Without a camera, no Video without one; its description not read yet, the camera is taken to be there.
           ...(file.editable ? { editable: { camera: file.editableCamera ?? true, sounds: ["system", "microphone"], mix: true as const } } : {}) },

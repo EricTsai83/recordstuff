@@ -1721,14 +1721,11 @@ describe("the Recordings tab", () => {
     const items = settingsView(idle, { ...library({ files: marked }), preparingVideos: preparing, platform: "darwin" }).library!.items;
     // The mark says another Mac's RecordStuff edits the file too (2026-11-01).
     expect(items[0]).toMatchObject({ title: "Talk", name: "Talk.recordstuff.mp4", editableHint: expect.stringContaining("in RecordStuff on another Mac"),
-      preparing: { state: "preparing", progress: 0.4, label: "Preparing video… 40%", hint: "Option-drag to give the file now, with the camera and each sound still separate." } });
-    // ⌥-drag's note says what that file lacks, by what the recording is (2026-11-01): a plain one's Video waits only for its edit.
-    expect(items[1]!.preparing).toEqual({ state: "failed", label: "Video not prepared", hint: "Option-drag to give the file now, without your edits." });
+      preparing: { state: "preparing", progress: 0.4, label: "Preparing video… 40%" } });
+    // The card's state in words for assistive technology only; what ⌥-drag gives is a refused drag's toast's (2026-11-01).
+    expect(items[1]!.preparing).toEqual({ state: "failed", label: "Video not prepared" });
     const zh = settingsView(idle, { ...library({ files: marked }), preparingVideos: preparing, language: "zh-TW", platform: "win32" }).library!.items;
-    expect(zh[0]!.preparing).toMatchObject({ label: "正在準備影片… 40%", hint: "按住 Alt 拖曳可先給出檔案，但相機和各個聲音仍是分開的。" });
-    const edited = new Map([["/tmp/recordings/Talk.recordstuff.mp4", marked[0]!.size]]);
-    expect(settingsView(idle, { ...library({ files: marked }), preparingVideos: preparing, editedRecordings: edited, platform: "darwin" }).library!.items[0]!.preparing!.hint)
-      .toBe("Option-drag to give the file now, without your edits and with the camera and each sound still separate.");
+    expect(zh[0]!.preparing).toEqual({ state: "preparing", progress: 0.4, label: "正在準備影片… 40%" });
     expect(settingsView(idle, library({ files: marked })).library!.items.every(item => item.preparing === undefined)).toBe(true);
   });
   it("lists edits kept for recordings out of the tab, where they are and a way to remove them, only while there are any (plan 100)", () => {

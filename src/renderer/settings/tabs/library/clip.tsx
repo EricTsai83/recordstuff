@@ -141,15 +141,11 @@ export const Clip = memo(function Clip({
               {item.duration}
             </span>
             {preview && <ClipPreview item={item} sound={sound} />}
-            {item.preparing && (
-              <span className="clip-preparing" data-state={item.preparing.state}>
-                <span>{item.preparing.label}</span>
-                <span className="clip-preparing-hint">{item.preparing.hint}</span>
-                {item.preparing.state === "preparing" && (
-                  <span className="clip-preparing-bar" aria-hidden="true">
-                    <span style={{ width: `${Math.round((item.preparing.progress ?? 0) * 100)}%` }} />
-                  </span>
-                )}
+            {/* Its Video being prepared: a thin bar along the picture's foot, the picture left as it is (2026-11-01); the
+                card's name reads its state, and a refused drag says the rest in a toast. */}
+            {item.preparing?.state === "preparing" && (
+              <span className="clip-preparing-bar" aria-hidden="true">
+                <span style={{ width: `${Math.round((item.preparing.progress ?? 0) * 100)}%` }} />
               </span>
             )}
           </span>

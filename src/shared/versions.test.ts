@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasEditableMarker, offeredVersions, recordingTitle, sourceFiles, versionName, videoIsOriginal, type VersionSubject } from "./versions";
+import { hasEditableMarker, offeredVersions, originalDragNote, recordingTitle, sourceFiles, versionName, videoIsOriginal, type VersionSubject } from "./versions";
 
 const plain: VersionSubject = { fileName: "Meeting.mp4", edited: false };
 const cut: VersionSubject = { fileName: "Meeting.mp4", edited: true };
@@ -86,5 +86,15 @@ describe("a recording's sources (D7)", () => {
 
   it("has none for a plain recording", () => {
     expect(sourceFiles(cut)).toEqual([]);
+  });
+});
+
+describe("what ⌥-drag gives while the Video is prepared (plan 100, D1; 2026-11-01)", () => {
+  it("says what that file lacks beside the Video, never a name for it, with the platform's key", () => {
+    expect(originalDragNote({ editable: false, edited: true }, "darwin")).toBe("Option-drag to give the file now, without your edits.");
+    expect(originalDragNote({ editable: true, edited: false }, "darwin")).toBe("Option-drag to give the file now, with the camera and each sound still separate.");
+    expect(originalDragNote({ editable: true, edited: true }, "win32"))
+      .toBe("Alt-drag to give the file now, without your edits and with the camera and each sound still separate.");
+    expect(originalDragNote({ editable: true, edited: false }, "darwin", "zh-TW")).toBe("按住 Option 拖曳可先給出檔案，但相機和各個聲音仍是分開的。");
   });
 });
