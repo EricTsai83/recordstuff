@@ -12,7 +12,6 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { Keyboard, Maximize, Merge, Mic, MicOff, PanelBottomClose, PanelBottomOpen, Pause, Play, Redo2, RotateCcw, Scissors, Trash2, Undo2, Upload, UserRound, UserRoundX, Volume2, VolumeX, X } from "lucide-react";
-import { toast } from "sonner";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
 import type { EditorView, EditRange } from "../../../../shared/editing";
 import type { CopyForm } from "../../../../shared/provenance";
@@ -24,7 +23,18 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../
 import { Player } from "../../../player/player";
 import { Kbd } from "../../../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
-import { Toaster } from "../../../components/ui/sonner";
+import {
+  Toast,
+  ToastAction,
+  ToastContent,
+  ToastDescription,
+  ToastIcon,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  createToastManager,
+  useToastManager,
+} from "../../../components/ui/toast";
 import * as model from "../../settings-controller";
 import { EditorCamera, EditorOptions, OverallVolume, TOOL_HOVER, VolumeButton } from "./editor-scene";
 
@@ -79,8 +89,9 @@ function usePlaying(): boolean {
   return playing;
 }
 
-/** The export's toasts' own Sonner list, drawn inside the edit view: the page's sits under the dialog. */
+/** The export's toasts' own Base UI list (2026-11-01), drawn inside the edit view: the page's sits under the dialog. */
 const EXPORT_TOASTER = "editor-export";
+const exportToasts = createToastManager();
 
 /**
  * Says an export's outcome once it ends (2026-10-26, in place of words and buttons in the toolbar, the maintainer's
@@ -100,25 +111,23 @@ function useExportToast(): void {
       const name = outcome.name;
       // Beside the recording, a video the Recordings tab lists plays; anything else is shown in Finder (plan 100).
       const reveal = model.text(model.platform() === "darwin" ? "Show in Finder" : "Show in File Explorer");
-      toast(translate("Saved “{title}”", model.view?.language, { title: name.replace(/\.(mp4|m4a)$/i, "") }), {
-        toasterId: EXPORT_TOASTER,
+      exportToasts.add({
         id,
+        title: translate("Saved “{title}”", model.view?.language, { title: name.replace(/\.(mp4|m4a)$/i, "") }),
         description: outcome.playable ? model.text("Saved in the recording's folder.") : translate("Saved in {folder}.", model.view?.language, { folder: editor.copy?.folder ?? "" }),
-        duration: 8000,
-        className: "undo-toast editor-export-toast",
-        classNames: { title: "toast-title", description: "toast-description", actionButton: "toast-action" },
-        action: outcome.playable
-          ? { label: model.text("Play"), onClick: () => void model.playExport(name, editor.id) }
-          : { label: reveal, onClick: () => void model.revealExport() },
+        type: "success",
+        timeout: 8000,
+        actionProps: outcome.playable
+          ? { children: model.text("Play"), onClick: () => void model.playExport(name, editor.id) }
+          : { children: reveal, onClick: () => void model.revealExport() },
       });
     } else {
-      toast(model.text("The copy could not be saved"), {
-        toasterId: EXPORT_TOASTER,
+      exportToasts.add({
         id,
+        title: model.text("The copy could not be saved"),
         description: outcome.message,
-        duration: model.PROBLEM_TOAST_MS,
-        className: "undo-toast editor-export-toast",
-        classNames: { title: "toast-title", description: "toast-description" },
+        type: "error",
+        timeout: model.PROBLEM_TOAST_MS,
       });
     }
     model.announce(outcome.message);
@@ -127,7 +136,38 @@ function useExportToast(): void {
   const open = Boolean(model.editingItem);
   const shown = useRef<string | undefined>(undefined);
   if (editor) shown.current = `${EXPORT_TOASTER}-${editor.id}`;
-  useEffect(() => { if (!open && shown.current) toast.dismiss(shown.current); }, [open]);
+  useEffect(() => { if (!open && shown.current) exportToasts.close(shown.current); }, [open]);
+}
+
+/** The edit view's toast list, over the stage's foot, above the timeline's controls when enlarged. */
+function ExportToaster() {
+  return (
+    <ToastProvider toastManager={exportToasts} limit={1}>
+      {/* Not portalled: inside the dialog, so the dialog neither covers it nor takes its clicks as outside. */}
+      <ToastViewport
+        aria-live="off"
+        aria-label={model.text("Notifications")}
+        className={`absolute inset-x-auto right-3 sm:right-3 w-[min(24rem,calc(100%-24px))] sm:w-[min(24rem,calc(100%-24px))] ${model.enlarged ? "bottom-21" : "bottom-14"}`}
+      >
+        <ExportToasts />
+      </ToastViewport>
+    </ToastProvider>
+  );
+}
+function ExportToasts() {
+  const { toasts } = useToastManager();
+  return toasts.map((item) => (
+    <Toast key={item.id} toast={item} className="undo-toast editor-export-toast" inert={item.transitionStatus === "ending" || undefined}>
+      <ToastContent className="items-start">
+        <ToastIcon type={item.type} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <ToastTitle className="toast-title" />
+          <ToastDescription className="toast-description" />
+        </div>
+        <ToastAction className="toast-action" />
+      </ToastContent>
+    </Toast>
+  ));
 }
 
 /** Resolves once `media` fires `event`, or rejects after `ms`: a picture the strip waits for never holds it up for long. */
@@ -378,9 +418,8 @@ export function EditorDialog() {
           {item && editor?.state === "ready" && editor.editable && <EditorCamera editor={editor} />}
           {item && !model.enlarged && <div className="editor-view-buttons">{viewButtons}</div>}
           {/* Over the stage's foot, inside the dialog, so the dialog neither covers it nor takes its clicks as outside.
-              Only while the view is open: a second Sonner list drawn the rest of the time held the page's Trash toast
-              open after the pointer left it. */}
-          {model.editingItem && <Toaster id={EXPORT_TOASTER} hotkey={[]} position="bottom-right" visibleToasts={1} offset={{ bottom: model.enlarged ? 84 : 56, right: 12 }} />}
+              Only while the view is open, its own Base UI list. */}
+          {model.editingItem && <ExportToaster />}
         </div>
         {item && <EditorPanel />}
         <p id="editor-feedback" className="sr-only" role="status" aria-live="polite">

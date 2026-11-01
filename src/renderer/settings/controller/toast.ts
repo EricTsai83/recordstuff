@@ -1,13 +1,21 @@
 /**
- * The Trash/Restored toast, and the notice a category action leaves (2026-10-09): its timer pauses while the pointer or
- * focus is on it; Sonner animates it out. Only "trashed" offers Undo.
+ * The page's toasts, Base UI's (2026-11-01, at the maintainer's request; Sonner's before). The controller's own: the
+ * Trash/Restored toast and the notices a category action or a refused drag leave, whose timer pauses while the pointer
+ * or focus is on it. And a refused drag's Video being prepared: a promise toast showing how far it is until it is ready
+ * or could not be made, which can be sent to the background meanwhile. Only "trashed" offers Undo.
  */
+import { Toast } from "@base-ui/react/toast";
 import { sentences } from "../../../shared/i18n";
 import { announce, draw, focus, selectedTab, text, view } from "./core";
+
+/** The page's toast manager: ToastHost draws what it holds. */
+export const pageToasts = Toast.createToastManager();
 
 export let toastState:
   | {
       kind: "trashed" | "restored" | "notice";
+      /** shadcn's icon: a check for what was done, an octagon for what went wrong; none for the Trash's toasts. */
+      type?: "success" | "error" | undefined;
       title: string;
       description: string;
       open: boolean;
@@ -17,11 +25,6 @@ export let toastState:
       focus: boolean;
       /** Which time it opened: "Restored" over an open toast keeps it, a toast after a closed one takes the next. */
       show: number;
-      /**
-       * A refused drag's recording whose Video is being prepared: the toast shows how far it is and stays until it is
-       * ready or could not be made, then says so (2026-11-01, at the maintainer's request, instead of a bar on the card).
-       */
-      watch?: { id: string; note: string } | undefined;
     }
   | undefined;
 /**
@@ -30,17 +33,25 @@ export let toastState:
  * confirms keeps its own shorter time.
  */
 export const PROBLEM_TOAST_MS = 12_000;
+/**
+ * While Undo restores, the push that drops the trash leaves its toast for "Restored" to take in place (Base UI would
+ * otherwise slide it out and bring Restored in as another).
+ */
+export let restoring = false;
+export const setRestoring = (on: boolean): void => {
+  restoring = on;
+};
 let toastShows = 0;
-/** The toast on screen: Sonner's (undo-toast.tsx), not one still sliding out. */
+/** The controller's toast on screen (undo-toast.tsx), not one leaving. */
 export const toastNode = (): HTMLElement | null =>
-  document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+  document.querySelector<HTMLElement>('.undo-toast[data-controlled]:not([data-ending-style])');
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function showToast(
   kind: "trashed" | "restored" | "notice",
   title: string,
   description: string,
   ms: number,
-  watch?: { id: string; note: string },
+  type?: "success" | "error",
 ): void {
   clearTimeout(toastTimer);
   const node = toastNode();
@@ -55,42 +66,75 @@ export function showToast(
     open: true,
     remaining: ms,
     started: Date.now(),
-    pointer: node?.matches(":hover") === true,
+    // The pointer on the toast this one replaces, leaving or not, is on this one: it opens in the same place.
+    pointer: document.querySelector<HTMLElement>(".undo-toast[data-controlled]")?.matches(":hover") === true,
     focus: kind !== "notice" && focused,
     show: toastState?.open ? toastState.show : ++toastShows,
-    watch,
+    type,
   };
   draw();
   resumeToast();
 }
 /** How long the toast that says a watched Video is ready stays. */
 const READY_TOAST_MS = 5000;
+type Watch = { id: string; toast: string; note: string; settle: (failed: boolean) => void; closed: boolean };
+/** Refused drags' recordings whose Video is being prepared, by recording. */
+const watches = new Map<string, Watch>();
+let watchCount = 0;
+const readyTitle = (): string => text("Done combining. Drag it again to copy.");
+const failedTitle = (): string => text("Can't copy: video and sound could not be combined");
+const failedNote = (note: string): string => sentences([text("Drag again to retry."), note], view?.language);
+
 /**
- * After each push: a watched Video still being prepared keeps the toast (its host draws the progress); ready, the toast
- * says it can be dragged now; failed, it says so with the way to retry; a recording gone takes the toast with it.
+ * A drag refused while its Video is being prepared (2026-11-01, at the maintainer's request: Base UI's promise toast,
+ * with how far it is in a ring). It stays while the Video is prepared, then says it is ready or could not be made; its
+ * Continue in background closes it, and the Video goes on, a toast of the controller's saying when it is done. A drag
+ * of a recording whose toast is still on screen leaves that toast as it is.
+ */
+export function watchVideo(id: string, title: string, note: string): void {
+  if (watches.get(id)?.closed === false) return;
+  let settle: (failed: boolean) => void = () => {};
+  const done = new Promise<void>((resolve, reject) => {
+    settle = (failed) => (failed ? reject(new Error("not prepared")) : resolve());
+  });
+  const watch: Watch = { id, toast: `recordstuff-video-${++watchCount}`, note, settle, closed: false };
+  watches.set(id, watch);
+  void pageToasts
+    .promise(done, {
+      // Base UI's own id for the toast, so a recording gone can take it away; its loading options pass it to the toast.
+      loading: { id: watch.toast, title, description: note, data: { watch: id }, onClose: () => { watch.closed = true; } } as never,
+      success: { title: readyTitle(), description: "", timeout: READY_TOAST_MS },
+      error: { title: failedTitle(), description: failedNote(note), timeout: PROBLEM_TOAST_MS },
+    })
+    .catch(() => {});
+}
+/** Continue in background: the toast goes, the Video goes on. */
+export function backgroundVideo(toastId: string): void {
+  pageToasts.close(toastId);
+}
+/**
+ * After each push: a watched Video no longer being prepared settles its promise toast (ready, or could not be made); one
+ * sent to the background says the same in a toast of the controller's; a recording gone takes its toast with it.
  */
 export function followToast(): void {
-  const watch = toastState?.open ? toastState.watch : undefined;
-  if (!toastState || !watch) return;
-  const item = view?.library?.items.find((entry) => entry.id === watch.id);
-  if (item?.preparing?.state === "preparing") return;
-  toastState.watch = undefined;
-  if (!item) {
-    dismissToast();
-    return;
+  for (const watch of [...watches.values()]) {
+    const item = view?.library?.items.find((entry) => entry.id === watch.id);
+    if (item?.preparing?.state === "preparing") continue;
+    watches.delete(watch.id);
+    if (!item) {
+      if (!watch.closed) pageToasts.close(watch.toast);
+      continue;
+    }
+    const failed = item.preparing?.state === "failed";
+    const title = failed ? failedTitle() : readyTitle(), description = failed ? failedNote(watch.note) : "";
+    announce(description ? `${title}. ${description}` : title);
+    if (watch.closed) showToast("notice", title, description, failed ? PROBLEM_TOAST_MS : READY_TOAST_MS, failed ? "error" : "success");
+    else watch.settle(failed);
   }
-  const failed = item.preparing?.state === "failed";
-  toastState.title = text(failed ? "Can't copy: video and sound could not be combined" : "Done combining. Drag it again to copy.");
-  toastState.description = failed ? sentences([text("Drag again to retry."), watch.note], view?.language) : "";
-  toastState.remaining = failed ? PROBLEM_TOAST_MS : READY_TOAST_MS;
-  announce(toastState.description ? `${toastState.title}. ${toastState.description}` : toastState.title);
-  draw();
-  resumeToast();
 }
 function resumeToast(): void {
   clearTimeout(toastTimer);
-  // A watched Video keeps the toast until it is ready (followToast).
-  if (!toastState?.open || toastState.pointer || toastState.focus || toastState.watch) return;
+  if (!toastState?.open || toastState.pointer || toastState.focus) return;
   toastState.started = Date.now();
   toastTimer = setTimeout(dismissToast, toastState.remaining);
 }

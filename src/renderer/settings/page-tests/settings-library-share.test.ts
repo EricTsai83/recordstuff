@@ -46,7 +46,7 @@ it("drags the Video or the original, and a drag refused while the Video is prepa
   // A drag waits for the Video, and a toast says why, how far it is and what ⌥-drag copies; no line is kept over the
   // recordings.
   dragStart(document.querySelector("#clip-a")!, false);
-  const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+  const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-ending-style])');
   await vi.waitFor(() => expect(toast()?.querySelector(".toast-title")?.textContent).toBe("Can't copy while still combining video and sound"));
   expect(toast()!.querySelector(".toast-description")!.textContent).toContain("To copy the multitrack original, Option-drag. Ordinary players may not play it.");
   expect(toast()!.querySelector('[role="progressbar"]')!.getAttribute("aria-valuenow")).toBe("40");
@@ -55,6 +55,11 @@ it("drags the Video or the original, and a drag refused while the Video is prepa
   progress = 0.7;
   push(view());
   await vi.waitFor(() => expect(toast()?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("70"));
+  // Continue in background closes it while the Video goes on; a toast says when it is ready (below).
+  const keepGoing = toast()!.querySelector<HTMLButtonElement>(".toast-action")!;
+  expect(keepGoing.textContent).toBe("Continue in background");
+  keepGoing.click();
+  await vi.waitFor(() => expect(toast()).toBeNull());
 
   // Let go on the card, the refused drag is not a click too: the player stays closed (2026-11-01: it opened). A press
   // that is only a click, after it, plays the recording.
@@ -72,7 +77,7 @@ it("drags the Video or the original, and a drag refused while the Video is prepa
   dragStart(document.querySelector("#clip-a")!, true);
   await vi.waitFor(() => expect(sent.at(-1)).toEqual(["recordingFile:a", "dragOriginal"]));
 
-  // Prepared, the toast that waited says it can be dragged now, and a drag gives the Video.
+  // Prepared, a toast says it can be dragged now, though its first was sent to the background, and a drag gives the Video.
   preparing = false;
   push(view());
   await vi.waitFor(() => expect(toast()?.querySelector(".toast-title")?.textContent).toBe("Done combining. Drag it again to copy."));

@@ -55,8 +55,8 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   expect(document.querySelector("#clip-a .clip-detail")!.textContent).toBe("2:02 PM · 1:23 · 180 MB");
 
   // Move to Trash: the card leaves, the toast offers Undo with its ⌘Z, and the toast's Undo brings it back with the focus it had.
-  // The toast is Sonner's own (2026-10-07): the one on screen, not one still sliding out; "closed" once it has gone.
-  const toastOf = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+  // The toast is Base UI's (2026-11-01): the one on screen, not one still leaving; "closed" once it has gone.
+  const toastOf = () => document.querySelector<HTMLElement>('.undo-toast:not([data-ending-style])');
   const toastState = () => (toastOf() ? "open" : "closed");
   const trash = async (id: string): Promise<void> => {
     await menu(document.getElementById(`clip-${id}-more`)!);
@@ -105,7 +105,7 @@ it("switches layout, brings back a trashed recording, and renames one in place",
   await trash("a");
   current = view({ items: [items[1]!] }, ++revision);
   push(current);
-  // Sonner slides it out on its next frame.
+  // Base UI lets it out once its exit ends.
   await vi.waitFor(() => expect(toastState()).toBe("closed"));
   current = view({ items }, ++revision);
   push(current);

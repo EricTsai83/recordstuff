@@ -220,7 +220,7 @@ it("opens on the remembered category, selects, favorites, makes, renames and del
   key(document.activeElement as HTMLElement, "Escape");
   // Delete category: one with recordings says why in a toast that leaves by itself, never a line that stays (2026-10-09);
   // the category and its recordings stay.
-  const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+  const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-ending-style])');
   await settingsItem("library-category-delete");
   await vi.waitFor(() => expect([toast()?.querySelector(".toast-title")?.textContent, toast()?.querySelector(".toast-description")?.textContent])
     .toEqual(["Could not delete “Final”", "“Final” still holds 2 recordings. Move them to another category or to the Trash first."]));

@@ -14,9 +14,9 @@ test.beforeEach(async ({ launchView }) => {
   await expect(page.getByRole("tab", { name: "Recordings", exact: true })).toBeVisible();
 });
 const setView = (view: SettingsView): Promise<void> => host.evaluate((h, next) => h.setView(next), view);
-/** The live zoom notice: Sonner's current toast holding the zoom control group (a leaving copy is inert). */
+/** The live zoom notice: Base UI's current toast holding the zoom control group (a leaving copy is inert). */
 const zoomNotice = (): Locator =>
-  page.locator('[data-sonner-toast]:not([data-removed="true"]):not([inert])').filter({ has: page.getByRole("group") });
+  page.locator('[data-slot="toast"]:not([data-ending-style]):not([inert])').filter({ has: page.getByRole("group") });
 /** Waits until an entering element stops moving, whatever its entrance animation. */
 const settled = (target: Locator): Promise<void> => expect.poll(async () => {
   const before = await target.boundingBox();
@@ -46,7 +46,7 @@ test("zoom notification reflects applied zoom and dismisses automatically withou
   await page.clock.pauseAt(new Date("2026-10-08T12:01:00Z"));
   const advance = async (ms: number) => {
     await page.clock.runFor(ms);
-    // Sonner publishes the hook's presence changes with a zero-delay timer.
+    // The hook's presence changes reach the toast list after a zero-delay timer.
     await page.clock.runFor(1);
   };
   await tab.focus();
@@ -55,9 +55,9 @@ test("zoom notification reflects applied zoom and dismisses automatically withou
   const notice = zoomNotice();
   await expect(notice).toContainText("110%");
   await expect(tab).toBeFocused();
-  // Mounted starts Sonner's entrance; wait for the toast to stop moving before hovering.
+  // Base UI marks the entrance's first frame; wait for the toast to stop moving before hovering.
   // During entrance the toast can still be above the window, over the macOS drag strip.
-  await expect(notice).toHaveAttribute("data-mounted", "true");
+  await expect(notice).not.toHaveAttribute("data-starting-style");
   await settled(notice);
   await notice.hover();
   await advance(1700);
@@ -138,7 +138,7 @@ for (const language of ["en", "zh-TW"] as const) {
         if (target === 0.8) { h.zoom("out"); h.zoom("out"); }
         if (target === 1.5) { h.zoom("in"); h.zoom("in"); h.zoom("in"); }
       }, factor);
-      // Sonner publishes the hook's presence changes with a zero-delay timer, set only once React has committed the
+      // The toast list takes the hook's presence changes with a zero-delay timer, set only once React has committed the
       // notice: the paused clock is moved on until it shows, as a window that collapses its sidebar on the resize above
       // may commit after the first step.
       await page.clock.runFor(50);

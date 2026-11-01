@@ -36,10 +36,10 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
       click(document.getElementById("clip-menu-trash")!);
       await vi.advanceTimersByTimeAsync(0);
     };
-    // The toast is Sonner's own (2026-10-07): the controller says whether it is open, and the page whether one is still on
-    // screen (Sonner slides a dismissed one out over a frame and 200 ms, then removes it).
+    // The toast is Base UI's (2026-11-01; Sonner's from 2026-10-07): the controller says whether it is open, and the page
+    // whether one is still on screen.
     const ctl = await import("../settings-controller");
-    const live = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
+    const live = () => document.querySelector<HTMLElement>('.undo-toast:not([data-ending-style])');
     const state = () => [ctl.toastState?.open ? "open" : "closed", !live()];
     await trash("a");
     expect(state()).toEqual(["open", false]);
@@ -55,7 +55,7 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     expect(state()).toEqual(["open", false]);
     await vi.advanceTimersByTimeAsync(100);
     expect(state()[0]).toBe("closed");
-    // Gone once Sonner has slid it out (a frame, then its 200 ms), stepped so React's effects run between the timers.
+    // Gone once Base UI has let it out, stepped so React's effects run between the timers.
     for (let step = 0; step < 4; step++) await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["closed", true]);
 
@@ -112,16 +112,18 @@ it("leaves after 8 s unless the pointer or focus holds it, and says Restored for
     document.getElementById("tab-library")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     for (let step = 0; step < 2; step++) await vi.advanceTimersByTimeAsync(50);
     await trash("b");
-    // The one leaving still says what it said, and the new one is the toast on screen.
-    const cards = [...document.querySelectorAll<HTMLElement>(".undo-toast")].map(card => [card.getAttribute("data-removed") === "true" ? "leaving" : "live", card.querySelector(".toast-description")!.textContent]);
-    expect(cards).toEqual(expect.arrayContaining([["leaving", "a.mp4"], ["live", "b.mp4"]]));
+    // The new one is the toast on screen; one still leaving (Base UI removes it once its animation ends) still says
+    // what it said.
+    const cards = [...document.querySelectorAll<HTMLElement>(".undo-toast")].map(card => [card.hasAttribute("data-ending-style") ? "leaving" : "live", card.querySelector(".toast-description")!.textContent]);
+    expect(cards.filter(([kind]) => kind === "live")).toEqual([["live", "b.mp4"]]);
+    expect(cards.filter(([kind]) => kind === "leaving").every(([, said]) => said === "a.mp4")).toBe(true);
     // The one leaving cannot be reached, so its Undo cannot act on the newer trash.
-    expect([...document.querySelectorAll<HTMLElement>('.undo-toast[data-removed="true"]')].every(card => card.inert)).toBe(true);
+    expect([...document.querySelectorAll<HTMLElement>('.undo-toast[data-ending-style]')].every(card => card.inert)).toBe(true);
     for (let step = 0; step < 10; step++) await vi.advanceTimersByTimeAsync(100);
     expect(state()).toEqual(["open", false]);
     expect(live()!.querySelector(".toast-description")!.textContent).toBe("b.mp4");
     // No close button is drawn; Escape from inside the toast returns focus to the tab,
-    // not to where Sonner saw focus come from (review of 2026-10-07).
+    // not to where the toast list saw focus come from (review of 2026-10-07).
     expect(live()!.querySelector('[data-close-button="true"]')).toBeNull();
     document.getElementById("clip-a-open")?.focus();
     live()!.querySelector<HTMLElement>(".toast-action")!.focus();

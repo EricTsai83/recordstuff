@@ -760,6 +760,7 @@ export const ZH_TW = {
   // The refused drag's toast while it waits (2026-11-01): how far the Video is, then that it can be dragged now.
   "Combining": "合成進度",
   "Done combining. Drag it again to copy.": "合成完成，可以拖曳複製了",
+  "Continue in background": "在背景繼續",
   "To copy the unedited original, {key}-drag.": "如果想要複製未剪輯的原始檔，可以按住 {key} 拖曳。",
   "To copy the multitrack original, {key}-drag. Ordinary players may not play it.": "如果想要複製多軌原始檔，可以按住 {key} 拖曳，但原始檔可能無法在一般播放器播放。",
   "To copy the multitrack original, without your edits, {key}-drag. Ordinary players may not play it.": "如果想要複製多軌原始檔（不含剪輯），可以按住 {key} 拖曳，但原始檔可能無法在一般播放器播放。",

@@ -19,7 +19,7 @@ import {
   view,
 } from "./core";
 import { playingItem } from "./player";
-import { PROBLEM_TOAST_MS, showToast, toastNode } from "./toast";
+import { PROBLEM_TOAST_MS, setRestoring, showToast, toastNode, watchVideo } from "./toast";
 
 export let libraryError: string | undefined;
 /** A way out beside `libraryError` (plan 100), only while that error is the one it came with. */
@@ -497,8 +497,8 @@ export async function fileAction(
     if (!result.applied && dragging && result.failure) {
       announce(result.failureDetail ? `${result.failure}. ${result.failureDetail}` : result.failure);
       const waiting = view?.library?.items.find((item) => item.id === id)?.preparing?.state === "preparing";
-      showToast("notice", result.failure, result.failureDetail ?? "", PROBLEM_TOAST_MS,
-        waiting ? { id, note: result.failureDetail ?? "" } : undefined);
+      if (waiting) watchVideo(id, result.failure, result.failureDetail ?? "");
+      else showToast("notice", result.failure, result.failureDetail ?? "", PROBLEM_TOAST_MS, "error");
     } else if (!result.applied)
       libraryError = view?.library?.items.some((item) => item.id === id)
         ? (failedText(result.failure))
@@ -529,7 +529,9 @@ export async function undoTrash(): Promise<void> {
   const fromToast = toastNode()?.contains(document.activeElement);
   try {
     const result = await window.settings.choose("library", "undoTrash");
+    setRestoring(result.applied);
     render(result.view);
+    setRestoring(false);
     if (!result.applied) {
       announce(
         failedText(result.failure),
@@ -540,7 +542,7 @@ export async function undoTrash(): Promise<void> {
       translate("Restored {name}", view?.language, { name: trashed.name }),
     );
     const id = trashedCards.pop();
-    showToast("restored", text("Restored"), trashed.name, 3000);
+    showToast("restored", text("Restored"), trashed.name, 3000, "success");
     if (
       document.hasFocus() &&
       (fromToast ||
@@ -682,7 +684,7 @@ export async function removeFolder(folder: string): Promise<void> {
     if (result.applied) {
       if (shownFolder?.folder === folder) shownFolder = undefined;
       announce(translate(platform() === "darwin" ? "Moved {name} to the Trash." : "Moved {name} to the Recycle Bin.", view?.language, { name: folder }));
-      showToast("notice", trash, folder, 5000);
+      showToast("notice", trash, folder, 5000, "success");
       focus("library-category");
     } else {
       // Said in a toast that leaves by itself, not a line that stays over the recordings (2026-10-09). A category that
@@ -696,7 +698,7 @@ export async function removeFolder(folder: string): Promise<void> {
         : (failedText(result.failure));
       const title = translate("Could not delete “{name}”", view?.language, { name: folder });
       announce(sentences([title, why], view?.language));
-      showToast("notice", title, why, PROBLEM_TOAST_MS);
+      showToast("notice", title, why, PROBLEM_TOAST_MS, "error");
     }
   } finally {
     folderPending = false;
@@ -720,5 +722,5 @@ export async function favorite(folder: string, on: boolean): Promise<void> {
 function failFavorite(failure: string | undefined): void {
   const title = text("Could not update favorites"), why = failedText(failure);
   announce(sentences([title, why], view?.language));
-  showToast("notice", title, why, PROBLEM_TOAST_MS);
+  showToast("notice", title, why, PROBLEM_TOAST_MS, "error");
 }

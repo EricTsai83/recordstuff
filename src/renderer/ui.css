@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "sonner/dist/styles.css";
 
 /* Bundled variable fonts: loading never depends on an installed font or a network connection. */
 @font-face {
@@ -4307,20 +4306,11 @@
     margin-inline-end: --spacing(-1.5);
     color: var(--muted-foreground);
   }
-  /* A refused drag's toast while its Video is prepared (2026-11-01): how far, above what ⌥-drag copies meanwhile. */
-  .toast-progress {
-    margin-block: --spacing(1.5) --spacing(2);
-    gap: --spacing(1) --spacing(3);
-  }
   /* A toast's description breaks Chinese only at its punctuation and spaces, so a word such as 原始檔 or 拖曳 is never cut
      across two lines (2026-11-01); a run too long for a line still breaks anywhere. English is unaffected. */
   .toast-description {
     word-break: keep-all;
     overflow-wrap: anywhere;
-  }
-  /* The export's toast (2026-10-26) over the stage's foot, inside the edit view rather than the window's corner. */
-  .editor-stage [data-sonner-toaster] {
-    position: absolute !important;
   }
   .editor-scene-row {
     display: flex;

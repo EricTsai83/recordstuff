@@ -1,6 +1,5 @@
-/** Sonner owns placement and presence; the hook owns zoom and its interaction deadlines. */
+/** Base UI owns placement and presence (2026-11-01; Sonner before); the hook owns zoom and its interaction deadlines. */
 import { useCallback, useEffect, useId, useRef, type RefObject } from "react";
-import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 import type {
   SettingsZoom,
@@ -8,68 +7,74 @@ import type {
 } from "../../shared/settings-panel";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
-import { Toaster } from "../components/ui/sonner";
+import { Toast, ToastPortal, ToastProvider, ToastViewport, createToastManager, useToastManager } from "../components/ui/toast";
 import { useZoomNotice } from "./use-zoom-notice";
 import * as model from "./settings-controller";
 
+const zoomToasts = createToastManager();
+
 export function ZoomToast() {
   const instance = useId();
-  const { notice, failed, card, dismiss, change, setPointer, setFocused } =
-    useZoomNotice();
+  const zoom = useZoomNotice();
+  const { notice } = zoom;
   const shown = useRef<string | undefined>(undefined),
     sequence = useRef(0);
   useEffect(() => {
     if (notice) {
-      shown.current ??= `recordstuff-zoom-${instance}-${++sequence.current}`;
-      toast.custom(
-        () => (
-          <ZoomNotice
-            zoom={notice.zoom}
-            failed={failed}
-            card={card}
-            dismiss={dismiss}
-            change={change}
-            holdPointer={setPointer}
-            holdFocus={setFocused}
-          />
-        ),
-        {
-          id: shown.current,
-          toasterId: "recordstuff-zoom",
-          duration: Infinity,
-          dismissible: false,
-          className: "zoom-notice",
-          style: { width: "max-content", maxWidth: "calc(100vw - 32px)" },
-        },
-      );
+      if (!shown.current) {
+        shown.current = `recordstuff-zoom-${instance}-${++sequence.current}`;
+        zoomToasts.add({ id: shown.current, timeout: 0 });
+      }
     } else if (shown.current) {
-      // The departing copy stays for Sonner's exit animation, but cannot receive another operation.
-      const item = card.current?.closest<HTMLElement>("[data-sonner-toast]");
-      if (item) item.inert = true;
-      toast.dismiss(shown.current);
+      zoomToasts.close(shown.current);
       shown.current = undefined;
     }
-  }, [notice, failed, card, dismiss, change, setPointer, setFocused, instance]);
+  }, [notice, instance]);
   useEffect(
     () => () => {
-      if (shown.current) toast.dismiss(shown.current);
+      if (shown.current) zoomToasts.close(shown.current);
     },
     [],
   );
   return (
-    <Toaster
-      id="recordstuff-zoom"
-      position="top-right"
-      offset={16}
-      mobileOffset={16}
-      hotkey={[]}
-      visibleToasts={1}
-      style={{ zIndex: 60 }}
-      ref={(node) => {
-        node?.setAttribute("aria-live", "off");
-      }}
-    />
+    <ToastProvider toastManager={zoomToasts} limit={1}>
+      <ToastPortal>
+        <ToastViewport aria-live="off" aria-label={model.text("Zoom")} className="inset-x-auto top-4 right-4 bottom-auto left-auto z-60 w-max sm:right-4 sm:w-max">
+          <ZoomToasts zoom={zoom} />
+        </ToastViewport>
+      </ToastPortal>
+    </ToastProvider>
   );
+}
+
+/** The notice, from the top: the live one draws the hook's state; a departing copy keeps its last and takes no input. */
+function ZoomToasts({ zoom }: { zoom: ReturnType<typeof useZoomNotice> }) {
+  const { toasts } = useToastManager();
+  const last = useRef(zoom.notice);
+  if (zoom.notice) last.current = zoom.notice;
+  return toasts.map((item) => {
+    const leaving = item.transitionStatus === "ending";
+    const notice = leaving ? last.current : zoom.notice ?? last.current;
+    if (!notice) return null;
+    return (
+      <Toast
+        key={item.id}
+        toast={item}
+        className="zoom-notice top-0 bottom-auto w-max max-w-[calc(100vw-32px)] origin-top border-0 bg-transparent shadow-none data-starting-style:[transform:translateY(-150%)] [&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(-150%)]"
+        inert={leaving || undefined}
+      >
+        <ZoomNotice
+          zoom={notice.zoom}
+          failed={zoom.failed}
+          card={zoom.card}
+          dismiss={zoom.dismiss}
+          change={zoom.change}
+          holdPointer={zoom.setPointer}
+          holdFocus={zoom.setFocused}
+        />
+      </Toast>
+    );
+  });
 }
 
 function ZoomNotice({

@@ -1,8 +1,8 @@
 /**
- * The undo toast drawn by Sonner (2026-10-07), on the production main and page (hosts/app-host.ts) with Playwright's
- * keyboard and pointer: moving a recording to the Trash shows Sonner's toast with Undo and its shortcut, a Tab from
+ * The undo toast drawn by Base UI (2026-11-01; Sonner from 2026-10-07), on the production main and page (hosts/app-host.ts) with Playwright's
+ * keyboard and pointer: moving a recording to the Trash shows the toast with Undo and its shortcut, a Tab from
  * the page reaches it, Escape inside it closes it and gives focus to the tab (not back to where focus came from, which
- * Sonner alone would do), there is no close button, and a toast sliding out under a newer one cannot be reached.
+ * the toast list alone would do), there is no close button, and a toast sliding out under a newer one cannot be reached.
  * An untouched toast disappears after its countdown.
  */
 import { test, expect, type Launched } from "./fixtures";
@@ -38,7 +38,7 @@ const trashFirst = async (): Promise<void> => {
   await page.getByRole("button", { name: / 的更多動作$/ }).first().click();
   await page.locator("#clip-menu-trash").click();
 };
-const live = '[data-sonner-toast]:not([data-removed="true"])';
+const live = '[data-slot="toast"]:not([data-ending-style])';
 
 test("T01–T03 the undo toast: no close button, automatic dismissal, Escape returns focus to the tab, and a leaving toast cannot be reached", async ({}, testInfo) => {
   await trashFirst();
@@ -46,7 +46,7 @@ test("T01–T03 the undo toast: no close button, automatic dismissal, Escape ret
   await expect(toast).toHaveCount(1);
   const mac = process.platform === "darwin";
   const undo = toast.getByRole("button", { name: /^還原/ });
-  // T01 Sonner draws the toast: its platform-specific title and Undo with its shortcut.
+  // T01 Base UI draws the toast: its platform-specific title and Undo with its shortcut.
   await expect.soft(toast).toContainText(mac ? "已丟到垃圾桶" : "已移到資源回收筒");
   await expect.soft(undo).toHaveText(mac ? "還原⌘Z" : "還原Ctrl+Z");
   await expect.soft(undo).toHaveAttribute("aria-keyshortcuts", mac ? "Meta+Z" : "Control+Z");
@@ -63,7 +63,7 @@ test("T01–T03 the undo toast: no close button, automatic dismissal, Escape ret
   await expect(toast).toHaveCount(1);
   await page.keyboard.press("Escape");
   await trashFirst();
-  const leaving = await read<boolean[]>(page, `[...document.querySelectorAll('[data-sonner-toast][data-removed="true"]')].map(t => t.inert)`);
+  const leaving = await read<boolean[]>(page, `[...document.querySelectorAll('[data-slot="toast"][data-ending-style]')].map(t => t.inert)`);
   expect.soft(leaving.every(Boolean), `T03 a toast sliding out under a newer one cannot be reached ${JSON.stringify(leaving)}`).toBe(true);
   await page.locator("#tab-library").focus();
   await page.mouse.move(10, 400);

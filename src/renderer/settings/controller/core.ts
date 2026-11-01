@@ -57,7 +57,7 @@ import {
 } from "./player";
 import { disposeInfo, forgetInfo, hideInfo } from "./info";
 import { editingItem, editorVideo, forgetEditor } from "./editor";
-import { dismissToast, disposeToast, followToast, toastState } from "./toast";
+import { dismissToast, disposeToast, followToast, restoring, toastState } from "./toast";
 import { keepUnchanged } from "../../lib/keep-unchanged";
 
 declare global {
@@ -509,7 +509,7 @@ function reconcile(
   if (next.library?.notice && next.library.notice !== lastNotice)
     feedbackText = next.library.notice;
   lastNotice = next.library?.notice;
-  if (toastState?.kind === "trashed" && !next.library?.trashed) dismissToast();
+  if (toastState?.kind === "trashed" && !next.library?.trashed && !restoring) dismissToast();
   draw();
   if (priorCard && !shown.has(priorCard)) {
     const old = previous?.library?.items ?? [],
