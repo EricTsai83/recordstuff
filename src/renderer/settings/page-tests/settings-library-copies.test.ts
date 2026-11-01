@@ -9,17 +9,16 @@ const item = (id: string, extra: Partial<LibraryItemView> = {}): LibraryItemView
   duration: "0:10", size: "18 MB", thumbnail: `recordstuff-media://thumb/${id}?v=1`, video: `recordstuff-media://video/${id}?v=1`, ...extra });
 
 /**
- * Plan 100's saved copies (D4): a copy says where it came from, on its card and in its name for assistive technology,
- * and its recording's menu lists its copies, each shown in Finder. Behaviour and names only.
+ * Saved copies omit the source label; the recording menu can still reveal a saved copy in Finder.
  */
-it("says where a saved copy came from, and lists a recording's copies in its menu", async () => {
+it("omits the source label and lists saved copies in the recording menu", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
   let revision = 1;
   const view = (): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision: ++revision,
     tabs: [{ id: "library", label: "Recordings" }], groups: [],
     library: { folder: "~/Movies", summary: "2 recordings", items: [
-      item("copy", { savedFrom: "Saved from “Meeting”" }),
+      item("copy"),
       item("meeting", { copies: [{ label: "Sound only, saved Today 2:10 PM", name: "Meeting (sound).m4a" }, { label: "Video file, saved Today 2:05 PM", name: "copy.mp4" }] }),
     ] } });
   const choose = vi.fn(async (): Promise<any> => ({ view: view(), applied: true }));
@@ -27,8 +26,8 @@ it("says where a saved copy came from, and lists a recording's copies in its men
   await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
 
-  expect(document.querySelector("#clip-copy .clip-saved-from")!.textContent).toBe("Saved from “Meeting”");
-  expect(document.querySelector("#clip-copy-open")!.getAttribute("aria-label")).toContain("Saved from “Meeting”");
+  expect(document.querySelector("#clip-copy .clip-saved-from")).toBeNull();
+  expect(document.querySelector("#clip-copy-open")!.getAttribute("aria-label")).not.toContain("Saved from");
   expect(document.querySelector("#clip-meeting .clip-saved-from")).toBeNull();
 
   // A recording without copies has no Saved copies.

@@ -156,18 +156,18 @@ export function editedName(title: string, attempt: number, language?: Language):
   return `${attempt <= 1 ? translate("{title} (edited)", language, { title }) : translate("{title} (edited {number})", language, { title, number: attempt })}.mp4`;
 }
 
-/**
- * The name Save a copy… gives the copy of the recording `subject` in `form` (plan 100), the `attempt`th when earlier
- * ones were taken: named as a version leaves (shared/versions.ts), the Video of a plain recording beside its own file
- * `<title> (edited).mp4` as before (D8), else `<title>.mp4`; any other name taken gets a number, `Meeting 2.mp4`.
+/** A saved Video is labelled as edited even when its editable source has a different on-disk extension.
+ * Collisions use a separate parenthesized number, regardless of form or destination folder.
  */
-export function copyName(form: CopyForm, subject: VersionSubject, beside: boolean, attempt: number, language?: Language): string {
-  const plainVideo = form === "video" && !subject.editable;
-  if (plainVideo && beside) return editedName(recordingTitle(subject.fileName), attempt, language);
-  const name = plainVideo ? `${recordingTitle(subject.fileName)}.mp4` : versionName(form, { ...subject, edited: true }, language);
+export function copyName(form: CopyForm, subject: VersionSubject, _beside: boolean, attempt: number, language?: Language): string {
+  const title = recordingTitle(subject.fileName);
+  const withoutNumber = title.replace(/ \(\d+\)$/, "");
+  const name = form === "video"
+    ? editedName(EDITED_ENDING.test(withoutNumber) ? withoutNumber : title, 1, language)
+    : versionName(form, { ...subject, edited: true }, language);
   if (attempt <= 1) return name;
   const extension = path.extname(name);
-  return `${name.slice(0, name.length - extension.length)} ${attempt}${extension}`;
+  return `${name.slice(0, name.length - extension.length)} (${attempt})${extension}`;
 }
 
 const PUBLISH_ATTEMPTS = 100;

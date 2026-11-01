@@ -1776,14 +1776,14 @@ describe("the Recordings tab", () => {
     expect(settingsAction(idle, ctx, "recordingFile:/etc/passwd", "open")).toBeUndefined();
     expect(settingsAction(idle, ctx, "recordingFile:id-Product demo.mp4", "delete")).toBeUndefined();
   });
-  it("lists a recording's saved copies and says where a copy came from (plan 100, D4)", () => {
+  it("lists saved copies without exposing their source label", () => {
     const [first, second] = files;
     const copies = [{ path: "/tmp/recordings/a (sound).m4a", name: "a (sound).m4a", form: "sound" as const, saved: new Date(2026, 9, 4, 15, 30).getTime() }];
     const ctx = library({ files: [{ ...first!, copies }, { ...second!, savedFrom: "Meeting.recordstuff.mp4" }] });
     const [withCopies, copy] = settingsView(idle, ctx).library!.items;
     const time = new Date(2026, 9, 4, 15, 30).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" });
     expect(withCopies!.copies).toEqual([{ label: `Sound only, saved Today ${time}`, name: "a (sound).m4a" }]);
-    expect(copy!.savedFrom).toBe("Saved from “Meeting”");
+    expect(copy).not.toHaveProperty("savedFrom");
     // Shown in Finder by its place in the list, and only a place the list has.
     expect(settingsAction(idle, ctx, `recordingFile:${first!.id}`, "revealCopy:0")).toEqual({ recordingFile: { id: first!.id, action: "reveal", copy: 0 } });
     expect(settingsAction(idle, ctx, `recordingFile:${first!.id}`, "revealCopy:1")).toBeUndefined();

@@ -397,6 +397,7 @@ function rulerMarks(seconds: number): { step: number; marks: number[] } {
   const step = RULER_STEPS.find((candidate) => seconds / candidate <= 8) ?? RULER_STEPS[RULER_STEPS.length - 1]!;
   const marks: number[] = [];
   for (let mark = 0; mark < seconds - step / 4; mark += step) marks.push(+mark.toFixed(3));
+  if (seconds > 0 && Math.abs(seconds / step - Math.round(seconds / step)) < 1e-9) marks.push(seconds);
   return { step, marks };
 }
 /** A ruler mark's time: whole seconds as m:ss, tenths only while the step needs them. */
@@ -709,7 +710,7 @@ function EditorPanel() {
   };
   const mac = model.platform() === "darwin";
   const shortcuts: Array<[string, PlainMessageKey]> = [
-    [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split"],
+    [model.text("Space"), "Play or pause"], ["← →", "Move a frame"], ["Shift ← →", "Move a second"], ["S", "Split the current part into two at the playhead"],
     ["Delete", "Remove the selection"], [mac ? "⌘Z" : "Ctrl+Z", "Undo"], [mac ? "⇧⌘Z" : "Ctrl+Y", "Redo"],
     ...(camera ? [["C", "Hide or show the camera in the selection"] as [string, PlainMessageKey]] : []),
     ...(inputs.length > 0 ? [["V", "Set the volume of the selection"] as [string, PlainMessageKey]] : []),
@@ -733,18 +734,18 @@ function EditorPanel() {
           keys against Export. An export's outcome is a toast (useExportToast), so nothing in the row moves. The playhead's
           time is to the hundredth, so a frame's step shows. */}
       <div className="editor-toolbar">
-        <ControlTooltip label={`${model.text(playing ? "Pause" : "Play")} (${model.text("Space")})`}>
+        <ControlTooltip label={model.text(playing ? "Pause" : "Play")}>
           <Button id="editor-play" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text(playing ? "Pause" : "Play")} onClick={() => model.togglePlayback()}>
             {playing ? <Pause /> : <Play />}
           </Button>
         </ControlTooltip>
         <span className="editor-divider" aria-hidden="true" />
-        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Undo (⌘Z)" : "Undo (Ctrl+Z)")}>
+        <ControlTooltip label={model.text("Undo")}>
           <Button id="editor-undo" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text("Undo")} aria-disabled={busy || !model.canUndo()} onClick={() => void model.undoEdit()}>
             <Undo2 />
           </Button>
         </ControlTooltip>
-        <ControlTooltip label={model.text(model.platform() === "darwin" ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Y)")}>
+        <ControlTooltip label={model.text("Redo")}>
           <Button id="editor-redo" variant="ghost" className={TOOL_HOVER} size="icon" aria-label={model.text("Redo")} aria-disabled={busy || !model.canRedo()} onClick={() => void model.redoEdit()}>
             <Redo2 />
           </Button>
@@ -753,10 +754,9 @@ function EditorPanel() {
         {/* The toolbar holds what acts on the whole recording or at the playhead (Split); what acts on a selection, Remove
             among it, floats over the selection (2026-10-26, the maintainer's rule after B′: an action sits where what it
             acts on is). */}
-        <ControlTooltip label={model.text("Split at the playhead (S)")}>
-          <Button id="editor-split" variant="ghost" size="sm" className={`editor-tool ${TOOL_HOVER}`} aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
+        <ControlTooltip label={model.text("Split the current part into two at the playhead")}>
+          <Button id="editor-split" variant="ghost" size="icon" className={TOOL_HOVER} aria-label={model.text("Split")} aria-disabled={busy} onClick={() => { if (!busy) void model.splitAtPlayhead(); }}>
             <Scissors />
-            <span className="editor-tool-label" aria-hidden="true">{model.text("Split")}</span>
           </Button>
         </ControlTooltip>
         <span className="flex-[1_1_0]" />
@@ -1030,7 +1030,7 @@ function EditorPanel() {
       </div>
       <div className="editor-ruler" aria-hidden="true">
         {ruler.marks.map((mark) => (
-          <span key={mark} style={{ left: `${(mark / Math.max(editor.seconds, 0.001)) * 100}%` }}>{rulerTime(mark, ruler.step)}</span>
+          <span key={mark} data-end={mark === editor.seconds || undefined} style={{ left: `${(mark / Math.max(editor.seconds, 0.001)) * 100}%` }}>{rulerTime(mark, ruler.step)}</span>
         ))}
         <i className="editor-ruler-playhead" style={{ left: `${Math.min(100, (time / Math.max(editor.seconds, 0.001)) * 100)}%` }} />
       </div>
@@ -1084,33 +1084,44 @@ function ExportControls() {
 function SaveCopy({ editor }: { editor: EditorView }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CopyForm>("video");
+  const [submitting, setSubmitting] = useState(false);
+  const saving = useRef(false);
+  const pendingSave = useRef<CopyForm | null>(null);
   const copy = editor.copy;
-  const name = model.text("Save a copy…");
+  const name = model.text("Save as…");
   const chosen = copy?.forms.find((entry) => entry.form === form) ?? copy?.forms[0];
   const save = (): void => {
-    if (!editor.exportable || !chosen) return;
+    if (!editor.exportable || !chosen || saving.current) return;
+    saving.current = true;
+    pendingSave.current = chosen.form;
+    setSubmitting(true);
     setOpen(false);
-    void model.exportEdit(chosen.form);
+  };
+  const afterPopupChange = (isOpen: boolean): void => {
+    if (isOpen || pendingSave.current === null) return;
+    const requested = pendingSave.current;
+    pendingSave.current = null;
+    // Export progress replaces SaveCopy. Starting it sooner unmounts the popup mid-exit and cuts its animation short.
+    void model.exportEdit(requested).finally(() => { saving.current = false; setSubmitting(false); });
   };
   return (
     <span className="editor-export">
-      <Popover open={open && Boolean(copy)} onOpenChange={(next) => { if (next) setForm("video"); setOpen(next && editor.exportable); }}>
-        <ControlTooltip label={editor.blocked ?? model.text("Save the recording as set here to a new file, in the form you choose")}>
-          <PopoverTrigger
-            render={<Button size="sm" />}
-            id="editor-export"
-            // Named for its icon alone in the narrowest view (Windows CI, 2026-10-27).
-            aria-label={name}
-            // A change still saving is waited for by the save itself (controller's exportEdit), so nothing dims meanwhile.
-            aria-disabled={!editor.exportable}
-          >
-            <Upload />
-            <span className="editor-export-label">{name}</span>
-          </PopoverTrigger>
-        </ControlTooltip>
-        <PopoverContent side="top" align="end" id="editor-copy-popup" className="editor-options-popup w-80" aria-label={model.text("Save a copy")}
+      <Popover open={open && Boolean(copy)} onOpenChangeComplete={afterPopupChange} onOpenChange={(next) => { if (next) setForm("video"); setOpen(next && editor.exportable && !saving.current); }}>
+        <PopoverTrigger
+          render={<Button size="sm" />}
+          id="editor-export"
+          // Named for its icon alone in the narrowest view (Windows CI, 2026-10-27).
+          aria-label={name}
+          // A change still saving is waited for by the save itself (controller's exportEdit), so nothing dims meanwhile.
+          aria-disabled={!editor.exportable || submitting}
+          aria-busy={submitting}
+        >
+          <Upload />
+          <span className="editor-export-label">{submitting ? model.text("Saving…") : name}</span>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="end" id="editor-copy-popup" className="editor-options-popup w-80" aria-label={model.text("Save as")}
           initialFocus={() => document.querySelector<HTMLElement>("#editor-copy-forms [aria-checked=true]")}>
-          <div role="radiogroup" id="editor-copy-forms" className="editor-copy-forms" aria-label={model.text("Save a copy")}
+          <div role="radiogroup" id="editor-copy-forms" className="editor-copy-forms" aria-label={model.text("Save as")}
             onKeyDown={(event) => {
               // Arrows move the choice, as in a group of radio buttons.
               const forms = copy?.forms ?? [];

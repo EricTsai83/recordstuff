@@ -10,8 +10,8 @@ const ready: EditorView = { id: "a", state: "ready", timescale: 90_000, duration
   revision: 0, notes: [], outputSeconds: 10, exportable: false, export: { phase: "idle" } };
 
 /**
- * The edit view's toolbar and its line over the timeline (2026-10-26, the maintainer's choice of layouts, B′): Split and
- * Remove in words in the toolbar, no times there; the line over the timeline holds the playhead's time and the export's
+ * The edit view's toolbar and its line over the timeline (2026-10-26, the maintainer's choice of layouts, B′): Split in
+ * the toolbar as its icon, named Split and explained by its tooltip, no times there; the line over the timeline holds the playhead's time and the export's
  * length, and a selection's actions float on it while a part or range is chosen: Deselect first, Remove with its key, its length last.
  */
 it("keeps the toolbar to what acts on the whole recording and floats a selection's actions, Remove among them, over it", async () => {
@@ -34,7 +34,9 @@ it("keeps the toolbar to what acts on the whole recording and floats a selection
   await vi.waitFor(() => expect(document.getElementById("editor-split")).not.toBeNull());
 
   const toolbar = document.querySelector("#editor .editor-toolbar")!;
-  expect(toolbar.querySelector("#editor-split")!.textContent).toBe("Split");
+  // Split is its scissors alone, named for assistive technology; its tooltip says what it does.
+  expect(toolbar.querySelector("#editor-split")!.getAttribute("aria-label")).toBe("Split");
+  expect(toolbar.querySelector("#editor-split")!.textContent).toBe("");
   // What acts on the whole recording or at the playhead; Remove acts on a selection, so it is not here.
   expect(toolbar.querySelector("#editor-remove")).toBeNull();
   expect(toolbar.textContent).not.toContain("Video length");

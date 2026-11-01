@@ -50,6 +50,10 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   click(document.getElementById("clip-menu-edit")!);
   await vi.waitFor(() => expect(choices[0]).toEqual({ action: "open" }));
   await vi.waitFor(() => expect(document.querySelectorAll(".editor-part")).toHaveLength(1));
+  const endMark = document.querySelector<HTMLElement>(".editor-ruler span[data-end]")!;
+  expect(endMark.textContent).toBe("0:10");
+  expect(endMark.style.left).toBe("100%");
+  expect(document.querySelectorAll(".editor-ruler span[data-end]")).toHaveLength(1);
   const parts = (): Array<[string | null, boolean, boolean]> => [...document.querySelectorAll<HTMLButtonElement>(".editor-part")]
     .map((part) => [part.getAttribute("aria-label"), part.dataset.removed !== undefined, part.getAttribute("aria-pressed") === "true"]);
   expect(parts()).toEqual([["0:00.0 to 0:10.0, kept", false, false]]);
@@ -125,7 +129,7 @@ it("opens from a recording's menu, removes a part and takes it back, exports, an
   expect(document.querySelector("#editor .editor-export-toast .toast-description")!.textContent).toBe("Saved in the recording's folder.");
   expect(document.querySelector("#editor .editor-export-toast .toast-action")!.textContent).toBe("Play");
   expect(document.getElementById("editor-feedback")!.textContent).toBe("Saved as Talk (edited).mp4.");
-  expect(document.getElementById("editor-export")!.textContent).toBe("Save a copy…");
+  expect(document.getElementById("editor-export")!.textContent).toBe("Save as…");
   expect(document.getElementById("editor-reveal")).toBeNull();
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(choices.some((choice) => choice.action === "close")).toBe(false);
@@ -219,11 +223,14 @@ it("saves a copy in the form and folder chosen, and shows one saved elsewhere in
     tabs: [{ id: "library", label: "Recordings" }], groups: [],
     library: { folder: "~/Movies", summary: "1 recording", items: [item] }, ...(editor ? { editor } : {}) });
   const choices: EditorChoice[] = [];
+  let finishExport!: () => void;
+  const exporting = new Promise<void>((resolve) => { finishExport = resolve; });
   const choose = vi.fn(async (_group: string, choice: unknown): Promise<any> => {
     const edit = choice as EditorChoice;
     choices.push(edit);
     if (edit.action === "open") editor = ready({ removed: [[0, 90_000]], exportable: true });
     if (edit.action === "copyFolder") editor = { ...editor!, copy: { ...editor!.copy!, folder: "Desktop", beside: false } };
+    if (edit.action === "export") await exporting;
     if (edit.action === "export") editor = { ...editor!, export: { phase: "done", name: "Talk (sound).m4a", message: "Saved as Talk (sound).m4a." } };
     return { view: view(), applied: true };
   });
@@ -246,6 +253,14 @@ it("saves a copy in the form and folder chosen, and shows one saved elsewhere in
   await vi.waitFor(() => expect(document.getElementById("editor-copy-folder")!.textContent).toBe("Desktop"));
   click(document.getElementById("editor-copy-save")!);
   await vi.waitFor(() => expect(choices.at(-1)).toEqual({ action: "export", form: "sound" }));
+  // A slow preflight must give immediate feedback and cannot start another save.
+  await vi.waitFor(() => expect(document.getElementById("editor-export")!.getAttribute("aria-busy")).toBe("true"));
+  expect(document.getElementById("editor-export")!.textContent).toContain("Saving…");
+  click(document.getElementById("editor-export")!);
+  expect(document.querySelector("#editor-copy-save")).toBeNull();
+  expect(choices.filter((choice) => choice.action === "export")).toHaveLength(1);
+  finishExport();
+  await vi.waitFor(() => expect(document.getElementById("editor-export")!.getAttribute("aria-busy")).toBe("false"));
   // Not a video beside the recording: its toast shows it in Finder instead of playing it.
   await vi.waitFor(() => expect(document.querySelector("#editor .editor-export-toast .toast-action")?.textContent).toBe("Show in Finder"));
   expect(document.querySelector("#editor .editor-export-toast .toast-description")!.textContent).toBe("Saved in Desktop.");

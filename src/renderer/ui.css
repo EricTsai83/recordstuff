@@ -3130,18 +3130,6 @@
   .clip-detail {
     display: none;
   }
-  /* Where a saved copy came from (plan 100, D4), a line of its own under the card's details; in the list, in the row's. */
-  .clip-saved-from {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: var(--text-2xs);
-    color: var(--muted-foreground);
-  }
-  #library[data-layout="list"] .clip-saved-from {
-    display: none;
-  }
   /* A saved copy in its recording's menu: its form and when, then its file's name, dimmed. */
   .clip-copy {
     display: flex;
@@ -3789,11 +3777,11 @@
     background: color-mix(in oklab, var(--card) 62%, transparent);
     pointer-events: none;
   }
-  /* The ruler's times under a band the playhead's mark has to itself (2026-10-26: the mark sat on the times). */
+  /* Times above a quiet tick rail; the upward playhead below it keeps the labels unobstructed. */
   .editor-ruler {
     position: relative;
-    height: 20px;
-    margin-top: -6px;
+    height: 32px;
+    margin-top: 3px;
     /* Clipped a little outside itself, so the playhead's mark at the very start or end shows whole (2026-10-27, the
        maintainer's report: with the timeline the panel's full width, half of it was cut off there). */
     overflow: clip;
@@ -3805,10 +3793,36 @@
   }
   .editor-ruler span {
     position: absolute;
-    top: 6px;
-    padding-left: 3px;
-    border-left: 1px solid var(--border);
+    top: 0;
+    transform: translateX(-50%);
     white-space: nowrap;
+  }
+  .editor-ruler span:first-child {
+    transform: none;
+  }
+  .editor-ruler span[data-end] {
+    transform: translateX(-100%);
+  }
+  .editor-ruler span::after {
+    content: "";
+    position: absolute;
+    top: --spacing(4.25);
+    left: 50%;
+    height: --spacing(1);
+    border-left: 1px solid var(--border);
+  }
+  .editor-ruler span:first-child::after {
+    left: 0;
+  }
+  .editor-ruler span[data-end]::after {
+    left: 100%;
+  }
+  .editor-ruler::before {
+    content: "";
+    position: absolute;
+    top: --spacing(5);
+    inset-inline: 0;
+    border-top: 1px solid var(--border);
   }
   /* A split's mark under its line, where the playhead's line never reaches (2026-10-26): a split under the playhead,
      as straight after S, still shows, as editors mark a cut beside the clips' edges. Over every part, under the playhead. */
@@ -3827,12 +3841,12 @@
   /* The playhead's place on the ruler too, so it is found under the pictures as well as over them. */
   .editor-ruler-playhead {
     position: absolute;
-    top: 0;
+    top: 22px;
     width: 0;
     height: 0;
     margin-left: -5px;
     border-inline: 5px solid transparent;
-    border-top: 6px solid var(--foreground);
+    border-bottom: 6px solid var(--foreground);
   }
   /* The toolbar over the timeline (2026-10-26, B′): Play, Undo and Redo, Split and Remove, then Options, the keys and
      Export at its end; the times have a line of their own under it, so it never wraps at the view's usual widths. */

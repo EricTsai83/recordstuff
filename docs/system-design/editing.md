@@ -150,7 +150,7 @@ A removal that would keep nothing is refused before it is sent, said a moment ov
 
 ### Edited recordings
 
-`EditStore` reads once at launch which recordings hold a record and keeps the list with every save, discard and move; a recording with a record for the file's present size offers Continue editing… in its menu. What the edit view saves is a **saved copy** (Save a copy…, plan 100): the provenance written into it names its recording, so the Recordings tab says "Saved from …" on it and lists it under its recording ([versions and sharing](#versions-and-sharing)). An export saved before plan 100 has no provenance and stays a recording of its own.
+`EditStore` reads once at launch which recordings hold a record and keeps the list with every save, discard and move; a recording with a record for the file's present size offers Continue editing… in its menu. What the edit view saves is a **saved copy** (Save as…, plan 100): the provenance written into it names its recording, so the Recordings tab lists it under its original recording’s Saved copies menu; cards omit the source label ([versions and sharing](#versions-and-sharing)). An export saved before plan 100 has no provenance and stays a recording of its own.
 
 ## Editable recordings
 
@@ -185,7 +185,7 @@ Plan 100 (closed 2026-10-30; [record](../verification/history-2026-10.md#plan-10
 
 ### The model
 
-A recording is three things, two of them files: the **Original** (the recording as made, never written), its **Edit** (the edit record, a state with no file) and its **saved copies** (files the person asked for with Save a copy…, theirs to keep). What is dragged or shared is a **version**, made from the original and the edit at that moment into a cache the app owns, so no version goes stale and none is managed by the person.
+A recording is three things, two of them files: the **Original** (the recording as made, never written), its **Edit** (the edit record, a state with no file) and its **saved copies** (files the person asked for with Save as…, theirs to keep). What is dragged or shared is a **version**, made from the original and the edit at that moment into a cache the app owns, so no version goes stale and none is managed by the person.
 
 | Version | What it is | Offered for | Name when it leaves |
 | --- | --- | --- | --- |
@@ -195,7 +195,7 @@ A recording is three things, two of them files: the **Original** (the recording 
 | No camera (under More) | The Video without the camera | Editable recordings with a camera | `Meeting (screen only).mp4` |
 | Sources (under More) | Each track as a file of its own, copied, never re-encoded | Editable recordings | Dragged or saved: a folder `Meeting sources` of `Meeting - Screen.mp4`, `- Camera.mp4`, `- System sound.m4a`, `- Microphone.m4a`; copied: the files alone (D7) |
 
-Names follow one rule: **only the original is marked**. The editable original is `<name>.recordstuff.mp4` from the moment it is saved (D3), known by its `rsed` description, never by its name; the card's title leaves the marker out and Rename… keeps it. A version that would take its source's own name is `<name> (edited).mp4` (D8, D9; 剪輯版 in Chinese), so the Video of an edited plain recording never replaces its original in Finder. A name taken where a file lands gets a number (`Meeting 2.mp4`); a file is never written over. The tags follow the app's language.
+Names follow one rule: **only the original is marked**. The editable original is `<name>.recordstuff.mp4` from the moment it is saved (D3), known by its `rsed` description, never by its name; the card's title leaves the marker out and Rename… keeps it. A version that would take its source's own name is `<name> (edited).mp4` (D8, D9; 剪輯版 in Chinese), so the Video of an edited plain recording never replaces its original in Finder. A name taken where a file lands gets a number; Save as… puts the number in parentheses (`Meeting (edited) (2).mp4`); a file is never written over. The tags follow the app's language.
 
 ### The cache
 
@@ -211,7 +211,7 @@ An editable recording's saved notification is sent once its Video is prepared, o
 
 ### Saved copies and provenance
 
-Save a copy… in the edit view saves the Video, the Video without the camera (an editable recording with a camera) or Sound only (the Video rendered hidden, then its sound copied), into the recording's folder or one chosen with Change…, named as above and numbered when taken. Before it is published, main writes the copy's provenance into its `moov/udta` as an `rsfm` box beside `rsed`: the recording's file name, its identity (size and the hash of its first and last MiB, as its edit knows it), the edit's revision, the form and the time. The `moov` is rewritten in place at the file's end, every byte written or the save fails; a file whose `moov` is not last keeps no provenance. The Recordings tab reads it with the file's other facts: a copy says "Saved from “Meeting”" and its recording lists its copies, newest first, under Saved copies in its menu, each shown in Finder (D4). Both may be renamed in Finder; nothing outside the files is stored. Sound only copies (`.m4a`) beside the listed recordings are read and watched but never shown as cards.
+Save as… in the edit view saves the Video, the Video without the camera (an editable recording with a camera) or Sound only (the Video rendered hidden, then its sound copied), into the recording's folder or one chosen with Change…. The Video is always named `<name> (edited).mp4` (`<name>（剪輯版）.mp4` in Traditional Chinese), including the first copy of an editable original and copies saved in another folder. A name already taken gets a separate parenthesized number, such as `<name> (edited) (2).mp4`; the same numbering applies to Sound only and Video without the camera. Before it is published, main writes the copy's provenance into its `moov/udta` as an `rsfm` box beside `rsed`: the recording's file name, its identity (size and the hash of its first and last MiB, as its edit knows it), the edit's revision, the form and the time. The `moov` is rewritten in place at the file's end, every byte written or the save fails; a file whose `moov` is not last keeps no provenance. The Recordings tab reads it with the file's other facts: cards omit the source label, while the original recording lists its copies, newest first, under Saved copies in its menu, each shown in Finder (D4). Both may be renamed in Finder; nothing outside the files is stored. Sound only copies (`.m4a`) beside the listed recordings are read and watched but never shown as cards.
 
 ## Measurements
 

@@ -252,8 +252,6 @@ export interface LibraryItemView {
   editableHint?: string;
   /** Share… (plan 100 step 3): the versions this recording offers, localized, in the order they are shown. */
   share?: ShareView;
-  /** A copy Save a copy… made (plan 100, D4): "Saved from “Meeting”", localized. */
-  savedFrom?: string;
   /**
    * The copies saved from it in the tab's folders, newest first (D4), for its menu's Saved copies: each its form and when
    * it was saved, localized, and its file's name. Choice `revealCopy:<index>` shows one in Finder.

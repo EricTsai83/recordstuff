@@ -107,13 +107,28 @@ test("a part is split off and removed, kept by main across a reopen, and exporte
   // Save a copy… (plan 100, formerly Export), the Video as it opens: progress, then the new file beside the recording,
   // said by a toast over the view whose Play opens it in the player; the toolbar keeps its Save a copy….
   await page.locator("#editor-export").click();
+  // Starting an export replaces its controls. Let the popup finish closing before its trigger disappears.
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+  await read(page, `(() => {
+    const popup = document.querySelector("#editor-copy-popup");
+    document.documentElement.dataset.copyPopupClosed = "pending";
+    const observer = new MutationObserver(() => {
+      if (!popup.hasAttribute("data-closed")) return;
+      observer.disconnect();
+      Promise.all(popup.getAnimations().map(animation => animation.finished)).then(
+        () => { document.documentElement.dataset.copyPopupClosed = "finished"; },
+        () => { document.documentElement.dataset.copyPopupClosed = "interrupted"; });
+    });
+    observer.observe(popup, { attributes: true, attributeFilter: ["data-closed"] });
+  })()`);
   await page.locator("#editor-copy-save").click();
   await expect(page.locator('[role="progressbar"]')).toBeVisible();
+  expect(await read(page, 'document.documentElement.dataset.copyPopupClosed')).toBe("finished");
   const name = `${path.basename(clip, ".mp4")} (edited).mp4`;
   const toast = page.locator("#editor .editor-export-toast");
   await expect(toast.locator(".toast-title")).toHaveText(`Saved “${path.basename(name, ".mp4")}”`, { timeout: 5000 });
   await expect(page.locator("#editor-feedback")).toHaveText(`Saved as ${name}.`);
-  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save a copy…");
+  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save as…");
   expect(fs.existsSync(path.join(folder, name))).toBe(true);
   expect(fs.readdirSync(folder).filter((entry) => entry.includes("recordstuff-export"))).toEqual([]);
   await toast.getByRole("button", { name: "Play" }).click();
@@ -564,7 +579,7 @@ test("an editable recording's camera is dragged into place, its microphone turne
   // Within a pixel: the centred dialog may settle a fraction of one, which no one sees.
   const rowsAfter = await rows();
   rowsAfter.forEach((value, index) => expect(Math.abs(value - rowsBefore[index]!)).toBeLessThanOrEqual(1));
-  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save a copy…");
+  await expect(page.locator("#editor-export")).toHaveAccessibleName("Save as…");
   const render = (await app.calls()).find((call) => call.kind === "exportWorker:render")?.detail as { camera: Record<string, number | boolean>; volumesDb: number[] };
   expect(render.camera).toEqual({ width: 0.2, height: 0.3, rounding: 0.15, x: 0, y: 1, mirror: false });
   expect(render.volumesDb[0]).toBe(0);

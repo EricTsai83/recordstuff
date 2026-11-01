@@ -11,7 +11,7 @@ import { ExportFailure } from "./export-host";
 
 vi.mock("electron", () => ({ utilityProcess: { fork: () => { throw new Error("not in tests"); } } }));
 
-const { Editing, OWNED_PART, editedName, publish, removeLeftovers, skippedRanges } = await import("./editing");
+const { Editing, OWNED_PART, editedName, copyName, publish, removeLeftovers, skippedRanges } = await import("./editing");
 type Deps = ConstructorParameters<typeof Editing>[0];
 
 let dir: string;
@@ -221,9 +221,9 @@ describe("Save a copy… (plan 100)", () => {
     fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (sound).m4a"), "someone's own file");
     expect(await ctx.editing.choose("rec", { action: "export", form: "sound" })).toBe(true);
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (sound) 2.m4a", message: "Saved as 2026-10-24 10-00-00 (sound) 2.m4a." });
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (sound) 2.m4a"), "utf8")).toBe("sound0 of a whole export");
-    expect(beside()).toEqual(["2026-10-24 10-00-00 (sound) 2.m4a", "2026-10-24 10-00-00 (sound).m4a"]);
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (sound) (2).m4a", message: "Saved as 2026-10-24 10-00-00 (sound) (2).m4a." });
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (sound) (2).m4a"), "utf8")).toBe("sound0 of a whole export");
+    expect(beside()).toEqual(["2026-10-24 10-00-00 (sound) (2).m4a", "2026-10-24 10-00-00 (sound).m4a"]);
     expect(JSON.parse(fs.readFileSync(path.join(dir, "userData", "edits", "exports-in-flight.json"), "utf8"))).toEqual([]);
   });
 
@@ -232,12 +232,12 @@ describe("Save a copy… (plan 100)", () => {
     const ctx = setup({ chooseFolder: async () => path.join(dir, "Elsewhere") });
     await editedOnce(ctx);
     expect(await ctx.editing.choose("rec", { action: "copyFolder" })).toBe(true);
-    expect(ctx.editing.view()?.copy).toMatchObject({ folder: "Elsewhere", beside: false, forms: [{ form: "video", fileName: "2026-10-24 10-00-00.mp4" }, { form: "sound" }] });
+    expect(ctx.editing.view()?.copy).toMatchObject({ folder: "Elsewhere", beside: false, forms: [{ form: "video", fileName: "2026-10-24 10-00-00 (edited).mp4" }, { form: "sound" }] });
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     await settled(ctx.editing);
     // Not beside the recording: the Recordings tab does not list it, so it is shown in Finder rather than played.
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00.mp4", message: "Saved as 2026-10-24 10-00-00.mp4." });
-    expect(fs.readdirSync(path.join(dir, "Elsewhere"))).toEqual(["2026-10-24 10-00-00.mp4"]);
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (edited).mp4", message: "Saved as 2026-10-24 10-00-00 (edited).mp4." });
+    expect(fs.readdirSync(path.join(dir, "Elsewhere"))).toEqual(["2026-10-24 10-00-00 (edited).mp4"]);
     expect(beside()).toEqual([]);
   });
 
@@ -277,9 +277,9 @@ describe("an export", () => {
     fs.writeFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "someone's own file");
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（剪輯版 2）.mp4", message: "已儲存為 2026-10-24 10-00-00（剪輯版 2）.mp4。", playable: true });
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00（剪輯版） (2).mp4", message: "已儲存為 2026-10-24 10-00-00（剪輯版） (2).mp4。", playable: true });
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版）.mp4"), "utf8")).toBe("someone's own file");
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版 2）.mp4"), "utf8")).toBe("a whole export");
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00（剪輯版） (2).mp4"), "utf8")).toBe("a whole export");
   });
 
   it("is published beside the recording as <name> (edited).mp4, numbered past taken names, never over them", async () => {
@@ -289,11 +289,11 @@ describe("an export", () => {
     expect(await ctx.editing.choose("rec", { action: "export" })).toBe(true);
     expect(ctx.editing.view()?.export.phase).toBe("exporting");
     await settled(ctx.editing);
-    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (edited 2).mp4", message: "Saved as 2026-10-24 10-00-00 (edited 2).mp4.", playable: true });
+    expect(ctx.editing.view()?.export).toEqual({ phase: "done", name: "2026-10-24 10-00-00 (edited) (2).mp4", message: "Saved as 2026-10-24 10-00-00 (edited) (2).mp4.", playable: true });
     expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited).mp4"), "utf8")).toBe("someone's own file");
-    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited 2).mp4"), "utf8")).toBe("a whole export");
-    expect(beside()).toEqual(["2026-10-24 10-00-00 (edited 2).mp4", "2026-10-24 10-00-00 (edited).mp4"]);
-    expect(ctx.published).toEqual([path.join(dir, "Movies", "2026-10-24 10-00-00 (edited 2).mp4")]);
+    expect(fs.readFileSync(path.join(dir, "Movies", "2026-10-24 10-00-00 (edited) (2).mp4"), "utf8")).toBe("a whole export");
+    expect(beside()).toEqual(["2026-10-24 10-00-00 (edited) (2).mp4", "2026-10-24 10-00-00 (edited).mp4"]);
+    expect(ctx.published).toEqual([path.join(dir, "Movies", "2026-10-24 10-00-00 (edited) (2).mp4")]);
     // The journal names nothing in flight any more.
     expect(JSON.parse(fs.readFileSync(path.join(dir, "userData", "edits", "exports-in-flight.json"), "utf8"))).toEqual([]);
   });
@@ -500,6 +500,20 @@ describe("publication", () => {
       try { const stat = await handle.stat(); return { ino: stat.ino, dev: stat.dev, size: stat.size }; } finally { await handle.close(); }
     },
     mark: (file: string) => fs.promises.lstat(file).then((stat) => ({ ino: stat.ino, dev: stat.dev, size: stat.size }), () => undefined),
+  });
+
+  it("distinguishes the first saved Video and parenthesizes collision numbers in every folder", () => {
+    for (const beside of [true, false]) {
+      for (const fileName of ["Talk.mp4", "Talk.recordstuff.mp4", "Talk (edited) (2).mp4"]) {
+        const subject = { fileName, edited: true, ...(fileName.includes("recordstuff") ? { editable: { camera: true, sounds: ["system" as const] } } : {}) };
+        expect(copyName("video", subject, beside, 1)).toBe("Talk (edited).mp4");
+        expect(copyName("video", subject, beside, 2)).toBe("Talk (edited) (2).mp4");
+        expect(copyName("video", subject, beside, 3, "zh-TW")).toBe("Talk（剪輯版） (3).mp4");
+      }
+      expect(copyName("video", { fileName: "Talk (2).mp4", edited: true }, beside, 1)).toBe("Talk (2) (edited).mp4");
+      expect(copyName("sound", { fileName: "Talk.mp4", edited: true }, beside, 2)).toBe("Talk (sound) (2).m4a");
+      expect(copyName("screenOnly", { fileName: "Talk.recordstuff.mp4", edited: true }, beside, 2)).toBe("Talk (screen only) (2).mp4");
+    }
   });
 
   it("names exports (edited), then (edited 2) and on, in the app's language", () => {

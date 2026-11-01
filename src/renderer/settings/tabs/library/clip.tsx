@@ -91,7 +91,6 @@ export const Clip = memo(function Clip({
                   item.duration,
                   item.size,
                   item.editable,
-                  item.savedFrom,
                   item.preparing?.label,
                 ].filter((part): part is string => Boolean(part)),
                 language,
@@ -162,11 +161,9 @@ export const Clip = memo(function Clip({
               <EditableMark item={item} />
             </span>
             <span className="clip-detail">
-              {[item.time, item.duration, item.size, item.savedFrom].filter(Boolean).join(" · ")}
+              {[item.time, item.duration, item.size].filter(Boolean).join(" · ")}
               <EditableMark item={item} />
             </span>
-            {/* A copy Save a copy… made says where it came from (plan 100, D4): a line of its own in the grid. */}
-            {item.savedFrom && <span className="clip-saved-from">{item.savedFrom}</span>}
           </span>
         </Button>
         {/* While a preview plays, a speaker at the picture's top right turns its sound on or off; the choice is kept

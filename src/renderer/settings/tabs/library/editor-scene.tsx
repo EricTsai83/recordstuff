@@ -573,12 +573,10 @@ export function OverallVolume({ editor }: { editor: EditorView }) {
       }
       setOpen(next);
     }}>
-      <ControlTooltip label={name}>
-        <PopoverTrigger render={<Button variant="ghost" className={TOOL_HOVER} size="sm" />} id="editor-mix" className="editor-mix-button" aria-label={name}>
-          <SlidersHorizontal aria-hidden="true" />
-          <span className="editor-tool-label">{name}</span>
-        </PopoverTrigger>
-      </ControlTooltip>
+      <PopoverTrigger render={<Button variant="ghost" className={TOOL_HOVER} size="sm" />} id="editor-mix" className="editor-mix-button" aria-label={name}>
+        <SlidersHorizontal aria-hidden="true" />
+        <span className="editor-tool-label">{name}</span>
+      </PopoverTrigger>
       <PopoverContent side="top" align="end" id="editor-mix-popup" className="editor-mix-popup w-auto max-w-[calc(100vw-24px)] gap-0" aria-label={name}
         // Focus on the first volume, not on the ⓘ before it, whose note would open and take the first Escape.
         initialFocus={() => document.querySelector<HTMLElement>('#editor-mix-popup input[type="range"]')}

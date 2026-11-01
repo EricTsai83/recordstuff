@@ -124,8 +124,6 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         recordingTitle(file.name), shareStatesOf(ctx, file.path), language),
         // Holds an edit made for the file as it is (2026-10-26, the maintainer's request).
         ...(ctx.editedRecordings?.get(file.path) === file.size ? { edited: t("Edited", language) } : {}),
-        // Saved copies and where a copy came from (plan 100, D4), from the provenance inside each copy.
-        ...(file.savedFrom === undefined ? {} : { savedFrom: t("Saved from “{title}”", language, { title: recordingTitle(file.savedFrom) }) }),
         ...(file.copies?.length ? { copies: file.copies.map(copy => {
           const saved = new Date(copy.saved);
           const time = `${dayHeading(saved, now, language, format)} ${shortTime(saved, language, format)}`;

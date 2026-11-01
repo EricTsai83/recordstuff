@@ -635,7 +635,7 @@ async function main(): Promise<number> {
     const exportFrom = log.end();
     // Save a copy… (plan 100) asks in which form; the Video, its default, is saved.
     // A popover's trigger: a pop-up button to Accessibility rather than a plain one.
-    await click(await find("Save a copy button", (e) => ["AXButton", "AXPopUpButton", "AXMenuButton"].includes(e.role) && e.title === translate("Save a copy…", language)));
+    await click(await find("Save a copy button", (e) => ["AXButton", "AXPopUpButton", "AXMenuButton"].includes(e.role) && e.title === translate("Save as…", language)));
     await click(await find("Save button", (e) => e.role === "AXButton" && e.title === translate("Save", language)));
     const rendering = await waitForLog(log, exportFrom, /editing: rendering .* \(camera (shown|left out), volumes ([-\d./]+) dB\)/, "the render", controller.signal, 15_000);
     const done = await waitForLog(log, exportFrom, /editing: (exported .* as (.+) \(\d+ bytes\)|the export of .* (was cancelled|failed: .*))$/, "the export's end", controller.signal, 180_000);
