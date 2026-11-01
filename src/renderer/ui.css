@@ -2814,12 +2814,13 @@
     font-weight: 600;
     letter-spacing: 0;
   }
-  /* Plan 100: the Video being prepared, a thin bar along the picture's foot showing how far it is; the picture stays as
-     it is (2026-11-01: a scrim with words over it, before). */
+  /* Plan 100: the Video being prepared, a thin bar along the picture's top showing how far it is; the picture stays as
+     it is (2026-11-01: a scrim with words over it, before). Not at its foot, where the hover preview's own red seek
+     bar runs: a card being dragged is under the pointer, so the two were one line there. */
   .clip-preparing-bar {
     position: absolute;
+    top: 0;
     right: 0;
-    bottom: 0;
     left: 0;
     z-index: 1;
     height: 3px;
