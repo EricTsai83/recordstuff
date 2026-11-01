@@ -22,14 +22,14 @@ it("drags the Video or the original, and says over the picture when the Video is
     tabs: [{ id: "library", label: "Recordings" }], groups: [],
     library: { folder: "~/Movies", summary: "2 recordings", items: [
       item("a", { editable: "Editable", editableHint: "Keeps the picture apart.",
-        ...(preparing ? { preparing: { state: "preparing" as const, progress: 0.4, label: "Preparing video… 40%", hint: "Option-drag gives the original." } } : {}) }),
+        ...(preparing ? { preparing: { state: "preparing" as const, progress: 0.4, label: "Preparing video… 40%", hint: "Option-drag to give the file now, with the camera and each sound still separate." } } : {}) }),
       item("b"),
     ] } });
   const sent: Array<[string, unknown]> = [];
   const choose = vi.fn(async (group: string, choice: unknown): Promise<any> => {
     sent.push([group, choice]);
     if (group === "recordingFile:a" && choice === "drag" && preparing) {
-      return { view: view(), applied: false, failure: "The video is still being prepared. Option-drag to give the original recording." };
+      return { view: view(), applied: false, failure: "The video is still being prepared. Option-drag to give the file now, with the camera and each sound still separate." };
     }
     return { view: view(), applied: true };
   });
@@ -39,13 +39,13 @@ it("drags the Video or the original, and says over the picture when the Video is
 
   const overlay = document.querySelector("#clip-a .clip-preparing")!;
   expect(overlay.textContent).toContain("Preparing video… 40%");
-  expect(overlay.textContent).toContain("Option-drag gives the original.");
+  expect(overlay.textContent).toContain("Option-drag to give the file now, with the camera and each sound still separate.");
   expect(document.querySelector("#clip-a-open")!.getAttribute("aria-label")).toContain("Preparing video… 40%");
   expect(document.querySelector("#clip-b .clip-preparing")).toBeNull();
 
   // A drag waits for the Video, and the tab says why.
   dragStart(document.querySelector("#clip-a")!, false);
-  await vi.waitFor(() => expect(document.querySelector(".library-error")?.textContent).toBe("The video is still being prepared. Option-drag to give the original recording."));
+  await vi.waitFor(() => expect(document.querySelector(".library-error")?.textContent).toBe("The video is still being prepared. Option-drag to give the file now, with the camera and each sound still separate."));
   expect(document.querySelector<HTMLElement>(".library-error")!.hidden).toBe(false);
 
   // ⌥-drag gives the original.

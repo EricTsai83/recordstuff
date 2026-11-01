@@ -110,7 +110,7 @@ it("names the Media Feature Pack and a restart for a Windows without media compo
 
 it("names both causes of missing system audio on macOS, a very busy Mac first, and keeps the permission actions", () => {
   expect(failureReason("no_audio_track", "en")).toBe("System audio was unavailable at start, so nothing was recorded.");
-  expect(failureReason("no_audio_track", "zh-TW")).toBe("開始時無法取得系統音訊，未錄到任何內容");
+  expect(failureReason("no_audio_track", "zh-TW")).toBe("開始時無法取得系統聲音，未錄到任何內容");
   const en = failureGuidance("no_audio_track", "en", "darwin");
   expect(en.indexOf("Heavy load")).toBeLessThan(en.indexOf("System Settings"));
   expect(en).toContain("then relaunch");
@@ -119,7 +119,7 @@ it("names both causes of missing system audio on macOS, a very busy Mac first, a
   expect(failureGuidance("permission_denied", "en", "darwin")).toBe("Check recording permissions in System Settings. Relaunch if access was recently granted.");
   // Windows loopback records the default playback device (plan 064); other platforms keep the device hint.
   expect(failureGuidance("no_audio_track", "en", "win32")).toContain("default playback device");
-  expect(failureGuidance("no_audio_track", "zh-TW", "win32")).toBe("系統音訊取自預設的播放裝置。請確認已連接播放裝置，並在 Windows 音效設定中啟用後再試。");
+  expect(failureGuidance("no_audio_track", "zh-TW", "win32")).toBe("系統聲音取自預設的播放裝置。請確認已連接播放裝置，並在 Windows 音效設定中啟用後再試。");
   expect(failureGuidance("no_audio_track", "en", "linux")).toContain("audio devices");
   expect(failureGuidance("permission_denied", "en", "win32")).toContain("audio devices");
   expect(isPermissionFailure("no_audio_track")).toBe(true);

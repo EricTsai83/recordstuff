@@ -66,6 +66,22 @@ export function videoIsOriginal(subject: VersionSubject): boolean {
   return !subject.editable && !subject.edited;
 }
 
+/** What a recording is, as far as what its original lacks beside its Video. */
+export interface OriginalKind { editable: boolean; edited: boolean }
+
+/**
+ * What ⌥-drag gives while a card's Video is not ready (plan 100, D1), said by what that file lacks beside the Video, never
+ * a name for it (2026-11-01, the maintainer's request: "the original" told a person nothing). Only an editable or edited
+ * recording has a Video to wait for, so one of the three applies.
+ */
+export function originalDragNote(kind: OriginalKind, platform: string | undefined, language?: Language): string {
+  const key = platform === "darwin" ? "Option" : "Alt";
+  if (!kind.editable) return translate("{key}-drag to give the file now, without your edits.", language, { key });
+  return kind.edited
+    ? translate("{key}-drag to give the file now, without your edits and with the camera and each sound still separate.", language, { key })
+    : translate("{key}-drag to give the file now, with the camera and each sound still separate.", language, { key });
+}
+
 /** Two names the file system takes for the same: macOS's volumes ignore case and compose accents alike. */
 function sameName(a: string, b: string): boolean {
   return a.normalize("NFC").toLowerCase() === b.normalize("NFC").toLowerCase();
@@ -90,7 +106,7 @@ export function versionName(kind: VersionKind, subject: VersionSubject, language
     }
     case "sound": return `${translate("{title} (sound)", language, { title })}.m4a`;
     case "original": return subject.editable ? subject.fileName : `${translate("{title} (original)", language, { title })}${extensionOf(subject.fileName)}`;
-    case "screenOnly": return `${translate("{title} (screen only)", language, { title })}.mp4`;
+    case "screenOnly": return `${translate("{title} (no camera)", language, { title })}.mp4`;
     case "sources": return translate("{title} sources", language, { title });
   }
 }
@@ -110,14 +126,14 @@ export function sourceFileName(role: SourceRole, title: string, language?: Langu
   switch (role) {
     case "screen": return `${translate("{title} - Screen", language, { title })}.mp4`;
     case "camera": return `${translate("{title} - Camera", language, { title })}.mp4`;
-    case "system": return `${translate("{title} - System sound", language, { title })}.m4a`;
+    case "system": return `${translate("{title} - System audio", language, { title })}.m4a`;
     case "microphone": return `${translate("{title} - Microphone", language, { title })}.m4a`;
   }
 }
 
 /**
  * An editable recording's sources (D7): the screen, the camera when it holds one, and each input's own sound, named
- * alike so they sort together: `Meeting - Screen.mp4`, `Meeting - Camera.mp4`, `Meeting - System sound.m4a`,
+ * alike so they sort together: `Meeting - Screen.mp4`, `Meeting - Camera.mp4`, `Meeting - System audio.m4a`,
  * `Meeting - Microphone.m4a`. Without a mix (plan 087's version 1) the first input is the track players play; with
  * one (plan 098) the inputs' own tracks follow the mix. A silent input has no file. None for a plain recording.
  */

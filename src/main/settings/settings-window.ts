@@ -23,7 +23,8 @@ import { proposesHotkey, settingsAction, settingsChecked, settingsView } from ".
 import { TRAFFIC_LIGHT_POSITION } from "../../shared/window-controls";
 import { preferencesUnlocked } from "../recording/recording-lock";
 import { validateAccelerator, isSettingsShortcut, SETTINGS_SHORTCUT_RESERVED } from "../../shared/hotkey";
-import { translate, type Language } from "../../shared/i18n";
+import { sentences, translate, type Language } from "../../shared/i18n";
+import { originalDragNote } from "../../shared/versions";
 import { ZOOM_KEYS } from "../../shared/shortcut-catalog";
 import { isFullScreenChoice, type FullScreenChoice, type PlaybackEdit } from "../../shared/video-player";
 import { isEditorChoice, type EditorChoice } from "../../shared/editing";
@@ -677,12 +678,11 @@ export class SettingsWindow {
       : await this.options.act(action!) === true;
     const applied = dragged === true;
     const view = this.view();
-    // A Video not ready yet (plan 100, D1): the drag waits, and the page says why and that ⌥-drag gives the original.
+    // A Video not ready yet (plan 100, D1): the drag waits, and the page says why and what ⌥-drag gives meanwhile.
+    const item = typeof dragged === "object" && file ? view.library?.items.find((entry) => entry.id === file.id) : undefined;
     const failure = typeof dragged === "object"
-      ? translate(dragged.problem === "preparing"
-        ? process.platform === "darwin" ? "The video is still being prepared. Option-drag to give the original recording." : "The video is still being prepared. Alt-drag to give the original recording."
-        : process.platform === "darwin" ? "The video could not be prepared. Drag again to retry, or Option-drag to give the original recording."
-          : "The video could not be prepared. Drag again to retry, or Alt-drag to give the original recording.", view.language)
+      ? sentences([translate(dragged.problem === "preparing" ? "The video is still being prepared." : "The video could not be prepared. Drag again to retry.", view.language),
+        originalDragNote({ editable: Boolean(item?.editable), edited: Boolean(item?.edited) }, process.platform, view.language)], view.language)
       : translate("Could not complete this action. Try again.", view.language);
     return this.deliver({ view, applied, ...(applied ? {} : { failure }) }, recipient);
   }

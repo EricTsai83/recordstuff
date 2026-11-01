@@ -245,7 +245,7 @@ export interface LibraryItemView {
   edited?: string;
   /**
    * Plan 100: its Video while it is being prepared, or when it could not be, localized; absent when a drag gives it at
-   * once. A drag waits meanwhile (D1), and `hint` says ⌥-drag gives the original.
+   * once. A drag waits meanwhile (D1), and `hint` says what ⌥-drag gives meanwhile, by what that file lacks.
    */
   preparing?: { state: "preparing" | "failed"; label: string; hint: string; progress?: number };
   /** Localized tooltip of the Editable mark: what an editable recording is and how to send it (plan 100). */

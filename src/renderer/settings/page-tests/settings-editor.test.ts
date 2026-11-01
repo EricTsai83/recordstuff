@@ -154,7 +154,7 @@ it("says why an edit cannot be used and offers to discard it", async () => {
   const choose = vi.fn(async (_group: string, choice: unknown): Promise<any> => {
     const edit = choice as EditorChoice;
     if (edit.action === "open") editor = ready({ state: "stale", message: "This recording has changed since it was edited, so its edit no longer fits it. Discard the edit to start again." });
-    if (edit.action === "discard") editor = ready({ blocked: "Saving a copy is unavailable while recording." });
+    if (edit.action === "discard") editor = ready({ blocked: "Save as… is unavailable while recording." });
     return { view: view(), applied: true };
   });
   window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: () => () => {} };
@@ -167,7 +167,7 @@ it("says why an edit cannot be used and offers to discard it", async () => {
   click(document.getElementById("editor-discard")!);
   await vi.waitFor(() => expect(choose).toHaveBeenLastCalledWith("recordingEdit:a", { action: "discard" }));
   await vi.waitFor(() => expect(document.querySelector(".editor-timeline")).not.toBeNull());
-  expect(document.querySelector(".editor-notes")!.textContent).toBe("Saving a copy is unavailable while recording.");
+  expect(document.querySelector(".editor-notes")!.textContent).toBe("Save as… is unavailable while recording.");
 });
 
 it("says an export that fails before it starts, and nothing again when the view reopens (2026-10-26)", async () => {

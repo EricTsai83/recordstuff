@@ -1150,7 +1150,7 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       leavingFolder = undefined;
       focusApp();
       const result = await dialog.showOpenDialog({
-        title: translate("Choose a recording folder", settings.language),
+        title: translate("Choose an output folder", settings.language),
         defaultPath: settings.outputDir, properties: ["openDirectory", "createDirectory"],
       });
       const folder = result.canceled ? undefined : result.filePaths[0];
@@ -1163,11 +1163,11 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
       const language = settings.language;
       const { response } = await dialog.showMessageBox({
         type: "question",
-        message: translate("Change the recording folder?", language),
+        message: translate("Change the output folder?", language),
         detail: [
           translate("Recordings in the current folder will no longer appear in the Recordings tab. The files themselves are not changed.", language),
           translate("Videos prepared for dragging out will be removed; they are made again when needed. Copies you saved and files you dragged out are not affected.", language),
-          translate("Edits are kept, and apply again if you switch back to this folder. You can remove them in Settings → General → Kept edits.", language),
+          translate("Edits are kept, and apply again if you switch back to this folder. You can remove them in General → Kept edits.", language),
         ].join("\n\n"),
         buttons: [translate("Change Folder", language), translate("Change and Remove Old Edits", language), translate("Cancel", language)],
         defaultId: 0, cancelId: 2,

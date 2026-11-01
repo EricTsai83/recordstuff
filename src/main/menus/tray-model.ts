@@ -324,8 +324,8 @@ export function savedNotification(
 ): NotificationText {
   const file = path.basename(savedPath);
   if (videoFailed) {
-    return notice(t(platform === "darwin" ? "Saved {file}, but its video could not be prepared. Drag it again to retry, or Option-drag to give the original recording."
-      : "Saved {file}, but its video could not be prepared. Drag it again to retry, or Alt-drag to give the original recording.", language, { file }));
+    // What to do, short enough for a banner's lines (2026-11-01): ⌥-drag and what it gives are said on the card.
+    return notice(t("Saved {file}, but its video could not be prepared. Drag it again to retry.", language, { file }));
   }
   if (stoppedEarly === "lowDisk") return notice(t("Saved {file}. Stopped early: the disk is almost full.", language, { file }));
   if (stoppedEarly === "sleep") {

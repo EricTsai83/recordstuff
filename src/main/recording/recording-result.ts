@@ -562,7 +562,7 @@ export function failureGuidance(code: ErrorCode, language: Language, platform: N
   if (platform === "win32" && code === "no_audio_track")
     return t("System audio comes from the default playback device. Check that one is connected and enabled in Windows sound settings, then try again.", language);
   if (platform !== "darwin" && isPermissionFailure(code))
-    return t("Check capture permissions and audio devices before recording again.", language);
+    return t("Check recording permissions and audio devices before recording again.", language);
   return t(code === "disk_full" ? "Free disk space or choose another output folder before recording again."
     : isOutputFolderFailure(code) ? "Check the output folder, its permissions and the connected drive before recording again."
     // The capture host sees the same ended track for a missing grant and for a Mac too loaded

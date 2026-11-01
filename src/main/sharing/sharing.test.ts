@@ -222,7 +222,7 @@ describe("what a drag gives (plan 100)", () => {
     sharing.prepare(file, "screenOnly");
     await settle();
     expect(runner.calls.filter((call) => call.type === "export")).toEqual([]);
-    expect(path.basename((await sharing.handOut(file, "screenOnly") as { file: string }).file)).toBe("Cam (screen only).mp4");
+    expect(path.basename((await sharing.handOut(file, "screenOnly") as { file: string }).file)).toBe("Cam (no camera).mp4");
   });
 
   it("copies each source into a folder named after the recording (D7)", async () => {
@@ -231,7 +231,7 @@ describe("what a drag gives (plan 100)", () => {
     await settle();
     const given = await sharing.handOut(file, "sources") as { file: string };
     expect(path.basename(given.file)).toBe("Talk sources");
-    expect(fs.readdirSync(given.file).sort()).toEqual(["Talk - Camera.mp4", "Talk - Microphone.m4a", "Talk - Screen.mp4", "Talk - System sound.m4a"]);
+    expect(fs.readdirSync(given.file).sort()).toEqual(["Talk - Camera.mp4", "Talk - Microphone.m4a", "Talk - Screen.mp4", "Talk - System audio.m4a"]);
     expect(fs.readFileSync(path.join(given.file, "Talk - Microphone.m4a"), "utf8")).toBe(`sound2 of ${file}`);
   });
 

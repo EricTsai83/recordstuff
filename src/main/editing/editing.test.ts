@@ -261,12 +261,12 @@ describe("Save a copy… (plan 100)", () => {
     const ctx = setup({}, worker);
     await ctx.editing.choose("rec", { action: "open" });
     expect(ctx.editing.view()?.copy?.forms.map(({ form, fileName }) => [form, fileName])).toEqual([
-      ["video", "2026-10-24 10-00-00 (edited).mp4"], ["screenOnly", "2026-10-24 10-00-00 (screen only).mp4"], ["sound", "2026-10-24 10-00-00 (sound).m4a"],
+      ["video", "2026-10-24 10-00-00 (edited).mp4"], ["screenOnly", "2026-10-24 10-00-00 (no camera).mp4"], ["sound", "2026-10-24 10-00-00 (sound).m4a"],
     ]);
     expect(await ctx.editing.choose("rec", { action: "export", form: "screenOnly" })).toBe(true);
     await settled(ctx.editing);
     expect(worker.export.mock.calls[0]![0].render).not.toHaveProperty("camera");
-    expect(ctx.editing.view()?.export).toMatchObject({ phase: "done", name: "2026-10-24 10-00-00 (screen only).mp4" });
+    expect(ctx.editing.view()?.export).toMatchObject({ phase: "done", name: "2026-10-24 10-00-00 (no camera).mp4" });
   });
 });
 
@@ -395,9 +395,9 @@ describe("an export", () => {
     const ctx = setup();
     await editedOnce(ctx);
     for (const [reason, text] of [
-      ["recording", "Saving a copy is unavailable while recording."],
-      ["preview", "Saving a copy is unavailable while the Recording Studio's Live preview runs."],
-      ["saving", "Saving a copy is unavailable while a recording is being saved."],
+      ["recording", "Save as… is unavailable while recording."],
+      ["preview", "Save as… is unavailable while the Recording Studio's Live preview runs."],
+      ["saving", "Save as… is unavailable while a recording is being saved."],
       ["quitting", "RecordStuff is quitting."],
     ] as const) {
       ctx.block(reason);
@@ -512,7 +512,7 @@ describe("publication", () => {
       }
       expect(copyName("video", { fileName: "Talk (2).mp4", edited: true }, beside, 1)).toBe("Talk (2) (edited).mp4");
       expect(copyName("sound", { fileName: "Talk.mp4", edited: true }, beside, 2)).toBe("Talk (sound) (2).m4a");
-      expect(copyName("screenOnly", { fileName: "Talk.recordstuff.mp4", edited: true }, beside, 2)).toBe("Talk (screen only) (2).mp4");
+      expect(copyName("screenOnly", { fileName: "Talk.recordstuff.mp4", edited: true }, beside, 2)).toBe("Talk (no camera) (2).mp4");
     }
   });
 

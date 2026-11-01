@@ -576,9 +576,9 @@ export class Editing {
   private blockReason(): string | undefined {
     const language = this.deps.language();
     switch (this.deps.blocked()) {
-      case "recording": return translate("Saving a copy is unavailable while recording.", language);
-      case "preview": return translate("Saving a copy is unavailable while the Recording Studio's Live preview runs.", language);
-      case "saving": return translate("Saving a copy is unavailable while a recording is being saved.", language);
+      case "recording": return translate("Save as… is unavailable while recording.", language);
+      case "preview": return translate("Save as… is unavailable while the Recording Studio's Live preview runs.", language);
+      case "saving": return translate("Save as… is unavailable while a recording is being saved.", language);
       case "quitting": return translate("RecordStuff is quitting.", language);
       default: return undefined;
     }
@@ -968,7 +968,7 @@ export class Editing {
       case "output_write_failed": return t("The copy could not be written to its folder. Check the folder and the drive, then save it again.");
       case "output_exists": return t("The copy's file name was taken. Save it again.");
       case "export_worker_crashed": case "export_worker_unresponsive":
-        return during === "inspect" ? t("the video process stopped. Close the editor and try again.") : t("The video process stopped. The recording is unchanged; save the copy again.");
+        return during === "inspect" ? t("the video process stopped. Close the edit view and try again.") : t("The video process stopped. The recording is unchanged; save the copy again.");
       case "export_engine_missing": return t("the video engine could not be loaded.");
       case "encode_failed": return t(rendered ? "Saving failed while encoding. The recording is unchanged; save the copy again." : "Saving failed while encoding a join. The recording is unchanged; save the copy again.");
       default: return during === "inspect" ? t("it could not be read.") : t("Saving failed. The recording is unchanged; save the copy again.");

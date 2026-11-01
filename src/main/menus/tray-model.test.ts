@@ -417,7 +417,7 @@ describe("notification text", () => {
     expect(cameraNotReadyNotification("en").body).toBe("The camera was not ready when the recording started. The screen was recorded without it until the camera sent a picture.");
     expect(cameraNotReadyNotification("zh-TW").body).toBe("錄影開始時相機尚未就緒，在相機送出畫面前只錄到螢幕畫面。");
     expect(microphoneLostNotification("en").body).toBe("The microphone dropped out during the recording. Only system audio was recorded while it was out.");
-    expect(microphoneLostNotification("zh-TW").body).toBe("錄影途中麥克風曾中斷，中斷期間只錄到系統音訊。");
+    expect(microphoneLostNotification("zh-TW").body).toBe("錄影途中麥克風曾中斷，中斷期間只錄到系統聲音。");
   });
 
   it("saved notification uses the file name", () => {
@@ -442,12 +442,13 @@ describe("notification text", () => {
 
   it("an editable recording whose Video could not be prepared says so, and what to do, in its saved notification (plan 100, D6)", () => {
     expect(savedNotification("/Users/eric/Movies/RecordStuff/Talk.recordstuff.mp4", "darwin", "en", undefined, true).body).toBe(
-      "Saved Talk.recordstuff.mp4, but its video could not be prepared. Drag it again to retry, or Option-drag to give the original recording.",
+      "Saved Talk.recordstuff.mp4, but its video could not be prepared. Drag it again to retry.",
     );
     expect(savedNotification("/Users/eric/Movies/RecordStuff/Talk.recordstuff.mp4", "darwin", "zh-TW", "lowDisk", true).body).toBe(
-      "已儲存 Talk.recordstuff.mp4，但影片無法準備。再拖曳一次可重試，或按住 Option 拖曳改給原始錄影。",
+      "已儲存 Talk.recordstuff.mp4，但影片無法準備，再拖曳一次可重試。",
     );
-    expect(savedNotification("C:\\Videos\\Talk.mp4", "win32", "en", undefined, true).body).toContain("Alt-drag");
+    // Short enough for a banner: ⌥-drag is the card's to say (2026-11-01).
+    expect(savedNotification("C:\\Videos\\Talk.mp4", "win32", "en", undefined, true).body).not.toContain("drag to give");
   });
 
   it("off macOS the sleep notice names the computer, not the Mac (plan 064)", () => {

@@ -53,8 +53,8 @@ describe("the names versions leave with (D3, D8, D9)", () => {
     expect(versionName("video", editable)).toBe("Meeting.mp4");
     expect(versionName("video", editable, "zh-TW")).toBe("Meeting.mp4");
     expect(versionName("original", editable)).toBe("Meeting.recordstuff.mp4");
-    expect(versionName("screenOnly", editable)).toBe("Meeting (screen only).mp4");
-    expect(versionName("screenOnly", editable, "zh-TW")).toBe("Meeting（僅畫面）.mp4");
+    expect(versionName("screenOnly", editable)).toBe("Meeting (no camera).mp4");
+    expect(versionName("screenOnly", editable, "zh-TW")).toBe("Meeting（無相機）.mp4");
     expect(versionName("sound", editable, "zh-TW")).toBe("Meeting（聲音）.m4a");
     expect(versionName("sources", editable)).toBe("Meeting sources");
     // One made before the marker existed would leave its Video under its own name: (edited) instead.
@@ -71,7 +71,7 @@ describe("a recording's sources (D7)", () => {
     expect(sourceFiles(editable)).toEqual([
       { track: "screen", role: "screen", name: "Meeting - Screen.mp4" },
       { track: "camera", role: "camera", name: "Meeting - Camera.mp4" },
-      { track: "sound1", role: "system", name: "Meeting - System sound.m4a" },
+      { track: "sound1", role: "system", name: "Meeting - System audio.m4a" },
       { track: "sound2", role: "microphone", name: "Meeting - Microphone.m4a" },
     ]);
   });

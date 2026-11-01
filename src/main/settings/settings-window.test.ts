@@ -1467,7 +1467,7 @@ describe("what a rename says when the edit could not follow (plan 100)", () => {
     expect(moveFailureText({ problem: "editReadOnly" }, "en").failureHelp?.action).toBe("revealData");
     // An edit that cannot be read says so in plain words and how to rename anyway; no code, no way out to open.
     const unreadable = moveFailureText({ problem: "editUnreadable", failure: new MoveFailure("editUnreadable", "/data/edits", "EBADMSG") }, "zh-TW");
-    expect(unreadable.failure).toBe("未重新命名：這段錄影的剪輯紀錄無法讀取（可能是較新版本的 RecordStuff 存的，或檔案在剪輯後被改過），所以無法跟著新名稱移動。錄影和剪輯都沒有變動。如果仍要改名，請從錄影的選單打開剪輯畫面，捨棄這份剪輯。");
+    expect(unreadable.failure).toBe("未重新命名：這段錄影的剪輯無法讀取（可能是較新版本的 RecordStuff 存的，或檔案在剪輯後被改過），所以無法跟著新名稱移動。錄影和剪輯都沒有變動。如果仍要改名，請從錄影的選單開啟編輯畫面，捨棄這份剪輯。");
     expect(unreadable.failureHelp).toBeUndefined();
     // A name's own problem is said as before, with no way out to offer.
     expect(moveFailureText({ problem: "exists" }, "en")).toEqual({ failure: "A file with this name is already in the folder." });

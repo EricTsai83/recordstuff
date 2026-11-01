@@ -6,16 +6,16 @@ import { formatBytes } from "../../../shared/quality";
 import { formatDuration } from "../../../shared/video-player";
 import type { LibraryItemView, LibraryView } from "../../../shared/settings-panel";
 import type { VideoState } from "../../sharing/sharing";
-import { MORE_VERSIONS, offeredVersions, recordingTitle, versionName, type VersionKind, type VersionSubject } from "../../../shared/versions";
+import { MORE_VERSIONS, offeredVersions, originalDragNote, recordingTitle, versionName, type OriginalKind, type VersionKind, type VersionSubject } from "../../../shared/versions";
 import type { ShareView } from "../../../shared/settings-panel";
 import { MEDIA_SCHEME } from "../../library/recordings-library";
 import { abbreviateHome, type AppContext } from "../../app/ui-model";
 import { type DateFormats, dayHeading, shortTime } from "./history";
 
 /** A card's Video while it is prepared or failed (plan 100), in the card's words. */
-function videoStateView(state: VideoState | undefined, language: AppContext["language"], mac: boolean): Pick<LibraryItemView, "preparing"> {
+function videoStateView(state: VideoState | undefined, language: AppContext["language"], platform: NodeJS.Platform | undefined, kind: OriginalKind): Pick<LibraryItemView, "preparing"> {
   if (!state) return {};
-  const hint = t(mac ? "Option-drag gives the original." : "Alt-drag gives the original.", language);
+  const hint = originalDragNote(kind, platform, language);
   if (state.state === "failed") return { preparing: { state: "failed", label: t("Video not prepared", language), hint } };
   const percent = Math.floor(state.progress * 100);
   return { preparing: { state: "preparing", progress: state.progress, hint,
@@ -42,7 +42,7 @@ function shareView(subject: VersionSubject, title: string, states: Partial<Recor
     heading: t("Share “{title}”", language, { title }),
     versions: offeredVersions(subject).map(kind => {
       const note = kind === "original"
-        ? t(subject.editable ? "The whole recording as made, before any edit, with the camera and each sound kept apart."
+        ? t(subject.editable ? "Unedited, with the camera and each sound apart. RecordStuff on another Mac can still edit it."
           : "The whole recording as made, before your edits, with the removed parts still in it.", language)
         : t(VERSION_NOTES[kind], language);
       const state = states[kind];
@@ -119,8 +119,9 @@ export function libraryView(ctx: AppContext, now: Date, format: DateFormats): Li
         video: `${MEDIA_SCHEME}://video/${file.id}?v=${file.version}`,
         ...(file.folder === undefined ? {} : { folder: file.folder }),
         ...(file.editable ? { editable: t("Editable", language),
-          editableHint: t("Keeps the picture, camera and sounds apart so you can change them later. To send it, drag it or use Share.", language) } : {}),
-        ...videoStateView(ctx.preparingVideos?.get(file.path), language, mac),
+          editableHint: t("Keeps the camera and each sound apart, so you can still change them here or in RecordStuff on another Mac. Drag the card or use Share… to send it.", language) } : {}),
+        ...videoStateView(ctx.preparingVideos?.get(file.path), language, ctx.platform,
+          { editable: Boolean(file.editable), edited: ctx.editedRecordings?.get(file.path) === file.size }),
         share: shareView({ fileName: file.name, edited: ctx.editedRecordings?.get(file.path) === file.size,
           // Without a camera, no Video without one; its description not read yet, the camera is taken to be there.
           ...(file.editable ? { editable: { camera: file.editableCamera ?? true, sounds: ["system", "microphone"], mix: true as const } } : {}) },
