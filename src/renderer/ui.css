@@ -4306,6 +4306,21 @@
     margin-inline-end: --spacing(-1.5);
     color: var(--muted-foreground);
   }
+  /* A page toast's new phase (a promise toast's progress, then done; Trash, then Restored) fades in while its height
+     eases (2026-11-01). */
+  .toast-phase {
+    animation: toast-phase-in 240ms ease-out;
+  }
+  @keyframes toast-phase-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast-phase {
+      animation: none;
+    }
+  }
   /* A toast's description breaks Chinese only at its punctuation and spaces, so a word such as 原始檔 or 拖曳 is never cut
      across two lines (2026-11-01); a run too long for a line still breaks anywhere. English is unaffected. */
   .toast-description {
