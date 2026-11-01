@@ -86,3 +86,13 @@ it("counts the delay from when the work was asked for", () => {
   wait(SHOW_AFTER_MS - 300);
   expect(shown()).toBe(true);
 });
+
+/**
+ * Work long under way that becomes this one's to show (Share…'s bar when a preparing file is picked) shows in the same
+ * draw, never a frame of what it was before (2026-11-01: the picked Sound's ready note flashed for one frame).
+ */
+it("shows work already waiting long enough in the draw that makes it active", () => {
+  draw({ active: false });
+  draw({ active: true, since: Date.now() - SHOW_AFTER_MS - 1000 });
+  expect(shown(), "without a timer: in the same draw").toBe(true);
+});

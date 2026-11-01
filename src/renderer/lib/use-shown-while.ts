@@ -5,7 +5,7 @@
  * floor suggest. The wait counts from when the work was asked for, when that is known: work already waiting that long
  * shows at once, from the first frame.
  */
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 export const SHOW_AFTER_MS = 500;
 export const SHOW_AT_LEAST_MS = 500;
@@ -22,7 +22,9 @@ export function useShownWhile(active: boolean, { since, cut = false }: { since?:
     if (now) shownAt.current = performance.now();
     return now;
   });
-  useEffect(() => {
+  // Before the page is painted: work that has already waited long enough shows in the draw that made it active, not a
+  // frame later (2026-11-01: picking a Sound being prepared flashed its ready note for one frame).
+  useLayoutEffect(() => {
     if (cut) {
       setShown(false);
       return undefined;
@@ -30,6 +32,10 @@ export function useShownWhile(active: boolean, { since, cut = false }: { since?:
     if (active && !shown) {
       const show = (): void => { shownAt.current = performance.now(); setShown(true); };
       const wait = since === undefined ? SHOW_AFTER_MS : Math.max(0, since + SHOW_AFTER_MS - Date.now());
+      if (wait === 0) {
+        show();
+        return undefined;
+      }
       const timer = setTimeout(show, wait);
       return () => clearTimeout(timer);
     }
