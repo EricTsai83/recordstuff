@@ -193,7 +193,7 @@ function FileItem({ item, share, version, picked }: { item: LibraryItemView; sha
         {version.state === "failed" ? (
           <ControlTooltip label={share.labels.failed}><span className="share-mark share-mark-failed">!</span></ControlTooltip>
         ) : picked ? (
-          <span className="share-mark share-mark-picked" aria-hidden="true"><Check strokeWidth={3} /></span>
+          <span className="share-mark share-mark-picked" aria-hidden="true"><Check strokeWidth={2} /></span>
         ) : null}
         {preparing && (
           <span className="share-progress" role="progressbar" aria-label={share.labels.preparing} aria-valuemin={0} aria-valuemax={100}

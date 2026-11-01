@@ -2116,7 +2116,8 @@
     border-radius: 50%;
     background: var(--primary);
     color: var(--primary-foreground);
-    stroke-width: 3;
+    /* Screen pixels: icons draw a non-scaling stroke (mount-root.ts). */
+    stroke-width: 2;
     box-shadow: 0 0 0 1.5px var(--display-ink);
   }
   .arrangement-options {
