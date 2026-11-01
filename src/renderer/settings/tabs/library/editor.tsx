@@ -164,7 +164,7 @@ function ExportToasts() {
           <ToastTitle className="toast-title" />
           <ToastDescription className="toast-description" />
         </div>
-        <ToastAction className="toast-action" />
+        <ToastAction className="toast-action" render={<Button variant="ink" size="sm" />} />
       </ToastContent>
     </Toast>
   ));

@@ -131,14 +131,14 @@ function PageToasts() {
                 <ToastDescription className="toast-description" />
                 {percent !== undefined && (
                   // The Video goes on being prepared; the toast goes, and one says when it is ready (2026-11-01).
-                  <Button variant="outline" size="sm" className="toast-action mt-1 self-start" onClick={() => model.backgroundVideo(item.id)}>
+                  <Button variant="ink" size="sm" className="toast-action mt-1 self-start" onClick={() => model.backgroundVideo(item.id)}>
                     {model.text("Continue in background")}
                   </Button>
                 )}
               </div>
               {trashed && (
                 <Button
-                  variant="outline"
+                  variant="ink"
                   size="sm"
                   className="toast-action shrink-0"
                   aria-keyshortcuts={shortcut}

@@ -1,4 +1,5 @@
-/** App extensions: white media controls, whole-card buttons, larger player controls and wrapping labels. Standard variants follow shadcn base-mira; destructive is an outline in red ink. */
+/** App extensions: white media controls, whole-card buttons, larger player controls, wrapping labels and `ink`, a filled
+ * button in the text colour for a toast's action (2026-11-01). Standard variants follow shadcn base-mira; destructive is an outline in red ink. */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,8 @@ const buttonVariants = cva(
         media:
           "rounded-full border-transparent bg-transparent text-media-foreground hover:bg-media-foreground/15 focus-visible:border-media-foreground focus-visible:ring-media-foreground/80 [&_svg]:drop-shadow-(--media-icon-shadow)",
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        // A toast's action: filled in the text colour, so it reads as the one thing to press on the toast's card.
+        ink: "bg-foreground text-background hover:bg-foreground/85",
         outline:
           "border-border hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30",
         secondary:
