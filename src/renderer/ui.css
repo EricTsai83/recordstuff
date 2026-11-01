@@ -2814,25 +2814,6 @@
     font-weight: 600;
     letter-spacing: 0;
   }
-  /* Plan 100: the Video being prepared, a thin bar along the picture's top showing how far it is; the picture stays as
-     it is (2026-11-01: a scrim with words over it, before). Not at its foot, where the hover preview's own red seek
-     bar runs: a card being dragged is under the pointer, so the two were one line there. */
-  .clip-preparing-bar {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-    z-index: 1;
-    height: 3px;
-    /* Seen over any picture, a white screen's too: a dark track, filled in the app's colour as Share…'s bar is. */
-    background: var(--media-scrim);
-  }
-  .clip-preparing-bar > span {
-    display: block;
-    height: 100%;
-    background: var(--primary);
-    transition: width 240ms linear;
-  }
   /* Share… (plan 100 step 3): the card as a little folder of the files it can give, in the window's middle over a
      dimmed page (2026-11-01), the card's own surface, hairline and shadow. Opening, the card's picture grows into it
      through a view transition named share-morph (model.openShare); closing, it shrinks back. */
@@ -4325,6 +4306,11 @@
   #editor-mix-reset {
     margin-inline-end: --spacing(-1.5);
     color: var(--muted-foreground);
+  }
+  /* A refused drag's toast while its Video is prepared (2026-11-01): how far, above what ⌥-drag copies meanwhile. */
+  .toast-progress {
+    margin-block: --spacing(1.5) --spacing(2);
+    gap: --spacing(1) --spacing(3);
   }
   /* A toast's description breaks Chinese only at its punctuation and spaces, so a word such as 原始檔 or 拖曳 is never cut
      across two lines (2026-11-01); a run too long for a line still breaks anywhere. English is unaffected. */

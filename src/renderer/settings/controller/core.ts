@@ -57,7 +57,7 @@ import {
 } from "./player";
 import { disposeInfo, forgetInfo, hideInfo } from "./info";
 import { editingItem, editorVideo, forgetEditor } from "./editor";
-import { dismissToast, disposeToast, toastState } from "./toast";
+import { dismissToast, disposeToast, followToast, toastState } from "./toast";
 import { keepUnchanged } from "../../lib/keep-unchanged";
 
 declare global {
@@ -422,6 +422,7 @@ export function render(next: SettingsView): void {
       ? document.activeElement
       : undefined;
   reconcile(previous, next);
+  followToast();
   // A push can hide the status card or remove a row's action while it has focus (a problem solved from the tray, an
   // action main no longer offers), or lock the control it is on (a recording started from the shortcut, which Chromium
   // answers by dropping focus to the page): the tab keeps the place, so the next Tab does not start over and the next

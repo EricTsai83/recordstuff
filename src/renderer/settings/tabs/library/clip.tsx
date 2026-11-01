@@ -141,14 +141,6 @@ export const Clip = memo(function Clip({
               {item.duration}
             </span>
             {preview && <ClipPreview item={item} sound={sound} />}
-            {/* Its Video being prepared: a thin bar along the picture's top (its foot is the preview's seek bar), the
-                picture left as it is (2026-11-01); the card's name reads its state, and a refused drag says the rest in
-                a toast. */}
-            {item.preparing?.state === "preparing" && (
-              <span className="clip-preparing-bar" aria-hidden="true">
-                <span style={{ width: `${Math.round((item.preparing.progress ?? 0) * 100)}%` }} />
-              </span>
-            )}
           </span>
           <span className="clip-text">
             <ControlTooltip label={item.title} enabled={title.truncated} delay={1000}>

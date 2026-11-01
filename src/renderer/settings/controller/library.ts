@@ -493,9 +493,12 @@ export async function fileAction(
     render(result.view);
     // A drag refused because its Video is not ready says why in a toast that leaves by itself, with what ⌥-drag gives
     // under it, not in a line kept over the recordings (2026-11-01, the maintainer's request).
+    // While the Video is still being prepared the toast shows how far it is and stays until it is ready (2026-11-01).
     if (!result.applied && dragging && result.failure) {
       announce(result.failureDetail ? `${result.failure}. ${result.failureDetail}` : result.failure);
-      showToast("notice", result.failure, result.failureDetail ?? "", PROBLEM_TOAST_MS);
+      const waiting = view?.library?.items.find((item) => item.id === id)?.preparing?.state === "preparing";
+      showToast("notice", result.failure, result.failureDetail ?? "", PROBLEM_TOAST_MS,
+        waiting ? { id, note: result.failureDetail ?? "" } : undefined);
     } else if (!result.applied)
       libraryError = view?.library?.items.some((item) => item.id === id)
         ? (failedText(result.failure))

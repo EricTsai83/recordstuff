@@ -10,19 +10,20 @@ function dragStart(target: Element, altKey: boolean): void {
 }
 
 /**
- * Plan 100's card: a drag gives the Video and ⌥-drag the original; while the Video is prepared the card says so over its
- * picture with the way to give the original, and a drag refused meanwhile says why. Behaviour and names only.
+ * Plan 100's card: a drag gives the Video and ⌥-drag the original; a drag refused while the Video is prepared says why in
+ * a toast that shows how far it is, then that it is ready. Behaviour and names only.
  */
-it("drags the Video or the original, and says over the picture when the Video is still being prepared", async () => {
+it("drags the Video or the original, and a drag refused while the Video is prepared shows its progress in a toast", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
   let revision = 1;
   let preparing = true;
+  let progress = 0.4;
   const view = (): SettingsView => ({ language: "en", title: "RecordStuff", hint: "", failure: "", revision: ++revision,
     tabs: [{ id: "library", label: "Recordings" }], groups: [],
     library: { folder: "~/Movies", summary: "2 recordings", items: [
       item("a", { editable: "Editable", editableHint: "Keeps the picture apart.",
-        ...(preparing ? { preparing: { state: "preparing" as const, progress: 0.4, label: "Preparing video… 40%" } } : {}) }),
+        ...(preparing ? { preparing: { state: "preparing" as const, progress, label: `Preparing video… ${Math.round(progress * 100)}%` } } : {}) }),
       item("b"),
     ] } });
   const sent: Array<[string, unknown]> = [];
@@ -33,23 +34,27 @@ it("drags the Video or the original, and says over the picture when the Video is
     }
     return { view: view(), applied: true };
   });
-  window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: () => () => {} };
+  let push: (next: SettingsView) => void = () => {};
+  window.settings = { read: async () => view(), capture: async () => view(), choose, ready: async () => {}, onChanged: (cb) => { push = cb; return () => {}; } };
   await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
 
-  // Being prepared, a card keeps its picture and draws a thin bar along its top, its state read in its name (2026-11-01).
-  const bar = document.querySelector<HTMLElement>("#clip-a .clip-preparing-bar > span")!;
-  expect(bar.style.width).toBe("40%");
+  // Being prepared, a card keeps its picture as it is, its state read in its name (2026-11-01).
   expect(document.querySelector("#clip-a .clip-thumb")!.textContent).not.toContain("Preparing video");
   expect(document.querySelector("#clip-a-open")!.getAttribute("aria-label")).toContain("Preparing video… 40%");
-  expect(document.querySelector("#clip-b .clip-preparing-bar")).toBeNull();
 
-  // A drag waits for the Video, and a toast says why and what ⌥-drag gives; no line is kept over the recordings.
+  // A drag waits for the Video, and a toast says why, how far it is and what ⌥-drag copies; no line is kept over the
+  // recordings.
   dragStart(document.querySelector("#clip-a")!, false);
   const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
-  await vi.waitFor(() => expect([toast()?.querySelector(".toast-title")?.textContent, toast()?.querySelector(".toast-description")?.textContent])
-    .toEqual(["Can't copy while still combining video and sound", "To copy the multitrack original, Option-drag. Ordinary players may not play it."]));
+  await vi.waitFor(() => expect(toast()?.querySelector(".toast-title")?.textContent).toBe("Can't copy while still combining video and sound"));
+  expect(toast()!.querySelector(".toast-description")!.textContent).toContain("To copy the multitrack original, Option-drag. Ordinary players may not play it.");
+  expect(toast()!.querySelector('[role="progressbar"]')!.getAttribute("aria-valuenow")).toBe("40");
   expect(document.querySelector<HTMLElement>(".library-error")?.hidden ?? true).toBe(true);
+  // Each push moves it on, and the toast stays while it is prepared.
+  progress = 0.7;
+  push(view());
+  await vi.waitFor(() => expect(toast()?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("70"));
 
   // Let go on the card, the refused drag is not a click too: the player stays closed (2026-11-01: it opened). A press
   // that is only a click, after it, plays the recording.
@@ -67,9 +72,11 @@ it("drags the Video or the original, and says over the picture when the Video is
   dragStart(document.querySelector("#clip-a")!, true);
   await vi.waitFor(() => expect(sent.at(-1)).toEqual(["recordingFile:a", "dragOriginal"]));
 
-  // Prepared, the overlay goes and a drag gives the Video.
+  // Prepared, the toast that waited says it can be dragged now, and a drag gives the Video.
   preparing = false;
+  push(view());
+  await vi.waitFor(() => expect(toast()?.querySelector(".toast-title")?.textContent).toBe("Done combining. Drag it again to copy."));
+  expect(toast()!.querySelector('[role="progressbar"]')).toBeNull();
   dragStart(document.querySelector("#clip-b")!, false);
   await vi.waitFor(() => expect(sent.at(-1)).toEqual(["recordingFile:b", "drag"]));
-  await vi.waitFor(() => expect(document.querySelector("#clip-a .clip-preparing")).toBeNull());
 });

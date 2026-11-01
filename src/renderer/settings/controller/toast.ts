@@ -2,7 +2,8 @@
  * The Trash/Restored toast, and the notice a category action leaves (2026-10-09): its timer pauses while the pointer or
  * focus is on it; Sonner animates it out. Only "trashed" offers Undo.
  */
-import { draw, focus, selectedTab } from "./core";
+import { sentences } from "../../../shared/i18n";
+import { announce, draw, focus, selectedTab, text, view } from "./core";
 
 export let toastState:
   | {
@@ -16,6 +17,11 @@ export let toastState:
       focus: boolean;
       /** Which time it opened: "Restored" over an open toast keeps it, a toast after a closed one takes the next. */
       show: number;
+      /**
+       * A refused drag's recording whose Video is being prepared: the toast shows how far it is and stays until it is
+       * ready or could not be made, then says so (2026-11-01, at the maintainer's request, instead of a bar on the card).
+       */
+      watch?: { id: string; note: string } | undefined;
     }
   | undefined;
 /**
@@ -34,6 +40,7 @@ export function showToast(
   title: string,
   description: string,
   ms: number,
+  watch?: { id: string; note: string },
 ): void {
   clearTimeout(toastTimer);
   const node = toastNode();
@@ -51,13 +58,39 @@ export function showToast(
     pointer: node?.matches(":hover") === true,
     focus: kind !== "notice" && focused,
     show: toastState?.open ? toastState.show : ++toastShows,
+    watch,
   };
+  draw();
+  resumeToast();
+}
+/** How long the toast that says a watched Video is ready stays. */
+const READY_TOAST_MS = 5000;
+/**
+ * After each push: a watched Video still being prepared keeps the toast (its host draws the progress); ready, the toast
+ * says it can be dragged now; failed, it says so with the way to retry; a recording gone takes the toast with it.
+ */
+export function followToast(): void {
+  const watch = toastState?.open ? toastState.watch : undefined;
+  if (!toastState || !watch) return;
+  const item = view?.library?.items.find((entry) => entry.id === watch.id);
+  if (item?.preparing?.state === "preparing") return;
+  toastState.watch = undefined;
+  if (!item) {
+    dismissToast();
+    return;
+  }
+  const failed = item.preparing?.state === "failed";
+  toastState.title = text(failed ? "Can't copy: video and sound could not be combined" : "Done combining. Drag it again to copy.");
+  toastState.description = failed ? sentences([text("Drag again to retry."), watch.note], view?.language) : "";
+  toastState.remaining = failed ? PROBLEM_TOAST_MS : READY_TOAST_MS;
+  announce(toastState.description ? `${toastState.title}. ${toastState.description}` : toastState.title);
   draw();
   resumeToast();
 }
 function resumeToast(): void {
   clearTimeout(toastTimer);
-  if (!toastState?.open || toastState.pointer || toastState.focus) return;
+  // A watched Video keeps the toast until it is ready (followToast).
+  if (!toastState?.open || toastState.pointer || toastState.focus || toastState.watch) return;
   toastState.started = Date.now();
   toastTimer = setTimeout(dismissToast, toastState.remaining);
 }

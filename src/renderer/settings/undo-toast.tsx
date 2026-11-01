@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Toaster } from "../components/ui/sonner";
+import { Progress, ProgressLabel, ProgressValue } from "../components/ui/progress";
 import { toast } from "sonner";
 import * as model from "./settings-controller";
 
@@ -21,12 +22,24 @@ export function ToastHost() {
   // One Sonner toast per time it opens: "Restored" updates the open toast in place, while a toast shown as the last one
   // slides out is a new one, which Sonner would otherwise merge into the leaving toast and remove with it.
   const shown = useRef("");
+  // A refused drag waiting for its Video shows how far it is, in shadcn's Progress, above what ⌥-drag copies meanwhile.
+  const watched = state?.watch ? model.view?.library?.items.find((item) => item.id === state.watch?.id)?.preparing : undefined;
+  const percent = watched?.state === "preparing" ? Math.round((watched.progress ?? 0) * 100) : undefined;
   useEffect(() => {
     if (open && state) {
       shown.current = toastIdOf(state.show);
       toast(state.title, {
         id: shown.current,
-        description: state.description,
+        description:
+          percent === undefined ? state.description : (
+            <>
+              <Progress value={percent} className="toast-progress">
+                <ProgressLabel>{model.text("Combining")}</ProgressLabel>
+                <ProgressValue />
+              </Progress>
+              {state.description}
+            </>
+          ),
         duration: Infinity,
         closeButton: false,
         className: "undo-toast",
@@ -62,7 +75,7 @@ export function ToastHost() {
       toast.dismiss(shown.current);
       shown.current = "";
     }
-  }, [open, state, undo, key]);
+  }, [open, state, state?.title, percent, undo, key]);
   useEffect(
     () => () => {
       if (shown.current) toast.dismiss(shown.current);
