@@ -29,7 +29,7 @@ it("drags the Video or the original, and says over the picture when the Video is
   const choose = vi.fn(async (group: string, choice: unknown): Promise<any> => {
     sent.push([group, choice]);
     if (group === "recordingFile:a" && choice === "drag" && preparing) {
-      return { view: view(), applied: false, failure: "Video still being prepared", failureDetail: "Option-drag to give the file now, with the camera and each sound still separate." };
+      return { view: view(), applied: false, failure: "Can't copy while still combining video and sound", failureDetail: "To copy the multitrack original, Option-drag. Ordinary players may not play it." };
     }
     return { view: view(), applied: true };
   });
@@ -37,7 +37,7 @@ it("drags the Video or the original, and says over the picture when the Video is
   await import("../settings");
   await vi.waitFor(() => expect(document.querySelectorAll(".clip")).toHaveLength(2));
 
-  // Being prepared, a card keeps its picture and draws a thin bar along its foot, its state read in its name (2026-11-01).
+  // Being prepared, a card keeps its picture and draws a thin bar along its top, its state read in its name (2026-11-01).
   const bar = document.querySelector<HTMLElement>("#clip-a .clip-preparing-bar > span")!;
   expect(bar.style.width).toBe("40%");
   expect(document.querySelector("#clip-a .clip-thumb")!.textContent).not.toContain("Preparing video");
@@ -48,7 +48,7 @@ it("drags the Video or the original, and says over the picture when the Video is
   dragStart(document.querySelector("#clip-a")!, false);
   const toast = () => document.querySelector<HTMLElement>('.undo-toast:not([data-removed="true"])');
   await vi.waitFor(() => expect([toast()?.querySelector(".toast-title")?.textContent, toast()?.querySelector(".toast-description")?.textContent])
-    .toEqual(["Video still being prepared", "Option-drag to give the file now, with the camera and each sound still separate."]));
+    .toEqual(["Can't copy while still combining video and sound", "To copy the multitrack original, Option-drag. Ordinary players may not play it."]));
   expect(document.querySelector<HTMLElement>(".library-error")?.hidden ?? true).toBe(true);
 
   // Let go on the card, the refused drag is not a click too: the player stays closed (2026-11-01: it opened). A press

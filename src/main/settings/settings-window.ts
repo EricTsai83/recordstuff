@@ -684,7 +684,7 @@ export class SettingsWindow {
       const item = file ? view.library?.items.find((entry) => entry.id === file.id) : undefined;
       const note = originalDragNote({ editable: Boolean(item?.editable), edited: Boolean(item?.edited) }, process.platform, view.language);
       return this.deliver({ view, applied: false,
-        failure: translate(dragged.problem === "preparing" ? "Video still being prepared" : "Video not prepared", view.language),
+        failure: translate(dragged.problem === "preparing" ? "Can't copy while still combining video and sound" : "Can't copy: video and sound could not be combined", view.language),
         failureDetail: dragged.problem === "preparing" ? note : sentences([translate("Drag again to retry.", view.language), note], view.language) }, recipient);
     }
     const failure = translate("Could not complete this action. Try again.", view.language);

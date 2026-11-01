@@ -70,16 +70,16 @@ export function videoIsOriginal(subject: VersionSubject): boolean {
 export interface OriginalKind { editable: boolean; edited: boolean }
 
 /**
- * What ⌥-drag gives while a card's Video is not ready (plan 100, D1), said by what that file lacks beside the Video, never
- * a name for it (2026-11-01, the maintainer's request: "the original" told a person nothing). Only an editable or edited
+ * What ⌥-drag copies while a card's Video is not ready (plan 100, D1), in the maintainer's words of 2026-11-01: the
+ * original, multitrack for an editable recording, which ordinary players may not play. Only an editable or edited
  * recording has a Video to wait for, so one of the three applies.
  */
 export function originalDragNote(kind: OriginalKind, platform: string | undefined, language?: Language): string {
   const key = platform === "darwin" ? "Option" : "Alt";
-  if (!kind.editable) return translate("{key}-drag to give the file now, without your edits.", language, { key });
+  if (!kind.editable) return translate("To copy the unedited original, {key}-drag.", language, { key });
   return kind.edited
-    ? translate("{key}-drag to give the file now, without your edits and with the camera and each sound still separate.", language, { key })
-    : translate("{key}-drag to give the file now, with the camera and each sound still separate.", language, { key });
+    ? translate("To copy the multitrack original, without your edits, {key}-drag. Ordinary players may not play it.", language, { key })
+    : translate("To copy the multitrack original, {key}-drag. Ordinary players may not play it.", language, { key });
 }
 
 /** Two names the file system takes for the same: macOS's volumes ignore case and compose accents alike. */

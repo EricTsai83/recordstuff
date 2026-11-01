@@ -751,14 +751,15 @@ export const ZH_TW = {
   "{title} - Camera": "{title} - 相機",
   "{title} - System audio": "{title} - 系統聲音",
   "{title} - Microphone": "{title} - 麥克風",
-  // A drag refused because the card's Video is not ready (plan 100, D1), said in a toast (2026-11-01), with what ⌥-drag
-  // gives meanwhile by what that file lacks rather than a name for it ("the original" told a person nothing). {key} is
-  // Option or Alt.
-  "Video still being prepared": "影片還在準備中",
+  // A drag refused because the card's Video is not ready (plan 100, D1), said in a toast (2026-11-01), in the maintainer's
+  // words of 2026-11-01: what is still happening, that it cannot be copied, and what ⌥-drag copies instead, with the
+  // multitrack file's catch. {key} is Option or Alt.
+  "Can't copy while still combining video and sound": "影像和聲音還在合成中，無法複製",
+  "Can't copy: video and sound could not be combined": "影像和聲音合成失敗，無法複製",
   "Drag again to retry.": "再拖曳一次可重試。",
-  "{key}-drag to give the file now, without your edits.": "按住 {key} 拖曳可先給出檔案，但不含你的剪輯。",
-  "{key}-drag to give the file now, with the camera and each sound still separate.": "按住 {key} 拖曳可先給出檔案，但相機和各個聲音仍是分開的。",
-  "{key}-drag to give the file now, without your edits and with the camera and each sound still separate.": "按住 {key} 拖曳可先給出檔案，但不含剪輯，相機和各個聲音也仍是分開的。",
+  "To copy the unedited original, {key}-drag.": "如果想要複製未剪輯的原始檔，可以按住 {key} 拖曳。",
+  "To copy the multitrack original, {key}-drag. Ordinary players may not play it.": "如果想要複製多軌原始檔，可以按住 {key} 拖曳，但原始檔可能無法在一般播放器播放。",
+  "To copy the multitrack original, without your edits, {key}-drag. Ordinary players may not play it.": "如果想要複製多軌原始檔（不含剪輯），可以按住 {key} 拖曳，但原始檔可能無法在一般播放器播放。",
   "Preparing video… {percent}%": "正在準備影片… {percent}%",
   "Preparing video…": "正在準備影片…",
   // The saved notification of an editable recording whose Video could not be prepared (plan 100, D6).

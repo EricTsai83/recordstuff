@@ -91,10 +91,10 @@ describe("a recording's sources (D7)", () => {
 
 describe("what ⌥-drag gives while the Video is prepared (plan 100, D1; 2026-11-01)", () => {
   it("says what that file lacks beside the Video, never a name for it, with the platform's key", () => {
-    expect(originalDragNote({ editable: false, edited: true }, "darwin")).toBe("Option-drag to give the file now, without your edits.");
-    expect(originalDragNote({ editable: true, edited: false }, "darwin")).toBe("Option-drag to give the file now, with the camera and each sound still separate.");
+    expect(originalDragNote({ editable: false, edited: true }, "darwin")).toBe("To copy the unedited original, Option-drag.");
+    expect(originalDragNote({ editable: true, edited: false }, "darwin")).toBe("To copy the multitrack original, Option-drag. Ordinary players may not play it.");
     expect(originalDragNote({ editable: true, edited: true }, "win32"))
-      .toBe("Alt-drag to give the file now, without your edits and with the camera and each sound still separate.");
-    expect(originalDragNote({ editable: true, edited: false }, "darwin", "zh-TW")).toBe("按住 Option 拖曳可先給出檔案，但相機和各個聲音仍是分開的。");
+      .toBe("To copy the multitrack original, without your edits, Alt-drag. Ordinary players may not play it.");
+    expect(originalDragNote({ editable: true, edited: false }, "darwin", "zh-TW")).toBe("如果想要複製多軌原始檔，可以按住 Option 拖曳，但原始檔可能無法在一般播放器播放。");
   });
 });
