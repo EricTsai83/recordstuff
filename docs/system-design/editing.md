@@ -192,8 +192,8 @@ A recording is three things, two of them files: the **Original** (the recording 
 | Video (recommended) | What the app shows: the edit applied, the camera composed where shown, one picture and one sound | Every recording | `Meeting.mp4`; an unedited plain recording's is the recording itself |
 | Sound only | The Video's sound | Every recording | `Meeting (sound).m4a` |
 | Original | The file as made, every track | Edited or editable recordings | Editable: `Meeting.recordstuff.mp4`; plain: `Meeting (original).mp4` |
-| No camera (under More) | The Video without the camera | Editable recordings with a camera | `Meeting (screen only).mp4` |
-| Sources (under More) | Each track as a file of its own, copied, never re-encoded | Editable recordings | Dragged or saved: a folder `Meeting sources` of `Meeting - Screen.mp4`, `- Camera.mp4`, `- System sound.m4a`, `- Microphone.m4a`; copied: the files alone (D7) |
+| No camera (under More) | The Video without the camera | Editable recordings with a camera | `Meeting (no camera).mp4` |
+| Sources (under More) | Each track as a file of its own, copied, never re-encoded | Editable recordings | Dragged or saved: a folder `Meeting sources` of `Meeting - Screen.mp4`, `- Camera.mp4`, `- System audio.m4a`, `- Microphone.m4a`; copied: the files alone (D7) |
 
 Names follow one rule: **only the original is marked**. The editable original is `<name>.recordstuff.mp4` from the moment it is saved (D3), known by its `rsed` description, never by its name; the card's title leaves the marker out and Rename… keeps it. A version that would take its source's own name is `<name> (edited).mp4` (D8, D9; 剪輯版 in Chinese), so the Video of an edited plain recording never replaces its original in Finder. A name taken where a file lands gets a number; Save as… puts the number in parentheses (`Meeting (edited) (2).mp4`); a file is never written over. The tags follow the app's language.
 
