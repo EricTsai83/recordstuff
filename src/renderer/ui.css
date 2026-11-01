@@ -2837,6 +2837,8 @@
     font-size: var(--text-2xs);
     font-weight: 400;
     opacity: 0.85;
+    /* ⌥-drag's note runs to two lines: even ones, never a word or two alone on the second (2026-11-01). */
+    text-wrap: balance;
   }
   .clip-preparing-bar {
     position: absolute;
