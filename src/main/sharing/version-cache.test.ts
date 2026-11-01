@@ -157,19 +157,22 @@ describe("the version cache (plan 100)", () => {
     expect(versions.get(b)).toBeDefined();
   });
 
-  it("follows a recording renamed in the tab, and clears all but what is held", async () => {
+  it("follows a recording renamed in the tab, and clears all but what is held for another reason", async () => {
     const versions = cache();
     const a = await made(versions, "/r/a.mp4", "video", 1);
     const b = await made(versions, "/r/b.mp4", "video", 1);
-    await versions.handOut(versions.get(b)!, "b.mp4");
+    const c = await made(versions, "/r/c.mp4", "video", 1);
+    await versions.handOut(versions.get(a)!, "a.mp4");
+    held.add(b);
     await versions.moved("/r/a.mp4", "/r/x/a.mp4");
     expect(versions.get(a)?.source).toBe("/r/x/a.mp4");
     expect(JSON.parse(fs.readFileSync(path.join(root, a, "entry.json"), "utf8"))).toMatchObject({ source: "/r/x/a.mp4" });
     fs.mkdirSync(path.join(root, ".copied", "abc"), { recursive: true });
     fs.writeFileSync(path.join(root, ".copied", "abc", "b.mp4"), "a clone");
     await versions.clear();
-    expect(versions.get(a)).toBeUndefined();
-    expect(versions.get(b)).toBeDefined();
+    expect(versions.get(a), "handed out within a day still goes: the person asked").toBeUndefined();
+    expect(versions.get(b), "held for another reason stays").toBeDefined();
+    expect(versions.get(c)).toBeUndefined();
     expect(fs.existsSync(path.join(root, ".copied")), "the last copy's clones go too").toBe(false);
   });
 });

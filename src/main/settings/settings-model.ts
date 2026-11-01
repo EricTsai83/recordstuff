@@ -83,8 +83,8 @@ function ungroupedSettings(state: RecordingState, ctx: AppContext): Group[] {
       id: value, label: t(value === "system" ? "System default" : value === "light" ? "Light" : "Dark", ctx.language),
       enabled: true, checked: value === (ctx.appearance ?? "system"), action: { setAppearance: value },
     }))),
-    // The versions prepared for sharing (plan 100): their size, and Clear, which keeps what was handed out in the last
-    // day. Locked while recording, as every preference.
+    // The versions prepared for sharing (plan 100): their size, and Clear, which keeps only what is being handed out now.
+    // Locked while recording, as every preference.
     { ...group("versionCache", t("Prepared videos", ctx.language), unlocked, [
       { id: "clear", label: t("Clear", ctx.language), enabled: unlocked && (ctx.versionCacheBytes ?? 0) > 0, checked: false, action: "clearVersionCache" },
     ], (ctx.versionCacheBytes ?? 0) > 0

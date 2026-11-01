@@ -15,7 +15,8 @@
  * **Cleaning (D5).** At most 10 GB or 10% of the free space, whichever is smaller, oldest first. A file handed out in the
  * last 24 hours, or held for another reason (`held`), is kept even past the limit: a web page may still be reading it
  * after the drop. A recording deleted or moved out of the folder takes its entries with it at once, held or not; one
- * edited again leaves its older entries to go once they are not held.
+ * edited again leaves its older entries to go once they are not held. Settings' Clear is the person asking for the space
+ * now, so it ignores the 24 hours and keeps only what is being handed out or held for another reason.
  */
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -249,9 +250,15 @@ export class VersionCache {
     return total;
   }
 
-  /** Settings' Clear: every entry not held goes, and the last copy's clones. */
+  /**
+   * Settings' Clear: every entry goes, handed out in the last 24 hours or not, except those being handed out now or held
+   * for another reason; and the last copy's clones. Keeping the day's handed-out files made Clear look broken: right after
+   * sharing, nearly everything was kept and the size did not change.
+   */
   async clear(): Promise<void> {
-    for (const entry of [...this.entries.values()]) if (!this.isHeld(entry)) await this.remove(entry.key, "the cache was cleared");
+    for (const entry of [...this.entries.values()]) {
+      if (!this.pinned.has(entry.key) && this.deps.held?.(entry.key) !== true) await this.remove(entry.key, "the cache was cleared");
+    }
     // The last copy's clones (give.ts), which would otherwise keep the data of entries just removed.
     await fs.promises.rm(path.join(this.deps.root, COPIED_FOLDER), { recursive: true, force: true });
   }
