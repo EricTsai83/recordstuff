@@ -48,6 +48,18 @@ it("drags the Video or the original, and says over the picture when the Video is
   await vi.waitFor(() => expect(document.querySelector(".library-error")?.textContent).toBe("The video is still being prepared. Option-drag to give the file now, with the camera and each sound still separate."));
   expect(document.querySelector<HTMLElement>(".library-error")!.hidden).toBe(false);
 
+  // Let go on the card, the refused drag is not a click too: the player stays closed (2026-11-01: it opened). A press
+  // that is only a click, after it, plays the recording.
+  const open = document.querySelector<HTMLElement>("#clip-a-open")!;
+  open.click();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(document.querySelector(".player[data-open]")).toBeNull();
+  open.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  open.click();
+  await vi.waitFor(() => expect(document.querySelector(".player[data-open]")).not.toBeNull());
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector(".player[data-open]")).toBeNull());
+
   // ⌥-drag gives the original.
   dragStart(document.querySelector("#clip-a")!, true);
   await vi.waitFor(() => expect(sent.at(-1)).toEqual(["recordingFile:a", "dragOriginal"]));

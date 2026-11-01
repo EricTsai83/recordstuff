@@ -2,7 +2,7 @@
  * A recording's card or list row: its thumbnail and hover preview, its title and details, and its menu (open,
  * reveal, rename, edit (plan 085), move to a category, Move to Trash), the same as a context menu and a ⋯ button.
  */
-import { useEffect, useState, useSyncExternalStore, memo } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, memo } from "react";
 import { Film, EllipsisVertical, Play, Volume2, VolumeX, Folder, FileText, HardDrive, FolderInput, SquarePen, Share, Files } from "lucide-react";
 import { ShareOverlay } from "./share";
 import type { LibraryItemView } from "../../../../shared/settings-panel";
@@ -35,6 +35,9 @@ export const Clip = memo(function Clip({
   const [failed, setFailed] = useState(false),
     [portrait, setPortrait] = useState(false),
     title = useTruncated<HTMLSpanElement>();
+  // A press that became a drag is not also a click: a drag the Video is not ready for is refused, and letting go on the
+  // card then opened the player (2026-11-01). Set as the drag starts, cleared by the next press.
+  const dragged = useRef(false);
   useEffect(() => {
     setFailed(false);
     setPortrait(false);
@@ -55,8 +58,10 @@ export const Clip = memo(function Clip({
         className="clip gap-0 overflow-visible rounded-xl bg-transparent p-0 shadow-none ring-0 dark:bg-transparent"
         data-id={item.id}
         draggable
+        onPointerDownCapture={() => { dragged.current = false; }}
         onDragStart={(event) => {
           event.preventDefault();
+          dragged.current = true;
           // The drag starts at the card, wherever it was pressed; one pressed on the preview's seek bar seeks instead.
           // It gives the Video, what the card plays, and with ⌥ (Alt) the recording as made (plan 100).
           if (!pressedOnBar()) void model.fileAction(item.id, event.altKey ? "dragOriginal" : "drag");
@@ -99,6 +104,7 @@ export const Clip = memo(function Clip({
           )}
           // A card whose preview has moved plays on from the moment it shows.
           onClick={() => {
+            if (dragged.current) { dragged.current = false; return; }
             const start = previewTime(item.id);
             stopPreview();
             model.openPlayer(item, start);
