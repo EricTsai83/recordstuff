@@ -9,13 +9,13 @@ Record. Cut. Done. A menu bar app that records one screen with its system audio,
 ## Download
 
 <!-- release-download:start -->
-Download **[RecordStuff 3.1.1 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v3.1.1/RecordStuff-3.1.1-arm64-selfsigned.dmg)** (134,045,952 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v3.1.1) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v3.1.1/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
+Download **[RecordStuff 3.2.0 for macOS Apple silicon (arm64)](https://github.com/EricTsai83/recordstuff/releases/download/v3.2.0/RecordStuff-3.2.0-arm64-selfsigned.dmg)** (134,018,754 bytes). [Release notes](https://github.com/EricTsai83/recordstuff/releases/tag/v3.2.0) · [SHA256SUMS](https://github.com/EricTsai83/recordstuff/releases/download/v3.2.0/SHA256SUMS) · [Latest release](https://github.com/EricTsai83/recordstuff/releases/latest).
 
-SHA-256: `e2cf5c1628c71ed73d3e640eca2d6d26a7229ddbc9723acfa9ca7206b3a287ae`.
+SHA-256: `c9ced76f36b1ed634f4ab4c7ea1bce9428f27074e5032d54eafe4e145a6afe6a`.
 
-Windows: **[RecordStuff 3.1.1 for Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v3.1.1/RecordStuff-3.1.1-x64-unsigned-setup.exe)** (103,400,321 bytes), unsigned and built by CI; capture has not been verified on Windows hardware.
+Windows: **[RecordStuff 3.2.0 for Windows x64](https://github.com/EricTsai83/recordstuff/releases/download/v3.2.0/RecordStuff-3.2.0-x64-unsigned-setup.exe)** (103,387,780 bytes), unsigned and built by CI; capture has not been verified on Windows hardware.
 
-SHA-256: `35bc5fa47a9b011125e5b0c9acf7dc047dac39fda03b32868f1a70119fd4087a`.
+SHA-256: `931bea821f68c764df56d1dd9d1d23e49f373ffd80699222ae881615219cef74`.
 <!-- release-download:end -->
 
 - **macOS**: drag RecordStuff into Applications. If it is blocked, open **System Settings → Privacy & Security** and click **Open Anyway** ([Apple's guidance](https://support.apple.com/102445)).
