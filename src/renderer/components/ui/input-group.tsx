@@ -1,4 +1,6 @@
 // A grouped text field shares the app's field focus line; its inner input has no second outline.
+// App change (2026-11-01): the block addons' group-has paddings for a direct input are left out. They repeated the addon's
+// own top and bottom padding, and a `:has()` followed by `*` made every element added anywhere restyle the whole page.
 "use client";
 
 import * as React from "react";
@@ -33,9 +35,9 @@ const inputGroupAddonVariants = cva(
         "inline-end":
           "order-last pr-2 has-[>button]:mr-[-0.275rem] has-[>kbd]:mr-[-0.275rem]",
         "block-start":
-          "order-first w-full justify-start px-2 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2",
+          "order-first w-full justify-start px-2 pt-2 [.border-b]:pb-2",
         "block-end":
-          "order-last w-full justify-start px-2 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2",
+          "order-last w-full justify-start px-2 pb-2 [.border-t]:pt-2",
       },
     },
     defaultVariants: {

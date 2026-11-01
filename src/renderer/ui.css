@@ -22,8 +22,6 @@
    site can use beside the primitives' own utilities (plan 069). The breakpoint keeps its exact query: 420 px and down
    stacks the rows. Under 600 px the sidebar stays collapsed (settings-app). */
 @custom-variant darwin (&:where([data-platform="darwin"] *));
-/* The last input was the pointer (the page sets data-input): a focus ring is for the keyboard only. */
-@custom-variant pointer (&:where([data-input="pointer"] *));
 @custom-variant compact {
   @media (max-width: 420px) {
     @slot;
@@ -36,11 +34,13 @@
   }
 }
 
-/* Mark drag surfaces and controls at their call sites. Open overlays pause drag surfaces. */
+/* Mark drag surfaces and controls at their call sites. Open overlays pause drag surfaces. The surface itself, not `*`,
+   follows the root's `:has()`: with `*`, every menu, dialog or explanation opening or closing restyled the whole page
+   (2026-11-01: some 5,500 elements and 20–30 ms each time with 210 recordings listed). */
 @utility window-drag {
   -webkit-app-region: drag;
   user-select: none;
-  &:where(:root:has(.player[data-open], [role="dialog"][data-open], [role="menu"][data-open], .info-popup[data-open]) *) {
+  &:where(:root:has(.player[data-open], [role="dialog"][data-open], [role="menu"][data-open], .info-popup[data-open]) &) {
     -webkit-app-region: no-drag;
   }
 }
@@ -3166,7 +3166,10 @@
   }
   /* The recording a notification or the menu opened: outlined in the primary accent, which then fades. */
   /* Both state lines follow the card's inner edge, touching its content without an outside gap. */
-  .clip:has(> .clip-open:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *)::after {
+  /* The root's state leads the selector, not a `*` after it: switching between the keyboard and the pointer, or the
+     window losing its focus, then restyles the cards alone, where `*` restyled every element of the page (2026-11-01,
+     some 19 ms with 210 recordings listed). */
+  :where(:root:not([data-input="pointer"]):not([data-window="inactive"])) .clip:has(> .clip-open:focus-visible)::after {
     /* An opaque line stays visible over both light and dark thumbnail pixels. */
     border: 2px solid var(--ring);
   }
@@ -4261,7 +4264,9 @@
   }
   /* A note behind a help icon beside the control's name, the control kept at the row's end; the ordinary pointer, as
      the app's other help icons have, since the note opens at once (2026-10-27, the maintainer's review). */
-  .editor-scene-row:has(> .editor-options-info) > :first-child {
+  /* Written on the name itself: a `:has()` on the row followed by `> :first-child` made every element added anywhere
+     restyle the whole page (2026-11-01). */
+  .editor-scene-row > :first-child:has(+ .editor-options-info) {
     flex: none;
   }
   .editor-options-info {
@@ -4946,7 +4951,7 @@
   /* A row whose header has the keyboard's focus is outlined by its own edge in the focus colour, as a Recordings card is;
      not for the pointer, nor while the window is inactive (2026-11-01: the line went with the shared focus utilities in
      bf9f5162, so a keyboard user could not see which row was focused; N-S103). */
-  .recording-result:has(> .result-summary:focus-visible):where(:root:not([data-input="pointer"]):not([data-window="inactive"]) *) {
+  :where(:root:not([data-input="pointer"]):not([data-window="inactive"])) .recording-result:has(> .result-summary:focus-visible) {
     border-color: var(--ring);
   }
   .recording-result + .recording-result::before {

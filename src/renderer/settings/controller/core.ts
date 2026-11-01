@@ -58,6 +58,7 @@ import {
 import { disposeInfo, forgetInfo, hideInfo } from "./info";
 import { editingItem, editorVideo, forgetEditor } from "./editor";
 import { dismissToast, disposeToast, toastState } from "./toast";
+import { keepUnchanged } from "../../lib/keep-unchanged";
 
 declare global {
   interface Window {
@@ -162,6 +163,13 @@ export const committed = (group: SettingsGroup | undefined): string => {
 };
 const isRecoveryControl = (id: string): boolean =>
   /-(retry|recovery)$/.test(id);
+/**
+ * Which input came last, on <html> for the keyboard-only focus lines; set only when it changes, since each set restyles
+ * what depends on it.
+ */
+function inputCameFrom(input: "pointer" | "keyboard"): void {
+  if (document.documentElement.dataset.input !== input) document.documentElement.dataset.input = input;
+}
 export const focus = (id: string | undefined): void => {
   if (id) document.getElementById(id)?.focus({ preventScroll: true });
 };
@@ -399,6 +407,8 @@ export function render(next: SettingsView): void {
     !next.groups.some((group) => group.kind === "shortcut" && group.capturing)
   )
     clearPreview();
+  // Unchanged recordings keep the previous push's objects, so their cards' memo holds and only what changed draws again.
+  if (next.library && previous?.library) next = { ...next, library: { ...next.library, items: keepUnchanged(previous.library.items, next.library.items) } };
   view = next;
   if (startupFailed) {
     // A later push drew the panel after all: the read's error is no longer true, and the region is an announcer again.
@@ -472,7 +482,7 @@ function reconcile(
     arriving = tab === "library" ? next.libraryFocus : undefined;
     // A banner or menu click brought the card: its outline flashes and goes, with no focus line left in the same red
     // (2026-10-09); a key the user presses there brings the line back.
-    if (arriving) document.documentElement.dataset.input = "pointer";
+    if (arriving) inputCameFrom("pointer");
     // The recording it brings must be among the cards shown (plan 071).
     if (arriving) showEveryRecording();
     closePlayer(false);
@@ -574,7 +584,7 @@ export function start(): () => void {
     document,
     "pointerdown",
     (event) => {
-      document.documentElement.dataset.input = "pointer";
+      inputCameFrom("pointer");
       for (const intent of resultIntents.values())
         if (
           !document
@@ -601,7 +611,7 @@ export function start(): () => void {
           (raw as KeyboardEvent).key,
         )
       )
-        document.documentElement.dataset.input = "keyboard";
+        inputCameFrom("keyboard");
     },
     true,
   );

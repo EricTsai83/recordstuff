@@ -209,6 +209,37 @@ function declarations(css: string): string[] {
   return found;
 }
 
+/**
+ * Selectors that make any element added anywhere restyle the whole page (2026-11-01, measured at some 20 ms a time with
+ * 210 recordings listed, the cost of every menu, tooltip and panel opening): a `:has()` followed by `*` or by a
+ * positional child (`> :first-child`), which Chromium cannot narrow and so invalidates from the root down; Tailwind's
+ * `group-has-*` variants compile to the first. Put the `:has()` on the element styled instead.
+ */
+/** What the pages set on <html> as they are used (the last input, the window's focus, Share…'s morph). */
+const TOGGLED_ROOT_STATES = ["data-input", "data-window", "data-share-morph"];
+
+function hasViolations(files: StyleFile[]): string[] {
+  const out: string[] = [];
+  for (const file of files) {
+    if (file.path.endsWith(".css")) {
+      const text = file.text.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const match of text.matchAll(/([^{};]*):has\((?:[^()]|\([^()]*\))*\)\)?\s*(?:\*|>\s*:(?:first|last|nth|only)-)[^{]*\{/g)) {
+        out.push(`${file.path}: ${match[0].replace(/\s+/g, " ").replace(/\s*\{$/, "").trim()} restyles the whole page whenever an element is added; put the :has() on the element styled`);
+      }
+      // A state the page toggles on <html> as it is used, followed by `*`: every toggle restyles every element.
+      for (const match of text.matchAll(new RegExp(`([^{};]*?\\[(${TOGGLED_ROOT_STATES.join("|")})\\b[^{};]*?\\s\\*[^{};]*)\\{`, "g"))) {
+        out.push(`${file.path}: ${match[1]!.replace(/\s+/g, " ").trim()} restyles the whole page whenever ${match[2]} changes; lead the selector with the root's state`);
+      }
+    } else {
+      const code = file.text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+      for (const match of code.matchAll(/(?<![\w-])group-has-[^\s"'`]+/g)) {
+        out.push(`${file.path}: ${match[0]} compiles to a :has() followed by *, which restyles the whole page whenever an element is added; use has-* on the group or a class`);
+      }
+    }
+  }
+  return out;
+}
+
 function styleViolations(files: StyleFile[]): string[] {
   const problems: string[] = [];
   for (const file of files) {
@@ -248,6 +279,24 @@ function rendererFiles(directory = RENDERER): StyleFile[] {
 describe("renderer style layers", () => {
   it("writes colours only as tokens and keeps feature stylesheets out of the primitives", () => {
     expect(styleViolations(rendererFiles())).toEqual([]);
+  });
+
+  it("writes no :has() that restyles the whole page whenever an element is added", () => {
+    expect(hasViolations(rendererFiles())).toEqual([]);
+  });
+
+  it("catches a planted page-wide :has() and leaves a :has() on the element styled alone", () => {
+    expect(hasViolations([{ path: "ui.css", text: ".a:where(:root:has(.b) *) { color: red; }\n.row:has(> .info) > :first-child { flex: none; }" }])).toEqual([
+      "ui.css: .a:where(:root:has(.b) *) restyles the whole page whenever an element is added; put the :has() on the element styled",
+      "ui.css: .row:has(> .info) > :first-child restyles the whole page whenever an element is added; put the :has() on the element styled",
+    ]);
+    expect(hasViolations([{ path: "ui.css", text: '.a:where(:root:not([data-input="pointer"]) *) { color: red; }\n:where(:root:not([data-input="pointer"])) .a { color: red; }' }])).toEqual([
+      'ui.css: .a:where(:root:not([data-input="pointer"]) *) restyles the whole page whenever data-input changes; lead the selector with the root\'s state',
+    ]);
+    expect(hasViolations([{ path: "x.tsx", text: 'const a = <div className="pt-2 group-has-[>input]/group:pt-3" />;' }])).toEqual([
+      "x.tsx: group-has-[>input]/group:pt-3 compiles to a :has() followed by *, which restyles the whole page whenever an element is added; use has-* on the group or a class",
+    ]);
+    expect(hasViolations([{ path: "ui.css", text: ".row > :first-child:has(+ .info) { flex: none; }\n:root:has(.player[data-open]) #root { filter: blur(3px); }\n.w:where(:root:has(.d) .w) { x: y; }" }])).toEqual([]);
   });
 
   it("writes margins, paddings, gaps, font sizes, corners and small sizes on the token scale (plan 102)", () => {

@@ -2,7 +2,7 @@
  * The Recordings tab: cards or a list by day, a card's menu, renaming, the embedded player dialog, and its folders and
  * search (plan 071).
  */
-import { useDeferredValue, useEffect, useMemo } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Film, Folder } from "lucide-react";
 import type { LibraryItemView } from "../../../shared/settings-panel";
 import { translate } from "../../../shared/i18n";
@@ -19,6 +19,14 @@ export { LibraryHead, LibrarySummary } from "./library/head";
 export { FolderDialog, PlayerDialog, RenameDialog } from "./library/dialogs";
 export { EditorDialog } from "./library/editor";
 
+/**
+ * Cards drawn with a list at once, the rest following in the background a batch at a time (2026-11-01: 212 cards drawn
+ * together held the page for some 120 ms as Settings opened). The first batch fills the window at its usual size in
+ * either layout; a taller one fills a frame later.
+ */
+const FIRST_CARDS = 12;
+const MORE_CARDS = 24;
+
 export function Library() {
   const library = model.view?.library,
     all = library?.items,
@@ -33,6 +41,19 @@ export function Library() {
     // Nothing to show where something could be: the search or the category shown leaves no card.
     empty = !items.length && !library?.status && Boolean(library) && (narrowed || Boolean(shownFolder)),
     layout = model.shownLayout();
+  // How many of the list's cards are drawn: the first batch at once, then a batch per background render until all are,
+  // each a commit of its own so no one task holds the page. Another category or search starts over; a card an entry
+  // brings is always among them, for it to be outlined and focused.
+  const list = `${shownFolder === undefined ? "all" : shownFolder.folder === null ? "uncategorized" : `folder:${shownFolder.folder}`}\n${query}`;
+  const [drawn, setDrawn] = useState({ list, count: FIRST_CARDS });
+  const arrival = items?.findIndex((item) => model.arrivingAt(item.id)) ?? -1;
+  // Kept in the state, so the card stays drawn after it has taken its arrival and later batches add to it.
+  const count = Math.max(drawn.list === list ? drawn.count : FIRST_CARDS, arrival + 1);
+  if (drawn.list !== list || drawn.count !== count) setDrawn({ list, count });
+  const total = items?.length ?? 0;
+  useEffect(() => {
+    if (drawn.count < total) startTransition(() => setDrawn((now) => ({ ...now, count: now.count + MORE_CARDS })));
+  }, [drawn, total]);
   const days = useMemo(() => {
     const groups = new Map<string, LibraryItemView[]>();
     for (const item of items ?? []) {
@@ -42,6 +63,17 @@ export function Library() {
     }
     return [...groups];
   }, [items]);
+  // Each day keeps its whole count in its heading while its cards are still being drawn.
+  const drawnDays = useMemo(() => {
+    let left = count;
+    const shown: Array<[string, LibraryItemView[], number]> = [];
+    for (const [day, dayItems] of days) {
+      if (left <= 0) break;
+      shown.push([day, left >= dayItems.length ? dayItems : dayItems.slice(0, left), dayItems.length]);
+      left -= dayItems.length;
+    }
+    return shown;
+  }, [days, count]);
   // A preview belongs to the grid on a shown tab: switching to the list, or to another tab while the pointer stays
   // where the picture was (this tab stays mounted, only hidden), ends it, and one waiting to start never does.
   const shown = model.selectedTab === "library";
@@ -103,9 +135,9 @@ export function Library() {
         </EmptyHeader>
       </Empty>
       <div className="library-days">
-        {days.map(([day, dayItems]) => (
+        {drawnDays.map(([day, dayItems, dayCount]) => (
           <section className="library-day" key={day}>
-            <h2 className="day-heading" data-count={dayItems.length}>{day}</h2>
+            <h2 className="day-heading" data-count={dayCount}>{day}</h2>
             <div className="library-grid">
               {dayItems.map((item) => (
                   <Clip
