@@ -17,12 +17,13 @@
  * Save to… wait for it, a drag does not start.
  */
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Check, ChevronRight, Copy, Download, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { LibraryItemView, ShareVersionView, ShareView } from "../../../../shared/settings-panel";
 import { ScrollFades } from "../../../components/scroll-fades";
 import { useShownWhile } from "../../../lib/use-shown-while";
+import { useTruncated } from "../../../lib/use-truncated";
 import { stopPreview } from "../clip-preview";
 import { Button } from "../../../components/ui/button";
 import { ControlTooltip } from "../../../components/control-tooltip";
@@ -223,9 +224,13 @@ function PickedBar({ item, share, selected }: { item: LibraryItemView; share: Sh
   const shownPreparing = useShownWhile(Boolean(preparing), { since: preparing?.since, cut: Boolean(failed) });
   const note = status ?? (failed ? share.labels.failedNote : shownPreparing ? share.labels.preparingNote : one ? one.note : share.labels.drag);
   const busy = model.sharing?.busy === true;
+  // The whole name in a tooltip only when its two lines cut it short, as a card's title (2026-11-01: shown always, it
+  // repeated the name right under it).
+  const name = useTruncated<HTMLSpanElement>();
   return (
     <>
-      <ControlTooltip label={one?.fileName} delay={1000}><span className="share-picked-name">{one ? one.fileName : share.labels.selected.replace("{count}", String(selected.length))}</span></ControlTooltip>
+      <ControlTooltip label={one?.fileName} enabled={name.truncated} delay={1000}><span ref={name.ref} className="share-picked-name"
+        onPointerEnter={() => flushSync(name.measure)} onPointerMove={() => flushSync(name.measure)}>{one ? one.fileName : share.labels.selected.replace("{count}", String(selected.length))}</span></ControlTooltip>
       <span className="share-picked-note" aria-live="polite">{note}</span>
       <Button variant="outline" size="sm" id={`share-${item.id}-copy`} disabled={busy || Boolean(failed)} onClick={() => void model.shareAction(item.id, "copy")}>
         <Copy />{share.labels.copy}
