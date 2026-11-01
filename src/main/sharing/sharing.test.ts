@@ -6,7 +6,7 @@ import type { CopyTracksRequest, ExportPlan, ExportRequest } from "../../shared/
 import type { EditScene } from "../../shared/editable";
 import { editRecord, sourceIdentity, type LoadedEdit } from "../editing/edit-store";
 import { ExportFailure } from "../editing/export-host";
-import { Sharing, type SharingRunner } from "./sharing";
+import { Sharing, SOUND_AFTER_VIDEO, type SharingRunner } from "./sharing";
 import { VersionCache } from "./version-cache";
 
 let dir: string;
@@ -72,6 +72,9 @@ function recording(name: string, editable?: string): string {
   return file;
 }
 
+/** A version being prepared, asked for at some moment (`since`, epoch ms). */
+const preparing = (progress: number) => ({ state: "preparing", progress, since: expect.any(Number) });
+
 /** Lets the queue move without waiting for a held export. */
 const tick = async (): Promise<void> => { for (let n = 0; n < 50; n++) await new Promise((resolve) => setImmediate(resolve)); };
 const settle = async (): Promise<void> => {
@@ -102,7 +105,10 @@ beforeEach(async () => {
         return edit ? { kind: "ok", record: record(edit.removed, edit.scene) } : { kind: "none" };
       },
     },
-    editable: async (source) => runner.descriptions.has(source),
+    editable: async (source) => {
+      const description = runner.descriptions.get(source);
+      return description ? { camera: (JSON.parse(description) as { camera: unknown }).camera !== null } : false;
+    },
     paused: () => paused,
     language: () => "en",
     changed: () => { changes++; },
@@ -251,8 +257,8 @@ describe("Share… (plan 100 step 3)", () => {
     paused = "recording";
     await sharing.openShare(file);
     expect(sharing.versionStates(file)).toEqual({
-      video: { state: "preparing", progress: 0 }, sound: { state: "preparing", progress: 0 },
-      screenOnly: { state: "preparing", progress: 0 }, sources: { state: "preparing", progress: 0 },
+      video: preparing(0), sound: preparing(0),
+      screenOnly: preparing(0), sources: preparing(0),
     });
     paused = undefined;
     sharing.resume();
@@ -264,6 +270,101 @@ describe("Share… (plan 100 step 3)", () => {
     await settle();
   });
 
+  it("shows the Video as preparing only while the Video itself is made, not while a Sound is copied out (2026-11-01)", async () => {
+    // Each draw's Video, as the card and Share… show it.
+    const drawn = (file: string): Array<string | undefined> => {
+      const states: Array<string | undefined> = [];
+      const original = (sharing as unknown as { deps: { changed: () => void } }).deps.changed;
+      (sharing as unknown as { deps: { changed: () => void } }).deps.changed = () => { original(); states.push(sharing.videoState(file)?.state ?? "ready"); };
+      return states;
+    };
+    // A plain recording never edited: its Video is its file; only its Sound is made.
+    const plain = recording("Plain.mp4");
+    const plainDraws = drawn(plain);
+    await sharing.openShare(plain);
+    await settle();
+    expect(plainDraws.length).toBeGreaterThan(0);
+    expect(plainDraws, "never a ring on a Video that is the recording itself").not.toContain("preparing");
+    // An edited one: the Video is made, then the Sound copied from it; once made, the Video stays made.
+    const edited = recording("Meeting.mp4");
+    edits.set(edited, { removed: [[0, 9000]] });
+    const editedDraws = drawn(edited);
+    await sharing.openShare(edited);
+    await settle();
+    const made = editedDraws.indexOf("ready");
+    expect(made, "the Video is made").toBeGreaterThan(0);
+    expect(editedDraws.slice(made), "not preparing again while its Sound is copied out").not.toContain("preparing");
+    // A Sound asked for alone, its Video not made yet, makes the Video first and shows it.
+    const alone = recording("Alone.mp4");
+    edits.set(alone, { removed: [[0, 9000]] });
+    const aloneDraws = drawn(alone);
+    sharing.prepare(alone, "sound");
+    await settle();
+    expect(aloneDraws).toContain("preparing");
+    expect(aloneDraws.at(-1)).toBe("ready");
+  });
+
+  it("runs a Sound made from its Video once from empty to full: the Video's progress, then its copy (2026-11-01)", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    const sound: number[] = [];
+    const deps = (sharing as unknown as { deps: { changed: () => void } }).deps;
+    const original = deps.changed;
+    deps.changed = () => { original(); const state = sharing.versionStates(file).sound; if (state?.state === "preparing") sound.push(state.progress); };
+    runner.hold = { release: () => undefined };
+    await sharing.openShare(file);
+    await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
+    runner.hold?.progress?.(0.5);
+    // Waiting behind the Video, the Sound follows it.
+    expect(sharing.versionStates(file).sound).toEqual(preparing(0.5 * SOUND_AFTER_VIDEO));
+    runner.release();
+    await settle();
+    expect(sound.length).toBeGreaterThan(1);
+    expect(sound, "never goes back").toEqual([...sound].sort((a, b) => a - b));
+    expect(sharing.versionStates(file)).toEqual({});
+  });
+
+  it("shows a Sound making its Video first with that Video's progress, on the Video too", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    runner.hold = { release: () => undefined };
+    sharing.prepare(file, "sound");
+    await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
+    runner.hold?.progress?.(0.4);
+    expect(sharing.videoState(file)).toEqual(preparing(0.4));
+    expect(sharing.versionStates(file).sound).toEqual(preparing(0.4 * SOUND_AFTER_VIDEO));
+    runner.release();
+    await settle();
+    expect(sharing.videoState(file)).toBeUndefined();
+  });
+
+  it("prepares a Video without the camera only for a recording whose description holds one (2026-11-01)", async () => {
+    const file = recording("Talk.recordstuff.mp4", NO_CAMERA);
+    paused = "recording";
+    await sharing.openShare(file);
+    expect(Object.keys(sharing.versionStates(file)).sort(), "nothing doomed to fail is asked for").toEqual(["sound", "sources", "video"]);
+    paused = undefined;
+    sharing.resume();
+    await settle();
+    expect(sharing.versionStates(file)).toEqual({});
+    expect(logs.join("\n")).not.toMatch(/could not be prepared/);
+  });
+
+  it("says when each version was first asked for, kept while it waits", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    paused = "recording";
+    const before = Date.now();
+    await sharing.openShare(file);
+    const states = sharing.versionStates(file) as Record<string, { since?: number }>;
+    expect(states.video?.since).toBeGreaterThanOrEqual(before);
+    expect(states.video?.since).toBeLessThanOrEqual(Date.now());
+    expect((sharing.videoState(file) as { since?: number }).since).toBe(states.video?.since);
+    paused = undefined;
+    sharing.resume();
+    await settle();
+  });
+
   it("waits for a version to be made before giving it, and says when it could not be", async () => {
     const file = recording("Meeting.mp4");
     edits.set(file, { removed: [[0, 9000]] });
@@ -271,7 +372,7 @@ describe("Share… (plan 100 step 3)", () => {
     const ready = sharing.whenReady(file, "video");
     // File identity and edit lookup must finish before the job is queued; event-loop turns do not wait for I/O.
     await vi.waitFor(() => {
-      expect(sharing.versionStates(file).video).toEqual({ state: "preparing", progress: 0 });
+      expect(sharing.versionStates(file).video).toEqual(preparing(0));
     });
     paused = undefined;
     sharing.resume();
@@ -298,7 +399,7 @@ describe("Share…'s edges (Codex review)", () => {
     const file = recording("Talk.recordstuff.mp4", MIXED);
     paused = "recording";
     sharing.prepare(file, "sources");
-    expect(sharing.shareStates().get(file)).toEqual({ sources: { state: "preparing", progress: 0 } });
+    expect(sharing.shareStates().get(file)).toEqual({ sources: preparing(0) });
     expect(sharing.videoStates().has(file)).toBe(false);
     paused = undefined;
     sharing.resume();
@@ -362,12 +463,29 @@ describe("preparing alongside what the person does (D2)", () => {
     sharing.prepare(file);
     await settle();
     expect(runner.calls).toEqual([]);
-    expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0 });
+    expect(sharing.videoState(file)).toEqual(preparing(0));
     paused = undefined;
     sharing.resume();
     await settle();
     expect(sharing.videoState(file)).toBeUndefined();
     expect(await sharing.handOut(file, "video")).toMatchObject({ file: expect.any(String) });
+  });
+
+  it("draws a version's progress at most four times a second, while its state reads the latest at once", async () => {
+    const file = recording("Meeting.mp4");
+    edits.set(file, { removed: [[0, 9000]] });
+    runner.hold = { release: () => undefined };
+    sharing.prepare(file);
+    await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
+    const before = changes;
+    // A short recording's steps arrive many to the frame: the first draws, the rest wait for the next quarter second.
+    for (let step = 1; step <= 50; step++) runner.hold?.progress?.(step / 100);
+    expect(changes - before).toBe(1);
+    expect(sharing.videoState(file)).toEqual(preparing(0.5));
+    runner.release();
+    // Its end draws at once.
+    await vi.waitFor(() => expect(sharing.videoState(file)).toBeUndefined());
+    expect(changes - before).toBeGreaterThan(1);
   });
 
   it("cancels a Video being made when the edit view opens, and makes it again from the start afterwards", async () => {
@@ -379,13 +497,13 @@ describe("preparing alongside what the person does (D2)", () => {
     await vi.waitFor(() => expect(runner.hold?.progress).toBeDefined());
     runner.hold?.progress?.(0.4);
     // Progress is shown on the card as a fraction.
-    expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0.4 });
+    expect(sharing.videoState(file)).toEqual(preparing(0.4));
     paused = "editing";
     sharing.yield("the edit view opened");
     await settle();
-    await vi.waitFor(() => expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0 }));
+    await vi.waitFor(() => expect(sharing.videoState(file)).toEqual(preparing(0)));
     expect(runner.calls.map((call) => call.type)).toContain("cancel");
-    expect(sharing.videoState(file)).toEqual({ state: "preparing", progress: 0 });
+    expect(sharing.videoState(file)).toEqual(preparing(0));
     expect(fs.readdirSync(cache.root), "nothing half-made is left").toEqual([]);
     paused = undefined;
     sharing.resume();
@@ -411,7 +529,7 @@ describe("preparing alongside what the person does (D2)", () => {
     await tick();
     expect(runner.calls.map((call) => call.type)).not.toContain("cancel");
     expect(runner.calls.filter((call) => call.type === "export"), "none starts while held").toHaveLength(1);
-    expect(sharing.videoState(next)).toEqual({ state: "preparing", progress: 0 });
+    expect(sharing.videoState(next)).toEqual(preparing(0));
     sharing.pace({ careful: true });
     expect(runner.paced.at(-1)).toEqual({ held: false, careful: true });
     await settle();

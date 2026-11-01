@@ -57,7 +57,7 @@ const GEOMETRY = new Set([
   ".listening-indicator", ".listening-indicator span",
   ".notice-dot", ".result-unread",
   ".clip::after", ".clip-scrub", ".clip-scrub-knob",
-  ".share-icon", ".share-doc", ".share-doc-extension", ".share-folder", ".share-mark", ".share-mark > svg", ".share-mark-progress::after",
+  ".share-icon", ".share-doc", ".share-doc-extension", ".share-folder", ".share-mark", ".share-mark > svg", ".share-progress",
   ".editor-timeline", ".editor-ruler", ".editor-ruler span", ".editor-ruler-playhead", ".editor-split-mark", ".editor-playhead",
   ".editor-note-mark", ".editor-trimmer > .editor-playhead", ".editor-progress", ".editor-camera-handle::before",
   ".pc-seek-arrow svg", ".pc-spinner > span",

@@ -17,6 +17,7 @@ import { SettingsWindowState } from "./settings/settings-window-state";
 import { DisplayMedia } from "./display/display-media";
 import { isDisplayInfo, type DisplayInfo } from "../shared/display";
 import { SHOW_SYSTEM_UI, systemUiCrop } from "../shared/system-ui";
+import { parseEditableDescription } from "../shared/editable";
 import {
   app,
   BaseWindow,
@@ -519,7 +520,13 @@ async function main(earlyReopens: EarlyReopens): Promise<void> {
     cache: versionCache,
     store: editStore,
     runner: exportHost,
-    editable: async (file) => (await mp4Facts(file).catch(() => ({ editable: false }))).editable,
+    // Editable by its description; with the description read, whether it holds a camera (Video without the camera).
+    editable: async (file) => {
+      const facts = await mp4Facts(file).catch(() => ({ editable: false, description: undefined }));
+      if (!facts.editable) return false;
+      const description = facts.description ? parseEditableDescription(facts.description) : undefined;
+      return description ? { camera: description.camera !== null } : true;
+    },
     // A recording, a Live preview and a save hold a version where it is (the governor below); these cancel it.
     paused: () => (quitInProgress() ? "quitting" : editing.view() || editing.exporting ? "editing" : undefined),
     language: () => settings.language,

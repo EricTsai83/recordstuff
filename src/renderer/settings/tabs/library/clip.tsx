@@ -106,6 +106,8 @@ export const Clip = memo(function Clip({
         >
           <span
             className={`clip-thumb${failed ? " no-thumb" : ""}${portrait ? " portrait" : ""}${preview ? " previewing" : ""}`}
+            // Lifted out into Share…'s panel while it is open (model.openShare's morph).
+            data-shared={model.sharing?.id === item.id || undefined}
             // Only a mouse resting on a grid card's picture previews it; a list row's picture is too small to watch.
             onPointerEnter={(event) => {
               if (event.pointerType === "mouse" && event.currentTarget.closest("#library")?.getAttribute("data-layout") === "grid")
@@ -188,7 +190,7 @@ export const Clip = memo(function Clip({
           </ControlTooltip>
         )}
         {model.sharing?.id === item.id && (
-          <ShareOverlay item={item} layout={document.getElementById("library")?.getAttribute("data-layout") === "list" ? "list" : "grid"} />
+          <ShareOverlay item={item} />
         )}
         <DropdownMenu
           open={model.menuId === item.id && model.menuKind === "dropdown"}
@@ -267,7 +269,7 @@ function ClipMenuActions({ item, context = false }: { item: LibraryItemView; con
   return (
     <>
       {item.share && (
-        <Item id={`${prefix}-share`} onClick={() => model.openShare(item.id)}>
+        <Item id={`${prefix}-share`} onClick={() => void model.openShare(item.id)}>
           <Share />
           <span className="menu-label">{t("Share…")}</span>
         </Item>

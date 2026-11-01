@@ -98,7 +98,7 @@ const context: AppContext = {
 };
 
 /** A panel wired to a mutable copy of the committed settings. */
-function setup(overrides: { studio?: SettingsWindowOptions["studio"]; levels?: SettingsWindowOptions["levels"]; cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"] } = {}) {
+function setup(overrides: { studio?: SettingsWindowOptions["studio"]; levels?: SettingsWindowOptions["levels"]; cameraPreview?: SettingsWindowOptions["cameraPreview"]; act?: (action: AppAction) => Promise<boolean | void>; state?: () => RecordingState; geometry?: SettingsWindowOptions["geometry"]; opened?: () => void; closed?: () => void; fullScreen?: SettingsWindowOptions["fullScreen"]; quitRequested?: () => boolean; drag?: SettingsWindowOptions["drag"]; rename?: SettingsWindowOptions["rename"]; move?: SettingsWindowOptions["move"]; folders?: SettingsWindowOptions["folders"]; share?: SettingsWindowOptions["share"] } = {}) {
   const live = { ...context };
   let state: RecordingState = { type: "idle" };
   const act = overrides.act ?? vi.fn(async (action: AppAction) => {
@@ -116,6 +116,7 @@ function setup(overrides: { studio?: SettingsWindowOptions["studio"]; levels?: S
     ...(overrides.rename ? { rename: overrides.rename } : {}),
     ...(overrides.move ? { move: overrides.move } : {}),
     ...(overrides.folders ? { folders: overrides.folders } : {}),
+    ...(overrides.share ? { share: overrides.share } : {}),
     ...(overrides.cameraPreview ? { cameraPreview: overrides.cameraPreview } : {}),
     ...(overrides.levels ? { levels: overrides.levels } : {}),
     ...(overrides.studio ? { studio: overrides.studio } : {}),
@@ -199,6 +200,19 @@ describe("settings window lifecycle", () => {
     window.close();
     expect(fullScreen.close).toHaveBeenCalled();
   });
+  it("tells Share… when a drag is refused only because its files are still being prepared (review, 2026-11-01)", async () => {
+    let outcome: { problem: "preparing" | "failed" } = { problem: "preparing" };
+    const s = setup({ share: vi.fn(async () => outcome) });
+    s.live.library = { dir: "/Users/eric/Movies/RecordStuff", loading: false, failed: false,
+      files: [{ id: "abc", path: "/Users/eric/Movies/RecordStuff/a.mp4", name: "a.mp4", size: 1, recordedAt: 0, version: "1" }] };
+    s.panel.show();
+    const waiting = await s.choose(s.event(), "recordingShare:abc", { action: "drag", kinds: ["video"] }) as { applied: boolean; failure?: string; preparing?: true };
+    expect([waiting.applied, waiting.preparing, waiting.failure]).toEqual([false, true, "Still being prepared. It can be dragged once it is ready; Copy and Save to… wait for it."]);
+    outcome = { problem: "failed" };
+    const failed = await s.choose(s.event(), "recordingShare:abc", { action: "drag", kinds: ["video"] }) as { applied: boolean; failure?: string; preparing?: true };
+    expect([failed.applied, failed.preparing, failed.failure]).toEqual([false, undefined, "This file could not be made. Try again."]);
+  });
+
   it("drops Escapes for a second after a video's fullscreen ended, and a held Escape's repeats always", async () => {
     vi.useFakeTimers();
     try {

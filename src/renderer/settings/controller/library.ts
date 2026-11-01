@@ -109,6 +109,9 @@ export function dismissLibraryOverlays(): void {
   menuId = undefined;
   renaming = undefined;
   folderDialog = undefined;
+  // Share… is drawn over the whole window, not inside the tab: an entry to another tab closes it, or it would stay over
+  // that tab and keep the focus (review pass 2).
+  sharing = undefined;
 }
 /** An entry bringing a recording into view: every category and no search, so its card is there. */
 export function showEveryRecording(): void {
@@ -220,24 +223,103 @@ export function openMenu(id: string, kind: typeof menuKind = "dropdown"): void {
  * Share… (plan 100 step 3): the recording whose versions are shown, whether More is open, the versions selected (the
  * recommended one as it opens; ⌘-click adds or takes one away), and what the last action said.
  */
-export let sharing: { id: string; more: boolean; selected: string[]; status?: string | undefined; busy?: boolean } | undefined;
+export let sharing: {
+  id: string; more: boolean; selected: string[]; status?: string | undefined; busy?: boolean;
+  /** The files a drag found still being prepared: its status holds until they are ready (share.tsx). */
+  waiting?: string[] | undefined;
+} | undefined;
 const versionsOf = (id: string) => view?.library?.items.find((entry) => entry.id === id)?.share?.versions ?? [];
-export function openShare(id: string): void {
-  if (!view?.library?.items.some((entry) => entry.id === id)) return;
+/** The view transition's name, shared by a card's picture and Share…'s panel (ui.css). */
+const MORPH = "share-morph";
+/**
+ * How long Share…'s morph takes for card picture `rect`, by how far it travels (2026-11-01, the maintainer's request:
+ * one length for every card made a card near the middle crawl). Its way to the window's middle and the change of its
+ * width into the panel's, at a steady pace between a floor that still reads as growing and a ceiling for the far corner.
+ */
+export function morphDuration(rect: { left: number; top: number; width: number; height: number }, viewport: { width: number; height: number }): number {
+  const panel = Math.min(448, viewport.width - 32);
+  const travel = Math.hypot(rect.left + rect.width / 2 - viewport.width / 2, rect.top + rect.height / 2 - viewport.height / 2);
+  const growth = Math.abs(panel - rect.width) / 2;
+  return Math.round(Math.min(400, Math.max(240, 200 + 0.32 * (travel + growth))));
+}
+/**
+ * Runs `update` as Share…'s morph (2026-11-01): card `id`'s picture grows into the panel when `opening`, the panel
+ * shrinks back into it when not. Only those two are captured; the page draws live under them. Without view transitions,
+ * with reduced motion, or with the card out of the page, `update` runs at once. Resolves once the morph has played.
+ */
+function morph(id: string, opening: boolean, update: () => void): Promise<void> {
+  const picture = (): HTMLElement | null | undefined => document.getElementById(`clip-${id}`)?.querySelector<HTMLElement>(".clip-thumb");
+  const begin = document.startViewTransition?.bind(document);
+  if (!begin || matchMedia("(prefers-reduced-motion: reduce)").matches || !picture()) {
+    update();
+    return Promise.resolve();
+  }
+  // Measured before anything changes, so reading the picture's place costs no restyle of its own.
+  const duration = morphDuration(picture()!.getBoundingClientRect(), { width: innerWidth, height: innerHeight });
+  const root = document.documentElement;
+  root.dataset.shareMorph = "";
+  if (opening) picture()!.style.viewTransitionName = MORPH;
+  const transition = begin(() => {
+    const shown = picture();
+    if (opening && shown) shown.style.viewTransitionName = "";
+    update();
+    if (!opening) { const back = picture(); if (back) back.style.viewTransitionName = MORPH; }
+  });
+  // Its length set on the morph's own animations once they exist: a custom property on the root would be inherited by
+  // the whole page and restyle all of it (2026-11-01, measured at some 25 ms with 210 recordings listed).
+  void transition.ready.then(() => {
+    for (const animation of document.getAnimations()) {
+      const effect = animation.effect as KeyframeEffect | null;
+      if (effect?.pseudoElement?.includes(MORPH)) effect.updateTiming({ duration });
+    }
+  }, () => undefined);
+  return transition.finished.catch(() => undefined).finally(() => {
+    const shown = picture();
+    if (shown) shown.style.viewTransitionName = "";
+    delete root.dataset.shareMorph;
+  });
+}
+/** How long Share… waits for main's answer before it opens anyway, its states following in main's next push. */
+export const SHARE_ASK_MS = 150;
+let opening: string | undefined;
+export async function openShare(id: string): Promise<void> {
+  if (!view?.library?.items.some((entry) => entry.id === id) || opening) return;
   menuId = undefined;
-  const recommended = versionsOf(id).find((version) => version.recommended)?.kind;
-  sharing = { id, more: false, selected: recommended ? [recommended] : [] };
+  opening = id;
   draw();
-  focus(recommended ? `share-${id}-${recommended}` : `share-${id}-close`);
-  // What it offers and is not made yet is prepared now: a clear sign it will be wanted.
-  // Their progress arrives with main's pushes, so the answer itself is not drawn.
-  void window.settings.choose(`recordingShare:${id}`, { action: "open" }).catch(() => undefined);
+  try {
+    // Main is asked first: it starts on what the panel offers and is not made yet, and answers with each version's state,
+    // so the panel opens showing what is ready and what is being prepared rather than changing as it lands (2026-11-01:
+    // the Video was checked, then turned to preparing). Its answer takes a few milliseconds; a move still settling in
+    // main does not keep the panel from opening.
+    const answered = window.settings.choose(`recordingShare:${id}`, { action: "open" }).then((result) => result.view, () => undefined);
+    const answer = await Promise.race([answered, new Promise<undefined>((resolve) => setTimeout(resolve, SHARE_ASK_MS))]);
+    if (answer) render(answer);
+    // Meanwhile the tab or the category may have changed, or the recording gone: the panel opens from its card as shown.
+    if (selectedTab !== "library" || !document.getElementById(`clip-${id}`)) return;
+    const recommended = versionsOf(id).find((version) => version.recommended)?.kind;
+    await morph(id, true, () => {
+      sharing = { id, more: false, selected: recommended ? [recommended] : [] };
+      draw();
+      focus(recommended ? `share-${id}-${recommended}` : `share-${id}-close`);
+    });
+  } finally {
+    opening = undefined;
+  }
 }
 export function closeShare(): void {
   const id = sharing?.id;
-  sharing = undefined;
-  draw();
-  if (id) focus(`clip-${id}-more`);
+  if (!id) return;
+  void morph(id, false, () => {
+    sharing = undefined;
+    draw();
+  }).then(() => {
+    // The focus goes back to the card's ⋮ once the panel has shrunk back into it: given during the morph, from the
+    // keyboard it opened the button's tooltip mid-flight, whose layer cost the shrinking panel a frame (2026-11-01,
+    // measured: Escape dropped one frame every time, a click beside the panel none). Escape meanwhile closes nothing more.
+    // Unless something else took the focus meanwhile.
+    if (document.activeElement === document.body || !document.activeElement) focus(`clip-${id}-more`);
+  });
 }
 export function toggleShareMore(): void {
   if (!sharing) return;
@@ -245,7 +327,7 @@ export function toggleShareMore(): void {
   const versions = versionsOf(sharing.id);
   const more = !sharing.more;
   const first = more ? versions.find((version) => version.more)?.kind : versions.find((version) => version.recommended)?.kind;
-  sharing = { ...sharing, more, selected: first ? [first] : [], status: undefined };
+  sharing = { ...sharing, more, selected: first ? [first] : [], status: undefined, waiting: undefined };
   draw();
   if (first) focus(`share-${sharing.id}-${first}`);
 }
@@ -254,7 +336,7 @@ export function selectShareVersion(kind: string, extend = false): void {
   if (!sharing) return;
   const selected = !extend ? [kind]
     : sharing.selected.includes(kind) ? sharing.selected.filter((entry) => entry !== kind) : [...sharing.selected, kind];
-  sharing = { ...sharing, selected, status: undefined };
+  sharing = { ...sharing, selected, status: undefined, waiting: undefined };
   draw();
 }
 /**
@@ -265,16 +347,17 @@ export async function shareAction(id: string, action: "copy" | "save" | "drag", 
   const chosen = kinds ?? (sharing?.id === id ? sharing.selected : ["video"]);
   if (!chosen.length) return;
   const labels = view?.library?.items.find((entry) => entry.id === id)?.share?.labels;
-  if (sharing?.id === id && action !== "drag") { sharing = { ...sharing, busy: true, status: undefined }; draw(); }
+  if (sharing?.id === id && action !== "drag") { sharing = { ...sharing, busy: true, status: undefined, waiting: undefined }; draw(); }
   try {
     const result = await window.settings.choose(`recordingShare:${id}`, { action, kinds: chosen } as ShareChoice);
     render(result.view);
     const status = result.applied ? (action === "copy" ? labels?.copied : action === "save" ? labels?.saved : undefined) : result.failure;
-    if (sharing?.id === id) sharing = { ...sharing, busy: false, status };
+    // Only a refusal for files still being prepared holds until they are ready; any other failure stays said (review).
+    if (sharing?.id === id) sharing = { ...sharing, busy: false, status, waiting: !result.applied && result.preparing ? chosen : undefined };
     else if (!result.applied && result.failure) libraryError = result.failure;
     if (status) announce(status);
   } catch {
-    if (sharing?.id === id) sharing = { ...sharing, busy: false, status: failedText() };
+    if (sharing?.id === id) sharing = { ...sharing, busy: false, status: failedText(), waiting: undefined };
   } finally {
     draw();
   }

@@ -201,6 +201,8 @@ const state = {
   language: "zh-TW" as Language,
   notifications: true,
   captureView: undefined as SettingsView | undefined,
+  /** The view last pushed by `push` or `pushModel`: what main would answer Share… with. */
+  pushed: undefined as SettingsView | undefined,
   resultContext: undefined as AppContext | undefined,
   soundContext: undefined as AppContext | undefined,
   /** The Microphone rows' context (plan 074); a choice commits as main would and pushes the view. */
@@ -288,6 +290,8 @@ function installPanelHandlers(): void {
   });
   ipcMain.handle("settings:choose", async (_event, group: string, choice: string) => {
     chooseCalls.push([group, choice]);
+    // Share… asks main as it opens (plan 100 step 3), answered with the page's own view, as main answers with its current one.
+    if (group.startsWith("recordingShare:") && state.pushed) return { view: state.pushed, applied: true };
     if (group.startsWith("recordingResult:") && state.resultContext) {
       const action = settingsAction({ type: "idle" }, { ...state.resultContext, recordingResults: recordingResults.all }, group, choice);
       const applied = typeof action === "object" && "recordingResult" in action
@@ -538,10 +542,11 @@ const hostControls: Record<string, unknown> = {
   library: () => library,
   thumbnailStats,
   /** Pushes a view to the page, as main's refresh does. */
-  push: (view: SettingsView): void => { panel!.webContents.send("settings:changed", view); },
+  push: (view: SettingsView): void => { state.pushed = view; panel!.webContents.send("settings:changed", view); },
   /** Pushes `settingsView(recordingState, base context + overrides)`. */
   pushModel: (recordingState: RecordingState, overrides: Partial<AppContext> = {}): SettingsView => {
     const view = settingsView(recordingState, { ...baseContext(), ...overrides });
+    state.pushed = view;
     panel!.webContents.send("settings:changed", view);
     return view;
   },

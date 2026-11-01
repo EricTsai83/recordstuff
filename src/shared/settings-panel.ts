@@ -264,23 +264,23 @@ export interface ShareVersionView {
   label: string;
   /** The file (or, for sources, the folder) it leaves as. */
   fileName: string;
-  /** A few words under its name saying what it is: as it plays here, the mixed sound, everything recorded. */
-  detail?: string;
-  /** A line under the Original saying what it holds, so nothing private leaves unseen. */
-  note?: string;
+  /** What it is and what it is for, said in the bar when it is picked; the Original's says what it holds, so nothing private leaves unseen. */
+  note: string;
   /** Kept under More: Video without the camera and Sources. */
   more?: true;
-  /** The default, marked recommended: the Video. */
+  /** The default, picked as the panel opens: the Video. */
   recommended?: true;
   state: "ready" | "preparing" | "failed";
   progress?: number;
+  /** While preparing, when it was first asked for (epoch ms): one waiting half a second already shows so at once. */
+  since?: number;
 }
 /** Share… for one recording (plan 100 step 3), localized. */
 export interface ShareView {
   heading: string;
   versions: ShareVersionView[];
   labels: {
-    share: string; recommended: string; copy: string; saveTo: string; more: string; moreCount: string; close: string; drag: string;
+    share: string; copy: string; saveTo: string; more: string; moreCount: string; close: string; drag: string;
     preparing: string; failed: string;
     /** `{percent}` filled in by the page. */
     preparingNote: string;
@@ -450,6 +450,8 @@ export interface SettingsChoiceResult {
   failure?: string;
   /** Main refused the value itself (a reserved or invalid shortcut): nothing was saved and choosing it again fails the same way. */
   refused?: true;
+  /** Share…: refused only because what it gives is still being prepared (a drag), not because it failed. */
+  preparing?: true;
   /** A recording played full screen: where the video was when the viewer left (video-player.ts). */
   playback?: PlaybackState;
   /** A renamed or moved recording's new id, so its card keeps the focus. */

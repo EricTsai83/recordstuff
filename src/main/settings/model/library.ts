@@ -25,37 +25,40 @@ function videoStateView(state: VideoState | undefined, language: AppContext["lan
 const VERSION_LABELS: Record<VersionKind, PlainMessageKey> = {
   video: "Video file", sound: "Sound only", original: "Original", screenOnly: "No camera", sources: "Sources",
 };
-/** What each version is, in a few words under its name. */
-const VERSION_DETAILS: Record<VersionKind, PlainMessageKey> = {
-  video: "As it plays here", sound: "The mixed sound", original: "Everything in one file", screenOnly: "Screen and sound", sources: "Each track on its own",
+/** What each version is and what it is for, said in the bar when it is picked (2026-11-01, in place of a few words under each file). */
+const VERSION_NOTES: Record<Exclude<VersionKind, "original">, PlainMessageKey> = {
+  video: "The finished video, as it plays here. Use this one to send or upload.",
+  sound: "Just the sound, every sound mixed into one track.",
+  screenOnly: "The finished video without the camera.",
+  sources: "The screen, the camera and each sound as files of their own, for editing in another app.",
 };
 
 /**
- * Share… for a recording (plan 100 step 3): the versions it offers, in order, each with the name it leaves as. The
- * Original says what it holds; the Video is the one marked recommended; the Video's state is the card's.
+ * Share… for a recording (plan 100 step 3): the versions it offers, in order, each with the name it leaves as and what
+ * it is; the Original says what it holds; the Video is the default; the Video's state is the card's.
  */
 function shareView(subject: VersionSubject, title: string, states: Partial<Record<VersionKind, VideoState>>, language: AppContext["language"]): ShareView {
   return {
     heading: t("Share “{title}”", language, { title }),
     versions: offeredVersions(subject).map(kind => {
       const note = kind === "original"
-        ? subject.editable ? t("Includes the camera and each sound separately", language) : t("Everything recorded, including removed parts", language)
-        : undefined;
+        ? t(subject.editable ? "The whole recording as made, before any edit, with the camera and each sound kept apart."
+          : "The whole recording as made, before your edits, with the removed parts still in it.", language)
+        : t(VERSION_NOTES[kind], language);
       const state = states[kind];
       return {
-        kind, label: t(VERSION_LABELS[kind], language), detail: t(VERSION_DETAILS[kind], language), fileName: versionName(kind, subject, language),
-        ...(note ? { note } : {}),
+        kind, label: t(VERSION_LABELS[kind], language), note, fileName: versionName(kind, subject, language),
         ...(MORE_VERSIONS.includes(kind) ? { more: true as const } : {}),
         ...(kind === "video" ? { recommended: true as const } : {}),
         state: state?.state ?? "ready",
-        ...(state?.state === "preparing" ? { progress: state.progress } : {}),
+        ...(state?.state === "preparing" ? { progress: state.progress, ...(state.since === undefined ? {} : { since: state.since }) } : {}),
       };
     }),
     labels: {
-      share: t("Share", language), recommended: t("Recommended", language), copy: t("Copy", language), saveTo: t("Save to…", language),
+      share: t("Share", language), copy: t("Copy", language), saveTo: t("Save to…", language),
       more: t("More", language), moreCount: t("{count} items", language, { count: "{count}" }), close: t("Close", language),
       drag: t("You can also drag a file into another app.", language),
-      preparingNote: t("Preparing {percent}%. Copy and Save to… wait until it is ready.", language, { percent: "{percent}" }),
+      preparingNote: t("Being prepared. Copy and Save to… wait until it is ready.", language),
       failedNote: t("This file could not be made. Pick it again to retry.", language),
       selected: t("{count} files selected", language, { count: "{count}" }),
       copied: t("Copied", language), saved: t("Saved", language),

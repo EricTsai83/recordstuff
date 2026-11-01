@@ -44,8 +44,11 @@ export interface SharingDeps {
   cache: VersionCache;
   store: { load(source: string, identity: SourceIdentity): Promise<LoadedEdit> };
   runner: SharingRunner;
-  /** Whether a file is an editable recording, by the description inside it (never by its name). */
-  editable(source: string): Promise<boolean>;
+  /**
+   * Whether a file is an editable recording, by the description inside it (never by its name), and when that description
+   * could be read, whether it holds a camera: a Video without the camera is offered, and prepared, only with one.
+   */
+  editable(source: string): Promise<boolean | { camera: boolean }>;
   /**
    * Why preparing yields now (the edit view, quit), or undefined: a version being made is cancelled, to be made again.
    * A recording, a Live preview, a save and the system's conditions hold it instead (`pace`).
@@ -59,11 +62,15 @@ export interface SharingDeps {
   link?(from: string, to: string): Promise<void>;
 }
 
+/** The least time between two draws a version's progress asks for (2026-11-01: four a second still reads as moving). */
+export const PROGRESS_DRAW_MS = 250;
+
 /** `whenReady`'s answer when the version could not be made, as against the recording moving or going away. */
 export class VersionFailed extends Error {}
 
 /** What a card's Video is doing, for the Recordings tab: preparing (a fraction done) or failed. Absent: ready or not asked. */
-export type VideoState = { state: "preparing"; progress: number } | { state: "failed" };
+/** `since`: when it was first asked for (epoch ms), so Share… can show at once what has been waiting a while. */
+export type VideoState = { state: "preparing"; progress: number; since?: number } | { state: "failed" };
 
 /** What a drag or a hand-out gives: a file to drag, or why there is none yet. */
 export type HandOut = { file: string } | { preparing: true } | { failed: true };
@@ -74,7 +81,21 @@ interface Job {
   progress: number;
   /** The recording's invalidation when it was asked for: one deleted since is not made again. */
   generation?: number;
+  /** When it was first asked for (epoch ms), kept when a pause makes it again: how long it has been waiting. */
+  since?: number;
+  /** A Sound whose Video is not made yet: the Video it is making first, with that Video's progress. */
+  video?: Job | undefined;
 }
+
+/**
+ * How far a Sound made from its Video is once that Video is made: its own progress shows the Video's up to here and its
+ * copy after it, so one bar runs once from empty to full (2026-11-01: it sat at 0% while the Video was made, then
+ * started again).
+ */
+export const SOUND_AFTER_VIDEO = 0.9;
+
+const preparing = (progress: number, since: number | undefined): VideoState =>
+  ({ state: "preparing", progress, ...(since === undefined ? {} : { since }) });
 
 /** The recording as a version is made from it: its bytes, its edit, and what it holds. */
 interface Described {
@@ -129,21 +150,32 @@ export class Sharing {
   /** The card's Video for the recording at `source`, when it is being prepared or could not be. */
   videoState(source: string): VideoState | undefined {
     const id = jobId(source, "video");
-    if (this.running && jobId(this.running.job.source, this.running.job.kind) === id) return { state: "preparing", progress: this.running.job.progress };
-    // Sound only waits on the Video: preparing it is preparing the Video too.
-    if (this.queue.some((job) => job.source === source && (job.kind === "video" || job.kind === "sound"))) return { state: "preparing", progress: 0 };
-    if (this.running?.job.source === source && this.running.job.kind === "sound") return { state: "preparing", progress: 0 };
+    if (this.running && jobId(this.running.job.source, this.running.job.kind) === id) return preparing(this.running.job.progress, this.running.job.since);
+    const queued = this.queue.find((job) => jobId(job.source, job.kind) === id);
+    if (queued) return preparing(0, queued.since);
+    // Only a Sound actually making its Video first makes the Video; one copied from the recording, or from a Video
+    // already made, leaves it as it is (2026-11-01: a ring flashed on a made Video, and on a plain recording's, while
+    // its Sound was copied out).
+    const making = this.running?.job.source === source ? this.running.job.video : undefined;
+    if (making) return preparing(making.progress, this.running?.job.since);
     return this.failed.has(id) ? { state: "failed" } : undefined;
   }
 
   /**
    * Each version of the recording at `source` being prepared, or that could not be (plan 100 step 3, Share…): absent for
-   * one ready or not asked for. Sound only waits on the Video it is made from, so it shows the Video's progress.
+   * one ready or not asked for. A Sound waiting behind its recording's Video, or making it first, follows that Video's
+   * progress up to SOUND_AFTER_VIDEO.
    */
   versionStates(source: string): Partial<Record<VersionKind, VideoState>> {
     const states: Partial<Record<VersionKind, VideoState>> = {};
-    for (const job of this.queue) if (job.source === source) states[job.kind] = { state: "preparing", progress: 0 };
-    if (this.running?.job.source === source) states[this.running.job.kind] = { state: "preparing", progress: this.running.job.progress };
+    const running = this.running?.job.source === source ? this.running.job : undefined;
+    const video = running?.kind === "video" ? running : this.queue.find((job) => job.source === source && job.kind === "video");
+    for (const job of this.queue) {
+      if (job.source !== source) continue;
+      const progress = job.kind === "sound" && video ? video.progress * SOUND_AFTER_VIDEO : job.progress;
+      states[job.kind] = preparing(progress, job.since);
+    }
+    if (running) states[running.kind] = preparing(running.video ? running.video.progress * SOUND_AFTER_VIDEO : running.progress, running.since);
     for (const id of this.failed) {
       const at = id.indexOf("\n");
       if (id.slice(at + 1) === source && !states[id.slice(0, at) as VersionKind]) states[id.slice(0, at) as VersionKind] = { state: "failed" };
@@ -225,7 +257,7 @@ export class Sharing {
     this.failed.delete(id);
     if (this.running && jobId(this.running.job.source, this.running.job.kind) === id) return;
     if (this.queue.some((job) => jobId(job.source, job.kind) === id)) return;
-    this.queue.push({ source, kind, progress: 0, generation: this.invalidated.get(source) ?? 0 });
+    this.queue.push({ source, kind, progress: 0, generation: this.invalidated.get(source) ?? 0, since: Date.now() });
     this.deps.changed();
     this.pump();
   }
@@ -415,9 +447,9 @@ export class Sharing {
     const subject: VersionSubject = {
       fileName: path.basename(source),
       edited: record !== undefined,
-      // The camera and sounds only matter to which versions are offered; Sources and Video without the camera are
-      // offered to every editable recording until its description is read.
-      ...(editable ? { editable: { camera: true, sounds: [] } } : {}),
+      // The camera and sounds only matter to which versions are offered: the camera as the description says, else
+      // assumed until it is read, as Sources are offered to every editable recording.
+      ...(editable ? { editable: { camera: typeof editable === "object" ? editable.camera : true, sounds: [] } } : {}),
     };
     return { identity, ...(record ? { record } : {}), subject, ...(unknownEdit ? { unknownEdit: true as const } : {}) };
   }
@@ -478,6 +510,8 @@ export class Sharing {
       if (this.deps.cache.get(this.keyOf(described, job.kind))) return;
       await this.make(job, described, () => running.cancelled);
       this.deps.log(`versions: prepared the ${job.kind} of ${job.source} in ${Date.now() - started} ms`);
+      // A Sound waiting for this Video has come as far as its Video takes it.
+      if (job.kind === "video") for (const waiting of this.queue) if (waiting.source === job.source && waiting.kind === "sound") waiting.progress = SOUND_AFTER_VIDEO;
     } catch (cause) {
       const cancelled = running.cancelled || (cause instanceof ExportFailure && cause.code === "cancelled");
       if (cancelled) {
@@ -501,11 +535,17 @@ export class Sharing {
     const cache = this.deps.cache;
     const generation = this.invalidated.get(source) ?? 0;
     const pending = await cache.begin(this.keyOf(described, kind));
-    let lastShown = 0;
+    let lastShown = 0, lastDrawn = -Infinity;
     const progress = (fraction: number): void => {
       if (fraction - lastShown < 0.01) return;
       lastShown = fraction;
       job.progress = fraction;
+      // Settings draws again at most every PROGRESS_DRAW_MS (2026-11-01): each draw builds and sends the whole view and
+      // the page renders it, which a short recording's hundred steps in a few seconds turned into a stutter. Its state
+      // reads the latest progress whenever anything else draws, and its end draws at once.
+      const now = performance.now();
+      if (now - lastDrawn < PROGRESS_DRAW_MS) return;
+      lastDrawn = now;
       this.deps.changed();
     };
     try {
@@ -519,13 +559,24 @@ export class Sharing {
         case "sound": {
           content = "content.m4a";
           const output = path.join(pending.dir, content);
-          // The Video's sound: the recording's own where the Video's sound is it, else the Video made first.
+          // The Video's sound: the recording's own where the Video's sound is it, else the Video made first. Unless the
+          // Video is the recording itself, the Sound's progress has followed its Video's this far (versionStates), so its
+          // copy takes the rest.
+          const copying = videoIsOriginal(described.subject) ? progress
+            : (fraction: number): void => progress(SOUND_AFTER_VIDEO + (1 - SOUND_AFTER_VIDEO) * fraction);
+          if (!videoIsOriginal(described.subject)) job.progress = SOUND_AFTER_VIDEO;
           if (videoIsOriginal(described.subject) || copiable(described, false)) {
-            await this.deps.runner.copyTracks({ source, tracks: ["sound0"], output, background: true }, progress);
+            await this.deps.runner.copyTracks({ source, tracks: ["sound0"], output, background: true }, copying);
           } else {
-            const video = cache.get(this.keyOf(described, "video")) ?? await this.make({ source, kind: "video", progress: 0 }, described, cancelled);
+            let video = cache.get(this.keyOf(described, "video"));
+            if (!video) {
+              const making: Job = { source, kind: "video", progress: 0 };
+              job.video = making;
+              this.deps.changed();
+              try { video = await this.make(making, described, cancelled); } finally { job.video = undefined; }
+            }
             if (cancelled()) throw new ExportFailure("cancelled", "paused");
-            await this.deps.runner.copyTracks({ source: cache.contentPath(video), tracks: ["sound0"], output, background: true }, progress);
+            await this.deps.runner.copyTracks({ source: cache.contentPath(video), tracks: ["sound0"], output, background: true }, copying);
           }
           break;
         }

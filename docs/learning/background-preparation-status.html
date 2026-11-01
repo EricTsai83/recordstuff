@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>背景準備中的檔案，狀態怎麼顯示才不會閃：先問、延遲加最短顯示、不倒退的進度</title>
+<style>
+:root {
+  color-scheme: light;
+  --clay: #D97757;
+  --slate: #141413;
+  --ivory: #FAF9F5;
+  --oat: #E3DACC;
+  --white: #FFFFFF;
+  --gray-100: #F0EEE6;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --warning: #C78E3F;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --content-width: 68ch;
+}
+body { margin: 0; background: var(--ivory); color: var(--slate); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; font-weight: 430; line-height: 1.55; letter-spacing: 0; }
+main { max-width: var(--content-width); margin: 0 auto; padding: var(--space-3xl) var(--space-xl); }
+article { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+h1 { max-width: none; font-size: 1.8rem; line-height: 1.18; text-wrap: balance; overflow-wrap: normal; margin: 0 0 var(--space-md); }
+h2 { font-size: 1.22rem; line-height: 1.25; margin: var(--space-3xl) 0 var(--space-md); }
+h3 { font-size: 1rem; line-height: 1.35; margin: var(--space-2xl) 0 var(--space-sm); }
+p, ul, ol, .deck, .callout, table, pre { max-width: var(--content-width); }
+table, pre { width: 100%; }
+.deck { color: var(--gray-700); font-size: 1.05rem; margin: 0 0 var(--space-2xl); }
+a { color: var(--clay); text-decoration: underline; text-underline-offset: 3px; }
+li { margin: 4px 0; }
+code { background: var(--gray-100); border: 1px solid var(--oat); border-radius: var(--radius-sm); padding: 0 4px; font-size: 0.9em; overflow-wrap: anywhere; }
+table { border-collapse: collapse; margin: var(--space-lg) 0 var(--space-xl); font-size: 0.94rem; }
+th, td { border: 1px solid var(--oat); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--gray-100); font-weight: 600; }
+.callout { background: var(--gray-100); border: 1px solid var(--oat); border-left: 3px solid var(--clay); border-radius: var(--radius-sm); padding: var(--space-md) var(--space-lg); margin: var(--space-lg) 0 var(--space-xl); }
+.callout.warning { border-left-color: var(--warning); }
+.callout p { margin: 0; }
+pre { position: relative; width: 100%; margin: var(--space-lg) 0 var(--space-xl); border: 1px solid #26241f; border-radius: var(--radius-md); background: #11110f; color: #d8d4ca; overflow: hidden; }
+pre code { display: block; border: 0; background: transparent; padding: 18px 64px 18px 22px; color: inherit; overflow-x: auto; white-space: pre; font-size: 0.875rem; font-weight: 400; line-height: 1.62; scrollbar-width: none; overflow-wrap: normal; }
+pre code::-webkit-scrollbar { width: 0; height: 0; }
+pre .label { display: none; }
+.copy-code { position: absolute; top: 9px; right: 9px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid rgba(250, 249, 245, 0.14); border-radius: var(--radius-sm); background: rgba(250, 249, 245, 0.06); color: rgba(250, 249, 245, 0.72); cursor: pointer; }
+.copy-code:hover, .copy-code:focus-visible { border-color: rgba(250, 249, 245, 0.28); background: rgba(250, 249, 245, 0.12); color: var(--ivory); outline: none; }
+.copy-code.copied { border-color: rgba(143, 184, 106, 0.42); background: rgba(143, 184, 106, 0.14); color: #b8d99a; }
+.copy-code svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+.code-scrollbar { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 999px; background: rgba(250, 249, 245, 0.1); cursor: pointer; }
+.code-scrollbar.hidden { display: none; }
+.code-scrollbar-thumb { height: 100%; border-radius: inherit; background: rgba(255, 148, 110, 0.82); transform: translateX(0); cursor: grab; }
+.code-scrollbar-thumb:active { cursor: grabbing; }
+pre code .k { color: #ff946e; font-weight: 400; }
+pre code .s { color: #8fb86a; }
+pre code .n, pre code .p { color: #d8d4ca; }
+pre code .c { color: #858177; font-style: italic; }
+pre code .f { color: #cfc6a2; }
+pre code .t { color: #cfc6a2; font-weight: 400; }
+pre code .o { color: #ff946e; }
+.flow-figure { margin: var(--space-xl) 0; max-width: 420px; }
+.flow-figure svg { display: block; width: 100%; height: auto; }
+.flow-figure figcaption { color: var(--gray-700); font-size: 0.9rem; margin-top: var(--space-sm); }
+.sources { border-top: 1px solid var(--oat); margin-top: var(--space-3xl); padding-top: var(--space-lg); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  h1 { font-size: 1.65rem; }
+  main { padding: var(--space-xl); }
+  pre code { font-size: 0.8125rem; line-height: 1.5; }
+  p code, li code, td code { font-size: 0.9em; }
+  table, .deck, .sources { font-size: 0.875rem; }
+  table { display: block; overflow-x: auto; }
+}
+
+.flow-figure { max-width: var(--content-width); }
+.state-figure { max-width: 380px; }
+.flow-figure .flow-mobile { display: none; }
+.timeline-figure svg text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.tl-axis line, .tl-tick line { stroke: var(--gray-500); stroke-width: 1; }
+.tl-tick text { fill: var(--gray-700); font-size: 12px; text-anchor: middle; }
+.tl-threshold { stroke: var(--clay); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.tl-row { fill: var(--slate); font-size: 14px; font-weight: 650; }
+.tl-sub { fill: var(--gray-700); font-size: 12px; }
+.tl-note { fill: var(--gray-700); font-size: 12px; font-weight: 500; }
+.tl-work { fill: var(--gray-500); opacity: 0.45; }
+.tl-shown { fill: var(--clay); }
+.tl-linger { fill: var(--clay); opacity: 0.45; }
+.tl-legend text { fill: var(--gray-700); font-size: 12px; }
+@media (max-width: 640px) {
+  .flow-figure .flow-desktop { display: none; }
+  .flow-figure .flow-mobile { display: block; }
+}
+</style>
+</head>
+<body>
+<main>
+<article>
+
+<h1>背景準備中的檔案，狀態怎麼顯示才不會閃：先問、延遲加最短顯示、不倒退的進度</h1>
+<p class="deck">當一個面板打開時才開始在背景準備檔案，而這些工作有的 0.2 秒就做好、有的要好幾分鐘，「準備中」這個狀態很容易在畫面上閃一下、跳來跳去，或者把使用者的選取擠掉。這篇說明四個彼此配合的做法，每個做法對應哪一種閃爍，以及什麼情況下不該這樣做。</p>
+
+<h2>情境：打開面板，背景開始準備</h2>
+<p>想像一個錄影 App 的「分享」面板。使用者在一段錄影上按「分享…」，面板從卡片的位置飛到畫面中央，列出可以拿走的檔案：完成的影片、只有聲音、原始檔。這些檔案不一定已經存在，App 會在面板打開時把缺的檔案準備起來，讓使用者按下「拷貝」時不用等。</p>
+<p>這個模式要處理的前提有五個，缺一個，後面的取捨就會不同：</p>
+<ul>
+  <li><strong>狀態由另一方擁有。</strong>工作佇列在主程序（或伺服器），畫面只能透過訊息得知「誰在準備、做到多少」。畫面打開的那一刻，手上不一定有最新的狀態。</li>
+  <li><strong>工作長短差很多。</strong>只是複製一條聲音軌約 0.1–0.3 秒；重新算繪一段剪輯過的影片要幾秒到幾分鐘。打開的那一刻，畫面不知道會是哪一種。</li>
+  <li><strong>工作之間有相依。</strong>「只有聲音」是從做好的影片裡複製出來的，所以它得等影片做完。</li>
+  <li><strong>選取是使用者自己的狀態。</strong>影片預設被選取（打勾），這和它有沒有做好無關。</li>
+  <li><strong>同一個狀態出現在好幾處。</strong>每個檔案的圖示上有標記，面板底部還有一行說明文字。</li>
+</ul>
+
+<h2>天真的做法會怎麼壞</h2>
+<p>最直接的實作是：面板打開後才去問狀態，一收到「準備中」就顯示進度，做好就拿掉。在上面的前提下，使用者會看到這些症狀：</p>
+<ul>
+  <li><strong>狀態翻轉。</strong>面板先畫出來，這時還不知道影片沒做好，影片格顯示「已就緒」的打勾；幾百毫秒後狀態到了，才變成準備中。看起來像是 App 改口。</li>
+  <li><strong>一閃而過。</strong>0.2 秒就做好的聲音檔，進度提示出現一下又消失。使用者看不清楚它是什麼，只覺得畫面在閃。</li>
+  <li><strong>門檻邊緣的閃爍。</strong>如果只加「超過 0.5 秒才顯示」，那 0.55 秒做好的工作，提示會在 0.5 秒出現、0.55 秒消失，只露臉 50 毫秒。</li>
+  <li><strong>進度倒退。</strong>聲音在等影片時一直停在 0%，像是卡住；影片做完後聲音自己的複製又從 0% 開始，整條進度看起來跑了兩次。</li>
+  <li><strong>選取被擠掉。</strong>把進度畫在打勾的位置，準備中的影片就看不出被選取了；如果再加延遲，前半秒甚至什麼標記都沒有。</li>
+</ul>
+
+<h2>心智模型：三種資訊，各有主人和位置</h2>
+<p>這些症狀背後是同一件事：把三種不同的資訊混在一起。</p>
+<table>
+  <thead><tr><th>資訊</th><th>誰擁有</th><th>放在畫面哪裡</th></tr></thead>
+  <tbody>
+    <tr><td>真實狀態：準備中、做到多少、失敗了</td><td>擁有工作佇列的一方</td><td>從它那裡取得，畫面不自己猜</td></tr>
+    <tr><td>要不要現在顯示這個狀態</td><td>畫面</td><td>依時間決定：延遲與最短顯示</td></tr>
+    <tr><td>使用者選了哪個檔案</td><td>使用者（畫面保存）</td><td>自己的位置，不和進度共用</td></tr>
+  </tbody>
+</table>
+<p>分開之後，每一種閃爍都有對應的修正：狀態翻轉是「真實狀態」來得太晚；一閃而過和門檻邊緣是「要不要顯示」沒有規則；選取被擠掉是兩種資訊搶同一個位置；進度倒退則是擁有者回報的數字本身不連續。</p>
+
+<h2>四個做法，各自修哪一種問題</h2>
+
+<h3>1. 打開之前先問，但等待要有上限</h3>
+<p>面板動畫開始前，先向擁有狀態的一方要一次最新狀態，拿到後才畫出面板。對方在回覆前就把缺的檔案排進佇列，所以回覆裡缺的檔案已經是「準備中」。面板一出現就是正確狀態，不會再從打勾翻成準備中。</p>
+<p>這一步會延後打開，所以等待一定要有上限。查詢本身很便宜（讀檔頭和檔尾算出指紋，約幾毫秒），但對方可能正忙著別的事，例如搬移檔案。超過 150 毫秒沒回覆就照常打開，狀態等下一次推送再補上。等待期間情境也可能改變，所以開始動畫前要再確認一次：還在同一個分頁、那張卡片也還在畫面上。</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">export</span> <span class="k">async</span> <span class="k">function</span> <span class="f">openShare</span><span class="o">(</span>id<span class="o">:</span> string<span class="o">)</span><span class="o">:</span> <span class="t">Promise</span><span class="o">&lt;</span>void<span class="o">&gt;</span> <span class="o">{</span>
+  <span class="k">if</span> <span class="o">(</span>opening<span class="o">)</span> <span class="k">return</span><span class="o">;</span>
+  opening <span class="o">=</span> id<span class="o">;</span>
+  <span class="k">try</span> <span class="o">{</span>
+    <span class="c">// 先問擁有狀態的一方：它會開始準備缺的檔案，並回覆每個檔案現在的狀態</span>
+    <span class="k">const</span> answered <span class="o">=</span> settings<span class="o">.</span><span class="p">choose</span><span class="o">(</span><span class="s">`recordingShare:${id}`</span><span class="o">,</span> <span class="o">{</span> action<span class="o">:</span> <span class="s">"open"</span> <span class="o">}</span><span class="o">)</span><span class="o">.</span><span class="p">then</span><span class="o">(</span><span class="o">(</span>r<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> r<span class="o">.</span><span class="p">view</span><span class="o">,</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="n">undefined</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">const</span> answer <span class="o">=</span> <span class="k">await</span> <span class="t">Promise</span><span class="o">.</span><span class="p">race</span><span class="o">(</span><span class="o">[</span>answered<span class="o">,</span> <span class="f">delay</span><span class="o">(</span><span class="n">150</span><span class="o">)</span><span class="o">]</span><span class="o">)</span><span class="o">;</span> <span class="c">// 最多等 150 毫秒</span>
+    <span class="k">if</span> <span class="o">(</span>answer<span class="o">)</span> <span class="f">render</span><span class="o">(</span>answer<span class="o">)</span><span class="o">;</span>
+    <span class="c">// 等待期間情境可能變了：換了分頁、卡片被篩掉。這時就不打開</span>
+    <span class="k">if</span> <span class="o">(</span>selectedTab <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="s">"library"</span> <span class="o">|</span><span class="o">|</span> <span class="o">!</span>document<span class="o">.</span><span class="p">getElementById</span><span class="o">(</span><span class="s">`clip-${id}`</span><span class="o">)</span><span class="o">)</span> <span class="k">return</span><span class="o">;</span>
+    <span class="k">await</span> <span class="f">morph</span><span class="o">(</span>id<span class="o">,</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span> sharing <span class="o">=</span> <span class="o">{</span> id<span class="o">,</span> selected<span class="o">:</span> <span class="o">[</span><span class="s">"video"</span><span class="o">]</span> <span class="o">}</span><span class="o">;</span> <span class="f">draw</span><span class="o">(</span><span class="o">)</span><span class="o">;</span> <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+  <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+    opening <span class="o">=</span> <span class="n">undefined</span><span class="o">;</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre>
+<p>代價是：準備工作現在和打開動畫同時開始，不再等動畫結束。只有在擁有者推送進度的頻率有上限（這裡是每秒最多四次）、而且每次推送畫面只重畫有變動的部分時，這樣才不會讓動畫掉幀。</p>
+
+<h3>2. 延遲顯示，加上最短顯示時間</h3>
+<p>有了正確的狀態，下一個問題是何時顯示。這裡用兩個時間參數：</p>
+<ul>
+  <li><strong>延遲</strong>：開始準備滿 0.5 秒才顯示。延遲內就做好的工作，畫面上什麼都不會出現。</li>
+  <li><strong>最短顯示時間</strong>：提示一旦出現，就至少停留 0.5 秒。工作在這段期間做好，提示會以滿格停留到時間到才消失。</li>
+</ul>
+<figure class="flow-figure timeline-figure">
+  <svg class="flow-desktop" role="img" aria-labelledby="tl-d-title tl-d-desc" viewBox="0 0 680 262">
+    <title id="tl-d-title">三種長度的工作，提示各在什麼時候出現</title>
+    <desc id="tl-d-desc">0.2 秒完成的工作從不顯示提示；0.55 秒完成的工作在 0.5 秒出現提示，完成後停留到 1.0 秒；2.5 秒的工作從 0.5 秒顯示到完成。</desc>
+    <g class="tl-axis">
+      <line x1="150" y1="214" x2="660" y2="214"></line>
+      <g class="tl-tick"><line x1="150" y1="214" x2="150" y2="220"></line><text x="150" y="236">0</text></g>
+      <g class="tl-tick"><line x1="250" y1="214" x2="250" y2="220"></line><text x="250" y="236">0.5</text></g>
+      <g class="tl-tick"><line x1="350" y1="214" x2="350" y2="220"></line><text x="350" y="236">1.0</text></g>
+      <g class="tl-tick"><line x1="450" y1="214" x2="450" y2="220"></line><text x="450" y="236">1.5</text></g>
+      <g class="tl-tick"><line x1="550" y1="214" x2="550" y2="220"></line><text x="550" y="236">2.0</text></g>
+      <g class="tl-tick"><line x1="650" y1="214" x2="650" y2="220"></line><text x="650" y="236">2.5 秒</text></g>
+    </g>
+    <line class="tl-threshold" x1="250" y1="22" x2="250" y2="214"></line>
+    <text class="tl-note" x="256" y="30">延遲 0.5 秒</text>
+    <text class="tl-row" x="16" y="70">很快</text><text class="tl-sub" x="16" y="88">0.2 秒做好</text>
+    <rect class="tl-work" x="150" y="62" width="40" height="10" rx="3"></rect>
+    <text class="tl-note" x="262" y="72">提示從不出現</text>
+    <text class="tl-row" x="16" y="128">剛過門檻</text><text class="tl-sub" x="16" y="146">0.55 秒做好</text>
+    <rect class="tl-work" x="150" y="120" width="110" height="10" rx="3"></rect>
+    <rect class="tl-shown" x="250" y="136" width="10" height="10" rx="2"></rect>
+    <rect class="tl-linger" x="260" y="136" width="90" height="10" rx="2"></rect>
+    <text class="tl-note" x="358" y="146">已做好，仍滿格停留到 1.0 秒</text>
+    <text class="tl-row" x="16" y="186">很慢</text><text class="tl-sub" x="16" y="204">2.5 秒做好</text>
+    <rect class="tl-work" x="150" y="178" width="500" height="10" rx="3"></rect>
+    <rect class="tl-shown" x="250" y="194" width="400" height="10" rx="2"></rect>
+    <g class="tl-legend">
+      <rect class="tl-work" x="150" y="248" width="18" height="8" rx="2"></rect><text x="174" y="256">實際在準備</text>
+      <rect class="tl-shown" x="270" y="248" width="18" height="8" rx="2"></rect><text x="294" y="256">畫面上顯示提示</text>
+      <rect class="tl-linger" x="410" y="248" width="18" height="8" rx="2"></rect><text x="434" y="256">最短顯示時間的停留</text>
+    </g>
+  </svg>
+  <svg class="flow-mobile" role="img" aria-labelledby="tl-m-title tl-m-desc" viewBox="0 0 360 330">
+    <title id="tl-m-title">三種長度的工作，提示各在什麼時候出現</title>
+    <desc id="tl-m-desc">0.2 秒完成的工作從不顯示提示；0.55 秒完成的工作在 0.5 秒出現提示，完成後停留到 1.0 秒；2.5 秒的工作從 0.5 秒顯示到完成。</desc>
+    <line class="tl-threshold" x1="76" y1="18" x2="76" y2="30"></line>
+    <line class="tl-threshold" x1="76" y1="62" x2="76" y2="80"></line>
+    <line class="tl-threshold" x1="76" y1="140" x2="76" y2="174"></line>
+    <line class="tl-threshold" x1="76" y1="234" x2="76" y2="268"></line>
+    <text class="tl-note" x="82" y="28">延遲 0.5 秒（虛線）</text>
+    <text class="tl-row" x="16" y="56">很快：0.2 秒做好</text>
+    <rect class="tl-work" x="16" y="66" width="24" height="10" rx="3"></rect>
+    <text class="tl-note" x="16" y="96">提示從不出現</text>
+    <text class="tl-row" x="16" y="134">剛過門檻：0.55 秒做好</text>
+    <rect class="tl-work" x="16" y="144" width="66" height="10" rx="3"></rect>
+    <rect class="tl-shown" x="76" y="160" width="6" height="10" rx="2"></rect>
+    <rect class="tl-linger" x="82" y="160" width="54" height="10" rx="2"></rect>
+    <text class="tl-note" x="16" y="190">做好後仍滿格停留到 1.0 秒</text>
+    <text class="tl-row" x="16" y="228">很慢：2.5 秒做好</text>
+    <rect class="tl-work" x="16" y="238" width="300" height="10" rx="3"></rect>
+    <rect class="tl-shown" x="76" y="254" width="240" height="10" rx="2"></rect>
+    <g class="tl-legend">
+      <rect class="tl-work" x="16" y="290" width="18" height="8" rx="2"></rect><text x="40" y="298">實際在準備</text>
+      <rect class="tl-shown" x="130" y="290" width="18" height="8" rx="2"></rect><text x="154" y="298">顯示提示</text>
+      <rect class="tl-linger" x="16" y="312" width="18" height="8" rx="2"></rect><text x="40" y="320">最短顯示時間的停留</text>
+    </g>
+  </svg>
+  <figcaption>延遲決定要不要出現，最短顯示時間決定出現後至少留多久；少了後者，剛過門檻的工作只露臉 50 毫秒。</figcaption>
+</figure>
+
+<p>這兩個參數是業界常見的組合。React 常用的 <code>spin-delay</code> 套件預設延遲 500 毫秒、最短顯示 200 毫秒，並說明應該依實際延遲調整。Jakob Nielsen 的建議更保守：不到約 1 秒不必顯示任何提示，一旦顯示就至少留 0.5 秒，免得看起來像畫面出錯。延遲值不是憑感覺定的，要看你自己的工作分佈：這裡快速工作實測約 130–280 毫秒，0.5 秒留了餘裕，而真的要等的工作通常是好幾秒以上。</p>
+<figure class="flow-figure state-figure">
+  <svg id="mermaid-mvxmbrgw-my-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" viewBox="4 4 378.0703125 502" aria-roledescription="stateDiagram" role="img" aria-labelledby="mermaid-mvxmbrgw-title mermaid-mvxmbrgw-desc"><title id="mermaid-mvxmbrgw-title">進度提示的顯示時機</title><desc id="mermaid-mvxmbrgw-desc">開始準備後先等待；超過延遲才顯示；完成後至少停留最短時間才隱藏；失敗立刻隱藏。</desc><style>#mermaid-mvxmbrgw-my-svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;fill:#141413;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-mvxmbrgw-my-svg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-mvxmbrgw-my-svg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-mvxmbrgw-my-svg .error-icon{fill:#FAF9F5;}#mermaid-mvxmbrgw-my-svg .error-text{fill:#05060a;stroke:#05060a;}#mermaid-mvxmbrgw-my-svg .edge-thickness-normal{stroke-width:1px;}#mermaid-mvxmbrgw-my-svg .edge-thickness-thick{stroke-width:3.5px;}#mermaid-mvxmbrgw-my-svg .edge-pattern-solid{stroke-dasharray:0;}#mermaid-mvxmbrgw-my-svg .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-mvxmbrgw-my-svg .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-mvxmbrgw-my-svg .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-mvxmbrgw-my-svg .marker{fill:#D97757;stroke:#D97757;}#mermaid-mvxmbrgw-my-svg .marker.cross{stroke:#D97757;}#mermaid-mvxmbrgw-my-svg svg{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:16px;}#mermaid-mvxmbrgw-my-svg p{margin:0;}#mermaid-mvxmbrgw-my-svg defs [id$="-barbEnd"]{fill:#D97757;stroke:#D97757;}#mermaid-mvxmbrgw-my-svg g.stateGroup text{fill:#E3DACC;stroke:none;font-size:10px;}#mermaid-mvxmbrgw-my-svg g.stateGroup text{fill:#141413;stroke:none;font-size:10px;}#mermaid-mvxmbrgw-my-svg g.stateGroup .state-title{font-weight:bolder;fill:#141413;}#mermaid-mvxmbrgw-my-svg g.stateGroup rect{fill:#FFFFFF;stroke:#E3DACC;}#mermaid-mvxmbrgw-my-svg g.stateGroup line{stroke:#D97757;stroke-width:1;}#mermaid-mvxmbrgw-my-svg .transition{stroke:#D97757;stroke-width:1;fill:none;}#mermaid-mvxmbrgw-my-svg .stateGroup .composit{fill:transparent;border-bottom:1px;}#mermaid-mvxmbrgw-my-svg .stateGroup .alt-composit{fill:#e0e0e0;border-bottom:1px;}#mermaid-mvxmbrgw-my-svg .state-note{stroke:hsl(52.6829268293, 60%, 73.9215686275%);fill:#fff5ad;}#mermaid-mvxmbrgw-my-svg .state-note text{fill:#333;stroke:none;font-size:10px;}#mermaid-mvxmbrgw-my-svg .stateLabel .box{stroke:none;stroke-width:0;fill:#FFFFFF;opacity:0.5;}#mermaid-mvxmbrgw-my-svg .edgeLabel .label rect{fill:#FFFFFF;opacity:0.5;}#mermaid-mvxmbrgw-my-svg .edgeLabel{background-color:#F0EEE6;text-align:center;}#mermaid-mvxmbrgw-my-svg .edgeLabel p{background-color:#F0EEE6;}#mermaid-mvxmbrgw-my-svg .edgeLabel rect{opacity:0.5;background-color:#F0EEE6;fill:#F0EEE6;}#mermaid-mvxmbrgw-my-svg .edgeLabel .label text{fill:#141413;}#mermaid-mvxmbrgw-my-svg .label div .edgeLabel{color:#141413;}#mermaid-mvxmbrgw-my-svg .stateLabel text{fill:#141413;font-size:10px;font-weight:bold;}#mermaid-mvxmbrgw-my-svg .node circle.state-start{fill:#D97757;stroke:#D97757;}#mermaid-mvxmbrgw-my-svg .node .fork-join{fill:#D97757;stroke:#D97757;}#mermaid-mvxmbrgw-my-svg .node circle.state-end{fill:#E3DACC;stroke:transparent;stroke-width:1.5;}#mermaid-mvxmbrgw-my-svg .end-state-inner{fill:transparent;stroke-width:1.5;}#mermaid-mvxmbrgw-my-svg .node rect{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvxmbrgw-my-svg .node polygon{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvxmbrgw-my-svg [id$="-barbEnd"]{fill:#D97757;}#mermaid-mvxmbrgw-my-svg .statediagram-cluster rect{fill:#FFFFFF;stroke:#E3DACC;stroke-width:1px;}#mermaid-mvxmbrgw-my-svg .cluster-label,#mermaid-mvxmbrgw-my-svg .nodeLabel{color:#141413;}#mermaid-mvxmbrgw-my-svg .statediagram-cluster rect.outer{rx:5px;ry:5px;}#mermaid-mvxmbrgw-my-svg .statediagram-state .divider{stroke:#E3DACC;}#mermaid-mvxmbrgw-my-svg .statediagram-state .title-state{rx:5px;ry:5px;}#mermaid-mvxmbrgw-my-svg .statediagram-cluster.statediagram-cluster .inner{fill:transparent;}#mermaid-mvxmbrgw-my-svg .statediagram-cluster.statediagram-cluster-alt .inner{fill:#FAF9F5;}#mermaid-mvxmbrgw-my-svg .statediagram-cluster .inner{rx:0;ry:0;}#mermaid-mvxmbrgw-my-svg .statediagram-state rect.basic{rx:5px;ry:5px;}#mermaid-mvxmbrgw-my-svg .statediagram-state rect.divider{stroke-dasharray:10,10;fill:#FAF9F5;}#mermaid-mvxmbrgw-my-svg .note-edge{stroke-dasharray:5;}#mermaid-mvxmbrgw-my-svg .statediagram-note rect{fill:#fff5ad;stroke:hsl(52.6829268293, 60%, 73.9215686275%);stroke-width:1px;rx:0;ry:0;}#mermaid-mvxmbrgw-my-svg .statediagram-note rect{fill:#fff5ad;stroke:hsl(52.6829268293, 60%, 73.9215686275%);stroke-width:1px;rx:0;ry:0;}#mermaid-mvxmbrgw-my-svg .statediagram-note text{fill:#333;}#mermaid-mvxmbrgw-my-svg .statediagram-note .nodeLabel{color:#333;}#mermaid-mvxmbrgw-my-svg .statediagram .edgeLabel{color:red;}#mermaid-mvxmbrgw-my-svg [id$="-dependencyStart"],#mermaid-mvxmbrgw-my-svg [id$="-dependencyEnd"]{fill:#D97757;stroke:#D97757;stroke-width:1;}#mermaid-mvxmbrgw-my-svg .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#141413;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].statediagram-cluster rect{fill:#FFFFFF;stroke:url(#mermaid-mvxmbrgw-my-svg-gradient);stroke-width:1;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].statediagram-cluster rect.outer{rx:5px;ry:5px;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg .node .neo-node{stroke:#E3DACC;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node rect,#mermaid-mvxmbrgw-my-svg [data-look="neo"].cluster rect,#mermaid-mvxmbrgw-my-svg [data-look="neo"].node polygon{stroke:url(#mermaid-mvxmbrgw-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg [data-look="neo"].swimlane.cluster rect{filter:none;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node path{stroke:url(#mermaid-mvxmbrgw-my-svg-gradient);stroke-width:1px;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node .neo-line path{stroke:#E3DACC;filter:none;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node circle{stroke:url(#mermaid-mvxmbrgw-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg [data-look="neo"].node circle .state-start{fill:#000000;}#mermaid-mvxmbrgw-my-svg [data-look="neo"].icon-shape .icon{fill:url(#mermaid-mvxmbrgw-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mermaid-mvxmbrgw-my-svg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mermaid-mvxmbrgw-my-svg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><defs><marker id="mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="#D97757"/></marker></defs><g class="root"><g class="clusters"/><g class="edges edgePaths"><path d="M181.5489583333333,52L181.5489583333333,64.92893218813452Q181.5489583333333,72 174.47789052146783,72L53.071067811865476,72Q46,72 46,79.07106781186548L46,146.92893218813452Q46,154 53.071067811865476,154L70.10341135480118,154Q77.17447916666666,154 77.17447916666666,161.07106781186548L77.17447916666666,168.5" id="mermaid-mvxmbrgw-my-svg-edge0" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 272.5667419433594 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge0" data-points="W3sieCI6MTgxLjU0ODk1ODMzMzMzMzMsInkiOjUyfSx7IngiOjE4MS41NDg5NTgzMzMzMzMzLCJ5Ijo3Mn0seyJ4Ijo0NiwieSI6NzJ9LHsieCI6NDYsInkiOjE1NH0seyJ4Ijo3Ny4xNzQ0NzkxNjY2NjY2NiwieSI6MTU0fSx7IngiOjc3LjE3NDQ3OTE2NjY2NjY2LCJ5IjoxNzR9XQ==" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M115.84114583333334,174L115.84114583333334,161.07106781186548Q115.84114583333334,154 122.91221364519882,154L139.94455718813452,154Q147.015625,154 147.015625,146.92893218813452L147.015625,99.07106781186548Q147.015625,92 154.08669281186548,92L197.67789052146784,92Q204.74895833333332,92 204.74895833333332,84.92893218813452L204.74895833333332,57.5" id="mermaid-mvxmbrgw-my-svg-edge1" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 194.7510986328125 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge1" data-points="W3sieCI6MTE1Ljg0MTE0NTgzMzMzMzM0LCJ5IjoxNzR9LHsieCI6MTE1Ljg0MTE0NTgzMzMzMzM0LCJ5IjoxNTR9LHsieCI6MTQ3LjAxNTYyNSwieSI6MTU0fSx7IngiOjE0Ny4wMTU2MjUsInkiOjkyfSx7IngiOjIwNC43NDg5NTgzMzMzMzMzMiwieSI6OTJ9LHsieCI6MjA0Ljc0ODk1ODMzMzMzMzMyLCJ5Ijo1Mn1d" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M96.5078125,214L96.5078125,288.9289321881345Q96.5078125,296 103.57888031186548,296L149.10341135480118,296Q156.17447916666666,296 156.17447916666666,303.0710678118655L156.17447916666666,310.5" id="mermaid-mvxmbrgw-my-svg-edge2" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 150.83839416503906 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge2" data-points="W3sieCI6OTYuNTA3ODEyNSwieSI6MjE0fSx7IngiOjk2LjUwNzgxMjUsInkiOjI5Nn0seyJ4IjoxNTYuMTc0NDc5MTY2NjY2NjYsInkiOjI5Nn0seyJ4IjoxNTYuMTc0NDc5MTY2NjY2NjYsInkiOjMxNn1d" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M156.17447916666666,356L156.17447916666666,368.9289321881345Q156.17447916666666,376 149.10341135480118,376L142.69606781186548,376Q135.625,376 135.625,383.0710678118655L135.625,430.9289321881345Q135.625,438 142.69606781186548,438L179.31955718813452,438Q186.390625,438 186.390625,445.0710678118655L186.390625,452.5" id="mermaid-mvxmbrgw-my-svg-edge3" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 157.15855407714844 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge3" data-points="W3sieCI6MTU2LjE3NDQ3OTE2NjY2NjY2LCJ5IjozNTZ9LHsieCI6MTU2LjE3NDQ3OTE2NjY2NjY2LCJ5IjozNzZ9LHsieCI6MTM1LjYyNSwieSI6Mzc2fSx7IngiOjEzNS42MjUsInkiOjQzOH0seyJ4IjoxODYuMzkwNjI1LCJ5Ijo0Mzh9LHsieCI6MTg2LjM5MDYyNSwieSI6NDU4fV0=" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M244.390625,458L244.390625,445.0710678118655Q244.390625,438 251.46169281186548,438L317.9367446881345,438Q325.0078125,438 325.0078125,430.9289321881345L325.0078125,407L325.0078125,336L325.0078125,194L325.0078125,123L325.0078125,79.07106781186548Q325.0078125,72 317.9367446881345,72L258.2200261451988,72Q251.14895833333333,72 251.14895833333333,64.92893218813452L251.14895833333333,57.5" id="mermaid-mvxmbrgw-my-svg-edge4" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 544.3193969726562 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge4" data-points="W3sieCI6MjQ0LjM5MDYyNSwieSI6NDU4fSx7IngiOjI0NC4zOTA2MjUsInkiOjQzOH0seyJ4IjozMjUuMDA3ODEyNSwieSI6NDM4fSx7IngiOjMyNS4wMDc4MTI1LCJ5Ijo0MDd9LHsieCI6MzI1LjAwNzgxMjUsInkiOjMzNn0seyJ4IjozMjUuMDA3ODEyNSwieSI6MTk0fSx7IngiOjMyNS4wMDc4MTI1LCJ5IjoxMjN9LHsieCI6MzI1LjAwNzgxMjUsInkiOjcyfSx7IngiOjI1MS4xNDg5NTgzMzMzMzMzMywieSI6NzJ9LHsieCI6MjUxLjE0ODk1ODMzMzMzMzMzLCJ5Ijo1Mn1d" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M215.390625,458L215.390625,383.0710678118655Q215.390625,376 208.31955718813452,376L201.91221364519882,376Q194.84114583333334,376 194.84114583333334,368.9289321881345L194.84114583333334,361.5" id="mermaid-mvxmbrgw-my-svg-edge5" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 111.72119903564453 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge5" data-points="W3sieCI6MjE1LjM5MDYyNSwieSI6NDU4fSx7IngiOjIxNS4zOTA2MjUsInkiOjM3Nn0seyJ4IjoxOTQuODQxMTQ1ODMzMzMzMzQsInkiOjM3Nn0seyJ4IjoxOTQuODQxMTQ1ODMzMzMzMzQsInkiOjM1Nn1d" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/><path d="M194.84114583333334,316L194.84114583333334,303.0710678118655Q194.84114583333334,296 201.91221364519882,296L247.43674468813452,296Q254.5078125,296 254.5078125,288.9289321881345L254.5078125,265L254.5078125,123L254.5078125,99.07106781186548Q254.5078125,92 247.43674468813452,92L235.0200261451988,92Q227.94895833333334,92 227.94895833333334,84.92893218813452L227.94895833333334,57.5" id="mermaid-mvxmbrgw-my-svg-edge6" class="edge-thickness-normal edge-pattern-solid transition" style="stroke-dasharray: 0 0 334.06890869140625 0; stroke-dashoffset: 0;fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="mermaid-mvxmbrgw-edge6" data-points="W3sieCI6MTk0Ljg0MTE0NTgzMzMzMzM0LCJ5IjozMTZ9LHsieCI6MTk0Ljg0MTE0NTgzMzMzMzM0LCJ5IjoyOTZ9LHsieCI6MjU0LjUwNzgxMjUsInkiOjI5Nn0seyJ4IjoyNTQuNTA3ODEyNSwieSI6MjY1fSx7IngiOjI1NC41MDc4MTI1LCJ5IjoxMjN9LHsieCI6MjU0LjUwNzgxMjUsInkiOjkyfSx7IngiOjIyNy45NDg5NTgzMzMzMzMzNCwieSI6OTJ9LHsieCI6MjI3Ljk0ODk1ODMzMzMzMzM0LCJ5Ijo1Mn1d" data-look="neo" marker-end="url(#mermaid-mvxmbrgw-my-svg_stateDiagram-barbEnd-margin)"/></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(45.7578125, 123)"><g class="label" data-id="mermaid-mvxmbrgw-edge0" transform="translate(0, -10)"><g><rect class="background" x="-33.7578125" y="-1" width="67.515625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">開始準備</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(146.6953125, 123)"><g class="label" data-id="mermaid-mvxmbrgw-edge1" transform="translate(0, -10)"><g><rect class="background" x="-47.1796875" y="-1" width="94.359375" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">0.5</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 秒內完成</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(96.4140625, 265)"><g class="label" data-id="mermaid-mvxmbrgw-edge2" transform="translate(0, -10)"><g><rect class="background" x="-33.40625" y="-1" width="66.8125" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">滿</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 0.5</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 秒</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(135.5078125, 407)"><g class="label" data-id="mermaid-mvxmbrgw-edge3" transform="translate(0, -10)"><g><rect class="background" x="-17.8828125" y="-1" width="35.765625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">完成</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(324.7890625, 265)"><g class="label" data-id="mermaid-mvxmbrgw-edge4" transform="translate(0, -10)"><g><rect class="background" x="-49.28125" y="-1" width="98.5625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">顯示滿</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 0.5</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> 秒</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(215.0859375, 407)"><g class="label" data-id="mermaid-mvxmbrgw-edge5" transform="translate(0, -10)"><g><rect class="background" x="-41.6953125" y="-1" width="83.390625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">又開始準備</tspan></tspan></text></g></g></g><g class="edgeLabel" transform="translate(254.140625, 194)"><g class="label" data-id="mermaid-mvxmbrgw-edge6" transform="translate(0, -10)"><g><rect class="background" x="-49.6328125" y="-1" width="99.265625" height="22"/><text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">失敗（立刻）</tspan></tspan></text></g></g></g></g><g class="nodes"><g class="node  statediagram-state" id="mermaid-mvxmbrgw-my-svg-state----6" data-look="neo" transform="translate(216.34895833333331, 32)"><rect class="basic label-container" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel markdown-node-label"><p>隱藏</p></span></div></foreignObject></g></g><g class="node  statediagram-state" id="mermaid-mvxmbrgw-my-svg-state-----2" data-look="neo" transform="translate(96.5078125, 194)"><rect class="basic label-container" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel markdown-node-label"><p>等待中</p></span></div></foreignObject></g></g><g class="node  statediagram-state" id="mermaid-mvxmbrgw-my-svg-state-----6" data-look="neo" transform="translate(175.5078125, 336)"><rect class="basic label-container" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel markdown-node-label"><p>顯示中</p></span></div></foreignObject></g></g><g class="node  statediagram-state" id="mermaid-mvxmbrgw-my-svg-state----5" data-look="neo" transform="translate(215.390625, 478)"><rect class="basic label-container" rx="5" ry="5" x="-68" y="-20" width="136" height="40"/><g class="label" transform="translate(-60, -12)"><rect/><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel markdown-node-label"><p>停留</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mermaid-mvxmbrgw-my-svg-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><defs><filter id="mermaid-mvxmbrgw-my-svg-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"/></filter></defs><linearGradient id="mermaid-mvxmbrgw-my-svg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E3DACC" stop-opacity="1"/><stop offset="100%" stop-color="hsl(48, 0%, 82.1568627451%)" stop-opacity="1"/></linearGradient></svg>
+  <figcaption>隱藏的只是提示，不是狀態：等待中的檔案依然是「準備中」。</figcaption>
+</figure>
+
+<p>這些規則只靠 CSS 做不到。延遲可以用動畫的 <code>animation-delay</code> 模擬，但最短顯示時間需要在狀態結束後繼續保留元素，元素一移除就沒了。所以由元件自己記住「何時開始顯示」：</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> <span class="t">SHOW_AFTER_MS</span> <span class="o">=</span> <span class="n">500</span><span class="o">;</span>    <span class="c">// 超過才顯示</span>
+<span class="k">const</span> <span class="t">SHOW_AT_LEAST_MS</span> <span class="o">=</span> <span class="n">500</span><span class="o">;</span> <span class="c">// 顯示後至少停留</span>
+
+<span class="c">/** active：真的在準備；since：何時被要求準備（epoch 毫秒）；cut：失敗了，要立刻讓位給失敗標記。 */</span>
+<span class="k">function</span> <span class="f">useShownWhile</span><span class="o">(</span>active<span class="o">:</span> boolean<span class="o">,</span> <span class="o">{</span> since<span class="o">,</span> cut <span class="o">=</span> <span class="n">false</span> <span class="o">}</span><span class="o">:</span> <span class="o">{</span> since<span class="o">?</span><span class="o">:</span> number<span class="o">;</span> cut<span class="o">?</span><span class="o">:</span> boolean <span class="o">}</span> <span class="o">=</span> <span class="o">{</span><span class="o">}</span><span class="o">)</span><span class="o">:</span> boolean <span class="o">{</span>
+  <span class="k">const</span> waited <span class="o">=</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> since <span class="o">!</span><span class="o">=</span><span class="o">=</span> <span class="n">undefined</span> <span class="o">&amp;</span><span class="o">&amp;</span> <span class="t">Date</span><span class="o">.</span><span class="p">now</span><span class="o">(</span><span class="o">)</span> <span class="o">-</span> since <span class="o">&gt;</span><span class="o">=</span> <span class="t">SHOW_AFTER_MS</span><span class="o">;</span>
+  <span class="k">const</span> shownAt <span class="o">=</span> <span class="f">useRef</span><span class="o">(</span><span class="n">0</span><span class="o">)</span><span class="o">;</span>
+  <span class="c">// 已經等超過門檻的工作，第一次 render 就顯示，不用等計時器</span>
+  <span class="k">const</span> <span class="o">[</span>shown<span class="o">,</span> setShown<span class="o">]</span> <span class="o">=</span> <span class="f">useState</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+    <span class="k">const</span> now <span class="o">=</span> active <span class="o">&amp;</span><span class="o">&amp;</span> <span class="o">!</span>cut <span class="o">&amp;</span><span class="o">&amp;</span> <span class="f">waited</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span>now<span class="o">)</span> shownAt<span class="o">.</span><span class="p">current</span> <span class="o">=</span> performance<span class="o">.</span><span class="p">now</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+    <span class="k">return</span> now<span class="o">;</span>
+  <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+  <span class="f">useEffect</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span>cut<span class="o">)</span> <span class="o">{</span> <span class="f">setShown</span><span class="o">(</span><span class="n">false</span><span class="o">)</span><span class="o">;</span> <span class="k">return</span> <span class="n">undefined</span><span class="o">;</span> <span class="o">}</span>
+    <span class="k">if</span> <span class="o">(</span>active <span class="o">&amp;</span><span class="o">&amp;</span> <span class="o">!</span>shown<span class="o">)</span> <span class="o">{</span>
+      <span class="k">const</span> wait <span class="o">=</span> since <span class="o">=</span><span class="o">=</span><span class="o">=</span> <span class="n">undefined</span> <span class="o">?</span> <span class="t">SHOW_AFTER_MS</span> <span class="o">:</span> <span class="t">Math</span><span class="o">.</span><span class="p">max</span><span class="o">(</span><span class="n">0</span><span class="o">,</span> since <span class="o">+</span> <span class="t">SHOW_AFTER_MS</span> <span class="o">-</span> <span class="t">Date</span><span class="o">.</span><span class="p">now</span><span class="o">(</span><span class="o">)</span><span class="o">)</span><span class="o">;</span>
+      <span class="k">const</span> timer <span class="o">=</span> <span class="f">setTimeout</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span> shownAt<span class="o">.</span><span class="p">current</span> <span class="o">=</span> performance<span class="o">.</span><span class="p">now</span><span class="o">(</span><span class="o">)</span><span class="o">;</span> <span class="f">setShown</span><span class="o">(</span><span class="n">true</span><span class="o">)</span><span class="o">;</span> <span class="o">}</span><span class="o">,</span> wait<span class="o">)</span><span class="o">;</span>
+      <span class="k">return</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">clearTimeout</span><span class="o">(</span>timer<span class="o">)</span><span class="o">;</span> <span class="c">// 延遲內就做好：計時器取消，什麼都不顯示</span>
+    <span class="o">}</span>
+    <span class="k">if</span> <span class="o">(</span><span class="o">!</span>active <span class="o">&amp;</span><span class="o">&amp;</span> shown<span class="o">)</span> <span class="o">{</span>
+      <span class="k">const</span> left <span class="o">=</span> shownAt<span class="o">.</span><span class="p">current</span> <span class="o">+</span> <span class="t">SHOW_AT_LEAST_MS</span> <span class="o">-</span> performance<span class="o">.</span><span class="p">now</span><span class="o">(</span><span class="o">)</span><span class="o">;</span>
+      <span class="k">const</span> timer <span class="o">=</span> <span class="f">setTimeout</span><span class="o">(</span><span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">setShown</span><span class="o">(</span><span class="n">false</span><span class="o">)</span><span class="o">,</span> <span class="t">Math</span><span class="o">.</span><span class="p">max</span><span class="o">(</span><span class="n">0</span><span class="o">,</span> left<span class="o">)</span><span class="o">)</span><span class="o">;</span>
+      <span class="k">return</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">clearTimeout</span><span class="o">(</span>timer<span class="o">)</span><span class="o">;</span> <span class="c">// 停留期間又開始準備：取消隱藏，繼續顯示</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="n">undefined</span><span class="o">;</span>
+  <span class="o">}</span><span class="o">,</span> <span class="o">[</span>active<span class="o">,</span> shown<span class="o">,</span> cut<span class="o">,</span> since<span class="o">]</span><span class="o">)</span><span class="o">;</span>
+  <span class="k">return</span> shown <span class="o">&amp;</span><span class="o">&amp;</span> <span class="o">!</span>cut<span class="o">;</span>
+<span class="o">}</span></code></pre>
+<p>失敗是例外：檔案做不出來時，提示要立刻讓位給失敗標記，不能為了湊滿最短時間繼續顯示「準備中」。</p>
+<p>延遲要從<strong>工作被要求的時間</strong>算起，而不是從畫面出現的時間。使用者打開面板時，有些工作可能已經排隊好一陣子了；如果從面板出現才開始計時，這些明顯要等的工作反而要再晚半秒才顯示。所以擁有工作佇列的一方會一併送出每個工作排進佇列的時間，已經等超過門檻的，面板第一幀就直接顯示。</p>
+<p>給輔助技術的語意也要跟上：進度條用 <code>role="progressbar"</code> 並提供 <code>aria-valuenow</code>，螢幕閱讀器才會把它當成進度，而不是一張標籤不斷改變的圖。</p>
+
+<h3>3. 選取和進度各放一處</h3>
+<p>打勾表示「這是你選的」，進度表示「它還在做」，這兩件事會同時成立。把進度畫在打勾的位置，就得二選一：準備中的影片會看不出被選取；如果再加上延遲，前半秒甚至兩者都沒有。</p>
+<p>做法是讓兩者各有位置：打勾留在圖示右上角，準備進度改成圖示下方的一條細進度條，就像 Finder 在複製中的檔案圖示下方畫的那條。這樣延遲和最短顯示可以只套用在進度條上，選取永遠看得到。</p>
+
+<h3>4. 相依工作的進度，由擁有者合成成不倒退的一條</h3>
+<p>「只有聲音」要等影片，它自己的工作只是最後一小段複製。如果照實回報，它會停在 0% 很久，影片做完後又從 0% 跑一次。修正放在擁有工作佇列的那一方，因為只有它知道誰在等誰：</p>
+<pre class="language-typescript"><span class="label">TypeScript</span><code><span class="k">const</span> <span class="t">SOUND_AFTER_VIDEO</span> <span class="o">=</span> <span class="n">0.9</span><span class="o">;</span> <span class="c">// 影片做完時，聲音的進度走到這裡</span>
+
+<span class="c">// 回報狀態時（擁有工作佇列的那一方）</span>
+<span class="k">const</span> video <span class="o">=</span> <span class="f">runningVideoOrQueuedVideo</span><span class="o">(</span>source<span class="o">)</span><span class="o">;</span>
+<span class="k">for</span> <span class="o">(</span><span class="k">const</span> job <span class="k">of</span> queue<span class="o">)</span> <span class="o">{</span>
+  <span class="k">if</span> <span class="o">(</span>job<span class="o">.</span><span class="p">kind</span> <span class="o">=</span><span class="o">=</span><span class="o">=</span> <span class="s">"sound"</span> <span class="o">&amp;</span><span class="o">&amp;</span> video<span class="o">)</span> <span class="f">report</span><span class="o">(</span>job<span class="o">,</span> video<span class="o">.</span><span class="p">progress</span> <span class="o">*</span> <span class="t">SOUND_AFTER_VIDEO</span><span class="o">)</span><span class="o">;</span> <span class="c">// 等影片：跟著影片走</span>
+  <span class="k">else</span> <span class="f">report</span><span class="o">(</span>job<span class="o">,</span> job<span class="o">.</span><span class="p">progress</span><span class="o">)</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="c">// 影片做完的那一刻，排在後面的聲音直接走到 0.9，而不是掉回 0</span>
+<span class="f">onVideoMade</span><span class="o">(</span>source<span class="o">,</span> <span class="o">(</span><span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="o">{</span> <span class="k">for</span> <span class="o">(</span><span class="k">const</span> job <span class="k">of</span> <span class="f">waitingSounds</span><span class="o">(</span>source<span class="o">)</span><span class="o">)</span> job<span class="o">.</span><span class="p">progress</span> <span class="o">=</span> <span class="t">SOUND_AFTER_VIDEO</span><span class="o">;</span> <span class="o">}</span><span class="o">)</span><span class="o">;</span>
+
+<span class="c">// 聲音自己的複製步驟只占最後 10%</span>
+<span class="k">const</span> copying <span class="o">=</span> <span class="o">(</span>fraction<span class="o">:</span> number<span class="o">)</span> <span class="o">=</span><span class="o">&gt;</span> <span class="f">progress</span><span class="o">(</span><span class="t">SOUND_AFTER_VIDEO</span> <span class="o">+</span> <span class="o">(</span><span class="n">1</span> <span class="o">-</span> <span class="t">SOUND_AFTER_VIDEO</span><span class="o">)</span> <span class="o">*</span> fraction<span class="o">)</span><span class="o">;</span></code></pre>
+<p>把整段進度分成兩段：影片的部分占 90%，聲音自己的複製占最後 10%。這個比例不必精確，因為它只需要保證兩件事：進度一直往前，而且等待期間看得出在動。畫面那邊只負責顯示一個數字，不需要知道版本之間的相依關係。</p>
+
+<h3>補充：同一個狀態出現在幾處，就要用同一個時機</h3>
+<p>在實機測試時，進度條已經不閃了，但面板底部的說明文字還會閃：它一收到「準備中」就立刻換成「準備中 0%」，0.2 秒後又換回檔案的說明。凡是顯示同一個狀態的地方（圖示上的進度、說明文字、螢幕閱讀器的朗讀），都要套用同一個「要不要顯示」的判斷，否則閃爍只是換了位置。反過來，同一個數字也只需要出現在一處：進度條已經畫出做到多少，說明文字只要說「準備中，好了就能拷貝」，不必再跟著跳百分比，畫面上就不會有兩個數字同時在動。</p>
+
+<div class="callout warning"><p><strong>隱藏的是提示，不是狀態。</strong>延遲期間檔案依然是「準備中」。使用者在這段期間嘗試的操作必須照真實狀態回應：準備中拖曳檔案時，拖曳需要在按下滑鼠的當下就拿到檔案，所以什麼都不會被拖出去，而且要立刻說明原因（「還在準備中，準備好之後才能拖曳」），不能因為提示還沒出現就沉默。</p></div>
+
+<h2>為什麼這是合理的預設</h2>
+<p>前提成立時（狀態在別處、工作長短差很多、快速工作佔多數），這組做法比較最常見的幾種替代方案：</p>
+<table>
+  <thead><tr><th>做法</th><th>快速工作</th><th>慢速工作</th><th>代價</th></tr></thead>
+  <tbody>
+    <tr><td>立刻顯示</td><td>閃一下</td><td>立刻看到</td><td>最常見的閃爍來源</td></tr>
+    <tr><td>只有延遲</td><td>不閃</td><td>晚 0.5 秒看到</td><td>剛過門檻的會只露臉幾十毫秒</td></tr>
+    <tr><td>立刻顯示＋最短顯示</td><td>出現一下再消失（不算閃，但多餘）</td><td>立刻看到</td><td>快速工作也會讓人以為要等</td></tr>
+    <tr><td><strong>延遲＋最短顯示</strong></td><td>不顯示</td><td>晚 0.5 秒看到</td><td>慢速工作的提示晚一點出現</td></tr>
+    <tr><td>由擁有者依工作類型決定（算繪立刻顯示、複製不顯示）</td><td>不顯示</td><td>立刻看到</td><td>擁有者要先知道工作類型，有時得讀完檔案描述才確定</td></tr>
+  </tbody>
+</table>
+<p>「延遲＋最短顯示」不需要擁有者預測工作會多久，只靠畫面就能做到，而它付出的代價（慢速工作晚 0.5 秒出現提示）在有打勾和檔案說明撐著的情況下幾乎無感。如果慢速工作的提示晚出現會造成誤解，就值得再加上最後一種：由擁有者標記「確定要算繪」的工作，讓它立刻顯示。</p>
+
+<h2>什麼時候不該這樣做</h2>
+<ul>
+  <li><strong>使用者明確按下按鈕、正在等結果時。</strong>按下「拷貝」後，按鈕應該立刻進入忙碌狀態，延遲的對象只是「使用者沒有在等的背景工作」。</li>
+  <li><strong>工作一定很慢時。</strong>例如固定要好幾分鐘的匯出，延遲只會讓回饋晚到，直接顯示即可。</li>
+  <li><strong>狀態本來就在畫面手上時。</strong>不需要跨程序查詢，就沒有「先問」這一步，狀態翻轉的問題也不存在。</li>
+  <li><strong>工作很快、但結果本身就會讓畫面改變時。</strong>例如搜尋結果出現，這時該處理的是結果的過渡，不是載入提示。</li>
+  <li><strong>先問的等待會讓操作明顯變慢時。</strong>如果查詢要走網路、常常超過 100–200 毫秒，先打開面板、再用骨架畫面或明確的「讀取中」，會比卡住使用者的點擊更好。</li>
+</ul>
+
+<h2>在 RecordStuff 的實作與結果</h2>
+<p>RecordStuff 是一個 macOS 選單列錄影 App，用 Electron 寫成。錄影檔分頁的「分享…」面板就是上面的例子：主程序擁有準備佇列與版本快取，設定頁的畫面透過 IPC 取得狀態，面板以 View Transition 從卡片飛到中央。</p>
+<ul>
+  <li><strong>先問</strong>：面板打開前送出一次查詢，最多等 150 毫秒。剪輯過、還沒快取的錄影，面板第一幀影片格就是準備中；原本是先打勾，約 300 毫秒後才翻成準備中。</li>
+  <li><strong>延遲＋最短顯示</strong>：都是 500 毫秒，從工作排進佇列的時間起算，進度條和底部說明共用同一個判斷。在使用者真實的 210 支錄影上，快速工作在 130–280 毫秒內做好，進度條存在的期間不透明度始終是 0，說明文字也沒有換過。</li>
+  <li><strong>進度不倒退</strong>：等待影片的聲音以影片進度的 90% 回報，影片做好時直接跳到 0.9，複製再走完最後 10%。單元測試會檢查每次回報的進度序列都是遞增的。</li>
+  <li><strong>選取與進度分開</strong>：打勾留在右上角，準備進度是圖示下方 3 像素高的進度條，只用 <code>transform: scaleX</code> 更新，不觸發排版。</li>
+</ul>
+
+<h2>判斷清單</h2>
+<p>在另一個程式碼庫遇到類似畫面時，可以依序問：</p>
+<ol>
+  <li>狀態由誰擁有？畫面打開的那一刻，手上的狀態可能過時嗎？如果會，能不能在畫出來之前先問一次，並給等待設上限？</li>
+  <li>工作時間的分佈長什麼樣子？快速工作是否佔多數、而且明顯短於某個門檻？</li>
+  <li>延遲和最短顯示是否都設了？用剛好超過門檻的工作想一遍，提示會不會只露臉幾十毫秒？</li>
+  <li>狀態出現在幾個地方？它們是否共用同一個「要不要顯示」的判斷？</li>
+  <li>選取、錯誤、進度是否各有自己的位置，還是有兩種資訊在搶同一處？</li>
+  <li>有相依的工作，進度是否由知道相依關係的一方合成，保證不倒退？</li>
+  <li>提示隱藏期間，使用者的操作是否仍照真實狀態回應，並說明原因？</li>
+</ol>
+
+<section class="sources">
+  <h2>參考資料</h2>
+  <ul>
+    <li><a href="https://www.github.com/smeijer/spin-delay">spin-delay</a>：延遲顯示與最短顯示時間的 React hook，預設 500／200 毫秒。</li>
+    <li><a href="https://suspense.epicreact.dev/02/03">Epic React — Pending Flash</a>：同一個 hook 依延遲情況調成 300／350 毫秒的例子。</li>
+    <li><a href="https://www.uxtigers.com/post/progress-indicators">Jakob Nielsen — Progress Indicators</a>：不到約 1 秒不必顯示提示；顯示後至少停留 0.5 秒；1–10 秒與 10 秒以上的提示選擇。</li>
+  </ul>
+</section>
+
+</article>
+</main>
+<script>
+(() => {
+  const copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path></svg>';
+  const checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true; } catch {
+      const area = document.createElement("textarea");
+      area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      const ok = document.execCommand("copy"); area.remove(); return ok;
+    }
+  };
+  for (const pre of document.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    if (!code) continue;
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "copy-code"; button.setAttribute("aria-label", "複製程式碼"); button.innerHTML = copyIcon;
+    button.addEventListener("click", async () => {
+      if (!(await copy(code.innerText))) return;
+      button.classList.add("copied"); button.innerHTML = checkIcon;
+      setTimeout(() => { button.classList.remove("copied"); button.innerHTML = copyIcon; }, 1400);
+    });
+    pre.appendChild(button);
+    const bar = document.createElement("div"), thumb = document.createElement("div");
+    bar.className = "code-scrollbar"; thumb.className = "code-scrollbar-thumb"; bar.appendChild(thumb); pre.appendChild(bar);
+    const update = () => {
+      const overflow = code.scrollWidth - code.clientWidth;
+      bar.classList.toggle("hidden", overflow <= 1);
+      if (overflow <= 1) return;
+      const ratio = code.clientWidth / code.scrollWidth;
+      thumb.style.width = `${ratio * 100}%`;
+      thumb.style.transform = `translateX(${(code.scrollLeft / overflow) * (bar.clientWidth - thumb.clientWidth)}px)`;
+    };
+    code.addEventListener("scroll", update, { passive: true });
+    new ResizeObserver(update).observe(code);
+    let drag;
+    thumb.addEventListener("pointerdown", (event) => { drag = { x: event.clientX, left: code.scrollLeft }; thumb.setPointerCapture(event.pointerId); });
+    thumb.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const overflow = code.scrollWidth - code.clientWidth, room = bar.clientWidth - thumb.clientWidth;
+      code.scrollLeft = drag.left + (event.clientX - drag.x) * (room > 0 ? overflow / room : 0);
+    });
+    thumb.addEventListener("pointerup", () => { drag = undefined; });
+    bar.addEventListener("click", (event) => {
+      if (event.target !== bar) return;
+      const box = bar.getBoundingClientRect();
+      code.scrollLeft = ((event.clientX - box.left) / box.width) * (code.scrollWidth - code.clientWidth);
+    });
+    update();
+  }
+})();
+</script>
+</body>
+</html>

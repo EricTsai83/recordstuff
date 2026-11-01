@@ -778,7 +778,7 @@ export class SettingsWindow {
     if (outcome === true) return this.deliver({ view, applied: true }, recipient);
     const failure = outcome.problem === "cancelled" ? undefined
       : translate(outcome.problem === "preparing" ? "Still being prepared. It can be dragged once it is ready; Copy and Save to… wait for it." : "This file could not be made. Try again.", view.language);
-    return this.deliver({ view, applied: false, ...(failure ? { failure } : {}) }, recipient);
+    return this.deliver({ view, applied: false, ...(failure ? { failure } : {}), ...(outcome.problem === "preparing" ? { preparing: true as const } : {}) }, recipient);
   }
 
   /** A way out beside a failure (plan 100): opened as asked, from any page that offered it. */
