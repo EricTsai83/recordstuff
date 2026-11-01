@@ -436,8 +436,11 @@ async function main(): Promise<number> {
       let heldAt = -1;
       try {
         await hold(from, to);
-        const selection = await textStarting(translate("Selection {from}–{to} ({length})", language, { from: M, to: M, length: M }));
-        heldSelection = selection;
+        // The selection's actions float over the timeline while it is held (2026-10-26, 2d594aaad: they replaced the
+        // "Selection from–to (length)" line), Deselect first and the selection's length ("Length {length}") beside it.
+        const bar = await find("selection's Deselect button", (e) => e.role === "AXButton" && e.title === translate("Deselect", language), 2000).catch(() => undefined);
+        const length = bar ? await textStarting(translate("Length {length}", language, { length: M })) : undefined;
+        heldSelection = bar && length !== undefined && Math.abs((clockSeconds(length) ?? -1) - fullSeconds * 0.2) <= 0.6 ? `selection of ${length}` : undefined;
         // While held, the preview is at the moving end.
         heldAt = clockSeconds(await textStarting(playheadText) ?? "") ?? -1;
       } finally { await ax().pointer("up", to.x, to.y); }
@@ -451,7 +454,7 @@ async function main(): Promise<number> {
       const playheadPrefix = translate("Playhead {time}", language, { time: marker }).split(marker)[0]!;
       const readout = (await texts()).find((t) => t.startsWith(playheadPrefix));
       const shown = clockSeconds(readout ?? "") ?? -1;
-      check({ check: "Range: held across the middle", expected: `a selection, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s, then the playhead at its start, about ${(fullSeconds * 0.4).toFixed(1)} s`,
+      check({ check: "Range: held across the middle", expected: `a selection of about ${(fullSeconds * 0.2).toFixed(1)} s with its actions, the preview at its moving end, about ${(fullSeconds * 0.6).toFixed(1)} s, then the playhead at its start, about ${(fullSeconds * 0.4).toFixed(1)} s`,
         actual: `"${heldSelection ?? "none"}" at ${heldAt.toFixed(2)} s, then "${readout ?? "no playhead readout"}"`,
         pass: heldSelection !== undefined && Math.abs(heldAt - fullSeconds * 0.6) <= 1.2 && Math.abs(shown - fullSeconds * 0.4) <= 1.2 });
 
