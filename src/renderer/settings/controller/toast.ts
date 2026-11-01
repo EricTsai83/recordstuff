@@ -18,6 +18,12 @@ export let toastState:
       show: number;
     }
   | undefined;
+/**
+ * How long a toast saying something went wrong or was refused stays (2026-11-01, at the maintainer's request: six or
+ * seven seconds left too little time to read why); its timer still pauses under the pointer or focus. A toast that only
+ * confirms keeps its own shorter time.
+ */
+export const PROBLEM_TOAST_MS = 12_000;
 let toastShows = 0;
 /** The toast on screen: Sonner's (undo-toast.tsx), not one still sliding out. */
 export const toastNode = (): HTMLElement | null =>

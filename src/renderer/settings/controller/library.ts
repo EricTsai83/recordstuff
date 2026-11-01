@@ -19,7 +19,7 @@ import {
   view,
 } from "./core";
 import { playingItem } from "./player";
-import { showToast, toastNode } from "./toast";
+import { PROBLEM_TOAST_MS, showToast, toastNode } from "./toast";
 
 export let libraryError: string | undefined;
 /** A way out beside `libraryError` (plan 100), only while that error is the one it came with. */
@@ -495,7 +495,7 @@ export async function fileAction(
     // under it, not in a line kept over the recordings (2026-11-01, the maintainer's request).
     if (!result.applied && dragging && result.failure) {
       announce(result.failureDetail ? `${result.failure}. ${result.failureDetail}` : result.failure);
-      showToast("notice", result.failure, result.failureDetail ?? "", 7000);
+      showToast("notice", result.failure, result.failureDetail ?? "", PROBLEM_TOAST_MS);
     } else if (!result.applied)
       libraryError = view?.library?.items.some((item) => item.id === id)
         ? (failedText(result.failure))
@@ -693,7 +693,7 @@ export async function removeFolder(folder: string): Promise<void> {
         : (failedText(result.failure));
       const title = translate("Could not delete “{name}”", view?.language, { name: folder });
       announce(sentences([title, why], view?.language));
-      showToast("notice", title, why, 6000);
+      showToast("notice", title, why, PROBLEM_TOAST_MS);
     }
   } finally {
     folderPending = false;
@@ -717,5 +717,5 @@ export async function favorite(folder: string, on: boolean): Promise<void> {
 function failFavorite(failure: string | undefined): void {
   const title = text("Could not update favorites"), why = failedText(failure);
   announce(sentences([title, why], view?.language));
-  showToast("notice", title, why, 6000);
+  showToast("notice", title, why, PROBLEM_TOAST_MS);
 }

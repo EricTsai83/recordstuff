@@ -116,7 +116,7 @@ function useExportToast(): void {
         toasterId: EXPORT_TOASTER,
         id,
         description: outcome.message,
-        duration: 12000,
+        duration: model.PROBLEM_TOAST_MS,
         className: "undo-toast editor-export-toast",
         classNames: { title: "toast-title", description: "toast-description" },
       });
