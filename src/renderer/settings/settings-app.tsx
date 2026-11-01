@@ -87,7 +87,7 @@ function Status({ rail = false, open = false }: { rail?: boolean; open?: boolean
       <span className="status-mark" aria-hidden="true" hidden={permission} />
       {permission && (
         <span className="permission-icon" aria-hidden="true">
-          <Lock />
+          <Lock strokeWidth={2} />
         </span>
       )}
       <div className="min-w-0 flex-1">
@@ -306,7 +306,7 @@ export function SettingsApp() {
                         {/* A collapsed sidebar marks unread items with a dot on the icon's corner; the count stays in the
                             tab's name. */}
                         <span className="relative inline-flex flex-none">
-                          <Icon className="tab-icon size-4" />
+                          <Icon className="tab-icon size-4" strokeWidth={2} />
                           {count && <span className="notice-dot tab-dot" aria-hidden="true" />}
                         </span>
                         {count ? (

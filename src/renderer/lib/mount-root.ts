@@ -1,12 +1,9 @@
 import { Component, createElement, type ComponentType, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { LucideProvider } from "lucide-react";
 import { flushSync } from "react-dom";
 import { translate } from "../../shared/i18n";
 
 const lifecycle = Symbol.for("recordstuff.renderer.dispose");
-/** The line every icon draws, in screen pixels. */
-export const ICON_STROKE = 1.5;
 
 /** What a window shows when it cannot draw: the load failure's own words, or nothing for a window over the screen. */
 export type RootFallback = "message" | "none";
@@ -49,10 +46,6 @@ export function mountRoot(component: ComponentType, { fallback = "message" }: { 
     if (owner[lifecycle] === dispose) delete owner[lifecycle];
   };
   owner[lifecycle] = dispose;
-  // Every icon draws one line weight on screen, whatever its size (2026-11-01, at the maintainer's request: Lucide scales
-  // its 2-unit stroke with the icon, so a 24 px stage button drew twice the line of a 14 px toolbar one).
-  flushSync(() =>
-    root.render(createElement(RootBoundary, { fallback }, createElement(LucideProvider, { nonScalingStroke: true, strokeWidth: ICON_STROKE, children: createElement(component) }))),
-  );
+  flushSync(() => root.render(createElement(RootBoundary, { fallback }, createElement(component))));
   window.addEventListener("pagehide", dispose, { once: true });
 }
